@@ -4,6 +4,7 @@
 
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
+let documentTimerInterval = null;
 
 // Documents selected for the RLM "Deep analysis" toggle. Clicking a
 // document in the sidebar list toggles it; the choice is mirrored into
@@ -80,10 +81,28 @@ function loadDocuments(showLoading = true) {
                 documentsData[doc.id] = doc;
             });
             updateDocumentsList(documents);
+            updateDocumentProcessingTimers();
         })
         .catch(err => {
             console.error('Error loading documents:', err);
         });
+}
+
+function updateDocumentProcessingTimers() {
+    const timers = document.querySelectorAll('.doc-live-timer[data-index-status="indexing"]');
+    if (timers.length === 0) {
+        if (documentTimerInterval) {
+            clearInterval(documentTimerInterval);
+            documentTimerInterval = null;
+        }
+        return;
+    }
+    timers.forEach(timer => {
+        const elapsed = Number(timer.dataset.processingSeconds || 0) +
+            Math.floor((performance.now() - Number(timer.dataset.timerStartedAt || performance.now())) / 1000);
+        const seconds = Math.max(0, Math.round(elapsed));
+        timer.textContent = ` ⏱️ ${seconds}${t('seconds_suffix')}`;
+    });
 }
 
 function getStatusIcon(status) {
@@ -139,34 +158,32 @@ function updateDocumentsList(documents) {
         const statusTitle = getStatusTitle(doc.index_status);
         const isIndexing = doc.index_status === 'indexing';
         const isPending = doc.index_status === 'pending';
+        const existingTimer = document.querySelector(
+            `.doc-live-timer[data-document-id="${doc.id}"][data-index-status="indexing"]`
+        );
         // Add blink class if indexing for the main status icon
         const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
 
-        // Show live elapsed time for documents being indexed
-        // Show hourglass indicator for queued documents
+        // Show a live elapsed timer while indexing and the server duration when complete.
         let statusIndicator = '';
         let indexingStartTimestamp = '';
-        if (isIndexing && doc.indexing_started_at) {
-            // Calculate elapsed time since indexing started
-            const startTime = new Date(doc.indexing_started_at.replace(' ', 'T') + 'Z');
-            if (!isNaN(startTime.getTime())) {
-                indexingStartTimestamp = Math.floor(startTime.getTime() / 1000).toString();
-                const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
-                const mins = Math.floor(elapsed / 60);
-                const secs = elapsed % 60;
-                const timeStr = mins > 0 ? `${mins}${t('minute_abbr')} ${secs}${t('second_abbr')}` : `${secs}${t('second_abbr')}`;
-                statusIndicator = ` ⏱️ ${timeStr}`;
-            }
+        if (isIndexing) {
+            const processingSeconds = Math.round(doc.processing_time || 0);
+            statusIndicator = ` ⏱️ ${processingSeconds}${t('seconds_suffix')}`;
+            const timerStartedAt = existingTimer?.dataset.timerStartedAt || performance.now();
+            indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="indexing" data-processing-seconds="${processingSeconds}" data-timer-started-at="${timerStartedAt}"`;
         } else if (isPending) {
             statusIndicator = ' ⏳';
+            indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="pending"`;
+        } else if (doc.index_status) {
+            indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="${escapeHtml(doc.index_status)}"`;
         }
 
         // Show processing_time for completed documents
         let processingTimeStr = '';
         if (doc.processing_time !== null && doc.processing_time !== undefined) {
             const processingSeconds = Math.round(doc.processing_time);
-            const secondSuffix = t('seconds_suffix');
-            processingTimeStr = ` ⏱️ ${processingSeconds}${secondSuffix}`;
+            processingTimeStr = ` ⏱️ ${processingSeconds}${t('seconds_suffix')}`;
         }
 
         // Embedding model is the search index model; only show it after indexing.
@@ -185,14 +202,14 @@ function updateDocumentsList(documents) {
         const isRlmSelected = rlmSelectedDocs.has(doc.id);
 
         html += `
-        <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-indexing-start="${indexingStartTimestamp}">
+        <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
             <div class="document-content">
                 <div class="document-info">
                     <div class="document-title">
                         <span class="${iconClass}" title="${statusTitle}">${statusIcon}</span>
                         📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${isRlmSelected ? ' ✓' : ''}</span>
                     </div>
-                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer">${statusIndicator}</span>${processingTimeStr}</div>
+                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                     ${embeddingLine}
                     ${descriptionLine}
                 </div>
@@ -203,6 +220,12 @@ function updateDocumentsList(documents) {
     });
 
     documentsList.innerHTML = html;
+    if (documentTimerInterval) clearInterval(documentTimerInterval);
+    if (documents.some(doc => doc.index_status === 'indexing')) {
+        documentTimerInterval = setInterval(updateDocumentProcessingTimers, 1000);
+    } else {
+        documentTimerInterval = null;
+    }
     if (documentsCount) {
         documentsCount.textContent = documents.length;
     }
@@ -318,7 +341,6 @@ function uploadDocument(file) {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
-                alert(t('document_uploaded'));
                 loadDocuments(); // Reload list to show new document with pending status
             } else {
                 alert(t('error') + ': ' + (data.error || t('document_upload_failed')));

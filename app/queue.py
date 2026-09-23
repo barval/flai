@@ -4126,8 +4126,13 @@ class RedisRequestQueue:
         doc_id = data.get("doc_id")
         file_path = data.get("file_path")
         user_id = task["user_id"]
-        indexing_started_at = get_current_time_for_db()
-        update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        if data.get("preserve_indexing_started_at"):
+            indexing_started_at = None
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        else:
+            indexing_started_at = get_current_time_for_db()
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
             with force_locale("en"):
@@ -4153,6 +4158,7 @@ class RedisRequestQueue:
             else:
                 if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
                     self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
                     self.app.request_queue.add_request(
                         user_id=user_id,
                         session_id="",
@@ -4160,6 +4166,7 @@ class RedisRequestQueue:
                             "type": "describe_document_pdf",
                             "doc_id": doc_id,
                             "file_path": file_path,
+                            "preserve_indexing_started_at": True,
                         },
                         user_class=task.get("user_class", 100),
                         lang=task.get("lang", "ru"),
@@ -4222,8 +4229,10 @@ class RedisRequestQueue:
             return {"success": False, "error": error_msg, "doc_id": doc_id}
 
         if is_pdf:
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        else:
             update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=get_current_time_for_db())
-            self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
 
         try:
             descriptions = []
@@ -4326,6 +4335,7 @@ class RedisRequestQueue:
                     "type": "index_document",
                     "doc_id": doc_id,
                     "file_path": recognized_path,
+                    "preserve_indexing_started_at": True,
                 },
                 user_class=task.get("user_class", 100),
                 lang=lang,

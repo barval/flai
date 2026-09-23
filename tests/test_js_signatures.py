@@ -187,7 +187,27 @@ def test_documents_panel_shows_model_names_with_distinct_icons():
 def test_documents_panel_displays_processing_duration_as_whole_seconds():
     docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
 
-    assert "Math.round(doc.processing_time)" in docs_src
+    assert "const processingSeconds = Math.round(doc.processing_time)" in docs_src
     assert "t('seconds_suffix')" in docs_src
-    assert "⏱️ ${processingSeconds}${secondSuffix}" in docs_src
+    assert "⏱️ ${processingSeconds}${t('seconds_suffix')}" in docs_src
     assert "minutes_abbr" not in docs_src
+
+
+def test_document_upload_does_not_show_success_alert():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    upload_src = docs_src[docs_src.index("function uploadDocument") : docs_src.index("function initDocumentsView")]
+
+    assert "alert(t('document_uploaded'))" not in upload_src
+    assert "loadDocuments()" in upload_src
+
+
+def test_document_indexing_timer_ticks_and_stops_when_indexed():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+
+    assert "setInterval(updateDocumentProcessingTimers, 1000)" in docs_src
+    assert "performance.now()" in docs_src
+    assert "querySelectorAll('.doc-live-timer[data-index-status=\"indexing\"]')" in docs_src
+    assert 'data-processing-seconds="${processingSeconds}"' in docs_src
+    assert "Math.round(doc.processing_time)" in docs_src
+    assert "processingTimeStr = ` ⏱️ ${processingSeconds}${t('seconds_suffix')}`" in docs_src
+    assert "existingTimer?.dataset.timerStartedAt || performance.now()" in docs_src

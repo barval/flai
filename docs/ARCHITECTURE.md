@@ -262,6 +262,14 @@ Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (
 
 Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
 
+## Document Image Processing and Scanned PDF OCR (v12.0)
+
+`describe_document_image` handles uploaded image documents and PDFs that contain no extractable text. For a scanned PDF, the worker reads the page count with `pdfinfo`, renders each page to a 1536-pixel JPEG with `pdftoppm`, and asks the multimodal model to describe the page and transcribe readable text. For an uploaded image, it describes the image directly. The output is saved beside the original as `.recognized_text` and queued for normal RAG indexing, making scanned pages, labels, and diagrams searchable. Poppler utilities are installed in the web image.
+
+## HTML Message Preview
+
+`GET /api/html-preview/<message_id>` (`app/routes/messages.py`) serves the first HTML code block from an authenticated user's own chat message in a separate response with a preview-specific CSP. This avoids the chat page's strict CSP blocking local previews. `_ensure_three_importmap()` repairs generated Three.js pages that import CDN addon modules without an import map: it injects a JSON-serialized map and rewrites compatible CDN imports to `three` aliases; pages with an existing map are left untouched.
+
 ## Task Cancellation
 
 - **Client**: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.

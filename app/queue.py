@@ -4158,7 +4158,8 @@ class RedisRequestQueue:
             else:
                 if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
                     self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
-                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+                    update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
                     self.app.request_queue.add_request(
                         user_id=user_id,
                         session_id="",
@@ -4327,6 +4328,8 @@ class RedisRequestQueue:
                 )
                 conn.commit()
 
+            update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+
             # Re-queue index_document for the .recognized_text file
             self.app.request_queue.add_request(
                 user_id=user_id,
@@ -4342,6 +4345,7 @@ class RedisRequestQueue:
             )
 
             self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
             message = (
                 "PDF pages described and indexing queued"
                 if full_path.lower().endswith(".pdf")
@@ -4529,7 +4533,7 @@ class RedisRequestQueue:
             "index_document": "📄",
             "transcribe_audio": "🎤",
         }
-        return {
+        request_info = {
             "id": task["id"],
             "session_id": task.get("session_id"),
             "session_title": task.get("session_title", self.app.modules["base"]._("Unknown session", lang=lang)),
@@ -4539,6 +4543,10 @@ class RedisRequestQueue:
             "position_info": task.get("position_info", {"position": 0, "estimated_seconds": 0}),
             "preview": task.get("data", {}).get("preview", ""),
         }
+        doc_id = task.get("data", {}).get("doc_id")
+        if doc_id:
+            request_info["doc_id"] = doc_id
+        return request_info
 
     def check_result(self, request_id: str) -> dict[str, Any] | None:
         """Check if result is available for a request."""

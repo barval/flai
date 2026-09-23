@@ -18,6 +18,7 @@ function fetchQueueStatus() {
         .then(data => {
             if (window.IS_RELOADING) return;
             if (!data) return;
+            if (typeof updateDocumentQueueStatus === 'function') updateDocumentQueueStatus(data);
 
             // COMPLETELY rebuild sessionQueueInfo from server data only
             // Do NOT use pendingRequests to determine status icons

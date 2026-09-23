@@ -5,6 +5,7 @@
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
 let documentTimerInterval = null;
+let documentQueuePositions = {};
 
 // Documents selected for the RLM "Deep analysis" toggle. Clicking a
 // document in the sidebar list toggles it; the choice is mirrored into
@@ -82,6 +83,7 @@ function loadDocuments(showLoading = true) {
             });
             updateDocumentsList(documents);
             updateDocumentProcessingTimers();
+            if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
         })
         .catch(err => {
             console.error('Error loading documents:', err);
@@ -102,6 +104,27 @@ function updateDocumentProcessingTimers() {
             Math.floor((performance.now() - Number(timer.dataset.timerStartedAt || performance.now())) / 1000);
         const seconds = Math.max(0, Math.round(elapsed));
         timer.textContent = ` ⏱️ ${seconds}${t('seconds_suffix')}`;
+    });
+}
+
+function updateDocumentQueueStatus(queueStatus) {
+    documentQueuePositions = {};
+    (queueStatus.queued || []).forEach(item => {
+        const position = Number(item.position_info?.position || 0);
+        if (item.doc_id && position > 0) {
+            const current = documentQueuePositions[item.doc_id];
+            documentQueuePositions[item.doc_id] = current ? Math.min(current, position) : position;
+        }
+    });
+
+    document.querySelectorAll('.document-item[data-index-status="pending"]').forEach(item => {
+        const statusIcon = item.querySelector('.document-status-icon');
+        if (!statusIcon) return;
+        const position = documentQueuePositions[item.dataset.documentId] || 0;
+        statusIcon.textContent = position > 0 ? `⏳ ${position}` : '⏳';
+        statusIcon.classList.toggle('queued', position > 0);
+        statusIcon.classList.toggle('blink', position > 0);
+        statusIcon.title = t('status_pending') + (position > 0 ? ` (#${position})` : '');
     });
 }
 
@@ -158,11 +181,16 @@ function updateDocumentsList(documents) {
         const statusTitle = getStatusTitle(doc.index_status);
         const isIndexing = doc.index_status === 'indexing';
         const isPending = doc.index_status === 'pending';
+        const queuePosition = isPending ? documentQueuePositions[doc.id] || 0 : 0;
         const existingTimer = document.querySelector(
             `.doc-live-timer[data-document-id="${doc.id}"][data-index-status="indexing"]`
         );
         // Add blink class if indexing for the main status icon
-        const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
+        const iconClass = isIndexing
+            ? 'document-status-icon blink'
+            : queuePosition > 0
+                ? 'document-status-icon queued blink'
+                : 'document-status-icon';
 
         // Show a live elapsed timer while indexing and the server duration when complete.
         let statusIndicator = '';
@@ -173,7 +201,6 @@ function updateDocumentsList(documents) {
             const timerStartedAt = existingTimer?.dataset.timerStartedAt || performance.now();
             indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="indexing" data-processing-seconds="${processingSeconds}" data-timer-started-at="${timerStartedAt}"`;
         } else if (isPending) {
-            statusIndicator = ' ⏳';
             indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="pending"`;
         } else if (doc.index_status) {
             indexingStartTimestamp = ` data-document-id="${doc.id}" data-index-status="${escapeHtml(doc.index_status)}"`;
@@ -202,11 +229,11 @@ function updateDocumentsList(documents) {
         const isRlmSelected = rlmSelectedDocs.has(doc.id);
 
         html += `
-        <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
+        <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}">
             <div class="document-content">
                 <div class="document-info">
                     <div class="document-title">
-                        <span class="${iconClass}" title="${statusTitle}">${statusIcon}</span>
+                        <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
                         📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${isRlmSelected ? ' ✓' : ''}</span>
                     </div>
                     <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>

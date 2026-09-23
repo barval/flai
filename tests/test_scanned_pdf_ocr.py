@@ -45,10 +45,13 @@ def test_index_task_schedules_ocr_for_pdf_without_extractable_text(tmp_path):
         "file_path": str(pdf_path),
         "preserve_indexing_started_at": True,
     }
-    assert update_status.call_count == 1
+    assert update_status.call_args_list == [
+        call("doc-1", "indexing", indexing_started_at="now"),
+        call("doc-1", "pending"),
+    ]
     assert queue._publish_document_event.call_args_list == [
         call("user", "doc-1", "indexing"),
-        call("user", "doc-1", "indexing"),
+        call("user", "doc-1", "pending"),
     ]
 
 
@@ -115,12 +118,109 @@ def test_reindex_after_pdf_ocr_preserves_original_processing_start():
 
 
 @pytest.mark.unit
+def test_pdf_ocr_reindex_is_marked_pending_before_it_is_queued(tmp_path):
+    queue = RedisRequestQueue.__new__(RedisRequestQueue)
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 scanned pages")
+    multimodal = Mock(available=True)
+    multimodal.describe_image_for_rlm.return_value = ("Recognized text", None)
+    queue.app = Mock()
+    queue.app.config = {"DOCUMENTS_FOLDER": str(tmp_path)}
+    queue.app.modules = {"multimodal": multimodal}
+    queue.app.request_queue.add_request = Mock()
+    queue.app.logger = Mock()
+    queue._get_model_name = Mock(return_value="vision-model")
+    queue._publish_document_event = Mock()
+
+    def run_poppler(args, **kwargs):
+        if args[0] == "pdfinfo":
+            return subprocess.CompletedProcess(args, 0, stdout="Pages:          1\n", stderr="")
+        rendered = f"{args[-1]}.jpg"
+        with open(rendered, "wb") as image_file:
+            image_file.write(b"page")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    update_status = Mock()
+    task = {
+        "id": "describe-pdf",
+        "user_id": "user",
+        "lang": "en",
+        "user_class": 2,
+        "data": {"doc_id": "doc-1", "file_path": str(pdf_path), "preserve_indexing_started_at": True},
+    }
+    with (
+        patch("app.queue.subprocess.run", side_effect=run_poppler),
+        patch("app.database.get_db", return_value=nullcontext(Mock(cursor=Mock()))),
+        patch("app.queue.update_document_index_status", update_status),
+    ):
+        result = queue._process_describe_document_image_task(task)
+
+    assert result["success"] is True
+    assert update_status.call_args_list == [call("doc-1", "indexing"), call("doc-1", "pending")]
+    assert queue._publish_document_event.call_args_list == [
+        call("user", "doc-1", "indexing"),
+        call("user", "doc-1", "pending"),
+    ]
+    queue.app.request_queue.add_request.assert_called_once()
+
+
+@pytest.mark.unit
 def test_pdf_ocr_task_uses_slow_gpu_queue_and_multimodal_model():
     queue = RedisRequestQueue.__new__(RedisRequestQueue)
     task = {"data": {"type": "describe_document_pdf", "doc_id": "doc-1", "file_path": "user/scan.pdf"}}
 
     assert queue._classify_task(task) == "slow"
     assert queue._get_model_for_task(task) == "multimodal"
+
+
+@pytest.mark.unit
+def test_queue_status_includes_queued_document_tasks_and_document_id():
+    queue = RedisRequestQueue.__new__(RedisRequestQueue)
+    queue.processing_key = "fast:processing"
+    queue.slow_processing_key = "slow:processing"
+    queue.queue_key = "fast:queue"
+    queue.slow_queue_key = "slow:queue"
+    queue.results_key = "results"
+    queue.app = Mock()
+    queue.app.modules = {"base": Mock()}
+    queue.app.modules["base"]._ = Mock(return_value="Unknown session")
+    processing_task = {
+        "id": "active-doc-task",
+        "user_id": "user",
+        "session_id": "",
+        "session_title": "Document indexing",
+        "data": {"type": "describe_document_pdf", "doc_id": "active-doc"},
+    }
+    queued_task = {
+        "id": "queued-doc-task",
+        "user_id": "user",
+        "session_id": "",
+        "session_title": "Document indexing",
+        "data": {"type": "index_document", "doc_id": "queued-doc"},
+    }
+    queue.redis = Mock()
+    queue.redis.hgetall.side_effect = [{}, {b"active-doc-task": processing_task}]
+    queue.redis.llen.side_effect = [0, 1]
+    queue.redis.lrange.return_value = [queued_task]
+    queue._deserialize = lambda value: value
+    queue._format_request_info = RedisRequestQueue._format_request_info.__get__(queue)
+
+    status = RedisRequestQueue.get_user_requests_status(queue, "user")
+
+    assert status["processing"]["doc_id"] == "active-doc"
+    assert status["queued"] == [
+        {
+            "id": "queued-doc-task",
+            "session_id": "",
+            "session_title": "Document indexing",
+            "type": "index_document",
+            "type_icon": "📄",
+            "status": "queued",
+            "position_info": {"position": 1, "estimated_seconds": 5},
+            "preview": "",
+            "doc_id": "queued-doc",
+        }
+    ]
 
 
 @pytest.mark.unit

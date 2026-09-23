@@ -211,3 +211,17 @@ def test_document_indexing_timer_ticks_and_stops_when_indexed():
     assert "Math.round(doc.processing_time)" in docs_src
     assert "processingTimeStr = ` ⏱️ ${processingSeconds}${t('seconds_suffix')}`" in docs_src
     assert "existingTimer?.dataset.timerStartedAt || performance.now()" in docs_src
+
+
+def test_documents_panel_shows_queue_position_from_server_status():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    queue_src = (JS_DIR / "chat-queue.js").read_text(encoding="utf-8")
+    queue_css = (JS_DIR.parent / "css" / "chat.css").read_text(encoding="utf-8")
+
+    assert "function updateDocumentQueueStatus(queueStatus)" in docs_src
+    assert "updateDocumentQueueStatus(data)" in queue_src
+    assert "queueStatus.queued" in docs_src
+    assert "item.doc_id" in docs_src
+    assert "position_info?.position" in docs_src
+    assert "document-status-icon queued" in docs_src
+    assert ".document-status-icon.queued" in queue_css

@@ -142,3 +142,28 @@ def test_display_message_returned_element_is_optimistic_marker_source():
     assert re.search(r"msgElement\.dataset\.tempId\s*=", init_src), (
         "displayUserMessage no longer sets dataset.tempId — update the data-temp-id selector contract in consumers"
     )
+
+
+def test_rlm_optimistic_message_is_reconciled_before_sse_echo():
+    """RLM's optimistic user bubble must carry the same DOM marker used by
+    onMessageNew to suppress the persisted message_new echo."""
+    init_src = (JS_DIR / "chat-init.js").read_text(encoding="utf-8")
+    rlm_src = init_src[init_src.index("async function sendRlmAnalysis") : init_src.index("async function sendMessage")]
+
+    assert re.search(r"optimisticMessage\.dataset\.tempId\s*=\s*`temp-\$\{timestamp\}`", rlm_src)
+    assert "optimisticMessage.dataset.sessionId = currentSessionId" in rlm_src
+    assert re.search(r"data\.user_message_id[\s\S]*?delete optimisticMessage\.dataset\.tempId", rlm_src)
+    assert "optimisticMessage.dataset.messageId = data.user_message_id" in rlm_src
+
+
+def test_send_message_locks_after_rlm_branch():
+    """RLM must be dispatched before the normal send path acquires isSending,
+    otherwise sendRlmAnalysis rejects its own call as already in progress."""
+    init_src = (JS_DIR / "chat-init.js").read_text(encoding="utf-8")
+    send_src = init_src[init_src.index("async function sendMessage") :]
+    rlm_branch = send_src[: send_src.index("const input = document.getElementById('message-input')")]
+
+    assert "sendRlmAnalysis();" in rlm_branch
+    assert rlm_branch.index("sendRlmAnalysis();") < rlm_branch.index("isSending = true;")
+    assert "if (isSending) return;" in init_src
+    assert "isSending = true;" in rlm_branch

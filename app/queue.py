@@ -1670,6 +1670,19 @@ class RedisRequestQueue:
                 continue
             full_path = os.path.join(documents_folder, doc["file_path"])
             text = extract_text_from_file(full_path)
+            if not text and doc.get("file_path", "").lower().endswith(
+                (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".gif", ".heic")
+            ):
+                recognized_path = os.path.splitext(full_path)[0] + ".recognized_text"
+                if os.path.exists(recognized_path):
+                    try:
+                        with open(recognized_path, encoding="utf-8") as f:
+                            text = f.read()
+                        self.app.logger.info(f"_process_rlm_task: used multimodal description for image doc {doc_id}")
+                    except OSError:
+                        self.app.logger.warning(
+                            f"_process_rlm_task: could not read recognized_text for image doc {doc_id}"
+                        )
             if text:
                 corpus[doc.get("filename", doc_id)] = text
 
@@ -2283,8 +2296,6 @@ class RedisRequestQueue:
                             )
                         )
                     save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
-                    if task:
-                        self._publish_stream_event(task, "notice", {"message": resize_text})
 
             prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
             if cpu_error:

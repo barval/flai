@@ -55,6 +55,50 @@ def test_process_rlm_task_adds_image_description_to_corpus():
 
 
 @pytest.mark.unit
+def test_process_rlm_task_uses_recognized_text_for_selected_image_document(tmp_path):
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._get_model_name = Mock(return_value="reasoning")
+    q._save_and_respond = Mock(return_value={"status": "ok"})
+    q.redis = Mock()
+    app = Mock()
+    app.modules = {"base": Mock()}
+    app.config = {"DOCUMENTS_FOLDER": str(tmp_path)}
+    q.app = app
+
+    image_path = tmp_path / "user" / "scan.jpg"
+    image_path.parent.mkdir()
+    image_path.write_bytes(b"jpeg")
+    description_path = image_path.with_suffix(".recognized_text")
+    description_path.write_text("Sale agreement for the apartment at Kurchatov St.", encoding="utf-8")
+
+    task = {
+        "id": "rlm-selected-image",
+        "data": {"type": "rlm_analysis", "text": "What is known?", "doc_ids": ["image-1"]},
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    rm.mark_rlm_busy = Mock()
+    rm.mark_rlm_idle = Mock()
+    run_mock = Mock(return_value=RlmResult(answer="Found information", trace=[], steps=1))
+    with (
+        patch("modules.rlm.RlmModule") as mock_rlm_module,
+        patch("app.db.get_document", return_value={"file_path": "user/scan.jpg", "filename": "scan.jpg"}),
+        patch("app.utils.extract_text_from_file", return_value=None),
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+    ):
+        mock_rlm_module.return_value.run = run_mock
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "ok"
+    assert run_mock.call_args.kwargs["corpus"] == {"scan.jpg": "Sale agreement for the apartment at Kurchatov St."}
+
+
+@pytest.mark.unit
 def test_process_rlm_task_reports_image_description_error():
     q = RedisRequestQueue.__new__(RedisRequestQueue)
     q._publish_stream_event = lambda task, event_type, extra=None: None

@@ -61,7 +61,13 @@ async function sendRlmAnalysis() {
         if (fileData) {
             userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
         }
-        originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp);
+        const optimisticMessage = originalDisplayMessage(
+            'user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp
+        );
+        if (optimisticMessage) {
+            optimisticMessage.dataset.tempId = `temp-${timestamp}`;
+            optimisticMessage.dataset.sessionId = currentSessionId;
+        }
         lastMessageTimestamp = timestamp;
 
         // Set the session title from the first user message (mirrors the normal
@@ -101,6 +107,17 @@ async function sendRlmAnalysis() {
             return;
         }
 
+        if (data.user_message_id) {
+            const optimisticMessage = document.querySelector(
+                `.user-message[data-temp-id="temp-${timestamp}"]`
+            );
+            if (optimisticMessage) {
+                delete optimisticMessage.dataset.tempId;
+                optimisticMessage.dataset.messageId = data.user_message_id;
+                displayedMessageIds.add(data.user_message_id);
+            }
+        }
+
         // The resize notice is rendered after the user message it belongs to.
         if (data.resize_notice) {
             const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
@@ -137,7 +154,6 @@ async function sendMessage() {
         dlog('Send already in progress, ignoring duplicate');
         return;
     }
-
     const rlmToggle = document.getElementById('rlm-toggle');
     if (rlmToggle && rlmToggle.checked) {
         const docsSelect = document.getElementById('rlm-docs');

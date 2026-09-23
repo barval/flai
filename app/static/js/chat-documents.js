@@ -168,18 +168,17 @@ function updateDocumentsList(documents) {
             processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
         }
 
-        // Embedding model line - always show with a fixed 🔄 icon, regardless of status
-        let displayModel = doc.embedding_model || window.CURRENT_EMBEDDING_MODEL || '';
+        // Embedding model is the search index model; only show it after indexing.
+        let displayModel = doc.embedding_model || '';
         let embeddingLine = '';
         if (displayModel) {
-            // Use a fixed icon '🔄' for the embedding model line, with no status-dependent class.
-            embeddingLine = `<div class="document-embedding"><span class="document-status-icon">🔄</span> ${displayModel}</div>`;
+            embeddingLine = `<div class="document-embedding"><span class="document-status-icon">🔄</span> ${escapeHtml(displayModel)}</div>`;
         }
 
-        // Description model line - show for images that have been described
+        // Recognition model is the multimodal model used to read image content.
         let descriptionLine = '';
         if (doc.description_model) {
-            descriptionLine = `<div class="document-description-model"><span class="document-status-icon">🖼️</span> ${doc.description_model}</div>`;
+            descriptionLine = `<div class="document-description-model"><span class="document-status-icon">🖼️</span> ${escapeHtml(doc.description_model)}</div>`;
         }
 
         const isRlmSelected = rlmSelectedDocs.has(doc.id);

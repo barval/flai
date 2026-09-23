@@ -449,6 +449,7 @@ class _MockDatabase:
                 "indexed_at": None,
                 "indexing_started_at": None,
                 "embedding_model": None,
+                "description_model": None,
             }
             self._documents.append(doc)
             self._result(None, rowcount=1)

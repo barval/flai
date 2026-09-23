@@ -524,7 +524,7 @@ def get_user_documents(user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at, embedding_model
+               index_status, indexed_at, indexing_started_at, embedding_model, description_model
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC

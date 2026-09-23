@@ -2,6 +2,8 @@
 """Integration tests for database functions."""
 
 import uuid
+from contextlib import nullcontext
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -9,6 +11,38 @@ import pytest
 def generate_unique_name(prefix="test"):
     """Generate unique name for test isolation."""
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+@pytest.mark.unit
+def test_get_user_documents_returns_recognition_and_embedding_models(test_app):
+    from app.db import get_user_documents
+
+    row = {
+        "id": "doc-1",
+        "filename": "scan.pdf",
+        "file_size": 1234,
+        "file_ext": ".pdf",
+        "file_path": "user/scan.pdf",
+        "uploaded_at": None,
+        "index_status": "indexed",
+        "indexed_at": None,
+        "indexing_started_at": None,
+        "embedding_model": "bge-m3-Q8_0.gguf",
+        "description_model": "Qwen3VL-8B.gguf",
+    }
+    cursor = Mock()
+    cursor.fetchall.return_value = [row]
+    connection = Mock()
+    connection.cursor.return_value = cursor
+
+    with test_app.app_context(), patch("app.db.get_db", return_value=nullcontext(connection)):
+        documents = get_user_documents("user")
+
+    query = cursor.execute.call_args.args[0]
+    assert "embedding_model" in query
+    assert "description_model" in query
+    assert documents[0]["embedding_model"] == "bge-m3-Q8_0.gguf"
+    assert documents[0]["description_model"] == "Qwen3VL-8B.gguf"
 
 
 @pytest.mark.integration

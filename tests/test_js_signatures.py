@@ -167,3 +167,18 @@ def test_send_message_locks_after_rlm_branch():
     assert rlm_branch.index("sendRlmAnalysis();") < rlm_branch.index("isSending = true;")
     assert "if (isSending) return;" in init_src
     assert "isSending = true;" in rlm_branch
+
+
+def test_documents_panel_shows_model_names_with_distinct_icons():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    chat_template = (JS_DIR.parent.parent / "templates" / "chat.html").read_text(encoding="utf-8")
+
+    assert 'document-embedding"><span class="document-status-icon">🔄</span> ${escapeHtml(displayModel)}' in docs_src
+    assert (
+        'document-description-model"><span class="document-status-icon">🖼️</span> ${escapeHtml(doc.description_model)}'
+        in docs_src
+    )
+    assert "document_embedding_model" not in docs_src
+    assert "document_recognition_model" not in docs_src
+    assert "document_embedding_model" not in chat_template
+    assert "document_recognition_model" not in chat_template

@@ -483,7 +483,7 @@ download_whisper_models() {
         -v "$(pwd)/$CACHE_DIR:/cache" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && python3 -c '
+pip install -q --disable-pip-version-check --root-user-action=ignore huggingface_hub && python3 -c '
 from huggingface_hub import snapshot_download
 import sys
 try:
@@ -702,7 +702,7 @@ build_and_launch() {
 # ── Tests ──
 run_tests() {
     info "Running unit tests..."
-    pip install -e ".[test]" -q 2>/dev/null || pip install -r requirements.txt -q 2>/dev/null
+    pip install -e ".[test]" -q --disable-pip-version-check --root-user-action=ignore 2>/dev/null || pip install -r requirements.txt -q --disable-pip-version-check --root-user-action=ignore 2>/dev/null
     pytest --tb=short -q 2>&1 || warn "Some tests failed — check output above."
 }
 

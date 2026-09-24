@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.1] — Unreleased
 
+### Fixed
+
+- **Swapped admin panel token columns** — the «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals: outgoing displayed the user-prompt sum (`prompt_tokens`) and incoming the model-reply sum (`completion_tokens`), while the headers imply the reverse. The SQL aliases in `/admin/api/users` now bind `outgoing_tokens` to `completion_tokens` (model replies, what the server sends out) and `incoming_tokens` to `prompt_tokens` (user prompts, what the server receives). Sorting and the JSON API are fixed by the same change.
+
 ## [v12.0] — 2026-09-24
 
 ### Added

@@ -150,3 +150,25 @@ class TestDatabase:
             # Verify messages were deleted
             messages = get_session_messages(session_id)
             assert len(messages) == 0
+
+
+@pytest.mark.unit
+def test_get_user_sessions_token_totals(test_app):
+    """Per-session SUMs of prompt/completion tokens appear in the session list.
+
+    The session card renders ``[↑out ↓in]`` from these two fields, so the
+    backend must return them summed across every message of the session.
+    """
+    username = generate_unique_name()
+    with test_app.app_context():
+        from app.db import create_session, get_user_sessions, save_message
+
+        session_id = create_session(username, title="Token Sums")
+        save_message(session_id, "assistant", "first", completion_tokens=120, prompt_tokens=3401, model_type="chat")
+        save_message(session_id, "assistant", "second", completion_tokens=30, prompt_tokens=500, model_type="chat")
+
+        sessions = get_user_sessions(username)
+        target = next(s for s in sessions if s["id"] == session_id)
+        assert target["message_count"] == 2
+        assert target["total_prompt_tokens"] == 3901
+        assert target["total_completion_tokens"] == 150

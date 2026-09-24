@@ -209,6 +209,9 @@ class _MockDatabase:
                         self._result(req, rowcount=1)
                     else:
                         msg_count = len([m for m in self._messages if m.get("session_id") == s["id"]])
+                        sess_msgs = [m for m in self._messages if m.get("session_id") == s["id"]]
+                        total_prompt = sum(int(m.get("prompt_tokens") or 0) for m in sess_msgs)
+                        total_completion = sum(int(m.get("completion_tokens") or 0) for m in sess_msgs)
                         self._result(
                             {
                                 "id": s["id"],
@@ -220,6 +223,8 @@ class _MockDatabase:
                                 "last_visit": s.get("updated_at"),
                                 "unread_count": 0,
                                 "message_count": msg_count,
+                                "total_prompt_tokens": total_prompt,
+                                "total_completion_tokens": total_completion,
                             },
                             rowcount=1,
                         )
@@ -237,6 +242,9 @@ class _MockDatabase:
                 if user_id and s.get("user_id") != user_id:
                     continue
                 msg_count = len([m for m in self._messages if m.get("session_id") == s["id"]])
+                sess_msgs = [m for m in self._messages if m.get("session_id") == s["id"]]
+                total_prompt = sum(int(m.get("prompt_tokens") or 0) for m in sess_msgs)
+                total_completion = sum(int(m.get("completion_tokens") or 0) for m in sess_msgs)
                 sessions.append(
                     {
                         "id": s["id"],
@@ -248,6 +256,8 @@ class _MockDatabase:
                         "last_visit": s.get("updated_at"),
                         "unread_count": 0,
                         "message_count": msg_count,
+                        "total_prompt_tokens": total_prompt,
+                        "total_completion_tokens": total_completion,
                     }
                 )
             # Support LIMIT for queries like: SELECT id FROM chat_sessions ... LIMIT 1

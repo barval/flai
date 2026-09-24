@@ -164,6 +164,8 @@ Before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free (a
 `ensure_vram_for_reasoning`
 Delegates to `ensure_vram_for()` with the dynamic VRAM estimate: unloads llama.cpp models and waits (15s default) for SD/Video to free VRAM before loading the reasoning model (Qwen3.6-35B-A3B, ~11.4 GiB on GPU tiers).
 
+RLM analysis is one serialized GPU task. `_process_rlm_task()` marks it busy with `ResourceManager.mark_rlm_busy()` for the full actor loop, so `is_gpu_busy()` also protects the interval between model calls and the health monitor skips its tick until the task completes. If an image is part of the analysis, the multimodal description runs under `ensure_vram_for("multimodal")` before the reasoning phase reacquires its VRAM allocation.
+
 ### VRAM Timeout Varies by Context
   - `ensure_vram_for()` (resource_manager.py) — 15-second default
   - `_wait_for_vram()` (queue.py) — 30 seconds
@@ -248,6 +250,7 @@ In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvid
   If even the last step doesn't fit, the task fails with a clear ⚠️ message — a model is never allowed to OOM.
 - The user is notified of the exact chosen format via an SSE `notice` event plus a saved assistant message (`model_name="system"`), sent *before* generation starts. The `fps` translation key maps to «к/с» in Russian.
 - Text-to-video and image-to-video paths share the same planner; image sources are pre-resized to ≤768 px before planning (`resize_video_source_image()`), so the resize notice is emitted before the degradation notice.
+- `LTX_VIDEO_CPU_TIME_BUDGET_S` optionally limits planner wall-clock estimates as well as RAM: `0` (default) derives the budget as 85% of `LTX_VIDEO_TIMEOUT`; the planner selects the largest format satisfying both constraints.
 
 ## Monitoring Commands
 ```bash

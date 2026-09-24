@@ -154,6 +154,8 @@ def get_users():
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
+                        COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
+                        COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
                          WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
@@ -171,6 +173,8 @@ def get_users():
                 u_dict = dict(u)
                 u_dict["sessions_count"] = stats["sessions"] if stats else 0
                 u_dict["messages_count"] = stats["messages"] if stats else 0
+                u_dict["outgoing_tokens"] = stats["outgoing_tokens"] if stats else 0
+                u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
 

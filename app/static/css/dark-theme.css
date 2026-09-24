@@ -392,6 +392,12 @@
 .dark-theme .document-date {
     color: #b0b0b0;
 }
+.dark-theme .document-embedding {
+    color: #95a5a6;
+}
+.dark-theme .document-description-model {
+    color: #d7a1e8;
+}
 .dark-theme .delete-document-button {
     color: #b0b0b0;
 }

@@ -686,6 +686,10 @@ def extract_text_from_file(file_path: str) -> str | None:
             return _extract_json(file_path)
         elif ext == ".epub":
             return _extract_epub(file_path)
+        elif ext == ".recognized_text":
+            # Companion file with multimodal image description - read as plain text
+            with open(file_path, encoding="utf-8") as f:
+                return f.read()
         else:
             return None
     except Exception:

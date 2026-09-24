@@ -352,6 +352,10 @@ Every assistant message header shows real billed tokens between the ⏱️ durat
 - `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲45) ток` when input is unknown); empty/zero totals render nothing.
 - The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
 
+## Admin User Token Totals
+
+`GET /admin/api/users` returns `outgoing_tokens` and `incoming_tokens` for each non-admin account. These are computed from messages joined through the user's `chat_sessions`: outgoing (from the user's perspective) sums `messages.prompt_tokens`, and incoming sums `messages.completion_tokens`. The admin users table displays the columns immediately after Sessions; both are sortable numeric fields. No schema change is needed. Full backups include `chat_sessions` and `messages`, so both inputs to these aggregates are restored; users-only backups include only `users` and intentionally do not preserve chat history or token totals.
+
 ## Chat Auto-Scroll
 
 - **`_isLoadingMessages` flag** in `chat-messages.js` prevents N competing async scroll callbacks when loading message history.

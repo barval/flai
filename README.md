@@ -961,6 +961,7 @@ In Admin Panel → Users tab, assign camera codes:
 | 👤 User Operations | Create, edit, delete user accounts |
 | 🔑 Password Management | Reset passwords for any user |
 | 🔐 Camera Permissions | Grant/revoke camera access per user |
+| 🔢 Per-user token totals | View and sort prompt tokens sent and completion tokens received |
 | 🤖 Model Management | Configure GGUF models per module type |
 | 📊 System Stats | Monitor database and storage sizes |
 | 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
@@ -981,8 +982,8 @@ docker exec flai-web flask --help
 FLAI includes a built-in backup system accessible from the Admin Panel → **Backups** tab.
 
 **Backup Types:**
-- **Users only:** Backs up the `users` table only (user accounts, permissions, settings).
-- **Full:** Backs up all data: users, chat sessions, messages, documents, uploaded files, and model configurations.
+- **Users only:** Backs up the `users` table only (user accounts, permissions, settings); chat history and token totals are not included.
+- **Full:** Backs up all data: users, chat sessions, messages (including prompt and completion token counts), documents, uploaded files, and model configurations.
 
 **Operations:**
 - **Create:** Select the backup type and click «Create backup». The archive is saved to `data/db_backups/`.

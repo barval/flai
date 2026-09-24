@@ -198,6 +198,23 @@ class _MockDatabase:
 
         # FROM chat_sessions
         if "FROM CHAT_SESSIONS" in sql_u:
+            if "COUNT(DISTINCT CS.ID)" in sql_u and "COUNT(M.ID)" in sql_u:
+                user_id = params[-1] if params else None
+                user_sessions = [s for s in self._sessions.values() if s.get("user_id") == user_id]
+                session_ids = {s["id"] for s in user_sessions}
+                user_messages = [m for m in self._messages if m.get("session_id") in session_ids]
+                self._result(
+                    {
+                        "sessions": len(user_sessions),
+                        "messages": len(user_messages),
+                        "outgoing_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
+                        "incoming_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
+                        "documents_count": 0,
+                        "files_count": len({m.get("file_path") for m in user_messages if m.get("file_path")}),
+                    },
+                    rowcount=1,
+                )
+                return
             # Determine filter type from WHERE clause
             if "WHERE ID" in sql_u or "WHERE id" in sql:
                 sid = params[0] if params else None

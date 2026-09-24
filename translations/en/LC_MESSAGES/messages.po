@@ -814,6 +814,14 @@ msgstr "Class"
 msgid "Sessions"
 msgstr "Sessions"
 
+#: app/templates/admin.html:56
+msgid "Outgoing tokens"
+msgstr "Outgoing tokens"
+
+#: app/templates/admin.html:57
+msgid "Incoming tokens"
+msgstr "Incoming tokens"
+
 #: app/templates/admin.html:56 app/templates/admin.html:283
 #: app/templates/chat.html:62 app/templates/chat.html:139
 msgid "Messages"
@@ -2252,4 +2260,3 @@ msgstr "Could not connect to video generation service"
 #~ "The multimodal module requires a Vision"
 #~ " model (with mmproj), not a plain "
 #~ "chat model."
-

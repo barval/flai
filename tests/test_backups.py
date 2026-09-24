@@ -337,6 +337,51 @@ class TestExportHelpers:
 
     @patch("app.routes.backups.urlparse")
     @patch("app.routes.backups.subprocess.run")
+    def test_full_backup_exports_messages_with_token_columns(self, mock_run, mock_parse):
+        """Full SQL backups include messages, which store prompt/completion token counts."""
+        from app.routes.backups import FULL_TABLES, _export_pg_dump
+
+        mock_parse.return_value = MagicMock(
+            hostname="localhost",
+            port=5432,
+            username="flai",
+            password="pass",
+            path="/flai",
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="-- dump content")
+
+        _export_pg_dump(FULL_TABLES)
+
+        command = mock_run.call_args.args[0]
+        assert command.count("-t") == len(FULL_TABLES)
+        assert "messages" in command
+        assert "chat_sessions" in command
+
+    @patch("app.routes.backups.urlparse")
+    @patch("app.routes.backups.subprocess.run")
+    def test_users_backup_excludes_message_token_history(self, mock_run, mock_parse):
+        """Users-only backup intentionally contains no sessions or token history."""
+        from app.routes.backups import USERS_TABLES, _export_pg_dump
+
+        mock_parse.return_value = MagicMock(
+            hostname="localhost",
+            port=5432,
+            username="flai",
+            password="pass",
+            path="/flai",
+        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="-- dump content")
+
+        _export_pg_dump(USERS_TABLES)
+
+        command = mock_run.call_args.args[0]
+        assert command.count("-t") == 1
+        assert "users" in command
+        assert "messages" not in command
+        assert "chat_sessions" not in command
+
+    @patch("app.routes.backups.urlparse")
+    @patch("app.routes.backups.subprocess.run")
     def test_export_pg_dump_failure(self, mock_run, mock_parse):
         from app.routes.backups import _export_pg_dump
 

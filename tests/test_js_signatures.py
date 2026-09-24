@@ -142,3 +142,86 @@ def test_display_message_returned_element_is_optimistic_marker_source():
     assert re.search(r"msgElement\.dataset\.tempId\s*=", init_src), (
         "displayUserMessage no longer sets dataset.tempId — update the data-temp-id selector contract in consumers"
     )
+
+
+def test_rlm_optimistic_message_is_reconciled_before_sse_echo():
+    """RLM's optimistic user bubble must carry the same DOM marker used by
+    onMessageNew to suppress the persisted message_new echo."""
+    init_src = (JS_DIR / "chat-init.js").read_text(encoding="utf-8")
+    rlm_src = init_src[init_src.index("async function sendRlmAnalysis") : init_src.index("async function sendMessage")]
+
+    assert re.search(r"optimisticMessage\.dataset\.tempId\s*=\s*`temp-\$\{timestamp\}`", rlm_src)
+    assert "optimisticMessage.dataset.sessionId = currentSessionId" in rlm_src
+    assert re.search(r"data\.user_message_id[\s\S]*?delete optimisticMessage\.dataset\.tempId", rlm_src)
+    assert "optimisticMessage.dataset.messageId = data.user_message_id" in rlm_src
+
+
+def test_send_message_locks_after_rlm_branch():
+    """RLM must be dispatched before the normal send path acquires isSending,
+    otherwise sendRlmAnalysis rejects its own call as already in progress."""
+    init_src = (JS_DIR / "chat-init.js").read_text(encoding="utf-8")
+    send_src = init_src[init_src.index("async function sendMessage") :]
+    rlm_branch = send_src[: send_src.index("const input = document.getElementById('message-input')")]
+
+    assert "sendRlmAnalysis();" in rlm_branch
+    assert rlm_branch.index("sendRlmAnalysis();") < rlm_branch.index("isSending = true;")
+    assert "if (isSending) return;" in init_src
+    assert "isSending = true;" in rlm_branch
+
+
+def test_documents_panel_shows_model_names_with_distinct_icons():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    chat_template = (JS_DIR.parent.parent / "templates" / "chat.html").read_text(encoding="utf-8")
+
+    assert 'document-embedding"><span class="document-status-icon">🔄</span> ${escapeHtml(displayModel)}' in docs_src
+    assert (
+        'document-description-model"><span class="document-status-icon">🖼️</span> ${escapeHtml(doc.description_model)}'
+        in docs_src
+    )
+    assert "document_embedding_model" not in docs_src
+    assert "document_recognition_model" not in docs_src
+    assert "document_embedding_model" not in chat_template
+    assert "document_recognition_model" not in chat_template
+
+
+def test_documents_panel_displays_processing_duration_as_whole_seconds():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+
+    assert "const processingSeconds = Math.round(doc.processing_time)" in docs_src
+    assert "t('seconds_suffix')" in docs_src
+    assert "⏱️ ${processingSeconds}${t('seconds_suffix')}" in docs_src
+    assert "minutes_abbr" not in docs_src
+
+
+def test_document_upload_does_not_show_success_alert():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    upload_src = docs_src[docs_src.index("function uploadDocument") : docs_src.index("function initDocumentsView")]
+
+    assert "alert(t('document_uploaded'))" not in upload_src
+    assert "loadDocuments()" in upload_src
+
+
+def test_document_indexing_timer_ticks_and_stops_when_indexed():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+
+    assert "setInterval(updateDocumentProcessingTimers, 1000)" in docs_src
+    assert "performance.now()" in docs_src
+    assert "querySelectorAll('.doc-live-timer[data-index-status=\"indexing\"]')" in docs_src
+    assert 'data-processing-seconds="${processingSeconds}"' in docs_src
+    assert "Math.round(doc.processing_time)" in docs_src
+    assert "processingTimeStr = ` ⏱️ ${processingSeconds}${t('seconds_suffix')}`" in docs_src
+    assert "existingTimer?.dataset.timerStartedAt || performance.now()" in docs_src
+
+
+def test_documents_panel_shows_queue_position_from_server_status():
+    docs_src = (JS_DIR / "chat-documents.js").read_text(encoding="utf-8")
+    queue_src = (JS_DIR / "chat-queue.js").read_text(encoding="utf-8")
+    queue_css = (JS_DIR.parent / "css" / "chat.css").read_text(encoding="utf-8")
+
+    assert "function updateDocumentQueueStatus(queueStatus)" in docs_src
+    assert "updateDocumentQueueStatus(data)" in queue_src
+    assert "queueStatus.queued" in docs_src
+    assert "item.doc_id" in docs_src
+    assert "position_info?.position" in docs_src
+    assert "document-status-icon queued" in docs_src
+    assert ".document-status-icon.queued" in queue_css

@@ -71,7 +71,9 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
             (SELECT COUNT(*) FROM messages
              WHERE session_id = cs.id AND role = 'assistant'
              AND timestamp > COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00')) as unread_count,
-            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count
+            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count,
+            (SELECT COALESCE(SUM(prompt_tokens), 0) FROM messages WHERE session_id = cs.id) as total_prompt_tokens,
+            (SELECT COALESCE(SUM(completion_tokens), 0) FROM messages WHERE session_id = cs.id) as total_completion_tokens
         FROM chat_sessions cs
         LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = %s
         WHERE cs.user_id = %s
@@ -524,7 +526,7 @@ def get_user_documents(user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at, embedding_model
+               index_status, indexed_at, indexing_started_at, embedding_model, description_model
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC
@@ -565,10 +567,10 @@ def get_user_documents(user_id):
             status = doc.get("index_status")
             if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
                 delta = indexed_dt - indexing_started_dt
-                processing_time = delta.total_seconds() / 60.0
+                processing_time = delta.total_seconds()
             elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
                 delta = now - indexing_started_dt
-                processing_time = delta.total_seconds() / 60.0
+                processing_time = delta.total_seconds()
             # NOTE: For indexed documents without indexing_started_at, we don't fall back
             # to uploaded_dt because the difference (indexed_at - uploaded_at) can be days/weeks
             # and does not represent actual processing time.

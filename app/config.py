@@ -60,7 +60,7 @@ def load_config(app):
     app.config["MAX_IMAGE_SIZE"] = int(os.getenv("MAX_IMAGE_SIZE", 1536))
 
     # Document upload settings
-    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 5))
+    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 10))
     app.config["MAX_VOICE_SIZE_MB"] = int(os.getenv("MAX_VOICE_SIZE_MB", 5))
     app.config["MAX_AUDIO_SIZE_MB"] = int(os.getenv("MAX_AUDIO_SIZE_MB", 4))
 

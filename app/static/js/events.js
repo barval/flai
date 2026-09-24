@@ -3,7 +3,14 @@
 
 let eventSource = null;
 let reconnectTimer = null;
-let pendingRequestIds = {};  // requestId -> { sessionId, timestamp }
+let pendingRequestIds = {};
+// Re-queued plain (text/image) requests whose answer must NOT be rendered:
+// they were superseded by a voice-triggered deep analysis (RLM). In-memory
+// Set keyed by request_id, populated by the RLM branch of
+// handleTranscriptionResult and consulted by onResultCompleted before any
+// display happens (a page refresh between transcription and completion wipes
+// the Set - the plain answer then renders, which is acceptable).
+let rlmSuppressedPlainRequestIds = new Set();  // requestId -> { sessionId, timestamp }
 
 // Liveness tracking: the server sends a "ping" event at least every 20s.
 // If nothing arrives for SSE_WATCHDOG_TIMEOUT_MS, the connection is considered
@@ -743,9 +750,34 @@ function restoreStreamingFromSessionStorage() {
 
 // -- result_completed -------------------------------------------------
 
+// When a voice request triggers deep analysis (RLM), the backend re-queues a
+// plain text/image task in addition to the RLM trace. Its re-queued
+// request_id (captured from the transcription SSE) is suppressed here so the
+// plain answer is NOT rendered next to the deep-analysis trace ("instead of
+// a plain answer"). In-memory only: a page refresh between transcription and
+// completion falls back to the normal render (acceptable edge case).
+const rlmSuppressedResultIds = new Set();
+
 function onResultCompleted(data) {
     if (!data || !data.task_id) return;
     dlog('onResultCompleted:', data.task_id, data.status);
+
+    // Suppressed re-queued plain task: clean up indicators and queue state but
+    // do NOT render the answer (deep-analysis trace already replaced it).
+    if (rlmSuppressedResultIds.has(data.task_id)) {
+        rlmSuppressedResultIds.delete(data.task_id);
+        _hideHeaderCancelButton();
+        _removeProgressElement(data.task_id);
+        _clearStreamFromSessionStorage(data.task_id);
+        const suppressedSessionId = data.session_id || (data.result && data.result.session_id) || null;
+        if (suppressedSessionId) {
+            setLocalTranscribing(suppressedSessionId, false);
+            clearSessionQueue(suppressedSessionId);
+        }
+        clearPendingRequest(data.task_id);
+        setTimeout(fetchQueueStatus, 500);
+        return;
+    }
 
     _hideHeaderCancelButton();
 
@@ -1238,6 +1270,41 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
                 null, null, null, null, result.transcribed_message_id, null, null, null, 'whisper');
             if (result.transcribed_message_id) displayedMessageIds.add(result.transcribed_message_id);
         }
+
+        // Voice-triggered deep analysis: if a voice request was queued while
+        // the RLM toggle was ON, start the analysis with the transcribed text
+        // instead of continuing the plain (non-RLM) send flow. Clear the flag
+        // first so a second delivery (SSE vs session polling) cannot start
+        // deep analysis twice.
+        if (window.rlmAwaitingVoice) {
+            const rlmToggle = document.getElementById('rlm-toggle');
+            const docsSelect = document.getElementById('rlm-docs');
+            const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+            if (rlmToggle && rlmToggle.checked && (docIds.length > 0 || window.rlmAwaitingVoiceImage)) {
+                // The re-queued plain task (whose request_id travels in the
+                // transcription SSE) must not render: the deep-analysis trace
+                // replaces it. Suppress that task_id so onResultCompleted
+                // skips the plain answer.
+                if (result.request_id) rlmSuppressedResultIds.add(result.request_id);
+                window.rlmAwaitingVoice = false;
+                // The RLM request replaces the normal response: do not track
+                // the re-queued plain task or send the transcribed text through
+                // the plain flow. sendRlmAnalysis() consumes the saved image
+                // reference (rlmAwaitingVoiceImage) before we clear it below.
+                sendRlmAnalysis(result.transcribed_text || '');
+                setLocalTranscribing(resultSessionId, false);
+                window.rlmAwaitingVoiceImage = null;
+                return;
+            }
+            // No docs/image remain selected at transcription time: clear the
+            // flag and un-check the toggle (documented behavior), then proceed
+            // with the normal flow.
+            window.rlmAwaitingVoice = false;
+            window.rlmAwaitingVoiceImage = null;
+            if (rlmToggle) rlmToggle.checked = false;
+            if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
+        }
+
         if (result.request_id) {
             trackPendingRequest(result.request_id, resultSessionId);
             sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };

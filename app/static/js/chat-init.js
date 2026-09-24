@@ -9,13 +9,21 @@ const originalDisplayMessage = displayMessage;
 // (populated by chat-documents.js). An attached image is sent along and the
 // backend describes it with the multimodal model, then treats the description
 // as one of the corpus documents.
-async function sendRlmAnalysis() {
+async function sendRlmAnalysis(questionOverride) {
     const sendButton = document.getElementById('send-button');
     const input = document.getElementById('message-input');
-    const question = input.value.trim();
+    // Voice-triggered deep analysis passes the transcribed text explicitly;
+    // otherwise the question comes from the shared message input.
+    const question = (questionOverride !== undefined && questionOverride !== null)
+        ? String(questionOverride).trim()
+        : input.value.trim();
     const docsSelect = document.getElementById('rlm-docs');
     const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
-    const imageFile = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) ? attachedFile : null;
+    const attachedImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) ? attachedFile : null;
+    // A voice request with an attached image cleared attachedFile during the
+    // normal voice send flow; the image captured when the voice was queued
+    // lives in rlmAwaitingVoiceImage until the transcription triggers RLM.
+    const imageFile = attachedImage || (window.rlmAwaitingVoiceImage || null);
 
     const unlockSendButton = () => {
         if (sendButton) {
@@ -28,6 +36,7 @@ async function sendRlmAnalysis() {
     const clearPreparedMessage = () => {
         input.value = '';
         attachedFile = null;
+        window.rlmAwaitingVoiceImage = null;
         document.getElementById('file-preview-container').classList.add('hidden');
         document.getElementById('file-input').value = '';
     };
@@ -159,17 +168,34 @@ async function sendMessage() {
         const docsSelect = document.getElementById('rlm-docs');
         const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
         const messageInput = document.getElementById('message-input');
-        const hasQuestion = messageInput && messageInput.value.trim().length > 0;
+        // A pending voice query counts as a question: the transcribed text
+        // arrives asynchronously after STT. Without this check, a voice request
+        // with the RLM toggle ON was treated as "no question" and the toggle
+        // got un-checked before the transcription delivered the text.
+        const hasText = messageInput && messageInput.value.trim().length > 0;
+        const hasVoice = !!(attachedVoiceBlob || isVoiceRecorded
+            || (attachedFile && attachedFile.type && attachedFile.type.startsWith('audio/')));
+        const hasQuestion = hasText || hasVoice;
         const hasImage = !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
         if ((docIds.length > 0 || hasImage) && hasQuestion) {
-            sendRlmAnalysis();
-            return;
+            if (hasText) {
+                sendRlmAnalysis();
+                return;
+            }
+            // Voice-only question: keep the toggle ON and wait for the
+            // transcription to deliver the question text. The RLM request is
+            // started by handleTranscriptionResult() once the flag is set, so
+            // fall through to the normal voice send flow without un-checking.
+            window.rlmAwaitingVoice = true;
+            window.rlmAwaitingVoiceImage = hasImage ? attachedFile : null;
+        } else if (!hasVoice) {
+            // Deep analysis cannot start here: no documents & no image, and no
+            // voice query either (no question will ever arrive). Un-check the
+            // toggle and fall through to the normal send flow. A voice query
+            // without docs/image keeps the toggle checked (ledger ruling).
+            rlmToggle.checked = false;
+            if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
         }
-        // Deep analysis cannot start here: no documents & no image, or no
-        // question (e.g. an image without a text query). Un-check the toggle
-        // and fall through to the normal send flow.
-        rlmToggle.checked = false;
-        if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
     }
 
     isSending = true;
@@ -736,6 +762,15 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchQueueStatus();
     
     document.getElementById('voice-record-button').addEventListener('click', toggleVoiceRecording);
+    
+    // If the user un-checks deep analysis manually, drop any pending voice RLM
+    // request so a stale voice can never trigger analysis after the fact.
+    const rlmToggleInput = document.getElementById('rlm-toggle');
+    if (rlmToggleInput) {
+        rlmToggleInput.addEventListener('change', function() {
+            if (!rlmToggleInput.checked) window.rlmAwaitingVoice = false;
+        });
+    }
     
     setTimeout(setupCopyButtonsObserver, 500);
     setTimeout(addCopyButtonsToAllCodeBlocks, 1000);

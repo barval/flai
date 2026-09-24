@@ -31,7 +31,7 @@ function decodeHtmlEntities(text) {
 }
 
 // Build the token-counter header segment shown between the ⏱️ duration and
-// the 🚀 tps sections. Format: "🔢 (↑output ↓input) tok". Returns an HTML
+// the 🚀 tps sections. Format: "🔢 (▲output ▼input) tok". Returns an HTML
 // string or '' when no data is available. Shared by chat-messages.js (history
 // render) and events.js (live finalize).
 function tokenStatsHTML(promptTokens, completionTokens) {
@@ -43,9 +43,9 @@ function tokenStatsHTML(promptTokens, completionTokens) {
     const output = fmt(completion);
     const input = fmt(prompt);
     return ' <span class="text-muted token-stats">🔢 (' +
-        (output === null ? '' : '↑' + output) +
+        (output === null ? '' : '▲' + output) +
         (output !== null && input !== null ? ' ' : '') +
-        (input === null ? '' : '↓' + input) +
+        (input === null ? '' : '▼' + input) +
         ') ' + t('tokens_unit') + ' |</span>';
 }
 
@@ -58,7 +58,7 @@ function sessionTokenStatsHTML(promptTotal, completionTotal) {
     const completion = parseInt(completionTotal, 10) || 0;
     if (!prompt && !completion) return '';
     const fmt = (n) => n.toLocaleString();
-    return ' [<span class="text-muted token-stats">↑' + fmt(completion) + ' ↓' + fmt(prompt) + '</span>]';
+    return ' [<span class="text-muted token-stats">▲' + fmt(completion) + ' ▼' + fmt(prompt) + '</span>]';
 }
 
 // Accumulate the token totals of a freshly completed response into the local

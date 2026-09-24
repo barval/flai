@@ -339,7 +339,7 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 ## Per-Request Token Usage Counters
 
-Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (↑45 ↓1 234) ток | 🚀 0,8 ток/с |` (↑ output first, ↓ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (▲45 ▼1 234) ток | 🚀 0,8 ток/с |` (▲ output first, ▼ input, `tokens_unit` msgid — ru «ток» / en «tok»).
 
 **Backend** (`app/queue.py` + `app/utils.py`):
 - `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
@@ -349,7 +349,7 @@ Every assistant message header shows real billed tokens between the ⏱️ durat
 - Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
 
 **Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
-- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (↑45) ток` when input is unknown); empty/zero totals render nothing.
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲45) ток` when input is unknown); empty/zero totals render nothing.
 - The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
 
 ## Chat Auto-Scroll

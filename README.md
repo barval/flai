@@ -37,9 +37,11 @@
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper or Kokoro TTS (backend selectable at deploy time)
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
+- 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
+- 🖼️ **Scanned PDF OCR and document images** – scanned PDF pages and uploaded document images are processed by the multimodal model; recognized text is indexed for search
 - 🗂️ **Chat Sessions** – multiple independent conversations with auto-titling
 - 💾 **Export Chats** – save conversations as HTML files with embedded media
 
@@ -87,7 +89,7 @@
 
 ## 🔬 Deep Analysis Mode (RLM)
 
-**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 12 steps (the step budget is auto-adapted to the reasoning context window, so smaller hosts get fewer steps and still finish), using three tools along the way:
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
 
 | Tool | What it does |
 |------|--------------|
@@ -115,9 +117,11 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop (up to 12 steps — the budget auto-adapts to the reasoning context window) that programmatically works through the material: a sandboxed `python` executor (split/count/parse/calculate), an `llm()` sub-call, and up to 2 live `web_fetch` lookups when fresh facts are needed (5 is the hard ceiling). One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«🔬 Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
-| **OOM-protected analysis, resource-adaptive budget** | The total corpus size is capped (default 50 M chars, `RLM_MAX_CORPUS_CHARS`): oversized document sets are rejected with a clear error before any GPU work. The step budget is computed from the reasoning context window so a worst-case trajectory always fits — no «Request too long» deaths mid-analysis on small hosts. |
+| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop of up to 18 steps. The per-host budget follows the resource ladder: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. It uses a sandboxed `python` executor, an `llm()` sub-call, and up to 2 live `web_fetch` lookups when fresh facts are needed (5 is the hard ceiling). One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«🔬 Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
+| **OOM-protected analysis, resource-adaptive budget** | The total corpus size is capped (default 50 M chars, `RLM_MAX_CORPUS_CHARS`): oversized document sets are rejected with a clear error before any GPU work. Per-step observations are compressed to fit the reasoning context, so smaller hosts can complete their hardware-based step budget without «Request too long» failures. |
 | **Documents picked by click, images join the corpus** | Documents for the analysis are selected by clicking them in the documents panel (green frame + ✓, live counter next to the toggle). An attached image is described in detail by the multimodal model, and that description becomes one more "document" of the analysis — e.g. "match the warranty photo against clause 4 of the contract". If the toggle cannot start (no documents and no image, or an image without a question) it is unchecked automatically and the request falls through to the normal flow. |
+| **Scanned PDF OCR and document images** | PDFs with no extractable text are rendered page by page with Poppler and sent to the multimodal model for transcription; uploaded document images are described and indexed as searchable text. |
+| **Per-request token usage** | Message headers show actual prompt and completion token counts (`🔢 (▲output ▼input)`), accumulated across model calls in the request. |
 | **Translations guaranteed on every clone** | Translated `.mo` catalogs are committed to the repository and deploy scripts compile them before the first start, so a fresh clone/deployment always gets a fully localized UI without extra steps. |
 
 ### Core Components
@@ -540,7 +544,7 @@ SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
-MAX_DOCUMENT_SIZE_MB=5          # Max upload size of a document
+MAX_DOCUMENT_SIZE_MB=10         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 ```
@@ -957,6 +961,7 @@ In Admin Panel → Users tab, assign camera codes:
 | 👤 User Operations | Create, edit, delete user accounts |
 | 🔑 Password Management | Reset passwords for any user |
 | 🔐 Camera Permissions | Grant/revoke camera access per user |
+| 🔢 Per-user token totals | View and sort prompt tokens sent and completion tokens received |
 | 🤖 Model Management | Configure GGUF models per module type |
 | 📊 System Stats | Monitor database and storage sizes |
 | 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
@@ -977,8 +982,8 @@ docker exec flai-web flask --help
 FLAI includes a built-in backup system accessible from the Admin Panel → **Backups** tab.
 
 **Backup Types:**
-- **Users only:** Backs up the `users` table only (user accounts, permissions, settings).
-- **Full:** Backs up all data: users, chat sessions, messages, documents, uploaded files, and model configurations.
+- **Users only:** Backs up the `users` table only (user accounts, permissions, settings); chat history and token totals are not included.
+- **Full:** Backs up all data: users, chat sessions, messages (including prompt and completion token counts), documents, uploaded files, and model configurations.
 
 **Operations:**
 - **Create:** Select the backup type and click «Create backup». The archive is saved to `data/db_backups/`.

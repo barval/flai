@@ -323,8 +323,18 @@ def _init_postgresql():
             indexed_at TIMESTAMP,
             indexing_started_at TIMESTAMP,
             embedding_model TEXT,
+            description_model TEXT,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+    """)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'documents' AND column_name = 'description_model') THEN
+                ALTER TABLE documents ADD COLUMN description_model TEXT;
+            END IF;
+        END
+        $migrate$
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS session_visits (

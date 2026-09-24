@@ -820,6 +820,14 @@ msgstr "Класс"
 msgid "Sessions"
 msgstr "Сеансы"
 
+#: app/templates/admin.html:56
+msgid "Outgoing tokens"
+msgstr "Исходящие токены"
+
+#: app/templates/admin.html:57
+msgid "Incoming tokens"
+msgstr "Входящие токены"
+
 #: app/templates/admin.html:56 app/templates/admin.html:283
 #: app/templates/chat.html:62 app/templates/chat.html:139
 msgid "Messages"
@@ -2263,4 +2271,3 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Для мультимодального модуля нужна "
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
-

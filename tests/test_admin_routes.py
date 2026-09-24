@@ -2,6 +2,7 @@
 """Integration tests for admin routes."""
 
 import json
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -86,6 +87,25 @@ class TestAdminUsers:
         assert isinstance(data, list)
         # Should have at least testuser (admin excluded)
         assert len(data) >= 1
+
+    @pytest.mark.unit
+    def test_get_users_returns_user_relative_token_totals(self, admin_client, test_app):
+        """Admin totals count user prompts as outgoing and model replies as incoming."""
+        login = f"tokenuser_{uuid.uuid4().hex[:8]}"
+        with test_app.app_context():
+            from app.db import create_session, save_message
+            from app.userdb import create_user
+
+            create_user(login, "pass123", "Token User")
+            session_id = create_session(login, title="Token totals")
+            save_message(session_id, "assistant", "first", prompt_tokens=1200, completion_tokens=300)
+            save_message(session_id, "assistant", "second", prompt_tokens=900, completion_tokens=45)
+
+        response = admin_client.get("/admin/api/users")
+        assert response.status_code == 200
+        target = next(user for user in response.get_json() if user["login"] == login)
+        assert target["outgoing_tokens"] == 2100
+        assert target["incoming_tokens"] == 345
 
     @pytest.mark.integration
     def test_add_user(self, admin_client):

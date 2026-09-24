@@ -262,6 +262,14 @@ Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (
 
 Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
 
+## Document Image Processing and Scanned PDF OCR (v12.0)
+
+`describe_document_image` handles uploaded image documents and PDFs that contain no extractable text. For a scanned PDF, the worker reads the page count with `pdfinfo`, renders each page to a 1536-pixel JPEG with `pdftoppm`, and asks the multimodal model to describe the page and transcribe readable text. For an uploaded image, it describes the image directly. The output is saved beside the original as `.recognized_text` and queued for normal RAG indexing, making scanned pages, labels, and diagrams searchable. Poppler utilities are installed in the web image.
+
+## HTML Message Preview
+
+`GET /api/html-preview/<message_id>` (`app/routes/messages.py`) serves the first HTML code block from an authenticated user's own chat message in a separate response with a preview-specific CSP. This avoids the chat page's strict CSP blocking local previews. `_ensure_three_importmap()` repairs generated Three.js pages that import CDN addon modules without an import map: it injects a JSON-serialized map and rewrites compatible CDN imports to `three` aliases; pages with an existing map are left untouched.
+
 ## Task Cancellation
 
 - **Client**: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.
@@ -331,7 +339,7 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 ## Per-Request Token Usage Counters
 
-Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (↑45 ↓1 234) ток | 🚀 0,8 ток/с |` (↑ output first, ↓ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (▲45 ▼1 234) ток | 🚀 0,8 ток/с |` (▲ output first, ▼ input, `tokens_unit` msgid — ru «ток» / en «tok»).
 
 **Backend** (`app/queue.py` + `app/utils.py`):
 - `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
@@ -341,8 +349,12 @@ Every assistant message header shows real billed tokens between the ⏱️ durat
 - Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
 
 **Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
-- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (↑45) ток` when input is unknown); empty/zero totals render nothing.
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲45) ток` when input is unknown); empty/zero totals render nothing.
 - The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
+
+## Admin User Token Totals
+
+`GET /admin/api/users` returns `outgoing_tokens` and `incoming_tokens` for each non-admin account. These are computed from messages joined through the user's `chat_sessions`: outgoing (from the user's perspective) sums `messages.prompt_tokens`, and incoming sums `messages.completion_tokens`. The admin users table displays the columns immediately after Sessions; both are sortable numeric fields. No schema change is needed. Full backups include `chat_sessions` and `messages`, so both inputs to these aggregates are restored; users-only backups include only `users` and intentionally do not preserve chat history or token totals.
 
 ## Chat Auto-Scroll
 

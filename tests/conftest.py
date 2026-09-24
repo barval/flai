@@ -198,6 +198,23 @@ class _MockDatabase:
 
         # FROM chat_sessions
         if "FROM CHAT_SESSIONS" in sql_u:
+            if "COUNT(DISTINCT CS.ID)" in sql_u and "COUNT(M.ID)" in sql_u:
+                user_id = params[-1] if params else None
+                user_sessions = [s for s in self._sessions.values() if s.get("user_id") == user_id]
+                session_ids = {s["id"] for s in user_sessions}
+                user_messages = [m for m in self._messages if m.get("session_id") in session_ids]
+                self._result(
+                    {
+                        "sessions": len(user_sessions),
+                        "messages": len(user_messages),
+                        "outgoing_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
+                        "incoming_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
+                        "documents_count": 0,
+                        "files_count": len({m.get("file_path") for m in user_messages if m.get("file_path")}),
+                    },
+                    rowcount=1,
+                )
+                return
             # Determine filter type from WHERE clause
             if "WHERE ID" in sql_u or "WHERE id" in sql:
                 sid = params[0] if params else None
@@ -209,6 +226,9 @@ class _MockDatabase:
                         self._result(req, rowcount=1)
                     else:
                         msg_count = len([m for m in self._messages if m.get("session_id") == s["id"]])
+                        sess_msgs = [m for m in self._messages if m.get("session_id") == s["id"]]
+                        total_prompt = sum(int(m.get("prompt_tokens") or 0) for m in sess_msgs)
+                        total_completion = sum(int(m.get("completion_tokens") or 0) for m in sess_msgs)
                         self._result(
                             {
                                 "id": s["id"],
@@ -220,6 +240,8 @@ class _MockDatabase:
                                 "last_visit": s.get("updated_at"),
                                 "unread_count": 0,
                                 "message_count": msg_count,
+                                "total_prompt_tokens": total_prompt,
+                                "total_completion_tokens": total_completion,
                             },
                             rowcount=1,
                         )
@@ -237,6 +259,9 @@ class _MockDatabase:
                 if user_id and s.get("user_id") != user_id:
                     continue
                 msg_count = len([m for m in self._messages if m.get("session_id") == s["id"]])
+                sess_msgs = [m for m in self._messages if m.get("session_id") == s["id"]]
+                total_prompt = sum(int(m.get("prompt_tokens") or 0) for m in sess_msgs)
+                total_completion = sum(int(m.get("completion_tokens") or 0) for m in sess_msgs)
                 sessions.append(
                     {
                         "id": s["id"],
@@ -248,6 +273,8 @@ class _MockDatabase:
                         "last_visit": s.get("updated_at"),
                         "unread_count": 0,
                         "message_count": msg_count,
+                        "total_prompt_tokens": total_prompt,
+                        "total_completion_tokens": total_completion,
                     }
                 )
             # Support LIMIT for queries like: SELECT id FROM chat_sessions ... LIMIT 1
@@ -449,6 +476,7 @@ class _MockDatabase:
                 "indexed_at": None,
                 "indexing_started_at": None,
                 "embedding_model": None,
+                "description_model": None,
             }
             self._documents.append(doc)
             self._result(None, rowcount=1)

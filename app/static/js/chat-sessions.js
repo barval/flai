@@ -38,7 +38,9 @@ function loadSessionsFromServer() {
                     sessionsData[s.id] = {
                         title: s.title,
                         updated_at: s.updated_at,
-                        message_count: s.message_count
+                        message_count: s.message_count,
+                        total_prompt_tokens: s.total_prompt_tokens,
+                        total_completion_tokens: s.total_completion_tokens
                     };
                     titleChanged = true;
                 } else {
@@ -46,6 +48,8 @@ function loadSessionsFromServer() {
                         sessionsData[s.id].title = s.title;
                         sessionsData[s.id].updated_at = s.updated_at;
                         sessionsData[s.id].message_count = s.message_count;
+                        sessionsData[s.id].total_prompt_tokens = s.total_prompt_tokens;
+                        sessionsData[s.id].total_completion_tokens = s.total_completion_tokens;
                         titleChanged = true;
                     }
                     // Only update message_count if it actually differs — don't use
@@ -53,6 +57,8 @@ function loadSessionsFromServer() {
                     if (sessionsData[s.id].message_count !== s.message_count) {
                         sessionsData[s.id].message_count = s.message_count;
                         sessionsData[s.id].updated_at = s.updated_at;
+                        sessionsData[s.id].total_prompt_tokens = s.total_prompt_tokens;
+                        sessionsData[s.id].total_completion_tokens = s.total_completion_tokens;
                         countChanged = true;
                         if (s.id === currentSessionId) {
                             currentSessionMessageCountChanged = true;
@@ -88,6 +94,8 @@ function loadSessionsFromServer() {
                     title: sessionsData[id].title,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
+                    total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+                    total_completion_tokens: sessionsData[id].total_completion_tokens,
                     has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
                     queue_info: sessionQueueInfo[id] || null,
                     ttsPlaying: currentPlayingSessionId === id
@@ -122,6 +130,8 @@ function updateSessionsListFromData() {
             title: sessionsData[id].title,
             updated_at: sessionsData[id].updated_at,
             message_count: sessionsData[id].message_count,
+            total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+            total_completion_tokens: sessionsData[id].total_completion_tokens,
             has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
             // Include queue info for this session
             queue_info: sessionQueueInfo[id] || null,
@@ -195,7 +205,7 @@ function updateSessionsList(sessions) {
                 ${ttsIcon}${statusIcons}
                 📝 ${escapeHtml(s.title)}
             </div>
-            <div class="session-date">📅 ${dateStr} [${s.message_count}]</div>
+            <div class="session-date">📅 ${dateStr} [${s.message_count}]${sessionTokenStatsHTML(s.total_prompt_tokens, s.total_completion_tokens)}</div>
         </div>
         <button class="delete-session-button" title="${t('delete_session')}">🗑️</button>
     </div>
@@ -251,7 +261,9 @@ function createNewSession() {
             sessionsData[data.id] = {
                 title: data.title,
                 updated_at: new Date().toISOString(),
-                message_count: 0
+                message_count: 0,
+                total_prompt_tokens: 0,
+                total_completion_tokens: 0
             };
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
             currentSessionId = data.id;

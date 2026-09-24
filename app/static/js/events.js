@@ -870,6 +870,9 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;
         sessionsData[resultSessionId].updated_at = new Date().toISOString();
         delete newMessageIndicators[resultSessionId];
+        if (data.result && typeof accumulateSessionTokens === 'function') {
+            accumulateSessionTokens(resultSessionId, data.result.prompt_tokens, data.result.completion_tokens);
+        }
     }
 
     // Find stream message by task-id (more reliable than generic [data-streaming])
@@ -1180,6 +1183,9 @@ function handleCompletedResult(result, expectedSessionId) {
         sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;
         sessionsData[resultSessionId].updated_at = new Date().toISOString();
         delete newMessageIndicators[resultSessionId];
+        if (typeof accumulateSessionTokens === 'function') {
+            accumulateSessionTokens(resultSessionId, result.prompt_tokens, result.completion_tokens);
+        }
     }
 
     // Transcription result - may spawn chained processing
@@ -1459,6 +1465,9 @@ function onMessageNew(data) {
             }
             if (sessionsData[data.session_id]) {
                 sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
+                if (typeof accumulateSessionTokens === 'function') {
+                    accumulateSessionTokens(data.session_id, msg.prompt_tokens, msg.completion_tokens);
+                }
             }
         }
         return;
@@ -1489,6 +1498,9 @@ function onMessageNew(data) {
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
+                        if (typeof accumulateSessionTokens === 'function') {
+                            accumulateSessionTokens(data.session_id, msg.prompt_tokens, msg.completion_tokens);
+                        }
                     }
                     return;
                 }

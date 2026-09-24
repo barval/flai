@@ -71,7 +71,9 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
             (SELECT COUNT(*) FROM messages
              WHERE session_id = cs.id AND role = 'assistant'
              AND timestamp > COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00')) as unread_count,
-            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count
+            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count,
+            (SELECT COALESCE(SUM(prompt_tokens), 0) FROM messages WHERE session_id = cs.id) as total_prompt_tokens,
+            (SELECT COALESCE(SUM(completion_tokens), 0) FROM messages WHERE session_id = cs.id) as total_completion_tokens
         FROM chat_sessions cs
         LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = %s
         WHERE cs.user_id = %s

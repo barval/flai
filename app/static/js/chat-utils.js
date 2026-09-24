@@ -49,6 +49,34 @@ function tokenStatsHTML(promptTokens, completionTokens) {
         ') ' + t('tokens_unit') + ' |</span>';
 }
 
+// Build the per-session token-total segment for the session-list card.
+// Format: "[↑out ↓in]" (↑ = completion/out, ↓ = prompt/in) with the same
+// thousands separators as tokenStatsHTML. Returns '' when both totals are 0
+// (sessions with no messages yet hide the block entirely).
+function sessionTokenStatsHTML(promptTotal, completionTotal) {
+    const prompt = parseInt(promptTotal, 10) || 0;
+    const completion = parseInt(completionTotal, 10) || 0;
+    if (!prompt && !completion) return '';
+    const fmt = (n) => n.toLocaleString();
+    return ' [<span class="text-muted token-stats">↑' + fmt(completion) + ' ↓' + fmt(prompt) + '</span>]';
+}
+
+// Accumulate the token totals of a freshly completed response into the local
+// sessionsData entry so the sidebar re-renders with fresh sums without
+// waiting for /api/sessions (mirrors the message_count increment pattern).
+// Null/absent token fields (legacy estimate-only messages) are skipped.
+function accumulateSessionTokens(sessionId, promptTokens, completionTokens) {
+    if (!sessionId || !sessionsData[sessionId]) return;
+    const prompt = parseInt(promptTokens, 10);
+    const completion = parseInt(completionTokens, 10);
+    if (Number.isFinite(completion)) {
+        sessionsData[sessionId].total_completion_tokens = (sessionsData[sessionId].total_completion_tokens || 0) + completion;
+    }
+    if (Number.isFinite(prompt)) {
+        sessionsData[sessionId].total_prompt_tokens = (sessionsData[sessionId].total_prompt_tokens || 0) + prompt;
+    }
+}
+
 // Calculate response duration string from response_time (object or scalar).
 // Returns "12.3" or null. Shared by chat-messages.js and events.js.
 function formatResponseDuration(responseTime) {

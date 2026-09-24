@@ -154,8 +154,8 @@ def get_users():
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
-                        COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
-                        COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
+                        COALESCE(SUM(m.completion_tokens), 0) as outgoing_tokens,
+                        COALESCE(SUM(m.prompt_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
                          WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)

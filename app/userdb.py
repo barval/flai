@@ -200,6 +200,17 @@ def delete_user(login):
             with contextlib.suppress(Exception):
                 shutil.rmtree(slm_data_dir, ignore_errors=True)
 
+        # 7b. Delete the user's daemon-side SLM profile (per-user facts in
+        #     the SLM daemon database). Non-fatal: account deletion must
+        #     succeed even when SLM is unreachable.
+        slm = current_app.modules.get("slm")
+        if slm:
+            try:
+                if not slm.delete_profile(login):
+                    current_app.logger.warning(f"SLM profile deletion reported failure for {login}")
+            except Exception as e:
+                current_app.logger.warning(f"SLM profile deletion failed for {login}: {e}")
+
         # Finally delete the user
         c.execute("DELETE FROM users WHERE login = %s", (login,))
 

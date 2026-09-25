@@ -380,12 +380,26 @@ def _keyword_score(query_tokens: list[str], content: str) -> float:
     return matched / len(query_tokens)
 
 
-def _recency_boost(created_at: int) -> float:
-    """Newer facts get a slight score bonus (1.0–1.3)."""
-    if not created_at or created_at <= 0:
+def _recency_boost(created_at: float | int | str | None) -> float:
+    """Newer facts get a slight score bonus (1.0–1.3).
+
+    Accepts epoch timestamps and the ISO-8601 strings the daemon stores in
+    ``atomic_facts.created_at``. Unparseable values yield a neutral 1.0.
+    """
+    if not created_at:
+        return 1.0
+    ts = created_at
+    if isinstance(created_at, str):
+        import datetime as _dt
+
+        try:
+            ts = _dt.datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return 1.0
+    if not isinstance(ts, (int, float)) or ts <= 0:
         return 1.0
     now_ts = int(_time.time())
-    age_days = max(1.0, (now_ts - created_at) / 86400.0)
+    age_days = max(1.0, (now_ts - ts) / 86400.0)
     return 1.0 + 0.3 * (1.0 / (1.0 + age_days / 7.0))
 
 
@@ -541,6 +555,18 @@ def _daemon_post(path: str, body: dict, params: dict | None = None) -> dict:
     )
     try:
         resp = urllib.request.urlopen(req, timeout=300)
+        return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"daemon HTTP {e.code}: {e.read().decode()}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _daemon_delete(path: str) -> dict:
+    url = f"{DAEMON_URL}{path}"
+    req = urllib.request.Request(url, headers=_daemon_auth_headers(), method="DELETE")
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
         return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"daemon HTTP {e.code}: {e.read().decode()}"}
@@ -866,6 +892,111 @@ def delete_fact():
     except Exception as e:
         app.logger.warning(f"SLM delete_fact failed for {profile}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# Counters that may legitimately stay non-zero after a GDPR erasure. They are
+# system/audit/journal artifacts (immutable write_commits receipts, the Art. 17
+# erasure_receipts, the profile row before it is removed, the learning reset
+# marker) — not user data — so their presence must not block profile deletion.
+_ERASURE_SYSTEM_COUNTS = {
+    "active_profile",
+    "success",
+    "error",
+    "write_commits",
+    "erasure_receipts",
+    "profiles",
+    "learning_db",
+    "compliance_audit",
+    "code_graph_scope",
+    "context_cache",
+    "backup_destinations",
+    "backup_snapshots_scanned",
+    "backup_obligations_pending",
+    "backup_obligations_recorded",
+    "residue_rows",
+    "erasure_complete",
+    "erasure_provable",
+    "table_delete_failures",
+}
+
+
+def _erasure_user_data_clean(counts: dict) -> bool:
+    """True when an erasure left no user-data rows behind.
+
+    The daemon's ``gdpr/erase`` reports ``success: false`` for profiles whose
+    write_commits journal is immutable, even though every user-data table was
+    wiped. Check the actual row counters instead of trusting the flag: any
+    non-zero count outside the system/audit set means real data survived.
+    """
+    if not isinstance(counts, dict):
+        return False
+    for key, value in counts.items():
+        if key in _ERASURE_SYSTEM_COUNTS:
+            continue
+        if isinstance(value, int) and value != 0:
+            return False
+    return True
+
+
+@app.route("/delete-profile", methods=["POST"])
+def delete_profile_route():
+    """Permanently delete a daemon profile and all its data.
+
+    The daemon's GDPR eraser only operates on the ACTIVE profile, so we
+    temporarily switch to the target, run the erasure with a confirm, switch
+    back (the daemon refuses to remove the active profile's row), then call
+    the profile deletion endpoint. 'default' and unknown profiles are refused.
+    """
+    data = request.get_json(force=True)
+    profile = (data.get("profile") or "").strip()
+    if not profile:
+        return jsonify({"success": False, "error": "profile required"}), 400
+    if profile == "default":
+        return jsonify({"success": False, "error": "Cannot delete 'default' profile"}), 400
+
+    info = _daemon_get("/api/profiles")
+    names = {p.get("name") for p in info.get("profiles", [])}
+    if profile not in names:
+        return jsonify({"success": False, "error": f"Profile '{profile}' not found"}), 404
+    if info.get("active_profile") == profile:
+        return jsonify({"success": False, "error": "Cannot delete the active profile"}), 400
+
+    previous_active = info.get("active_profile") or "default"
+    restore_to = previous_active if previous_active != profile else "default"
+    switched = False
+    try:
+        switch_res = _daemon_post(f"/api/profiles/{profile}/switch", {})
+        if not switch_res.get("success"):
+            return jsonify({"success": False, "error": switch_res.get("error", "switch failed")}), 502
+        switched = True
+
+        erased = _daemon_post("/api/compliance/gdpr/erase", {"confirm": profile})
+        if not erased.get("success") and not _erasure_user_data_clean(erased):
+            residue = {k: v for k, v in erased.items() if isinstance(v, int) and v and k not in _ERASURE_SYSTEM_COUNTS}
+            return jsonify(
+                {"success": False, "error": f"erasure failed: user data left in {residue or 'unknown layers'}"}
+            ), 502
+
+        # Restore the previous active profile BEFORE deleting the row: the
+        # daemon refuses DELETE /api/profiles/<name> for the active profile.
+        if restore_to != profile:
+            back = _daemon_post(f"/api/profiles/{restore_to}/switch", {})
+            if not back.get("success"):
+                return jsonify({"success": False, "error": back.get("error", "switch-back failed")}), 502
+            switched = False
+
+        deleted = _daemon_delete(f"/api/profiles/{profile}")
+        if not deleted.get("success"):
+            return jsonify({"success": False, "error": deleted.get("error", "profile removal failed")}), 502
+
+        _KNOWN_PROFILES.pop(profile, None)
+        return jsonify({"success": True, "profile": profile})
+    except Exception as e:
+        app.logger.warning(f"SLM delete-profile failed for {profile}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if switched and restore_to != profile:
+            _daemon_post(f"/api/profiles/{restore_to}/switch", {})
 
 
 @app.route("/list", methods=["POST"])

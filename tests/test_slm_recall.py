@@ -127,6 +127,13 @@ class TestRecencyBoost:
 
         assert _recency_boost(None) == 1.0
 
+    def test_iso_string_timestamp(self):
+        """Daemon stores created_at as an ISO-8601 string — must not crash."""
+        from slm_http import _recency_boost
+
+        boost = _recency_boost("2026-09-25T08:45:56.995780+00:00")
+        assert 1.0 <= boost <= 1.3
+
 
 # ── _time_window_from_query ───────────────────────────────────────────
 
@@ -185,6 +192,114 @@ class TestTimeWindow:
         from slm_http import _time_window_from_query
 
         assert _time_window_from_query("как зовут мою собаку") is None
+
+
+@pytest.fixture()
+def daemon_db_iso(tmp_path):
+    """Daemon database whose created_at values are ISO-8601 strings (real format)."""
+    profile = "test_user"
+    db_path = tmp_path / "memory_iso.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE atomic_facts ("
+        "  fact_id TEXT PRIMARY KEY,"
+        "  content TEXT,"
+        "  confidence REAL,"
+        "  created_at TEXT,"
+        "  lifecycle TEXT DEFAULT 'active',"
+        "  profile_id TEXT,"
+        "  scope TEXT DEFAULT 'personal'"
+        ")"
+    )
+    conn.execute("CREATE TABLE memories (memory_id TEXT PRIMARY KEY, profile_id TEXT)")
+    ts = "2026-09-25T08:45:56.995780+00:00"
+    facts = [
+        ("f1", "Моя собака Рекс — лабрадор", 0.8, ts, profile),
+        ("f2", "У меня есть кошка Мурка", 0.85, ts, profile),
+    ]
+    for fid, content, conf, created_at, prof in facts:
+        conn.execute(
+            "INSERT INTO atomic_facts VALUES (?, ?, ?, ?, 'active', ?, 'personal')",
+            (fid, content, conf, created_at, prof),
+        )
+    conn.commit()
+    conn.close()
+    return {"path": db_path, "profile": profile}
+
+
+class TestHybridRecallIso:
+    """Hybrid recall against real daemon data (ISO created_at strings)."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_daemon_db(self, daemon_db_iso):
+        with patch("slm_http._daemon_db_path", return_value=str(daemon_db_iso["path"])):
+            yield
+
+    def test_keyword_hit_with_iso_created_at_does_not_crash(self, daemon_db_iso):
+        from slm_http import _hybrid_recall_from_profile
+
+        with patch("slm_http._semantic_recall_from_profile") as mock_sem:
+            results = _hybrid_recall_from_profile("собака Рекс", 5, daemon_db_iso["profile"])
+            assert results is not None
+            assert any("Рекс" in r["content"] for r in results)
+            mock_sem.assert_not_called()
+
+
+# ── _erasure_user_data_clean ──────────────────────────────────────────────
+
+
+class TestErasureUserDataClean:
+    def test_empty_counts(self):
+        from slm_http import _erasure_user_data_clean
+
+        assert _erasure_user_data_clean({}) is True
+
+    def test_system_counts_do_not_block(self):
+        """write_commits receipts, profile row, audit entries survive erasure by design."""
+        from slm_http import _erasure_user_data_clean
+
+        counts = {
+            "success": False,
+            "write_commits": 2,
+            "erasure_receipts": 3,
+            "profiles": 1,
+            "learning_db": 1,
+            "compliance_audit": 1,
+            "table_delete_failures": 1,
+            "residue_rows": 2,
+        }
+        assert _erasure_user_data_clean(counts) is True
+
+    def test_user_data_residue_blocks(self):
+        from slm_http import _erasure_user_data_clean
+
+        counts = {"atomic_facts": 5, "vector_store": 5}
+        assert _erasure_user_data_clean(counts) is False
+
+    def test_mixed_system_and_user_residue(self):
+        from slm_http import _erasure_user_data_clean
+
+        counts = {
+            "write_commits": 2,
+            "profiles": 1,
+            "canonical_entities": 3,
+            "memory_scenes": 1,
+        }
+        assert _erasure_user_data_clean(counts) is False
+
+    def test_failure_markers_are_not_system(self):
+        """Operational failure markers must block: they mean a layer was not reached."""
+        from slm_http import _erasure_user_data_clean
+
+        counts = {"learning_db_failed": 1}
+        assert _erasure_user_data_clean(counts) is False
+        assert _erasure_user_data_clean({"vector_store_failures": 1}) is False
+
+    def test_non_dict_returns_false(self):
+        from slm_http import _erasure_user_data_clean
+
+        assert _erasure_user_data_clean(None) is False
+        assert _erasure_user_data_clean("error body") is False
 
 
 # ── _hybrid_recall_from_profile ───────────────────────────────────────

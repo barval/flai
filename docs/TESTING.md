@@ -1,4 +1,4 @@
-# Testing — FLAI v12.0
+# Testing — FLAI v12.1
 
 This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
 

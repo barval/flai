@@ -2,6 +2,7 @@
 """Unit tests for user database functions."""
 
 import uuid
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -82,6 +83,45 @@ class TestUserDB:
             # Verify user was deleted
             user = get_user_by_login(username)
             assert user is None
+
+    def test_delete_user_deletes_slm_profile(self, test_app):
+        """Deleting a user also deletes their SLM profile."""
+        username = generate_unique_name()
+        with test_app.app_context():
+            from flask import current_app
+
+            from app.userdb import create_user, delete_user, get_user_by_login
+
+            # Create user
+            create_user(username, "pass123", "SLM Delete Test")
+
+            # Register an SLM module mock and delete the account
+            slm_mock = MagicMock()
+            current_app.modules["slm"] = slm_mock
+
+            delete_user(username)
+
+            # User is gone and the SLM profile was removed via the module
+            assert get_user_by_login(username) is None
+            slm_mock.delete_profile.assert_called_once_with(username)
+
+    def test_delete_user_slm_failure_does_not_block_account_deletion(self, test_app):
+        """SLM profile deletion failure must not prevent account deletion."""
+        username = generate_unique_name()
+        with test_app.app_context():
+            from flask import current_app
+
+            from app.userdb import create_user, delete_user, get_user_by_login
+
+            create_user(username, "pass123", "SLM Fail Test")
+
+            slm_mock = MagicMock()
+            slm_mock.delete_profile.side_effect = Exception("SLM down")
+            current_app.modules["slm"] = slm_mock
+
+            delete_user(username)
+
+            assert get_user_by_login(username) is None
 
     def test_list_users(self, test_app):
         """Test listing users."""

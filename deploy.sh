@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.0 — Single-Server Deployment Script
+# FLAI v12.1 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -483,7 +483,7 @@ download_whisper_models() {
         -v "$(pwd)/$CACHE_DIR:/cache" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && python3 -c '
+pip install -q --disable-pip-version-check --root-user-action=ignore huggingface_hub && python3 -c '
 from huggingface_hub import snapshot_download
 import sys
 try:
@@ -693,7 +693,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.0 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v12.1 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -702,14 +702,14 @@ build_and_launch() {
 # ── Tests ──
 run_tests() {
     info "Running unit tests..."
-    pip install -e ".[test]" -q 2>/dev/null || pip install -r requirements.txt -q 2>/dev/null
+    pip install -e ".[test]" -q --disable-pip-version-check --root-user-action=ignore 2>/dev/null || pip install -r requirements.txt -q --disable-pip-version-check --root-user-action=ignore 2>/dev/null
     pytest --tb=short -q 2>&1 || warn "Some tests failed — check output above."
 }
 
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v12.0 — Deployment Script
+FLAI v12.1 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -795,7 +795,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.0 — Deployment Script"
+    echo "  FLAI v12.1 — Deployment Script"
     echo "============================================"
     echo ""
 

@@ -206,6 +206,28 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "search_history",
+            "description": "Search the user's past conversation history. Use when the user asks about things said, discussed, decided, or mentioned in earlier chats ('when did we talk about...', 'what did I say about...', 'find in our chats...').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query: the words that must appear in past messages",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of fragments to return (default 5)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "camera_snapshot",
             "description": "Get a current snapshot from a surveillance camera. Use when the user asks to see, check, or look at a room/camera.",
             "parameters": {
@@ -405,6 +427,32 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
     if len(result) > max_rag_chars:
         result = result[:max_rag_chars] + "..."
     return result
+
+
+def _exec_search_history(ctx: dict[str, Any], query: str, limit: int = 5) -> str:
+    """Search the user's past conversations via lexical history search."""
+    app = ctx.get("app")
+    user_id = ctx.get("user_id")
+    lang = ctx.get("lang", "ru")
+    if not user_id:
+        with force_locale(lang):
+            return str(_("User not identified for conversation search"))
+
+    from modules.history import format_history_context, search_history
+
+    try:
+        fragments = search_history(user_id, query, limit=limit)
+    except Exception as e:
+        logger.error(f"History search tool failed: {e}")
+        with force_locale(lang):
+            return str(_("Conversation search error: {error}").format(error=str(e)))
+
+    if not fragments:
+        with force_locale(lang):
+            return str(_("No past conversations found for query: {query}").format(query=query))
+
+    max_chars = app.config.get("HISTORY_MAX_RESULTS_CHARS", 5000) if app else 5000
+    return format_history_context(fragments, max_chars=max_chars)
 
 
 def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
@@ -698,6 +746,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
     "web_search": lambda ctx, **kw: _exec_web_search(ctx, kw.get("query", ""), kw.get("lang", "ru")),
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
+    "search_history": lambda ctx, **kw: _exec_search_history(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
 }

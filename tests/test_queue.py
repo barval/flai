@@ -519,6 +519,117 @@ class TestReasoningWebRouting:
         )
 
 
+@pytest.mark.unit
+class TestHistoryRouting:
+    """The history action searches past conversations on the fast worker,
+    then re-queues a reasoning task with the found fragments as context.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        app = Mock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.blpop.return_value = None
+        pipe = Mock()
+        pipe.execute.return_value = []
+        redis.pipeline.return_value = pipe
+        return redis
+
+    def _make_queue(self, mock_app, mock_redis, router_result):
+        from app.queue import RedisRequestQueue
+
+        base = Mock()
+        base.process_message.return_value = router_result
+        mock_app.modules = {"base": base}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._build_error_response = Mock(return_value={"error": "⚠️ boom"})
+        queue._save_and_respond = Mock(return_value={})
+        queue._get_model_name = Mock(return_value="test-model")
+        queue._process_chat_with_tools = Mock(return_value={})
+        queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
+        return queue
+
+    def test_history_routes_through_process_history_task(self, mock_app, mock_redis):
+        """The router's history action is handled by _process_history_task."""
+        queue = self._make_queue(
+            mock_app,
+            mock_redis,
+            {"action": "history", "query": "когда мы обсуждали ламинат", "needs_reasoning": False},
+        )
+        queue._process_history_task = Mock(return_value={"status": "queued"})
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        queue._route_text_action(
+            "когда мы обсуждали ламинат", "s1", "u1", "2026-09-17 12:00:00", "ru", "neutral", 2, task, True
+        )
+
+        queue._process_history_task.assert_called_once_with(
+            "когда мы обсуждали ламинат", "s1", "u1", "ru", "neutral", task=task
+        )
+        queue._requeue_reasoning_task.assert_not_called()
+
+    def test_process_history_task_requeues_with_context(self, mock_app, mock_redis):
+        """Found fragments are passed to the reasoning task with rag_source=history."""
+        from app.queue import RedisRequestQueue
+
+        base = Mock()
+        base.process_message.return_value = {"action": "history", "query": "ламинат", "needs_reasoning": False}
+        mock_app.modules = {"base": base}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
+
+        with (
+            patch(
+                "modules.history.search_history",
+                return_value=[
+                    {"session_title": "Ремонт", "role": "user", "text": "обсуждали ламинат", "timestamp": None},
+                ],
+            ),
+            patch("modules.history.format_history_context", return_value="[1. Ремонт] обсуждали ламинат"),
+        ):
+            queue._process_history_task("ламинат", "s1", "u1", "ru", "neutral", task={"id": "t1"})
+
+        queue._requeue_reasoning_task.assert_called_once()
+        kwargs = queue._requeue_reasoning_task.call_args.kwargs
+        assert kwargs["rag_source"] == "history"
+        assert "ламинат" in kwargs["rag_context"]
+
+    def test_process_history_task_falls_back_empty(self, mock_app, mock_redis):
+        """No matches degrade to plain reasoning (skip_rag), not an error."""
+        from app.queue import RedisRequestQueue
+
+        base = Mock()
+        mock_app.modules = {"base": base}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
+
+        with patch("modules.history.search_history", return_value=[]):
+            queue._process_history_task("несуществующее", "s1", "u1", "ru", "neutral")
+
+        queue._requeue_reasoning_task.assert_called_once()
+        kwargs = queue._requeue_reasoning_task.call_args.kwargs
+        assert kwargs.get("skip_rag") is True
+        assert "rag_context" not in kwargs
+
+
 class TestSearchQueryNormalization:
     """A decimal amount makes SearXNG return 0 organic results (converter widget).
 

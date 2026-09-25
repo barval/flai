@@ -2827,6 +2827,66 @@ class RedisRequestQueue:
             rag_source="web_search",
         )
 
+    def _process_history_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Handle history-search request (router action_type='history').
+
+        Searches the user's past conversations on the fast worker (CPU-only
+        SQL ILIKE, no GPU/no embedding), then re-queues to the slow worker for
+        reasoning model synthesis with the found fragments in the context.
+
+        When no previous messages match, falls back to plain reasoning so the
+        user still gets an answer instead of a dead-end 'not found' error.
+        """
+        self.app.logger.info(
+            f"Process history search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
+        )
+
+        from modules.history import format_history_context, search_history
+
+        history_start = time.time()
+        try:
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_history"})
+            fragments = search_history(user_id, query)
+            max_chars = self.app.config.get("HISTORY_MAX_RESULTS_CHARS", 5000)
+            history_context = format_history_context(fragments, max_chars=max_chars)
+            if task and fragments:
+                self._publish_stream_event(
+                    task, "task_progress", {"stage": "searching_history", "results": len(fragments)}
+                )
+            history_time = round(time.time() - history_start, 1)
+            if not fragments:
+                self.app.logger.warning(
+                    f"History search: no matches for '{query[:80]}' — falling back to plain reasoning"
+                )
+                return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, skip_rag=True)
+            self.app.logger.info(
+                f"History search: '{query[:60]}...' → {len(fragments)} fragments, "
+                f"{len(history_context)} chars — requeueing to slow worker ({history_time}s)"
+            )
+        except Exception as e:
+            history_time = round(time.time() - history_start, 1)
+            self.logger.error(f"History search failed: {e}")
+            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, skip_rag=True)
+
+        return self._requeue_reasoning_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            rag_context=history_context,
+            rag_source="history",
+        )
+
     def _process_rag_task_stream(
         self,
         task: dict[str, Any],
@@ -3031,6 +3091,11 @@ class RedisRequestQueue:
             return self._requeue_reasoning_task(
                 message_text, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
             )
+        if action_type == "history":
+            # Question about what was discussed earlier: search the user's past
+            # conversations on the fast worker, then reason over the fragments.
+            # No matches degrade to plain reasoning.
+            return self._process_history_task(query, session_id, user_id, lang, response_style, task=task)
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
                 query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True

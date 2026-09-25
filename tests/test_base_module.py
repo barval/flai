@@ -88,6 +88,14 @@ class TestBaseModule:
         assert result["query"] == "search documents"
 
     @pytest.mark.unit
+    def test_parse_router_response_history_marker(self, base_module):
+        """Test parsing response with history-search marker."""
+        response = "[-HISTORY-] когда мы обсуждали ламинат"
+        result = base_module._parse_router_response(response, "", "")
+        assert result["action"] == "history"
+        assert result["query"] == "когда мы обсуждали ламинат"
+
+    @pytest.mark.unit
     def test_parse_router_response_none(self, base_module):
         """Test parsing None response."""
         result = base_module._parse_router_response(None, "", "")
@@ -105,3 +113,66 @@ class TestBaseModule:
 
             assert config is not None
             assert "model_name" in config
+
+    @pytest.mark.unit
+    def test_context_history_section_heading(self, base_module):
+        """History search fragments get a dedicated 'from your conversations' heading."""
+        from unittest.mock import patch
+
+        base_module._get_model_config = lambda model_type="multimodal": {"context_length": 10000}
+        base_module._estimate_tokens = lambda text, model_type="multimodal", lang="ru": max(1, len(text or "") // 4)
+
+        with patch(
+            "modules.base.get_session_text_history", return_value=([], {"dropped_count": 0, "oldest_kept_id": None})
+        ):
+            ctx = base_module._get_context_for_model(
+                "s1",
+                "reasoning",
+                "как выбирали ламинат",
+                rag_context='[1. 10.09.2026 - "Ремонт" (User)]:\nобсуждали ламинат и подложку',
+                rag_source="history",
+            )
+        assert "Найденная информация из вашей переписки:" in ctx
+        assert "ламинат" in ctx
+
+    @pytest.mark.unit
+    def test_context_history_section_heading_en(self, base_module):
+        """English heading for history fragments."""
+        from unittest.mock import patch
+
+        base_module._get_model_config = lambda model_type="multimodal": {"context_length": 10000}
+        base_module._estimate_tokens = lambda text, model_type="multimodal", lang="ru": max(1, len(text or "") // 4)
+
+        with patch(
+            "modules.base.get_session_text_history", return_value=([], {"dropped_count": 0, "oldest_kept_id": None})
+        ):
+            ctx = base_module._get_context_for_model(
+                "s1",
+                "reasoning",
+                "how we chose laminate",
+                lang="en",
+                rag_context='[1. 10.09.2026 - "Renov" (User)]:\nwe picked laminate and underlay',
+                rag_source="history",
+            )
+        assert "Found information from your conversation history:" in ctx
+
+    @pytest.mark.unit
+    def test_context_web_search_heading_unchanged(self, base_module):
+        """web_search keeps its own heading (regression guard after rename)."""
+        base_module._get_model_config = lambda model_type="multimodal": {"context_length": 10000}
+        base_module._estimate_tokens = lambda text, model_type="multimodal", lang="ru": max(1, len(text or "") // 4)
+
+        from unittest.mock import patch
+
+        with patch(
+            "modules.base.get_session_text_history", return_value=([], {"dropped_count": 0, "oldest_kept_id": None})
+        ):
+            ctx = base_module._get_context_for_model(
+                "s1",
+                "reasoning",
+                "current inflation",
+                lang="en",
+                rag_context="headline content",
+                rag_source="web_search",
+            )
+        assert "Web search results" in ctx

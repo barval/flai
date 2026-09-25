@@ -185,7 +185,7 @@ class TestToolDefinitions:
     """Verify tool definitions format."""
 
     def test_definitions_count(self):
-        assert len(TOOL_DEFINITIONS) == 6
+        assert len(TOOL_DEFINITIONS) == 7
 
     def test_all_have_function_type(self):
         for tool in TOOL_DEFINITIONS:
@@ -208,7 +208,15 @@ class TestToolDefinitions:
 
     def test_known_tool_names(self):
         names = {t["function"]["name"] for t in TOOL_DEFINITIONS}
-        expected = {"get_current_time", "calculator", "web_search", "rag_search", "camera_snapshot", "time_calc"}
+        expected = {
+            "get_current_time",
+            "calculator",
+            "web_search",
+            "rag_search",
+            "search_history",
+            "camera_snapshot",
+            "time_calc",
+        }
         assert names == expected
 
     def test_calculator_has_expression_param(self):
@@ -238,7 +246,7 @@ class TestToolDefinitions:
 
     def test_get_tool_definitions_returns_data(self):
         defs = get_tool_definitions()
-        assert len(defs) == 6
+        assert len(defs) == 7
         # Verify it returns the same definitions
         assert defs is TOOL_DEFINITIONS
 
@@ -450,6 +458,48 @@ class TestExecuteTool:
         with app.app_context():
             result = execute_tool("rag_search", {"query": "test"}, {"app": app, "lang": "ru"})
             assert isinstance(result, str)
+
+    def test_search_history_definition_present(self):
+        tool = next(t for t in TOOL_DEFINITIONS if t["function"]["name"] == "search_history")
+        assert "query" in tool["function"]["parameters"]["properties"]
+        assert "query" in tool["function"]["parameters"]["required"]
+        assert tool["function"]["parameters"]["properties"]["limit"]["default"] == 5
+
+    def test_search_history_no_user(self, app):
+        """History search without a user id returns an error message."""
+        with app.app_context():
+            result = execute_tool("search_history", {"query": "ремонт"}, {"app": app, "lang": "ru"})
+            assert isinstance(result, str)
+            assert result.strip() != ""
+
+    def test_search_history_fragments(self, app):
+        """History search returns formatted fragments from modules.history."""
+        with (
+            app.app_context(),
+            patch(
+                "modules.history.search_history",
+                return_value=[
+                    {"session_title": "Ремонт", "role": "user", "text": "обсуждали ламинат", "timestamp": None},
+                ],
+            ),
+            patch("modules.history.format_history_context", return_value="[1. Ремонт] обсуждали ламинат"),
+        ):
+            result = execute_tool(
+                "search_history",
+                {"query": "ламинат"},
+                {"app": app, "user_id": "alice", "lang": "ru"},
+            )
+        assert "ламинат" in result
+
+    def test_search_history_empty(self, app):
+        """History search with no matches returns a 'no results' message."""
+        with app.app_context(), patch("modules.history.search_history", return_value=[]):
+            result = execute_tool(
+                "search_history",
+                {"query": "несуществующееслово"},
+                {"app": app, "user_id": "alice", "lang": "ru"},
+            )
+        assert "No" in result or "не" in result.lower()
 
     def test_camera_snapshot_unavailable(self, app):
         """Camera without available module returns error."""

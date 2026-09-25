@@ -213,7 +213,7 @@ class TestToolDefinitions:
             "calculator",
             "web_search",
             "rag_search",
-            "search_history",
+            "history_search",
             "camera_snapshot",
             "time_calc",
         }
@@ -459,20 +459,20 @@ class TestExecuteTool:
             result = execute_tool("rag_search", {"query": "test"}, {"app": app, "lang": "ru"})
             assert isinstance(result, str)
 
-    def test_search_history_definition_present(self):
-        tool = next(t for t in TOOL_DEFINITIONS if t["function"]["name"] == "search_history")
+    def test_history_search_definition_present(self):
+        tool = next(t for t in TOOL_DEFINITIONS if t["function"]["name"] == "history_search")
         assert "query" in tool["function"]["parameters"]["properties"]
         assert "query" in tool["function"]["parameters"]["required"]
         assert tool["function"]["parameters"]["properties"]["limit"]["default"] == 5
 
-    def test_search_history_no_user(self, app):
+    def test_history_search_no_user(self, app):
         """History search without a user id returns an error message."""
         with app.app_context():
-            result = execute_tool("search_history", {"query": "ремонт"}, {"app": app, "lang": "ru"})
+            result = execute_tool("history_search", {"query": "ремонт"}, {"app": app, "lang": "ru"})
             assert isinstance(result, str)
             assert result.strip() != ""
 
-    def test_search_history_fragments(self, app):
+    def test_history_search_fragments(self, app):
         """History search returns formatted fragments from modules.history."""
         with (
             app.app_context(),
@@ -485,17 +485,42 @@ class TestExecuteTool:
             patch("modules.history.format_history_context", return_value="[1. Ремонт] обсуждали ламинат"),
         ):
             result = execute_tool(
-                "search_history",
+                "history_search",
                 {"query": "ламинат"},
                 {"app": app, "user_id": "alice", "lang": "ru"},
             )
         assert "ламинат" in result
 
-    def test_search_history_empty(self, app):
+    def test_history_search_excludes_current_message(self, app):
+        with (
+            app.app_context(),
+            patch("modules.history.search_history", return_value=[]) as search,
+        ):
+            execute_tool(
+                "history_search",
+                {"query": "Python"},
+                {
+                    "app": app,
+                    "user_id": "alice",
+                    "lang": "en",
+                    "current_message_id": 42,
+                    "current_session_id": "active",
+                },
+            )
+        search.assert_called_once_with(
+            "alice",
+            "Python",
+            limit=5,
+            exclude_message_id=42,
+            exclude_session_id="active",
+            max_message_chars=app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000),
+        )
+
+    def test_history_search_empty(self, app):
         """History search with no matches returns a 'no results' message."""
         with app.app_context(), patch("modules.history.search_history", return_value=[]):
             result = execute_tool(
-                "search_history",
+                "history_search",
                 {"query": "несуществующееслово"},
                 {"app": app, "user_id": "alice", "lang": "ru"},
             )

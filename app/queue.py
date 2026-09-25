@@ -2835,6 +2835,10 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        current_message_id: int | None = None,
+        current_session_id: str | None = None,
+        history_message_chars: int = 20000,
+        reasoning_query: str | None = None,
     ) -> dict[str, Any]:
         """Handle history-search request (router action_type='history').
 
@@ -2842,43 +2846,69 @@ class RedisRequestQueue:
         SQL ILIKE, no GPU/no embedding), then re-queues to the slow worker for
         reasoning model synthesis with the found fragments in the context.
 
-        When no previous messages match, falls back to plain reasoning so the
-        user still gets an answer instead of a dead-end 'not found' error.
+        A wildcard query or a query with no direct matches gets a compact
+        overview drawn from representative user messages across all sessions.
         """
         self.app.logger.info(
             f"Process history search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
         )
 
-        from modules.history import format_history_context, search_history
+        from modules.history import format_history_context, get_history_overview, search_history
 
         history_start = time.time()
         try:
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_history"})
-            fragments = search_history(user_id, query)
             max_chars = self.app.config.get("HISTORY_MAX_RESULTS_CHARS", 5000)
-            history_context = format_history_context(fragments, max_chars=max_chars)
+            if query.strip() == "*":
+                fragments = []
+                history_context = ""
+            else:
+                fragments = search_history(
+                    user_id,
+                    query,
+                    limit=self.app.config.get("HISTORY_SEARCH_LIMIT", 5),
+                    exclude_message_id=current_message_id,
+                    exclude_session_id=current_session_id,
+                    max_message_chars=history_message_chars,
+                )
+                history_context = format_history_context(fragments, max_chars=max_chars)
+
+            if not history_context:
+                history_context = get_history_overview(
+                    user_id,
+                    exclude_message_id=current_message_id,
+                    max_chars=max_chars,
+                    exclude_session_id=current_session_id,
+                )
+                fragments = [{"session_title": "Conversation overview", "role": "user", "text": history_context}]
+            if query.strip() == "*":
+                reasoning_query = reasoning_query or "Summarize the user's previous conversations and main topics."
             if task and fragments:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_history", "results": len(fragments)}
                 )
             history_time = round(time.time() - history_start, 1)
-            if not fragments:
+            if not history_context:
                 self.app.logger.warning(
-                    f"History search: no matches for '{query[:80]}' — falling back to plain reasoning"
+                    f"History search: no usable messages for '{query[:80]}' — falling back to plain reasoning"
                 )
-                return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, skip_rag=True)
+                return self._requeue_reasoning_task(
+                    reasoning_query or query, session_id, user_id, lang, response_style, skip_rag=True
+                )
             self.app.logger.info(
-                f"History search: '{query[:60]}...' → {len(fragments)} fragments, "
+                f"History search: '{query[:60]}...' → {len(fragments)} matches, "
                 f"{len(history_context)} chars — requeueing to slow worker ({history_time}s)"
             )
         except Exception as e:
             history_time = round(time.time() - history_start, 1)
             self.logger.error(f"History search failed: {e}")
-            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, skip_rag=True)
+            return self._requeue_reasoning_task(
+                reasoning_query or query, session_id, user_id, lang, response_style, skip_rag=True
+            )
 
         return self._requeue_reasoning_task(
-            query,
+            reasoning_query or query,
             session_id,
             user_id,
             lang,
@@ -3095,7 +3125,19 @@ class RedisRequestQueue:
             # Question about what was discussed earlier: search the user's past
             # conversations on the fast worker, then reason over the fragments.
             # No matches degrade to plain reasoning.
-            return self._process_history_task(query, session_id, user_id, lang, response_style, task=task)
+            current_message_id = (task or {}).get("data", {}).get("current_message_id")
+            return self._process_history_task(
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                task=task,
+                current_message_id=current_message_id,
+                current_session_id=session_id,
+                history_message_chars=self.app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000),
+                reasoning_query=message_text,
+            )
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
                 query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
@@ -3233,12 +3275,19 @@ class RedisRequestQueue:
                 "time_calc": "calculating_date",
                 "web_search": "searching_web",
                 "rag_search": "searching_documents",
+                "history_search": "searching_history",
                 "camera_snapshot": "capturing_snapshot",
             }.get(tool_name)
             if stage:
                 self._publish_stream_event(task, "task_progress", {"stage": stage})
 
-            tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
+            tool_context = {
+                "app": self.app,
+                "user_id": user_id,
+                "lang": lang,
+                "current_message_id": (task.get("data") or {}).get("current_message_id"),
+                "current_session_id": task.get("session_id"),
+            }
             tool_result = execute_tool(tool_name, arguments, tool_context)
             last_tool_result = tool_result
 

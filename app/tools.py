@@ -206,7 +206,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_history",
+            "name": "history_search",
             "description": "Search the user's past conversation history. Use when the user asks about things said, discussed, decided, or mentioned in earlier chats ('when did we talk about...', 'what did I say about...', 'find in our chats...').",
             "parameters": {
                 "type": "object",
@@ -429,7 +429,7 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
     return result
 
 
-def _exec_search_history(ctx: dict[str, Any], query: str, limit: int = 5) -> str:
+def _exec_history_search(ctx: dict[str, Any], query: str, limit: int = 5) -> str:
     """Search the user's past conversations via lexical history search."""
     app = ctx.get("app")
     user_id = ctx.get("user_id")
@@ -441,7 +441,14 @@ def _exec_search_history(ctx: dict[str, Any], query: str, limit: int = 5) -> str
     from modules.history import format_history_context, search_history
 
     try:
-        fragments = search_history(user_id, query, limit=limit)
+        fragments = search_history(
+            user_id,
+            query,
+            limit=limit,
+            exclude_message_id=ctx.get("current_message_id"),
+            exclude_session_id=ctx.get("current_session_id"),
+            max_message_chars=app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000) if app else 20000,
+        )
     except Exception as e:
         logger.error(f"History search tool failed: {e}")
         with force_locale(lang):
@@ -746,7 +753,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
     "web_search": lambda ctx, **kw: _exec_web_search(ctx, kw.get("query", ""), kw.get("lang", "ru")),
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
-    "search_history": lambda ctx, **kw: _exec_search_history(ctx, kw.get("query", ""), kw.get("limit", 5)),
+    "history_search": lambda ctx, **kw: _exec_history_search(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
 }

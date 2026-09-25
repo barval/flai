@@ -571,16 +571,52 @@ class TestHistoryRouting:
             {"action": "history", "query": "когда мы обсуждали ламинат", "needs_reasoning": False},
         )
         queue._process_history_task = Mock(return_value={"status": "queued"})
-        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1", "data": {"current_message_id": 42}}
 
         queue._route_text_action(
             "когда мы обсуждали ламинат", "s1", "u1", "2026-09-17 12:00:00", "ru", "neutral", 2, task, True
         )
 
         queue._process_history_task.assert_called_once_with(
-            "когда мы обсуждали ламинат", "s1", "u1", "ru", "neutral", task=task
+            "когда мы обсуждали ламинат",
+            "s1",
+            "u1",
+            "ru",
+            "neutral",
+            task=task,
+            current_message_id=42,
+            current_session_id="s1",
+            history_message_chars=20000,
+            reasoning_query="когда мы обсуждали ламинат",
         )
         queue._requeue_reasoning_task.assert_not_called()
+
+    def test_history_overview_uses_overview_retrieval_without_query_phrase_matching(self, mock_app, mock_redis):
+        """The router's overview marker selects representative history from all sessions."""
+        queue = self._make_queue(
+            mock_app,
+            mock_redis,
+            {"action": "history", "query": "*", "needs_reasoning": False},
+        )
+        queue._process_history_task = Mock(return_value={"status": "queued"})
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1", "data": {"current_message_id": 42}}
+
+        queue._route_text_action(
+            "Summarize what we discussed across conversations", "s1", "u1", "now", "en", "neutral", 2, task, True
+        )
+
+        queue._process_history_task.assert_called_once_with(
+            "*",
+            "s1",
+            "u1",
+            "en",
+            "neutral",
+            task=task,
+            current_message_id=42,
+            current_session_id="s1",
+            history_message_chars=20000,
+            reasoning_query="Summarize what we discussed across conversations",
+        )
 
     def test_process_history_task_requeues_with_context(self, mock_app, mock_redis):
         """Found fragments are passed to the reasoning task with rag_source=history."""
@@ -600,10 +636,28 @@ class TestHistoryRouting:
                 return_value=[
                     {"session_title": "Ремонт", "role": "user", "text": "обсуждали ламинат", "timestamp": None},
                 ],
-            ),
+            ) as history_search,
             patch("modules.history.format_history_context", return_value="[1. Ремонт] обсуждали ламинат"),
         ):
-            queue._process_history_task("ламинат", "s1", "u1", "ru", "neutral", task={"id": "t1"})
+            queue._process_history_task(
+                "ламинат",
+                "s1",
+                "u1",
+                "ru",
+                "neutral",
+                task={"id": "t1"},
+                current_message_id=17,
+                current_session_id="s1",
+            )
+
+        history_search.assert_called_once_with(
+            "u1",
+            "ламинат",
+            limit=5,
+            exclude_message_id=17,
+            exclude_session_id="s1",
+            max_message_chars=20000,
+        )
 
         queue._requeue_reasoning_task.assert_called_once()
         kwargs = queue._requeue_reasoning_task.call_args.kwargs
@@ -621,13 +675,19 @@ class TestHistoryRouting:
         queue._publish_stream_event = Mock()
         queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
 
-        with patch("modules.history.search_history", return_value=[]):
-            queue._process_history_task("несуществующее", "s1", "u1", "ru", "neutral")
+        with (
+            patch("modules.history.search_history", return_value=[]),
+            patch("modules.history.get_history_overview", return_value="Overview from past session") as overview_search,
+            patch("modules.history.format_history_context", return_value=""),
+        ):
+            queue._process_history_task("несуществующее", "s1", "u1", "ru", "neutral", current_session_id="s1")
+
+        overview_search.assert_called_once_with("u1", exclude_message_id=None, max_chars=5000, exclude_session_id="s1")
 
         queue._requeue_reasoning_task.assert_called_once()
         kwargs = queue._requeue_reasoning_task.call_args.kwargs
-        assert kwargs.get("skip_rag") is True
-        assert "rag_context" not in kwargs
+        assert kwargs.get("rag_source") == "history"
+        assert kwargs.get("rag_context") == "Overview from past session"
 
 
 class TestSearchQueryNormalization:

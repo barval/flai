@@ -95,20 +95,22 @@ Every user message is classified by the router model into one of the categories 
 |---|---|---|---|
 | `[-RAG-]` | **Document search (RAG)** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
 | `[-SEARCH-]` | **Web search** | SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
-| `[-HISTORY-]` | **History search** | SQL `ILIKE` over user's past messages | History fragments + SLM + summary + history |
+| `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
 | `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
 | `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
 | `[-REMEMBER-]` | **Remember fact** | SLM fact extraction (background, CPU-only) | — (writes to long-term memory) |
 | `[-IMAGE-]` / `[-VIDEO-]` | **Image / video generation** | Stable Diffusion / LTX-Video (GPU containers) | — (no LLM context) |
-| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, camera) + SLM + history |
+| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, camera) + SLM + history |
 
 **Notes:**
 - RAG, Web, and History are mutually exclusive per request — only one search mechanism runs.
+- `history_search` is also available as a native tool during ordinary chat; its public name matches `rag_search` and `web_search`.
+- History search is lexical in both Russian and English profiles; queries are not automatically translated between languages.
 - The router model classifies based on the user's intent; there is no hardcoded keyword routing.
 - SLM (SuperLocalMemory) long-term facts are always fetched first and measured for real token cost.
 - Session history is added last and trimmed to fit whatever budget remains.
 - A rolling session summary is injected when old messages are dropped due to budget limits.
-- Tool calls in `none` mode (calculator, current time, web search, RAG search, camera) run on the fast worker and stream their progress live.
+- Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
 
 ---
 
@@ -142,6 +144,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
+| **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
 | **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
 | **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
 

@@ -47,8 +47,9 @@ CONVERSION/CALCULATION: to convert or compare an amount at a live rate or price 
 IMPORTANT: Person's name → category 5, NOT 6.
 
 ## 7. HISTORY SEARCH — [-HISTORY-] and query
-A question about what the user and the assistant previously discussed, wrote, or mentioned in this same conversation history: "when did we talk about...", "what did I say about...", "search our chat for...", "what did we agree on...".
-The query after the marker is the search words/topic (e.g. "discussed laminate flooring"). NOT categories 5, 6, 8:
+A question about what the user and assistant discussed, wrote, or mentioned in any earlier conversation or session: "when did we talk about...", "what did I say about...", "search our chats for...", "what did we agree on...".
+For a broad overview of all conversations or topics over time, output `[-HISTORY-] *`.
+Otherwise, the query after the marker should be a concise search topic (e.g. "laminate flooring"), not the full question. NOT categories 5, 6, 8:
 - searching documents (category 5), internet (category 6);
 - a request to write/create something new — that is code/reasoning (category 8), not a mention of the past.
 

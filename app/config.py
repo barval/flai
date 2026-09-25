@@ -138,9 +138,10 @@ def load_config(app):
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3
     app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.25
 
-    # Conversation history search (search_history tool + [-HISTORY-] route)
+    # Conversation history search (history_search tool + [-HISTORY-] route)
     app.config["HISTORY_MAX_RESULTS_CHARS"] = int(os.getenv("HISTORY_MAX_RESULTS_CHARS", 5000))
     app.config["HISTORY_SEARCH_LIMIT"] = int(os.getenv("HISTORY_SEARCH_LIMIT", 5))
+    app.config["HISTORY_MAX_MESSAGE_CHARS"] = int(os.getenv("HISTORY_MAX_MESSAGE_CHARS", 20000))
 
     # Debug translations
     app.config["DEBUG_TRANSLATIONS"] = os.getenv("DEBUG_TRANSLATIONS", "false").lower() == "true"

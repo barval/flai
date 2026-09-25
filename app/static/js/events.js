@@ -269,6 +269,7 @@ const STAGE_LABEL_KEYS = {
     reasoning_thinking: 'stage_thinking',
     searching_documents: 'stage_searching_documents',
     searching_web: 'stage_searching_web',
+    searching_history: 'stage_searching_history',
     capturing_snapshot: 'stage_capturing_snapshot',
     getting_time: 'stage_getting_time',
     calculating: 'stage_calculating',
@@ -284,6 +285,7 @@ const STAGE_LABEL_KEYS = {
 const STAGE_COUNTER_KEYS = {
     searching_documents: 'stage_docs_found',
     searching_web: 'stage_web_results',
+    searching_history: 'stage_history_found',
     rlm_step: 'stage_rlm_step',
 };
 

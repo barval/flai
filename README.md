@@ -113,16 +113,13 @@ Notes:
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v12.0
+### What's New in v12.1
 
 | Feature | Notes |
 |---------|-------|
-| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop of up to 18 steps. The per-host budget follows the resource ladder: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. It uses a sandboxed `python` executor, an `llm()` sub-call, and up to 2 live `web_fetch` lookups when fresh facts are needed (5 is the hard ceiling). One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«🔬 Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
-| **OOM-protected analysis, resource-adaptive budget** | The total corpus size is capped (default 50 M chars, `RLM_MAX_CORPUS_CHARS`): oversized document sets are rejected with a clear error before any GPU work. Per-step observations are compressed to fit the reasoning context, so smaller hosts can complete their hardware-based step budget without «Request too long» failures. |
-| **Documents picked by click, images join the corpus** | Documents for the analysis are selected by clicking them in the documents panel (green frame + ✓, live counter next to the toggle). An attached image is described in detail by the multimodal model, and that description becomes one more "document" of the analysis — e.g. "match the warranty photo against clause 4 of the contract". If the toggle cannot start (no documents and no image, or an image without a question) it is unchecked automatically and the request falls through to the normal flow. |
-| **Scanned PDF OCR and document images** | PDFs with no extractable text are rendered page by page with Poppler and sent to the multimodal model for transcription; uploaded document images are described and indexed as searchable text. |
-| **Per-request token usage** | Message headers show actual prompt and completion token counts (`🔢 (▲output ▼input)`), accumulated across model calls in the request. |
-| **Translations guaranteed on every clone** | Translated `.mo` catalogs are committed to the repository and deploy scripts compile them before the first start, so a fresh clone/deployment always gets a fully localized UI without extra steps. |
+| **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
+| **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
+| **Router never misroutes code requests** | The router prompt clarifies that programming/code queries are never classified as image or video generation, so coding questions are answered by the reasoning model instead of being sent to SD/LTX. |
 
 ### Core Components
 

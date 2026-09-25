@@ -150,6 +150,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).
+- **Profile lifecycle matches user accounts** — deleting a FLAI account (`delete_user()` in `app/userdb.py`) also permanently removes its SLM daemon profile through the wrapper's `POST /delete-profile` route: temporary switch to the target → GDPR erase (`confirm`-guarded, only operates on the active profile) → restore the previously active profile → delete the profile row. The erasure verdict is checked against the per-table **user-data counters** (`_erasure_user_data_clean()`), not the daemon's `success` flag — `write_commits`/`erasure_receipts` are intentionally immutable system/journal artifacts, so profiles with a write history still wipe fully. Failures are logged and never block the account deletion; `default`, unknown, blank and currently active profiles are refused.
 - Per-user SLM files are owned by `appuser (UID 1000)` — `start.sh` runs `chown -R appuser:appuser` on the shared volume.
 
 ## Response Style System

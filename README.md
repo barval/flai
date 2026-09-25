@@ -36,7 +36,7 @@
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper or Kokoro TTS (backend selectable at deploy time)
-- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
+- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Each user's profile is deleted together with their FLAI account
 - 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
 
 ### 📁 Document & Knowledge Management

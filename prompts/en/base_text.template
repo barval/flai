@@ -18,10 +18,22 @@ SPECIAL CONVERSION RULE: Any request to convert an amount at the current rate or
 Any QUESTION: greeting, about yourself, skills, time, calculations. No marker.
 
 ## 2. IMAGE GENERATION — [-IMAGE-] and query
-Request to draw/generate/create an image. Do not confuse with describing images.
+ONLY when the user asks to RECEIVE the actual image FILE (picture/image/photo/art) as the result of the query: "generate/draw/create a picture".
+NOT category 2:
+- a request to write code/HTML/script/page that draws/displays/animates an image or picture — that is category 7;
+- a description, recognition, or analysis of an existing image ("what is in the image?", "describe this photo") — not generation;
+- a "how to draw/generate?" question — that is an explanation, not generation;
+- mentioning the word "image"/"picture" in another context — not generation.
+Decide BY THE RESULT: does the user want the actual image file, or something else (code, text, reply, explanation)?
 
 ## 3. VIDEO GENERATION — [-VIDEO-] and query
-Request to create/generate video. Do not confuse with describing scenes.
+ONLY when the user asks to RECEIVE the actual video FILE/clip as the result of the query: "create/generate/make a video".
+NOT category 3:
+- a request to write code/HTML/script/page that shows/draws/animates anything (canvas, CSS animation, video tag, Three.js) — that is category 7;
+- a description of a scene or a video plot;
+- mentioning the word "video"/"animation"/"animated" in the text or in a description of what the code must do;
+- a "how to make a video?" question — that is an explanation, not generation.
+Decide BY THE RESULT: does the user want the actual video file, or something else (code, text, reply, explanation)?
 
 {camera_section}
 
@@ -36,6 +48,7 @@ IMPORTANT: Person's name → category 5, NOT 6.
 
 ## 7. COMPLEX QUERY — [-REASONING-] and query
 Only: code/text writing, HTML pages, apps, scripts, complex reasoning.
+INCLUDES requests to write code/HTML/script that draws, animates, or displays anything — that is CODE, not media generation. Example: "write a single html file that draws an animated butterfly flying across the screen" → category 7.
 DO NOT include: simple calculations (category 1), search (categories 5-6), conversions at a current rate (category 6).
 If the complex query needs fresh internet data — that is category 9.
 

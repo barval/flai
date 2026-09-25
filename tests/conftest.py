@@ -207,8 +207,8 @@ class _MockDatabase:
                     {
                         "sessions": len(user_sessions),
                         "messages": len(user_messages),
-                        "outgoing_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
-                        "incoming_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
+                        "outgoing_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
+                        "incoming_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
                         "documents_count": 0,
                         "files_count": len({m.get("file_path") for m in user_messages if m.get("file_path")}),
                     },

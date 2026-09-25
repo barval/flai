@@ -180,6 +180,32 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM delete_fact failed: {e}")
             return False
 
+    def delete_profile(self, profile: str) -> bool:
+        """Permanently delete a user's SLM profile and all its facts.
+
+        Routes through the HTTP proxy which performs a daemon-side GDPR
+        erasure (facts, embeddings, indexes) and removes the profile row.
+        Non-existent profiles are reported as a failure, never an error.
+
+        Args:
+            profile: User ID (profile name) to delete.
+
+        Returns:
+            True if the profile was fully removed.
+        """
+        if not profile:
+            return False
+        if not self.available and not self.check_availability():
+            return False
+        try:
+            resp = requests.post(f"{self.url}/delete-profile", json={"profile": profile}, timeout=60)
+            if resp.status_code == 200:
+                return bool(resp.json().get("success", False))
+            return False
+        except Exception as e:
+            self.logger.warning(f"SLM delete_profile failed for {profile}: {e}")
+            return False
+
     def check_similarity(self, text: str, profile: str | None = None) -> float:
         """Check semantic similarity of text against existing facts.
 

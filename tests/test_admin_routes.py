@@ -90,7 +90,7 @@ class TestAdminUsers:
 
     @pytest.mark.unit
     def test_get_users_returns_user_relative_token_totals(self, admin_client, test_app):
-        """Admin totals count user prompts as outgoing and model replies as incoming."""
+        """Admin totals count model replies as outgoing and user prompts as incoming."""
         login = f"tokenuser_{uuid.uuid4().hex[:8]}"
         with test_app.app_context():
             from app.db import create_session, save_message
@@ -104,8 +104,8 @@ class TestAdminUsers:
         response = admin_client.get("/admin/api/users")
         assert response.status_code == 200
         target = next(user for user in response.get_json() if user["login"] == login)
-        assert target["outgoing_tokens"] == 2100
-        assert target["incoming_tokens"] == 345
+        assert target["outgoing_tokens"] == 345
+        assert target["incoming_tokens"] == 2100
 
     @pytest.mark.integration
     def test_add_user(self, admin_client):

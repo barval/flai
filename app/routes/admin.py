@@ -2,7 +2,7 @@
 import json
 import logging
 import os
-import sqlite3
+import subprocess
 from functools import wraps
 
 import requests
@@ -39,6 +39,50 @@ def get_folder_size_bytes(folder_path: str) -> int:
             except OSError:
                 continue
     return total_size
+
+
+def _slm_fact_counts() -> dict[str, int]:
+    """Return per-profile active fact counts from the SLM daemon DB.
+
+    The daemon ``memory.db`` lives on a root-owned named volume reachable only
+    inside flai-slm, so the counts are fetched with one docker call using a
+    GROUP BY query. Returns an empty dict when the daemon is unreachable.
+    """
+    script = (
+        "import sqlite3;"
+        "c=sqlite3.connect('file:/root/.superlocalmemory/memory.db?mode=ro',uri=True);"
+        "print('\\n'.join('|'.join(map(str,r)) for r in "
+        'c.execute("SELECT profile_id, COUNT(*) FROM atomic_facts '
+        "WHERE lifecycle='active' GROUP BY profile_id\") or []))"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "flai-slm",
+                "python3",
+                "-c",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as e:
+        logger.warning(f"SLM fact count via docker failed: {e}")
+        return {}
+    if result.returncode != 0:
+        logger.warning(f"SLM fact count via docker failed: {result.stderr[:300]}")
+        return {}
+    counts: dict[str, int] = {}
+    for line in result.stdout.splitlines():
+        profile, _, count = line.partition("|")
+        try:
+            counts[profile] = int(count)
+        except ValueError:
+            continue
+    return counts
 
 
 def admin_required(f):
@@ -154,8 +198,8 @@ def get_users():
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
-                        COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
-                        COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
+                        COALESCE(SUM(m.completion_tokens), 0) as outgoing_tokens,
+                        COALESCE(SUM(m.prompt_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
                          WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
@@ -178,18 +222,11 @@ def get_users():
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
 
-                slm_db = os.path.join("/app/data/slm", u["login"], ".superlocalmemory", "memory.db")
-                if os.path.exists(slm_db):
-                    try:
-                        slm_conn = sqlite3.connect(f"file:{slm_db}?mode=ro&immutable=1", uri=True)
-                        slm_c = slm_conn.cursor()
-                        slm_c.execute("SELECT COUNT(*) FROM atomic_facts WHERE lifecycle = 'active'")
-                        u_dict["slm_facts_count"] = slm_c.fetchone()[0]
-                        slm_conn.close()
-                    except Exception:
-                        u_dict["slm_facts_count"] = 0
-                else:
-                    u_dict["slm_facts_count"] = 0
+                # SLM fact count lives in the daemon memory.db on a
+                # root-owned named volume reachable only inside flai-slm;
+                # fetch all profiles in one docker call.
+                counts = _slm_fact_counts()
+                u_dict["slm_facts_count"] = counts.get(u["login"], 0)
 
                 if u_dict["camera_permissions"]:
                     try:

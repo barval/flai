@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.0
+# Architecture — FLAI v12.1
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -150,6 +150,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).
+- **Profile lifecycle matches user accounts** — deleting a FLAI account (`delete_user()` in `app/userdb.py`) also permanently removes its SLM daemon profile through the wrapper's `POST /delete-profile` route: temporary switch to the target → GDPR erase (`confirm`-guarded, only operates on the active profile) → restore the previously active profile → delete the profile row. The erasure verdict is checked against the per-table **user-data counters** (`_erasure_user_data_clean()`), not the daemon's `success` flag — `write_commits`/`erasure_receipts` are intentionally immutable system/journal artifacts, so profiles with a write history still wipe fully. Failures are logged and never block the account deletion; `default`, unknown, blank and currently active profiles are refused.
 - Per-user SLM files are owned by `appuser (UID 1000)` — `start.sh` runs `chown -R appuser:appuser` on the shared volume.
 
 ## Response Style System
@@ -232,7 +233,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 **Web search context**: `_get_context_for_model()` prepends web search results with a prominent heading ("Web search results — use this data as your primary source.") so the reasoning model treats them as authoritative; `reasoning.template` (ru + en) contains the same softened rule ("use them as primary source"). (Historically the instruction was the stricter "USE ONLY THIS DATA".)
 
-## RLM Deep Analysis (v12.0)
+## RLM Deep Analysis (v12.1)
 
 An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`; `sendRlmAnalysis()` in `chat-init.js` branches off the normal send flow) submits the current question + selected documents to `POST /api/rlm/analyze` (`app/routes/rlm.py`). Documents are picked by clicking them in the documents panel (`rlmSelectedDocs` in `chat-documents.js` syncs the hidden `#rlm-docs` multi-select and highlights picks with a green `.rlm-selected` frame + `✓`); an image can be attached alongside the question. If the toggle cannot start — no documents and no image, or an image without a question — `sendMessage()` clears the checkbox and falls through to the **normal** send flow. The route accepts `multipart/form-data` (`session_id` + `doc_ids` JSON + `text` + optional `file`), enforces authentication, session + document ownership, validates quota/downscales the image, persists the user message (text + image) so it survives page reload, and returns `202` with `task_id`/`position`/`user_message_id`/`resize_notice`.
 
@@ -262,7 +263,7 @@ Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (
 
 Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
 
-## Document Image Processing and Scanned PDF OCR (v12.0)
+## Document Image Processing and Scanned PDF OCR (v12.1)
 
 `describe_document_image` handles uploaded image documents and PDFs that contain no extractable text. For a scanned PDF, the worker reads the page count with `pdfinfo`, renders each page to a 1536-pixel JPEG with `pdftoppm`, and asks the multimodal model to describe the page and transcribe readable text. For an uploaded image, it describes the image directly. The output is saved beside the original as `.recognized_text` and queued for normal RAG indexing, making scanned pages, labels, and diagrams searchable. Poppler utilities are installed in the web image.
 

@@ -181,6 +181,15 @@ def create_backup():
                             except (PermissionError, OSError) as e:
                                 logger.warning(f"Skipping file in backup: {filepath}: {e}")
 
+                # SLM daemon database snapshot.  The named volume is usually
+                # root-only here, so reach it via docker exec into flai-slm
+                # (which mounts the same volume read-write).
+                slm_db_bytes = _slm_daemon_db_bytes()
+                if slm_db_bytes is not None:
+                    slm_member = tarfile.TarInfo(name="slm_named/memory.db")
+                    slm_member.size = len(slm_db_bytes)
+                    tar.addfile(slm_member, io.BytesIO(slm_db_bytes))
+
             # 3. Metadata with checksum
             meta = {
                 "type": backup_type,
@@ -319,7 +328,9 @@ def restore_backup():
                         except (PermissionError, OSError) as e:
                             logger.warning(f"Partial restore of {dir_name}: {e}. Some files could not be overwritten.")
 
-                # Restore SLM named volume (primary storage for SLM daemon)
+                # Restore SLM named volume (primary storage for SLM daemon).
+                # Best-effort: the volume is read-only in this container, so
+                # the daemon DB is pushed via docker exec into flai-slm.
                 slm_named_src = os.path.join(tmpdir, "slm_named")
                 slm_named_dst = "/app/data/slm-readonly"
                 if os.path.exists(slm_named_src) and os.path.isdir(slm_named_dst):
@@ -328,6 +339,10 @@ def restore_backup():
                         logger.info("Restored SLM named volume")
                     except (PermissionError, OSError) as e:
                         logger.warning(f"Partial restore of SLM named volume: {e}")
+
+                slm_mem_src = os.path.join(tmpdir, "slm_named", "memory.db")
+                if _restore_slm_daemon_db(slm_mem_src):
+                    logger.info("Restored SLM daemon database in flai-slm")
 
         logger.info(f"Backup restored: {filename}")
 
@@ -503,3 +518,82 @@ def _read_archive_metadata(archive_path):
     except Exception:
         pass
     return None
+
+
+def _slm_daemon_db_bytes() -> bytes | None:
+    """Snapshot the SLM daemon ``memory.db`` from flai-slm.
+
+    The named volume is usually not readable from this container
+    (root-owned + ``:ro`` mount), so the snapshot is taken inside
+    flai-slm via the sqlite3 online-backup API and streamed back.
+
+    Returns the raw database bytes, or ``None`` if unavailable.
+    """
+    backup_script = (
+        "import sqlite3;"
+        "s=sqlite3.connect('file:/root/.superlocalmemory/memory.db?mode=ro',uri=True);"
+        "d=sqlite3.connect('/tmp/slm_daemon_backup.db');"
+        "s.backup(d);d.close();s.close()"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "flai-slm",
+                "sh",
+                "-c",
+                f'python3 -c "{backup_script}" && cat /tmp/slm_daemon_backup.db',
+            ],
+            capture_output=True,
+            timeout=180,
+        )
+    except Exception as e:
+        logger.warning(f"SLM daemon DB backup via docker failed: {e}")
+        return None
+    if result.returncode != 0:
+        logger.warning(f"SLM daemon DB backup via docker failed: {result.stderr[:500]}")
+        return None
+    return result.stdout
+
+
+def _restore_slm_daemon_db(src_path: str) -> bool:
+    """Push a backup ``memory.db`` into the SLM daemon container.
+
+    The volume is read-only in this container, so the bytes are streamed
+    through ``docker exec`` into flai-slm (which mounts it read-write);
+    the daemon reloads the database on restart.  The overwrite happens on a
+    live daemon, so all flaws this entails are safe only because the daemon
+    is restarted immediately afterwards.
+    """
+    if not os.path.isfile(src_path):
+        return False
+    try:
+        with open(src_path, "rb") as f:
+            data = f.read()
+        subprocess.run(
+            ["docker", "stop", "flai-slm"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=90,
+            check=False,
+        )
+        try:
+            result = subprocess.run(
+                ["docker", "exec", "-i", "flai-slm", "sh", "-c", "cat > /root/.superlocalmemory/memory.db"],
+                input=data,
+                capture_output=True,
+                timeout=120,
+            )
+            return result.returncode == 0
+        finally:
+            subprocess.run(
+                ["docker", "start", "flai-slm"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=90,
+                check=False,
+            )
+    except Exception as e:
+        logger.warning(f"SLM daemon DB restore via docker failed: {e}")
+        return False

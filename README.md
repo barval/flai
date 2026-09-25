@@ -29,7 +29,7 @@
 - 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
-- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is a single GPU task with streamed progress and a collapsible step-by-step trace
+- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is executed locally as one coherent task with streamed progress and a collapsible step-by-step trace
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -89,7 +89,7 @@
 
 ## 🔬 Deep Analysis Mode (RLM)
 
-**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a set of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
 
 | Tool | What it does |
 |------|--------------|
@@ -97,7 +97,7 @@
 | 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
 | 🌐 `web_fetch` | searches the web (SearXNG) for fresh facts when the answer needs them — the model is prompted to use at most 2 lookups (5 is the hard ceiling) |
 
-Everything runs **locally** as a single GPU task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
+Everything runs **locally** as a single task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
 
 **How to use it:**
 1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).

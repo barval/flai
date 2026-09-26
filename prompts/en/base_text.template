@@ -3,6 +3,12 @@ Response language: {response_language}.
 Response style: {response_style}.
 Classify the user's query into one category below. Output ONLY the result, no explanations.
 
+## ACTION TIME (decide first)
+First decide what is asked about: an action that ALREADY happened, or an action to perform now/in the future.
+- If the query is about a PAST action (verbs in the past tense: "viewed", "showed", "discussed", "sent", "saw", "was") or about what happened earlier — this is HISTORY SEARCH (category 7, [-HISTORY-]), regardless of mentions of cameras, rooms, documents, images, videos, or internet topics.
+- If the query asks to perform an action NOW (show a live snapshot, fetch fresh data, create a file) or in the future — this is the corresponding action category.
+Categories 2-6 and 10 do NOT override questions about the past.
+
 ## MAIN RULE: QUESTION vs STATEMENT
 If text contains "?" or is a question — it is a QUESTION.
 BUT: questions about cameras/rooms (category 4), documents/people (category 5), internet (category 6), code (category 8) have PRIORITY over category 1.
@@ -72,6 +78,8 @@ DO NOT include: simple questions (category 1), plain fact lookup (category 6), w
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."
 Current time: {current_time_str}.
 User query: "{user_query}".
+Recent conversation context (empty if unavailable):
+{router_context}
 
 # RULE
-Each query is classified independently, based solely on its text.
+Classify each query using the recent conversation context when available (it helps distinguish past-action questions from now-action requests).

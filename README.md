@@ -111,6 +111,8 @@ Every user message is classified by the router model into one of the categories 
 - Session history is added last and trimmed to fit whatever budget remains.
 - A rolling session summary is injected when old messages are dropped due to budget limits.
 - Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
+- The router decides the **action time** first: requests about the **past** («we watched», «you showed earlier», «yesterday's snapshots») route to history search, while action categories (camera, image, video…) are only for requests to be performed now/in the future and never capture questions about the past.
+- Classification may use a tiny **session micro-context** — the last `ROUTER_CONTEXT_MESSAGES` messages plus up to `ROUTER_SLM_FACTS` long-term-memory facts — so a follow-up like «did we look at the camera images?» is answered from history instead of firing the camera again.
 
 ---
 
@@ -616,6 +618,13 @@ RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to 
 RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call
 RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analysis
 RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
+```
+
+**Router:**
+```bash
+ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
+ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+ROUTER_SLM_FACTS=2           # Long-term-memory facts added to the router context
 ```
 
 **Redis Queue:**

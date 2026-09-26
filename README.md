@@ -29,7 +29,7 @@
 - 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
-- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is a single GPU task with streamed progress and a collapsible step-by-step trace
+- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is executed locally as one coherent task with streamed progress and a collapsible step-by-step trace
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -87,9 +87,36 @@
 
 ---
 
+## 🧭 Types of Requests & Search Mechanisms
+
+Every user message is classified by the router model into one of the categories below. The category determines which search mechanism (if any) runs before the answer is generated, and what context is injected into the prompt.
+
+| Category (marker) | Route | What runs | Context injected into the reasoning prompt |
+|---|---|---|---|
+| `[-RAG-]` | **Document search (RAG)** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
+| `[-SEARCH-]` | **Web search** | SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
+| `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
+| `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
+| `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
+| `[-REMEMBER-]` | **Remember fact** | SLM fact extraction (background, CPU-only) | — (writes to long-term memory) |
+| `[-IMAGE-]` / `[-VIDEO-]` | **Image / video generation** | Stable Diffusion / LTX-Video (GPU containers) | — (no LLM context) |
+| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, camera) + SLM + history |
+
+**Notes:**
+- RAG, Web, and History are mutually exclusive per request — only one search mechanism runs.
+- `history_search` is also available as a native tool during ordinary chat; its public name matches `rag_search` and `web_search`.
+- History search is lexical in both Russian and English profiles; queries are not automatically translated between languages.
+- The router model classifies based on the user's intent; there is no hardcoded keyword routing.
+- SLM (SuperLocalMemory) long-term facts are always fetched first and measured for real token cost.
+- Session history is added last and trimmed to fit whatever budget remains.
+- A rolling session summary is injected when old messages are dropped due to budget limits.
+- Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
+
+---
+
 ## 🔬 Deep Analysis Mode (RLM)
 
-**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a set of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
 
 | Tool | What it does |
 |------|--------------|
@@ -97,7 +124,7 @@
 | 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
 | 🌐 `web_fetch` | searches the web (SearXNG) for fresh facts when the answer needs them — the model is prompted to use at most 2 lookups (5 is the hard ceiling) |
 
-Everything runs **locally** as a single GPU task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
+Everything runs **locally** as a single task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
 
 **How to use it:**
 1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
@@ -117,9 +144,9 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
+| **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
 | **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
 | **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
-| **Router never misroutes code requests** | The router prompt clarifies that programming/code queries are never classified as image or video generation, so coding questions are answered by the reasoning model instead of being sent to SD/LTX. |
 
 ### Core Components
 
@@ -246,7 +273,24 @@ The CPU column in the table below was measured **live on the previous 12-core CP
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. MTP accordingly provides no meaningful speedup over a plain Q4_K_M of the same size, so MTP variants are not used.
 
-> **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways. 
+> **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways.
+
+---
+
+### 📊 Context Window Allocation (Illustrative)
+
+The table below shows how the effective context budget is distributed for the reasoning model at different context window sizes (values are approximate, measured in tokens). Budget formula: `available = ctx_len × 75% × 85% ≈ 64% of ctx_len`. Order of allocation: query → template (800 tokens) → search (RAG/web/history, ~30% of available) → SLM (up to 7 facts) → rolling summary → session history (the rest). Multimodal model uses its own simplified allocator: `available = ctx_len × 75%`, overhead 500 tokens, no search/SLM/summary — only session history.
+
+| Context window (ctx_len) | Available budget (64%) | Template overhead | Search budget (30% avail) | SLM facts (≤7) | Remaining for history + summary |
+|---|---|---|---|---|---|
+| 8 192 (CPU default) | ~5 220 | 800 | ~1 566 | ~200 | ~2 650 (50%) |
+| 16 384 (8–12 GB GPU) | ~10 445 | 800 | ~3 133 | ~200 | ~6 312 (60%) |
+| 24 576 (16 GB GPU reasoning) | ~15 667 | 800 | ~4 700 | ~200 | ~9 967 (64%) |
+| 32 768 (24 GB+ GPU multimodal) | ~20 889 | 800 | ~6 266 | ~200 | ~13 623 (64%) |
+
+> **Why the history share grows with context size:** Template (800) and SLM (~200) are nearly fixed, so their % shrinks as the window grows. The search budget scales at ~30% of available, leaving a larger absolute remainder for conversation history on larger windows. On small windows (CPU 8192) history gets ~50%, on 32K it reaches ~64%.
+
+---
 
 ### Software Prerequisites
 - Linux server

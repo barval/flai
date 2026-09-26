@@ -298,6 +298,7 @@ def send_message():
         request_data = {
             "type": "text",
             "text": message_text,
+            "current_message_id": user_message_id,
             "preview": (message_text[:50] + "...") if message_text else _("Text request"),
             "response_style": response_style,
             "stream": True,

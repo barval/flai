@@ -188,13 +188,14 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/tools.py` — native OpenAI-compatible tool calling with `--jinja` in llama-server.
 
-**6 tools**:
+**7 tools**:
 1. `get_current_time`
 2. `calculator` (safe AST eval)
 3. `web_search` (SearXNG)
 4. `rag_search` (Qdrant)
-5. `camera_snapshot`
-6. `time_calc` (9 date/time operations via Pendulum)
+5. `history_search` (PostgreSQL lexical search across prior sessions)
+6. `camera_snapshot`
+7. `time_calc` (9 date/time operations via Pendulum)
 
 - `MAX_TOOL_ITERATIONS = 5`.
 - Tools passed to `chat()`/`chat_stream()` via `tools` parameter.
@@ -219,6 +220,16 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Engine roster** — `searxng/settings.yml` enables `google news`, `bing news`, `yahoo news`, `yahoo`, `bing`, `mojeek`, `marginalia`, `presearch`, `qwant`, `yandex`, and `swisscows news` in addition to the default `google cse` and `duckduckgo`, improving resilience when individual engines fail. Engine names/status are restored by the container image build; edits require `docker exec flai-searxng chown` first if the file is root-owned.
 - **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 - **Date normalization** — `enhance_query_with_date()` in `modules/search.py` resolves relative date words («позавчера/вчера/сегодня», English equivalents) to absolute dates in the user's timezone (`app.config["TIMEZONE"]`) before POSTing to SearXNG: «Какие ИТ новости были вчера?» → «Какие ИТ новости были вчера (14 сентября 2026)?». Engines otherwise return generic section landing pages instead of dated articles. Queries without relative date words are untouched — this is query normalization, not routing.
+
+## Conversation History Search
+
+`modules/history.py` implements the `history_search` native tool and the server-side `[-HISTORY-]` router path.
+
+- `search_history()` searches prior sessions with PostgreSQL Russian, English, and simple text-search configurations, ranks matches by the number of matching terms, and bounds indexed message text to prevent large generated code messages from exceeding PostgreSQL's `tsvector` size limit.
+- Message content is serialized JSON; only text parts are returned to the model, not attached image/media payloads.
+- Router lookups exclude the active session and current message. Broad history-overview requests use stored session summaries when available and otherwise sample first/last user messages from each prior session.
+- Search supports Russian and English lexical queries in either UI profile. It does not translate queries across languages.
+- `HISTORY_SEARCH_LIMIT`, `HISTORY_MAX_RESULTS_CHARS`, and `HISTORY_MAX_MESSAGE_CHARS` configure result and indexing limits.
 
 ## Streaming Reasoning
 

@@ -1804,6 +1804,10 @@ msgstr "Найдено %s фрагментов, готовлю ответ..."
 msgid "Searching the web..."
 msgstr "🌐 Ищу в интернете..."
 
+#: app/templates/chat.html:231
+msgid "Searching your conversation history..."
+msgstr "🗨 Ищу в истории переписки..."
+
 #: app/templates/chat.html:228
 #, python-format
 msgid "Found %s results, preparing the answer..."

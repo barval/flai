@@ -49,6 +49,16 @@ def _login_as_admin(client):
         sess["is_admin"] = True
 
 
+def _mock_backup_subprocess(mock_run, pg_dump_stdout="-- PostgreSQL dump\n"):
+    """Mock pg_dump text output and binary Docker snapshot output."""
+
+    def run(command, **kwargs):
+        stdout = b"fake slm database" if command[0] == "docker" else pg_dump_stdout
+        return MagicMock(returncode=0, stdout=stdout, stderr=b"")
+
+    mock_run.side_effect = run
+
+
 class TestBackupList:
     def test_list_requires_admin(self, client):
         resp = client.get("/admin/api/backups/")
@@ -66,10 +76,7 @@ class TestBackupCreate:
     @patch("app.routes.backups.subprocess.run")
     def test_create_full_backup(self, mock_run, client):
         _login_as_admin(client)
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="-- PostgreSQL dump\nCREATE TABLE users (...);\n",
-        )
+        _mock_backup_subprocess(mock_run, "-- PostgreSQL dump\nCREATE TABLE users (...);\n")
         resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "full"}),
@@ -87,10 +94,7 @@ class TestBackupCreate:
     @patch("app.routes.backups.subprocess.run")
     def test_create_users_backup(self, mock_run, client):
         _login_as_admin(client)
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="-- PostgreSQL dump\nCREATE TABLE users (...);\n",
-        )
+        _mock_backup_subprocess(mock_run, "-- PostgreSQL dump\nCREATE TABLE users (...);\n")
         resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "users"}),
@@ -145,10 +149,7 @@ class TestBackupRestore:
         mock_conn.cursor.return_value = mock_cursor
         mock_get_db.return_value.__enter__.return_value = mock_conn
 
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="-- PostgreSQL dump\n",
-        )
+        _mock_backup_subprocess(mock_run, "-- PostgreSQL dump\n")
         create_resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "full"}),
@@ -190,7 +191,7 @@ class TestBackupRestore:
     @patch("app.routes.backups.subprocess.run")
     def test_restore_checksum_mismatch(self, mock_run, client):
         _login_as_admin(client)
-        mock_run.return_value = MagicMock(returncode=0, stdout="-- dump\n")
+        _mock_backup_subprocess(mock_run, "-- dump\n")
         create_resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "full"}),
@@ -230,7 +231,7 @@ class TestBackupDelete:
     @patch("app.routes.backups.subprocess.run")
     def test_delete_backup(self, mock_run, client):
         _login_as_admin(client)
-        mock_run.return_value = MagicMock(returncode=0, stdout="-- dump\n")
+        _mock_backup_subprocess(mock_run, "-- dump\n")
         create_resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "full"}),
@@ -261,7 +262,7 @@ class TestBackupDownload:
     @patch("app.routes.backups.subprocess.run")
     def test_download_backup(self, mock_run, client):
         _login_as_admin(client)
-        mock_run.return_value = MagicMock(returncode=0, stdout="-- dump\n")
+        _mock_backup_subprocess(mock_run, "-- dump\n")
         create_resp = client.post(
             "/admin/api/backups/create",
             data=json.dumps({"type": "full"}),

@@ -26,6 +26,126 @@ class TestBaseModule:
         return app
 
     @pytest.fixture
+    def camera_app(self, mock_app):
+        """Mock app with an available CamModule (one room)."""
+        fake_cam = MagicMock()
+        fake_cam.available = True
+        fake_cam.get_all_rooms_with_forms.return_value = [("kor", ["коридор"])]
+        mock_app.modules["cam"] = fake_cam
+        return mock_app
+
+    @pytest.mark.unit
+    def test_router_prompt_has_tense_principle(self, base_module):
+        """Router prompt enforces the past-vs-now tense principle."""
+        prompt = base_module._build_router_prompt("привет", "2026-09-26 10:00:00", lang="ru")
+        assert "прошедш" in prompt
+        assert "[-HISTORY-]" in prompt
+        assert "КАТЕГОРИИ" in prompt or "категори" in prompt
+
+    @pytest.mark.unit
+    def test_router_prompt_has_tense_principle_en(self, base_module):
+        """English router prompt enforces the past-vs-now tense principle."""
+        prompt = base_module._build_router_prompt("hello", "2026-09-26 10:00:00", lang="en")
+        assert "past tense" in prompt
+        assert "[-HISTORY-]" in prompt
+
+    @pytest.mark.unit
+    def test_router_prompt_injects_recent_context(self, base_module):
+        """Recent-context section appears in the router prompt."""
+        ctx = "User: покажи коридор\nAssistant: Снимок с камеры"
+        prompt = base_module._build_router_prompt(
+            "мы смотрели снимки с камер?", "2026-09-26 10:00:00", lang="ru", recent_context=ctx
+        )
+        assert "покажи коридор" in prompt
+        assert "Снимок с камеры" in prompt
+
+    @pytest.mark.unit
+    def test_router_prompt_empty_context_section(self, base_module):
+        """Router prompt is usable with an empty recent context."""
+        prompt = base_module._build_router_prompt("привет", "2026-09-26 10:00:00", lang="ru")
+        assert prompt
+        assert "Недавний контекст" in prompt
+
+    @pytest.mark.unit
+    def test_camera_section_excludes_past_tense(self, camera_app, base_module):
+        """Camera classification explicitly excludes retrospective questions."""
+        section = base_module._build_camera_prompt_section("ru")
+        assert "ПРОШЛОМ" in section or "прошлом" in section
+        assert "[-HISTORY-]" in section
+        assert "СЕЙЧАС" in section
+
+    @pytest.mark.unit
+    def test_camera_section_excludes_past_tense_en(self, camera_app, base_module):
+        """English camera section excludes retrospective questions."""
+        section = base_module._build_camera_prompt_section("en")
+        assert "PAST" in section
+        assert "[-HISTORY-]" in section
+        assert "NOW" in section
+
+    @pytest.mark.unit
+    def test_build_router_context_formats_history(self, base_module):
+        """Router context digests recent messages into User/Assistant lines."""
+        from unittest.mock import patch
+
+        messages = [
+            {"id": 1, "role": "user", "content": '[{"type": "text", "text": "покажи коридор"}]'},
+            {"id": 2, "role": "assistant", "content": "Снимок с камеры: коридор"},
+        ]
+        with patch("app.db.get_session_recent_history", return_value=messages):
+            ctx = base_module.build_router_context("s1", None, "мы смотрели снимки с камер?", "ru")
+        assert "покажи коридор" in ctx
+        assert "Снимок с камеры" in ctx
+        assert "User:" in ctx
+        assert "Assistant:" in ctx
+
+    @pytest.mark.unit
+    def test_build_router_context_excludes_current_message(self, base_module):
+        """The current (just-sent) message is excluded via the DB helper."""
+        from unittest.mock import patch
+
+        messages = [
+            {"id": 1, "role": "user", "content": "покажи коридор"},
+            {"id": 2, "role": "assistant", "content": "Снимок с камеры"},
+        ]
+        with patch("app.db.get_session_recent_history", return_value=messages) as m:
+            ctx = base_module.build_router_context(
+                "s1", None, "мы смотрели снимки с камер?", "ru", exclude_message_id=3
+            )
+        assert "мы смотрели снимки с камер?" not in ctx
+        assert "покажи коридор" in ctx
+        assert m.call_args.kwargs["exclude_message_id"] == 3
+
+    @pytest.mark.unit
+    def test_build_router_context_slm_facts(self, mock_app):
+        """SLM facts join the router context when the module is available."""
+        from modules.base import BaseModule
+
+        fake_slm = MagicMock()
+        fake_slm.recall.return_value = [
+            {"content": "пользователь смотрел снимки с камер 26.09"},
+            {"content": "пользователь обсуждал курсы валют"},
+        ]
+        mock_app.modules["slm"] = fake_slm
+        module = BaseModule(mock_app)
+        from unittest.mock import patch
+
+        with patch("app.db.get_session_recent_history", return_value=[]):
+            ctx = module.build_router_context("s1", "valery", "мы смотрели снимки с камер?", "ru")
+        assert "смотрел снимки с камер" in ctx
+        fake_slm.recall.assert_called_once_with(
+            "мы смотрели снимки с камер?", limit=module.ROUTER_SLM_FACTS, profile="valery"
+        )
+
+    @pytest.mark.unit
+    def test_build_router_context_empty_session(self, base_module):
+        """Empty session yields an empty context (no crash)."""
+        from unittest.mock import patch
+
+        with patch("app.db.get_session_recent_history", return_value=[]):
+            ctx = base_module.build_router_context("", None, "привет", "ru")
+        assert ctx == ""
+
+    @pytest.fixture
     def base_module(self, mock_app):
         """Create base module instance."""
         from modules.base import BaseModule

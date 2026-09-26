@@ -10,7 +10,7 @@ from flask_babel import gettext as _
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from app.db import get_document, get_session_text_history
+from app.db import INDEX_STATUS_INDEXED, get_document, get_session_text_history, get_user_documents
 from app.llamacpp_client import LlamaCppClient
 from app.model_config import get_model_config
 from app.utils import (
@@ -254,12 +254,26 @@ class RagModule:
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False
 
-    def search(self, user_id: str, query: str, top_k: int | None = None) -> tuple[list[dict], list[float]]:
+    def search(
+        self,
+        user_id: str,
+        query: str,
+        top_k: int | None = None,
+        file_coverage: bool = False,
+        coverage_max_files: int = 6,
+    ) -> tuple[list[dict], list[float]]:
         """
         Search for relevant chunks based on query.
         Returns tuple of (chunk_dicts with metadata, scores).
 
         Simplified: single direct query to Qdrant.
+
+        When ``file_coverage`` is True and at least one indexed document of the
+        user is missing from the semantic top-k, the best chunk of each missing
+        document is appended (limited to ``coverage_max_files``) so the context
+        is not blind to documents that scored low on the query. Coverage chunks
+        are marked with ``payload['coverage'] = True`` and must survive
+        relevance-threshold filtering in the caller.
         """
         if not self.check_availability():
             return [], []
@@ -290,6 +304,50 @@ class RagModule:
         scores = [hit.score for hit in search_result]
 
         self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+
+        if file_coverage and chunks:
+            try:
+                covered = {c.get("doc_id") for c in chunks if c.get("doc_id")}
+                docs = get_user_documents(user_id) or []
+                missing = [
+                    d["id"]
+                    for d in docs
+                    if d.get("index_status") == INDEX_STATUS_INDEXED and d.get("id") and d["id"] not in covered
+                ]
+                if len(missing) > coverage_max_files:
+                    self.logger.info(
+                        f"search: file-coverage skipped — {len(missing)} docs unreached (> {coverage_max_files})"
+                    )
+                else:
+                    added = 0
+                    for doc_id in missing:
+                        try:
+                            cov_res = self.qdrant_client.query_points(
+                                collection_name=collection_name,
+                                query=query_emb,
+                                query_filter=models.Filter(
+                                    must=[
+                                        models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id)),
+                                        models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id)),
+                                    ]
+                                ),
+                                limit=1,
+                            )
+                        except Exception as e:
+                            self.logger.warning(f"search: file-coverage query failed for {doc_id}: {e}")
+                            continue
+                        if not cov_res.points:
+                            continue
+                        hit = cov_res.points[0]
+                        payload = dict(hit.payload or {})
+                        payload["coverage"] = True
+                        chunks.append(payload)
+                        scores.append(hit.score)
+                        added += 1
+                    if added:
+                        self.logger.info(f"search: file-coverage appended best chunk of {added} missing document(s)")
+            except Exception as e:
+                self.logger.warning(f"search: file-coverage pass failed: {e}")
 
         for i, chunk in enumerate(chunks):
             text_preview = chunk.get("text", "")[:100].replace("\n", " ")

@@ -1889,7 +1889,7 @@ class RedisRequestQueue:
             if rag and rag.available:
                 try:
                     self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
-                    chunks, scores = rag.search(user_id, query, top_k=20)
+                    chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
                     if task and chunks:
                         self._publish_stream_event(
                             task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -1900,7 +1900,12 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        for i, chunk in enumerate(chunks[:15]):  # top 15 chunks
+                        semantic_seen = 0
+                        for i, chunk in enumerate(chunks):
+                            if not chunk.get("coverage"):
+                                if semantic_seen >= 15:  # top 15 semantic chunks
+                                    continue
+                                semantic_seen += 1
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
                             score = scores[i] if i < len(scores) else 0.0
@@ -1980,6 +1985,16 @@ class RedisRequestQueue:
                         f"{len(full_response)} chars truncated to {len(stripped)}"
                     )
                     full_response = stripped
+            if (
+                attempt == 0
+                and not self._is_task_cancelled(task["id"])
+                and self._is_llm_error_string(full_response)
+                and ("502" in full_response or "HTTP error" in full_response or "Ошибка HTTP" in full_response)
+            ):
+                self.app.logger.warning(
+                    f"Reasoning backend HTTP failure on attempt {attempt + 1}, retrying once: {full_response[:200]}"
+                )
+                continue
             if full_response.strip():
                 break
             if attempt == 0 and not self._is_task_cancelled(task["id"]):
@@ -2673,19 +2688,24 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20)
+            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
                 )
-            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold or c.get("coverage")]
             if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for _i, (chunk, score) in enumerate(filtered[:15]):
+                semantic_seen = 0
+                for chunk, score in filtered:
+                    if not chunk.get("coverage"):
+                        if semantic_seen >= 15:
+                            continue
+                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
@@ -2950,19 +2970,24 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20)
+            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
                 )
-            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold or c.get("coverage")]
             if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for _i, (chunk, score) in enumerate(filtered[:15]):
+                semantic_seen = 0
+                for chunk, score in filtered:
+                    if not chunk.get("coverage"):
+                        if semantic_seen >= 15:
+                            continue
+                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")

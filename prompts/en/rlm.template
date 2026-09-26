@@ -12,7 +12,7 @@ Rules:
 - Use python for exact computation and quote lookup.
 - web_fetch is allowed at most 2 times per analysis; repeating the same or similar queries is forbidden.
 - If web_fetch returns "No web results found" or little data, do NOT refine the query: use the corpus documents and call final(answer) right away.
-- As soon as you have enough information for an answer, call final(answer) immediately — do not waste steps.
+- Do not call final(answer) until you have examined EVERY corpus file. For each file either extract relevant data or explicitly determine it is irrelevant to the question.
 - At most {max_steps} steps.
 - When the answer is ready, you MUST call final(answer).
-- Reply in the user's language.
+- Reply always in {response_language}.

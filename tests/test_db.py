@@ -172,3 +172,51 @@ def test_get_user_sessions_token_totals(test_app):
         assert target["message_count"] == 2
         assert target["total_prompt_tokens"] == 3901
         assert target["total_completion_tokens"] == 150
+
+
+@pytest.mark.unit
+def test_get_session_recent_history_is_newest_excluding_current(test_app):
+    """Router context helper returns the tail and drops the current message."""
+    from app.db import get_session_recent_history
+
+    sequence = [
+        {"id": 5, "role": "assistant", "content": "ok"},
+        {"id": 4, "role": "user", "content": "мы смотрели снимки с камер?"},
+        {"id": 3, "role": "assistant", "content": "Снимок с камеры: коридор"},
+        {"id": 2, "role": "user", "content": "покажи коридор"},
+        {"id": 1, "role": "user", "content": "привет"},
+    ]
+    with test_app.app_context():
+        connection = Mock()
+        cursor = connection.cursor.return_value
+        cursor.fetchall.return_value = sequence
+        with patch("app.db.get_db", return_value=nullcontext(connection)):
+            result = get_session_recent_history("s1", limit=3, exclude_message_id=4)
+    ids = [m["id"] for m in result]
+    assert ids == [2, 3, 5]
+
+
+@pytest.mark.unit
+def test_get_session_recent_history_skips_generation_marker_pairs(test_app):
+    """user+assistant pairs ending with a generation marker are dropped,
+    exactly like get_session_text_history, so the router never copies old
+    markers into new responses."""
+    from app.db import get_session_recent_history
+
+    sequence = [
+        {"id": 6, "role": "user", "content": "что было дальше?"},
+        {"id": 5, "role": "assistant", "content": "[-VIDEO-] create a clip"},
+        {"id": 4, "role": "user", "content": "сделай видео"},
+        {"id": 3, "role": "assistant", "content": "Мы выбирали ламинат"},
+        {"id": 2, "role": "user", "content": "какой ламинат лучше?"},
+        {"id": 1, "role": "user", "content": "привет"},
+    ]
+    with test_app.app_context():
+        connection = Mock()
+        cursor = connection.cursor.return_value
+        cursor.fetchall.return_value = sequence
+        with patch("app.db.get_db", return_value=nullcontext(connection)):
+            result = get_session_recent_history("s1", limit=10)
+    ids = [m["id"] for m in result]
+    # Pair (4,5) is dropped (assistant answered with [-VIDEO-]); 3 and 2 survive.
+    assert ids == [1, 2, 3, 6]

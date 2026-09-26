@@ -721,6 +721,38 @@ def _has_marker(content: str) -> bool:
     return any(content.strip().startswith(m) for m in markers)
 
 
+def get_session_recent_history(session_id, limit=6, exclude_message_id=None):
+    """Return the NEWEST messages of a session (raw, text not extracted).
+
+    Same generation-marker pair filter as :func:`get_session_text_history`
+    (applied to the tail) so the router never copies old markers into new
+    responses. ``limit`` bounds the number of returned messages.
+    """
+    if not session_id:
+        return []
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, role, content FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT %s",
+            (session_id, 200),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    rows.reverse()
+    if exclude_message_id is not None:
+        rows = [m for m in rows if m.get("id") != exclude_message_id]
+    filtered = []
+    skip_next = False
+    for i, msg in enumerate(rows):
+        if skip_next:
+            skip_next = False
+            continue
+        if i + 1 < len(rows) and rows[i + 1]["role"] == "assistant" and _has_marker(rows[i + 1].get("content", "")):
+            skip_next = True
+            continue
+        filtered.append(msg)
+    return filtered[-limit:]
+
+
 def get_session_text_history(session_id, max_tokens=None, max_messages=None, return_meta=False):
     """Get session messages for context building (text only).
     Filters out pairs of user+assistant messages where the assistant

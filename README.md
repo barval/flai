@@ -126,6 +126,8 @@ Every user message is classified by the router model into one of the categories 
 
 Everything runs **locally** as a single task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
 
+The answer always matches your language, and the actor must actually work through the selected files: a `final(answer)` call issued before any `python` corpus inspection is rejected with a corrective instruction (multi-file corpora), and the system prompt forbids answering before every corpus file has been examined — so an apartment question about two contracts won't silently report just the first one while missing the second.
+
 **How to use it:**
 1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
 2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
@@ -959,7 +961,7 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 Once documents are indexed, asking about them is automatic:
 
 1. Make sure the documents are in the **Documents** panel with status **✅ Indexed**.
-2. Ask any question in the chat. When the answer needs your documents, the assistant calls the 📚 `rag_search` tool and streams **«📚 Searching documents...»** live, then works the retrieved fragments into the answer (RAG retrieval runs on the fast worker; the grounded answer is produced by the reasoning model).
+2. Ask any question in the chat. When the answer needs your documents, the assistant calls the 📚 `rag_search` tool and streams **«📚 Searching documents...»** live, then works the retrieved fragments into the answer (RAG retrieval runs on the fast worker; the grounded answer is produced by the reasoning model). Retrieval is **coverage-safe**: if one of your indexed documents is missing from the semantic top matches, its best fragment is still forwarded to the reasoning model — the answer won't silently lose whole contracts that simply scored low on the query.
 3. RAG is **per-user and per-query**: the search covers only the current user's documents, and the LLM router decides when a question actually needs them.
 
 For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).

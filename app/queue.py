@@ -3108,6 +3108,10 @@ class RedisRequestQueue:
         router_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "routing"})
+        current_message_id = (task or {}).get("data", {}).get("current_message_id")
+        recent_context = self.app.modules["base"].build_router_context(
+            session_id, user_id, message_text, lang, exclude_message_id=current_message_id
+        )
         router_result = self.app.modules["base"].process_message(
             message_text,
             current_time_str,
@@ -3115,6 +3119,7 @@ class RedisRequestQueue:
             session_id=session_id,
             response_style=response_style,
             user_id=user_id,
+            recent_context=recent_context,
         )
         router_time = round(time.time() - router_start, 1)
 
@@ -3150,7 +3155,6 @@ class RedisRequestQueue:
             # Question about what was discussed earlier: search the user's past
             # conversations on the fast worker, then reason over the fragments.
             # No matches degrade to plain reasoning.
-            current_message_id = (task or {}).get("data", {}).get("current_message_id")
             return self._process_history_task(
                 query,
                 session_id,

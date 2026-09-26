@@ -121,6 +121,14 @@ def load_config(app):
     app.config["SESSION_SUMMARY_MAX_FETCH"] = int(os.getenv("SESSION_SUMMARY_MAX_FETCH", 120))
     app.config["SESSION_SUMMARY_MAX_CHARS"] = int(os.getenv("SESSION_SUMMARY_MAX_CHARS", 1500))
 
+    # Router recent-context digest: a tiny slice of the current session
+    # (last N short messages + up to ROUTER_SLM_FACTS long-term facts) given
+    # to the classifier so it can separate retrospective questions from
+    # live-action requests. Kept small to keep the router fast.
+    app.config["ROUTER_CONTEXT_MESSAGES"] = int(os.getenv("ROUTER_CONTEXT_MESSAGES", 6))
+    app.config["ROUTER_CONTEXT_MSG_CHARS"] = int(os.getenv("ROUTER_CONTEXT_MSG_CHARS", 240))
+    app.config["ROUTER_SLM_FACTS"] = int(os.getenv("ROUTER_SLM_FACTS", 2))
+
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"
 

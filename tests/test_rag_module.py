@@ -120,3 +120,81 @@ class TestRagModule:
                 emb = module._get_embedding("query text")
             assert emb is None
             assert module.llamacpp.get_embeddings.call_count == 2
+
+    def _make_search_module(self, mock_app):
+        from modules.rag import RagModule
+
+        with patch("modules.rag.QdrantClient") as mock_client:
+            mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
+            module = RagModule(mock_app)
+        module.available = True
+        module.top_k = 4
+        module._get_embedding = Mock(return_value=[0.1])
+        module.logger = Mock()
+        return module
+
+    @staticmethod
+    def _hit(doc_id, filename, text, score):
+        hit = Mock()
+        hit.payload = {"doc_id": doc_id, "filename": filename, "text": text}
+        hit.score = score
+        return hit
+
+    def test_search_default_does_not_query_documents(self, mock_app):
+        """File-coverage is opt-in: without file_coverage=True search must not
+        hit the documents table."""
+        module = self._make_search_module(mock_app)
+        module.qdrant_client = MagicMock()
+        module.qdrant_client.query_points.return_value = MagicMock(points=[self._hit("doc1", "f1", "text", 0.9)])
+        with patch("modules.rag.get_user_documents") as mock_docs:
+            chunks, scores = module.search("user", "query", top_k=4)
+        assert len(chunks) == 1
+        mock_docs.assert_not_called()
+        assert chunks[0].get("coverage") is None
+
+    def test_search_file_coverage_appends_missing_docs(self, mock_app):
+        """A document absent from the semantic top-k gets its best chunk
+        appended, marked with coverage=True, when file_coverage is enabled."""
+        module = self._make_search_module(mock_app)
+        fake_client = MagicMock()
+        fake_client.query_points.side_effect = [
+            MagicMock(
+                points=[
+                    self._hit("doc1", "f1", "text a", 0.9),
+                    self._hit("doc1", "f1", "text b", 0.8),
+                    self._hit("doc2", "f2", "text c", 0.7),
+                ]
+            ),
+            MagicMock(points=[self._hit("doc3", "f3", "text d", 0.4)]),
+        ]
+        module.qdrant_client = fake_client
+
+        with patch(
+            "modules.rag.get_user_documents",
+            return_value=[
+                {"id": "doc1", "index_status": "indexed"},
+                {"id": "doc2", "index_status": "indexed"},
+                {"id": "doc3", "index_status": "indexed"},
+            ],
+        ):
+            chunks, scores = module.search("user", "query", top_k=4, file_coverage=True)
+
+        assert [c["doc_id"] for c in chunks] == ["doc1", "doc1", "doc2", "doc3"]
+        assert chunks[-1]["coverage"] is True
+        assert scores == [0.9, 0.8, 0.7, 0.4]
+        assert fake_client.query_points.call_count == 2
+
+    def test_search_file_coverage_skipped_when_too_many_missing(self, mock_app):
+        """Coverage is bounded: when more than coverage_max_files documents are
+        missing from the top-k, no extra per-document queries are issued."""
+        module = self._make_search_module(mock_app)
+        fake_client = MagicMock()
+        fake_client.query_points.return_value = MagicMock(points=[self._hit("doc1", "f1", "text", 0.9)])
+        module.qdrant_client = fake_client
+
+        docs = [{"id": f"doc{i}", "index_status": "indexed"} for i in range(1, 9)]
+        with patch("modules.rag.get_user_documents", return_value=docs):
+            chunks, scores = module.search("user", "query", top_k=4, file_coverage=True)
+
+        assert len(chunks) == 1
+        assert fake_client.query_points.call_count == 1

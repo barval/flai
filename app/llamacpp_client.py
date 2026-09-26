@@ -1144,7 +1144,10 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             # end-of-thinking tag and switch to the actual answer in time.
             payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
 
-        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
+        # Reasoning: up to 3 attempts on a transient 502. Under llama-swap JIT
+        # loading the model may still be starting on the first request (TTL=1s),
+        # so a single retry after 5s is not always enough for the ~30-40s load.
+        max_retries = 2 if model_type == "reasoning" else (1 if model_type == "multimodal" else 0)
         response = None
 
         try:

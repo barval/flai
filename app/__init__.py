@@ -303,7 +303,7 @@ def create_app():
     init_events_publisher(app)
 
     # Register blueprints (new modular structure)
-    from .routes import admin, auth, backups, chat, documents, events, messages, queue, rlm, sessions, tts
+    from .routes import admin, auth, backups, chat, documents, events, messages, model_hub, queue, rlm, sessions, tts
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -318,6 +318,7 @@ def create_app():
     app.register_blueprint(backups.bp)
     app.register_blueprint(events.bp)
     app.register_blueprint(rlm.bp)
+    app.register_blueprint(model_hub.bp)
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):

@@ -146,3 +146,76 @@ def test_license_hint():
     assert model_hub.license_hint("cc-by-nc-4.0") == "nc"
     assert model_hub.license_hint("non-commercial") == "nc"
     assert model_hub.license_hint(None) == "ok"
+
+
+def test_classify_type_multimodal_by_arch():
+    assert model_hub.classify_model_type("Qwen/Qwen2-VL", ["Qwen2VLForConditionalGeneration"]) == "multimodal"
+    assert model_hub.classify_model_type("LmStudio/Mllama", ["MllamaForConditionalGeneration"]) == "multimodal"
+
+
+def test_classify_type_embedding_by_arch():
+    assert model_hub.classify_model_type("BAAI/bge-large", ["BgeModel"]) == "embedding"
+    assert model_hub.classify_model_type("nomic-ai/nomic", ["NomicBertModel"]) == "embedding"
+
+
+def test_classify_type_reasoning_default():
+    assert model_hub.classify_model_type("Qwen/Qwen3", ["Qwen3ForCausalLM"]) == "reasoning"
+
+
+def test_classify_type_filename_fallback_when_no_arch():
+    assert model_hub.classify_model_type("BAAI/bge-m3", []) == "embedding"
+    assert model_hub.classify_model_type("foo-b/model-vl", []) == "multimodal"
+    assert model_hub.classify_model_type("foo/plain-model", []) == "reasoning"
+
+
+def test_get_repo_arch_includes_max_ctx(monkeypatch):
+    model_hub._arch_cache.clear()
+
+    def fake(url, params=None, stream=False, extra_headers=None, timeout=30):
+        if url.endswith("/tree/main"):
+            return _Resp([{"path": "config.json", "type": "file"}])
+        return _Resp(
+            {
+                "architectures": ["Qwen2VLForConditionalGeneration"],
+                "num_hidden_layers": 36,
+                "num_local_experts": 0,
+                "max_position_embeddings": 32768,
+                "rope_scaling": {"type": "yarn", "factor": 2.0},
+            }
+        )
+
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    arch = model_hub.get_repo_arch("org/My")
+    assert arch["arch_max_ctx"] == 65536
+
+
+def test_get_repo_arch_max_ctx_zero_when_missing(monkeypatch):
+    model_hub._arch_cache.clear()
+
+    def fake(url, params=None, stream=False, extra_headers=None, timeout=30):
+        if url.endswith("/tree/main"):
+            return _Resp([{"path": "config.json", "type": "file"}])
+        return _Resp({"architectures": ["Qwen3ForCausalLM"], "num_hidden_layers": 36})
+
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    arch = model_hub.get_repo_arch("org/My")
+    assert arch["arch_max_ctx"] == 0
+
+
+def test_search_hf_items_include_type_and_max_ctx(monkeypatch):
+    full = {
+        "Awesome-Model": {
+            "id": "org/Awesome-Model",
+            "siblings": [{"rfilename": "model.Q4_K_M.gguf", "size": 2516582400, "lfs": {"oid": "a" * 64}}],
+        },
+    }
+    model_hub._files_cache.clear()
+    model_hub._arch_cache.clear()
+    fake, _state = _router_fake_hf_get(full)
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    monkeypatch.setattr(
+        model_hub, "get_repo_arch", lambda repo: {"block_count": 36, "arch_max_ctx": 4096, "arch": ["BgeModel"]}
+    )
+    items = model_hub.search_hf("q", 5)
+    assert items[0]["type"] == "embedding"
+    assert items[0]["arch_max_ctx"] == 4096

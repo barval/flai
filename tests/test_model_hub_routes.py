@@ -56,6 +56,29 @@ def test_hub_fit_blocked_unknown_arch(client, test_app):
     assert resp.get_json()["error"].startswith("⚠️ ")
 
 
+def test_hub_fit_uses_context_param(client, test_app):
+    """The slider context overrides the module config default on /fit."""
+    _login_admin(client, test_app)
+    captured = {}
+
+    def fake_estimate(repo, file_path, module=None, context_length=8192):
+        captured["context"] = context_length
+        captured["module"] = module
+        return {
+            "tier": "good",
+            "platform": "gpu",
+            "free_ram_mb": 12288,
+            "message": "✓ Fits in VRAM",
+        }
+
+    with patch("app.routes.model_hub.model_hub.estimate_fit", side_effect=fake_estimate):
+        resp = client.get("/admin/api/hub/fit?repo=org/A&file=a.gguf&module=reasoning&context=32768")
+    assert resp.status_code == 200
+    assert resp.get_json()["fit"]["platform"] == "gpu"
+    assert captured["context"] == 32768
+    assert captured["module"] == "reasoning"
+
+
 def test_hub_download_ok_and_progress(client, test_app):
     _login_admin(client, test_app)
     with (

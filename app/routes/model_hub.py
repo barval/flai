@@ -66,7 +66,10 @@ def hub_fit():
     if "/" not in repo or not file_path:
         return _hub_err("bad_path")
     cfg = get_model_config(module) or {}
-    context_length = int(cfg.get("context_length", 8192))
+    try:
+        context_length = max(1024, int(request.args.get("context", "")))
+    except ValueError:
+        context_length = int(cfg.get("context_length", 8192))
     try:
         fit = model_hub.estimate_fit(repo, file_path, module=module, context_length=context_length)
     except model_hub.DownloadBlocked as exc:

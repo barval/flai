@@ -31,6 +31,35 @@ HF_DL = "https://huggingface.co"
 
 _NC_MARKERS = ("nc", "non-commercial", "noncommercial", "cc-by-nc", "personal")
 
+MODEL_TYPES = ("reasoning", "multimodal", "embedding")
+
+_MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
+_EMBEDDING_ARCH = ("bert", "bge", "nomic", "gte", "embedding", "withlintransformerpooler", "lora")
+_MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "ollama")
+_EMBEDDING_NAME = ("embed", "bge", "mxbai", "gte", "nomic", "e5-", "instructor", "arctic-embed")
+
+
+def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
+    """Classify a model as reasoning / multimodal / embedding.
+
+    Prioritizes the repo's architecture names (config.json), then falls back to
+    the repo/file name heuristics. Unknown cases default to ``reasoning``.
+    """
+    for arch in archs or []:
+        low = arch.lower()
+        if any(m in low for m in _MULTIMODAL_ARCH):
+            return "multimodal"
+    for arch in archs or []:
+        low = arch.lower()
+        if any(m in low for m in _EMBEDDING_ARCH):
+            return "embedding"
+    low_repo = repo.lower()
+    if any(m in low_repo for m in _MULTIMODAL_NAME):
+        return "multimodal"
+    if any(m in low_repo for m in _EMBEDDING_NAME):
+        return "embedding"
+    return "reasoning"
+
 
 class HubError(RuntimeError):
     """Low-level HF API/HTTP failure."""
@@ -159,6 +188,7 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
         files = _repo_files(r.get("id", ""))
         if not files:
             continue
+        arch = get_repo_arch(r.get("id", "")) or {}
         items.append(
             {
                 "repo": r.get("id", ""),
@@ -166,6 +196,8 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
                 "likes": r.get("likes", 0),
                 "gated": bool(r.get("gated")),
                 "license": r.get("license") or (r.get("cardData") or {}).get("license"),
+                "type": classify_model_type(r.get("id", ""), arch.get("arch") or []),
+                "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
                 "files": files,
             }
         )
@@ -194,6 +226,12 @@ def get_repo_arch(repo: str) -> dict | None:
                 "expert_count": int(cfg.get("num_local_experts") or 0),
                 "arch": cfg.get("architectures") or [],
             }
+            max_ctx = int(cfg.get("max_position_embeddings") or 0) or 0
+            rope = (cfg.get("rope_scaling") or {}).get("factor") or 1.0
+            try:
+                result["arch_max_ctx"] = int(max_ctx * float(rope))
+            except (TypeError, ValueError):
+                result["arch_max_ctx"] = int(max_ctx)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"get_repo_arch({repo}) failed: {exc}")
         result = None

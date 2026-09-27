@@ -40,6 +40,11 @@ def _get_actual_vram_mb() -> tuple[int | None, int | None]:
     return None, None
 
 
+def _platform_has_gpu() -> bool:
+    """True when a usable GPU (nonzero VRAM) is detected."""
+    return _get_actual_vram_mb()[1] not in (None, 0)
+
+
 def _estimate_model_vram(
     file_size_mb: float,
     block_count: int,
@@ -129,9 +134,31 @@ def _get_total_ram_mb() -> int:
         return 0
 
 
+def _get_free_ram_mb() -> int:
+    """Get currently available system RAM in MB (/proc/meminfo MemAvailable).
+
+    Used as the offload budget for "GPU+CPU" / "CPU" fit tiers: a model only
+    counts as launchable in mixed mode when its non-GPU resident portion fits
+    into the RAM that is actually free right now.
+    """
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    try:
+        import psutil
+
+        avail = psutil.virtual_memory().available  # type: ignore[attr-defined]
+        return int(avail) // (1024 * 1024)
+    except Exception:
+        return 0
+
+
 # Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
 TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
-TIER_RAM_SAFETY_PCT = 0.70  # (file+kv) / system_ram <= this => possible
 TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
 
 
@@ -168,9 +195,11 @@ def _classify_model_fit(
     ngl_total = block_count or 32
 
     used_vram, total_vram = _get_actual_vram_mb()
+    has_gpu = _platform_has_gpu()
     if total_vram is None or total_vram <= 0:
-        total_vram = 16311
+        total_vram = 0
     total_ram = _get_total_ram_mb()
+    free_ram_mb = _get_free_ram_mb()
 
     # If model is not in cache and we don't have file_size, try reading from GGUF file
     if not file_size_mb or not block_count:
@@ -210,6 +239,8 @@ def _classify_model_fit(
             "kv_cache_mb": 0,
             "total_vram_mb": total_vram,
             "system_ram_mb": total_ram,
+            "free_ram_mb": free_ram_mb,
+            "platform": "gpu" if has_gpu else "cpu",
             "arch_max_ctx": arch_max_ctx,
             "message": _("Model metadata not found. Run 'Refresh models' first."),
         }
@@ -234,8 +265,43 @@ def _classify_model_fit(
     kv_cache_mb = int(est["kv_cache_mb"])
 
     # 2. Tier classification
+    # On a GPU-less host a model can only be "CPU" (fits in free RAM) or
+    # "impossible" — never "good", since there is no VRAM to fit into.
+    if not has_gpu:
+        needed = int(file_mb + kv_cache_mb)
+        ram_budget = max(0, free_ram_mb - TIER_RAM_HEADROOM_MB)
+        if needed <= ram_budget:
+            tier = "cpu_offload"
+            ngl_recommended = 0
+            can_save = True
+            message = _("⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM.").format(
+                needed=needed, free=free_ram_mb
+            )
+        else:
+            tier = "impossible"
+            ngl_recommended = 0
+            can_save = False
+            message = _("✗ Model cannot be loaded. Needs {needed} MB (file + KV cache), free RAM {free} MB.").format(
+                needed=needed, free=free_ram_mb
+            )
+        return {
+            "tier": tier,
+            "can_save": can_save,
+            "ngl_recommended": ngl_recommended,
+            "ngl_total": ngl_total,
+            "vram_mb": vram_full_mb,
+            "file_mb": round(file_mb, 1),
+            "kv_cache_mb": kv_cache_mb,
+            "total_vram_mb": 0,
+            "system_ram_mb": total_ram,
+            "free_ram_mb": free_ram_mb,
+            "platform": "cpu",
+            "arch_max_ctx": arch_max_ctx,
+            "message": message,
+        }
+
     vram_budget = total_vram * TIER_VRAM_GOOD_PCT
-    ram_budget = (total_ram * TIER_RAM_SAFETY_PCT) - TIER_RAM_HEADROOM_MB
+    ram_budget = max(0, free_ram_mb - TIER_RAM_HEADROOM_MB)
 
     if vram_full_mb <= vram_budget:
         tier = "good"
@@ -294,6 +360,8 @@ def _classify_model_fit(
         "kv_cache_mb": kv_cache_mb,
         "total_vram_mb": total_vram,
         "system_ram_mb": total_ram,
+        "free_ram_mb": free_ram_mb,
+        "platform": "gpu",
         "arch_max_ctx": arch_max_ctx,
         "message": message,
     }

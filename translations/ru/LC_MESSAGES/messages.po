@@ -824,7 +824,51 @@ msgstr "Модели"
 
 #: app/templates/admin.html:13
 msgid "Model Hub"
-msgstr "Модели Hub"
+msgstr "Хаб Моделей"
+
+#: app/templates/admin.html:13
+msgid "Model types"
+msgstr "Тип моделей"
+
+#: app/templates/admin.html:14
+msgid "Reasoning models"
+msgstr "Рассуждающие"
+
+#: app/templates/admin.html:15
+msgid "Multimodal models"
+msgstr "Мультимодальные"
+
+#: app/templates/admin.html:16
+msgid "Embedding models"
+msgstr "Эмбеддинги"
+
+#: app/templates/admin.html:19
+msgid "Context length"
+msgstr "Длина контекста"
+
+#: app/templates/admin.html:20
+msgid "Max context"
+msgstr "Макс. контекст"
+
+#: app/templates/admin.html:31
+msgid "Searching for suitable models…"
+msgstr "Ищу подходящие модели..."
+
+#: app/templates/admin.html:32
+msgid "Recalculating fit…"
+msgstr "Делаю перерасчёт..."
+
+#: app/templates/admin.html:33
+msgid "GPU+CPU"
+msgstr "GPU+CPU"
+
+#: app/templates/admin.html:34
+msgid "Impossible"
+msgstr "Невозможно"
+
+#: app/templates/admin.html:35
+msgid "sec"
+msgstr "сек"
 
 #: app/templates/admin.html:16 app/templates/admin.html:432
 msgid "Cameras"
@@ -988,10 +1032,6 @@ msgstr "Поиск моделей на Hugging Face…"
 #: app/templates/admin.html:134 app/templates/admin.html:455
 msgid "Search"
 msgstr "Поиск"
-
-#: app/templates/admin.html:135
-msgid "Module"
-msgstr "Модуль"
 
 #: app/templates/admin.html:151 app/templates/admin.html:433
 msgid "Update camera list"

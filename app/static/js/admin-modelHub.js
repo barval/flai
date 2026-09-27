@@ -1,61 +1,113 @@
 // static/js/admin-modelHub.js
-// Model Hub tab: search Hugging Face, show fit tiers, stream download progress.
+// Model Hub tab: search Hugging Face, filter by type/context, show fit tiers,
+// stream download progress.
 (function () {
     const input = document.getElementById('hub-search-input');
     if (!input) return;
     const btn = document.getElementById('hub-search-btn');
     const results = document.getElementById('hub-results');
-    const moduleSelect = document.getElementById('hub-module-select');
+    const scanStatus = document.getElementById('hub-scan-status');
+    const recalcStatus = document.getElementById('hub-recalc-status');
+    const ctxSlider = document.getElementById('hub-context-slider');
+    const ctxValue = document.getElementById('hub-context-value');
+    const typeBoxes = {
+        reasoning: document.getElementById('hub-type-reasoning'),
+        multimodal: document.getElementById('hub-type-multimodal'),
+        embedding: document.getElementById('hub-type-embedding')
+    };
+
+    const typeToModule = { reasoning: 'reasoning', multimodal: 'multimodal', embedding: 'embedding' };
+    let lastData = null;
+    let recalcBusy = false;
+    let searchTimer = null;
+    let searchStart = 0;
 
     btn.addEventListener('click', doSearch);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+    Object.values(typeBoxes).forEach(cb => cb.addEventListener('change', () => {
+        if (lastData) renderResults(lastData, true);
+    }));
+    ctxSlider.addEventListener('input', onSliderInput);
 
     function esc(s) {
         return String(s).replace(/[&<>"']/g,
             c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    function note(text) { return `<div class="hub-note">${esc(text)}</div>`; }
+
+    function selectedTypes() {
+        return Object.keys(typeBoxes).filter(t => typeBoxes[t].checked);
+    }
+
+    function currentContext() {
+        return parseInt(ctxSlider.value, 10) || 8192;
+    }
+
+    function showStatus(el, on) { el.style.display = on ? 'block' : 'none'; }
+
     async function doSearch() {
         const q = input.value.trim();
         if (!q) { results.innerHTML = note(t('hub_no_query')); return; }
         btn.disabled = true;
-        btn.textContent = t('hub_searching');
-        results.innerHTML = note(t('hub_searching'));
+        lastData = null;
+        showStatus(recalcStatus, false);
+        stopSearchTimer();
+        showStatus(scanStatus, true);
+        searchStart = Date.now();
+        scanStatus.textContent = `🔍 ${esc(t('hub_searching_models'))} 0 ${esc(t('hub_seconds'))}`;
+        searchTimer = setInterval(() => {
+            const s = Math.floor((Date.now() - searchStart) / 1000);
+            scanStatus.textContent = `🔍 ${esc(t('hub_searching_models'))} ${s} ${esc(t('hub_seconds'))}`;
+        }, 1000);
+        results.innerHTML = '';
         try {
             const res = await fetchWithCSRF(`/admin/api/hub/search?q=${encodeURIComponent(q)}`);
             const data = await res.json();
+            if (data && data.items) lastData = data;
             renderResults(data);
         } catch (err) {
             results.innerHTML = note(t('hub_error'));
         } finally {
+            showStatus(scanStatus, false);
+            stopSearchTimer();
             btn.disabled = false;
             btn.textContent = t('hub_search');
         }
     }
 
-    function note(text) { return `<div class="hub-note">${esc(text)}</div>`; }
+    function stopSearchTimer() {
+        if (searchTimer) { clearInterval(searchTimer); searchTimer = null; }
+    }
 
-    function renderResults(data) {
-        const items = (data && data.items) || [];
+    function renderResults(data, keepFits) {
+        let items = (data && data.items) || [];
+        const types = selectedTypes();
+        if (types.length) items = items.filter(it => types.includes(it.type));
         if (!items.length) { results.innerHTML = note(t('hub_no_results')); return; }
+        const sliderCtx = currentContext();
         let html = '';
         for (const it of items) {
             const badges = [];
             if (it.gated) badges.push(`<span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span>`);
             const nc = /(nc|non-commercial|noncommercial|cc-by-nc|personal)/i.test(it.license || '');
             if (nc) badges.push(`<span class="hub-badge hub-badge-nc" title="${esc(it.license)}">${esc(t('hub_nc'))}</span>`);
+            const typeIc = it.type === 'multimodal' ? '🖼️' : it.type === 'embedding' ? '📐' : '🧠';
+            const fileList = (it.files || []).slice().sort((a, b) => (a.size_mb || 0) - (b.size_mb || 0));
             html += `<div class="hub-repo">
                 <div class="hub-repo-head">
-                    <span class="hub-repo-name">${esc(it.repo)}</span> ${badges.join(' ')}
+                    <span class="hub-repo-name">${esc(it.repo)} ${typeIc}</span> ${badges.join(' ')}
+                    ${it.arch_max_ctx ? `<span class="hub-repo-meta">${esc(t('hub_max_ctx'))}: ${it.arch_max_ctx}</span>` : ''}
                     <span class="hub-repo-meta">⬇ ${it.downloads} ⭐ ${it.likes}</span>
                 </div>
                 <table class="hub-files"><tbody>`;
-            for (const f of it.files) {
+            for (const f of fileList) {
+                if (it.arch_max_ctx && it.arch_max_ctx < sliderCtx) continue;
                 const repo = esc(it.repo), file = esc(f.path);
                 const action = it.gated
                     ? `<td><span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span></td>`
-                    : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}">${esc(t('hub_download'))}</button></td>`;
-                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-gated="${it.gated ? '1' : '0'}">
+                    : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
+                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}">
                     <td class="hub-size">${f.size_mb} MB</td>
                     <td class="hub-path">${esc(f.path)}</td>
                     <td class="hub-fit hub-fit-pending">…</td>
@@ -65,37 +117,72 @@
             html += '</tbody></table></div>';
         }
         results.innerHTML = html;
-        collectFits();
-        wireDownloadButtons();
+        if (!keepFits) { collectFits(); wireDownloadButtons(); }
     }
 
-    function collectFits() {
-        document.querySelectorAll('.hub-file-row').forEach((row) => {
+    function onSliderInput() {
+        ctxValue.textContent = String(currentContext());
+        if (!results.querySelector('.hub-file-row')) return;
+        // Reapply the context threshold to already-rendered rows, then recompute
+        // the colored fit statuses with the new context.
+        const sliderCtx = currentContext();
+        results.querySelectorAll('.hub-file-row').forEach((row) => {
+            const maxCtx = parseInt(row.dataset.maxCtx || '0', 10);
+            row.style.display = (maxCtx > 0 && maxCtx < sliderCtx) ? 'none' : '';
+        });
+        if (recalcBusy) return;
+        recalcBusy = true;
+        showStatus(recalcStatus, true);
+        recalcStatus.textContent = `🧮 ${esc(t('hub_recalculating'))}`;
+        collectFits(() => {
+            recalcBusy = false;
+            showStatus(recalcStatus, false);
+        });
+    }
+
+    function collectFits(done) {
+        const rows = document.querySelectorAll('.hub-file-row');
+        const total = rows.length;
+        let pending = 0;
+        if (!total) { if (done) done(); return; }
+        rows.forEach((row) => {
             const repo = row.dataset.repo;
             const file = row.dataset.file;
+            const module = row.dataset.module || 'multimodal';
             const fitCell = row.querySelector('.hub-fit');
-            fetchWithCSRF(`/admin/api/hub/fit?repo=${encodeURIComponent(repo)}&file=${encodeURIComponent(file)}&module=${moduleSelect.value}`)
+            fitCell.className = 'hub-fit hub-fit-pending';
+            fitCell.textContent = '…';
+            pending++;
+            fetchWithCSRF(`/admin/api/hub/fit?repo=${encodeURIComponent(repo)}&file=${encodeURIComponent(file)}&module=${module}&context=${currentContext()}`)
                 .then(r => r.json().catch(() => null))
                 .then((data) => {
                     if (!data || data.status !== 'ok') {
                         fitCell.textContent = '✗';
                         fitCell.title = (data && data.error) ? data.error : t('hub_error');
-                        fitCell.classList.add('hub-fit-blocked');
+                        fitCell.classList.remove('hub-fit-pending');
+                        fitCell.classList.add('hub-fit-impossible');
                         return;
                     }
+                    if (data.fit && data.fit.arch_max_ctx) row.dataset.maxCtx = data.fit.arch_max_ctx;
                     renderFit(fitCell, data.fit);
                 })
-                .catch(() => { fitCell.textContent = '…'; });
+                .catch(() => { fitCell.textContent = '…'; })
+                .finally(() => { if (--pending === 0 && done) done(); });
         });
     }
 
     function renderFit(cell, fit) {
-        const cls = 'hub-fit-' + fit.tier;
-        cell.classList.add(cls);
+        const cls = fit.platform === 'cpu'
+            ? (fit.tier === 'cpu_offload' ? 'hub-fit-cpu' : 'hub-fit-impossible')
+            : fit.tier === 'good' ? 'hub-fit-good'
+            : fit.tier === 'cpu_offload' ? 'hub-fit-offload'
+            : fit.tier === 'impossible' ? 'hub-fit-impossible' : 'hub-fit-pending';
+        cell.className = 'hub-fit ' + cls;
         cell.title = fit.message || '';
-        cell.textContent = fit.tier === 'good' ? '✓'
-            : fit.tier === 'cpu_offload' ? '⚠'
-            : fit.tier === 'impossible' ? '✗' : '?';
+        const isCpu = fit.platform === 'cpu';
+        cell.textContent = fit.tier === 'good' && !isCpu ? t('hub_fit_gpu')
+            : fit.tier === 'cpu_offload' ? (isCpu ? t('hub_fit_cpu') : t('hub_fit_gpu_cpu'))
+            : fit.tier === 'impossible' ? t('hub_fit_impossible') : '…';
     }
 
     function wireDownloadButtons() {
@@ -107,13 +194,14 @@
     async function startDownload(btn) {
         const repo = btn.dataset.repo;
         const file = btn.dataset.file;
+        const module = btn.dataset.module || 'multimodal';
         const row = btn.closest('.hub-file-row');
         const cells = row.querySelectorAll('td');
         btn.disabled = true;
         fetchWithCSRF('/admin/api/hub/download', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo: repo, file: file, module: moduleSelect.value })
+            body: JSON.stringify({ repo: repo, file: file, module: module })
         })
         .then(r => r.json())
         .then((data) => {

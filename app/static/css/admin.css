@@ -1115,14 +1115,24 @@ body.dark-theme .hardware-table .hw-value {
 
 /* Model Hub tab */
 .hub-container { padding: 0.5rem 0; }
+.hub-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+.hub-filter-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.hub-filter-label { font-weight: 600; }
+.hub-check { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; }
+.hub-check input { margin: 0; }
+.hub-type-ic { font-size: 1em; }
+.hub-context-value { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
+#hub-context-slider { width: 260px; max-width: 60%; }
 .hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }
+.hub-scan-status { padding: 0.35rem 0.6rem; border-radius: 4px; margin-bottom: 0.5rem; background: #e3f2fd; color: #0d47a1; }
 .hub-results { display: flex; flex-direction: column; gap: 1rem; }
 .hub-note { color: #666; font-style: italic; }
 .hub-repo { border: 1px solid #bbb; border-radius: 6px; padding: 0.5rem 0.75rem; }
 .hub-repo-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .hub-repo-name { font-weight: 600; }
 .hub-repo-meta { margin-left: auto; color: #888; font-size: 0.9em; }
+.hub-repo-meta:last-child { margin-left: 0.75rem; }
 .hub-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; }
 .hub-badge-gated { background: #fbe9e7; color: #b71c1c; }
 .hub-badge-nc { background: #e8eaf6; color: #283593; }
@@ -1131,9 +1141,10 @@ table.hub-files { width: 100%; border-collapse: collapse; }
 .hub-size { white-space: nowrap; color: #777; }
 .hub-path { word-break: break-all; }
 .hub-fit { text-align: center; white-space: nowrap; }
-.hub-fit-good { color: #2e7d32; }
-.hub-fit-cpu_offload { color: #b8860b; }
-.hub-fit-impossible, .hub-fit-blocked { color: #c62828; }
+.hub-fit-good { color: #29A847; }
+.hub-fit-offload, .hub-fit-cpu { color: #b8860b; }
+.hub-fit-impossible, .hub-fit-blocked { color: #E01F1F; }
+.hub-fit-pending { color: #888; }
 .hub-progress-wrap { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 220px; }
 .hub-progress-bar { flex: 1; height: 10px; background: #ddd; border-radius: 5px; overflow: hidden; }
 .hub-progress-fill { display: block; height: 100%; width: 0; background: #4caf50; transition: width 0.4s; }
@@ -1141,14 +1152,16 @@ table.hub-files { width: 100%; border-collapse: collapse; }
 .hub-cancel { cursor: pointer; }
 /* dark theme */
 body.dark-theme .hub-note { color: #888; }
+body.dark-theme .hub-scan-status { background: #1e3a5f; color: #a7d3ff; }
 body.dark-theme .hub-repo { border-color: #444; }
 body.dark-theme .hub-repo-meta { color: #999; }
 body.dark-theme .hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
 body.dark-theme .hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
 body.dark-theme .hub-file-row td { border-top-color: #333; }
 body.dark-theme .hub-size { color: #aaa; }
-body.dark-theme .hub-fit-good { color: #7cc576; }
-body.dark-theme .hub-fit-cpu_offload { color: #e0b64e; }
+body.dark-theme .hub-fit-good { color: #7ec584; }
+body.dark-theme .hub-fit-offload, body.dark-theme .hub-fit-cpu { color: #e0b64e; }
 body.dark-theme .hub-fit-impossible, body.dark-theme .hub-fit-blocked { color: #e07b5e; }
+body.dark-theme .hub-fit-pending { color: #999; }
 body.dark-theme .hub-progress-bar { background: #333; }
 body.dark-theme .hub-progress-text { color: #ccc; }

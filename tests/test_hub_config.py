@@ -1,6 +1,20 @@
-"""Model Hub env-var configuration."""
+"""Model Hub env-var configuration.
+
+Hub env keys are cleared before the overrides are applied so the defaults test
+never reads a developer's .env (load_dotenv runs at app.config import) or an
+exported HUGGINGFACE_TOKEN, and explicit overrides still win.
+"""
 
 from flask import Flask
+
+_HUB_KEYS = (
+    "MODEL_HUB_ENABLED",
+    "MODEL_HUB_MAX_FILE_GB",
+    "MODEL_HUB_FREE_MARGIN_GB",
+    "MODEL_HUB_SEARCH_LIMIT",
+    "MODEL_HUB_TIMEOUT_S",
+    "HUGGINGFACE_TOKEN",
+)
 
 
 def _load(**env_overrides):
@@ -15,6 +29,8 @@ def _load(**env_overrides):
 
     old = {k: os.environ.get(k) for k in list(os.environ)}
     try:
+        for k in _HUB_KEYS:
+            os.environ.pop(k, None)
         for k in data:
             os.environ[k] = data[k]
         app = Flask(__name__)

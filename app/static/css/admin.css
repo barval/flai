@@ -1118,24 +1118,37 @@ body.dark-theme .hardware-table .hw-value {
 .hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }
 .hub-results { display: flex; flex-direction: column; gap: 1rem; }
-.hub-note { color: #888; font-style: italic; }
-.hub-repo { border: 1px solid var(--border, #444); border-radius: 6px; padding: 0.5rem 0.75rem; }
+.hub-note { color: #666; font-style: italic; }
+.hub-repo { border: 1px solid #bbb; border-radius: 6px; padding: 0.5rem 0.75rem; }
 .hub-repo-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .hub-repo-name { font-weight: 600; }
-.hub-repo-meta { margin-left: auto; color: #999; font-size: 0.9em; }
+.hub-repo-meta { margin-left: auto; color: #888; font-size: 0.9em; }
 .hub-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; }
-.hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
-.hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
+.hub-badge-gated { background: #fbe9e7; color: #b71c1c; }
+.hub-badge-nc { background: #e8eaf6; color: #283593; }
 table.hub-files { width: 100%; border-collapse: collapse; }
-.hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid var(--border, #333); font-size: 0.95em; }
-.hub-size { white-space: nowrap; color: #aaa; }
+.hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid #ddd; font-size: 0.95em; }
+.hub-size { white-space: nowrap; color: #777; }
 .hub-path { word-break: break-all; }
 .hub-fit { text-align: center; white-space: nowrap; }
-.hub-fit-good { color: #7cc576; }
-.hub-fit-cpu_offload { color: #e0b64e; }
-.hub-fit-impossible, .hub-fit-blocked { color: #e07b5e; }
+.hub-fit-good { color: #2e7d32; }
+.hub-fit-cpu_offload { color: #b8860b; }
+.hub-fit-impossible, .hub-fit-blocked { color: #c62828; }
 .hub-progress-wrap { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 220px; }
-.hub-progress-bar { flex: 1; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
-.hub-progress-fill { display: block; height: 100%; width: 0; background: #7cc576; transition: width 0.4s; }
-.hub-progress-text { font-size: 0.85em; color: #ccc; white-space: nowrap; }
+.hub-progress-bar { flex: 1; height: 10px; background: #ddd; border-radius: 5px; overflow: hidden; }
+.hub-progress-fill { display: block; height: 100%; width: 0; background: #4caf50; transition: width 0.4s; }
+.hub-progress-text { font-size: 0.85em; color: #555; white-space: nowrap; }
 .hub-cancel { cursor: pointer; }
+/* dark theme */
+body.dark-theme .hub-note { color: #888; }
+body.dark-theme .hub-repo { border-color: #444; }
+body.dark-theme .hub-repo-meta { color: #999; }
+body.dark-theme .hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
+body.dark-theme .hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
+body.dark-theme .hub-file-row td { border-top-color: #333; }
+body.dark-theme .hub-size { color: #aaa; }
+body.dark-theme .hub-fit-good { color: #7cc576; }
+body.dark-theme .hub-fit-cpu_offload { color: #e0b64e; }
+body.dark-theme .hub-fit-impossible, body.dark-theme .hub-fit-blocked { color: #e07b5e; }
+body.dark-theme .hub-progress-bar { background: #333; }
+body.dark-theme .hub-progress-text { color: #ccc; }

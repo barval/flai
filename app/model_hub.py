@@ -4,9 +4,9 @@ Used by the admin "Model Hub" tab. Talks to the public HF REST API through
 `requests` only (no huggingface_hub dependency). All HTTP calls are bounded
 by a read timeout; downloads are capped by MODEL_HUB_MAX_FILE_GB.
 
-Task 4 appends the downloader (hashlib/json/shutil/time/uuid) — the
-import block below is the client baseline; redis is already imported here
-because ``_redis()`` below needs it.
+Two layers live here: the catalog client (search, repo file listing, arch
+read, fit estimation) and the downloader (one job at a time, resumable
+``.part`` files, progress published to Redis, cancel flag, sha256 verify).
 """
 
 import contextlib
@@ -97,8 +97,17 @@ def _hf_head(url: str, timeout: float = 30.0):
     return resp.headers
 
 
+_rcli: redis.Redis | None = None
+
+
 def _redis() -> redis.Redis:
-    return redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+    # Memoized: the downloader polls progress/cancel once per 1 MB chunk, and
+    # redis.from_url() builds a new connection pool (plus a TCP connect) on
+    # every call.
+    global _rcli
+    if _rcli is None:
+        _rcli = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+    return _rcli
 
 
 def _repo_files(repo: str, limit: int = 50) -> list[dict]:
@@ -299,53 +308,67 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
     """Validate + enqueue a download; returns a job id. Raises DownloadBlocked."""
     if ".." in file_path.split("/") or file_path.startswith("/"):
         raise DownloadBlocked("bad_path")
-    with _jobs_lock:
-        active = (j.state in ("starting", "downloading", "verifying") for j in _JOBS.values())
-        if any(active):
-            raise DownloadBlocked("already_downloading")
-
-    target = None
-    for fi in _repo_files(repo):
-        if fi["path"] == file_path:
-            target = fi
-            break
-    if target is None:
-        raise DownloadBlocked("not_found")
-
     model_name = os.path.basename(file_path)
-    max_file_mb = int(os.getenv("MODEL_HUB_MAX_FILE_GB", "40")) * 1024
-    if target["size_mb"] > max_file_mb:
-        raise DownloadBlocked("file_too_large")
-
-    # gating: the downloader itself does not know gated status (files exist even
-    # for gated repos on the API). The /download route checks the search item.
-    # Here we re-check using the repo detail endpoint.
-    try:
-        info = _hf_get(f"{HF_API}/{repo}", timeout=30).json()
-        if info.get("gated") or info.get("private"):
-            raise DownloadBlocked("gated")
-    except HubError as exc:
-        raise DownloadBlocked("not_found") from exc
-
     if models_dir is None:
         models_dir = os.getenv("MODELS_DIR", "/models")
-    os.makedirs(models_dir, exist_ok=True)
-    try:
-        free_mb = shutil.disk_usage(models_dir).free // (1024 * 1024)
-    except OSError:
-        free_mb = 0
-    if free_mb < target["size_mb"] + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
-        raise DownloadBlocked("no_disk_space")
 
-    dest = os.path.join(models_dir, model_name)
-    if os.path.exists(dest):
-        raise DownloadBlocked("already_present")
-
+    # The active-job check and the registration happen under one lock hold, and
+    # the registration precedes every network/disk call below. Checking first
+    # and registering last would leave a window (repo listing + disk_usage,
+    # ~100-500 ms) in which two near-simultaneous calls both pass the check and
+    # both workers open the same <name>.part in "wb" — truncating and
+    # interleaving each other's bytes.
     job = _Job(uuid.uuid4().hex[:12], repo, file_path, model_name, models_dir)
-    job.total_mb = float(target["size_mb"])
-    job.sha256 = target["sha256"]
     with _jobs_lock:
+        if any(j.state in ("starting", "downloading", "verifying") for j in _JOBS.values()):
+            raise DownloadBlocked("already_downloading")
         _JOBS[job.job_id] = job
+
+    try:
+        target = None
+        for fi in _repo_files(repo):
+            if fi["path"] == file_path:
+                target = fi
+                break
+        if target is None:
+            raise DownloadBlocked("not_found")
+
+        max_file_mb = int(os.getenv("MODEL_HUB_MAX_FILE_GB", "40")) * 1024
+        if target["size_mb"] > max_file_mb:
+            raise DownloadBlocked("file_too_large")
+
+        # gating: the downloader itself does not know gated status (files exist even
+        # for gated repos on the API). The /download route checks the search item.
+        # Here we re-check using the repo detail endpoint.
+        try:
+            info = _hf_get(f"{HF_API}/{repo}", timeout=30).json()
+            if info.get("gated") or info.get("private"):
+                raise DownloadBlocked("gated")
+        except HubError as exc:
+            raise DownloadBlocked("not_found") from exc
+
+        os.makedirs(models_dir, exist_ok=True)
+        try:
+            free_mb = shutil.disk_usage(models_dir).free // (1024 * 1024)
+        except OSError:
+            free_mb = 0
+        if free_mb < target["size_mb"] + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
+            raise DownloadBlocked("no_disk_space")
+
+        dest = os.path.join(models_dir, model_name)
+        if os.path.exists(dest):
+            raise DownloadBlocked("already_present")
+
+        job.total_mb = float(target["size_mb"])
+        job.sha256 = target["sha256"]
+    except BaseException:
+        # A start that never reaches the worker must release its reservation,
+        # otherwise a rejected (or errored) attempt would leave a zombie
+        # "starting" job blocking every later download.
+        with _jobs_lock:
+            _JOBS.pop(job.job_id, None)
+        raise
+
     _write_progress(job)
     job.thread = threading.Thread(target=_download_thread, args=(job,), daemon=True)
     job.thread.start()

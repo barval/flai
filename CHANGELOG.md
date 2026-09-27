@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.2] — Unreleased
 
+### Added
+
+- **Model Hub (admin):** search Hugging Face for GGUF models directly from a new admin tab, see a VRAM/RAM fit badge for each model file before download, and download models with resume, progress, cancel and sha256 verification (env-gated `MODEL_HUB_ENABLED`). Fit estimation reuses the tier classifier extracted into `app/vram_estimate.py`.
+
 ## [v12.1] — Unreleased
 
 ### Added

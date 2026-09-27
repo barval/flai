@@ -148,6 +148,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
+| **Model Hub** | Search Hugging Face for models from a new admin tab, check that a model fits your GPU/RAM before downloading, and download it with progress and resume. Enabled with `MODEL_HUB_ENABLED=true` in `.env`. |
 | **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
 | **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
 | **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |

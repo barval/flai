@@ -497,3 +497,43 @@ class TestModelConfigCtxUpdate:
             resp = admin_client.put("/admin/api/model_configs/multimodal", json={"context_length": 8192})
         assert resp.status_code == 200
         mock_classify.assert_not_called()
+
+
+@pytest.mark.integration
+class TestModelHubTab:
+    """The Model Hub tab is gated by MODEL_HUB_ENABLED."""
+
+    @pytest.fixture
+    def admin_client(self, client, test_app):
+        """Create admin client (same pattern as the other admin classes)."""
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login, update_password
+
+            if get_user_by_login("hubadm"):
+                update_password("hubadm", "pass123")
+            else:
+                create_user("hubadm", "pass123", "Hub Adm", is_admin=True)
+
+        client.post("/login", data={"login": "hubadm", "password": "pass123"})
+        return client
+
+    def test_hub_tab_hidden_by_default(self, admin_client, test_app):
+        """With MODEL_HUB_ENABLED off the tab button and its script are absent."""
+        with test_app.app_context():
+            test_app.config["MODEL_HUB_ENABLED"] = False
+        resp = admin_client.get("/admin/")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'data-tab="hub"' not in html
+        assert "admin-modelHub.js" not in html
+
+    def test_hub_tab_shown_when_enabled(self, admin_client, test_app):
+        """With MODEL_HUB_ENABLED on the tab button, markup and script render."""
+        with test_app.app_context():
+            test_app.config["MODEL_HUB_ENABLED"] = True
+        resp = admin_client.get("/admin/")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'data-tab="hub"' in html
+        assert 'id="hub-tab"' in html
+        assert "admin-modelHub.js" in html

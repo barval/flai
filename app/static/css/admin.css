@@ -1112,3 +1112,30 @@ body.dark-theme .hardware-table td {
 body.dark-theme .hardware-table .hw-value {
     color: #e0e0e0;
 }
+
+/* Model Hub tab */
+.hub-container { padding: 0.5rem 0; }
+.hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.hub-header input[type="text"] { flex: 1 1 280px; }
+.hub-results { display: flex; flex-direction: column; gap: 1rem; }
+.hub-note { color: #888; font-style: italic; }
+.hub-repo { border: 1px solid var(--border, #444); border-radius: 6px; padding: 0.5rem 0.75rem; }
+.hub-repo-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.hub-repo-name { font-weight: 600; }
+.hub-repo-meta { margin-left: auto; color: #999; font-size: 0.9em; }
+.hub-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; }
+.hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
+.hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
+table.hub-files { width: 100%; border-collapse: collapse; }
+.hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid var(--border, #333); font-size: 0.95em; }
+.hub-size { white-space: nowrap; color: #aaa; }
+.hub-path { word-break: break-all; }
+.hub-fit { text-align: center; white-space: nowrap; }
+.hub-fit-good { color: #7cc576; }
+.hub-fit-cpu_offload { color: #e0b64e; }
+.hub-fit-impossible, .hub-fit-blocked { color: #e07b5e; }
+.hub-progress-wrap { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 220px; }
+.hub-progress-bar { flex: 1; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+.hub-progress-fill { display: block; height: 100%; width: 0; background: #7cc576; transition: width 0.4s; }
+.hub-progress-text { font-size: 0.85em; color: #ccc; white-space: nowrap; }
+.hub-cancel { cursor: pointer; }

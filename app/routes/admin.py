@@ -173,6 +173,7 @@ def admin_panel():
         rooms=rooms,
         camera_rooms=camera_rooms,
         camera_enabled=current_app.config.get("CAMERA_ENABLED", False),
+        model_hub_enabled=current_app.config.get("MODEL_HUB_ENABLED", False),
         chat_db_size=0,
         user_db_size=user_db_size,
         files_db_size=files_db_size,

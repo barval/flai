@@ -146,11 +146,19 @@
             fetchWithCSRF(`/admin/api/hub/progress/${jobId}`)
                 .then(r => r.json())
                 .then((data) => {
-                    if (data.status !== 'ok') { return; }
+                    // A transient error (progress hash not yet written) must not
+                    // end the chain: reschedule and try again.
+                    if (data.status !== 'ok') { setTimeout(tick, everyMs); return; }
                     const job = data.job;
                     const fill = cell.querySelector('.hub-progress-fill');
                     const text = cell.querySelector('.hub-progress-text');
-                    if (job.state === 'downloading') {
+                    if (job.state === 'starting') {
+                        // Worker is still resolving the file: no bytes yet, but the
+                        // poller must keep ticking or the bar freezes at 0%.
+                        fill.style.width = '0%';
+                        text.textContent = '…';
+                        setTimeout(tick, everyMs);
+                    } else if (job.state === 'downloading') {
                         const pct = job.total_mb > 0 ? Math.min(99, Math.round(job.received_mb / job.total_mb * 100)) : 0;
                         fill.style.width = pct + '%';
                         text.textContent = t('hub_downloading')

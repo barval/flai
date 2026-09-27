@@ -77,7 +77,9 @@ def _timeout() -> int:
 
 
 def _check(resp: requests.Response) -> None:
-    if resp.status_code != 200:
+    # 206 is the answer of a ranged GET, which the resumable downloader sends
+    # when it continues a partial .part file.
+    if resp.status_code not in (200, 206):
         raise HubError(f"HF API {resp.status_code}: {resp.url}")
 
 
@@ -386,21 +388,30 @@ def _download_thread(job: _Job) -> None:
         etag = head.get("X-Linked-Etag") or head.get("ETag") or ""
         job.total_mb = round(total / (1024 * 1024), 1)
 
+        # The sidecar records which upstream file the partial .part is a prefix
+        # of. It is written as soon as HEAD resolves — not after the download
+        # finishes — so an interrupted download leaves a resumable pair behind,
+        # and it is removed again once the finished file replaces the .part.
+        prev_meta = {}
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    prev_meta = json.load(f)
+            except Exception:  # noqa: BLE001 - unreadable sidecar: restart the .part
+                prev_meta = {}
+        resumable = os.path.exists(part) and prev_meta.get("size") == total and prev_meta.get("etag") == etag
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"size": total, "etag": etag, "sha": job.sha256}, f)
+
         start = 0
         sha = hashlib.sha256()
         mode = "wb"
-        if os.path.exists(part) and os.path.exists(meta_path):
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    meta = json.load(f)
-            except Exception:  # noqa: BLE001
-                meta = {}
-            if meta.get("size") == total and meta.get("etag") == etag:
-                with open(part, "rb") as f:
-                    for chunk in iter(lambda: f.read(1 << 20), b""):
-                        sha.update(chunk)
-                start = os.path.getsize(part)
-                mode = "ab"
+        if resumable:
+            with open(part, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    sha.update(chunk)
+            start = os.path.getsize(part)
+            mode = "ab"
 
         job.state = "downloading"
         _write_progress(job)
@@ -432,8 +443,8 @@ def _download_thread(job: _Job) -> None:
                 raise DownloadFailed(f"sha256 mismatch: {got[:12]}… vs {job.sha256[:12]}…")
 
         os.replace(part, dest)
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump({"size": total, "etag": etag, "sha": job.sha256}, f)
+        with contextlib.suppress(OSError):
+            os.remove(meta_path)
         job.state = "done"
         try:
             _post_download_scan(job.models_dir)

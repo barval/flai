@@ -18,7 +18,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
-      - ./services/llamacpp/models:/models:ro
+      - ./services/llamacpp/models:/models:rw
       - ./llama-swap-config:/config
       - /var/run/docker.sock:/var/run/docker.sock
       - slm_data:/app/data/slm-readonly:ro

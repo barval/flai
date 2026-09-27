@@ -1,6 +1,7 @@
 """Downloader unit tests: resume, cancel, guards (network fully mocked)."""
 
 import hashlib
+import json
 
 import pytest
 
@@ -11,11 +12,12 @@ _HUB_SHA = hashlib.sha256(b"".join(_HUB_CHUNKS)).hexdigest()
 
 
 class _Resp:
-    def __init__(self, payload=None, headers=None, status_code=200, chunks=()):
+    def __init__(self, payload=None, headers=None, status_code=200, chunks=(), url=""):
         self._payload = payload
         self.headers = headers or {}
         self.status_code = status_code
         self._chunks = list(chunks)
+        self.url = url
 
     def json(self):
         return self._payload
@@ -209,7 +211,10 @@ def test_resume_continues_existing_part(hub, monkeypatch):
     def fake_get(url, params=None, stream=False, extra_headers=None, timeout=30.0):
         seen_range["range"] = (extra_headers or {}).get("Range")
         return _Resp(
-            payload={"gated": False, "private": False}, headers={"Content-Length": "0"}, chunks=[b"z" * 1024 * 1024]
+            payload={"gated": False, "private": False},
+            headers={"Content-Length": "0"},
+            status_code=206,  # honest answer of a ranged GET
+            chunks=[b"z" * 1024 * 1024],
         )
 
     monkeypatch.setattr(model_hub, "_hf_get", fake_get)
@@ -260,3 +265,62 @@ def test_resume_restarts_when_meta_mismatch(hub, monkeypatch):
         time.sleep(0.01)
     assert seen.get("range") is None
     assert job["state"] == "done"
+
+
+def test_check_accepts_206():
+    # A ranged GET answers 206 Partial Content, which the downloader needs for resume.
+    model_hub._check(_Resp(status_code=206, url="x"))
+    with pytest.raises(model_hub.HubError):
+        model_hub._check(_Resp(status_code=500, url="x"))
+
+
+def test_interrupted_download_keeps_part_and_sidecar(hub, monkeypatch):
+    mh, tmp_path = hub
+
+    def boom_get(url, params=None, stream=False, extra_headers=None, timeout=30.0):
+        if not stream:
+            return _Resp(payload={"gated": False, "private": False})
+
+        class _BoomResp(_Resp):
+            def iter_content(self, size):
+                yield _HUB_CHUNKS[0]
+                raise OSError("connection reset by peer")
+
+        return _BoomResp(headers={"Content-Length": str(2 * 1024 * 1024)})
+
+    monkeypatch.setattr(model_hub, "_hf_get", boom_get)
+    job_id = mh.start_download("org/My", "pooled/MyModel.Q4_K_M.gguf")
+    job = None
+    for _ in range(100):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "failed"
+    part = tmp_path / "MyModel.Q4_K_M.gguf.part"
+    meta = tmp_path / "MyModel.Q4_K_M.gguf.part.meta"
+    # Both must survive: the sidecar is what makes the kept .part resumable.
+    assert part.exists()
+    assert meta.exists()
+    meta_data = json.loads(meta.read_text(encoding="utf-8"))
+    assert meta_data["size"] == 2 * 1024 * 1024
+    assert meta_data["etag"] == '"tag-1"'
+
+
+def test_success_removes_sidecar(hub):
+    mh, tmp_path = hub
+    job_id = mh.start_download("org/My", "pooled/MyModel.Q4_K_M.gguf")
+    job = None
+    for _ in range(100):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "done"
+    assert (tmp_path / "MyModel.Q4_K_M.gguf").exists()
+    assert not (tmp_path / "MyModel.Q4_K_M.gguf.part").exists()
+    assert not (tmp_path / "MyModel.Q4_K_M.gguf.part.meta").exists()

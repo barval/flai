@@ -152,7 +152,6 @@ def load_config(app):
     app.config["HISTORY_MAX_MESSAGE_CHARS"] = int(os.getenv("HISTORY_MAX_MESSAGE_CHARS", 20000))
 
     # Model Hub (admin): search & download GGUF models from Hugging Face
-    app.config["MODEL_HUB_ENABLED"] = os.getenv("MODEL_HUB_ENABLED", "false").lower() == "true"
     app.config["MODEL_HUB_MAX_FILE_GB"] = int(os.getenv("MODEL_HUB_MAX_FILE_GB", 40))
     app.config["MODEL_HUB_FREE_MARGIN_GB"] = int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", 4))
     app.config["MODEL_HUB_SEARCH_LIMIT"] = int(os.getenv("MODEL_HUB_SEARCH_LIMIT", 20))

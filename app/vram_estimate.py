@@ -7,6 +7,7 @@ re-exports these names for backward compatibility — no behavior changes.
 
 import os
 
+import requests
 from flask_babel import gettext as _
 
 
@@ -157,6 +158,62 @@ def _get_free_ram_mb() -> int:
         return 0
 
 
+def _swap_running_models() -> list[str]:
+    """Names of models currently resident in llama-swap via /running.
+
+    llama-swap may return a list of strings or a list of model dicts
+    (with a 'model'/'name' field). Empty list when llama-swap is not
+    reachable or the direct backend is used.
+    """
+    if os.getenv("LLAMACP_BACKEND", "llamacpp") != "llama-swap":
+        return []
+    swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+    import re
+
+    try:
+        resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
+        if resp.status_code == 200:
+            items = resp.json().get("running", []) or []
+            names = []
+            for it in items:
+                if isinstance(it, str):
+                    names.append(it)
+                elif isinstance(it, dict):
+                    # Prefer the GGUF path from cmd (e.g. "-m /models/X/Y.gguf"),
+                    # which is what the gguf_models_cache is keyed on.
+                    cmd = it.get("cmd") or ""
+                    m = re.search(r"-m\s+(\S+\.gguf)", cmd)
+                    if m:
+                        names.append(m.group(1).rsplit("/", 1)[-1])
+                    else:
+                        names.append(it.get("name") or it.get("model") or "")
+            return [n for n in names if n]
+    except Exception:
+        pass
+    return []
+
+
+def _get_llama_swap_running_ram_mb() -> int:
+    """RAM (MB) held by llama-swap models that are currently loaded.
+
+    A model selected in the Model Hub replaces whatever is resident right now,
+    so this memory counts as free for the fit calculation.
+    """
+    from app.utils import get_gguf_models_cached
+
+    running = _swap_running_models()
+    if not running:
+        return 0
+    cache = get_gguf_models_cached("/models")
+    total = 0
+    for name in running:
+        meta = cache.get(str(name).replace(".gguf", ""), {})
+        size = meta.get("file_size_mb") or 0
+        if size:
+            total += int(size)
+    return total
+
+
 # Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
 TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
 TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
@@ -194,12 +251,14 @@ def _classify_model_fit(
     arch_max_ctx = cached.get("context_length")
     ngl_total = block_count or 32
 
-    used_vram, total_vram = _get_actual_vram_mb()
+    total_vram = _get_actual_vram_mb()[1]
     has_gpu = _platform_has_gpu()
     if total_vram is None or total_vram <= 0:
         total_vram = 0
     total_ram = _get_total_ram_mb()
-    free_ram_mb = _get_free_ram_mb()
+    # RAM held by currently resident llama-swap models counts as free: selecting
+    # a new model replaces them, so their memory becomes available again.
+    free_ram_mb = _get_free_ram_mb() + _get_llama_swap_running_ram_mb()
 
     # If model is not in cache and we don't have file_size, try reading from GGUF file
     if not file_size_mb or not block_count:

@@ -1,5 +1,7 @@
 """Unit tests for the HF catalog client in app/model_hub.py (no network)."""
 
+import struct
+
 import pytest
 
 from app import model_hub
@@ -131,11 +133,73 @@ def test_estimate_fit_uses_classifier(monkeypatch):
     assert fit["sha256"] == "a" * 64
 
 
+def _gguf_string(value):
+    encoded = value.encode("utf-8")
+    return struct.pack("<Q", len(encoded)) + encoded
+
+
+def _gguf_metadata_header():
+    fields = [
+        (
+            "general.tags",
+            9,
+            struct.pack("<IQ", 8, 2) + _gguf_string("gguf") + _gguf_string("chat"),
+        ),
+        ("general.architecture", 8, _gguf_string("qwen35")),
+        ("qwen35.block_count", 4, struct.pack("<I", 32)),
+        ("qwen35.context_length", 4, struct.pack("<I", 262144)),
+        ("qwen35.expert_count", 4, struct.pack("<I", 8)),
+    ]
+    header = b"GGUF" + struct.pack("<IQQ", 3, 0, len(fields))
+    return header + b"".join(_gguf_string(key) + struct.pack("<I", kind) + value for key, kind, value in fields)
+
+
+def test_estimate_fit_uses_gguf_metadata_when_config_is_missing(monkeypatch):
+    monkeypatch.setattr(model_hub, "_gguf_arch_cache", {}, raising=False)
+    files = [
+        {"path": "model-Q4_K_M.gguf", "size_mb": 2400, "sha256": "a" * 64},
+        {"path": "model-Q5_K_M.gguf", "size_mb": 2800, "sha256": "b" * 64},
+    ]
+    range_requests = []
+
+    class _RangeResp:
+        status_code = 206
+        url = "https://huggingface.co/org/My/resolve/main/model-Q4_K_M.gguf"
+
+        def iter_content(self, chunk_size):
+            yield _gguf_metadata_header()
+
+    def fake_hf_get(url, params=None, stream=False, extra_headers=None, timeout=30):
+        range_requests.append((url, extra_headers))
+        return _RangeResp()
+
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
+    monkeypatch.setattr(
+        model_hub,
+        "_classify_model_fit",
+        lambda *args, **kwargs: {"tier": "good", "arch_max_ctx": 0},
+    )
+
+    first = model_hub.estimate_fit("org/My", files[0]["path"], module="reasoning", context_length=8192)
+    second = model_hub.estimate_fit("org/My", files[1]["path"], module="reasoning", context_length=8192)
+
+    assert first["block_count"] == second["block_count"] == 32
+    assert first["expert_count"] == second["expert_count"] == 8
+    assert first["arch"] == second["arch"] == "qwen35"
+    assert first["arch_max_ctx"] == second["arch_max_ctx"] == 262144
+    assert len(range_requests) == 1
+    assert range_requests[0][1]["Range"].startswith("bytes=0-")
+    assert int(range_requests[0][1]["Range"].split("-")[1]) < 10 * 1024 * 1024
+
+
 def test_estimate_fit_blocked_without_arch(monkeypatch):
     monkeypatch.setattr(
         model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": ""}]
     )
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: None)
     with pytest.raises(model_hub.DownloadBlocked) as exc:
         model_hub.estimate_fit("org/My", "model.gguf")
     assert exc.value.reason == "unknown_arch"

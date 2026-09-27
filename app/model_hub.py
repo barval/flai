@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import struct
 import threading
 import time
 import uuid
@@ -84,8 +85,11 @@ class DownloadFailed(RuntimeError):  # noqa: N818 - public contract name, not a 
 
 # Module-level caches (in-memory; lost on restart, that is fine for v1)
 _arch_cache: dict[str, dict | None] = {}
+_gguf_arch_cache: dict[str, dict | None] = {}
 _files_cache: dict[str, list[dict]] = {}
 _cache_lock = threading.Lock()
+_gguf_arch_cache_lock = threading.Lock()
+_GGUF_HEAD_BYTES = 4 * 1024 * 1024
 
 _headers: dict[str, str] = {}
 
@@ -240,6 +244,115 @@ def get_repo_arch(repo: str) -> dict | None:
     return dict(result) if result else None
 
 
+def _parse_gguf_arch(data: bytes) -> dict | None:
+    """Extract architecture sizing metadata from a GGUF header prefix."""
+    if len(data) < 24 or data[:4] != b"GGUF":
+        return None
+
+    kv_count = struct.unpack_from("<Q", data, 16)[0]
+    offset = 24
+    architecture = None
+    result: dict = {}
+
+    def read_string(position: int) -> tuple[str, int]:
+        length = struct.unpack_from("<Q", data, position)[0]
+        position += 8
+        end = position + length
+        if end > len(data):
+            raise struct.error("GGUF string exceeds range data")
+        return data[position:end].decode("utf-8", "replace"), end
+
+    def skip_value(position: int, value_type: int) -> int:
+        fixed_sizes = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+        if value_type in fixed_sizes:
+            return position + fixed_sizes[value_type]
+        if value_type == 8:
+            length = struct.unpack_from("<Q", data, position)[0]
+            return position + 8 + length
+        if value_type == 9:
+            element_type = struct.unpack_from("<I", data, position)[0]
+            count = struct.unpack_from("<Q", data, position + 4)[0]
+            position += 12
+            if element_type == 8:
+                for _ in range(count):
+                    length = struct.unpack_from("<Q", data, position)[0]
+                    position += 8 + length
+                return position
+            if element_type not in fixed_sizes:
+                raise struct.error("Unsupported GGUF array element type")
+            return position + fixed_sizes[element_type] * count
+        raise struct.error("Unsupported GGUF metadata type")
+
+    for _ in range(kv_count):
+        try:
+            key, offset = read_string(offset)
+            value_type = struct.unpack_from("<I", data, offset)[0]
+            offset += 4
+
+            if key == "general.architecture" and value_type == 8:
+                architecture, offset = read_string(offset)
+                result["arch"] = [architecture]
+                continue
+
+            wanted = {
+                f"{architecture}.block_count": "block_count",
+                f"{architecture}.context_length": "arch_max_ctx",
+                f"{architecture}.expert_count": "expert_count",
+            }
+            if architecture and key in wanted and value_type in (4, 10):
+                if value_type == 4:
+                    value = struct.unpack_from("<I", data, offset)[0]
+                    offset += 4
+                else:
+                    value = struct.unpack_from("<Q", data, offset)[0]
+                    offset += 8
+                result[wanted[key]] = int(value)
+            elif architecture and key.startswith("tokenizer.") and result.get("block_count"):
+                break
+            else:
+                offset = skip_value(offset, value_type)
+
+            if result.get("block_count") and result.get("arch_max_ctx") and result.get("expert_count"):
+                break
+        except (struct.error, UnicodeDecodeError, OverflowError):
+            break
+
+    if not result.get("block_count"):
+        return None
+    result.setdefault("expert_count", 0)
+    result.setdefault("arch_max_ctx", 0)
+    return result
+
+
+def _gguf_arch(repo: str, file_path: str) -> dict | None:
+    """Read GGUF sizing metadata via HTTP Range, cached once per repository."""
+    with _gguf_arch_cache_lock:
+        if repo in _gguf_arch_cache:
+            cached = _gguf_arch_cache[repo]
+            return dict(cached) if cached else None
+
+        result = None
+        try:
+            resp = _hf_get(
+                f"{HF_DL}/{repo}/resolve/main/{file_path}",
+                stream=True,
+                extra_headers={"Range": f"bytes=0-{_GGUF_HEAD_BYTES - 1}"},
+                timeout=30,
+            )
+            if resp.status_code == 206:
+                prefix = bytearray()
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    prefix.extend(chunk)
+                    if len(prefix) >= _GGUF_HEAD_BYTES:
+                        break
+                result = _parse_gguf_arch(bytes(prefix[:_GGUF_HEAD_BYTES]))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
+
+        _gguf_arch_cache[repo] = result
+        return dict(result) if result else None
+
+
 def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_length: int = 8192) -> dict:
     """Classify fit of ``file_path`` in ``repo`` for ``module`` without the file present."""
     target = None
@@ -250,6 +363,8 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
     if target is None:
         raise DownloadBlocked("not_found")
     arch = get_repo_arch(repo)
+    if not arch or not arch.get("block_count"):
+        arch = _gguf_arch(repo, target["path"])
     if not arch or not arch.get("block_count"):
         raise DownloadBlocked("unknown_arch")
     model_name = os.path.basename(file_path)
@@ -265,6 +380,7 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
     fit["arch"] = ",".join(arch["arch"] or [])
     fit["sha256"] = target["sha256"]
     fit["context_length"] = int(context_length)
+    fit["arch_max_ctx"] = int(arch.get("arch_max_ctx") or fit.get("arch_max_ctx") or 0)
     return fit
 
 

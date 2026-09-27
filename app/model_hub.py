@@ -9,9 +9,15 @@ import block below is the client baseline; redis is already imported here
 because ``_redis()`` below needs it.
 """
 
+import contextlib
+import hashlib
+import json
 import logging
 import os
+import shutil
 import threading
+import time
+import uuid
 
 import redis
 import requests
@@ -218,3 +224,229 @@ def license_hint(license_name) -> str:
         return "ok"
     low = str(license_name).lower()
     return "nc" if any(m in low for m in _NC_MARKERS) else "ok"
+
+
+# ---- downloader ----------------------------------------------------------
+
+_NC_DONE = 86400  # job TTL (seconds)
+
+
+class _Job:
+    def __init__(self, job_id: str, repo: str, file_path: str, model_name: str, models_dir: str):
+        self.job_id = job_id
+        self.repo = repo
+        self.path = file_path
+        self.filename = model_name
+        self.models_dir = models_dir
+        self.total_mb = 0.0
+        self.received_mb = 0.0
+        self.speed_mb_s = 0.0
+        self.sha256 = ""
+        self.state = "starting"
+        self.error = ""
+        self.shutdown = threading.Event()
+        self.thread: threading.Thread | None = None
+
+
+_JOBS: dict[str, _Job] = {}
+_jobs_lock = threading.Lock()
+
+
+def _job_to_dict(job: _Job) -> dict:
+    return {
+        "job_id": job.job_id,
+        "repo": job.repo,
+        "path": job.path,
+        "filename": job.filename,
+        "total_mb": job.total_mb,
+        "received_mb": round(job.received_mb, 1),
+        "speed_mb_s": round(job.speed_mb_s, 1),
+        "state": job.state,
+        "error": job.error,
+        "models_dir": job.models_dir,
+    }
+
+
+def _post_download_scan(models_dir: str) -> None:
+    """Re-scan GGUF metadata cache after a successful download so the Models
+    tab sees the new file without a manual 'Refresh models'."""
+
+    from app.utils import sync_gguf_models_cache
+
+    sync_gguf_models_cache(models_dir)
+
+
+def _write_progress(job: _Job) -> None:
+    try:
+        r = _redis()
+        r.hset(f"model_hub:job:{job.job_id}", mapping=_job_to_dict(job))
+        r.expire(f"model_hub:job:{job.job_id}", _NC_DONE)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"model_hub progress write failed: {exc}")
+
+
+def _is_cancelled(job: _Job) -> bool:
+    if job.shutdown.is_set():
+        return True
+    with contextlib.suppress(Exception):
+        if _redis().get(f"model_hub:cancel:{job.job_id}"):
+            job.shutdown.set()
+            return True
+    return False
+
+
+def start_download(repo: str, file_path: str, models_dir: str | None = None) -> str:
+    """Validate + enqueue a download; returns a job id. Raises DownloadBlocked."""
+    if ".." in file_path.split("/") or file_path.startswith("/"):
+        raise DownloadBlocked("bad_path")
+    with _jobs_lock:
+        active = (j.state in ("starting", "downloading", "verifying") for j in _JOBS.values())
+        if any(active):
+            raise DownloadBlocked("already_downloading")
+
+    target = None
+    for fi in _repo_files(repo):
+        if fi["path"] == file_path:
+            target = fi
+            break
+    if target is None:
+        raise DownloadBlocked("not_found")
+
+    model_name = os.path.basename(file_path)
+    max_file_mb = int(os.getenv("MODEL_HUB_MAX_FILE_GB", "40")) * 1024
+    if target["size_mb"] > max_file_mb:
+        raise DownloadBlocked("file_too_large")
+
+    # gating: the downloader itself does not know gated status (files exist even
+    # for gated repos on the API). The /download route checks the search item.
+    # Here we re-check using the repo detail endpoint.
+    try:
+        info = _hf_get(f"{HF_API}/{repo}", timeout=30).json()
+        if info.get("gated") or info.get("private"):
+            raise DownloadBlocked("gated")
+    except HubError as exc:
+        raise DownloadBlocked("not_found") from exc
+
+    if models_dir is None:
+        models_dir = os.getenv("MODELS_DIR", "/models")
+    os.makedirs(models_dir, exist_ok=True)
+    try:
+        free_mb = shutil.disk_usage(models_dir).free // (1024 * 1024)
+    except OSError:
+        free_mb = 0
+    if free_mb < target["size_mb"] + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
+        raise DownloadBlocked("no_disk_space")
+
+    dest = os.path.join(models_dir, model_name)
+    if os.path.exists(dest):
+        raise DownloadBlocked("already_present")
+
+    job = _Job(uuid.uuid4().hex[:12], repo, file_path, model_name, models_dir)
+    job.total_mb = float(target["size_mb"])
+    job.sha256 = target["sha256"]
+    with _jobs_lock:
+        _JOBS[job.job_id] = job
+    _write_progress(job)
+    job.thread = threading.Thread(target=_download_thread, args=(job,), daemon=True)
+    job.thread.start()
+    return job.job_id
+
+
+def _download_thread(job: _Job) -> None:
+    dest = os.path.join(job.models_dir, job.filename)
+    part = dest + ".part"
+    meta_path = dest + ".part.meta"
+    try:
+        url = f"{HF_DL}/{job.repo}/resolve/main/{job.path}"
+        head = _hf_head(url)
+        total = int(head.get("Content-Length") or 0)
+        etag = head.get("X-Linked-Etag") or head.get("ETag") or ""
+        job.total_mb = round(total / (1024 * 1024), 1)
+
+        start = 0
+        sha = hashlib.sha256()
+        mode = "wb"
+        if os.path.exists(part) and os.path.exists(meta_path):
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+            except Exception:  # noqa: BLE001
+                meta = {}
+            if meta.get("size") == total and meta.get("etag") == etag:
+                with open(part, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        sha.update(chunk)
+                start = os.path.getsize(part)
+                mode = "ab"
+
+        job.state = "downloading"
+        _write_progress(job)
+        extra = {"Range": f"bytes={start}-"} if start else None
+        resp = _hf_get(url, stream=True, extra_headers=extra, timeout=_timeout())
+
+        last_time = time.monotonic()
+        last_received = 0.0
+        with open(part, mode) as f:
+            for chunk in resp.iter_content(1 << 20):
+                if not chunk:
+                    continue
+                if _is_cancelled(job):
+                    raise DownloadCancelled(job.job_id)
+                f.write(chunk)
+                sha.update(chunk)
+                job.received_mb += len(chunk) / (1024 * 1024)
+                now = time.monotonic()
+                if now - last_time >= 1.0:
+                    job.speed_mb_s = (job.received_mb - last_received) / (now - last_time)
+                    last_received, last_time = job.received_mb, now
+                    _write_progress(job)
+
+        job.state = "verifying"
+        _write_progress(job)
+        if job.sha256:
+            got = sha.hexdigest()
+            if got != job.sha256:
+                raise DownloadFailed(f"sha256 mismatch: {got[:12]}… vs {job.sha256[:12]}…")
+
+        os.replace(part, dest)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({"size": total, "etag": etag, "sha": job.sha256}, f)
+        job.state = "done"
+        try:
+            _post_download_scan(job.models_dir)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"post-download GGUF cache rescan failed: {exc}")
+    except DownloadCancelled:
+        job.state = "cancelled"
+        for p in (part, meta_path):
+            with contextlib.suppress(OSError):
+                os.remove(p)
+    except DownloadFailed as exc:
+        job.state = "failed"
+        job.error = str(exc)
+        # .part kept for future resume
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(f"model_hub download failed: {exc}")
+        job.state = "failed"
+        job.error = str(exc)[:500]
+    finally:
+        _write_progress(job)
+
+
+def get_job(job_id: str) -> dict | None:
+    with _jobs_lock:
+        job = _JOBS.get(job_id)
+    if job is None:
+        return None
+    return _job_to_dict(job)
+
+
+def cancel_job(job_id: str) -> bool:
+    with _jobs_lock:
+        job = _JOBS.get(job_id)
+    if job is None or job.state not in ("starting", "downloading", "verifying"):
+        return False
+    job.shutdown.set()
+    with contextlib.suppress(Exception):
+        _redis().set(f"model_hub:cancel:{job.job_id}", "1", ex=_NC_DONE)
+    return True

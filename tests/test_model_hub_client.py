@@ -1,0 +1,148 @@
+"""Unit tests for the HF catalog client in app/model_hub.py (no network)."""
+
+import pytest
+
+from app import model_hub
+
+
+class _Resp:
+    def __init__(self, payload, headers=None, status_code=200):
+        self._payload = payload
+        self.headers = headers or {}
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+def _router_fake_hf_get(full_repos):
+    """Returns dict url->payload."""
+    state = {"search_calls": 0}
+
+    def fake(url, params=None, stream=False, extra_headers=None, timeout=30):
+        if "search=" in url or "search" in (params or {}):
+            state["search_calls"] += 1
+            return _Resp(
+                [
+                    {
+                        "id": "org/Awesome-Model",
+                        "downloads": 99,
+                        "likes": 5,
+                        "gated": True,
+                        "private": False,
+                        "siblings": [
+                            {"rfilename": "model.Q4_K_M.gguf", "size": 2516582400, "lfs": {"oid": "a" * 64}},
+                            {"rfilename": "mmproj-f16.gguf", "size": 104857600},
+                            {"rfilename": "README.md", "size": 100},
+                        ],
+                    },
+                    {
+                        "id": "secret/repo",
+                        "downloads": 1,
+                        "likes": 0,
+                        "gated": False,
+                        "private": True,
+                        "siblings": [{"rfilename": "x.gguf", "size": 10}],
+                    },
+                ]
+            )
+        repo_id = url.rsplit("/", 1)[-1]
+        return _Resp(full_repos[repo_id])
+
+    return fake, state
+
+
+def test_search_hf_filters_gguf_and_private(monkeypatch):
+    full = {
+        "Awesome-Model": {
+            "id": "org/Awesome-Model",
+            "siblings": [{"rfilename": "model.Q4_K_M.gguf", "size": 2516582400, "lfs": {"oid": "a" * 64}}],
+        },
+        "repo": {"id": "secret/repo", "siblings": [{"rfilename": "x.gguf", "size": 10}]},
+    }
+    model_hub._files_cache.clear()
+    fake, state = _router_fake_hf_get(full)
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    items = model_hub.search_hf("q", 5)
+    assert state["search_calls"] == 1
+    assert len(items) == 1
+    assert items[0]["repo"] == "org/Awesome-Model"
+    assert items[0]["gated"] is True
+    assert items[0]["files"] == [
+        {"path": "model.Q4_K_M.gguf", "size_mb": 2400.0, "sha256": "a" * 64},
+    ]
+
+
+def test_get_repo_arch_dense_and_moe(monkeypatch):
+    calls = {"n": 0}
+
+    def fake(url, params=None, stream=False, extra_headers=None, timeout=30):
+        calls["n"] += 1
+        if url.endswith("/tree/main"):
+            return _Resp([{"path": "config.json", "type": "file"}])
+        return _Resp(
+            {
+                "architectures": ["Qwen3ForCausalLM"],
+                "num_hidden_layers": 36,
+                "num_local_experts": 8,
+            }
+        )
+
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    arch = model_hub.get_repo_arch("org/My")
+    assert arch["block_count"] == 36
+    assert arch["expert_count"] == 8
+    assert arch["arch"] == ["Qwen3ForCausalLM"]
+    assert calls["n"] == 2  # tree + resolve
+
+
+def test_get_repo_arch_none_when_missing(monkeypatch):
+    def fake(url, params=None, stream=False, extra_headers=None, timeout=30):
+        return _Resp({"detail": "nope"}, status_code=404)
+
+    monkeypatch.setattr(model_hub, "_hf_get", fake)
+    assert model_hub.get_repo_arch("nope/x") is None
+
+
+def test_estimate_fit_uses_classifier(monkeypatch):
+    monkeypatch.setattr(
+        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": "a" * 64}]
+    )
+    monkeypatch.setattr(
+        model_hub, "get_repo_arch", lambda repo: {"block_count": 36, "expert_count": 8, "arch": ["Qwen3ForCausalLM"]}
+    )
+    monkeypatch.setattr(
+        model_hub,
+        "_classify_model_fit",
+        lambda *a, **k: {
+            "tier": "good",
+            "can_save": True,
+            "ngl_recommended": 36,
+            "vram_mb": 1000,
+            "file_mb": 2400,
+            "kv_cache_mb": 100,
+            "message": "✓ Fits in VRAM",
+        },
+    )
+    fit = model_hub.estimate_fit("org/My", "model.gguf", module="multimodal", context_length=8192)
+    assert fit["tier"] == "good"
+    assert fit["expert_count"] == 8
+    assert fit["block_count"] == 36
+    assert fit["sha256"] == "a" * 64
+
+
+def test_estimate_fit_blocked_without_arch(monkeypatch):
+    monkeypatch.setattr(
+        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": ""}]
+    )
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    with pytest.raises(model_hub.DownloadBlocked) as exc:
+        model_hub.estimate_fit("org/My", "model.gguf")
+    assert exc.value.reason == "unknown_arch"
+
+
+def test_license_hint():
+    assert model_hub.license_hint("apache-2.0") == "ok"
+    assert model_hub.license_hint("cc-by-nc-4.0") == "nc"
+    assert model_hub.license_hint("non-commercial") == "nc"
+    assert model_hub.license_hint(None) == "ok"

@@ -439,7 +439,10 @@ def test_hub_type_labels_collapse_on_mobile():
 
 def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    media_start = admin_css.rindex("@media (max-width: 768px)")
+    media = admin_css[media_start:]
+    assert media_start > admin_css.index(".hub-filter-row { display: flex"), "mobile overrides must follow base styles"
+    assert media_start > admin_css.index(".hub-header { display: flex"), "mobile overrides must follow base styles"
     assert ".hub-filters {" in media
     assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
     assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)

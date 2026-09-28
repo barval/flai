@@ -476,6 +476,9 @@ function fitTierClass(fit) {
                     } else if (job.state === 'done') {
                         fill.style.width = '100%';
                         cell.innerHTML = '✓ ' + esc(t('hub_done'));
+                        if (typeof refreshModelsAfterHubDownload === 'function') {
+                            refreshModelsAfterHubDownload();
+                        }
                         forgetActiveDownload(jobId);
                         cancelBtn.remove();
                     } else if (job.state === 'cancelled') {

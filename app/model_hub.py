@@ -222,6 +222,11 @@ def _redis() -> redis.Redis:
     return _rcli
 
 
+# GGUF files smaller than this are not real checkpoints (tokenizer trunks,
+# tiny demos, float32 metadata stubs) and are hidden from the model list.
+_MIN_MODEL_MB = 5.0
+
+
 def _repo_files(repo: str, limit: int = 50) -> list[dict]:
     """GGUF files of a repo: [{path, size_mb, sha256}], cached per repo."""
     with _cache_lock:
@@ -235,6 +240,8 @@ def _repo_files(repo: str, limit: int = 50) -> list[dict]:
         if not path.endswith(".gguf") or "mmproj" in path.lower():
             continue
         size = sib.get("size") or 0
+        if size < _MIN_MODEL_MB * 1024 * 1024:
+            continue
         oid = (sib.get("lfs") or {}).get("oid", "")
         files.append(
             {
@@ -256,12 +263,17 @@ _MULTIPART_RE = re.compile(r"^(?P<prefix>.*)-(?P<num>\d{4,5})-of-(?P<total>\d{4,
 
 def is_aux_file(path: str) -> bool:
     """True for auxiliary files that are not loadable models: imatrix files,
-    MTP heads, and non-first multi-part shards."""
+    MTP heads, non-first multi-part shards, tokenizer trunks and LLM2Vec text
+    bundles exported into a repo."""
     base = os.path.basename(path)
     low = base.lower()
     if "imatrix" in low:
         return True
     if low.startswith("mtp-") or "/mtp/" in low:
+        return True
+    if low == "tokenizer.gguf":
+        return True
+    if "/generated/" in path or path.startswith("generated/"):
         return True
     m = _MULTIPART_RE.match(base)
     return bool(m and int(m.group("num")) > 1)

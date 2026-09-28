@@ -251,11 +251,15 @@ def test_aux_file_detection():
         "MTP/mtp-Qwen3.8-27B-Q4_0.gguf",
         "mtp-X.gguf",
         "BF16/Qwen3.8-27B-BF16-00002-of-00002.gguf",
+        "tokenizer.gguf",
+        "generated/llm2vec-text-bundle/tokenizer.gguf",
+        "generated/llm2vec-text-bundle/final-norm.gguf",
     ]
     models = [
         "Qwen3.8-27B-UD-IQ1_S.gguf",
         "Qwen3.8-27B-GSQ-RCO-IQ2_XS-mtp.gguf",
         "BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf",
+        "subdir/tokenizer-model-Q4_K_M.gguf",
     ]
     for path in aux:
         assert model_hub.is_aux_file(path), path

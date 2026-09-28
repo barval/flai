@@ -467,7 +467,7 @@ function fitTierClass(fit) {
                         fill.style.width = pct + '%';
                         text.textContent = t('hub_downloading')
                             .replace('{pct}', String(pct))
-                            .replace('{total}', String(job.total_mb));
+                            .replace('{total}', fmtNum(Math.ceil(job.total_mb)));
                         setTimeout(tick, everyMs);
                     } else if (job.state === 'verifying') {
                         fill.style.width = '100%';

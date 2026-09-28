@@ -474,43 +474,58 @@ def _parse_gguf_arch(data: bytes) -> dict | None:
     return result
 
 
+_MISS = object()
+
+
+def _gguf_arch_cached(repo: str, file_path: str) -> dict | None | object:
+    """Short lookups under the cache lock (never performs I/O)."""
+    key = (repo, file_path)
+    with _gguf_arch_cache_lock:
+        if key in _gguf_arch_cache:
+            value = _gguf_arch_cache[key]
+            return dict(value) if value else None
+        repo_wide = _gguf_arch_cache.get((repo, None))
+        return dict(repo_wide) if repo_wide else _MISS
+
+
 def _gguf_arch(repo: str, file_path: str) -> dict | None:
     """Read GGUF sizing metadata via HTTP Range.
 
     Cached per file so an auxiliary file without ``block_count`` (an imatrix,
     an MTP head, a split shard) never poisons the whole repository. A positive
-    result is also stored repo-wide so sibling files reuse it.
+    result is also stored repo-wide so sibling files reuse it. The HTTP reads
+    run outside the cache lock (double-checked), so concurrent fit
+    computations across repos are genuinely parallel.
     """
+    cached = _gguf_arch_cached(repo, file_path)
+    if cached is not _MISS:
+        return cached
+
     key = (repo, file_path)
+    result = None
+    try:
+        for head in _GGUF_HEADS:
+            resp = _hf_get(
+                f"{HF_DL}/{repo}/resolve/main/{file_path}",
+                stream=True,
+                extra_headers={"Range": f"bytes=0-{head - 1}"},
+                timeout=30,
+            )
+            if resp.status_code == 206:
+                prefix = bytearray()
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    prefix.extend(chunk)
+                    if len(prefix) >= head:
+                        break
+                result = _parse_gguf_arch(bytes(prefix[:head]))
+            if result:
+                break
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
+
     with _gguf_arch_cache_lock:
         if key in _gguf_arch_cache:
-            cached = _gguf_arch_cache[key]
-            return dict(cached) if cached else None
-        repo_wide = _gguf_arch_cache.get((repo, None))
-        if repo_wide:
-            return dict(repo_wide)
-
-        result = None
-        try:
-            for head in _GGUF_HEADS:
-                resp = _hf_get(
-                    f"{HF_DL}/{repo}/resolve/main/{file_path}",
-                    stream=True,
-                    extra_headers={"Range": f"bytes=0-{head - 1}"},
-                    timeout=30,
-                )
-                if resp.status_code == 206:
-                    prefix = bytearray()
-                    for chunk in resp.iter_content(chunk_size=64 * 1024):
-                        prefix.extend(chunk)
-                        if len(prefix) >= head:
-                            break
-                    result = _parse_gguf_arch(bytes(prefix[:head]))
-                if result:
-                    break
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
-
+            return dict(_gguf_arch_cache[key]) if _gguf_arch_cache[key] else None
         _gguf_arch_cache[key] = result
         if result:
             _gguf_arch_cache[(repo, None)] = result

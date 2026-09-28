@@ -1261,10 +1261,28 @@ class RedisRequestQueue:
                 lang,
             )
 
-        # Show resize notice if image was downscaled for editing
+        # Show a notice when the image was downscaled — either the large-source
+        # 1024px cap or the CPU-mode halving (which additionally shrinks output).
         resize_notice = None
         resize_notice_id = None
-        if image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                resize_text = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            resize_notice_id = save_message(
+                session_id, "assistant", resize_text, model_name="system", response_time="0"
+            )
+            resize_notice = resize_text
+        elif image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
             orig_w, orig_h = image_result["original_size"]
             new_w, new_h = image_result["new_size"]
             lang_for_msg = lang
@@ -1416,6 +1434,24 @@ class RedisRequestQueue:
             self._preload_multimodal_sync()
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
+        # CPU mode halves the generation size: surface the reduced resolution.
+        cpu_notice_id = None
+        cpu_notice = None
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                cpu_notice = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            cpu_notice_id = save_message(session_id, "assistant", cpu_notice, model_name="system", response_time="0")
+
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
 
@@ -1447,6 +1483,8 @@ class RedisRequestQueue:
             "mm_model": mm_model,
             "gen_model": sd_model,
             "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": sd_model},
+            "resize_notice": cpu_notice,
+            "resize_notice_id": cpu_notice_id,
         }
         return self._save_and_respond(
             session_id,

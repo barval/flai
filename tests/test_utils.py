@@ -12,6 +12,7 @@ from app.utils import (
     convert_to_supported_format_if_needed,
     extract_text_from_file,
     format_prompt,
+    remove_gguf_cache_entries,
     resize_image_if_needed,
 )
 
@@ -35,6 +36,52 @@ def test_format_prompt(tmp_path):
         assert result == "Hello, World!"
     finally:
         app.utils.PROMPTS_DIR = original_dir
+
+
+class _FakeCursor:
+    def __init__(self):
+        self.executed_sql = None
+        self.params = None
+
+    def execute(self, sql, params=()):
+        self.executed_sql = sql
+        self.params = params
+
+
+class _FakeConn:
+    def __init__(self):
+        self.cur = _FakeCursor()
+
+    def cursor(self):
+        return self.cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def commit(self):
+        pass
+
+
+@pytest.mark.unit
+def test_remove_gguf_cache_entries_drops_memory_and_db(monkeypatch):
+    """remove_gguf_cache_entries must drop the entry from the in-memory cache
+    AND issue a DELETE against the gguf_models_cache table."""
+    import app.utils as u
+    from app import database
+
+    u._gguf_models_cache = {"alpha": {"file_size_mb": 1}, "beta": {}, "gamma": {}}
+    conn = _FakeConn()
+    monkeypatch.setattr(database, "get_db", lambda: conn)
+    try:
+        remove_gguf_cache_entries(["alpha", "gamma"])
+        assert u._gguf_models_cache == {"beta": {}}
+    finally:
+        u._gguf_models_cache = None
+    assert "DELETE FROM gguf_models_cache" in conn.cur.executed_sql
+    assert set(conn.cur.params) == {"alpha", "gamma"}
 
 
 @pytest.mark.unit

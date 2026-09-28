@@ -67,6 +67,7 @@
     display: block;
     flex: 1;
     overflow-y: auto;
+    overflow-x: auto;
     min-height: 0; /* required for flex child to shrink properly */
 }
 
@@ -421,6 +422,28 @@ body.dark-theme .cam-spinner {
     cursor: pointer;
     font-size: 16px;
 }
+/* Hub download/delete/cancel buttons must match the .btn-primary/.save-button
+   height (the Chunks and Model-card "Save" buttons) instead of the taller
+   .add-user-button: a fixed 33px border-box height with the same 14px font. */
+.hub-dl,
+.hub-del,
+.hub-cancel {
+    height: 33px;
+    padding: 0 16px;
+    font-size: 14px;
+}
+.hub-del {
+    background-color: #c0392b;
+}
+.hub-del:hover {
+    background-color: #a93226;
+}
+body.dark-theme .hub-del {
+    background-color: #a93226;
+}
+body.dark-theme .hub-del:hover {
+    background-color: #7f241e;
+}
 .delete-user-btn {
     background-color: #e74c3c;
     color: white;
@@ -561,6 +584,10 @@ body.dark-theme .model-card .model-desc {
         height: calc(100vh - 125px); /* header 75px + footer 50px */
         padding: 15px;
     }
+
+    /* Model-type checkboxes: keep the box + icon, fold the text label into
+       the element's hover tooltip so the row fits the mobile width. */
+    .hub-type-label { display: none; }
 
     /* Database info row: stack items vertically with each on two lines */
     .db-info {
@@ -1112,3 +1139,142 @@ body.dark-theme .hardware-table td {
 body.dark-theme .hardware-table .hw-value {
     color: #e0e0e0;
 }
+
+/* Model Hub tab */
+#hub-tab.active { display: flex; flex-direction: column; overflow: hidden; }
+.hub-container { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0.5rem 0; }
+.hub-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; flex-shrink: 0; }
+.hub-filter-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.hub-filter-label { font-weight: 600; }
+.hub-check { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; }
+.hub-check input { margin: 0; }
+.hub-type-ic { font-size: 1em; }
+.hub-context-value { font-variant-numeric: tabular-nums; width: 7ch; min-width: 4ch; text-align: right; padding: 0.15rem 0.35rem; border: 1px solid #adb5bd; border-radius: 4px; }
+#hub-context-slider { width: 260px; max-width: 60%; }
+.hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-shrink: 0; flex-wrap: wrap; }
+.hub-header input[type="text"] { flex: 1 1 280px; }
+/* Fixed column header: mirrors the per-file table widths (14% | auto | 14% | 20%).
+   The header and the file tables share ONE vertical scroll area (the wrapper
+   below), so their centers stay identical even while the scrollbar gutter is
+   reserved; the header sticks to the top of the scroll viewport. */
+.hub-results-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.hub-columns {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #fff;
+    padding: 0.25rem 0.75rem 0.4rem;
+    display: grid;
+    grid-template-columns: 10% 1fr 14% 20%;
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 1px solid #bbb;
+}
+/* The name column keeps the same left inset as the data cells below, so the
+   header centers over the actual name text, not over the empty gutter. */
+.hub-col-name { padding-left: 1.5rem; }
+.hub-scan-status {
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+    background: #e3f2fd;
+    color: #0d47a1;
+}
+.hub-scan-status { animation: hub-status-pulse 2s ease-in-out infinite; }
+@keyframes hub-status-pulse {
+    0%, 100% { opacity: 0.65; }
+    50% { opacity: 1; }
+}
+#hub-results { display: flex; flex-direction: column; gap: 1rem; }
+.hub-note { color: #666; font-style: italic; }
+.hub-repo { border: 1px solid #bbb; border-radius: 6px; padding: 0.5rem 0.75rem; }
+.hub-repo-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.hub-repo-name { font-weight: 600; }
+.hub-repo-meta { margin-left: auto; color: #888; font-size: 0.9em; }
+.hub-repo-meta:last-child { margin-left: 0.75rem; }
+.hub-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; }
+.hub-badge-gated { background: #fbe9e7; color: #b71c1c; }
+.hub-badge-nc { background: #e8eaf6; color: #283593; }
+table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid #ddd; font-size: 0.95em; }
+.hub-file-row td:nth-child(1) { width: 10%; }
+.hub-file-row td:nth-child(2) { padding-left: 1.5rem; }
+.hub-file-row td:nth-child(3) { width: 14%; }
+.hub-file-row td:nth-child(4) { width: 20%; text-align: center; }
+.hub-size { white-space: nowrap; color: #777; text-align: right; }
+.hub-path { word-break: break-all; }
+.hub-aux-note { color: #888; font-size: 0.85em; margin-top: 0.1rem; }
+.hub-fit { text-align: center; white-space: nowrap; }
+.hub-fit-good { color: #29A847; }
+.hub-fit-offload, .hub-fit-cpu { color: #b8860b; }
+.hub-fit-impossible, .hub-fit-blocked { color: #E01F1F; }
+.hub-fit-pending { color: #888; }
+.hub-progress-wrap { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 220px; }
+.hub-progress-bar { flex: 1; height: 10px; background: #ddd; border-radius: 5px; overflow: hidden; }
+.hub-progress-fill { display: block; height: 100%; width: 0; background: #4caf50; transition: width 0.4s; }
+.hub-progress-text { font-size: 0.85em; color: #555; white-space: nowrap; }
+/* Download progress strip: rendered below the repo name, outside the table,
+   so it can never overlap the file-name column or the action buttons. */
+.hub-dl-jobs { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.hub-dl-job { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9em; }
+.hub-dl-job-name { color: #555; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-dl-job .hub-progress-wrap { flex: 1; }
+/* The in-place "Cancel" button reuses .add-user-button (same size as
+   "Download"); only its color changes to signal cancellation. */
+.hub-cancel { background-color: #c0392b; }
+body.dark-theme .hub-cancel { background-color: #a93226; }
+/* dark theme */
+body.dark-theme .hub-note { color: #888; }
+body.dark-theme .hub-columns { border-color: #444; background-color: #1e1e1e; }
+body.dark-theme .hub-scan-status { background: #1e3a5f; color: #a7d3ff; }
+body.dark-theme .hub-repo { border-color: #444; }
+body.dark-theme .hub-repo-meta { color: #999; }
+body.dark-theme .hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
+body.dark-theme .hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
+body.dark-theme .hub-file-row td { border-top-color: #333; }
+body.dark-theme .hub-size { color: #aaa; }
+body.dark-theme .hub-aux-note { color: #999; }
+body.dark-theme .hub-fit-good { color: #7ec584; }
+body.dark-theme .hub-fit-offload, body.dark-theme .hub-fit-cpu { color: #e0b64e; }
+body.dark-theme .hub-fit-impossible, body.dark-theme .hub-fit-blocked { color: #e07b5e; }
+body.dark-theme .hub-fit-pending { color: #999; }
+body.dark-theme .hub-progress-bar { background: #333; }
+body.dark-theme .hub-progress-text { color: #ccc; }
+body.dark-theme .hub-dl-job-name { color: #ccc; }
+
+/* Installed-file badge and the offline banner in the Model Hub tab. */
+.hub-installed { color: #29A847; font-weight: 600; margin-right: 0.5rem; }
+.hub-offline-banner {
+    padding: 0.6rem 0.8rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    background: #fdecea;
+    color: #9e1f0f;
+    border: 1px solid #f2b8b0;
+    flex-shrink: 0;
+}
+body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; border-color: #7a3a32; }
+/* Models-tab disk files panel. */
+.models-files-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.installed-file {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.installed-file-name { font-weight: 600; word-break: break-all; }
+.installed-file-meta { margin-left: auto; color: #777; font-size: 0.9em; white-space: nowrap; }
+.installed-file .hub-del { margin-left: 0.5rem; }
+body.dark-theme .installed-file { border-color: #444; }
+body.dark-theme .installed-file-meta { color: #aaa; }

@@ -206,6 +206,16 @@ class SdCppModule(TranslationMixin):
                 width, height = int(width * ratio), int(height * ratio)
                 self.logger.info(f"VRAM tier 8GB: capped resolution from {old_w}×{old_h} to {width}×{height}")
 
+        # CPU mode: sd-cli on CPU falls behind the request timeout (the user sees
+        # "Image generation timeout" mid-run), so halve BOTH sides — a quarter
+        # of the pixels reduces step time roughly 4× and the run finishes.
+        cpu_degrade = {"degraded": False, "original_size": None, "new_size": None}
+        if not use_gpu:
+            old_w, old_h = width, height
+            width, height = max(8, width // 2), max(8, height // 2)
+            cpu_degrade = {"degraded": True, "original_size": (old_w, old_h), "new_size": (width, height)}
+            self.logger.info(f"Generation on CPU: degraded size from {old_w}×{old_h} to {width}×{height}")
+
         # Smart offload level: skip levels that won't fit in VRAM
         start_level = self._choose_start_offload_level(rm, width, height) if use_gpu else 3
 
@@ -275,6 +285,7 @@ class SdCppModule(TranslationMixin):
                         "gen_time": None,
                         "mm_model": None,
                         "gen_model": "Z_image_turbo",
+                        "cpu_degrade": cpu_degrade,
                     }
                 else:
                     return {"success": False, "error": self._("sd-wrapper returned no image", lang)}
@@ -360,12 +371,39 @@ class SdCppModule(TranslationMixin):
         except Exception as e:
             self.logger.warning(f"Edit: failed to resize image: {e}")
 
+        # CPU mode: halve both sides of the source image AND the target size,
+        # so the run finishes inside the request timeout (see generation above).
+        cpu_degrade = {"degraded": False, "original_size": None, "new_size": None}
+        if not use_gpu:
+            try:
+                img_bytes = base64.b64decode(image_base64)
+                img = Image.open(BytesIO(img_bytes))
+                w, h = img.size
+                new_w, new_h = max(8, w // 2), max(8, h // 2)
+                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
+                if img.mode in ("RGBA", "LA", "P"):
+                    rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+                    img = rgb_img  # type: ignore[assignment]
+                buf = BytesIO()
+                img.save(buf, format="JPEG", quality=90)
+                image_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                cpu_degrade = {"degraded": True, "original_size": (w, h), "new_size": (new_w, new_h)}
+                self.logger.info(f"Edit on CPU: degraded image from {w}×{h} to {new_w}×{new_h}")
+            except Exception as e:
+                self.logger.warning(f"Edit: CPU degrade failed: {e}")
+
         # Smart offload level for edit
         if use_gpu:
-            edit_w = min(edit_prompt_data.get("width", self.default_width), max_edit_size)
-            edit_h = min(edit_prompt_data.get("height", self.default_height), max_edit_size)
-            start_level = self._choose_start_offload_level(rm, edit_w, edit_h)
+            out_w = min(edit_prompt_data.get("width", self.default_width), max_edit_size)
+            out_h = min(edit_prompt_data.get("height", self.default_height), max_edit_size)
+            start_level = self._choose_start_offload_level(rm, out_w, out_h)
         else:
+            if cpu_degrade["degraded"]:
+                out_w, out_h = cpu_degrade["new_size"]
+            else:
+                out_w = max(8, int(edit_prompt_data.get("width", self.default_width)) // 2)
+                out_h = max(8, int(edit_prompt_data.get("height", self.default_height)) // 2)
             start_level = 3
 
         rm.mark_sd_busy()
@@ -377,8 +415,8 @@ class SdCppModule(TranslationMixin):
             "edit_prompt": edit_prompt_data.get("edit_prompt", ""),
             "image_data": image_base64,
             "strength": edit_prompt_data.get("strength", 0.7),
-            "width": edit_prompt_data.get("width", self.default_width),
-            "height": edit_prompt_data.get("height", self.default_height),
+            "width": out_w,
+            "height": out_h,
             "use_gpu": use_gpu,
             "start_offload_level": start_level,
             "preview_url": f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step",
@@ -428,6 +466,7 @@ class SdCppModule(TranslationMixin):
                         "resized": resized_info["resized"],
                         "original_size": resized_info["original_size"],
                         "new_size": resized_info["new_size"],
+                        "cpu_degrade": cpu_degrade,
                     }
                 else:
                     return {"success": False, "error": self._("Edit returned no image.", lang)}

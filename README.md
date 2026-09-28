@@ -26,7 +26,7 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
+- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), history search, camera snapshots.
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is executed locally as one coherent task with streamed progress and a collapsible step-by-step trace
@@ -80,6 +80,7 @@
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
 - 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
 - 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
+- 🧭 **Model Hub** – search Hugging Face for GGUF models with a GPU/RAM fit estimate before downloading, download with progress/resume, delete downloaded files, and keep working offline
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
 - 📈 **System Monitoring** – view database sizes and system statistics
@@ -144,10 +145,11 @@ Notes:
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v12.1
+### What's New in v12.2
 
 | Feature | Notes |
 |---------|-------|
+| **Model Hub** | Search Hugging Face for models from a new admin tab, check that a model fits your GPU/RAM before downloading, and download it with progress and resume. Already-downloaded files show a ✓ Downloaded badge with a Delete button — in the Hub itself and in the «Downloaded models» panel on the Models tab. When Hugging Face is unreachable the tab warns you and points to the manual path: drop `.gguf` files into `/models` and press «Update model list». |
 | **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
 | **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
 | **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
@@ -198,7 +200,7 @@ All services run on one machine with GPU sharing:
 FLAI ships with two deployment modes:
 
 - **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp, stable-diffusion.cpp, LTX-Video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
-- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all.
+- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all. To keep generation times bounded, image and video generation automatically downscale the output resolution (details below).
 
 > ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA versions of sd.cpp and LTX). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
 
@@ -229,14 +231,14 @@ FLAI ships with two deployment modes:
 |---------|------|-------|--------|----------|
 | Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-4B (light, ~2.5 GB) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-4B (light) |
 | Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ✅ gpt-oss-20b-mxfp4 (native MXFP4) |
-| Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
-| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
+| Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution auto-halved on both sides |
+| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ resolution auto-halved on both sides |
 | Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only images:** SD generation and editing halve both sides of the resolution on CPU (~4× fewer pixels ≈ ~4× faster), so diffusion finishes inside the generation timeout (it used to hit — Image generation timeout — around step 3/10); the edit path also downsizes the source image, and the user is notified of the reduced resolution. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
@@ -755,6 +757,13 @@ services/llamacpp/models/
 
 > 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
 
+### Downloading, Deleting and Offline Model Files (Model Hub)
+
+- **Downloading:** the **Model Hub** tab (admin) searches Hugging Face, shows a GPU/RAM fit badge per file, and downloads with progress, resume and sha256 verification. A successful download writes a `.hubmeta` marker that records the model's companion files (mmproj, MTP head, text encoder).
+- **Deleting:** downloaded models show a **✓ Downloaded** badge with a **Delete** button — in the Hub tab and in the **«Downloaded models»** panel on the Models tab. Deleting a Hub-downloaded model removes it **together with its companions**; a model currently selected as a module base is refused.
+- **Offline:** when Hugging Face is unreachable the Hub tab shows a warning and points to the manual path: drop `.gguf` files into `/models`, then press **«Update model list»** in the Models tab.
+- ⚠️ **Manually placed files:** a `.gguf` copied into `/models` by hand has **no** `.hubmeta` marker, so deleting it removes **only that file** — its companions (e.g. `mmproj-*.gguf`, MTP head, text encoder) are not tracked and must be removed manually.
+
 ### Model Parameters
 
 | Parameter | Multimodal | Reasoning | Embedding |
@@ -775,7 +784,7 @@ services/llamacpp/models/
 |-----------|---------|------------------------|-------|
 | **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-4B Q4_K_M (~2.5 GB, 8 GB GPU & CPU-only) | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
-| **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
+| **Embedding** | bge-m3 Q8_0 (~0.6 GB) | — | Single model for all tiers |
 
 > **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
@@ -1063,7 +1072,11 @@ curl http://localhost:5000/health
     "web": "ok",
     "database": "ok",
     "redis": "ok",
-    "llamacpp": "ok"
+    "llamacpp": "ok",
+    "qdrant": "ok",
+    "sd_wrapper": "ok",
+    "whisper": "ok",
+    "ltx_video": "ok"
   }
 }
 ```
@@ -1102,7 +1115,7 @@ curl http://localhost:5000/metrics
 |-------|---------|---------|-------------|
 | **Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf** | Reasoning (all tiers) | [Qwen License](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal — chat/router/vision | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~1.1 GB |
-| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
+| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
 
 ### Image Generation Models (stable-diffusion.cpp)
 

@@ -26,8 +26,21 @@ function initAdminTabs() {
             document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             document.getElementById(target + '-tab').classList.add('active');
+            localStorage.setItem('admin_active_tab', target);
         });
     });
+    // Restore the active tab after a full reload (e.g. language switch).
+    const saved = localStorage.getItem('admin_active_tab');
+    if (saved) {
+        const savedBtn = document.querySelector('.admin-tab[data-tab="' + saved + '"]');
+        const savedContent = document.getElementById(saved + '-tab');
+        if (savedBtn && savedContent) {
+            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+            savedBtn.classList.add('active');
+            savedContent.classList.add('active');
+        }
+    }
 }
 
 function loadModelConfigs() {
@@ -147,6 +160,14 @@ async function onContextLengthChange(event) {
     }
 }
 
+function modelAllowedForModule(type, module) {
+    // A missing/unknown type means legacy fallback servers: only the
+    // embedding module is restrictive then, everything else may be offered.
+    if (module === 'embedding') return type === 'embedding';
+    if (module === 'multimodal') return type === 'multimodal';
+    return type !== 'embedding';
+}
+
 async function refreshModelsForModule(module, silent = false) {
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     let serviceUrl = urlInput.value.trim();
@@ -208,10 +229,12 @@ async function refreshModelsForModule(module, silent = false) {
         }
 
         modelListCache[serviceUrl] = models;
+        models = models.map(m => typeof m === 'string' ? { id: m, type: '' } : m);
         models.forEach(model => {
+            if (!modelAllowedForModule(model.type, module)) return;
             const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
+            option.value = model.id;
+            option.textContent = model.id;
             select.appendChild(option);
         });
     } catch (err) {
@@ -807,6 +830,84 @@ function initChunksSection() {
     }
 }
 
+const TYPE_EMOJI = { reasoning: '🧠', multimodal: '🖼️', embedding: '📐' };
+
+function fmtNum(n) {
+    return (Number(n) || 0).toLocaleString();
+}
+
+function renderInstalledFiles(files) {
+    const host = document.getElementById('models-files-list');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!files || !files.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-note';
+        empty.textContent = t('hub_no_results');
+        host.appendChild(empty);
+        return;
+    }
+    files.forEach((f) => {
+        const row = document.createElement('div');
+        row.className = 'installed-file';
+        const emoji = document.createElement('span');
+        emoji.className = 'installed-file-emoji';
+        emoji.textContent = TYPE_EMOJI[f.type] || TYPE_EMOJI.reasoning;
+        row.appendChild(emoji);
+        const name = document.createElement('span');
+        name.className = 'installed-file-name';
+        name.textContent = f.name;
+        row.appendChild(name);
+        const meta = document.createElement('span');
+        meta.className = 'installed-file-meta';
+        meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
+            + (f.path ? ' · ' + f.path : '')
+            + (f.from_hub ? ' · ' + t('hub_installed') : '');
+        row.appendChild(meta);
+        const del = document.createElement('button');
+        del.className = 'hub-del add-user-button';
+        del.dataset.filename = f.name;
+        del.textContent = '🗑 ' + t('hub_uninstall');
+        del.addEventListener('click', () => deleteInstalledFile(f.name, del));
+        row.appendChild(del);
+        host.appendChild(row);
+    });
+}
+
+async function loadInstalledFiles() {
+    const host = document.getElementById('models-files-list');
+    if (!host) return;
+    try {
+        const resp = await fetch('/admin/api/hub/installed', { credentials: 'same-origin' });
+        const data = await safeJson(resp);
+        if (data && data.status === 'ok') renderInstalledFiles(data.files || []);
+    } catch (err) {
+        console.error('Load installed model files error:', err);
+    }
+}
+
+async function deleteInstalledFile(filename, btn) {
+    if (!confirm(t('hub_delete_confirm').replace('{filename}', filename))) return;
+    btn.disabled = true;
+    try {
+        const resp = await fetchWithCSRF('/admin/api/hub/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        });
+        const data = await safeJson(resp);
+        if (data && data.status === 'ok') {
+            loadInstalledFiles();
+        } else {
+            btn.disabled = false;
+            alert((data && data.error) || t('error'));
+        }
+    } catch (err) {
+        btn.disabled = false;
+        alert(t('error') + ': ' + err.message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     dlog('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
     initAdminTabs();
@@ -827,6 +928,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     modelDetails = {};
                     modelListCache = {};
                     loadModelConfigs();
+                    loadInstalledFiles();
                 } else {
                     alert(t('error') + ': ' + (data.error || t('unknown_error')));
                 }
@@ -842,4 +944,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     initChunksSection();
+    loadInstalledFiles();
 });

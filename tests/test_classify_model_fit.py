@@ -78,8 +78,8 @@ class TestClassifyModelFit:
         mock_cache.return_value = HUGE_MODEL
         # 15 GB > 85% of 16 GB VRAM (13.6 GB) AND > 70% of 16 GB RAM - 2 GB (9.2 GB)
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
         ):
             result = _classify_model_fit(
                 model_name="VeryLargeModel.gguf",
@@ -105,8 +105,8 @@ class TestClassifyModelFit:
         }
         mock_cache.return_value = very_huge
         with (
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
         ):
             result = _classify_model_fit(
                 model_name="Llama-3.1-70B-Q4_K_M.gguf",
@@ -154,8 +154,8 @@ class TestClassifyModelFit:
         mock_cache.return_value = MEDIUM_MODEL
         # Force RAM to be huge so model can fit with CPU offload
         with (
-            patch("app.routes.admin._get_total_ram_mb", return_value=64000),
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=64000),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
         ):
             result = _classify_model_fit(
                 model_name="Qwen3.5-9B-Q8_0.gguf",
@@ -230,8 +230,8 @@ class TestClassifyMmproj:
         mock_cache.return_value = self._BIG_VL
         mock_mmproj.return_value = 1105
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
         ):
             # 12.5 GB + ~0.4 GB KV @ 4K ctx + 1.1 GB mmproj ≈ 14 GB > 13.86 GB (85%)
             result = _classify_model_fit(
@@ -250,8 +250,8 @@ class TestClassifyMmproj:
         mock_cache.return_value = MEDIUM_MODEL
         mock_mmproj.return_value = 1105
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
         ):
             result = _classify_model_fit(
                 model_name="Qwen3.5-9B-Q8_0.gguf",

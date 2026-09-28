@@ -385,6 +385,35 @@ class TestAdminModelManagement:
         assert response.status_code == 400
 
     @pytest.mark.integration
+    def test_llamacpp_models_gguf_files_with_types(self, admin_client):
+        """GGUF listing returns {id, type} so module dropdowns can filter by
+        model kind (embedding only in embedding, multimodal only in multimodal,
+        everything but embedding in reasoning)."""
+        fake_files = [
+            ("/models", [], ["Qwen3-14B-Q4_K_M.gguf", "bge-m3-Q8_0.gguf", "Qwen3VL-8B.gguf", "mmproj-F16.gguf"]),
+        ]
+        with (
+            patch("app.routes.admin.os.walk", return_value=fake_files),
+            patch(
+                "app.utils.get_gguf_models_cached",
+                return_value={
+                    "Qwen3-14B-Q4_K_M": {"architecture": "qwen3"},
+                    "bge-m3-Q8_0": {"architecture": "bert"},
+                    "Qwen3VL-8B": {"architecture": "mllama"},
+                    "mmproj-F16": {"architecture": "mllama"},
+                },
+            ),
+        ):
+            response = admin_client.get("/admin/api/llamacpp/models?list_type=gguf_files")
+        assert response.status_code == 200
+        data = response.get_json()
+        by_id = {m["id"]: m["type"] for m in data}
+        assert by_id["Qwen3-14B-Q4_K_M.gguf"] == "reasoning"
+        assert by_id["bge-m3-Q8_0.gguf"] == "embedding"
+        assert by_id["Qwen3VL-8B.gguf"] == "multimodal"
+        assert "mmproj-F16.gguf" not in by_id
+
+    @pytest.mark.integration
     @patch("app.routes.admin.requests.get")
     def test_llamacpp_check_success(self, mock_get, admin_client):
         """Test llama-server check with successful response."""
@@ -497,3 +526,31 @@ class TestModelConfigCtxUpdate:
             resp = admin_client.put("/admin/api/model_configs/multimodal", json={"context_length": 8192})
         assert resp.status_code == 200
         mock_classify.assert_not_called()
+
+
+@pytest.mark.integration
+class TestModelHubTab:
+    """The Model Hub tab is always present."""
+
+    @pytest.fixture
+    def admin_client(self, client, test_app):
+        """Create admin client (same pattern as the other admin classes)."""
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login, update_password
+
+            if get_user_by_login("hubadm"):
+                update_password("hubadm", "pass123")
+            else:
+                create_user("hubadm", "pass123", "Hub Adm", is_admin=True)
+
+        client.post("/login", data={"login": "hubadm", "password": "pass123"})
+        return client
+
+    def test_hub_tab_always_shown(self, admin_client):
+        """The tab button, markup and script render for any admin."""
+        resp = admin_client.get("/admin/")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'data-tab="hub"' in html
+        assert 'id="hub-tab"' in html
+        assert "admin-modelHub.js" in html

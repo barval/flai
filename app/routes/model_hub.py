@@ -160,10 +160,13 @@ def hub_download():
     data = request.get_json(silent=True) or {}
     repo = (data.get("repo") or "").strip()
     file_path = (data.get("file") or "").strip()
+    companion_paths = data.get("companions") or []
     if "/" not in repo or not file_path:
         return _hub_err("bad_path")
+    if not isinstance(companion_paths, list) or any(not isinstance(path, str) for path in companion_paths):
+        return _hub_err("bad_path")
     try:
-        job_id = model_hub.start_download(repo, file_path)
+        job_id = model_hub.start_download(repo, file_path, companion_paths=companion_paths)
     except model_hub.DownloadBlocked as exc:
         return _hub_err(exc.reason, code=409)
     except Exception as exc:  # noqa: BLE001

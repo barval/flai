@@ -459,6 +459,15 @@ def test_hub_service_files_msgid_in_both_catalogs():
         assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
 
 
+def test_admin_tabs_scroll_horizontally_on_narrow_screens():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    tabs = re.search(r"\.admin-tabs\s*\{([^}]*)\}", admin_css)
+    assert tabs and re.search(r"overflow-x:\s*auto", tabs.group(1))
+    button = re.search(r"\.admin-tab\s*\{([^}]*)\}", admin_css)
+    assert button and re.search(r"flex:\s*0\s+0\s+auto", button.group(1))
+    assert button and re.search(r"white-space:\s*nowrap", button.group(1))
+
+
 def test_admin_active_tab_survives_language_switch_reload():
     """Admin tab position must persist across the language-change full reload:
     initAdminTabs saves the active data-tab on click and restores it on load."""

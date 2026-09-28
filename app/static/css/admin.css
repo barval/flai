@@ -1200,7 +1200,16 @@ table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hub-progress-bar { flex: 1; height: 10px; background: #ddd; border-radius: 5px; overflow: hidden; }
 .hub-progress-fill { display: block; height: 100%; width: 0; background: #4caf50; transition: width 0.4s; }
 .hub-progress-text { font-size: 0.85em; color: #555; white-space: nowrap; }
-.hub-cancel { cursor: pointer; }
+/* Download progress strip: rendered below the repo name, outside the table,
+   so it can never overlap the file-name column or the action buttons. */
+.hub-dl-jobs { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.hub-dl-job { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9em; }
+.hub-dl-job-name { color: #555; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-dl-job .hub-progress-wrap { flex: 1; }
+/* The in-place "Cancel" button reuses .add-user-button (same size as
+   "Download"); only its color changes to signal cancellation. */
+.hub-cancel { background-color: #c0392b; }
+body.dark-theme .hub-cancel { background-color: #a93226; }
 /* dark theme */
 body.dark-theme .hub-note { color: #888; }
 body.dark-theme .hub-columns { border-color: #444; background-color: #1e1e1e; }
@@ -1218,3 +1227,4 @@ body.dark-theme .hub-fit-impossible, body.dark-theme .hub-fit-blocked { color: #
 body.dark-theme .hub-fit-pending { color: #999; }
 body.dark-theme .hub-progress-bar { background: #333; }
 body.dark-theme .hub-progress-text { color: #ccc; }
+body.dark-theme .hub-dl-job-name { color: #ccc; }

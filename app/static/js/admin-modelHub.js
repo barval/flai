@@ -265,12 +265,25 @@ function fitTierClass(fit) {
         });
     }
 
+    function ensureJobsHost(row) {
+        const card = row.closest('.hub-repo');
+        let host = card.querySelector('.hub-dl-jobs');
+        if (!host) {
+            host = document.createElement('div');
+            host.className = 'hub-dl-jobs';
+            // Progress sits below the repo name, never inside a table cell
+            // (a thin 10% column could not hold the bar without overlapping).
+            const head = card.querySelector('.hub-repo-head');
+            head.insertAdjacentElement('afterend', host);
+        }
+        return host;
+    }
+
     async function startDownload(btn) {
         const repo = btn.dataset.repo;
         const file = btn.dataset.file;
         const module = btn.dataset.module || 'multimodal';
         const row = btn.closest('.hub-file-row');
-        const cells = row.querySelectorAll('td');
         btn.disabled = true;
         fetchWithCSRF('/admin/api/hub/download', {
             method: 'POST',
@@ -285,25 +298,41 @@ function fitTierClass(fit) {
                 row.querySelector('.hub-fit').title = data.error || t('hub_error');
                 return;
             }
-            cells[0].textContent = '';
-            cells[0].innerHTML = `<span class="hub-progress-wrap">
-                <span class="hub-progress-bar"><span class="hub-progress-fill" data-fill=""></span></span>
-                <span class="hub-progress-text">0%</span>
-                <button class="hub-cancel">${esc(t('hub_cancel'))}</button></span>`;
-            btn.remove();
-            pollJob(data.job_id, cells[0]);
+            const cell = document.createElement('div');
+            cell.className = 'hub-dl-job';
+            cell.innerHTML = `<span class="hub-dl-job-name">${esc(file)}</span>
+                <span class="hub-progress-wrap">
+                    <span class="hub-progress-bar"><span class="hub-progress-fill" data-fill=""></span></span>
+                    <span class="hub-progress-text">0%</span>
+                </span>`;
+            ensureJobsHost(row).appendChild(cell);
+            // The "Download" button turns into a same-size red "Cancel" button
+            // in place, so no extra control piles up on top of the file name.
+            btn.textContent = t('hub_cancel');
+            btn.classList.remove('hub-dl');
+            btn.classList.add('hub-cancel');
+            btn.dataset.job = data.job_id;
+            pollJob(data.job_id, cell, btn, repo, file, module);
         })
         .catch(() => { btn.disabled = false; row.querySelector('.hub-fit').textContent = '✗'; });
     }
 
-    function pollJob(jobId, cell, everyMs) {
-        everyMs = everyMs || 1000;
-        const cancelBtn = cell.querySelector('.hub-cancel');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', () => {
-                fetchWithCSRF(`/admin/api/hub/cancel/${jobId}`, { method: 'POST' }).catch(() => {});
-            });
-        }
+    function restoreDownload(btn, repo, file, module) {
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'hub-dl add-user-button';
+        dlBtn.dataset.repo = repo;
+        dlBtn.dataset.file = file;
+        dlBtn.dataset.module = module;
+        dlBtn.textContent = t('hub_download');
+        dlBtn.addEventListener('click', () => startDownload(dlBtn));
+        btn.parentNode.replaceChild(dlBtn, btn);
+    }
+
+    function pollJob(jobId, cell, cancelBtn, repo, file, module) {
+        const everyMs = 1000;
+        cancelBtn.addEventListener('click', () => {
+            fetchWithCSRF(`/admin/api/hub/cancel/${jobId}`, { method: 'POST' }).catch(() => {});
+        });
         (function tick() {
             fetchWithCSRF(`/admin/api/hub/progress/${jobId}`)
                 .then(r => r.json())
@@ -334,13 +363,16 @@ function fitTierClass(fit) {
                     } else if (job.state === 'done') {
                         fill.style.width = '100%';
                         cell.innerHTML = '✓ ' + esc(t('hub_done'));
+                        cancelBtn.remove();
                     } else if (job.state === 'cancelled') {
-                        cell.innerHTML = esc(t('hub_cancelled'));
+                        cell.textContent = esc(t('hub_cancelled'));
+                        restoreDownload(cancelBtn, repo, file, module);
                     } else if (job.state === 'failed') {
-                        cell.innerHTML = '✗ ' + esc(t('hub_failed')) + ': ' + esc(job.error || '');
+                        cell.textContent = '✗ ' + esc(t('hub_failed')) + ': ' + esc(job.error || '');
+                        restoreDownload(cancelBtn, repo, file, module);
                     }
                 })
-                .catch(() => { cell.innerHTML = '✗ ' + esc(t('hub_failed')); });
+                .catch(() => { cell.textContent = '✗ ' + esc(t('hub_failed')); });
         })();
     }
 })();

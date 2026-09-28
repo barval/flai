@@ -365,6 +365,10 @@ def test_hub_column_header_and_sticky_layout():
     assert "grid-template-columns: 10% 1fr 14% 20%" in admin_css
     assert re.search(r"\.hub-columns\s*\{[^}]*text-align:\s*center", admin_css)
     assert re.search(r"\.hub-col-name\s*\{[^}]*padding-left:\s*1\.5rem", admin_css)
+    assert "padding-right: 0.4rem" not in admin_css
+    # The scrollbar gutter must be stable so the tables and the shared header
+    # keep identical column centers once the list starts scrolling.
+    assert re.search(r"#hub-results\s*\{[^}]*scrollbar-gutter:\s*stable", admin_css)
 
 
 def test_hub_model_name_label_before_search():

@@ -279,17 +279,27 @@ def is_aux_file(path: str) -> bool:
     return bool(m and int(m.group("num")) > 1)
 
 
-def _family_token(name: str) -> str:
-    """First alphanumeric family token of a model file name, e.g. 'qwen3.8'
-    for both 'Qwen3.8-27B-UD-IQ1_S.gguf' and 'MTP/mtp-Qwen3.8-27B-Q4_0.gguf'."""
-    low = re.sub(r"^mtp[-_.]", "", os.path.basename(name).lower())
-    m = re.search(r"[a-z][a-z0-9]*", low)
-    return m.group(0) if m else ""
+def _mtp_head(repo: str, model_path: str) -> dict | None:
+    """The single MTP head matching ``model_path``'s quantization, or None.
+
+    Only an exact name match (``mtp-<model-base>.gguf``) is a companion: the
+    runtime does not load MTP head files at all (draft-mtp runs from the main
+    model's own nextn layers), so grabbing "all family heads" would download
+    gigabytes that are never used. For a multi-part model the part suffix is
+    stripped so the head follows the base quantization (e.g. mtp-...-BF16.gguf)."""
+    main_base = os.path.basename(model_path)
+    head_name = "mtp-" + os.path.splitext(main_base)[0]
+    head_name = re.sub(r"-\d{4,5}-of-\d{4,5}$", "", head_name) + ".gguf"
+    for fi in _repo_files(repo):
+        if os.path.basename(fi["path"]) == head_name:
+            return dict(fi)
+    return None
 
 
 def _companion_files(repo: str, model_path: str) -> list[dict]:
-    """Files required to use ``model_path``: later multi-part shards and the
-    matching MTP head (same model family in the repo)."""
+    """Files fetched with ``model_path`` and stored next to it: later multi-part
+    shards (required to load the model) and a single MTP head matching the model
+    quantization (unused at runtime, but exported for disk-storage parity)."""
     files = _repo_files(repo)
     out: list[dict] = []
     main_base = os.path.basename(model_path)
@@ -300,16 +310,35 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
             fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
             if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total and int(fm.group("num")) > 1:
                 out.append(dict(fi))
-    token = _family_token(main_base)
-    if token:
-        for fi in files:
-            base = os.path.basename(fi["path"])
-            if base.lower().startswith("mtp-") and _family_token(base) == token:
-                out.append(dict(fi))
-    uniq: dict[str, dict] = {}
-    for fi in out:
-        uniq.setdefault(fi["path"], fi)
-    return list(uniq.values())
+    head = _mtp_head(repo, model_path)
+    if head:
+        out.append(head)
+    return out
+
+
+def _runtime_size_mb(repo: str, file_path: str) -> float:
+    """Actual VRAM/RAM footprint when the model loads.
+
+    Every shard of a multi-part set is read together, so the target's size must
+    be summed with its later parts. MTP head files are NOT part of the runtime
+    footprint (draft-mtp uses the main model's own layers), so they are omitted."""
+    target = None
+    for fi in _repo_files(repo):
+        if fi["path"] == file_path:
+            target = fi
+            break
+    if target is None:
+        return 0.0
+    total = 0.0
+    m = _MULTIPART_RE.match(os.path.basename(file_path))
+    if not m or int(m.group("num")) != 1:
+        return float(target["size_mb"])
+    prefix, total_parts = m.group("prefix"), int(m.group("total"))
+    for fi in _repo_files(repo):
+        fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
+        if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total_parts:
+            total += float(fi["size_mb"])
+    return total
 
 
 def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
@@ -585,7 +614,7 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
     fit = _classify_model_fit(
         model_name,
         context_length,
-        file_size_mb=float(target["size_mb"]),
+        file_size_mb=_runtime_size_mb(repo, file_path),
         block_count=int(arch["block_count"]),
         module=module,
     )

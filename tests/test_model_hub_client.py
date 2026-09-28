@@ -269,21 +269,38 @@ def test_aux_file_detection():
 
 def test_companion_files_shard_tail_and_mtp(monkeypatch):
     files = [
-        {"path": "BF16/My-00001-of-00002.gguf", "size_mb": 2.0, "sha256": "a" * 64},
-        {"path": "BF16/My-00002-of-00002.gguf", "size_mb": 2.0, "sha256": "b" * 64},
-        {"path": "My.Q4_K_M.gguf", "size_mb": 2.0, "sha256": "c" * 64},
-        {"path": "MTP/mtp-My-Q4_0.gguf", "size_mb": 1.0, "sha256": "d" * 64},
+        {"path": "BF16/My-BF16-00001-of-00002.gguf", "size_mb": 2.0, "sha256": "a" * 64},
+        {"path": "BF16/My-BF16-00002-of-00002.gguf", "size_mb": 2.0, "sha256": "b" * 64},
+        {"path": "My-Q4_K_M.gguf", "size_mb": 2.0, "sha256": "c" * 64},
+        {"path": "My.Unsuitable-IQ1_S.gguf", "size_mb": 2.0, "sha256": "j" * 64},
+        {"path": "MTP/mtp-My-BF16.gguf", "size_mb": 1.0, "sha256": "d" * 64},
+        {"path": "MTP/mtp-My-Q4_K_M.gguf", "size_mb": 1.0, "sha256": "e" * 64},
     ]
     monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
 
-    comps = model_hub._companion_files("org/My", "BF16/My-00001-of-00002.gguf")
-    assert [c["path"] for c in comps] == ["BF16/My-00002-of-00002.gguf", "MTP/mtp-My-Q4_0.gguf"]
+    comps = model_hub._companion_files("org/My", "BF16/My-BF16-00001-of-00002.gguf")
+    assert [c["path"] for c in comps] == ["BF16/My-BF16-00002-of-00002.gguf", "MTP/mtp-My-BF16.gguf"]
 
-    comps = model_hub._companion_files("org/My", "My.Q4_K_M.gguf")
-    assert [c["path"] for c in comps] == ["MTP/mtp-My-Q4_0.gguf"]
+    comps = model_hub._companion_files("org/My", "My-Q4_K_M.gguf")
+    assert [c["path"] for c in comps] == ["MTP/mtp-My-Q4_K_M.gguf"]
 
-    comps = model_hub._companion_files("org/My", "My.Q4_K_M.gguf")
-    assert model_hub._family_token("MTP/mtp-My-Q4_0.gguf") == model_hub._family_token("My.Q4_K_M.gguf")
+    comps = model_hub._companion_files("org/My", "My.Unsuitable-IQ1_S.gguf")
+    assert [c["path"] for c in comps] == [], "a missing quant-matched MTP head must not pull every family head"
+
+
+def test_runtime_size_mb_sums_shards_only(monkeypatch):
+    files = [
+        {"path": "BF16/My-00001-of-00003.gguf", "size_mb": 8.0, "sha256": "a" * 64},
+        {"path": "BF16/My-00002-of-00003.gguf", "size_mb": 8.0, "sha256": "b" * 64},
+        {"path": "BF16/My-00003-of-00003.gguf", "size_mb": 8.0, "sha256": "c" * 64},
+        {"path": "My.Q8_0.gguf", "size_mb": 9.0, "sha256": "d" * 64},
+        {"path": "MTP/mtp-My-Q8_0.gguf", "size_mb": 4.0, "sha256": "e" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    assert model_hub._runtime_size_mb("org/My", "BF16/My-00001-of-00003.gguf") == 24.0
+    assert model_hub._runtime_size_mb("org/My", "My.Q8_0.gguf") == 9.0
+    assert model_hub._runtime_size_mb("org/My", "no-such.gguf") == 0.0
 
 
 def test_search_hf_keeps_only_model_files(monkeypatch):
@@ -293,6 +310,7 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
         {"path": "Qwen3.8-27B-UD-IQ1_S.gguf", "size_mb": 5632.0, "sha256": "a" * 64},
         {"path": "imatrix_unsloth.gguf", "size_mb": 13.0, "sha256": "b" * 64},
         {"path": "MTP/mtp-Qwen3.8-27B-Q4_0.gguf", "size_mb": 1306.0, "sha256": "c" * 64},
+        {"path": "MTP/mtp-Qwen3.8-27B-BF16.gguf", "size_mb": 3000.0, "sha256": "f" * 64},
         {"path": "Qwen3.8-27B-BF16-00001-of-00002.gguf", "size_mb": 22732.0, "sha256": "d" * 64},
         {"path": "Qwen3.8-27B-BF16-00002-of-00002.gguf", "size_mb": 22732.0, "sha256": "e" * 64},
     ]
@@ -309,8 +327,8 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     assert all(bad not in paths for bad in ("imatrix_unsloth.gguf", "MTP/mtp-Qwen3.8-27B-Q4_0.gguf"))
     assert all("00002-of-00002" not in p for p in paths)
     by_path = {f["path"]: f for f in items[0]["files"]}
-    assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["companion_mb"] == 1306.0
-    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 24038.0
+    assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["companion_mb"] == 0.0
+    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 25732.0
 
 
 def test_search_hf_parallel_keeps_order(monkeypatch):

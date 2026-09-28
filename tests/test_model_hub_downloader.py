@@ -132,8 +132,8 @@ def test_download_bundles_mtp_head(hub, monkeypatch):
     """Downloading a model carries its matching MTP head along."""
     mh, tmp_path = hub
     files = [
-        {"path": "My.Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
-        {"path": "MTP/mtp-My-Q4_0.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
+        {"path": "My-Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "MTP/mtp-My-Q4_K_M.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
     ]
     monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
 
@@ -142,7 +142,7 @@ def test_download_bundles_mtp_head(hub, monkeypatch):
         return {"Content-Length": str(size), "ETag": '"t"'}
 
     monkeypatch.setattr(model_hub, "_hf_head", fake_head)
-    job_id = mh.start_download("org/My", "My.Q4_K_M.gguf")
+    job_id = mh.start_download("org/My", "My-Q4_K_M.gguf")
     job = None
     for _ in range(150):
         job = mh.get_job(job_id)
@@ -154,8 +154,8 @@ def test_download_bundles_mtp_head(hub, monkeypatch):
     assert job["state"] == "done", job
     assert job["part_count"] == 2
     assert job["companions_mb"] == 1.0
-    assert (tmp_path / "My.Q4_K_M.gguf").exists()
-    assert (tmp_path / "mtp-My-Q4_0.gguf").exists()
+    assert (tmp_path / "My-Q4_K_M.gguf").exists()
+    assert (tmp_path / "mtp-My-Q4_K_M.gguf").exists()
 
 
 def test_done_triggers_cache_rescan(hub, monkeypatch):

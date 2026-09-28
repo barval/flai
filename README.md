@@ -26,7 +26,7 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), history search, camera snapshots — all via llama.cpp `--jinja` + Qwen3
+- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), history search, camera snapshots.
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is executed locally as one coherent task with streamed progress and a collapsible step-by-step trace

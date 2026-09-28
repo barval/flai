@@ -308,9 +308,8 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 24038.0
 
 
-def test_search_hf_parallel_keeps_order_and_prewarms_arch(monkeypatch):
-    """search_hf runs per-repo work concurrently, preserves HF order, and
-    pre-warms the GGUF arch cache for repos that lack a config.json."""
+def test_search_hf_parallel_keeps_order(monkeypatch):
+    """search_hf runs per-repo work concurrently and preserves HF order."""
     repos = [
         {"id": f"org/R{i}", "downloads": i, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}
         for i in range(3)
@@ -320,11 +319,9 @@ def test_search_hf_parallel_keeps_order_and_prewarms_arch(monkeypatch):
     )
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
-    warmed: list[str] = []
-    monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: (warmed.append(repo), {"block_count": 64})[1])
+    monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: {"block_count": 64})
     items = model_hub.search_hf("q", 5)
     assert [i["repo"] for i in items] == [f"org/R{i}" for i in range(3)]
-    assert set(warmed) == {f"org/R{i}" for i in range(3)}
 
 
 def test_estimate_fits_skips_aux_and_maps_errors(monkeypatch):

@@ -246,11 +246,6 @@ def _search_repo(r: dict) -> dict | None:
         for f in model_files
     ]
     arch = get_repo_arch(repo_id) or {}
-    if not arch.get("block_count"):
-        # No config.json (or no block count in it): /fit would fall back to a
-        # per-file GGUF header read. Pre-warm the repo-wide cache with the
-        # first model file so the follow-up per-file fit requests are instant.
-        _gguf_arch(repo_id, model_files[0]["path"])
     return {
         "repo": repo_id,
         "downloads": r.get("downloads", 0),

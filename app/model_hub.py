@@ -816,6 +816,17 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
     return job.job_id
 
 
+def _remove_job_files(job: _Job) -> None:
+    """Delete everything a job may have written: finished model/companion
+    files, the current .part stream and its sidecar. Leaves no model-related
+    file behind after a cancellation."""
+    for p in job.parts or [{"path": job.path}]:
+        dest = os.path.join(job.models_dir, os.path.basename(p["path"]))
+        for path in (dest, dest + ".part", dest + ".part.meta"):
+            with contextlib.suppress(OSError):
+                os.remove(path)
+
+
 def _download_thread(job: _Job) -> None:
     try:
         parts = job.parts or [{"path": job.path, "size_mb": 0, "sha256": job.sha256}]
@@ -826,20 +837,14 @@ def _download_thread(job: _Job) -> None:
             total += int(head.get("Content-Length") or 0)
         job.total_mb = round(total / (1024 * 1024), 1)
         for p in parts:
-            dest = os.path.join(job.models_dir, os.path.basename(p["path"]))
-            try:
-                _download_part(job, p)
-            except DownloadCancelled:
-                for suffix in (".part", ".part.meta"):
-                    with contextlib.suppress(OSError):
-                        os.remove(dest + suffix)
-                raise
+            _download_part(job, p)
         job.state = "done"
         try:
             _post_download_scan(job.models_dir)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"post-download GGUF cache rescan failed: {exc}")
     except DownloadCancelled:
+        _remove_job_files(job)
         job.state = "cancelled"
     except DownloadFailed as exc:
         job.state = "failed"

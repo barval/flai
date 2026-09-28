@@ -213,6 +213,59 @@ def test_cancel_stops_download(hub, monkeypatch):
         time.sleep(0.01)
     assert job["state"] == "cancelled"
     assert not (tmp_path / "MyModel.Q4_K_M.gguf").exists()
+    assert not (tmp_path / "MyModel.Q4_K_M.gguf.part").exists()
+    assert not (tmp_path / "MyModel.Q4_K_M.gguf.part.meta").exists()
+
+
+def test_cancel_removes_finished_main_and_partial_companion(hub, monkeypatch):
+    """A cancellation wipes every file of the job — the already-finished model
+    AND the partial companion (.part + sidecar) — not just the currently
+    streamed part."""
+    import threading
+
+    mh, tmp_path = hub
+    files = [
+        {"path": "My-Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "MTP/mtp-My-Q4_K_M.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    stream_parked = threading.Event()
+    cancel_issued = threading.Event()
+
+    class _SlowResp(_Resp):
+        def iter_content(self, size):
+            yield _HUB_CHUNKS[0]
+            stream_parked.set()
+            cancel_issued.wait(5.0)
+            yield _HUB_CHUNKS[1]
+
+    def selective_get(url, params=None, stream=False, extra_headers=None, timeout=30.0):
+        chunks = () if "mtp-" not in url else None  # slow only for the companion
+        return _SlowResp(
+            payload={"gated": False, "private": False},
+            headers={"Content-Length": str(2 * 1024 * 1024), "ETag": '"tag-1"'},
+            chunks=(_HUB_CHUNKS if chunks is None else ()),
+        )
+
+    monkeypatch.setattr(model_hub, "_hf_get", selective_get)
+    job_id = mh.start_download("org/My", "My-Q4_K_M.gguf")
+    assert stream_parked.wait(5.0) is True  # main done, companion half-written
+    assert mh.cancel_job(job_id) is True
+    cancel_issued.set()
+    job = None
+    for _ in range(100):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "cancelled"
+    assert not (tmp_path / "My-Q4_K_M.gguf").exists(), "finished main must be removed too"
+    assert not (tmp_path / "mtp-My-Q4_K_M.gguf").exists()
+    assert not (tmp_path / "mtp-My-Q4_K_M.gguf.part").exists()
+    assert not (tmp_path / "mtp-My-Q4_K_M.gguf.part.meta").exists()
 
 
 def test_duplicate_download_blocked(hub, monkeypatch):

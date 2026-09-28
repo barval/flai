@@ -1593,7 +1593,7 @@ msgstr "Impossible"
 
 #: app/templates/admin.html:487
 msgid "sec"
-msgstr "sec"
+msgstr " sec"
 
 #: app/templates/admin.html:488
 msgid "Max context"

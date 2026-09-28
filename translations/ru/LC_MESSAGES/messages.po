@@ -1580,11 +1580,11 @@ msgstr "Ищу подходящие модели..."
 
 #: app/templates/admin.html:481
 msgid "Recalculating fit…"
-msgstr "Делаю перерасчёт..."
+msgstr "Делаю перерасчёт оценки..."
 
 #: app/templates/admin.html:482
 msgid "Computing fit…"
-msgstr "Делаю расчёт..."
+msgstr "Делаю расчёт оценки..."
 
 #: app/templates/admin.html:484
 msgid "GPU+CPU"
@@ -1601,7 +1601,7 @@ msgstr "Невозможно"
 
 #: app/templates/admin.html:487
 msgid "sec"
-msgstr "сек"
+msgstr " с"
 
 #: app/templates/admin.html:488
 msgid "Max context"

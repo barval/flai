@@ -95,12 +95,75 @@ _gguf_arch_cache: dict[tuple[str, str | None], dict | None] = {}
 _files_cache: dict[str, list[dict]] = {}
 _cache_lock = threading.Lock()
 _gguf_arch_cache_lock = threading.Lock()
+
+_arch_cache_disk_path: str | None = None
+
+
+def _hub_arch_cache_path() -> str | None:
+    """Disk cache file for the arch metadata, lazy-resolved once.
+
+    Active only when the models directory exists (the mounted volume in the
+    container); on bare dev hosts and in tests there is no write target, so
+    persistence is skipped silently.
+    """
+    global _arch_cache_disk_path
+    if _arch_cache_disk_path is None:
+        models_dir = os.getenv("MODELS_DIR", "/models")
+        if os.path.isdir(models_dir):
+            _arch_cache_disk_path = os.path.join(models_dir, "hub_arch_cache.json")
+    return _arch_cache_disk_path
+
+
+def _load_arch_cache_from_disk() -> None:
+    """Restore the arch metadata caches of the previous session."""
+    path = _hub_arch_cache_path()
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        logger.warning(f"model_hub arch cache load failed: {exc}")
+        return
+    with _cache_lock:
+        for repo, value in (data.get("arch") or {}).items():
+            _arch_cache[repo] = value
+    with _gguf_arch_cache_lock:
+        for key, value in (data.get("gguf") or {}).items():
+            repo, _, path_part = key.partition("\x00")
+            _gguf_arch_cache[(repo, path_part or None)] = value
+
+
+def _persist_arch_cache() -> None:
+    """Write both arch caches to disk after a mutation (atomic replace)."""
+    path = _hub_arch_cache_path()
+    if not path:
+        return
+    data = {"arch": {}, "gguf": {}}
+    with _cache_lock:
+        data["arch"] = dict(_arch_cache)
+    with _gguf_arch_cache_lock:
+        for (repo, path_part), value in _gguf_arch_cache.items():
+            data["gguf"][f"{repo}\x00{path_part or ''}"] = value
+    try:
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, sort_keys=True)
+        os.replace(tmp, path)
+    except OSError as exc:
+        logger.warning(f"model_hub arch cache persist failed: {exc}")
+
+
 # GGUF headers are read with a growing prefix: most answer inside 4 MB, but
 # repos with a large tokenizer.merges block (e.g. HauhauCS Qwen3.8-27B) place
 # the <arch>.block_count sizing keys past the 4 MB mark.
 _GGUF_HEADS = (4 * 1024 * 1024, 16 * 1024 * 1024, 64 * 1024 * 1024)
 
 _headers: dict[str, str] = {}
+
+# Restore yesterday's arch metadata so repeated searches stay fast after a
+# container restart (the per-session caches live below).
+_load_arch_cache_from_disk()
 
 
 def _hf_headers() -> dict[str, str] | None:
@@ -312,6 +375,7 @@ def get_repo_arch(repo: str) -> dict | None:
         result = None
     with _cache_lock:
         _arch_cache[repo] = result
+    _persist_arch_cache()
     return dict(result) if result else None
 
 
@@ -435,6 +499,7 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
         _gguf_arch_cache[key] = result
         if result:
             _gguf_arch_cache[(repo, None)] = result
+        _persist_arch_cache()
         return dict(result) if result else None
 
 

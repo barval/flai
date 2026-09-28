@@ -1,5 +1,6 @@
 """Unit tests for the HF catalog client in app/model_hub.py (no network)."""
 
+import os
 import struct
 
 import pytest
@@ -322,6 +323,40 @@ def test_search_hf_parallel_keeps_order(monkeypatch):
     monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: {"block_count": 64})
     items = model_hub.search_hf("q", 5)
     assert [i["repo"] for i in items] == [f"org/R{i}" for i in range(3)]
+
+
+def test_arch_cache_disk_roundtrip(tmp_path, monkeypatch):
+    """Arch metadata survives a restart via the JSON cache in the models dir."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    old_path = model_hub._arch_cache_disk_path
+    old_arch = dict(model_hub._arch_cache)
+    old_gguf = dict(model_hub._gguf_arch_cache)
+    monkeypatch.setenv("MODELS_DIR", str(models_dir))
+    try:
+        model_hub._arch_cache_disk_path = None
+        model_hub._arch_cache.clear()
+        model_hub._gguf_arch_cache.clear()
+        model_hub._arch_cache["org/A"] = {"block_count": 64}
+        model_hub._gguf_arch_cache[("org/A", "m.gguf")] = {"block_count": 64}
+        model_hub._gguf_arch_cache[("org/B", None)] = {"expert_count": 8}
+        model_hub._persist_arch_cache()
+        disk = model_hub._hub_arch_cache_path()
+        assert disk and os.path.exists(disk)
+        model_hub._arch_cache.clear()
+        model_hub._gguf_arch_cache.clear()
+        model_hub._load_arch_cache_from_disk()
+        assert model_hub._arch_cache == {"org/A": {"block_count": 64}}
+        assert model_hub._gguf_arch_cache == {
+            ("org/A", "m.gguf"): {"block_count": 64},
+            ("org/B", None): {"expert_count": 8},
+        }
+    finally:
+        model_hub._arch_cache_disk_path = old_path
+        model_hub._arch_cache.clear()
+        model_hub._arch_cache.update(old_arch)
+        model_hub._gguf_arch_cache.clear()
+        model_hub._gguf_arch_cache.update(old_gguf)
 
 
 def test_estimate_fits_skips_aux_and_maps_errors(monkeypatch):

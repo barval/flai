@@ -149,10 +149,12 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Model Hub** | Search Hugging Face for models from a new admin tab, check that a model fits your GPU/RAM before downloading, and download it with progress and resume. Already-downloaded files show a ✓ Downloaded badge with a Delete button — in the Hub itself and in the «Downloaded models» panel on the Models tab. When Hugging Face is unreachable the tab warns you and points to the manual path: drop `.gguf` files into `/models` and press «Update model list». |
+| **Model Hub** | Search Hugging Face for models from a new admin tab, check that a model fits your GPU/RAM before downloading, and download it with progress and resume. Progress remains visible while changing searches and is restored after reloading the page. Multi-part model sizes include all shards; draft/MTP and FastMTP files are shown as service files, not independent models. Supported noMTP models offer a Q4/Q8 draft choice (Q8 by default). Already-downloaded files show a ✓ Downloaded badge with a Delete button — in the Hub itself and in the «Downloaded models» panel on the Models tab. When Hugging Face is unreachable the tab warns you and points to the manual path: drop `.gguf` files into `/models` and press «Update model list». |
 | **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
 | **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
 | **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
+
+> **Mobile admin panel:** Model Hub filter rows and model tables scroll horizontally on narrow screens. The Downloaded models list also scrolls horizontally so long filenames and controls remain readable.
 
 ### Core Components
 
@@ -759,7 +761,8 @@ services/llamacpp/models/
 
 ### Downloading, Deleting and Offline Model Files (Model Hub)
 
-- **Downloading:** the **Model Hub** tab (admin) searches Hugging Face, shows a GPU/RAM fit badge per file, and downloads with progress, resume and sha256 verification. A successful download writes a `.hubmeta` marker that records the model's companion files (mmproj, MTP head, text encoder).
+- **Downloading:** the **Model Hub** tab (admin) searches Hugging Face, shows a GPU/RAM fit badge per file, and downloads with progress, resume and sha256 verification. Progress is in a persistent active-downloads area outside search results, survives changing searches and is restored after same-tab reloads. Displayed total size uses grouped whole MB rounded up. A successful download writes a `.hubmeta` marker that records the model's companion files (mmproj, MTP/draft head, text encoder).
+- **Model and service files:** each multi-part GGUF model displays the total size of all its shards. Shard tails, imatrix, MTP/draft heads and FastMTP sidecars are service files rather than independent model choices. For supported noMTP models with Q4_0 and Q8_0 draft heads, select one variant; Q8_0 is selected by default.
 - **Deleting:** downloaded models show a **✓ Downloaded** badge with a **Delete** button — in the Hub tab and in the **«Downloaded models»** panel on the Models tab. Deleting a Hub-downloaded model removes it **together with its companions**; a model currently selected as a module base is refused.
 - **Offline:** when Hugging Face is unreachable the Hub tab shows a warning and points to the manual path: drop `.gguf` files into `/models`, then press **«Update model list»** in the Models tab.
 - ⚠️ **Manually placed files:** a `.gguf` copied into `/models` by hand has **no** `.hubmeta` marker, so deleting it removes **only that file** — its companions (e.g. `mmproj-*.gguf`, MTP head, text encoder) are not tracked and must be removed manually.

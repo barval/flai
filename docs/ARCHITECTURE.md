@@ -131,6 +131,12 @@ The largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps
 
 SD generation and editing on CPU (`modules/sd_cpp.py`) halve **both sides** of the resolution before the request is sent to sd-wrapper: 1024×1024 → 512×512 (~4× fewer pixels, ≈~4× faster) so the diffusion run finishes inside `SD_CPP_TIMEOUT` (previously it timed out around step 3/10). Editing also downsizes the source image itself and the target output to the same halved size. A localised notice (`resize_notice` channel, stored as a `system` assistant message) tells the user about the reduced resolution.
 
+### Model Hub downloads and companion files
+
+`app/model_hub.py` displays a multi-part GGUF model as one entry whose size sums every shard. Non-first shards, imatrix files, MTP/draft heads and FastMTP sidecars are auxiliary files, not standalone model choices. `_companion_files()` associates compatible sidecars with the primary file; supported `noMTP` models can select one Q4_0/Q8_0 draft head (Q8_0 default). Selected companions are validated against the repository listing and included in disk-space checks and `.hubmeta`.
+
+Download state is published in Redis hashes (`model_hub:job:<id>`); the `parts` array is JSON-serialized because Redis hashes accept scalar values. `get_job()` falls back to Redis when polling reaches a web process without the local job object. The browser renders active jobs in a dedicated area outside replaceable search results, persists job IDs in `sessionStorage`, and resumes polling after same-tab reloads. Progress totals are grouped whole MB rounded up. On narrow screens, Model Hub controls and tables, and the Models tab's Downloaded models list, scroll horizontally.
+
 
 ## SLM (SuperLocalMemory)
 

@@ -378,6 +378,9 @@ def test_hub_numbers_locale_formatting_and_ceil():
     # Downloads/likes flow through the same separators-aware formatter.
     assert re.search(r"fmtNum\(\s*it\.downloads", hub_src)
     assert re.search(r"fmtNum\(\s*it\.likes", hub_src)
+    assert re.search(r"replace\('\{total\}',\s*fmtNum\(Math\.ceil\(job\.total_mb\)\)\)", hub_src), (
+        "download progress total size must be rounded up and formatted with separators"
+    )
 
 
 def test_hub_column_header_and_sticky_layout():

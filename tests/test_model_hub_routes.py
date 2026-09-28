@@ -123,7 +123,7 @@ def test_hub_fit_all_requires_repo(client, test_app):
 def test_hub_download_ok_and_progress(client, test_app):
     _login_admin(client, test_app)
     with (
-        patch("app.routes.model_hub.model_hub.start_download", return_value="abc123"),
+        patch("app.routes.model_hub.model_hub.start_download", return_value="abc123") as start_download,
         patch(
             "app.routes.model_hub.model_hub.get_job",
             return_value={
@@ -146,6 +146,7 @@ def test_hub_download_ok_and_progress(client, test_app):
             content_type="application/json",
         )
         assert resp.status_code == 200
+        assert start_download.call_args.kwargs["companion_paths"] == []
         assert resp.get_json()["job_id"] == "abc123"
         resp2 = client.get("/admin/api/hub/progress/abc123")
         assert resp2.status_code == 200
@@ -164,6 +165,18 @@ def test_hub_download_blocked_gated(client, test_app):
     assert resp.status_code == 409
     assert resp.get_json()["reason"] == "gated"
     assert resp.get_json()["error"].startswith("⚠️ ")
+
+
+def test_hub_download_passes_selected_companion_paths(client, test_app):
+    _login_admin(client, test_app)
+    with patch("app.routes.model_hub.model_hub.start_download", return_value="abc123") as start_download:
+        resp = client.post(
+            "/admin/api/hub/download",
+            data=json.dumps({"repo": "org/A", "file": "main.gguf", "companions": ["draft-Q4_0.gguf"]}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    assert start_download.call_args.kwargs["companion_paths"] == ["draft-Q4_0.gguf"]
 
 
 def test_hub_cancel(client, test_app):

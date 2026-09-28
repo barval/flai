@@ -32,6 +32,8 @@ class FakeRedis:
         self.strings = {}
 
     def hset(self, key, mapping=None, **kw):
+        if any(isinstance(value, (list, dict)) for value in (mapping or {}).values()):
+            raise TypeError("Redis hash values must be scalar")
         self.hashes.setdefault(key, {}).update(mapping or {})
         return True
 
@@ -103,6 +105,44 @@ def test_download_completes_with_sha(hub):
     assert state["received_mb"] == 2.0
 
 
+def test_progress_hash_serializes_parts_as_json(hub):
+    mh, _ = hub
+    job = mh._Job("progress-test", "org/My", "model.gguf", "model.gguf", "/models")
+    job.parts = [{"path": "model.gguf", "size_mb": 2.0, "sha256": _HUB_SHA}]
+
+    mh._write_progress(job)
+
+    stored = mh._redis().hgetall("model_hub:job:progress-test")
+    assert json.loads(stored["parts"]) == job.parts
+
+
+def test_get_job_reads_progress_written_by_another_process(hub):
+    mh, _ = hub
+    mh._JOBS.clear()
+    mh._redis().hashes["model_hub:job:remote-job"] = {
+        "job_id": "remote-job",
+        "repo": "org/My",
+        "path": "model.gguf",
+        "filename": "model.gguf",
+        "total_mb": "10.0",
+        "received_mb": "4.0",
+        "speed_mb_s": "2.0",
+        "state": "downloading",
+        "error": "",
+        "models_dir": "/models",
+        "parts": json.dumps([{"path": "model.gguf", "size_mb": 10.0}]),
+        "part_count": "1",
+        "companions_mb": "0.0",
+    }
+
+    job = mh.get_job("remote-job")
+
+    assert job["state"] == "downloading"
+    assert job["total_mb"] == 10.0
+    assert job["received_mb"] == 4.0
+    assert job["parts"] == [{"path": "model.gguf", "size_mb": 10.0}]
+
+
 def test_download_bundles_multipart_companions(hub, monkeypatch):
     """Downloading a multi-part shard head pulls the remaining shards too."""
     mh, tmp_path = hub
@@ -156,6 +196,36 @@ def test_download_bundles_mtp_head(hub, monkeypatch):
     assert job["companions_mb"] == 1.0
     assert (tmp_path / "My-Q4_K_M.gguf").exists()
     assert (tmp_path / "mtp-My-Q4_K_M.gguf").exists()
+
+
+def test_download_uses_only_selected_draft_quant(hub, monkeypatch):
+    mh, tmp_path = hub
+    files = [
+        {"path": "Qwen-noMTP-Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "Qwen-draft-Q4_0.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
+        {"path": "Qwen-draft-Q8_0.gguf", "size_mb": 1.5, "sha256": _HUB_SHA},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    def fake_head(url, timeout=30.0):
+        size = 1024 * 1024 if "draft-Q4_0" in url else 2 * 1024 * 1024
+        return {"Content-Length": str(size), "ETag": '"t"'}
+
+    monkeypatch.setattr(model_hub, "_hf_head", fake_head)
+    job_id = mh.start_download("org/Qwen", "Qwen-noMTP-Q4_K_M.gguf", companion_paths=["Qwen-draft-Q4_0.gguf"])
+    for _ in range(150):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+
+    assert job["state"] == "done", job
+    assert job["part_count"] == 2
+    assert job["companions_mb"] == 1.0
+    assert (tmp_path / "Qwen-draft-Q4_0.gguf").exists()
+    assert not (tmp_path / "Qwen-draft-Q8_0.gguf").exists()
 
 
 def test_download_writes_hubmeta_marker(hub, monkeypatch):

@@ -72,7 +72,14 @@ def test_search_hf_filters_gguf_and_private(monkeypatch):
     assert items[0]["repo"] == "org/Awesome-Model"
     assert items[0]["gated"] is True
     assert items[0]["files"] == [
-        {"path": "model.Q4_K_M.gguf", "size_mb": 2400.0, "sha256": "a" * 64, "companion_mb": 0.0},
+        {
+            "path": "model.Q4_K_M.gguf",
+            "size_mb": 2400.0,
+            "sha256": "a" * 64,
+            "companion_mb": 0,
+            "companion_required_mb": 0,
+            "companion_choices": [],
+        },
     ]
 
 
@@ -250,6 +257,9 @@ def test_aux_file_detection():
         "imatrix-qwen3.8-27b.gguf",
         "MTP/mtp-Qwen3.8-27B-Q4_0.gguf",
         "mtp-X.gguf",
+        "Qwen3.8-27B-Uncensored-draft-Q4_0.gguf",
+        "Qwen3.8-27B-Uncensored-draft-Q8_0.gguf",
+        "Qwen3.8-27B-Uncensored-Aggressive-FastMTP-32K.gguf",
         "BF16/Qwen3.8-27B-BF16-00002-of-00002.gguf",
         "tokenizer.gguf",
         "generated/llm2vec-text-bundle/tokenizer.gguf",
@@ -286,6 +296,60 @@ def test_companion_files_shard_tail_and_mtp(monkeypatch):
 
     comps = model_hub._companion_files("org/My", "My.Unsuitable-IQ1_S.gguf")
     assert [c["path"] for c in comps] == [], "a missing quant-matched MTP head must not pull every family head"
+
+
+def test_no_mtp_model_offers_alternative_draft_quants(monkeypatch):
+    files = [
+        {"path": "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf", "size_mb": 16000.0, "sha256": "a" * 64},
+        {"path": "Qwen3.8-27B-Uncensored-draft-Q4_0.gguf", "size_mb": 1602.4, "sha256": "b" * 64},
+        {"path": "Qwen3.8-27B-Uncensored-draft-Q8_0.gguf", "size_mb": 3017.4, "sha256": "c" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    companions = model_hub._companion_files(
+        "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF", "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf"
+    )
+
+    assert [(f["path"], f.get("choice_group"), f.get("default")) for f in companions] == [
+        ("Qwen3.8-27B-Uncensored-draft-Q4_0.gguf", "draft", False),
+        ("Qwen3.8-27B-Uncensored-draft-Q8_0.gguf", "draft", True),
+    ]
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    result = model_hub._search_repo({"id": "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF"})
+    assert result is not None
+    assert [f["path"] for f in result["files"]] == ["Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf"]
+    assert result["files"][0]["companion_mb"] == 3017.4
+    assert result["files"][0]["companion_required_mb"] == 0.0
+
+
+def test_fastmtp_is_companion_not_a_model(monkeypatch):
+    files = [
+        {"path": "Qwen3.8-27B-Uncensored-Aggressive-Q4_K_P.gguf", "size_mb": 17000.0, "sha256": "a" * 64},
+        {"path": "Qwen3.8-27B-Uncensored-Aggressive-FastMTP-32K.gguf", "size_mb": 862.0, "sha256": "b" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    assert model_hub.is_aux_file(files[1]["path"])
+    assert model_hub._companion_files("brandonbondig/repo", files[0]["path"]) == [files[1]]
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    result = model_hub._search_repo({"id": "brandonbondig/Qwen-FastMTP-GGUF"})
+    assert result is not None
+    assert [f["path"] for f in result["files"]] == [files[0]["path"]]
+    assert result["files"][0]["companion_mb"] == 862.0
+
+
+def test_companion_choice_rejects_unlisted_or_conflicting_paths():
+    choices = [
+        {"path": "draft-Q4_0.gguf", "choice_group": "draft"},
+        {"path": "draft-Q8_0.gguf", "choice_group": "draft", "default": True},
+    ]
+
+    assert model_hub._select_companion_files(choices, ["draft-Q4_0.gguf"]) == [choices[0]]
+    assert model_hub._select_companion_files(choices, None) == [choices[1]]
+    with pytest.raises(model_hub.DownloadBlocked, match="bad_path"):
+        model_hub._select_companion_files(choices, ["outside.gguf"])
+    with pytest.raises(model_hub.DownloadBlocked, match="bad_path"):
+        model_hub._select_companion_files(choices, ["draft-Q4_0.gguf", "draft-Q8_0.gguf"])
 
 
 def test_runtime_size_mb_sums_shards_only(monkeypatch):

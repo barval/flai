@@ -227,11 +227,12 @@ def _redis() -> redis.Redis:
 _MIN_MODEL_MB = 5.0
 
 
-def _repo_files(repo: str, limit: int = 50) -> list[dict]:
+def _repo_files(repo: str, limit: int | None = 50) -> list[dict]:
     """GGUF files of a repo: [{path, size_mb, sha256}], cached per repo."""
     with _cache_lock:
         if repo in _files_cache:
-            return list(_files_cache[repo])
+            files = list(_files_cache[repo])
+            return files if limit is None else files[:limit]
     resp = _hf_get(f"{HF_API}/{repo}", params={"full": "true", "blobs": "true"}, timeout=30)
     data = resp.json()
     files = []
@@ -250,10 +251,9 @@ def _repo_files(repo: str, limit: int = 50) -> list[dict]:
                 "sha256": (oid or "").lower(),
             }
         )
-    files = files[:limit]
     with _cache_lock:
         _files_cache[repo] = files
-    return list(files)
+    return files if limit is None else list(files[:limit])
 
 
 # Multi-part GGUF shard naming, e.g. BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf.
@@ -290,7 +290,7 @@ def _mtp_head(repo: str, model_path: str) -> dict | None:
     main_base = os.path.basename(model_path)
     head_name = "mtp-" + os.path.splitext(main_base)[0]
     head_name = re.sub(r"-\d{4,5}-of-\d{4,5}$", "", head_name) + ".gguf"
-    for fi in _repo_files(repo):
+    for fi in _repo_files(repo, limit=None):
         if os.path.basename(fi["path"]) == head_name:
             return dict(fi)
     return None
@@ -300,7 +300,7 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
     """Files fetched with ``model_path`` and stored next to it: later multi-part
     shards (required to load the model) and a single MTP head matching the model
     quantization (unused at runtime, but exported for disk-storage parity)."""
-    files = _repo_files(repo)
+    files = _repo_files(repo, limit=None)
     out: list[dict] = []
     main_base = os.path.basename(model_path)
     m = _MULTIPART_RE.match(main_base)
@@ -323,7 +323,7 @@ def _runtime_size_mb(repo: str, file_path: str) -> float:
     be summed with its later parts. MTP head files are NOT part of the runtime
     footprint (draft-mtp uses the main model's own layers), so they are omitted."""
     target = None
-    for fi in _repo_files(repo):
+    for fi in _repo_files(repo, limit=None):
         if fi["path"] == file_path:
             target = fi
             break
@@ -334,7 +334,7 @@ def _runtime_size_mb(repo: str, file_path: str) -> float:
     if not m or int(m.group("num")) != 1:
         return float(target["size_mb"])
     prefix, total_parts = m.group("prefix"), int(m.group("total"))
-    for fi in _repo_files(repo):
+    for fi in _repo_files(repo, limit=None):
         fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
         if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total_parts:
             total += float(fi["size_mb"])

@@ -816,6 +816,28 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
     return job.job_id
 
 
+def _hubmeta_path(models_dir: str, main_filename: str) -> str:
+    """Marker file next to a model recording its Hub origin and companions."""
+    return os.path.join(models_dir, os.path.splitext(main_filename)[0] + ".hubmeta")
+
+
+def _write_hubmeta(job: _Job) -> None:
+    """Persist ``<main>.hubmeta`` after a successful download so the Models
+    tab can delete the model together with its companions later."""
+    names = [os.path.basename(p["path"]) for p in (job.parts or [{"path": job.path}])]
+    meta = {
+        "repo": job.repo,
+        "file": job.path,
+        "names": names,
+        "installed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    try:
+        with open(_hubmeta_path(job.models_dir, names[0]), "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+    except OSError as exc:
+        logger.warning(f"model_hub could not write hubmeta marker: {exc}")
+
+
 def _remove_job_files(job: _Job) -> None:
     """Delete everything a job may have written: finished model/companion
     files, the current .part stream and its sidecar. Leaves no model-related
@@ -839,6 +861,7 @@ def _download_thread(job: _Job) -> None:
         for p in parts:
             _download_part(job, p)
         job.state = "done"
+        _write_hubmeta(job)
         try:
             _post_download_scan(job.models_dir)
         except Exception as exc:  # noqa: BLE001
@@ -944,3 +967,86 @@ def cancel_job(job_id: str) -> bool:
     with contextlib.suppress(Exception):
         _redis().set(f"model_hub:cancel:{job.job_id}", "1", ex=_NC_DONE)
     return True
+
+
+def _models_dir(models_dir: str | None) -> str:
+    return models_dir or os.getenv("MODELS_DIR", "/models")
+
+
+def installed_basenames(models_dir: str | None = None) -> list[str]:
+    """Basenames of every ``.gguf`` file currently in the models directory.
+
+    Flat listing: the downloader stores files directly in the models dir, and
+    sub-directories hold config/extra assets that never need a Hub badge."""
+    models_dir = _models_dir(models_dir)
+    if not os.path.isdir(models_dir):
+        return []
+    return sorted(n for n in os.listdir(models_dir) if n.endswith(".gguf"))
+
+
+def list_installed(models_dir: str | None = None) -> list[dict]:
+    """Every GGUF on disk with its size and whether it came from the Hub."""
+    models_dir = _models_dir(models_dir)
+    out: list[dict] = []
+    for name in installed_basenames(models_dir):
+        path = os.path.join(models_dir, name)
+        try:
+            size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
+        except OSError:
+            size_mb = 0
+        out.append({"name": name, "size_mb": size_mb, "from_hub": os.path.exists(_hubmeta_path(models_dir, name))})
+    return sorted(out, key=lambda f: f["name"])
+
+
+def delete_installed(filename: str, models_dir: str | None = None) -> dict:
+    """Delete a model file from the models directory together with any marker
+    companions recorded by `.hubmeta`. Returns the removed basenames."""
+    if filename != os.path.basename(filename) or not filename.endswith(".gguf"):
+        raise DownloadBlocked("bad_path")
+    models_dir = _models_dir(models_dir)
+    base = os.path.realpath(models_dir)
+
+    def safe_names(candidates: list[str]) -> list[str]:
+        ok = []
+        for n in candidates:
+            if n != os.path.basename(n) or not n.endswith(".gguf"):
+                continue
+            p = os.path.realpath(os.path.join(models_dir, n))
+            if p.startswith(base + os.sep):
+                ok.append(n)
+        return ok
+
+    names = [filename]
+    marker = _hubmeta_path(models_dir, filename)
+    from_hub = os.path.exists(marker)
+    if from_hub:
+        try:
+            with open(marker, encoding="utf-8") as f:
+                meta = json.load(f)
+            names.extend(n for n in meta.get("names", []) if n != filename)
+        except (OSError, ValueError) as exc:
+            logger.warning(f"model_hub could not read hubmeta marker: {exc}")
+
+    removed: list[str] = []
+    for n in safe_names(names):
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(models_dir, n))
+            removed.append(n)
+    with contextlib.suppress(OSError):
+        os.remove(marker)
+    cache_names = [os.path.splitext(n)[0] for n in removed]
+    if cache_names:
+        from app.utils import remove_gguf_cache_entries
+
+        remove_gguf_cache_entries(cache_names)
+    return {"removed": removed, "from_hub": from_hub}
+
+
+def check_reachability(timeout: float = 5.0) -> dict:
+    """Cheap HF reachability probe for the offline-deployment banner."""
+    start = time.monotonic()
+    try:
+        _hf_get(HF_API, params={"limit": 1, "sort": "downloads", "direction": "-1"}, timeout=timeout)
+    except (HubError, requests.RequestException):
+        return {"reachable": False}
+    return {"reachable": True, "latency_ms": int((time.monotonic() - start) * 1000)}

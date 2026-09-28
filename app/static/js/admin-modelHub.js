@@ -20,6 +20,7 @@
 
     const typeToModule = { reasoning: 'reasoning', multimodal: 'multimodal', embedding: 'embedding' };
     let lastData = null;
+    let installedList = [];
     let recalcBusy = false;
     let searchTimer = null;
     let recalcTimer = null;
@@ -88,7 +89,7 @@
         try {
             const res = await fetchWithCSRF(`/admin/api/hub/search?q=${encodeURIComponent(q)}&context=${currentContext()}`);
             const data = await res.json();
-            if (data && data.items) lastData = data;
+            if (data && data.items) { lastData = data; installedList = (data.installed || []); }
             renderResults(data);
         } catch (err) {
             results.innerHTML = note(t('hub_error'));
@@ -133,9 +134,13 @@
             for (const f of fileList) {
                 if (it.arch_max_ctx && it.arch_max_ctx < sliderCtx) continue;
                 const repo = esc(it.repo), file = esc(f.path);
+                const fileName = f.path.split('/').pop();
+                const isInstalled = installedList.includes(fileName);
                 const action = it.gated
                     ? `<td><span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span></td>`
-                    : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
+                    : isInstalled
+                        ? `<td><span class="hub-installed">✓ ${esc(t('hub_installed'))}</span> <button class="hub-del add-user-button" data-filename="${esc(fileName)}">🗑 ${esc(t('hub_uninstall'))}</button></td>`
+                        : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
                 const fitAttr = f.fit ? ` title="${esc(f.fit.message || '')}"` : '';
                 html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}" data-max-ctx="${(f.fit && f.fit.arch_max_ctx) || ''}">
                     <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} MB</td>
@@ -263,6 +268,47 @@ function fitTierClass(fit) {
         document.querySelectorAll('.hub-dl').forEach((btn) => {
             btn.addEventListener('click', () => startDownload(btn));
         });
+        document.querySelectorAll('.hub-del').forEach((btn) => {
+            btn.addEventListener('click', () => deleteDownloadedFile(btn, btn.dataset.filename));
+        });
+    }
+
+    function deleteDownloadedFile(btn, filename) {
+        const msg = t('hub_delete_confirm').replace('{filename}', filename);
+        if (!confirm(msg)) return;
+        btn.disabled = true;
+        fetchWithCSRF('/admin/api/hub/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        })
+        .then(r => r.json())
+        .then((data) => {
+            if (data.status === 'ok') {
+                installedList = installedList.filter(b => b !== filename);
+                if (lastData) renderResults(lastData, true);
+            } else {
+                btn.disabled = false;
+                alert(data.error || t('hub_error'));
+            }
+        })
+        .catch(() => { btn.disabled = false; alert(t('hub_error')); });
+    }
+
+    function checkHubReachability() {
+        const banner = document.getElementById('hub-offline-banner');
+        if (!banner) return;
+        const showBanner = () => {
+            banner.innerHTML = '⚠️ ' + esc(t('hub_no_hf_access')) + '. ' + esc(t('hub_manual_upload'));
+            banner.style.display = 'block';
+        };
+        fetch('/admin/api/hub/reachability', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then((data) => {
+                if (data && data.reachable) banner.style.display = 'none';
+                else showBanner();
+            })
+            .catch(showBanner);
     }
 
     function ensureJobsHost(row) {
@@ -379,4 +425,8 @@ function fitTierClass(fit) {
                 .catch(() => { cell.textContent = '✗ ' + esc(t('hub_failed')); });
         })();
     }
+
+    checkHubReachability();
+    const hubTabBtn = document.querySelector('.admin-tab[data-tab="hub"]');
+    if (hubTabBtn) hubTabBtn.addEventListener('click', () => checkHubReachability());
 })();

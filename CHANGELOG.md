@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Added
 
 - **Model Hub (admin):** search Hugging Face for GGUF models directly from a new admin tab, see a VRAM/RAM fit badge for each model file before download, and download models with resume, progress, cancel and sha256 verification. Fit estimation reuses the tier classifier extracted into `app/vram_estimate.py`.
+- **Model Hub: delete downloaded models from disk** — a successful download writes a persistent `<file>.hubmeta` marker (`model_hub.py:_write_hubmeta`): repo, main file, companion names, installed time. Already-downloaded files show a **✓ Downloaded** badge + **Delete** button in the Hub tab, and a new **«Model files on disk»** panel on the Models tab lists every `.gguf` in `/models` with size and a Hub flag (`GET /admin/api/hub/installed`). `POST /admin/api/hub/delete {filename}` removes the model **and its companions** (from the marker; files without a marker fall back to the single file) and drops the matching `gguf_models_cache` rows via `remove_gguf_cache_entries()` (`app/utils.py`). Only basenames are accepted and a `realpath` check keeps every target inside `/models`; a file currently selected as the base model of a module is refused with 409 `in_use`. Deleting works fully offline.
+- **Model Hub offline detection** — `GET /admin/api/hub/reachability` probes Hugging Face with a short 5 s timeout; when HF is unreachable the Hub tab shows a localised banner («No access to Hugging Face…») and offers the manual path: drop `.gguf` files into `/models` then press «Update model list» in the Models tab.
 
 ## [v12.1] — Unreleased
 

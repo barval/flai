@@ -469,3 +469,55 @@ def test_admin_active_tab_survives_language_switch_reload():
     assert "localStorage.getItem('admin_active_tab'" in tabs_src
     # Restore must verify the saved tab still exists (Cameras is conditional).
     assert "document.querySelector('.admin-tab[data-tab=\"' + saved" in tabs_src
+
+
+def test_hub_installed_badge_and_delete_button():
+    """Search results must mark already-downloaded basenames and offer an
+    in-place Delete button instead of Download."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    assert "data.installed" in hub_src
+    assert "installedList" in hub_src
+    assert "hub-installed" in hub_src, "installed files need a visual badge class"
+    assert "hub-del" in hub_src, "installed files must get a Delete button class"
+    assert "hub/delete" in hub_src, "delete call must hit /admin/api/hub/delete"
+    search_block = hub_src[hub_src.index("async function doSearch") : hub_src.index("function stopSearchTimer")]
+    assert "installedList = " in search_block, "search must refresh the installed set"
+
+
+def test_hub_offline_banner_on_reachability():
+    """UT-остров: an unreachable HF must show a banner pointing to the manual
+    .gguf upload path instead of a generic error."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "/admin/api/hub/installed" in models_src and "reachability" in hub_src
+    assert "hub-offline-banner" in hub_src
+    assert "checkHubReachability" in hub_src
+    assert "hub_manual_upload" in hub_src, "banner must mention the manual upload route"
+    reach_block = hub_src[
+        hub_src.index("function checkHubReachability") : hub_src.index("function checkHubReachability") + 600
+    ]
+    assert "reachable" in reach_block
+
+
+def test_models_tab_files_panel():
+    """Models tab must list disk models with a Delete button (non-Hub case)."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "models-files" in admin_template, "Models tab needs a files panel container"
+    assert "models-files" in models_src, "admin-models.js must render the files panel"
+    assert "/admin/api/hub/installed" in models_src
+    assert "hub/delete" in models_src, "panel delete uses the same guarded endpoint"
+    assert "hub-del add-user-button" in models_src, "panel delete buttons need a class"
+
+
+def test_hub_offline_and_manual_upload_msgids_in_both_catalogs():
+    """Offline-banner strings must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        for msgid in ("No access to Hugging Face — downloads from the Model Hub are unavailable",):
+            assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
+            block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
+            assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"

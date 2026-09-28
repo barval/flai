@@ -172,3 +172,94 @@ def test_hub_cancel(client, test_app):
         resp = client.post("/admin/api/hub/cancel/abc123")
     assert resp.status_code == 200
     assert resp.get_json()["cancelled"] is True
+
+
+def test_hub_search_reports_installed(client, test_app):
+    """Search response lists already-downloaded basenames so the client can
+    show the 'installed' badge and an in-place Delete button."""
+    _login_admin(client, test_app)
+    with (
+        patch(
+            "app.routes.model_hub.model_hub.search_hf",
+            return_value=[{"repo": "org/A", "files": []}],
+        ),
+        patch("app.routes.model_hub.model_hub.installed_basenames", return_value=["a.gguf", "mtp-a.gguf"]),
+    ):
+        resp = client.get("/admin/api/hub/search?q=sql")
+    assert resp.status_code == 200
+    assert resp.get_json()["installed"] == ["a.gguf", "mtp-a.gguf"]
+
+
+def test_hub_installed_lists_disk_files(client, test_app):
+    _login_admin(client, test_app)
+    with patch(
+        "app.routes.model_hub.model_hub.list_installed",
+        return_value=[{"name": "a.gguf", "size_mb": 1.0, "from_hub": True}],
+    ):
+        resp = client.get("/admin/api/hub/installed")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ok"
+    assert data["files"] == [{"name": "a.gguf", "size_mb": 1.0, "from_hub": True}]
+
+
+def test_hub_delete_ok(client, test_app):
+    _login_admin(client, test_app)
+    with patch(
+        "app.routes.model_hub.model_hub.delete_installed",
+        return_value={"removed": ["a.gguf", "mtp-a.gguf"], "from_hub": True},
+    ):
+        resp = client.post(
+            "/admin/api/hub/delete",
+            data=json.dumps({"filename": "a.gguf"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ok"
+    assert data["removed"] == ["a.gguf", "mtp-a.gguf"]
+
+
+def test_hub_delete_in_use(client, test_app):
+    """A model selected as the active reasoning/multimodal/embedding model
+    must not be deletable."""
+    _login_admin(client, test_app)
+
+    def fake_config(module):
+        return {"model_name": "a"} if module == "reasoning" else {}
+
+    with (
+        patch("app.routes.model_hub.model_hub.delete_installed", return_value={"removed": [], "from_hub": False}),
+        patch("app.routes.model_hub.get_model_config", side_effect=fake_config),
+    ):
+        resp = client.post(
+            "/admin/api/hub/delete",
+            data=json.dumps({"filename": "a.gguf"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 409
+    assert resp.get_json()["reason"] == "in_use"
+
+
+def test_hub_delete_bad_path(client, test_app):
+    _login_admin(client, test_app)
+    mb_dl = __import__("app.model_hub", fromlist=["DownloadBlocked"])
+    with patch(
+        "app.routes.model_hub.model_hub.delete_installed",
+        side_effect=mb_dl.DownloadBlocked("bad_path"),
+    ):
+        resp = client.post(
+            "/admin/api/hub/delete",
+            data=json.dumps({"filename": "../evil.gguf"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 400
+    assert resp.get_json()["reason"] == "bad_path"
+
+
+def test_hub_reachability(client, test_app):
+    _login_admin(client, test_app)
+    with patch("app.routes.model_hub.model_hub.check_reachability", return_value={"reachable": False}):
+        resp = client.get("/admin/api/hub/reachability")
+    assert resp.status_code == 200
+    assert resp.get_json()["reachable"] is False

@@ -31,6 +31,9 @@ def _block_text(reason: str) -> str:
         "not_found": _("File not found in the repository"),
         "unknown_arch": _("Model architecture not found in the repository (config.json missing)"),
         "hub_failed": _("Model Hub request failed. Try again later."),
+        "in_use": _(
+            "This model is currently selected as the active model for a module. Choose a different model first."
+        ),
     }
     return texts.get(reason, reason)
 
@@ -56,10 +59,54 @@ def hub_search():
         context_length = None
     try:
         items = model_hub.search_hf(q, limit, context_length=context_length)
+        installed = model_hub.installed_basenames()
     except Exception as exc:  # noqa: BLE001
         logger.error(f"hub search failed: {exc}")
         return _hub_err("hub_failed")
-    return _hub_ok({"items": items, "fits_computed": context_length is not None})
+    return _hub_ok({"items": items, "fits_computed": context_length is not None, "installed": installed})
+
+
+@bp.route("/installed")
+@admin_required
+def hub_installed():
+    """Every GGUF on disk with size and Hub-origin flag (Models-tab panel)."""
+    try:
+        return _hub_ok({"files": model_hub.list_installed()})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"hub installed list failed: {exc}")
+        return _hub_err("hub_failed")
+
+
+@bp.route("/delete", methods=["POST"])
+@admin_required
+def hub_delete():
+    data = request.get_json(silent=True) or {}
+    filename = (data.get("filename") or "").strip()
+    if not filename:
+        return _hub_err("bad_path")
+    try:
+        for module in ("reasoning", "multimodal", "embedding"):
+            cfg = get_model_config(module) or {}
+            if cfg.get("model_name") in (filename, filename[:-5]):
+                return _hub_err("in_use", code=409)
+        result = model_hub.delete_installed(filename)
+    except model_hub.DownloadBlocked as exc:
+        return _hub_err(exc.reason)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"hub delete failed: {exc}")
+        return _hub_err("hub_failed")
+    return _hub_ok(result)
+
+
+@bp.route("/reachability")
+@admin_required
+def hub_reachability():
+    """Whether huggingface.co answers within a short timeout (offline banner)."""
+    try:
+        return _hub_ok(model_hub.check_reachability())
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"hub reachability probe failed: {exc}")
+        return _hub_ok({"reachable": False})
 
 
 @bp.route("/fit")

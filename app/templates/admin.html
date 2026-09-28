@@ -82,6 +82,10 @@
             <div id="models-list">
                 <!-- Cards will be populated by JavaScript -->
             </div>
+            <div id="models-files" class="model-card" style="margin-top:16px;">
+                <h3><span class="module-name">{{ _('Model files on disk') }}</span></h3>
+                <div id="models-files-list" class="models-files-list"></div>
+            </div>
         </div>
         
         <!-- Chunks Section -->
@@ -146,6 +150,7 @@
             </div>
             <div id="hub-scan-status" class="hub-scan-status" style="display:none;"></div>
             <div id="hub-recalc-status" class="hub-scan-status" style="display:none;"></div>
+            <div id="hub-offline-banner" class="hub-offline-banner" style="display:none;"></div>
             <div id="hub-results-wrap" class="hub-results-wrap">
                 <div id="hub-columns" class="hub-columns">
                     <span class="hub-col hub-col-size">{{ _('Size') }}</span>
@@ -489,6 +494,11 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_seconds': {{ _('sec')|tojson }},
     'hub_max_ctx': {{ _('Max context')|tojson }},
     'hub_download': {{ _('Download')|tojson }},
+    'hub_installed': {{ _('Downloaded')|tojson }},
+    'hub_uninstall': {{ _('Delete')|tojson }},
+    'hub_delete_confirm': {{ _('Delete model {filename} and its service files from disk?')|tojson }},
+    'hub_no_hf_access': {{ _('No access to Hugging Face — downloads from the Model Hub are unavailable')|tojson }},
+    'hub_manual_upload': {{ _('Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab')|tojson }},
     'hub_service_files': {{ _('Service files totalling {n} MB will be downloaded with the model')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}

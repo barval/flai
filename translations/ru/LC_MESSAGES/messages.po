@@ -2506,3 +2506,21 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
 
+msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
+msgstr "Нет доступа к Hugging Face — загрузка моделей из Хаба недоступна"
+
+msgid "Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab"
+msgstr "Добавьте файлы .gguf в каталог моделей (/models) вручную и нажмите «Обновить список моделей» во вкладке «Модели»"
+
+msgid "Downloaded"
+msgstr "Загружена"
+
+msgid "Delete model {filename} and its service files from disk?"
+msgstr "Удалить модель {filename} и её служебные файлы с диска?"
+
+msgid "Model files on disk"
+msgstr "Файлы моделей на диске"
+
+msgid "This model is currently selected as the active model for a module. Choose a different model first."
+msgstr "Эта модель выбрана основной для одного из модулей. Сначала выберите другую модель."
+

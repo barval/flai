@@ -2495,3 +2495,21 @@ msgstr "Could not connect to video generation service"
 #~ " model (with mmproj), not a plain "
 #~ "chat model."
 
+msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
+msgstr "No access to Hugging Face — downloads from the Model Hub are unavailable"
+
+msgid "Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab"
+msgstr "Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab"
+
+msgid "Downloaded"
+msgstr "Downloaded"
+
+msgid "Delete model {filename} and its service files from disk?"
+msgstr "Delete model {filename} and its service files from disk?"
+
+msgid "Model files on disk"
+msgstr "Model files on disk"
+
+msgid "This model is currently selected as the active model for a module. Choose a different model first."
+msgstr "This model is currently selected as the active model for a module. Choose a different model first."
+

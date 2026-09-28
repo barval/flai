@@ -584,3 +584,42 @@ def test_search_hf_items_include_type_and_max_ctx(monkeypatch):
     items = model_hub.search_hf("q", 5)
     assert items[0]["type"] == "embedding"
     assert items[0]["arch_max_ctx"] == 4096
+
+
+def test_delete_installed_removes_marker_companions(tmp_path, monkeypatch):
+    """Deleting a Hub-downloaded model removes its marker companions too."""
+    (tmp_path / "My.Q4_K_M.gguf").write_bytes(b"m")
+    (tmp_path / "mtp-My.Q4_K_M.gguf").write_bytes(b"c")
+    (tmp_path / "My.Q4_K_M.hubmeta").write_text(
+        '{"repo": "org/My", "file": "pooled/My.Q4_K_M.gguf", "names": ["My.Q4_K_M.gguf", "mtp-My.Q4_K_M.gguf"]}',
+        encoding="utf-8",
+    )
+    cache_drops = []
+
+    def fake_remove(names):
+        cache_drops.extend(names)
+
+    monkeypatch.setattr("app.utils.remove_gguf_cache_entries", fake_remove)
+    result = model_hub.delete_installed("My.Q4_K_M.gguf", models_dir=str(tmp_path))
+    assert result["removed"] == ["My.Q4_K_M.gguf", "mtp-My.Q4_K_M.gguf"]
+    assert result["from_hub"] is True
+    assert not (tmp_path / "My.Q4_K_M.gguf").exists()
+    assert not (tmp_path / "mtp-My.Q4_K_M.gguf").exists()
+    assert not (tmp_path / "My.Q4_K_M.hubmeta").exists()
+    assert cache_drops == ["My.Q4_K_M", "mtp-My.Q4_K_M"]
+
+
+def test_delete_installed_without_marker_deletes_single_file(tmp_path, monkeypatch):
+    """A manually placed model (no marker) is deleted as one file."""
+    (tmp_path / "manual.Q5_K_M.gguf").write_bytes(b"x")
+    monkeypatch.setattr("app.utils.remove_gguf_cache_entries", lambda names: None)
+    result = model_hub.delete_installed("manual.Q5_K_M.gguf", models_dir=str(tmp_path))
+    assert result["removed"] == ["manual.Q5_K_M.gguf"]
+    assert result["from_hub"] is False
+    assert not (tmp_path / "manual.Q5_K_M.gguf").exists()
+
+
+def test_delete_installed_rejects_traversal(tmp_path):
+    for filename in ("../evil.gguf", "sub/evil.gguf", "evil.txt"):
+        with pytest.raises(model_hub.DownloadBlocked):
+            model_hub.delete_installed(filename, models_dir=str(tmp_path))

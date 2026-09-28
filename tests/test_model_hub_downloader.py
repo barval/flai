@@ -158,6 +158,39 @@ def test_download_bundles_mtp_head(hub, monkeypatch):
     assert (tmp_path / "mtp-My-Q4_K_M.gguf").exists()
 
 
+def test_download_writes_hubmeta_marker(hub, monkeypatch):
+    """A finished download records a .hubmeta marker next to the model so the
+    Models tab can later delete it together with its companions."""
+    mh, tmp_path = hub
+    files = [
+        {"path": "pooled/MyModel.Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "MTP/mtp-MyModel.Q4_K_M.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    def fake_head(url, timeout=30.0):
+        size = 1 * 1024 * 1024 if "mtp-" in url else 2 * 1024 * 1024
+        return {"Content-Length": str(size), "ETag": '"t"'}
+
+    monkeypatch.setattr(model_hub, "_hf_head", fake_head)
+    job_id = mh.start_download("org/My", "pooled/MyModel.Q4_K_M.gguf")
+    job = None
+    for _ in range(150):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "done", job
+    marker = tmp_path / "MyModel.Q4_K_M.hubmeta"
+    assert marker.exists()
+    meta = json.loads(marker.read_text(encoding="utf-8"))
+    assert meta["repo"] == "org/My"
+    assert meta["file"] == "pooled/MyModel.Q4_K_M.gguf"
+    assert meta["names"] == ["MyModel.Q4_K_M.gguf", "mtp-MyModel.Q4_K_M.gguf"]
+
+
 def test_done_triggers_cache_rescan(hub, monkeypatch):
     mh, tmp_path = hub
     scanned = []

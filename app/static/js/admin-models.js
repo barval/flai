@@ -820,6 +820,73 @@ function initChunksSection() {
     }
 }
 
+function renderInstalledFiles(files) {
+    const host = document.getElementById('models-files-list');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!files || !files.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-note';
+        empty.textContent = t('hub_no_results');
+        host.appendChild(empty);
+        return;
+    }
+    files.forEach((f) => {
+        const row = document.createElement('div');
+        row.className = 'installed-file';
+        const name = document.createElement('span');
+        name.className = 'installed-file-name';
+        name.textContent = f.name;
+        row.appendChild(name);
+        const meta = document.createElement('span');
+        meta.className = 'installed-file-meta';
+        meta.textContent = (Number(f.size_mb) || 0).toFixed(1) + ' MB'
+            + (f.from_hub ? ' · ' + t('hub_installed') : '');
+        row.appendChild(meta);
+        const del = document.createElement('button');
+        del.className = 'hub-del add-user-button';
+        del.dataset.filename = f.name;
+        del.textContent = '🗑 ' + t('hub_uninstall');
+        del.addEventListener('click', () => deleteInstalledFile(f.name, del));
+        row.appendChild(del);
+        host.appendChild(row);
+    });
+}
+
+async function loadInstalledFiles() {
+    const host = document.getElementById('models-files-list');
+    if (!host) return;
+    try {
+        const resp = await fetch('/admin/api/hub/installed', { credentials: 'same-origin' });
+        const data = await safeJson(resp);
+        if (data && data.status === 'ok') renderInstalledFiles(data.files || []);
+    } catch (err) {
+        console.error('Load installed model files error:', err);
+    }
+}
+
+async function deleteInstalledFile(filename, btn) {
+    if (!confirm(t('hub_delete_confirm').replace('{filename}', filename))) return;
+    btn.disabled = true;
+    try {
+        const resp = await fetchWithCSRF('/admin/api/hub/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        });
+        const data = await safeJson(resp);
+        if (data && data.status === 'ok') {
+            loadInstalledFiles();
+        } else {
+            btn.disabled = false;
+            alert((data && data.error) || t('error'));
+        }
+    } catch (err) {
+        btn.disabled = false;
+        alert(t('error') + ': ' + err.message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     dlog('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
     initAdminTabs();
@@ -840,6 +907,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     modelDetails = {};
                     modelListCache = {};
                     loadModelConfigs();
+                    loadInstalledFiles();
                 } else {
                     alert(t('error') + ': ' + (data.error || t('unknown_error')));
                 }
@@ -855,4 +923,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     initChunksSection();
+    loadInstalledFiles();
 });

@@ -476,9 +476,17 @@ def _parse_gguf_arch(data: bytes) -> dict | None:
 
 _MISS = object()
 
+# A repo whose first GGUF header reads came back without block_count gets up
+# to this many further HTTP attempts (one per model file) before sibling files
+# stop re-downloading headers; a real repo rarely needs more than 2 hits.
+_GGUF_NEG_TRIES_LIMIT = 3
+_gguf_arch_neg_attempts: dict[str, int] = {}
+
 
 def _gguf_arch_cached(repo: str, file_path: str) -> dict | None | object:
-    """Short lookups under the cache lock (never performs I/O)."""
+    """Short lookups under the cache lock (never performs I/O) — distingishes
+    an explicit negative (-) from a cache miss, so a failed first header read
+    is not repeated as a blind bulk over every sibling file."""
     key = (repo, file_path)
     with _gguf_arch_cache_lock:
         if key in _gguf_arch_cache:
@@ -493,18 +501,28 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
 
     Cached per file so an auxiliary file without ``block_count`` (an imatrix,
     an MTP head, a split shard) never poisons the whole repository. A positive
-    result is also stored repo-wide so sibling files reuse it. The HTTP reads
-    run outside the cache lock (double-checked), so concurrent fit
-    computations across repos are genuinely parallel.
+    result is stored repo-wide so sibling files reuse it. The first file of an
+    unknown repo gets the full probe heads; siblings are probed with a single
+    small Range (a 4 MB header carries token/block_count for virtually every
+    GGUF), and after ``_GGUF_NEG_TRIES_LIMIT`` consecutive misses no more
+    network reads happen for the repo. The HTTP reads run outside the cache
+    lock (double-checked), so concurrent fit computations across repos are
+    genuinely parallel.
     """
     cached = _gguf_arch_cached(repo, file_path)
     if cached is not _MISS:
         return cached
 
-    key = (repo, file_path)
+    with _gguf_arch_cache_lock:
+        if _gguf_arch_neg_attempts.get(repo, 0) >= _GGUF_NEG_TRIES_LIMIT:
+            return None
+        key = (repo, file_path)
+        full_heads = (repo, None) not in _gguf_arch_cache
+    heads = _GGUF_HEADS if full_heads else _GGUF_HEADS[:1]
+
     result = None
     try:
-        for head in _GGUF_HEADS:
+        for head in heads:
             resp = _hf_get(
                 f"{HF_DL}/{repo}/resolve/main/{file_path}",
                 stream=True,
@@ -529,8 +547,12 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
         _gguf_arch_cache[key] = result
         if result:
             _gguf_arch_cache[(repo, None)] = result
-        _persist_arch_cache()
-        return dict(result) if result else None
+            _gguf_arch_neg_attempts.pop(repo, None)
+        elif (repo, None) not in _gguf_arch_cache:
+            _gguf_arch_cache[(repo, None)] = None
+            _gguf_arch_neg_attempts[repo] = _gguf_arch_neg_attempts.get(repo, 0) + 1
+    _persist_arch_cache()
+    return dict(result) if result else None
 
 
 def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_length: int = 8192) -> dict:

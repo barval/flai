@@ -103,6 +103,61 @@ def test_download_completes_with_sha(hub):
     assert state["received_mb"] == 2.0
 
 
+def test_download_bundles_multipart_companions(hub, monkeypatch):
+    """Downloading a multi-part shard head pulls the remaining shards too."""
+    mh, tmp_path = hub
+    files = [
+        {"path": "BF16/My-00001-of-00002.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "BF16/My-00002-of-00002.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    monkeypatch.setattr(model_hub, "_hf_head", lambda *a, **k: {"Content-Length": str(2 * 1024 * 1024), "ETag": '"t"'})
+    job_id = mh.start_download("org/My", "BF16/My-00001-of-00002.gguf")
+    job = None
+    for _ in range(150):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "done", job
+    assert job["part_count"] == 2
+    assert (tmp_path / "My-00001-of-00002.gguf").exists()
+    assert (tmp_path / "My-00002-of-00002.gguf").exists()
+    assert job["received_mb"] == 4.0
+
+
+def test_download_bundles_mtp_head(hub, monkeypatch):
+    """Downloading a model carries its matching MTP head along."""
+    mh, tmp_path = hub
+    files = [
+        {"path": "My.Q4_K_M.gguf", "size_mb": 2.0, "sha256": _HUB_SHA},
+        {"path": "MTP/mtp-My-Q4_0.gguf", "size_mb": 1.0, "sha256": _HUB_SHA},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    def fake_head(url, timeout=30.0):
+        size = 1 * 1024 * 1024 if "mtp-" in url else 2 * 1024 * 1024
+        return {"Content-Length": str(size), "ETag": '"t"'}
+
+    monkeypatch.setattr(model_hub, "_hf_head", fake_head)
+    job_id = mh.start_download("org/My", "My.Q4_K_M.gguf")
+    job = None
+    for _ in range(150):
+        job = mh.get_job(job_id)
+        if job["state"] in ("done", "failed", "cancelled"):
+            break
+        import time
+
+        time.sleep(0.01)
+    assert job["state"] == "done", job
+    assert job["part_count"] == 2
+    assert job["companions_mb"] == 1.0
+    assert (tmp_path / "My.Q4_K_M.gguf").exists()
+    assert (tmp_path / "mtp-My-Q4_0.gguf").exists()
+
+
 def test_done_triggers_cache_rescan(hub, monkeypatch):
     mh, tmp_path = hub
     scanned = []

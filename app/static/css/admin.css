@@ -1174,6 +1174,7 @@ table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hub-file-row td:nth-child(4) { width: 20%; text-align: center; }
 .hub-size { white-space: nowrap; color: #777; text-align: right; }
 .hub-path { word-break: break-all; }
+.hub-aux-note { color: #888; font-size: 0.85em; margin-top: 0.1rem; }
 .hub-fit { text-align: center; white-space: nowrap; }
 .hub-fit-good { color: #29A847; }
 .hub-fit-offload, .hub-fit-cpu { color: #b8860b; }
@@ -1194,6 +1195,7 @@ body.dark-theme .hub-badge-gated { background: #6b3a3a; color: #ffd7d7; }
 body.dark-theme .hub-badge-nc { background: #4a5a8c; color: #dbe4ff; }
 body.dark-theme .hub-file-row td { border-top-color: #333; }
 body.dark-theme .hub-size { color: #aaa; }
+body.dark-theme .hub-aux-note { color: #999; }
 body.dark-theme .hub-fit-good { color: #7ec584; }
 body.dark-theme .hub-fit-offload, body.dark-theme .hub-fit-cpu { color: #e0b64e; }
 body.dark-theme .hub-fit-impossible, body.dark-theme .hub-fit-blocked { color: #e07b5e; }

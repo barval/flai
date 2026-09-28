@@ -137,7 +137,9 @@
                     : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
                 html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}">
                     <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} MB</td>
-                    <td class="hub-path">${esc(f.path)}</td>
+                    <td class="hub-path">${esc(f.path)}${f.companion_mb > 0
+                        ? `<div class="hub-aux-note">${esc(t('hub_service_files').replace('{n}', fmtNum(Math.ceil(f.companion_mb))))}</div>`
+                        : ''}</td>
                     <td class="hub-fit hub-fit-pending">…</td>
                     ${action}
                 </tr>`;

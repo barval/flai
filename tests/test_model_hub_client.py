@@ -71,7 +71,7 @@ def test_search_hf_filters_gguf_and_private(monkeypatch):
     assert items[0]["repo"] == "org/Awesome-Model"
     assert items[0]["gated"] is True
     assert items[0]["files"] == [
-        {"path": "model.Q4_K_M.gguf", "size_mb": 2400.0, "sha256": "a" * 64},
+        {"path": "model.Q4_K_M.gguf", "size_mb": 2400.0, "sha256": "a" * 64, "companion_mb": 0.0},
     ]
 
 
@@ -239,6 +239,72 @@ def test_estimate_fit_aux_file_does_not_poison_repo_arch(monkeypatch):
 
     assert fit["block_count"] == 32
     assert any(url.endswith("Q4_K_M.gguf") for url in requested)
+
+
+def test_aux_file_detection():
+    """imatrix files, MTP heads and non-first shards are auxiliary and must be
+    hidden from the model list; -mtp models and first shards are real models."""
+    aux = [
+        "imatrix_unsloth.gguf",
+        "imatrix-qwen3.8-27b.gguf",
+        "MTP/mtp-Qwen3.8-27B-Q4_0.gguf",
+        "mtp-X.gguf",
+        "BF16/Qwen3.8-27B-BF16-00002-of-00002.gguf",
+    ]
+    models = [
+        "Qwen3.8-27B-UD-IQ1_S.gguf",
+        "Qwen3.8-27B-GSQ-RCO-IQ2_XS-mtp.gguf",
+        "BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf",
+    ]
+    for path in aux:
+        assert model_hub.is_aux_file(path), path
+    for path in models:
+        assert not model_hub.is_aux_file(path), path
+
+
+def test_companion_files_shard_tail_and_mtp(monkeypatch):
+    files = [
+        {"path": "BF16/My-00001-of-00002.gguf", "size_mb": 2.0, "sha256": "a" * 64},
+        {"path": "BF16/My-00002-of-00002.gguf", "size_mb": 2.0, "sha256": "b" * 64},
+        {"path": "My.Q4_K_M.gguf", "size_mb": 2.0, "sha256": "c" * 64},
+        {"path": "MTP/mtp-My-Q4_0.gguf", "size_mb": 1.0, "sha256": "d" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    comps = model_hub._companion_files("org/My", "BF16/My-00001-of-00002.gguf")
+    assert [c["path"] for c in comps] == ["BF16/My-00002-of-00002.gguf", "MTP/mtp-My-Q4_0.gguf"]
+
+    comps = model_hub._companion_files("org/My", "My.Q4_K_M.gguf")
+    assert [c["path"] for c in comps] == ["MTP/mtp-My-Q4_0.gguf"]
+
+    comps = model_hub._companion_files("org/My", "My.Q4_K_M.gguf")
+    assert model_hub._family_token("MTP/mtp-My-Q4_0.gguf") == model_hub._family_token("My.Q4_K_M.gguf")
+
+
+def test_search_hf_keeps_only_model_files(monkeypatch):
+    """search_hf returns only model files, with the sum of their service-file
+    sizes in companion_mb."""
+    files = [
+        {"path": "Qwen3.8-27B-UD-IQ1_S.gguf", "size_mb": 5632.0, "sha256": "a" * 64},
+        {"path": "imatrix_unsloth.gguf", "size_mb": 13.0, "sha256": "b" * 64},
+        {"path": "MTP/mtp-Qwen3.8-27B-Q4_0.gguf", "size_mb": 1306.0, "sha256": "c" * 64},
+        {"path": "Qwen3.8-27B-BF16-00001-of-00002.gguf", "size_mb": 22732.0, "sha256": "d" * 64},
+        {"path": "Qwen3.8-27B-BF16-00002-of-00002.gguf", "size_mb": 22732.0, "sha256": "e" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    search_payload = [{"id": "org/Repo", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0"}]
+    monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(search_payload))
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+
+    items = model_hub.search_hf("q", 5)
+    assert len(items) == 1
+    paths = [f["path"] for f in items[0]["files"]]
+    assert paths == ["Qwen3.8-27B-UD-IQ1_S.gguf", "Qwen3.8-27B-BF16-00001-of-00002.gguf"]
+    assert all(bad not in paths for bad in ("imatrix_unsloth.gguf", "MTP/mtp-Qwen3.8-27B-Q4_0.gguf"))
+    assert all("00002-of-00002" not in p for p in paths)
+    by_path = {f["path"]: f for f in items[0]["files"]}
+    assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["companion_mb"] == 1306.0
+    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 24038.0
 
 
 def _gguf_metadata_header_wide_tail():

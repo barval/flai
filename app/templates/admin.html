@@ -486,7 +486,8 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_fit_impossible': {{ _('Impossible')|tojson }},
     'hub_seconds': {{ _('sec')|tojson }},
     'hub_max_ctx': {{ _('Max context')|tojson }},
-    'hub_download': {{ _('Download')|tojson }}
+    'hub_download': {{ _('Download')|tojson }},
+    'hub_service_files': {{ _('Service files totalling {n} MB will be downloaded with the model')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

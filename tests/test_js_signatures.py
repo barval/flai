@@ -328,6 +328,7 @@ def test_hub_columns_synced_right_aligned():
     assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*width:\s*14%", admin_css)
     assert re.search(r"\.hub-file-row td:nth-child\(4\)\s*\{[^}]*width:\s*20%;[^}]*text-align:\s*center", admin_css)
     assert re.search(r"\.hub-size\s*\{[^}]*text-align:\s*right", admin_css), "size column must be right aligned"
+    assert ".hub-aux-note" in admin_css, "aux-file notice under the model name must be styled"
 
 
 def test_hub_numbers_locale_formatting_and_ceil():
@@ -395,6 +396,21 @@ def test_hub_calculating_msgid_in_both_catalogs():
         )
         assert 'msgid "Computing fit…"' in po, f"msgid missing in {lang_dir}"
         assert "msgstr" in po[po.index('msgid "Computing fit…"') : po.index('msgid "Computing fit…"') + 200]
+
+
+def test_hub_service_files_msgid_in_both_catalogs():
+    """The auxiliary-files notice must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        needle = 'msgid "Service files totalling {n} MB will be downloaded with the model"'
+        assert needle in po, f"msgid missing in {lang_dir}"
+        block = po[po.index(needle) : po.index(needle) + 300]
+        assert "{n}" in block
+        assert block.endswith('"\n') is False or 'msgstr "' in block
+        assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
 
 
 def test_admin_active_tab_survives_language_switch_reload():

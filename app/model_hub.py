@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import struct
 import threading
@@ -175,6 +176,57 @@ def _repo_files(repo: str, limit: int = 50) -> list[dict]:
     return list(files)
 
 
+# Multi-part GGUF shard naming, e.g. BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf.
+# Only the first part is a self-contained model; the rest are companions.
+_MULTIPART_RE = re.compile(r"^(?P<prefix>.*)-(?P<num>\d{4,5})-of-(?P<total>\d{4,5})\.gguf$")
+
+
+def is_aux_file(path: str) -> bool:
+    """True for auxiliary files that are not loadable models: imatrix files,
+    MTP heads, and non-first multi-part shards."""
+    base = os.path.basename(path)
+    low = base.lower()
+    if "imatrix" in low:
+        return True
+    if low.startswith("mtp-") or "/mtp/" in low:
+        return True
+    m = _MULTIPART_RE.match(base)
+    return bool(m and int(m.group("num")) > 1)
+
+
+def _family_token(name: str) -> str:
+    """First alphanumeric family token of a model file name, e.g. 'qwen3.8'
+    for both 'Qwen3.8-27B-UD-IQ1_S.gguf' and 'MTP/mtp-Qwen3.8-27B-Q4_0.gguf'."""
+    low = re.sub(r"^mtp[-_.]", "", os.path.basename(name).lower())
+    m = re.search(r"[a-z][a-z0-9]*", low)
+    return m.group(0) if m else ""
+
+
+def _companion_files(repo: str, model_path: str) -> list[dict]:
+    """Files required to use ``model_path``: later multi-part shards and the
+    matching MTP head (same model family in the repo)."""
+    files = _repo_files(repo)
+    out: list[dict] = []
+    main_base = os.path.basename(model_path)
+    m = _MULTIPART_RE.match(main_base)
+    if m and int(m.group("num")) == 1:
+        prefix, total = m.group("prefix"), int(m.group("total"))
+        for fi in files:
+            fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
+            if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total and int(fm.group("num")) > 1:
+                out.append(dict(fi))
+    token = _family_token(main_base)
+    if token:
+        for fi in files:
+            base = os.path.basename(fi["path"])
+            if base.lower().startswith("mtp-") and _family_token(base) == token:
+                out.append(dict(fi))
+    uniq: dict[str, dict] = {}
+    for fi in out:
+        uniq.setdefault(fi["path"], fi)
+    return list(uniq.values())
+
+
 def search_hf(query: str = "", limit: int = 20) -> list[dict]:
     """Top GGUF downloads matching ``query``, each with its GGUF files."""
     resp = _hf_get(
@@ -193,8 +245,16 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
         if r.get("private"):
             continue
         files = _repo_files(r.get("id", ""))
-        if not files:
+        model_files = [f for f in files if not is_aux_file(f["path"])]
+        if not model_files:
             continue
+        model_files = [
+            {
+                **f,
+                "companion_mb": round(sum(c["size_mb"] for c in _companion_files(r.get("id", ""), f["path"])), 1),
+            }
+            for f in model_files
+        ]
         arch = get_repo_arch(r.get("id", "")) or {}
         items.append(
             {
@@ -205,7 +265,7 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
                 "license": r.get("license") or (r.get("cardData") or {}).get("license"),
                 "type": classify_model_type(r.get("id", ""), arch.get("arch") or []),
                 "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
-                "files": files,
+                "files": model_files,
             }
         )
     return items
@@ -420,6 +480,7 @@ class _Job:
         self.path = file_path
         self.filename = model_name
         self.models_dir = models_dir
+        self.parts: list[dict] = []
         self.total_mb = 0.0
         self.received_mb = 0.0
         self.speed_mb_s = 0.0
@@ -446,6 +507,9 @@ def _job_to_dict(job: _Job) -> dict:
         "state": job.state,
         "error": job.error,
         "models_dir": job.models_dir,
+        "parts": list(job.parts),
+        "part_count": len(job.parts),
+        "companions_mb": round(sum(p.get("size_mb", 0) for p in job.parts[1:]), 1),
     }
 
 
@@ -521,18 +585,27 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
             raise DownloadBlocked("not_found") from exc
 
         os.makedirs(models_dir, exist_ok=True)
+        # Companion parts travel along: later multi-part shards and the MTP head.
+        # A companion already on disk is skipped, so free-space check and the
+        # download both account only for what will actually be fetched.
+        companions = []
+        for c in _companion_files(repo, file_path):
+            if not os.path.exists(os.path.join(models_dir, os.path.basename(c["path"]))):
+                companions.append(c)
+        companion_mb = sum(c["size_mb"] for c in companions)
         try:
             free_mb = shutil.disk_usage(models_dir).free // (1024 * 1024)
         except OSError:
             free_mb = 0
-        if free_mb < target["size_mb"] + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
+        if free_mb < target["size_mb"] + companion_mb + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
             raise DownloadBlocked("no_disk_space")
 
         dest = os.path.join(models_dir, model_name)
         if os.path.exists(dest):
             raise DownloadBlocked("already_present")
 
-        job.total_mb = float(target["size_mb"])
+        job.parts = [{"path": file_path, "size_mb": target["size_mb"], "sha256": target["sha256"]}, *companions]
+        job.total_mb = float(target["size_mb"]) + companion_mb
         job.sha256 = target["sha256"]
     except BaseException:
         # A start that never reaches the worker must release its reservation,
@@ -549,73 +622,23 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
 
 
 def _download_thread(job: _Job) -> None:
-    dest = os.path.join(job.models_dir, job.filename)
-    part = dest + ".part"
-    meta_path = dest + ".part.meta"
     try:
-        url = f"{HF_DL}/{job.repo}/resolve/main/{job.path}"
-        head = _hf_head(url)
-        total = int(head.get("Content-Length") or 0)
-        etag = head.get("X-Linked-Etag") or head.get("ETag") or ""
+        parts = job.parts or [{"path": job.path, "size_mb": 0, "sha256": job.sha256}]
+        total = 0
+        for p in parts:
+            url = f"{HF_DL}/{job.repo}/resolve/main/{p['path']}"
+            head = _hf_head(url)
+            total += int(head.get("Content-Length") or 0)
         job.total_mb = round(total / (1024 * 1024), 1)
-
-        # The sidecar records which upstream file the partial .part is a prefix
-        # of. It is written as soon as HEAD resolves — not after the download
-        # finishes — so an interrupted download leaves a resumable pair behind,
-        # and it is removed again once the finished file replaces the .part.
-        prev_meta = {}
-        if os.path.exists(meta_path):
+        for p in parts:
+            dest = os.path.join(job.models_dir, os.path.basename(p["path"]))
             try:
-                with open(meta_path, encoding="utf-8") as f:
-                    prev_meta = json.load(f)
-            except Exception:  # noqa: BLE001 - unreadable sidecar: restart the .part
-                prev_meta = {}
-        resumable = os.path.exists(part) and prev_meta.get("size") == total and prev_meta.get("etag") == etag
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump({"size": total, "etag": etag, "sha": job.sha256}, f)
-
-        start = 0
-        sha = hashlib.sha256()
-        mode = "wb"
-        if resumable:
-            with open(part, "rb") as f:
-                for chunk in iter(lambda: f.read(1 << 20), b""):
-                    sha.update(chunk)
-            start = os.path.getsize(part)
-            mode = "ab"
-
-        job.state = "downloading"
-        _write_progress(job)
-        extra = {"Range": f"bytes={start}-"} if start else None
-        resp = _hf_get(url, stream=True, extra_headers=extra, timeout=_timeout())
-
-        last_time = time.monotonic()
-        last_received = 0.0
-        with open(part, mode) as f:
-            for chunk in resp.iter_content(1 << 20):
-                if not chunk:
-                    continue
-                if _is_cancelled(job):
-                    raise DownloadCancelled(job.job_id)
-                f.write(chunk)
-                sha.update(chunk)
-                job.received_mb += len(chunk) / (1024 * 1024)
-                now = time.monotonic()
-                if now - last_time >= 1.0:
-                    job.speed_mb_s = (job.received_mb - last_received) / (now - last_time)
-                    last_received, last_time = job.received_mb, now
-                    _write_progress(job)
-
-        job.state = "verifying"
-        _write_progress(job)
-        if job.sha256:
-            got = sha.hexdigest()
-            if got != job.sha256:
-                raise DownloadFailed(f"sha256 mismatch: {got[:12]}… vs {job.sha256[:12]}…")
-
-        os.replace(part, dest)
-        with contextlib.suppress(OSError):
-            os.remove(meta_path)
+                _download_part(job, p)
+            except DownloadCancelled:
+                for suffix in (".part", ".part.meta"):
+                    with contextlib.suppress(OSError):
+                        os.remove(dest + suffix)
+                raise
         job.state = "done"
         try:
             _post_download_scan(job.models_dir)
@@ -623,9 +646,6 @@ def _download_thread(job: _Job) -> None:
             logger.warning(f"post-download GGUF cache rescan failed: {exc}")
     except DownloadCancelled:
         job.state = "cancelled"
-        for p in (part, meta_path):
-            with contextlib.suppress(OSError):
-                os.remove(p)
     except DownloadFailed as exc:
         job.state = "failed"
         job.error = str(exc)
@@ -636,6 +656,75 @@ def _download_thread(job: _Job) -> None:
         job.error = str(exc)[:500]
     finally:
         _write_progress(job)
+
+
+def _download_part(job: _Job, part: dict) -> None:
+    model_name = os.path.basename(part["path"])
+    dest = os.path.join(job.models_dir, model_name)
+    part_path = dest + ".part"
+    meta_path = dest + ".part.meta"
+    url = f"{HF_DL}/{job.repo}/resolve/main/{part['path']}"
+    head = _hf_head(url)
+    total = int(head.get("Content-Length") or 0)
+    etag = head.get("X-Linked-Etag") or head.get("ETag") or ""
+
+    # The sidecar records which upstream file the partial .part is a prefix
+    # of. It is written as soon as HEAD resolves — not after the download
+    # finishes — so an interrupted download leaves a resumable pair behind,
+    # and it is removed again once the finished file replaces the .part.
+    prev_meta = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                prev_meta = json.load(f)
+        except Exception:  # noqa: BLE001 - unreadable sidecar: restart the .part
+            prev_meta = {}
+    resumable = os.path.exists(part_path) and prev_meta.get("size") == total and prev_meta.get("etag") == etag
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({"size": total, "etag": etag, "sha": part.get("sha256", "")}, f)
+
+    start = 0
+    sha = hashlib.sha256()
+    mode = "wb"
+    if resumable:
+        with open(part_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                sha.update(chunk)
+        start = os.path.getsize(part_path)
+        mode = "ab"
+
+    job.state = "downloading"
+    _write_progress(job)
+    extra = {"Range": f"bytes={start}-"} if start else None
+    resp = _hf_get(url, stream=True, extra_headers=extra, timeout=_timeout())
+
+    last_time = time.monotonic()
+    last_received = 0.0
+    with open(part_path, mode) as f:
+        for chunk in resp.iter_content(1 << 20):
+            if not chunk:
+                continue
+            if _is_cancelled(job):
+                raise DownloadCancelled(job.job_id)
+            f.write(chunk)
+            sha.update(chunk)
+            job.received_mb += len(chunk) / (1024 * 1024)
+            now = time.monotonic()
+            if now - last_time >= 1.0:
+                job.speed_mb_s = (job.received_mb - last_received) / (now - last_time)
+                last_received, last_time = job.received_mb, now
+                _write_progress(job)
+
+    job.state = "verifying"
+    _write_progress(job)
+    if part.get("sha256"):
+        got = sha.hexdigest()
+        if got != part["sha256"]:
+            raise DownloadFailed(f"sha256 mismatch: {got[:12]}… vs {part['sha256'][:12]}…")
+
+    os.replace(part_path, dest)
+    with contextlib.suppress(OSError):
+        os.remove(meta_path)
 
 
 def get_job(job_id: str) -> dict | None:

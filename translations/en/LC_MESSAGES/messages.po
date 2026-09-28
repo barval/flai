@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 10:29+0300\n"
+"POT-Creation-Date: 2026-09-28 12:38+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -1598,6 +1598,11 @@ msgstr "sec"
 #: app/templates/admin.html:488
 msgid "Max context"
 msgstr "Max context"
+
+#: app/templates/admin.html:490
+#, python-brace-format
+msgid "Service files totalling {n} MB will be downloaded with the model"
+msgstr "Service files totalling {n} MB will be downloaded with the model"
 
 #: app/templates/base.html:7 app/templates/base.html:25
 msgid "FLAI"

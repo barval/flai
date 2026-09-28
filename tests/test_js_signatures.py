@@ -434,6 +434,25 @@ def test_hub_type_labels_collapse_on_mobile():
     assert re.search(r"\.admin-tab-content\.active\s*\{[^}]*overflow-x:\s*auto", admin_css), "horizontal scroll"
 
 
+def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    assert ".hub-filters {" in media
+    assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
+    assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.hub-columns\s*\{[^}]*min-width:\s*", media)
+    assert re.search(r"table\.hub-files\s*\{[^}]*min-width:\s*", media)
+
+
+def test_mobile_downloaded_models_panel_scrolls_horizontally():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*", media)
+    assert re.search(r"\.installed-file\s*\{[^}]*flex-wrap:\s*nowrap", media)
+
+
 def test_hub_calculating_msgid_in_both_catalogs():
     """The new 'Computing fit…' message must exist in both .po catalogs."""
     for lang_dir in ("en", "ru"):

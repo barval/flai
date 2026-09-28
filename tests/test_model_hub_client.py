@@ -623,3 +623,29 @@ def test_delete_installed_rejects_traversal(tmp_path):
     for filename in ("../evil.gguf", "sub/evil.gguf", "evil.txt"):
         with pytest.raises(model_hub.DownloadBlocked):
             model_hub.delete_installed(filename, models_dir=str(tmp_path))
+
+
+def test_list_installed_returns_type_and_sorts(tmp_path):
+    """list_installed() must classify each file (reasoning/multimodal/embedding)
+    and sort by type first, then by file size ascending."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    files = {
+        "qwen3.6-35b-MTP.gguf": b"a" * int(1.5 * 1024 * 1024),  # reasoning (default)
+        "gpt-oss-20b-Q8.gguf": b"b" * int(7 * 1024 * 1024),  # reasoning
+        "qwen3vl-8b-Q4.gguf": b"c" * int(2.5 * 1024 * 1024),  # multimodal (vl)
+        "bge-m3-Q8.gguf": b"d" * int(1 * 1024 * 1024),  # embedding (bge)
+    }
+    for name, data in files.items():
+        (models_dir / name).write_bytes(data)
+
+    out = model_hub.list_installed(models_dir=str(models_dir))
+
+    assert [f["name"] for f in out] == [
+        "qwen3.6-35b-MTP.gguf",  # reasoning, smaller first
+        "gpt-oss-20b-Q8.gguf",  # reasoning
+        "qwen3vl-8b-Q4.gguf",  # multimodal
+        "bge-m3-Q8.gguf",  # embedding
+    ]
+    assert [f["type"] for f in out] == ["reasoning", "reasoning", "multimodal", "embedding"]
+    assert [f["size_mb"] for f in out] == [1.5, 7.0, 2.5, 1.0]

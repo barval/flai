@@ -984,8 +984,14 @@ def installed_basenames(models_dir: str | None = None) -> list[str]:
     return sorted(n for n in os.listdir(models_dir) if n.endswith(".gguf"))
 
 
+_TYPE_ORDER = {"reasoning": 0, "multimodal": 1, "embedding": 2}
+
+
 def list_installed(models_dir: str | None = None) -> list[dict]:
-    """Every GGUF on disk with its size and whether it came from the Hub."""
+    """Every GGUF on disk with its size and whether it came from the Hub.
+
+    Sorted by model type (reasoning, then multimodal, then embedding) and by
+    file size ascending within each type."""
     models_dir = _models_dir(models_dir)
     out: list[dict] = []
     for name in installed_basenames(models_dir):
@@ -994,8 +1000,15 @@ def list_installed(models_dir: str | None = None) -> list[dict]:
             size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
         except OSError:
             size_mb = 0
-        out.append({"name": name, "size_mb": size_mb, "from_hub": os.path.exists(_hubmeta_path(models_dir, name))})
-    return sorted(out, key=lambda f: f["name"])
+        out.append(
+            {
+                "name": name,
+                "size_mb": size_mb,
+                "from_hub": os.path.exists(_hubmeta_path(models_dir, name)),
+                "type": classify_model_type(name),
+            }
+        )
+    return sorted(out, key=lambda f: (_TYPE_ORDER.get(f["type"], 99), f["size_mb"]))
 
 
 def delete_installed(filename: str, models_dir: str | None = None) -> dict:

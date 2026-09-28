@@ -2518,8 +2518,8 @@ msgstr "Загружена"
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Удалить модель {filename} и её служебные файлы с диска?"
 
-msgid "Model files on disk"
-msgstr "Файлы моделей на диске"
+msgid "Downloaded models"
+msgstr "Загруженные модели"
 
 msgid "This model is currently selected as the active model for a module. Choose a different model first."
 msgstr "Эта модель выбрана основной для одного из модулей. Сначала выберите другую модель."

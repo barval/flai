@@ -2507,8 +2507,8 @@ msgstr "Downloaded"
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Delete model {filename} and its service files from disk?"
 
-msgid "Model files on disk"
-msgstr "Model files on disk"
+msgid "Downloaded models"
+msgstr "Downloaded models"
 
 msgid "This model is currently selected as the active model for a module. Choose a different model first."
 msgstr "This model is currently selected as the active model for a module. Choose a different model first."

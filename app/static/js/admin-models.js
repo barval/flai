@@ -820,6 +820,12 @@ function initChunksSection() {
     }
 }
 
+const TYPE_EMOJI = { reasoning: '🧠', multimodal: '🖼️', embedding: '📐' };
+
+function fmtNum(n) {
+    return (Number(n) || 0).toLocaleString();
+}
+
 function renderInstalledFiles(files) {
     const host = document.getElementById('models-files-list');
     if (!host) return;
@@ -834,13 +840,17 @@ function renderInstalledFiles(files) {
     files.forEach((f) => {
         const row = document.createElement('div');
         row.className = 'installed-file';
+        const emoji = document.createElement('span');
+        emoji.className = 'installed-file-emoji';
+        emoji.textContent = TYPE_EMOJI[f.type] || TYPE_EMOJI.reasoning;
+        row.appendChild(emoji);
         const name = document.createElement('span');
         name.className = 'installed-file-name';
         name.textContent = f.name;
         row.appendChild(name);
         const meta = document.createElement('span');
         meta.className = 'installed-file-meta';
-        meta.textContent = (Number(f.size_mb) || 0).toFixed(1) + ' MB'
+        meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' MB'
             + (f.from_hub ? ' · ' + t('hub_installed') : '');
         row.appendChild(meta);
         const del = document.createElement('button');

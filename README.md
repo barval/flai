@@ -756,6 +756,13 @@ services/llamacpp/models/
 
 > 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
 
+### Downloading, Deleting and Offline Model Files (Model Hub)
+
+- **Downloading:** the **Model Hub** tab (admin) searches Hugging Face, shows a GPU/RAM fit badge per file, and downloads with progress, resume and sha256 verification. A successful download writes a `.hubmeta` marker that records the model's companion files (mmproj, MTP head, text encoder).
+- **Deleting:** downloaded models show a **✓ Downloaded** badge with a **Delete** button — in the Hub tab and in the **«Model files on disk»** panel on the Models tab. Deleting a Hub-downloaded model removes it **together with its companions**; a model currently selected as a module base is refused.
+- **Offline:** when Hugging Face is unreachable the Hub tab shows a warning and points to the manual path: drop `.gguf` files into `/models`, then press **«Update model list»** in the Models tab.
+- ⚠️ **Manually placed files:** a `.gguf` copied into `/models` by hand has **no** `.hubmeta` marker, so deleting it removes **only that file** — its companions (e.g. `mmproj-*.gguf`, MTP head, text encoder) are not tracked and must be removed manually.
+
 ### Model Parameters
 
 | Parameter | Multimodal | Reasoning | Embedding |

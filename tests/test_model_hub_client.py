@@ -334,6 +334,31 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 3000.0
 
 
+def test_search_repo_sums_shards_beyond_primary_file_limit(monkeypatch):
+    """The 50-result cap must not truncate the shards used for the model size."""
+    siblings = [{"rfilename": f"other/model-{index}.gguf", "size": 10 * 1024 * 1024} for index in range(48)]
+    shard_sizes_mb = [10, 20, 30, 40, 50, 60]
+    siblings.extend(
+        {
+            "rfilename": f"UD-Q6_K_XL/Qwen-0000{index}-of-00006.gguf",
+            "size": size_mb * 1024 * 1024,
+        }
+        for index, size_mb in enumerate(shard_sizes_mb, start=1)
+    )
+
+    monkeypatch.setattr(model_hub, "_hf_get", lambda *args, **kwargs: _Resp({"siblings": siblings}))
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    model_hub._files_cache.clear()
+
+    result = model_hub._search_repo({"id": "org/Qwen"})
+
+    assert result is not None
+    assert len(result["files"]) == 49
+    shard = next(f for f in result["files"] if "00001-of-00006" in f["path"])
+    assert shard["size_mb"] == sum(shard_sizes_mb)
+    assert shard["companion_mb"] == 0.0
+
+
 def test_search_hf_parallel_keeps_order(monkeypatch):
     """search_hf runs per-repo work concurrently and preserves HF order."""
     repos = [

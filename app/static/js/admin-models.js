@@ -886,6 +886,13 @@ async function loadInstalledFiles() {
     }
 }
 
+function refreshModelsAfterHubDownload() {
+    modelDetails = {};
+    modelListCache = {};
+    loadModelConfigs();
+    loadInstalledFiles();
+}
+
 async function deleteInstalledFile(filename, btn) {
     if (!confirm(t('hub_delete_confirm').replace('{filename}', filename))) return;
     btn.disabled = true;

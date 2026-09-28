@@ -504,6 +504,18 @@ def test_model_hub_persists_and_restores_active_download_progress():
     assert "function ensureJobsHost" not in hub_src
 
 
+def test_successful_hub_download_refreshes_models_tab_and_dropdowns():
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    done_branch = hub_src[hub_src.index("} else if (job.state === 'done')") :]
+    assert "refreshModelsAfterHubDownload()" in done_branch
+    refresh = models_src[models_src.index("function refreshModelsAfterHubDownload") :]
+    assert "modelDetails = {}" in refresh
+    assert "modelListCache = {}" in refresh
+    assert "loadModelConfigs()" in refresh
+    assert "loadInstalledFiles()" in refresh
+
+
 def test_admin_active_tab_survives_language_switch_reload():
     """Admin tab position must persist across the language-change full reload:
     initAdminTabs saves the active data-tab on click and restores it on load."""

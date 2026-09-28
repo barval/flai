@@ -38,7 +38,7 @@ MODEL_TYPES = ("reasoning", "multimodal", "embedding")
 
 _MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
 _EMBEDDING_ARCH = ("bert", "bge", "nomic", "gte", "embedding", "withlintransformerpooler", "lora")
-_MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "ollama")
+_MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "mmproj", "ollama")
 _EMBEDDING_NAME = ("embed", "bge", "mxbai", "gte", "nomic", "e5-", "instructor", "arctic-embed")
 
 # Repos are processed in parallel during search; each one does a few sequential
@@ -988,49 +988,71 @@ _TYPE_ORDER = {"reasoning": 0, "multimodal": 1, "embedding": 2}
 
 
 def list_installed(models_dir: str | None = None) -> list[dict]:
-    """Every GGUF on disk with its size and whether it came from the Hub.
+    """Every GGUF on disk (recursively — multimodal models live in their own
+    subdirectory together with mmproj) with size and whether it came from the Hub.
 
     Sorted by model type (reasoning, then multimodal, then embedding) and by
     file size ascending within each type."""
     models_dir = _models_dir(models_dir)
     out: list[dict] = []
-    for name in installed_basenames(models_dir):
-        path = os.path.join(models_dir, name)
-        try:
-            size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
-        except OSError:
-            size_mb = 0
-        out.append(
-            {
-                "name": name,
-                "size_mb": size_mb,
-                "from_hub": os.path.exists(_hubmeta_path(models_dir, name)),
-                "type": classify_model_type(name),
-            }
-        )
+    if not os.path.isdir(models_dir):
+        return []
+    for root, _, files in os.walk(models_dir):
+        folder = os.path.relpath(root, models_dir)
+        for name in sorted(f for f in files if f.endswith(".gguf")):
+            path = os.path.join(root, name)
+            try:
+                size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
+            except OSError:
+                size_mb = 0
+            out.append(
+                {
+                    "name": name,
+                    "path": "" if folder == "." else folder,
+                    "size_mb": size_mb,
+                    "from_hub": os.path.exists(_hubmeta_path(root, name)),
+                    "type": classify_model_type(name),
+                }
+            )
     return sorted(out, key=lambda f: (_TYPE_ORDER.get(f["type"], 99), f["size_mb"]))
 
 
 def delete_installed(filename: str, models_dir: str | None = None) -> dict:
     """Delete a model file from the models directory together with any marker
-    companions recorded by `.hubmeta`. Returns the removed basenames."""
+    companions recorded by `.hubmeta`. Nested files (a multimodal model and its
+    mmproj living in their own subdirectory) are located by basename. Returns
+    the removed basenames."""
     if filename != os.path.basename(filename) or not filename.endswith(".gguf"):
         raise DownloadBlocked("bad_path")
     models_dir = _models_dir(models_dir)
     base = os.path.realpath(models_dir)
 
-    def safe_names(candidates: list[str]) -> list[str]:
+    def find_file(name: str) -> str | None:
+        """Directory (absolute) of the first file named ``name`` under models_dir."""
+        if os.path.isfile(os.path.join(models_dir, name)):
+            return models_dir
+        if os.path.isdir(models_dir):
+            for root, _, files in os.walk(models_dir):
+                if name in files:
+                    return root
+        return None
+
+    def safe_names(candidates: list[str], folder: str) -> list[str]:
         ok = []
         for n in candidates:
             if n != os.path.basename(n) or not n.endswith(".gguf"):
                 continue
-            p = os.path.realpath(os.path.join(models_dir, n))
+            p = os.path.realpath(os.path.join(folder, n))
             if p.startswith(base + os.sep):
                 ok.append(n)
         return ok
 
+    folder = find_file(filename)
+    if folder is None:
+        return {"removed": [], "from_hub": False}
+
     names = [filename]
-    marker = _hubmeta_path(models_dir, filename)
+    marker = _hubmeta_path(folder, filename)
     from_hub = os.path.exists(marker)
     if from_hub:
         try:
@@ -1041,9 +1063,9 @@ def delete_installed(filename: str, models_dir: str | None = None) -> dict:
             logger.warning(f"model_hub could not read hubmeta marker: {exc}")
 
     removed: list[str] = []
-    for n in safe_names(names):
+    for n in safe_names(names, folder):
         with contextlib.suppress(OSError):
-            os.remove(os.path.join(models_dir, n))
+            os.remove(os.path.join(folder, n))
             removed.append(n)
     with contextlib.suppress(OSError):
         os.remove(marker)

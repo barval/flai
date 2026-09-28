@@ -619,6 +619,42 @@ def test_delete_installed_without_marker_deletes_single_file(tmp_path, monkeypat
     assert not (tmp_path / "manual.Q5_K_M.gguf").exists()
 
 
+def test_list_installed_includes_nested_multimodal(tmp_path):
+    """Multimodal models live in their own subdirectory (base + mmproj): the
+    panel must list them too, tagged as multimodal."""
+    models_dir = tmp_path / "models"
+    nested = models_dir / "Qwen3VL-8B-Instruct-Q4_K_M"
+    nested.mkdir(parents=True)
+    (nested / "Qwen3VL-8B-Instruct-Q4_K_M.gguf").write_bytes(b"a")
+    (nested / "mmproj-F16.gguf").write_bytes(b"b")
+
+    out = model_hub.list_installed(models_dir=str(models_dir))
+
+    names = {(f["name"], f["path"]) for f in out}
+    assert ("Qwen3VL-8B-Instruct-Q4_K_M.gguf", "Qwen3VL-8B-Instruct-Q4_K_M") in names
+    assert ("mmproj-F16.gguf", "Qwen3VL-8B-Instruct-Q4_K_M") in names
+    assert all(f["type"] == "multimodal" for f in out)
+
+
+def test_delete_installed_deletes_nested_by_basename(tmp_path, monkeypatch):
+    """Deleting a nested multimodal file must remove the file from its own
+    subdirectory (the basename alone addresses it)."""
+    (tmp_path / "ModelSubdir").mkdir()
+    (tmp_path / "ModelSubdir" / "Qwen3.6-35B.gguf").write_bytes(b"x")
+    cache_drops = []
+
+    def fake_remove(names):
+        cache_drops.extend(names)
+
+    monkeypatch.setattr("app.utils.remove_gguf_cache_entries", fake_remove)
+
+    result = model_hub.delete_installed("Qwen3.6-35B.gguf", models_dir=str(tmp_path))
+
+    assert result["removed"] == ["Qwen3.6-35B.gguf"]
+    assert not (tmp_path / "ModelSubdir" / "Qwen3.6-35B.gguf").exists()
+    assert cache_drops == ["Qwen3.6-35B"]
+
+
 def test_delete_installed_rejects_traversal(tmp_path):
     for filename in ("../evil.gguf", "sub/evil.gguf", "evil.txt"):
         with pytest.raises(model_hub.DownloadBlocked):

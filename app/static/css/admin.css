@@ -422,13 +422,15 @@ body.dark-theme .cam-spinner {
     cursor: pointer;
     font-size: 16px;
 }
-/* Hub download/delete/cancel buttons must match the .save-button height
-   (same padding, inherited font size) instead of the taller .add-user-button. */
+/* Hub download/delete/cancel buttons must match the .btn-primary/.save-button
+   height (the Chunks and Model-card "Save" buttons) instead of the taller
+   .add-user-button: a fixed 33px border-box height with the same 14px font. */
 .hub-dl,
 .hub-del,
 .hub-cancel {
-    padding: 8px 16px;
-    font-size: inherit;
+    height: 33px;
+    padding: 0 16px;
+    font-size: 14px;
 }
 .hub-del {
     background-color: #c0392b;

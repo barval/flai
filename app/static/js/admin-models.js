@@ -850,7 +850,8 @@ function renderInstalledFiles(files) {
         row.appendChild(name);
         const meta = document.createElement('span');
         meta.className = 'installed-file-meta';
-        meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' MB'
+        meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
+            + (f.path ? ' · ' + f.path : '')
             + (f.from_hub ? ' · ' + t('hub_installed') : '');
         row.appendChild(meta);
         const del = document.createElement('button');

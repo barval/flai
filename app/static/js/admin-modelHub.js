@@ -143,7 +143,7 @@
                         : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
                 const fitAttr = f.fit ? ` title="${esc(f.fit.message || '')}"` : '';
                 html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}" data-max-ctx="${(f.fit && f.fit.arch_max_ctx) || ''}">
-                    <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} MB</td>
+                    <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} ${t('MB')}</td>
                     <td class="hub-path">${esc(f.path)}${f.companion_mb > 0
                         ? `<div class="hub-aux-note">${esc(t('hub_service_files').replace('{n}', fmtNum(Math.ceil(f.companion_mb))))}</div>`
                         : ''}</td>

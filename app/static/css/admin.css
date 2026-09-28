@@ -422,6 +422,26 @@ body.dark-theme .cam-spinner {
     cursor: pointer;
     font-size: 16px;
 }
+/* Hub download/delete/cancel buttons must match the .save-button height
+   (same padding, inherited font size) instead of the taller .add-user-button. */
+.hub-dl,
+.hub-del,
+.hub-cancel {
+    padding: 8px 16px;
+    font-size: inherit;
+}
+.hub-del {
+    background-color: #c0392b;
+}
+.hub-del:hover {
+    background-color: #a93226;
+}
+body.dark-theme .hub-del {
+    background-color: #a93226;
+}
+body.dark-theme .hub-del:hover {
+    background-color: #7f241e;
+}
 .delete-user-btn {
     background-color: #e74c3c;
     color: white;

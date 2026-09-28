@@ -845,6 +845,27 @@ def llamacpp_models():
     if backend_type == "llama-swap" or (service_url and "llamaswap" in service_url):
         service_url = "http://flai-llamaswap:8080"
 
+    from app.model_hub import classify_model_type
+
+    gguf_cache: dict = {}
+    try:
+        from app.utils import get_gguf_models_cached
+
+        gguf_cache = get_gguf_models_cached("/models") or {}
+    except Exception as e:
+        current_app.logger.warning(f"Error loading GGUF metadata cache: {e}")
+
+    def _classify(name: str) -> str:
+        """Local model type for the admin dropdown: from the GGUF metadata cache
+        architecture when available, falling back to the file name heuristics."""
+        base = os.path.basename(name)
+        if base.endswith(".gguf"):
+            base = base[: -len(".gguf")]
+        meta = gguf_cache.get(base)
+        if meta and meta.get("architecture"):
+            return classify_model_type(base, [str(meta["architecture"])])
+        return classify_model_type(base)
+
     # If listing actual GGUF files from models directory
     if list_type == "gguf_files":
         import os
@@ -853,7 +874,7 @@ def llamacpp_models():
         gguf_files = []
         seen_bases = set()
         try:
-            for root, _dirs, files in os.walk(models_dir):
+            for _root, _dirs, files in os.walk(models_dir):
                 for f in files:
                     if f.endswith(".gguf"):
                         # Skip mmproj files - these are auxiliary files for multimodal models
@@ -861,11 +882,8 @@ def llamacpp_models():
                             continue
                         # Get display name - just the filename, not the full path
                         display_name = f
-                        if root != models_dir:
-                            # Model in subdirectory - use just the gguf filename
-                            display_name = f
                         if display_name not in seen_bases:
-                            gguf_files.append(display_name)
+                            gguf_files.append({"id": display_name, "type": _classify(display_name)})
                             seen_bases.add(display_name)
         except Exception as e:
             current_app.logger.warning(f"Error reading models directory: {e}")
@@ -898,7 +916,7 @@ def llamacpp_models():
                     for m in all_items
                     if m.lower() not in exclude_keys and (".gguf" in m.lower() or any(c.isdigit() for c in m))
                 ]
-            return jsonify(models)
+            return jsonify([{"id": m, "type": _classify(m)} for m in models])
         else:
             return jsonify({"error": _("llama-server returned {status}").format(status=resp.status_code)}), 500
     except Exception as e:

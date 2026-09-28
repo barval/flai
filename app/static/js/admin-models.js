@@ -160,6 +160,14 @@ async function onContextLengthChange(event) {
     }
 }
 
+function modelAllowedForModule(type, module) {
+    // A missing/unknown type means legacy fallback servers: only the
+    // embedding module is restrictive then, everything else may be offered.
+    if (module === 'embedding') return type === 'embedding';
+    if (module === 'multimodal') return type === 'multimodal';
+    return type !== 'embedding';
+}
+
 async function refreshModelsForModule(module, silent = false) {
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     let serviceUrl = urlInput.value.trim();
@@ -221,10 +229,12 @@ async function refreshModelsForModule(module, silent = false) {
         }
 
         modelListCache[serviceUrl] = models;
+        models = models.map(m => typeof m === 'string' ? { id: m, type: '' } : m);
         models.forEach(model => {
+            if (!modelAllowedForModule(model.type, module)) return;
             const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
+            option.value = model.id;
+            option.textContent = model.id;
             select.appendChild(option);
         });
     } catch (err) {

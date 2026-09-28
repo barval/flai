@@ -298,6 +298,25 @@ def test_hub_fit_calc_status_shown_on_first_render():
     assert "'hub_calculating': {{ _('Computing fit…')|tojson }}" in admin_template
 
 
+def test_hub_recalc_status_ticks_elapsed_seconds():
+    """The fit-calculation status must tick elapsed seconds ('(N сек)') while
+    shown — mirroring the chat phase timers — and stop when the calc finishes."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # A dedicated per-run interval + stop helper live in the hub module.
+    assert re.search(r"let recalcTimer\s*=\s*null", hub_src)
+    assert re.search(r"function _stopRecalcTimer\b", hub_src)
+    assert re.search(r"clearInterval\s*\(\s*recalcTimer\s*\)", hub_src)
+    # The recalc path starts a 1-second interval that rewrites the status text
+    # with a seconds suffix ('(5 сек)'), localized via the existing hub_seconds key.
+    recalc_body = hub_src[hub_src.index("function recalcFits") :]
+    assert "setInterval(" in recalc_body
+    assert re.search(r"recalcStatus\.textContent\s*=\s*[^;]*\([^;]*secs[^;]*suffix", recalc_body)
+    assert "t('hub_seconds')" in recalc_body
+    # Completion stops the timer before hiding the status.
+    assert "_stopRecalcTimer()" in recalc_body[: recalc_body.index("showStatus(recalcStatus, false)")]
+
+
 def test_hub_calculating_msgid_in_both_catalogs():
     """The new 'Computing fit…' message must exist in both .po catalogs."""
     for lang_dir in ("en", "ru"):

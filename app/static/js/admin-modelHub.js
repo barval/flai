@@ -22,6 +22,7 @@
     let lastData = null;
     let recalcBusy = false;
     let searchTimer = null;
+    let recalcTimer = null;
     let searchStart = 0;
 
     btn.addEventListener('click', doSearch);
@@ -99,6 +100,10 @@
         if (searchTimer) { clearInterval(searchTimer); searchTimer = null; }
     }
 
+    function _stopRecalcTimer() {
+        if (recalcTimer) { clearInterval(recalcTimer); recalcTimer = null; }
+    }
+
     function renderResults(data, keepFits) {
         let items = (data && data.items) || [];
         const types = selectedTypes();
@@ -144,8 +149,17 @@
         if (!results.querySelector('.hub-file-row')) return;
         recalcBusy = true;
         showStatus(recalcStatus, true);
-        recalcStatus.textContent = `🧮 ${esc(t(messageKey))}`;
+        const baseText = esc(t(messageKey));
+        recalcStatus.textContent = `🧮 ${baseText}`;
+        const startedAt = Date.now();
+        const suffix = esc(t('hub_seconds'));
+        _stopRecalcTimer();
+        recalcTimer = setInterval(() => {
+            const secs = Math.floor((Date.now() - startedAt) / 1000);
+            if (secs >= 1) recalcStatus.textContent = `🧮 ${baseText} (${secs}${suffix})`;
+        }, 1000);
         collectFits(() => {
+            _stopRecalcTimer();
             recalcBusy = false;
             showStatus(recalcStatus, false);
         });

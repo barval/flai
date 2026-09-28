@@ -54,6 +54,10 @@
             c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    function fmtNum(n) {
+        return (Number(n) || 0).toLocaleString();
+    }
+
     function note(text) { return `<div class="hub-note">${esc(text)}</div>`; }
 
     function selectedTypes() {
@@ -121,8 +125,8 @@
             html += `<div class="hub-repo">
                 <div class="hub-repo-head">
                     <span class="hub-repo-name">${esc(it.repo)} ${typeIc}</span> ${badges.join(' ')}
-                    ${it.arch_max_ctx ? `<span class="hub-repo-meta">${esc(t('hub_max_ctx'))}: ${it.arch_max_ctx}</span>` : ''}
-                    <span class="hub-repo-meta">⬇ ${it.downloads} ⭐ ${it.likes}</span>
+                    ${it.arch_max_ctx ? `<span class="hub-repo-meta">${esc(t('hub_max_ctx'))}: ${fmtNum(it.arch_max_ctx)}</span>` : ''}
+                    <span class="hub-repo-meta">⬇ ${fmtNum(it.downloads)} ⭐ ${fmtNum(it.likes)}</span>
                 </div>
                 <table class="hub-files"><tbody>`;
             for (const f of fileList) {
@@ -132,7 +136,7 @@
                     ? `<td><span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span></td>`
                     : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
                 html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}">
-                    <td class="hub-size">${f.size_mb} MB</td>
+                    <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} MB</td>
                     <td class="hub-path">${esc(f.path)}</td>
                     <td class="hub-fit hub-fit-pending">…</td>
                     ${action}

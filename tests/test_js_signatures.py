@@ -317,6 +317,74 @@ def test_hub_recalc_status_ticks_elapsed_seconds():
     assert "_stopRecalcTimer()" in recalc_body[: recalc_body.index("showStatus(recalcStatus, false)")]
 
 
+def test_hub_columns_synced_right_aligned():
+    """Every model's row table must share one fixed column layout (size /
+    name / fit / action), and the size column must be right-aligned."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert re.search(r"table\.hub-files\s*\{[^}]*table-layout:\s*fixed", admin_css)
+    assert "td:nth-child(1) { width: 14%" in admin_css
+    assert "td:nth-child(3) { width: 14%" in admin_css
+    assert "td:nth-child(4) { width: 20%" in admin_css
+    assert re.search(r"\.hub-size\s*\{[^}]*text-align:\s*right", admin_css), "size column must be right aligned"
+
+
+def test_hub_numbers_locale_formatting_and_ceil():
+    """Download/like counters and file sizes must use thousand separators,
+    and file sizes must round up to a whole MB."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # A shared formatter uses the locale-aware separators (like the chat token
+    # counters), so the raw numbers never leak into the DOM.
+    assert "toLocaleString" in hub_src
+    assert "fmtNum" in hub_src
+    # The size column renders an upward-rounded whole number with separators.
+    assert re.search(r"Math\.ceil\s*\(\s*f\.size_mb[^)]*\)", hub_src), "size must round up (ceil)"
+    # Downloads/likes flow through the same separators-aware formatter.
+    assert re.search(r"fmtNum\(\s*it\.downloads", hub_src)
+    assert re.search(r"fmtNum\(\s*it\.likes", hub_src)
+
+
+def test_hub_column_header_and_sticky_layout():
+    """The column header (Размер/Наименование/Оценка/Загрузка) must sit above
+    the results, and everything above the list must stay fixed while only
+    #hub-results scrolls."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert 'id="hub-columns"' in admin_template
+    assert "hub-col-size" in admin_template
+    # The tab becomes a flex column without its own vertical scroll.
+    assert re.search(r"#hub-tab\.active\s*\{[^}]*overflow:\s*hidden", admin_css)
+    assert re.search(r"#hub-results\s*\{[^}]*flex:\s*1", admin_css)
+    assert re.search(r"#hub-results\s*\{[^}]*overflow-y:\s*auto", admin_css)
+    assert re.search(r"#hub-results\s*\{[^}]*min-height:\s*0", admin_css)
+    # Column headers align with the right-aligned size column and are centered.
+    assert "grid-template-columns: 14% 1fr 14% 20%" in admin_css
+    assert re.search(r"\.hub-columns\s*\{[^}]*text-align:\s*center", admin_css)
+
+
+def test_hub_model_name_label_before_search():
+    """The search row must carry an 'Model name:' label like 'Context length:'."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert "{{ _('Model name') }}:" in admin_template
+
+
+def test_hub_type_labels_collapse_on_mobile():
+    """On mobile the model-type checkboxes must show only the box + icon, with
+    the long text label moved into a hover tooltip; the admin panel gets a
+    horizontal scroll instead of clipping."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert 'class="hub-type-label"' in admin_template
+    assert re.search(r'<label class="hub-check"[^>]*title="', admin_template), "labels need a tooltip title"
+    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    assert ".hub-type-label { display: none; }" in media
+    assert re.search(r"\.admin-tab-content\.active\s*\{[^}]*overflow-x:\s*auto", admin_css), "horizontal scroll"
+
+
 def test_hub_calculating_msgid_in_both_catalogs():
     """The new 'Computing fit…' message must exist in both .po catalogs."""
     for lang_dir in ("en", "ru"):

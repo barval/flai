@@ -129,9 +129,9 @@
             <div class="hub-filters">
                 <div class="hub-filter-row">
                     <span class="hub-filter-label">{{ _('Model types') }}:</span>
-                    <label class="hub-check"><input type="checkbox" id="hub-type-reasoning" checked> <span class="hub-type-ic">🧠</span> {{ _('Reasoning models') }}</label>
-                    <label class="hub-check"><input type="checkbox" id="hub-type-multimodal" checked> <span class="hub-type-ic">🖼️</span> {{ _('Multimodal models') }}</label>
-                    <label class="hub-check"><input type="checkbox" id="hub-type-embedding" checked> <span class="hub-type-ic">📐</span> {{ _('Embedding models') }}</label>
+                    <label class="hub-check" title="{{ _('Reasoning models') }}"><input type="checkbox" id="hub-type-reasoning" checked> <span class="hub-type-ic">🧠</span> <span class="hub-type-label">{{ _('Reasoning models') }}</span></label>
+                    <label class="hub-check" title="{{ _('Multimodal models') }}"><input type="checkbox" id="hub-type-multimodal" checked> <span class="hub-type-ic">🖼️</span> <span class="hub-type-label">{{ _('Multimodal models') }}</span></label>
+                    <label class="hub-check" title="{{ _('Embedding models') }}"><input type="checkbox" id="hub-type-embedding" checked> <span class="hub-type-ic">📐</span> <span class="hub-type-label">{{ _('Embedding models') }}</span></label>
                 </div>
                 <div class="hub-filter-row">
                     <span class="hub-filter-label">{{ _('Context length') }}:</span>
@@ -140,11 +140,18 @@
                 </div>
             </div>
             <div class="hub-header">
+                <span class="hub-filter-label">{{ _('Model name') }}:</span>
                 <input id="hub-search-input" type="text" placeholder="{{ _('Search models on Hugging Face…') }}">
                 <button id="hub-search-btn" class="add-user-button">{{ _('Search') }}</button>
             </div>
             <div id="hub-scan-status" class="hub-scan-status" style="display:none;"></div>
             <div id="hub-recalc-status" class="hub-scan-status" style="display:none;"></div>
+            <div id="hub-columns" class="hub-columns">
+                <span class="hub-col hub-col-size">{{ _('Size') }}</span>
+                <span class="hub-col hub-col-name">{{ _('File name') }}</span>
+                <span class="hub-col hub-col-fit">{{ _('Fit') }}</span>
+                <span class="hub-col hub-col-action">{{ _('Download file') }}</span>
+            </div>
             <div id="hub-results" class="hub-results"></div>
         </div>
     </div>

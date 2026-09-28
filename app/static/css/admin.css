@@ -67,6 +67,7 @@
     display: block;
     flex: 1;
     overflow-y: auto;
+    overflow-x: auto;
     min-height: 0; /* required for flex child to shrink properly */
 }
 
@@ -561,6 +562,10 @@ body.dark-theme .model-card .model-desc {
         height: calc(100vh - 125px); /* header 75px + footer 50px */
         padding: 15px;
     }
+
+    /* Model-type checkboxes: keep the box + icon, fold the text label into
+       the element's hover tooltip so the row fits the mobile width. */
+    .hub-type-label { display: none; }
 
     /* Database info row: stack items vertically with each on two lines */
     .db-info {
@@ -1114,8 +1119,9 @@ body.dark-theme .hardware-table .hw-value {
 }
 
 /* Model Hub tab */
-.hub-container { padding: 0.5rem 0; }
-.hub-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+#hub-tab.active { display: flex; flex-direction: column; overflow: hidden; }
+.hub-container { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0.5rem 0; }
+.hub-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; flex-shrink: 0; }
 .hub-filter-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .hub-filter-label { font-weight: 600; }
 .hub-check { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; }
@@ -1123,12 +1129,24 @@ body.dark-theme .hardware-table .hw-value {
 .hub-type-ic { font-size: 1em; }
 .hub-context-value { font-variant-numeric: tabular-nums; width: 7ch; min-width: 4ch; text-align: right; padding: 0.15rem 0.35rem; border: 1px solid #adb5bd; border-radius: 4px; }
 #hub-context-slider { width: 260px; max-width: 60%; }
-.hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-shrink: 0; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }
+/* Fixed column header: mirrors the per-file table widths (14% | auto | 14% | 20%). */
+.hub-columns {
+    display: grid;
+    grid-template-columns: 14% 1fr 14% 20%;
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 1px solid #bbb;
+    margin-bottom: 0.5rem;
+    padding-right: 0.4rem;
+    flex-shrink: 0;
+}
 .hub-scan-status {
     padding: 0.35rem 0.6rem;
     border-radius: 4px;
     margin-bottom: 0.5rem;
+    flex-shrink: 0;
     background: #e3f2fd;
     color: #0d47a1;
 }
@@ -1137,7 +1155,7 @@ body.dark-theme .hardware-table .hw-value {
     0%, 100% { opacity: 0.65; }
     50% { opacity: 1; }
 }
-.hub-results { display: flex; flex-direction: column; gap: 1rem; }
+#hub-results { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; }
 .hub-note { color: #666; font-style: italic; }
 .hub-repo { border: 1px solid #bbb; border-radius: 6px; padding: 0.5rem 0.75rem; }
 .hub-repo-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
@@ -1147,9 +1165,12 @@ body.dark-theme .hardware-table .hw-value {
 .hub-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; }
 .hub-badge-gated { background: #fbe9e7; color: #b71c1c; }
 .hub-badge-nc { background: #e8eaf6; color: #283593; }
-table.hub-files { width: 100%; border-collapse: collapse; }
+table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid #ddd; font-size: 0.95em; }
-.hub-size { white-space: nowrap; color: #777; }
+.hub-file-row td:nth-child(1) { width: 14%; }
+.hub-file-row td:nth-child(3) { width: 14%; }
+.hub-file-row td:nth-child(4) { width: 20%; }
+.hub-size { white-space: nowrap; color: #777; text-align: right; }
 .hub-path { word-break: break-all; }
 .hub-fit { text-align: center; white-space: nowrap; }
 .hub-fit-good { color: #29A847; }
@@ -1163,6 +1184,7 @@ table.hub-files { width: 100%; border-collapse: collapse; }
 .hub-cancel { cursor: pointer; }
 /* dark theme */
 body.dark-theme .hub-note { color: #888; }
+body.dark-theme .hub-columns { border-color: #444; }
 body.dark-theme .hub-scan-status { background: #1e3a5f; color: #a7d3ff; }
 body.dark-theme .hub-repo { border-color: #444; }
 body.dark-theme .hub-repo-meta { color: #999; }

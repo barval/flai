@@ -304,8 +304,9 @@ def test_runtime_size_mb_sums_shards_only(monkeypatch):
 
 
 def test_search_hf_keeps_only_model_files(monkeypatch):
-    """search_hf returns only model files, with the sum of their service-file
-    sizes in companion_mb."""
+    """search_hf returns only model files. A multi-part model displays the
+    summed size of all its shards (the first shard alone is a few MB), and its
+    companion_mb counts only service files outside that set (MTP head)."""
     files = [
         {"path": "Qwen3.8-27B-UD-IQ1_S.gguf", "size_mb": 5632.0, "sha256": "a" * 64},
         {"path": "imatrix_unsloth.gguf", "size_mb": 13.0, "sha256": "b" * 64},
@@ -327,8 +328,10 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     assert all(bad not in paths for bad in ("imatrix_unsloth.gguf", "MTP/mtp-Qwen3.8-27B-Q4_0.gguf"))
     assert all("00002-of-00002" not in p for p in paths)
     by_path = {f["path"]: f for f in items[0]["files"]}
+    assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["size_mb"] == 5632.0
     assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["companion_mb"] == 0.0
-    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 25732.0
+    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["size_mb"] == 45464.0
+    assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 3000.0
 
 
 def test_search_hf_parallel_keeps_order(monkeypatch):

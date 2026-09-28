@@ -347,13 +347,23 @@ def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
     model_files = [f for f in _repo_files(repo_id) if not is_aux_file(f["path"])]
     if not model_files:
         return None
-    model_files = [
-        {
-            **f,
-            "companion_mb": round(sum(c["size_mb"] for c in _companion_files(repo_id, f["path"])), 1),
-        }
-        for f in model_files
-    ]
+    model_files = []
+    for f in (ff for ff in _repo_files(repo_id) if not is_aux_file(ff["path"])):
+        # A multi-part model is shipped as many small shards; the first shard
+        # alone (00001-of-N) is typically a few MB, so display the summed
+        # runtime size of the whole set, and drop the "+ companions" note for
+        # its own later parts (they are already inside that size).
+        companions = _companion_files(repo_id, f["path"])
+        m = _MULTIPART_RE.match(os.path.basename(f["path"]))
+        if m and int(m.group("num")) == 1:
+            companions = [c for c in companions if not _MULTIPART_RE.match(os.path.basename(c["path"]))]
+        model_files.append(
+            {
+                **f,
+                "size_mb": round(_runtime_size_mb(repo_id, f["path"]), 1),
+                "companion_mb": round(sum(c["size_mb"] for c in companions), 1),
+            }
+        )
     arch = get_repo_arch(repo_id) or {}
     mtype = classify_model_type(repo_id, arch.get("arch") or [])
     if context_length:

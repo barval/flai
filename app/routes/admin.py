@@ -2,7 +2,7 @@
 import json
 import logging
 import os
-import sqlite3
+import subprocess
 from functools import wraps
 
 import requests
@@ -13,6 +13,17 @@ from app.database import get_db
 from app.model_config import get_model_config
 from app.userdb import create_user, delete_user, get_user_by_login, list_users, update_password, update_user
 from app.validators import ValidationError, validate_model_config_update, validate_user_input
+from app.vram_estimate import (
+    TIER_VRAM_GOOD_PCT,
+    _classify_model_fit,
+    _estimate_model_vram,
+    _find_gguf_path,
+    _get_actual_vram_mb,
+    _kv_per_token_for_module,
+)
+
+# Re-exported for backward compatibility: patched/tested via app.routes.admin.
+from app.vram_estimate import _get_total_ram_mb as _get_total_ram_mb
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 logger = logging.getLogger(__name__)
@@ -39,6 +50,50 @@ def get_folder_size_bytes(folder_path: str) -> int:
             except OSError:
                 continue
     return total_size
+
+
+def _slm_fact_counts() -> dict[str, int]:
+    """Return per-profile active fact counts from the SLM daemon DB.
+
+    The daemon ``memory.db`` lives on a root-owned named volume reachable only
+    inside flai-slm, so the counts are fetched with one docker call using a
+    GROUP BY query. Returns an empty dict when the daemon is unreachable.
+    """
+    script = (
+        "import sqlite3;"
+        "c=sqlite3.connect('file:/root/.superlocalmemory/memory.db?mode=ro',uri=True);"
+        "print('\\n'.join('|'.join(map(str,r)) for r in "
+        'c.execute("SELECT profile_id, COUNT(*) FROM atomic_facts '
+        "WHERE lifecycle='active' GROUP BY profile_id\") or []))"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "flai-slm",
+                "python3",
+                "-c",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as e:
+        logger.warning(f"SLM fact count via docker failed: {e}")
+        return {}
+    if result.returncode != 0:
+        logger.warning(f"SLM fact count via docker failed: {result.stderr[:300]}")
+        return {}
+    counts: dict[str, int] = {}
+    for line in result.stdout.splitlines():
+        profile, _, count = line.partition("|")
+        try:
+            counts[profile] = int(count)
+        except ValueError:
+            continue
+    return counts
 
 
 def admin_required(f):
@@ -154,6 +209,8 @@ def get_users():
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
+                        COALESCE(SUM(m.completion_tokens), 0) as outgoing_tokens,
+                        COALESCE(SUM(m.prompt_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
                          WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
@@ -171,21 +228,16 @@ def get_users():
                 u_dict = dict(u)
                 u_dict["sessions_count"] = stats["sessions"] if stats else 0
                 u_dict["messages_count"] = stats["messages"] if stats else 0
+                u_dict["outgoing_tokens"] = stats["outgoing_tokens"] if stats else 0
+                u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
 
-                slm_db = os.path.join("/app/data/slm", u["login"], ".superlocalmemory", "memory.db")
-                if os.path.exists(slm_db):
-                    try:
-                        slm_conn = sqlite3.connect(f"file:{slm_db}?mode=ro&immutable=1", uri=True)
-                        slm_c = slm_conn.cursor()
-                        slm_c.execute("SELECT COUNT(*) FROM atomic_facts WHERE lifecycle = 'active'")
-                        u_dict["slm_facts_count"] = slm_c.fetchone()[0]
-                        slm_conn.close()
-                    except Exception:
-                        u_dict["slm_facts_count"] = 0
-                else:
-                    u_dict["slm_facts_count"] = 0
+                # SLM fact count lives in the daemon memory.db on a
+                # root-owned named volume reachable only inside flai-slm;
+                # fetch all profiles in one docker call.
+                counts = _slm_fact_counts()
+                u_dict["slm_facts_count"] = counts.get(u["login"], 0)
 
                 if u_dict["camera_permissions"]:
                     try:
@@ -363,295 +415,6 @@ def get_hardware():
     except Exception as e:
         logger.error(f"Error in get_hardware: {str(e)}", exc_info=True)
         return jsonify({"error": _("Internal server error")}), 500
-
-
-def _find_gguf_path(name: str, models_dir: str = "/models") -> str | None:
-    """Find a GGUF file by name (with or without .gguf suffix), searching
-    the models directory and any subdirectories."""
-    if not name.endswith(".gguf"):
-        name = name + ".gguf"
-    full = os.path.join(models_dir, name)
-    if os.path.exists(full):
-        return full
-    for root, _dirs, files in os.walk(models_dir):
-        for f in files:
-            if f == name:
-                return os.path.join(root, f)
-    return None
-
-
-def _get_actual_vram_mb() -> tuple[int | None, int | None]:
-    """Return (used_vram_mb, total_vram_mb) from platform_detect, or (None, None)."""
-    try:
-        from app.platform_detect import get_platform_info
-        from app.resource_manager import get_resource_manager
-
-        rm = get_resource_manager()
-        info = get_platform_info(rm.hardware.platform)
-        if info.total_vram_mb > 0:
-            return info.used_vram_mb, info.total_vram_mb
-    except Exception:
-        pass
-    return None, None
-
-
-def _estimate_model_vram(
-    file_size_mb: float,
-    block_count: int,
-    ngl: int,
-    expert_count: int = 0,
-    ctx_size: int = 8192,
-    cache_type: str = "q4_0",
-    supports_mtp: bool = False,
-    mmproj_size_mb: float = 0,
-    kv_per_token: float | None = None,
-) -> dict:
-    """Estimate VRAM usage for a model with given parameters.
-
-    Returns dict with model_vram_mb, kv_cache_mb, compute_mb, total_mb, ngl.
-    """
-    # Model weights on GPU (layers * per-layer estimate)
-    # For MoE: experts stay on CPU, ~95% of per-layer weight is dense (attention + FFN gate/up/down)
-    moe_factor = 0.95 if expert_count > 0 else 1.0
-    # MTP draft prediction layers add ~15% overhead to model weights in VRAM
-    mtp_factor = 1.15 if supports_mtp else 1.0
-    ratio = min(1.0, ngl / block_count) if block_count > 0 else 1.0
-    model_vram = file_size_mb * ratio * moe_factor * mtp_factor
-
-    # KV cache estimate — calibrated against empirical measurements.
-    # Per-token KV cache (MB) with q4_0 compression, averaged across model sizes.
-    # The caller may pass the per-module calibrated value (see KV_PER_TOKEN_MB in
-    # resource_manager.py); otherwise fall back to the old generic constants.
-    if kv_per_token is None:
-        if cache_type in ("q4_0", "q4_1"):
-            kv_per_token = 0.04
-        elif cache_type in ("q8_0",):
-            kv_per_token = 0.08
-        else:  # f16 default
-            kv_per_token = 0.16
-    kv_cache_mb = ctx_size * kv_per_token
-
-    # Compute buffers (scratch space)
-    compute_mb = 400
-
-    # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers
-    total_mb = model_vram + kv_cache_mb + compute_mb + mmproj_size_mb
-
-    return {
-        "model_vram_mb": round(model_vram, 1),
-        "kv_cache_mb": round(kv_cache_mb, 1),
-        "compute_mb": compute_mb,
-        "mmproj_mb": round(mmproj_size_mb, 1),
-        "total_mb": round(total_mb, 1),
-        "ngl": ngl,
-        "ratio": round(ratio, 3),
-        "moe_factor": moe_factor,
-        "mtp_factor": mtp_factor,
-    }
-
-
-def _kv_per_token_for_module(module: str, cache_type: str = "q4_0") -> float:
-    """Return the calibrated per-token KV cache cost (MB) for a module.
-
-    Uses the same per-module values as resource_manager.KV_PER_TOKEN_MB so that
-    the admin estimate and the runtime VRAM accounting agree.
-    """
-    from app.resource_manager import KV_PER_TOKEN_MB
-
-    if module in KV_PER_TOKEN_MB:
-        return KV_PER_TOKEN_MB[module]
-    if cache_type in ("q4_0", "q4_1"):
-        return 0.04
-    if cache_type in ("q8_0",):
-        return 0.08
-    return 0.16
-
-
-def _get_total_ram_mb() -> int:
-    """Get total system RAM in MB from /proc/meminfo (Linux) or psutil fallback."""
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    return int(line.split()[1]) // 1024
-    except (OSError, ValueError):
-        pass
-    try:
-        import psutil
-
-        return psutil.virtual_memory().total // (1024 * 1024)  # type: ignore[no-any-return]
-    except Exception:
-        return 0
-
-
-# Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
-TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
-TIER_RAM_SAFETY_PCT = 0.70  # (file+kv) / system_ram <= this => possible
-TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
-
-
-def _classify_model_fit(
-    model_name: str,
-    context_length: int,
-    file_size_mb: float | None = None,
-    block_count: int | None = None,
-    module: str = "multimodal",
-) -> dict:
-    """Classify whether a model can be loaded and in what mode.
-
-    Three tiers:
-    - good: fits fully in VRAM
-    - cpu_offload: needs partial CPU offload (degrade n_gpu_layers)
-    - impossible: doesn't fit even with full CPU offload (not enough RAM)
-
-    Returns dict with tier, can_save, ngl_recommended, message, and metadata.
-    """
-    from app.utils import get_gguf_models_cached
-
-    # Defaults for unknown model
-    model_key = model_name.replace(".gguf", "")
-    cache = get_gguf_models_cached("/models")
-    cached = cache.get(model_key, {})
-
-    # Prefer passed-in values, fall back to cache
-    if file_size_mb is None:
-        file_size_mb = cached.get("file_size_mb")
-    if block_count is None:
-        block_count = cached.get("block_count")
-
-    arch_max_ctx = cached.get("context_length")
-    ngl_total = block_count or 32
-
-    used_vram, total_vram = _get_actual_vram_mb()
-    if total_vram is None or total_vram <= 0:
-        total_vram = 16311
-    total_ram = _get_total_ram_mb()
-
-    # If model is not in cache and we don't have file_size, try reading from GGUF file
-    if not file_size_mb or not block_count:
-        gguf_path = _find_gguf_path(model_name)
-        if gguf_path and os.path.exists(gguf_path):
-            file_size_mb = os.path.getsize(gguf_path) / (1024 * 1024)
-            try:
-                import gguf
-
-                reader = gguf.GGUFReader(gguf_path)
-                arch = None
-                for key in reader.fields:
-                    if "." in key and not key.startswith("GGUF") and not key.startswith("general"):
-                        arch = key.split(".")[0]
-                        break
-                if arch:
-                    bc_key = f"{arch}.block_count"
-                    if bc_key in reader.fields:
-                        raw_val = reader.fields[bc_key].parts[-1]
-                        if hasattr(raw_val, "tolist"):
-                            arr = raw_val.tolist()
-                            block_count = int(arr[0]) if isinstance(arr, list) and len(arr) == 1 else int(raw_val)  # type: ignore[arg-type]
-                        else:
-                            block_count = int(raw_val) if raw_val is not None else None
-            except Exception:
-                pass
-
-    # If model is still not resolvable, block save
-    if not file_size_mb or not block_count:
-        return {
-            "tier": "unknown",
-            "can_save": False,
-            "ngl_recommended": ngl_total,
-            "ngl_total": ngl_total,
-            "vram_mb": 0,
-            "file_mb": 0,
-            "kv_cache_mb": 0,
-            "total_vram_mb": total_vram,
-            "system_ram_mb": total_ram,
-            "arch_max_ctx": arch_max_ctx,
-            "message": _("Model metadata not found. Run 'Refresh models' first."),
-        }
-
-    file_mb = float(file_size_mb)
-
-    # 1. Compute VRAM needed for current context (with full GPU offload)
-    from app.utils import get_mmproj_size_mb
-
-    mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
-    est = _estimate_model_vram(
-        file_size_mb=file_mb,
-        block_count=block_count,
-        ngl=ngl_total,
-        expert_count=cached.get("expert_count") or 0,
-        ctx_size=max(int(context_length), 1),
-        supports_mtp=cached.get("supports_mtp", False),
-        mmproj_size_mb=mmproj_mb,
-        kv_per_token=_kv_per_token_for_module(module),
-    )
-    vram_full_mb = int(est["total_mb"])
-    kv_cache_mb = int(est["kv_cache_mb"])
-
-    # 2. Tier classification
-    vram_budget = total_vram * TIER_VRAM_GOOD_PCT
-    ram_budget = (total_ram * TIER_RAM_SAFETY_PCT) - TIER_RAM_HEADROOM_MB
-
-    if vram_full_mb <= vram_budget:
-        tier = "good"
-        ngl_recommended = ngl_total
-        message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=vram_full_mb, total=total_vram)
-        can_save = True
-    else:
-        # Try to find the largest ngl where both VRAM and RAM fit.
-        # weights_on_gpu = file × (ngl/ngl_total)
-        # weights_on_ram = file × (1 - ngl/ngl_total) = file - weights_on_gpu
-        # kv is in VRAM (or partially in RAM; we treat as VRAM-side for safety)
-        # overhead (compute buffers) is on GPU.
-        # mmproj (vision encoder) is always resident in VRAM, regardless of ngl.
-        # Find ngl_max such that:
-        #   weights_on_gpu + kv + overhead + mmproj <= vram_budget
-        #   file - weights_on_gpu + overhead <= ram_budget
-        # Solving for weights_on_gpu:
-        #   weights_on_gpu <= vram_budget - kv - overhead - mmproj
-        #   file - weights_on_gpu <= ram_budget - overhead
-        #   weights_on_gpu >= file - (ram_budget - overhead)
-        vram_for_weights = vram_budget - kv_cache_mb - 400 - mmproj_mb
-        ram_for_weights = ram_budget - 400
-        max_gpu_weights = min(vram_for_weights, file_mb)
-        # We need: file_mb - gpu_weights <= ram_for_weights → gpu_weights >= file_mb - ram_for_weights
-        min_gpu_weights = max(0, file_mb - ram_for_weights)
-
-        if max_gpu_weights <= min_gpu_weights:
-            # No ngl value makes both sides fit
-            needed = int(file_mb + kv_cache_mb)
-            tier = "impossible"
-            ngl_recommended = 0
-            message = _(
-                "✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB."
-            ).format(needed=needed, total=total_ram)
-            can_save = False
-        else:
-            # Pick a value within the feasible range. Use min for stability
-            # (less GPU usage → less likely to OOM on other tasks).
-            gpu_weights = max(min_gpu_weights, min(max_gpu_weights, vram_for_weights))
-            ratio = gpu_weights / file_mb if file_mb else 0
-            ngl_recommended = max(1, int(ngl_total * ratio))
-            cpu_layers = ngl_total - ngl_recommended
-            tier = "cpu_offload"
-            message = _(
-                "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower."
-            ).format(ngl=ngl_recommended, total_layers=ngl_total, cpu=cpu_layers)
-            can_save = True
-
-    return {
-        "tier": tier,
-        "can_save": can_save,
-        "ngl_recommended": ngl_recommended,
-        "ngl_total": ngl_total,
-        "vram_mb": vram_full_mb,
-        "file_mb": round(file_mb, 1),
-        "kv_cache_mb": kv_cache_mb,
-        "total_vram_mb": total_vram,
-        "system_ram_mb": total_ram,
-        "arch_max_ctx": arch_max_ctx,
-        "message": message,
-    }
 
 
 # Known multimodal (vision) GGUF architectures — mirrors the classification
@@ -1082,6 +845,27 @@ def llamacpp_models():
     if backend_type == "llama-swap" or (service_url and "llamaswap" in service_url):
         service_url = "http://flai-llamaswap:8080"
 
+    from app.model_hub import classify_model_type
+
+    gguf_cache: dict = {}
+    try:
+        from app.utils import get_gguf_models_cached
+
+        gguf_cache = get_gguf_models_cached("/models") or {}
+    except Exception as e:
+        current_app.logger.warning(f"Error loading GGUF metadata cache: {e}")
+
+    def _classify(name: str) -> str:
+        """Local model type for the admin dropdown: from the GGUF metadata cache
+        architecture when available, falling back to the file name heuristics."""
+        base = os.path.basename(name)
+        if base.endswith(".gguf"):
+            base = base[: -len(".gguf")]
+        meta = gguf_cache.get(base)
+        if meta and meta.get("architecture"):
+            return classify_model_type(base, [str(meta["architecture"])])
+        return classify_model_type(base)
+
     # If listing actual GGUF files from models directory
     if list_type == "gguf_files":
         import os
@@ -1090,7 +874,7 @@ def llamacpp_models():
         gguf_files = []
         seen_bases = set()
         try:
-            for root, _dirs, files in os.walk(models_dir):
+            for _root, _dirs, files in os.walk(models_dir):
                 for f in files:
                     if f.endswith(".gguf"):
                         # Skip mmproj files - these are auxiliary files for multimodal models
@@ -1098,11 +882,8 @@ def llamacpp_models():
                             continue
                         # Get display name - just the filename, not the full path
                         display_name = f
-                        if root != models_dir:
-                            # Model in subdirectory - use just the gguf filename
-                            display_name = f
                         if display_name not in seen_bases:
-                            gguf_files.append(display_name)
+                            gguf_files.append({"id": display_name, "type": _classify(display_name)})
                             seen_bases.add(display_name)
         except Exception as e:
             current_app.logger.warning(f"Error reading models directory: {e}")
@@ -1135,7 +916,7 @@ def llamacpp_models():
                     for m in all_items
                     if m.lower() not in exclude_keys and (".gguf" in m.lower() or any(c.isdigit() for c in m))
                 ]
-            return jsonify(models)
+            return jsonify([{"id": m, "type": _classify(m)} for m in models])
         else:
             return jsonify({"error": _("llama-server returned {status}").format(status=resp.status_code)}), 500
     except Exception as e:

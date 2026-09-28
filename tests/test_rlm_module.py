@@ -654,3 +654,115 @@ def test_save_progress_stores_count_for_rlm_step():
     mapping = pipe.hset.call_args.kwargs["mapping"]
     assert mapping["stage"] == "rlm_step"
     assert mapping["count"] == "3"
+
+
+# --- fix/v12.1-search: language control and premature-final guard ---
+
+
+@pytest.mark.unit
+def test_build_system_prompt_injects_response_language(test_app):
+    with test_app.app_context():
+        module = RlmModule.__new__(RlmModule)
+        assert "Russian" in module.build_system_prompt("ru")
+        assert "English" in module.build_system_prompt("en")
+
+
+@pytest.mark.unit
+def test_build_user_prompt_localized():
+    module = RlmModule.__new__(RlmModule)
+    ru = module.build_user_prompt("Q?", {"a.txt": "hello"}, lang="ru")
+    assert "Файлы корпуса:" in ru and "Вопрос: Q?" in ru
+    en = module.build_user_prompt("Q?", {"a.txt": "hello"}, lang="en")
+    assert "Corpus files:" in en and "Question: Q?" in en
+
+
+@pytest.mark.unit
+def test_broker_llm_system_prompt_uses_user_language(test_app):
+    module, llamacpp = _make_module(["sub-answer"])
+    module.lang = "ru"
+    with test_app.app_context():
+        out = module.broker_llm("prompt", "text")
+    assert out == "sub-answer"
+    assert "русском" in llamacpp.calls[0]["messages"][0]["content"]
+
+
+@pytest.mark.unit
+def test_sandbox_tracks_python_exec_count():
+    from app.rlm_sandbox import RlmSandbox
+
+    sandbox = RlmSandbox({"a": "hello"}, MagicMock(), code_timeout=5)
+    sandbox.start()
+    try:
+        result = sandbox.exec("len(context['a'])")
+        assert result.ok
+        assert sandbox.python_exec_count == 1
+        result = sandbox.exec("import os")
+        assert not result.ok
+        assert sandbox.python_exec_count == 1
+    finally:
+        sandbox.close()
+
+
+@pytest.mark.unit
+def test_run_rejects_premature_final_for_multi_file_corpus(test_app):
+    # A multi-file corpus must be inspected before final(): the first final()
+    # call is rejected with an explanation, and the actor is expected to read
+    # the documents and finish later.
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+        },
+        {
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "2",
+                    "function": {"name": "python", "arguments": json.dumps({"code": "n = len(context['a.txt'])"})},
+                }
+            ],
+        },
+        {
+            "content": "",
+            "tool_calls": [{"id": "3", "function": {"name": "final", "arguments": json.dumps({"answer": "final"})}}],
+        },
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"a.txt": "hello", "b.md": "world"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "final"
+    assert any("rejected" in t.observation for t in result.trace)
+
+
+@pytest.mark.unit
+def test_run_single_file_final_allowed_immediately(test_app):
+    # For a single-file corpus the premature-final guard must not block final().
+    module, _ = _make_module(
+        [
+            {
+                "content": "",
+                "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "ok"})}}],
+            }
+        ]
+    )
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "abc"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "ok"

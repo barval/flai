@@ -8,6 +8,7 @@
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="hardware">{{ _('Hardware') }}</button>
         <button class="admin-tab" data-tab="users">{{ _('Users') }}</button>
+        <button class="admin-tab" data-tab="hub">{{ _('Model Hub') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
         {% if camera_enabled %}
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
@@ -53,6 +54,8 @@
                         <th data-sort="name">{{ _('Name') }}</th>
                         <th data-sort="service_class">{{ _('Class') }}</th>
                         <th data-sort="sessions_count">{{ _('Sessions') }}</th>
+                        <th data-sort="outgoing_tokens">{{ _('Outgoing tokens') }}</th>
+                        <th data-sort="incoming_tokens">{{ _('Incoming tokens') }}</th>
                         <th data-sort="messages_count">{{ _('Messages') }}</th>
                         <th data-sort="files_count">{{ _('Files') }}</th>
                         <th data-sort="documents_count">{{ _('Documents') }}</th>
@@ -116,6 +119,46 @@
             </div>
             <div class="model-actions">
                 <button id="save-chunks-btn" class="btn-primary">{{ _('Save') }}</button>
+            </div>
+        </div>
+        <div id="models-files" class="model-card" style="margin-top:16px;">
+            <h3><span class="module-name">{{ _('Downloaded models') }}</span></h3>
+            <div id="models-files-list" class="models-files-list"></div>
+        </div>
+    </div>
+
+    <!-- Model Hub tab content -->
+    <div id="hub-tab" class="admin-tab-content">
+        <div class="hub-container">
+            <div class="hub-filters">
+                <div class="hub-filter-row">
+                    <span class="hub-filter-label">{{ _('Model types') }}:</span>
+                    <label class="hub-check" title="{{ _('Reasoning models') }}"><input type="checkbox" id="hub-type-reasoning" checked> <span class="hub-type-ic">🧠</span> <span class="hub-type-label">{{ _('Reasoning models') }}</span></label>
+                    <label class="hub-check" title="{{ _('Multimodal models') }}"><input type="checkbox" id="hub-type-multimodal" checked> <span class="hub-type-ic">🖼️</span> <span class="hub-type-label">{{ _('Multimodal models') }}</span></label>
+                    <label class="hub-check" title="{{ _('Embedding models') }}"><input type="checkbox" id="hub-type-embedding" checked> <span class="hub-type-ic">📐</span> <span class="hub-type-label">{{ _('Embedding models') }}</span></label>
+                </div>
+                <div class="hub-filter-row">
+                    <span class="hub-filter-label">{{ _('Context length') }}:</span>
+                    <input type="range" id="hub-context-slider" min="1024" max="262144" step="1024" value="8192">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" id="hub-context-value" class="hub-context-value" value="8192" aria-label="Context length">
+                </div>
+            </div>
+            <div class="hub-header">
+                <span class="hub-filter-label">{{ _('Model name') }}:</span>
+                <input id="hub-search-input" type="text" placeholder="{{ _('Search models on Hugging Face…') }}">
+                <button id="hub-search-btn" class="add-user-button">{{ _('Search') }}</button>
+            </div>
+            <div id="hub-scan-status" class="hub-scan-status" style="display:none;"></div>
+            <div id="hub-recalc-status" class="hub-scan-status" style="display:none;"></div>
+            <div id="hub-offline-banner" class="hub-offline-banner" style="display:none;"></div>
+            <div id="hub-results-wrap" class="hub-results-wrap">
+                <div id="hub-columns" class="hub-columns">
+                    <span class="hub-col hub-col-size">{{ _('Size') }}</span>
+                    <span class="hub-col hub-col-name">{{ _('File name') }}</span>
+                    <span class="hub-col hub-col-fit">{{ _('Fit') }}</span>
+                    <span class="hub-col hub-col-action">{{ _('Download file') }}</span>
+                </div>
+                <div id="hub-results" class="hub-results"></div>
             </div>
         </div>
     </div>
@@ -426,7 +469,37 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'RAM': {{ _('RAM')|tojson }},
     'total': {{ _('total')|tojson }},
     'available': {{ _('available')|tojson }},
-    'GB': {{ _('GB')|tojson }}
+    'GB': {{ _('GB')|tojson }},
+    // Model Hub tab translations
+    'hub_search': {{ _('Search')|tojson }},
+    'hub_searching': {{ _('Searching…')|tojson }},
+    'hub_no_query': {{ _('Enter a search query…')|tojson }},
+    'hub_no_results': {{ _('No models found')|tojson }},
+    'hub_error': {{ _('Model Hub request failed')|tojson }},
+    'hub_gated': {{ _('Access required')|tojson }},
+    'hub_nc': {{ _('Non-commercial')|tojson }},
+    'hub_downloading': {{ _('Downloading {pct}% — {total} MB')|tojson }},
+    'hub_verifying': {{ _('Verifying checksum…')|tojson }},
+    'hub_done': {{ _('Downloaded — refresh the Models tab')|tojson }},
+    'hub_failed': {{ _('Download failed')|tojson }},
+    'hub_cancelled': {{ _('Download cancelled')|tojson }},
+    'hub_cancel': {{ _('Cancel')|tojson }},
+    'hub_searching_models': {{ _('Searching for suitable models…')|tojson }},
+    'hub_recalculating': {{ _('Recalculating fit…')|tojson }},
+    'hub_calculating': {{ _('Computing fit…')|tojson }},
+    'hub_fit_gpu': {{ _('GPU')|tojson }},
+    'hub_fit_gpu_cpu': {{ _('GPU+CPU')|tojson }},
+    'hub_fit_cpu': {{ _('CPU')|tojson }},
+    'hub_fit_impossible': {{ _('Impossible')|tojson }},
+    'hub_seconds': {{ _('sec')|tojson }},
+    'hub_max_ctx': {{ _('Max context')|tojson }},
+    'hub_download': {{ _('Download')|tojson }},
+    'hub_installed': {{ _('Downloaded')|tojson }},
+    'hub_uninstall': {{ _('Delete')|tojson }},
+    'hub_delete_confirm': {{ _('Delete model {filename} and its service files from disk?')|tojson }},
+    'hub_no_hf_access': {{ _('No access to Hugging Face — downloads from the Model Hub are unavailable')|tojson }},
+    'hub_manual_upload': {{ _('Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab')|tojson }},
+    'hub_service_files': {{ _('Service files totalling {n} MB will be downloaded with the model')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -435,6 +508,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/events.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-models.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-modelHub.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-backups.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>

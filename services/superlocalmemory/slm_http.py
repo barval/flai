@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """
-HTTP proxy for SuperLocalMemory daemon with per-user database isolation.
+HTTP proxy for SuperLocalMemory daemon with per-user profile isolation.
 
 For requests with a ``profile`` parameter:
-  - /recall reads from the user's private SQLite (fast, ~1ms)
-  - /remember saves to both the daemon (shared) AND the user's private DB (async)
+  - /remember writes to the daemon with a top-level ``profile_id`` so the
+    fact lands in that user's isolated profile (per-request profile routing)
+  - /recall reads from the same profile via the daemon, falling back to a
+    keyword scan / latest-facts read on the daemon database (fast, ~1ms)
 
 For requests without ``profile``: all forwarded to the daemon.
 
+Profiles are created on the fly when a unknown one is referenced first.
+
 Endpoints:
-  - /cleanup-memories removes orphaned memories for one or all users
+  - /cleanup-memories removes orphaned memories for one or all profiles
   - A periodic background thread runs every hour to clean orphaned memories automatically
 """
 
-import contextlib
 import json
 import os
 import re
 import sqlite3
-import subprocess
 import sys
 import threading
 import time as _time
@@ -29,7 +31,8 @@ import urllib.request
 from flask import Flask, jsonify, request
 
 DAEMON_URL = "http://localhost:8765"
-SLM_DATA_DIR = "/app/data/slm"
+# Single source of truth: the daemon database (named volume), one per profile.
+DAEMON_DB_PATH = os.environ.get("SLM_DAEMON_DB_PATH", "/root/.superlocalmemory/memory.db")
 
 # ── Hybrid recall (keyword → semantic → latest) ────────────────────────
 # Borrowed technique from mem0 v3: keyword-first fast path avoids the
@@ -377,12 +380,26 @@ def _keyword_score(query_tokens: list[str], content: str) -> float:
     return matched / len(query_tokens)
 
 
-def _recency_boost(created_at: int) -> float:
-    """Newer facts get a slight score bonus (1.0–1.3)."""
-    if not created_at or created_at <= 0:
+def _recency_boost(created_at: float | int | str | None) -> float:
+    """Newer facts get a slight score bonus (1.0–1.3).
+
+    Accepts epoch timestamps and the ISO-8601 strings the daemon stores in
+    ``atomic_facts.created_at``. Unparseable values yield a neutral 1.0.
+    """
+    if not created_at:
+        return 1.0
+    ts = created_at
+    if isinstance(created_at, str):
+        import datetime as _dt
+
+        try:
+            ts = _dt.datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return 1.0
+    if not isinstance(ts, (int, float)) or ts <= 0:
         return 1.0
     now_ts = int(_time.time())
-    age_days = max(1.0, (now_ts - created_at) / 86400.0)
+    age_days = max(1.0, (now_ts - ts) / 86400.0)
     return 1.0 + 0.3 * (1.0 / (1.0 + age_days / 7.0))
 
 
@@ -400,23 +417,24 @@ def _time_window_from_query(query: str) -> tuple[int, int] | None:
     return None
 
 
-def _hybrid_recall_from_user_db(query: str, limit: int, profile: str) -> list[dict] | None:
-    """Keyword scan → semantic fallback → latest facts for per-user DB.
+def _hybrid_recall_from_profile(query: str, limit: int, profile: str) -> list[dict] | None:
+    """Keyword scan → semantic fallback → latest facts, profile-scoped.
 
-    When the per-user DB is missing, falls back to the daemon semantic path
-    (then latest facts) so profile recall keeps working.
+    Reads the daemon database directly (profile filter) for the fast
+    keyword path, then falls back to the daemon semantic path and finally
+    to latest facts for the profile.
 
     Returns list of dicts with 'content', 'score', 'confidence',
     'fact_id', 'created_at' keys, or None if no data source is available.
     """
-    db_path = _user_db_path(profile)
+    db_path = _daemon_db_path()
     if not db_path:
-        # User DB unavailable (not yet populated) — fall back to the daemon
-        # semantic path so profile recall keeps working, then latest facts.
-        sem = _semantic_recall_from_user_db(query, limit, profile)
+        # Database unavailable — fall back to the daemon semantic path,
+        # then latest facts (which will also be empty).
+        sem = _semantic_recall_from_profile(query, limit, profile)
         if sem:
             return sem
-        return _recall_from_user_db(profile, limit)
+        return _recall_latest_from_profile(profile, limit)
 
     query_tokens = _tokenize(query)
     if not query_tokens:
@@ -425,13 +443,14 @@ def _hybrid_recall_from_user_db(query: str, limit: int, profile: str) -> list[di
     time_window = _time_window_from_query(query)
 
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         sql = (
             "SELECT content, confidence, fact_id, created_at "
             "FROM atomic_facts "
-            "WHERE lifecycle = 'active' AND LENGTH(content) <= 200"
+            "WHERE lifecycle = 'active' AND profile_id = ? "
+            "AND LENGTH(content) <= 200 " + _profile_like_scope()
         )
-        params: list[int] = []
+        params: list = [profile]
         if time_window:
             sql += " AND created_at >= ? AND created_at <= ?"
             params.extend([time_window[0], time_window[1]])
@@ -444,10 +463,10 @@ def _hybrid_recall_from_user_db(query: str, limit: int, profile: str) -> list[di
 
     if not rows:
         if time_window:
-            sem = _semantic_recall_from_user_db(query, limit, profile)
+            sem = _semantic_recall_from_profile(query, limit, profile)
             if sem:
                 return sem
-        return _recall_from_user_db(profile, limit)
+        return _recall_latest_from_profile(profile, limit)
 
     scored: list[tuple[float, str, float, str, int]] = []
     for r in rows:
@@ -468,11 +487,11 @@ def _hybrid_recall_from_user_db(query: str, limit: int, profile: str) -> list[di
             if s[0] >= min_score
         ]
 
-    sem = _semantic_recall_from_user_db(query, limit, profile)
+    sem = _semantic_recall_from_profile(query, limit, profile)
     if sem:
         return sem
 
-    return _recall_from_user_db(profile, limit)
+    return _recall_latest_from_profile(profile, limit)
 
 
 app = Flask(__name__)
@@ -480,10 +499,41 @@ app = Flask(__name__)
 
 # ── Daemon helpers (shared DB) ───────────────────────────────────────
 
+_INSTALL_TOKEN_CACHE: dict = {"ts": 0.0, "token": ""}
+_KNOWN_PROFILES: dict[str, float] = {"default": _time.time()}
+_PROFILES_TTL = 60.0
 
-def _daemon_get(path: str) -> dict:
+
+def _daemon_auth_headers() -> dict:
+    """Return daemon auth headers.
+
+    Prefers ``SLM_API_KEY`` (``X-SLM-API-Key``), else falls back to the
+    install token file (``X-Install-Token`` — accepted from loopback, which
+    is how this wrapper talks to the daemon).
+    """
+    api_key = os.environ.get("SLM_API_KEY", "").strip()
+    if api_key:
+        return {"X-SLM-API-Key": api_key}
+    now = _time.time()
+    if now - _INSTALL_TOKEN_CACHE["ts"] > 60 or not _INSTALL_TOKEN_CACHE["token"]:
+        token = ""
+        try:
+            with open(os.path.join(os.path.dirname(DAEMON_DB_PATH), ".install_token"), encoding="utf-8") as f:
+                token = f.read().strip()
+        except OSError:
+            pass
+        _INSTALL_TOKEN_CACHE.update(ts=now, token=token)
+    return {"X-Install-Token": _INSTALL_TOKEN_CACHE["token"]} if _INSTALL_TOKEN_CACHE["token"] else {}
+
+
+def _daemon_get(path: str, params: dict | None = None) -> dict:
+    url = f"{DAEMON_URL}{path}"
+    if params:
+        encoded = urllib.parse.urlencode(params)
+        url = f"{url}?{encoded}" if "?" not in url else f"{url}&{encoded}"
+    req = urllib.request.Request(url, headers=_daemon_auth_headers())
     try:
-        resp = urllib.request.urlopen(f"{DAEMON_URL}{path}", timeout=30)
+        resp = urllib.request.urlopen(req, timeout=30)
         return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"daemon HTTP {e.code}: {e.read().decode()}"}
@@ -491,12 +541,16 @@ def _daemon_get(path: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def _daemon_post(path: str, body: dict) -> dict:
+def _daemon_post(path: str, body: dict, params: dict | None = None) -> dict:
+    url = f"{DAEMON_URL}{path}"
+    if params:
+        encoded = urllib.parse.urlencode(params)
+        url = f"{url}?{encoded}" if "?" not in url else f"{url}&{encoded}"
     data = json.dumps(body).encode()
     req = urllib.request.Request(
-        f"{DAEMON_URL}{path}",
+        url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **_daemon_auth_headers()},
         method="POST",
     )
     try:
@@ -508,17 +562,54 @@ def _daemon_post(path: str, body: dict) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-# ── Per-user SQLite helpers ──────────────────────────────────────────
+def _daemon_delete(path: str) -> dict:
+    url = f"{DAEMON_URL}{path}"
+    req = urllib.request.Request(url, headers=_daemon_auth_headers(), method="DELETE")
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+        return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"daemon HTTP {e.code}: {e.read().decode()}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
-def _user_db_path(profile: str) -> str | None:
-    """Return path to the user's SLM SQLite database, or None."""
-    path = os.path.join(SLM_DATA_DIR, profile, ".superlocalmemory", "memory.db")
-    return path if os.path.isfile(path) else None
+def _ensure_daemon_profile(profile: str) -> bool:
+    """Create the daemon profile on the fly if it is not known yet.
+
+    Checks a cached profile list (``_PROFILES_TTL``), talks to the daemon
+    via ``POST /api/profiles/create`` when the profile is missing.
+    """
+    if profile in _KNOWN_PROFILES and _time.time() - _KNOWN_PROFILES[profile] < _PROFILES_TTL:
+        return True
+    result = _daemon_get("/api/profiles")
+    names = {p.get("name") for p in result.get("profiles", [])}
+    if profile in names:
+        _KNOWN_PROFILES[profile] = _time.time()
+        return True
+    created = _daemon_post("/api/profiles/create", {"profile_name": profile})
+    if created.get("success"):
+        _KNOWN_PROFILES[profile] = _time.time()
+        return True
+    app.logger.warning(f"SLM profile creation failed for {profile}: {created.get('error')}")
+    return False
 
 
-def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
-    """Read latest active facts from the user's private SLM database.
+def _daemon_db_path() -> str | None:
+    """Return the path to the daemon database, or ``None`` if unavailable."""
+    return DAEMON_DB_PATH if os.path.isfile(DAEMON_DB_PATH) else None
+
+
+def _profile_like_scope() -> str:
+    """SQL scope filter: personal-scoped facts only (never shared/global)."""
+    return "AND (scope IS NULL OR scope = '' OR scope = 'personal')"
+
+
+# ── Profile-scoped helpers (daemon database) ─────────────────────────
+
+
+def _recall_latest_from_profile(profile: str, limit: int = 5) -> list[dict] | None:
+    """Read latest active facts for ``profile`` from the daemon database.
 
     Deduplicates by content — if the same text appears multiple times
     (common from SLM import), only the most recent copy is kept.
@@ -527,18 +618,17 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
     Returns a list of dicts with keys ``content``, ``score``, ``fact_id``,
     ``created_at``, or ``None`` if the database is missing.
     """
-    db_path = _user_db_path(profile)
+    db_path = _daemon_db_path()
     if not db_path:
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         rows = conn.execute(
             "SELECT content, confidence, fact_id, created_at "
             "FROM atomic_facts "
-            "WHERE lifecycle = 'active' "
-            "AND LENGTH(content) <= 200 "
-            "ORDER BY created_at DESC LIMIT ?",
-            (limit * 3,),
+            "WHERE lifecycle = 'active' AND profile_id = ? "
+            "AND LENGTH(content) <= 200 " + _profile_like_scope() + " ORDER BY created_at DESC LIMIT ?",
+            (profile, limit * 3),
         ).fetchall()
         conn.close()
 
@@ -563,11 +653,11 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
         unique = [r for r in unique if r.get("score", 0) >= min_score]
         return unique
     except Exception as e:
-        app.logger.warning(f"SLM recall from user DB failed for {profile}: {e}")
+        app.logger.warning(f"SLM latest-facts read failed for {profile}: {e}")
         return None
 
 
-def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[dict] | None:
+def _semantic_recall_from_profile(query: str, limit: int, profile: str) -> list[dict] | None:
     """Full semantic recall via daemon's in-process engine (~300-800ms).
 
     The daemon already holds the embedding model in RAM.  Routing through
@@ -575,7 +665,10 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
     ``slm recall`` subprocess (~30s for PyTorch + sentence-transformers).
     """
     try:
-        result = _daemon_get(f"/recall?q={urllib.parse.quote(query)}&limit={limit}&fast=false")
+        result = _daemon_get(
+            "/recall",
+            params={"q": query, "limit": limit, "fast": "false", "profile_id": profile},
+        )
         if not result.get("ok"):
             return None
         raw_results = result.get("results", [])
@@ -590,6 +683,7 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
                 {
                     "content": r.get("content", ""),
                     "score": r.get("score", 0),
+                    "confidence": r.get("confidence", 0),
                     "fact_id": r.get("fact_id", ""),
                     "created_at": r.get("created_at", ""),
                 }
@@ -600,12 +694,12 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
         unique = [r for r in unique if r.get("score", 0) >= min_score]
         return unique
     except Exception as e:
-        app.logger.warning(f"SLM semantic recall via daemon failed: {e}")
+        app.logger.warning(f"SLM semantic recall via daemon failed for {profile}: {e}")
         return None
 
 
-def _cleanup_memories_for_user(profile: str) -> dict:
-    """Remove orphaned rows from ``memories`` table.
+def _cleanup_memories_for_profile(profile: str) -> dict:
+    """Remove orphaned rows from ``memories`` table for ``profile``.
 
     A memory is orphaned when none of its ``atomic_facts`` has
     ``lifecycle = 'active'``.  Deleting from ``memories`` cascades to
@@ -614,49 +708,30 @@ def _cleanup_memories_for_user(profile: str) -> dict:
 
     Returns a dict with counts for logging.
     """
-    db_path = _user_db_path(profile)
+    db_path = _daemon_db_path()
     if not db_path:
         return {"deleted": 0, "error": "db not found"}
 
     try:
-        conn = sqlite3.connect(db_path)
-        before = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        conn = sqlite3.connect(db_path, timeout=30)
         cursor = conn.execute(
             """
             DELETE FROM memories
-            WHERE memory_id NOT IN (
+            WHERE profile_id = ?
+            AND memory_id NOT IN (
                 SELECT DISTINCT memory_id
                 FROM atomic_facts
                 WHERE lifecycle = 'active'
             )
-            """
+            """,
+            (profile,),
         )
         deleted = cursor.rowcount
-        after = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         conn.commit()
         conn.close()
-        return {"deleted": deleted, "before": before, "after": after}
+        return {"deleted": deleted}
     except Exception as e:
         return {"deleted": 0, "error": str(e)}
-
-
-def _remember_to_user_db(text: str, metadata: dict | None, profile: str) -> None:
-    """Save a fact to the user's private SLM database via subprocess.
-
-    Runs in a background thread — does not block the HTTP response.
-    The user's ``HOME`` is set to their isolated data directory.
-    """
-    home_dir = os.path.join(SLM_DATA_DIR, profile)
-    env = os.environ.copy()
-    env["HOME"] = home_dir
-    with contextlib.suppress(Exception):
-        subprocess.run(
-            ["slm", "remember", text, "--json", "--sync"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env=env,
-        )
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -674,7 +749,7 @@ def health():
 
 @app.route("/remember", methods=["POST"])
 def remember():
-    """Store a fact — forward to daemon; also persist to per-user DB async."""
+    """Store a fact — forward to daemon with per-request profile routing."""
     data = request.get_json(force=True)
     text = data.get("text", "")
     if not text:
@@ -683,36 +758,16 @@ def remember():
     meta = data.get("metadata", {})
     profile = data.get("profile")
 
+    body: dict = {"content": text, "tags": "", "metadata": meta}
     if profile:
-        meta["profile"] = profile
+        body["profile_id"] = profile
 
-    result = _daemon_post(
-        "/remember?wait=true",
-        {
-            "content": text,
-            "tags": "",
-            "metadata": meta,
-        },
-    )
+    result = _daemon_post("/remember?wait=true", body)
 
-    if profile:
-        t = threading.Thread(
-            target=_remember_to_user_db,
-            args=(text, meta, profile),
-            daemon=True,
-        )
-        t.start()
-        if not result.get("ok"):
-            app.logger.warning(
-                f"Daemon remember failed for {profile}, but per-user save was dispatched: {result.get('error')}"
-            )
-        return jsonify(
-            {
-                "success": True,
-                "fact_ids": result.get("fact_ids", []),
-                "note": "saved to per-user database" if not result.get("ok") else "",
-            }
-        )
+    profile_unknown = profile and not result.get("ok") and "unknown" in str(result.get("error", "")).lower()
+    if profile_unknown and _ensure_daemon_profile(profile):
+        # Profile may not exist yet — create it on the fly and retry once.
+        result = _daemon_post("/remember?wait=true", body)
 
     return jsonify(
         {
@@ -727,8 +782,9 @@ def remember():
 def recall():
     """Retrieve relevant facts.
 
-    With ``profile`` — read directly from the user's private SQLite (fast, ~1ms).
-    Without ``profile`` — forward to the daemon (shared database).
+    With ``profile`` — profile-scoped recall from the daemon database
+    (keyword scan with semantic/latest fallback, fast).
+    Without ``profile`` — forward to the daemon (default profile).
     """
     data = request.get_json(force=True)
     query = data.get("query", "")
@@ -738,18 +794,18 @@ def recall():
 
     if profile:
         if semantic:
-            results = _semantic_recall_from_user_db(query, limit, profile)
+            results = _semantic_recall_from_profile(query, limit, profile)
             if not results:
-                results = _recall_from_user_db(profile, limit)
+                results = _recall_latest_from_profile(profile, limit)
         else:
-            results = _hybrid_recall_from_user_db(query, limit, profile)
-        # profile set → read ONLY from user DB, never fall through to daemon
+            results = _hybrid_recall_from_profile(query, limit, profile)
+        # profile set → read ONLY from the profile, never the shared default
         return jsonify({"success": True, "data": {"results": results or []}})
 
     if not query:
         return jsonify({"success": False, "error": "Missing query"}), 400
 
-    result = _daemon_get(f"/recall?q={urllib.parse.quote(query)}&limit={limit}&fast=true")
+    result = _daemon_get("/recall", params={"q": query, "limit": limit, "fast": "true"})
     results = []
     for r in result.get("results", []):
         results.append(
@@ -771,12 +827,46 @@ def recall():
 
 @app.route("/forget", methods=["POST"])
 def forget():
-    return jsonify({"success": True, "note": "forget not supported via daemon"})
+    """Archive facts matching ``query`` inside ``profile``.
+
+    POST body: ``{"query": "...", "profile": "valery"}``.
+    Recalls semantically, then archives the matched facts (profile-scoped).
+    """
+    data = request.get_json(force=True)
+    query = data.get("query", "")
+    profile = data.get("profile")
+    if not query:
+        return jsonify({"success": False, "error": "query required"}), 400
+
+    db_path = _daemon_db_path()
+    if not profile or not db_path:
+        return jsonify({"success": True, "deleted": 0, "note": "profile-scoped forget required"})
+
+    facts = _semantic_recall_from_profile(query, limit=20, profile=profile)
+    if not facts:
+        return jsonify({"success": True, "deleted": 0})
+
+    try:
+        conn = sqlite3.connect(db_path, timeout=30)
+        deleted = 0
+        for f in facts:
+            cursor = conn.execute(
+                "UPDATE atomic_facts SET lifecycle = 'archived', archive_status = 'archived' "
+                "WHERE fact_id = ? AND profile_id = ? AND lifecycle = 'active'",
+                (f.get("fact_id", ""), profile),
+            )
+            deleted += cursor.rowcount
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "deleted": deleted})
+    except Exception as e:
+        app.logger.warning(f"SLM forget failed for {profile}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/delete", methods=["POST"])
 def delete_fact():
-    """Delete a specific fact by ID from the user's private SQLite database."""
+    """Archive a specific fact by ID inside its profile (daemon database)."""
     data = request.get_json(force=True)
     fact_id = data.get("id", "")
     profile = data.get("profile")
@@ -784,15 +874,16 @@ def delete_fact():
     if not fact_id or not profile:
         return jsonify({"success": False, "error": "id and profile required"}), 400
 
-    db_path = _user_db_path(profile)
+    db_path = _daemon_db_path()
     if not db_path:
-        return jsonify({"success": False, "error": "user database not found"}), 404
+        return jsonify({"success": False, "error": "daemon database not found"}), 404
 
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=30)
         cursor = conn.execute(
-            "UPDATE atomic_facts SET lifecycle = 'archived' WHERE fact_id = ? AND lifecycle = 'active'",
-            (fact_id,),
+            "UPDATE atomic_facts SET lifecycle = 'archived', archive_status = 'archived' "
+            "WHERE fact_id = ? AND profile_id = ? AND lifecycle = 'active'",
+            (fact_id, profile),
         )
         conn.commit()
         deleted = cursor.rowcount
@@ -803,43 +894,155 @@ def delete_fact():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# Counters that may legitimately stay non-zero after a GDPR erasure. They are
+# system/audit/journal artifacts (immutable write_commits receipts, the Art. 17
+# erasure_receipts, the profile row before it is removed, the learning reset
+# marker) — not user data — so their presence must not block profile deletion.
+_ERASURE_SYSTEM_COUNTS = {
+    "active_profile",
+    "success",
+    "error",
+    "write_commits",
+    "erasure_receipts",
+    "profiles",
+    "learning_db",
+    "compliance_audit",
+    "code_graph_scope",
+    "context_cache",
+    "backup_destinations",
+    "backup_snapshots_scanned",
+    "backup_obligations_pending",
+    "backup_obligations_recorded",
+    "residue_rows",
+    "erasure_complete",
+    "erasure_provable",
+    "table_delete_failures",
+}
+
+
+def _erasure_user_data_clean(counts: dict) -> bool:
+    """True when an erasure left no user-data rows behind.
+
+    The daemon's ``gdpr/erase`` reports ``success: false`` for profiles whose
+    write_commits journal is immutable, even though every user-data table was
+    wiped. Check the actual row counters instead of trusting the flag: any
+    non-zero count outside the system/audit set means real data survived.
+    """
+    if not isinstance(counts, dict):
+        return False
+    for key, value in counts.items():
+        if key in _ERASURE_SYSTEM_COUNTS:
+            continue
+        if isinstance(value, int) and value != 0:
+            return False
+    return True
+
+
+@app.route("/delete-profile", methods=["POST"])
+def delete_profile_route():
+    """Permanently delete a daemon profile and all its data.
+
+    The daemon's GDPR eraser only operates on the ACTIVE profile, so we
+    temporarily switch to the target, run the erasure with a confirm, switch
+    back (the daemon refuses to remove the active profile's row), then call
+    the profile deletion endpoint. 'default' and unknown profiles are refused.
+    """
+    data = request.get_json(force=True)
+    profile = (data.get("profile") or "").strip()
+    if not profile:
+        return jsonify({"success": False, "error": "profile required"}), 400
+    if profile == "default":
+        return jsonify({"success": False, "error": "Cannot delete 'default' profile"}), 400
+
+    info = _daemon_get("/api/profiles")
+    names = {p.get("name") for p in info.get("profiles", [])}
+    if profile not in names:
+        return jsonify({"success": False, "error": f"Profile '{profile}' not found"}), 404
+    if info.get("active_profile") == profile:
+        return jsonify({"success": False, "error": "Cannot delete the active profile"}), 400
+
+    previous_active = info.get("active_profile") or "default"
+    restore_to = previous_active if previous_active != profile else "default"
+    switched = False
+    try:
+        switch_res = _daemon_post(f"/api/profiles/{profile}/switch", {})
+        if not switch_res.get("success"):
+            return jsonify({"success": False, "error": switch_res.get("error", "switch failed")}), 502
+        switched = True
+
+        erased = _daemon_post("/api/compliance/gdpr/erase", {"confirm": profile})
+        if not erased.get("success") and not _erasure_user_data_clean(erased):
+            residue = {k: v for k, v in erased.items() if isinstance(v, int) and v and k not in _ERASURE_SYSTEM_COUNTS}
+            return jsonify(
+                {"success": False, "error": f"erasure failed: user data left in {residue or 'unknown layers'}"}
+            ), 502
+
+        # Restore the previous active profile BEFORE deleting the row: the
+        # daemon refuses DELETE /api/profiles/<name> for the active profile.
+        if restore_to != profile:
+            back = _daemon_post(f"/api/profiles/{restore_to}/switch", {})
+            if not back.get("success"):
+                return jsonify({"success": False, "error": back.get("error", "switch-back failed")}), 502
+            switched = False
+
+        deleted = _daemon_delete(f"/api/profiles/{profile}")
+        if not deleted.get("success"):
+            return jsonify({"success": False, "error": deleted.get("error", "profile removal failed")}), 502
+
+        _KNOWN_PROFILES.pop(profile, None)
+        return jsonify({"success": True, "profile": profile})
+    except Exception as e:
+        app.logger.warning(f"SLM delete-profile failed for {profile}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if switched and restore_to != profile:
+            _daemon_post(f"/api/profiles/{restore_to}/switch", {})
+
+
 @app.route("/list", methods=["POST"])
 def list_facts():
-    """List user's facts — read from per-user DB if profile is provided."""
+    """List profile's facts — latest reads from the daemon database."""
     data = request.get_json(force=True)
     limit = data.get("limit", 20)
     profile = data.get("profile")
 
     if profile:
-        results = _recall_from_user_db(profile, limit)
+        results = _recall_latest_from_profile(profile, limit)
         if results is not None:
             return jsonify({"success": True, "data": {"results": results}})
 
     return jsonify({"success": True, "data": {"results": []}})
 
 
+def _daemon_profile_names() -> list[str]:
+    """Return profile names known to the daemon (always includes 'default')."""
+    result = _daemon_get("/api/profiles")
+    names = [p.get("name") for p in result.get("profiles", []) if p.get("name")]
+    if "default" not in names:
+        names.insert(0, "default")
+    return names
+
+
 @app.route("/cleanup-memories", methods=["POST"])
 def cleanup_memories():
-    """Remove orphaned rows from ``memories`` table for one or all users.
+    """Remove orphaned rows from ``memories`` table for one or all profiles.
 
     A memory is orphaned when none of its ``atomic_facts`` has
     ``lifecycle = 'active'``.
 
-    POST body: ``{"profile": "valery"}`` or ``{}`` (all users).
+    POST body: ``{"profile": "valery"}`` or ``{}`` (all profiles).
     """
     data = request.get_json(force=True) if request.data else {}
     profile = data.get("profile")
 
     if profile:
-        result = _cleanup_memories_for_user(profile)
+        result = _cleanup_memories_for_profile(profile)
         return jsonify({"success": True, "profile": profile, **result})
 
-    # All users
+    # All profiles
     results = {}
-    if os.path.isdir(SLM_DATA_DIR):
-        for entry in os.listdir(SLM_DATA_DIR):
-            if os.path.isdir(os.path.join(SLM_DATA_DIR, entry)):
-                results[entry] = _cleanup_memories_for_user(entry)
+    for name in _daemon_profile_names():
+        results[name] = _cleanup_memories_for_profile(name)
 
     total_deleted = sum(r.get("deleted", 0) for r in results.values())
     return jsonify({"success": True, "total_deleted": total_deleted, "profiles": results})
@@ -860,7 +1063,7 @@ def similarity_check():
     if not text:
         return jsonify({"success": False, "error": "text required"}), 400
 
-    results = _semantic_recall_from_user_db(text, limit=1, profile=profile)
+    results = _semantic_recall_from_profile(text, limit=1, profile=profile)
     if not results:
         return jsonify({"success": True, "max_similarity": 0.0, "closest": None})
 
@@ -885,14 +1088,11 @@ def _periodic_cleanup(interval: int = 3600) -> None:
     while True:
         time.sleep(interval)
         try:
-            if not os.path.isdir(SLM_DATA_DIR):
-                continue
-            for entry in os.listdir(SLM_DATA_DIR):
-                if os.path.isdir(os.path.join(SLM_DATA_DIR, entry)):
-                    result = _cleanup_memories_for_user(entry)
-                    deleted = result.get("deleted", 0)
-                    if deleted:
-                        app.logger.info(f"Periodic cleanup for {entry}: deleted {deleted} orphaned memories")
+            for name in _daemon_profile_names():
+                result = _cleanup_memories_for_profile(name)
+                deleted = result.get("deleted", 0)
+                if deleted:
+                    app.logger.info(f"Periodic cleanup for {name}: deleted {deleted} orphaned memories")
         except Exception as e:
             app.logger.warning(f"Periodic cleanup failed: {e}")
 

@@ -686,6 +686,10 @@ def extract_text_from_file(file_path: str) -> str | None:
             return _extract_json(file_path)
         elif ext == ".epub":
             return _extract_epub(file_path)
+        elif ext == ".recognized_text":
+            # Companion file with multimodal image description - read as plain text
+            with open(file_path, encoding="utf-8") as f:
+                return f.read()
         else:
             return None
     except Exception:
@@ -1459,6 +1463,32 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                         break
 
     return cached
+
+
+def remove_gguf_cache_entries(model_names) -> None:
+    """Drop deleted model files from the gguf_models_cache, both in-memory and
+    in the database table. Known no-ops are tolerated (files already gone)."""
+    names = [str(n) for n in model_names if str(n)]
+    if not names:
+        return
+    global _gguf_models_cache
+    if _gguf_models_cache:
+        seen_deleted = False
+        for n in names:
+            if _gguf_models_cache.pop(n, None) is not None:
+                seen_deleted = True
+        if seen_deleted and not _gguf_models_cache:
+            _gguf_models_cache = None
+    try:
+        from .database import get_db
+
+        placeholders = ", ".join(["%s"] * len(names))
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(f"DELETE FROM gguf_models_cache WHERE model_name IN ({placeholders})", names)
+            conn.commit()
+    except Exception:
+        pass
 
 
 def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:

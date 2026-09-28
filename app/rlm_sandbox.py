@@ -225,6 +225,7 @@ class RlmSandbox:
         self.max_output = max_output
         self.memory_mb = memory_mb
         self.cpu_seconds = cpu_seconds
+        self.python_exec_count = 0
         self._conn: Any = None
         self._reply_conn: Any = None
         self._pid: int | None = None
@@ -266,6 +267,7 @@ class RlmSandbox:
         error = validate_code(code)
         if error:
             return SandboxResult(ok=False, error=error)
+        self.python_exec_count += 1
         if self._conn is None or self._reply_conn is None:
             return SandboxResult(ok=False, error="sandbox not started")
         try:

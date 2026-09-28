@@ -6,6 +6,8 @@ import hmac
 import json
 import os
 import re
+import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -215,7 +217,7 @@ class RedisRequestQueue:
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
-        if req_type in ("index_document", "reindex_all_embeddings"):
+        if req_type in ("index_document", "reindex_all_embeddings", "describe_document_image", "describe_document_pdf"):
             return "slow"  # Indexing can be slow
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
@@ -360,6 +362,8 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if req_type in ("describe_document_image", "describe_document_pdf"):
+            return "multimodal"
         if task_type == "transcribe_audio":
             return "none"
 
@@ -1257,10 +1261,28 @@ class RedisRequestQueue:
                 lang,
             )
 
-        # Show resize notice if image was downscaled for editing
+        # Show a notice when the image was downscaled — either the large-source
+        # 1024px cap or the CPU-mode halving (which additionally shrinks output).
         resize_notice = None
         resize_notice_id = None
-        if image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                resize_text = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            resize_notice_id = save_message(
+                session_id, "assistant", resize_text, model_name="system", response_time="0"
+            )
+            resize_notice = resize_text
+        elif image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
             orig_w, orig_h = image_result["original_size"]
             new_w, new_h = image_result["new_size"]
             lang_for_msg = lang
@@ -1412,6 +1434,24 @@ class RedisRequestQueue:
             self._preload_multimodal_sync()
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
+        # CPU mode halves the generation size: surface the reduced resolution.
+        cpu_notice_id = None
+        cpu_notice = None
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                cpu_notice = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            cpu_notice_id = save_message(session_id, "assistant", cpu_notice, model_name="system", response_time="0")
+
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
 
@@ -1443,6 +1483,8 @@ class RedisRequestQueue:
             "mm_model": mm_model,
             "gen_model": sd_model,
             "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": sd_model},
+            "resize_notice": cpu_notice,
+            "resize_notice_id": cpu_notice_id,
         }
         return self._save_and_respond(
             session_id,
@@ -1670,6 +1712,17 @@ class RedisRequestQueue:
                 continue
             full_path = os.path.join(documents_folder, doc["file_path"])
             text = extract_text_from_file(full_path)
+            if not text:
+                recognized_path = os.path.splitext(full_path)[0] + ".recognized_text"
+                if os.path.exists(recognized_path):
+                    try:
+                        with open(recognized_path, encoding="utf-8") as f:
+                            text = f.read()
+                        self.app.logger.info(f"_process_rlm_task: used recognized text for document {doc_id}")
+                    except OSError:
+                        self.app.logger.warning(
+                            f"_process_rlm_task: could not read recognized_text for image doc {doc_id}"
+                        )
             if text:
                 corpus[doc.get("filename", doc_id)] = text
 
@@ -1874,7 +1927,7 @@ class RedisRequestQueue:
             if rag and rag.available:
                 try:
                     self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
-                    chunks, scores = rag.search(user_id, query, top_k=20)
+                    chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
                     if task and chunks:
                         self._publish_stream_event(
                             task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -1885,7 +1938,12 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        for i, chunk in enumerate(chunks[:15]):  # top 15 chunks
+                        semantic_seen = 0
+                        for i, chunk in enumerate(chunks):
+                            if not chunk.get("coverage"):
+                                if semantic_seen >= 15:  # top 15 semantic chunks
+                                    continue
+                                semantic_seen += 1
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
                             score = scores[i] if i < len(scores) else 0.0
@@ -1965,6 +2023,16 @@ class RedisRequestQueue:
                         f"{len(full_response)} chars truncated to {len(stripped)}"
                     )
                     full_response = stripped
+            if (
+                attempt == 0
+                and not self._is_task_cancelled(task["id"])
+                and self._is_llm_error_string(full_response)
+                and ("502" in full_response or "HTTP error" in full_response or "Ошибка HTTP" in full_response)
+            ):
+                self.app.logger.warning(
+                    f"Reasoning backend HTTP failure on attempt {attempt + 1}, retrying once: {full_response[:200]}"
+                )
+                continue
             if full_response.strip():
                 break
             if attempt == 0 and not self._is_task_cancelled(task["id"]):
@@ -2283,8 +2351,6 @@ class RedisRequestQueue:
                             )
                         )
                     save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
-                    if task:
-                        self._publish_stream_event(task, "notice", {"message": resize_text})
 
             prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
             if cpu_error:
@@ -2660,19 +2726,24 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20)
+            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
                 )
-            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold or c.get("coverage")]
             if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for _i, (chunk, score) in enumerate(filtered[:15]):
+                semantic_seen = 0
+                for chunk, score in filtered:
+                    if not chunk.get("coverage"):
+                        if semantic_seen >= 15:
+                            continue
+                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
@@ -2814,6 +2885,96 @@ class RedisRequestQueue:
             rag_source="web_search",
         )
 
+    def _process_history_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+        current_message_id: int | None = None,
+        current_session_id: str | None = None,
+        history_message_chars: int = 20000,
+        reasoning_query: str | None = None,
+    ) -> dict[str, Any]:
+        """Handle history-search request (router action_type='history').
+
+        Searches the user's past conversations on the fast worker (CPU-only
+        SQL ILIKE, no GPU/no embedding), then re-queues to the slow worker for
+        reasoning model synthesis with the found fragments in the context.
+
+        A wildcard query or a query with no direct matches gets a compact
+        overview drawn from representative user messages across all sessions.
+        """
+        self.app.logger.info(
+            f"Process history search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
+        )
+
+        from modules.history import format_history_context, get_history_overview, search_history
+
+        history_start = time.time()
+        try:
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_history"})
+            max_chars = self.app.config.get("HISTORY_MAX_RESULTS_CHARS", 5000)
+            if query.strip() == "*":
+                fragments = []
+                history_context = ""
+            else:
+                fragments = search_history(
+                    user_id,
+                    query,
+                    limit=self.app.config.get("HISTORY_SEARCH_LIMIT", 5),
+                    exclude_message_id=current_message_id,
+                    exclude_session_id=current_session_id,
+                    max_message_chars=history_message_chars,
+                )
+                history_context = format_history_context(fragments, max_chars=max_chars)
+
+            if not history_context:
+                history_context = get_history_overview(
+                    user_id,
+                    exclude_message_id=current_message_id,
+                    max_chars=max_chars,
+                    exclude_session_id=current_session_id,
+                )
+                fragments = [{"session_title": "Conversation overview", "role": "user", "text": history_context}]
+            if query.strip() == "*":
+                reasoning_query = reasoning_query or "Summarize the user's previous conversations and main topics."
+            if task and fragments:
+                self._publish_stream_event(
+                    task, "task_progress", {"stage": "searching_history", "results": len(fragments)}
+                )
+            history_time = round(time.time() - history_start, 1)
+            if not history_context:
+                self.app.logger.warning(
+                    f"History search: no usable messages for '{query[:80]}' — falling back to plain reasoning"
+                )
+                return self._requeue_reasoning_task(
+                    reasoning_query or query, session_id, user_id, lang, response_style, skip_rag=True
+                )
+            self.app.logger.info(
+                f"History search: '{query[:60]}...' → {len(fragments)} matches, "
+                f"{len(history_context)} chars — requeueing to slow worker ({history_time}s)"
+            )
+        except Exception as e:
+            history_time = round(time.time() - history_start, 1)
+            self.logger.error(f"History search failed: {e}")
+            return self._requeue_reasoning_task(
+                reasoning_query or query, session_id, user_id, lang, response_style, skip_rag=True
+            )
+
+        return self._requeue_reasoning_task(
+            reasoning_query or query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            rag_context=history_context,
+            rag_source="history",
+        )
+
     def _process_rag_task_stream(
         self,
         task: dict[str, Any],
@@ -2847,19 +3008,24 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20)
+            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
                 )
-            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold or c.get("coverage")]
             if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for _i, (chunk, score) in enumerate(filtered[:15]):
+                semantic_seen = 0
+                for chunk, score in filtered:
+                    if not chunk.get("coverage"):
+                        if semantic_seen >= 15:
+                            continue
+                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
@@ -2980,6 +3146,10 @@ class RedisRequestQueue:
         router_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "routing"})
+        current_message_id = (task or {}).get("data", {}).get("current_message_id")
+        recent_context = self.app.modules["base"].build_router_context(
+            session_id, user_id, message_text, lang, exclude_message_id=current_message_id
+        )
         router_result = self.app.modules["base"].process_message(
             message_text,
             current_time_str,
@@ -2987,6 +3157,7 @@ class RedisRequestQueue:
             session_id=session_id,
             response_style=response_style,
             user_id=user_id,
+            recent_context=recent_context,
         )
         router_time = round(time.time() - router_start, 1)
 
@@ -3017,6 +3188,22 @@ class RedisRequestQueue:
             )
             return self._requeue_reasoning_task(
                 message_text, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
+            )
+        if action_type == "history":
+            # Question about what was discussed earlier: search the user's past
+            # conversations on the fast worker, then reason over the fragments.
+            # No matches degrade to plain reasoning.
+            return self._process_history_task(
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                task=task,
+                current_message_id=current_message_id,
+                current_session_id=session_id,
+                history_message_chars=self.app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000),
+                reasoning_query=message_text,
             )
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
@@ -3155,12 +3342,19 @@ class RedisRequestQueue:
                 "time_calc": "calculating_date",
                 "web_search": "searching_web",
                 "rag_search": "searching_documents",
+                "history_search": "searching_history",
                 "camera_snapshot": "capturing_snapshot",
             }.get(tool_name)
             if stage:
                 self._publish_stream_event(task, "task_progress", {"stage": stage})
 
-            tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
+            tool_context = {
+                "app": self.app,
+                "user_id": user_id,
+                "lang": lang,
+                "current_message_id": (task.get("data") or {}).get("current_message_id"),
+                "current_session_id": task.get("session_id"),
+            }
             tool_result = execute_tool(tool_name, arguments, tool_context)
             last_tool_result = tool_result
 
@@ -3566,6 +3760,8 @@ class RedisRequestQueue:
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":
             return self._process_rlm_task(task)
+        if task_type in ("describe_document_image", "describe_document_pdf"):
+            return self._process_describe_document_image_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
@@ -4111,8 +4307,13 @@ class RedisRequestQueue:
         doc_id = data.get("doc_id")
         file_path = data.get("file_path")
         user_id = task["user_id"]
-        indexing_started_at = get_current_time_for_db()
-        update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        if data.get("preserve_indexing_started_at"):
+            indexing_started_at = None
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        else:
+            indexing_started_at = get_current_time_for_db()
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
             with force_locale("en"):
@@ -4136,11 +4337,205 @@ class RedisRequestQueue:
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {"success": True, "message": message, "doc_id": doc_id}
             else:
+                if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
+                    self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
+                    update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+                    self.app.request_queue.add_request(
+                        user_id=user_id,
+                        session_id="",
+                        request_data={
+                            "type": "describe_document_pdf",
+                            "doc_id": doc_id,
+                            "file_path": file_path,
+                            "preserve_indexing_started_at": True,
+                        },
+                        user_class=task.get("user_class", 100),
+                        lang=task.get("lang", "ru"),
+                    )
+                    return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
                 self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                 return {"success": False, "error": message, "doc_id": doc_id}
         except Exception as e:
             self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            return {"success": False, "error": str(e), "doc_id": doc_id}
+
+    def _process_describe_document_image_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Describe an uploaded image using the multimodal model and save the result
+        as a companion .recognized_text file for RAG indexing."""
+        task_id = task.get("id", "unknown")
+        self.app.logger.info(f"_process_describe_document_image_task: STARTING for task {task_id}")
+
+        data = task.get("data", {})
+        doc_id = data.get("doc_id")
+        file_path = data.get("file_path")
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+
+        if not doc_id or not file_path:
+            error_msg = "Missing doc_id or file_path in task data"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            if doc_id:
+                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        is_pdf = str(file_path).lower().endswith(".pdf")
+
+        # Get the multimodal module
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal or (not is_pdf and not multimodal.available):
+            error_msg = "Multimodal module unavailable"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        # Resolve full file path
+        import base64
+        import os
+
+        from app.database import get_db
+
+        documents_folder = self.app.config.get("DOCUMENTS_FOLDER", "/app/documents")
+        full_path = os.path.join(documents_folder, file_path)
+
+        if not os.path.exists(full_path):
+            error_msg = f"Image file not found: {full_path}"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        if is_pdf:
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        else:
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=get_current_time_for_db())
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+
+        try:
+            descriptions = []
+            if is_pdf:
+                if not multimodal.available:
+                    raise RuntimeError("Multimodal module unavailable")
+                page_count_result = subprocess.run(["pdfinfo", full_path], capture_output=True, text=True, timeout=30)
+                page_count_match = re.search(r"^Pages:\s+(\d+)\s*$", page_count_result.stdout, re.MULTILINE)
+                if page_count_result.returncode != 0 or not page_count_match:
+                    detail = page_count_result.stderr.strip() or "unable to determine page count"
+                    raise RuntimeError(f"Failed to read PDF page count: {detail}")
+                page_count = int(page_count_match.group(1))
+                with tempfile.TemporaryDirectory(prefix="flai-pdf-ocr-") as temp_dir:
+                    for page_number in range(1, page_count + 1):
+                        prefix = os.path.join(temp_dir, "page")
+                        render_result = subprocess.run(
+                            [
+                                "pdftoppm",
+                                "-f",
+                                str(page_number),
+                                "-l",
+                                str(page_number),
+                                "-singlefile",
+                                "-jpeg",
+                                "-scale-to",
+                                "1536",
+                                full_path,
+                                prefix,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                        )
+                        page_image = f"{prefix}.jpg"
+                        if render_result.returncode != 0 or not os.path.exists(page_image):
+                            detail = render_result.stderr.strip() or f"failed to render page {page_number}"
+                            raise RuntimeError(f"PDF page rendering failed: {detail}")
+                        with open(page_image, "rb") as image_file:
+                            image_b64 = base64.b64encode(image_file.read()).decode("ascii")
+                        description, error = multimodal.describe_image_for_rlm(image_b64, lang)
+                        if error:
+                            raise RuntimeError(f"Multimodal description failed for PDF page {page_number}: {error}")
+                        if not description or not description.strip():
+                            raise RuntimeError(
+                                f"Multimodal model returned empty description for PDF page {page_number}"
+                            )
+                        descriptions.append(f"--- Page {page_number} ---\n{description.strip()}")
+            else:
+                # Read image as base64
+                with open(full_path, "rb") as f:
+                    image_bytes = f.read()
+                image_b64 = base64.b64encode(image_bytes).decode("ascii")
+
+                # Get description from multimodal model
+                self.app.logger.info(f"Describing image for doc {doc_id} using multimodal model")
+                description, error = multimodal.describe_image_for_rlm(image_b64, lang)
+
+                if error:
+                    self.app.logger.error(f"Multimodal description failed for doc {doc_id}: {error}")
+                    return {"success": False, "error": error, "doc_id": doc_id}
+
+                if not description or not description.strip():
+                    error_msg = "Multimodal model returned empty description"
+                    self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+                    return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+                descriptions.append(description.strip())
+
+            description = "\n\n".join(descriptions)
+
+            # Save as companion .recognized_text file
+            base_dir = os.path.dirname(full_path)
+            base_name = os.path.splitext(os.path.basename(full_path))[0]
+            recognized_path = os.path.join(base_dir, f"{base_name}.recognized_text")
+
+            with open(recognized_path, "w", encoding="utf-8") as f:
+                f.write(description)
+
+            self.app.logger.info(f"Saved recognized text for doc {doc_id} to {recognized_path}")
+
+            # Update document with description_model
+            multimodal_model_name = self._get_model_name("multimodal") or "unknown"
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    UPDATE documents
+                    SET description_model = %s
+                    WHERE id = %s
+                    """,
+                    (multimodal_model_name, doc_id),
+                )
+                conn.commit()
+
+            update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+
+            # Re-queue index_document for the .recognized_text file
+            self.app.request_queue.add_request(
+                user_id=user_id,
+                session_id="",
+                request_data={
+                    "type": "index_document",
+                    "doc_id": doc_id,
+                    "file_path": recognized_path,
+                    "preserve_indexing_started_at": True,
+                },
+                user_class=task.get("user_class", 100),
+                lang=lang,
+            )
+
+            self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+            message = (
+                "PDF pages described and indexing queued"
+                if full_path.lower().endswith(".pdf")
+                else "Image described and indexing queued"
+            )
+            return {"success": True, "message": message, "doc_id": doc_id}
+
+        except Exception as e:
+            self.app.logger.error(f"Describe image failed for doc {doc_id}: {e}")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
             self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": str(e), "doc_id": doc_id}
@@ -4319,7 +4714,7 @@ class RedisRequestQueue:
             "index_document": "📄",
             "transcribe_audio": "🎤",
         }
-        return {
+        request_info = {
             "id": task["id"],
             "session_id": task.get("session_id"),
             "session_title": task.get("session_title", self.app.modules["base"]._("Unknown session", lang=lang)),
@@ -4329,6 +4724,10 @@ class RedisRequestQueue:
             "position_info": task.get("position_info", {"position": 0, "estimated_seconds": 0}),
             "preview": task.get("data", {}).get("preview", ""),
         }
+        doc_id = task.get("data", {}).get("doc_id")
+        if doc_id:
+            request_info["doc_id"] = doc_id
+        return request_info
 
     def check_result(self, request_id: str) -> dict[str, Any] | None:
         """Check if result is available for a request."""

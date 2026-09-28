@@ -60,7 +60,7 @@ def load_config(app):
     app.config["MAX_IMAGE_SIZE"] = int(os.getenv("MAX_IMAGE_SIZE", 1536))
 
     # Document upload settings
-    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 5))
+    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 10))
     app.config["MAX_VOICE_SIZE_MB"] = int(os.getenv("MAX_VOICE_SIZE_MB", 5))
     app.config["MAX_AUDIO_SIZE_MB"] = int(os.getenv("MAX_AUDIO_SIZE_MB", 4))
 
@@ -121,6 +121,14 @@ def load_config(app):
     app.config["SESSION_SUMMARY_MAX_FETCH"] = int(os.getenv("SESSION_SUMMARY_MAX_FETCH", 120))
     app.config["SESSION_SUMMARY_MAX_CHARS"] = int(os.getenv("SESSION_SUMMARY_MAX_CHARS", 1500))
 
+    # Router recent-context digest: a tiny slice of the current session
+    # (last N short messages + up to ROUTER_SLM_FACTS long-term facts) given
+    # to the classifier so it can separate retrospective questions from
+    # live-action requests. Kept small to keep the router fast.
+    app.config["ROUTER_CONTEXT_MESSAGES"] = int(os.getenv("ROUTER_CONTEXT_MESSAGES", 6))
+    app.config["ROUTER_CONTEXT_MSG_CHARS"] = int(os.getenv("ROUTER_CONTEXT_MSG_CHARS", 240))
+    app.config["ROUTER_SLM_FACTS"] = int(os.getenv("ROUTER_SLM_FACTS", 2))
+
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"
 
@@ -137,6 +145,18 @@ def load_config(app):
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3
     app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.25
+
+    # Conversation history search (history_search tool + [-HISTORY-] route)
+    app.config["HISTORY_MAX_RESULTS_CHARS"] = int(os.getenv("HISTORY_MAX_RESULTS_CHARS", 5000))
+    app.config["HISTORY_SEARCH_LIMIT"] = int(os.getenv("HISTORY_SEARCH_LIMIT", 5))
+    app.config["HISTORY_MAX_MESSAGE_CHARS"] = int(os.getenv("HISTORY_MAX_MESSAGE_CHARS", 20000))
+
+    # Model Hub (admin): search & download GGUF models from Hugging Face
+    app.config["MODEL_HUB_MAX_FILE_GB"] = int(os.getenv("MODEL_HUB_MAX_FILE_GB", 40))
+    app.config["MODEL_HUB_FREE_MARGIN_GB"] = int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", 4))
+    app.config["MODEL_HUB_SEARCH_LIMIT"] = int(os.getenv("MODEL_HUB_SEARCH_LIMIT", 20))
+    app.config["MODEL_HUB_TIMEOUT_S"] = int(os.getenv("MODEL_HUB_TIMEOUT_S", 3600))
+    app.config["HUGGINGFACE_TOKEN"] = os.getenv("HUGGINGFACE_TOKEN", "").strip()
 
     # Debug translations
     app.config["DEBUG_TRANSLATIONS"] = os.getenv("DEBUG_TRANSLATIONS", "false").lower() == "true"

@@ -71,6 +71,25 @@ class TestDocumentsCRUD:
 
     @pytest.mark.integration
     @patch("app.routes.documents.magic.from_buffer")
+    def test_upload_document_png(self, mock_magic, authenticated_client):
+        """Test uploading a PNG image as a document."""
+        mock_magic.return_value = "image/png"
+
+        test_file = io.BytesIO(b"\\x89PNG\\r\\n\\x1a\\n test png bytes")
+        test_file.name = "test.png"
+
+        response = authenticated_client.post(
+            "/api/documents/upload",
+            data={"file": (test_file, "test.png")},
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "ok"
+        assert "id" in data
+
+    @pytest.mark.integration
+    @patch("app.routes.documents.magic.from_buffer")
     def test_upload_document_docx(self, mock_magic, authenticated_client):
         """Test uploading a DOCX document."""
         mock_magic.return_value = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

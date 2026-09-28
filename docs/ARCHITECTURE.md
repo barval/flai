@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.0
+# Architecture — FLAI v12.2
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -127,6 +127,10 @@ On a CPU-only deployment (`app/queue.py:_plan_cpu_video` → `modules/video.py:p
 
 The largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps satisfying BOTH constraints wins; the user is notified of the exact chosen format (or a clear "too slow / not enough memory" error when nothing fits).
 
+### CPU-only mode: Image Parameters
+
+SD generation and editing on CPU (`modules/sd_cpp.py`) halve **both sides** of the resolution before the request is sent to sd-wrapper: 1024×1024 → 512×512 (~4× fewer pixels, ≈~4× faster) so the diffusion run finishes inside `SD_CPP_TIMEOUT` (previously it timed out around step 3/10). Editing also downsizes the source image itself and the target output to the same halved size. A localised notice (`resize_notice` channel, stored as a `system` assistant message) tells the user about the reduced resolution.
+
 
 ## SLM (SuperLocalMemory)
 
@@ -150,6 +154,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).
+- **Profile lifecycle matches user accounts** — deleting a FLAI account (`delete_user()` in `app/userdb.py`) also permanently removes its SLM daemon profile through the wrapper's `POST /delete-profile` route: temporary switch to the target → GDPR erase (`confirm`-guarded, only operates on the active profile) → restore the previously active profile → delete the profile row. The erasure verdict is checked against the per-table **user-data counters** (`_erasure_user_data_clean()`), not the daemon's `success` flag — `write_commits`/`erasure_receipts` are intentionally immutable system/journal artifacts, so profiles with a write history still wipe fully. Failures are logged and never block the account deletion; `default`, unknown, blank and currently active profiles are refused.
 - Per-user SLM files are owned by `appuser (UID 1000)` — `start.sh` runs `chown -R appuser:appuser` on the shared volume.
 
 ## Response Style System
@@ -187,13 +192,14 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/tools.py` — native OpenAI-compatible tool calling with `--jinja` in llama-server.
 
-**6 tools**:
+**7 tools**:
 1. `get_current_time`
 2. `calculator` (safe AST eval)
 3. `web_search` (SearXNG)
 4. `rag_search` (Qdrant)
-5. `camera_snapshot`
-6. `time_calc` (9 date/time operations via Pendulum)
+5. `history_search` (PostgreSQL lexical search across prior sessions)
+6. `camera_snapshot`
+7. `time_calc` (9 date/time operations via Pendulum)
 
 - `MAX_TOOL_ITERATIONS = 5`.
 - Tools passed to `chat()`/`chat_stream()` via `tools` parameter.
@@ -219,6 +225,24 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 - **Date normalization** — `enhance_query_with_date()` in `modules/search.py` resolves relative date words («позавчера/вчера/сегодня», English equivalents) to absolute dates in the user's timezone (`app.config["TIMEZONE"]`) before POSTing to SearXNG: «Какие ИТ новости были вчера?» → «Какие ИТ новости были вчера (14 сентября 2026)?». Engines otherwise return generic section landing pages instead of dated articles. Queries without relative date words are untouched — this is query normalization, not routing.
 
+## Router Classification & Session Context (v12.1)
+
+The classifier lives in `modules/base.py:process_message()` (`temperature=0.1`) and reads the category prompt from `prompts/{ru,en}/base_text.template`.
+
+- **Action-time principle.** The template opens with an «ACTION TIME» section that decides first whether the request is about a **past** action (past-tense verbs: «смотрели», «обсуждали», «присылал», «вчерашние кадры») — routed to `[-HISTORY-]` — or about an action to perform now/in the future. Action categories (camera, image, video, …) explicitly never capture questions about the past; camera is worded as «show the **current** snapshot», «see the room state **right now**».
+- **Session micro-context.** `process_message()` accepts `recent_context`; `BaseModule.build_router_context()` (called from `_route_text_action()` in `app/queue.py` before each message is classified) builds it from the newest messages returned by `get_session_recent_history()` in `app/db.py` (the same generation-marker pair filter as `get_session_text_history`, the just-sent message excluded, each message capped at `ROUTER_CONTEXT_MSG_CHARS` chars) plus up to `ROUTER_SLM_FACTS` SLM long-term-memory facts. This lets a follow-up like «did we look at the camera images?» route to history instead of firing the camera again.
+- Env vars (defaults in `app/config.py`): `ROUTER_CONTEXT_MESSAGES` (6), `ROUTER_CONTEXT_MSG_CHARS` (240), `ROUTER_SLM_FACTS` (2).
+
+## Conversation History Search
+
+`modules/history.py` implements the `history_search` native tool and the server-side `[-HISTORY-]` router path.
+
+- `search_history()` searches prior sessions with PostgreSQL Russian, English, and simple text-search configurations, ranks matches by the number of matching terms, and bounds indexed message text to prevent large generated code messages from exceeding PostgreSQL's `tsvector` size limit.
+- Message content is serialized JSON; only text parts are returned to the model, not attached image/media payloads.
+- Router lookups exclude the active session and current message. Broad history-overview requests use stored session summaries when available and otherwise sample first/last user messages from each prior session.
+- Search supports Russian and English lexical queries in either UI profile. It does not translate queries across languages.
+- `HISTORY_SEARCH_LIMIT`, `HISTORY_MAX_RESULTS_CHARS`, and `HISTORY_MAX_MESSAGE_CHARS` configure result and indexing limits.
+
 ## Streaming Reasoning
 
 `modules/base.py:generate_reasoning_response_stream()` yields tokens one-by-one via `_stream_chat()`.
@@ -232,7 +256,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 **Web search context**: `_get_context_for_model()` prepends web search results with a prominent heading ("Web search results — use this data as your primary source.") so the reasoning model treats them as authoritative; `reasoning.template` (ru + en) contains the same softened rule ("use them as primary source"). (Historically the instruction was the stricter "USE ONLY THIS DATA".)
 
-## RLM Deep Analysis (v12.0)
+## RLM Deep Analysis (v12.1)
 
 An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`; `sendRlmAnalysis()` in `chat-init.js` branches off the normal send flow) submits the current question + selected documents to `POST /api/rlm/analyze` (`app/routes/rlm.py`). Documents are picked by clicking them in the documents panel (`rlmSelectedDocs` in `chat-documents.js` syncs the hidden `#rlm-docs` multi-select and highlights picks with a green `.rlm-selected` frame + `✓`); an image can be attached alongside the question. If the toggle cannot start — no documents and no image, or an image without a question — `sendMessage()` clears the checkbox and falls through to the **normal** send flow. The route accepts `multipart/form-data` (`session_id` + `doc_ids` JSON + `text` + optional `file`), enforces authentication, session + document ownership, validates quota/downscales the image, persists the user message (text + image) so it survives page reload, and returns `202` with `task_id`/`position`/`user_message_id`/`resize_notice`.
 
@@ -243,7 +267,7 @@ An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`
 1. requests `ensure_vram_for_reasoning()`, then marks the GPU busy for the whole analysis (`ResourceManager.mark_rlm_busy()` / `mark_rlm_idle()`; `_rlm_busy` extends `is_gpu_busy()`, so the v11.5 watchdog-skip guard covers RLM too) and publishes the `loading_reasoning_model` stage;
 2. builds the corpus from the **selected documents only** (text extracted via `extract_text_from_file()`) — not RAG;
 3. if the request carries an attached image (`file_data` in the task payload), requests `ensure_vram_for("multimodal")` and describes it through `MultimodalModule.describe_image_for_rlm()` (new `prompts/{ru,en}/rlm_image.template`), adding the detailed text description to the corpus as a `«Изображение (file_name)»` document; a failed or empty description returns the localised «Unable to recognize the image for deep analysis» error; after the image phase `ensure_vram_for_reasoning()` is re-checked (the multimodal model gets unloaded);
-4. rejects the corpus before any GPU work when its total size exceeds the `RLM_MAX_CORPUS_CHARS` (default 50 000 000 chars) OOM cap — the localized error tells the user to select fewer/smaller documents and the model is never loaded; then runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 18). The per-host step allowance comes from the resource ladder `_resource_step_budget()` (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6); the context window never cuts steps — `_obs_trunc_for_context()` compresses per-step observations instead (down to an 800-char floor) so the trajectory fits 95% of the reasoning `context_length` minus a 1000-token reserve, and a window too small even for a minimal one-observation-per-step trajectory still degrades to 1 step instead of dying with «Request too long». Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. The **final step is called with no tools at all** — the model physically cannot burn it on another tool call and must produce a text answer (the previous soft nudge was ignorable and runs died at «step limit reached»). `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step.
+4. rejects the corpus before any GPU work when its total size exceeds the `RLM_MAX_CORPUS_CHARS` (default 50 000 000 chars) OOM cap — the localized error tells the user to select fewer/smaller documents and the model is never loaded; then runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 18). The per-host step allowance comes from the resource ladder `_resource_step_budget()` (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6); the context window never cuts steps — `_obs_trunc_for_context()` compresses per-step observations instead (down to an 800-char floor) so the trajectory fits 95% of the reasoning `context_length` minus a 1000-token reserve, and a window too small even for a minimal one-observation-per-step trajectory still degrades to 1 step instead of dying with «Request too long». Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. The **final step is called with no tools at all** — the model physically cannot burn it on another tool call and must produce a text answer (the previous soft nudge was ignorable and runs died at «step limit reached»). `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step. The answer **language** is pinned via `{response_language}` in `prompts/{ru,en}/rlm.template` plus localized `build_user_prompt()` and `broker_llm()`, and an anti-premature-`final` guard rejects a `final()` call for a multi-file corpus before any `python` inspection has run — the run continues with a corrective tool message instead of closing early.
 
 The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once and kept resident across the actor's turns (its `ttl=1s` reload cost is accepted). On completion the per-step trace (step/tool/args/observation) is stored to the Redis key `rlm_trace:<task_id>` (TTL 3600) and the answer is saved via `_save_and_respond()` with `extra` metadata `model_type="rlm"` / `rlm_trace_task_id` / `rlm_steps`. The DB message carries `model_type="rlm"` (its own 🔬🧠 header emoji), and the trace also persists (as a diagnosable key) when the run ends in an error.
 
@@ -261,6 +285,14 @@ The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once a
 Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (true), `RLM_ACTOR_MODEL` (reasoning), `RLM_MAX_STEPS` (18 — hard ceiling; the ladder and platform decide the real budget), `RLM_TASK_TIMEOUT` (0 — auto-derive the wall-clock deadline from the step budget and platform: GPU 120+90×steps, CPU 240+300×steps seconds; `-1` disables, any positive value is used as-is; on expiry the run ends with the localized «task exceeded the time limit» error and the partial trace is saved), `RLM_CODE_TIMEOUT` (15 s), `RLM_OBS_TRUNC` (4000 — upper bound; the context-fitted value may be lower), `RLM_SUB_MAX_TOKENS` (1024), `RLM_WEB_MAX_FETCHES` (5), `RLM_MAX_CORPUS_CHARS` (50 000 000).
 
 Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
+
+## Document Image Processing and Scanned PDF OCR (v12.1)
+
+`describe_document_image` handles uploaded image documents and PDFs that contain no extractable text. For a scanned PDF, the worker reads the page count with `pdfinfo`, renders each page to a 1536-pixel JPEG with `pdftoppm`, and asks the multimodal model to describe the page and transcribe readable text. For an uploaded image, it describes the image directly. The output is saved beside the original as `.recognized_text` and queued for normal RAG indexing, making scanned pages, labels, and diagrams searchable. Poppler utilities are installed in the web image.
+
+## HTML Message Preview
+
+`GET /api/html-preview/<message_id>` (`app/routes/messages.py`) serves the first HTML code block from an authenticated user's own chat message in a separate response with a preview-specific CSP. This avoids the chat page's strict CSP blocking local previews. `_ensure_three_importmap()` repairs generated Three.js pages that import CDN addon modules without an import map: it injects a JSON-serialized map and rewrites compatible CDN imports to `three` aliases; pages with an existing map are left untouched.
 
 ## Task Cancellation
 
@@ -331,7 +363,7 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 ## Per-Request Token Usage Counters
 
-Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (↑45 ↓1 234) ток | 🚀 0,8 ток/с |` (↑ output first, ↓ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (▲45 ▼1 234) ток | 🚀 0,8 ток/с |` (▲ output first, ▼ input, `tokens_unit` msgid — ru «ток» / en «tok»).
 
 **Backend** (`app/queue.py` + `app/utils.py`):
 - `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
@@ -341,8 +373,12 @@ Every assistant message header shows real billed tokens between the ⏱️ durat
 - Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
 
 **Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
-- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (↑45) ток` when input is unknown); empty/zero totals render nothing.
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲45) ток` when input is unknown); empty/zero totals render nothing.
 - The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
+
+## Admin User Token Totals
+
+`GET /admin/api/users` returns `outgoing_tokens` and `incoming_tokens` for each non-admin account. These are computed from messages joined through the user's `chat_sessions`: outgoing (from the user's perspective) sums `messages.prompt_tokens`, and incoming sums `messages.completion_tokens`. The admin users table displays the columns immediately after Sessions; both are sortable numeric fields. No schema change is needed. Full backups include `chat_sessions` and `messages`, so both inputs to these aggregates are restored; users-only backups include only `users` and intentionally do not preserve chat history or token totals.
 
 ## Chat Auto-Scroll
 

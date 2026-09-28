@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.utils import format_prompt
+from modules.base import response_language_name
 
 RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -196,7 +197,14 @@ class RlmModule:
 
         if max_steps is None:
             max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
-        return format_prompt("rlm.template", {"max_steps": max_steps}, lang=lang) or ""
+        return (
+            format_prompt(
+                "rlm.template",
+                {"max_steps": max_steps, "response_language": response_language_name(lang)},
+                lang=lang,
+            )
+            or ""
+        )
 
     def _effective_max_steps(self, boot_texts: list[str], lang: str) -> int:
         """Combine the configured ceiling with the per-host resource ladder.
@@ -249,16 +257,25 @@ class RlmModule:
         base, per_step = _STEP_TIMEOUT_MODEL["cpu" if is_cpu else "gpu"]
         return base + max(1, steps) * per_step
 
-    def build_user_prompt(self, question: str, corpus: dict[str, str]) -> str:
+    def build_user_prompt(self, question: str, corpus: dict[str, str], lang: str = "ru") -> str:
         lines = [f"{name} ({len(text)} chars)" for name, text in corpus.items()]
         listing = "\n".join(lines)
+        if lang == "ru":
+            return (
+                f"Файлы корпуса:\n{listing}\n\nВопрос: {question}\n\n"
+                "Изучи каждый файл корпуса, прежде чем отвечать: релевантная информация может быть в любом из них."
+            )
         return f"Corpus files:\n{listing}\n\nQuestion: {question}"
 
     def broker_llm(self, prompt: str, text: str = "") -> str:
         from flask import current_app
 
+        if self.lang == "ru":
+            system_prompt = "Отвечай на русском языке, используя только предоставленный текст. Будь краток."
+        else:
+            system_prompt = "Answer the request using only the supplied text. Be concise."
         messages = [
-            {"role": "system", "content": "Answer the request using only the supplied text. Be concise."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"{prompt}\n\n---\n{text}"},
         ]
         max_tokens = current_app.config.get("RLM_SUB_MAX_TOKENS", 1024)
@@ -332,7 +349,7 @@ class RlmModule:
         llamacpp = self.app.modules["base"].llamacpp
         tools = self.tool_definitions(lang)
         system = self.build_system_prompt(lang)
-        user_prompt = self.build_user_prompt(question, corpus)
+        user_prompt = self.build_user_prompt(question, corpus, lang=lang)
         max_steps = self._effective_max_steps([system, user_prompt], lang)
         from app.utils import estimate_tokens
 
@@ -408,6 +425,25 @@ class RlmModule:
                     if not isinstance(args, dict):
                         args = {}
                     if name == "final":
+                        # Anti-premature-final guard: with a multi-file corpus the
+                        # actor must have inspected the corpus at least once before
+                        # answering, otherwise the answer may silently miss files
+                        # that scored out of the semantic recall.
+                        if len(corpus) > 1 and sandbox.python_exec_count == 0:
+                            if lang == "ru":
+                                guard_msg = (
+                                    f"Финальный ответ отклонён: в корпусе {len(corpus)} файлов, но ни один не изучен. "
+                                    "Прочитай каждый файл через python(context[имя_файла]) перед вызовом final(answer)."
+                                )
+                            else:
+                                guard_msg = (
+                                    f"Final answer rejected: the corpus has {len(corpus)} files but none were "
+                                    "inspected. Read each corpus file with python(context[filename]) before "
+                                    "calling final(answer)."
+                                )
+                            trace.append(RlmTraceStep(step, name, func.get("arguments", "")[:500], guard_msg))
+                            messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": guard_msg})
+                            continue
                         answer = str(args.get("answer", "")).strip()
                         if not answer:
                             return RlmResult("", trace, step, error="empty final answer")

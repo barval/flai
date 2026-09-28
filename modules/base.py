@@ -147,6 +147,10 @@ class BaseModule(TranslationMixin):
         self.max_messages_limit = 30  # Maximum messages to load from history
         self.summary_min_messages = 6
         self.summary_max_fetch = 120
+        # Router recent-context digest (kept deliberately small for latency)
+        self.ROUTER_CONTEXT_MESSAGES = 6
+        self.ROUTER_CONTEXT_MSG_CHARS = 240
+        self.ROUTER_SLM_FACTS = 2
         if app:
             self.init_app(app)
 
@@ -161,6 +165,9 @@ class BaseModule(TranslationMixin):
         self.max_messages_limit = app.config.get("MAX_HISTORY_MESSAGES", 30)
         self.summary_min_messages = app.config.get("SESSION_SUMMARY_MIN_MESSAGES", 6)
         self.summary_max_fetch = app.config.get("SESSION_SUMMARY_MAX_FETCH", 120)
+        self.ROUTER_CONTEXT_MESSAGES = app.config.get("ROUTER_CONTEXT_MESSAGES", 6)
+        self.ROUTER_CONTEXT_MSG_CHARS = app.config.get("ROUTER_CONTEXT_MSG_CHARS", 240)
+        self.ROUTER_SLM_FACTS = app.config.get("ROUTER_SLM_FACTS", 2)
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
@@ -340,10 +347,10 @@ class BaseModule(TranslationMixin):
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
 
-        # Step 1: Measure RAG context tokens (internet search results)
-        rag_tokens = 0
+        # Step 1: Measure search context tokens (RAG docs / web search / history)
+        search_tokens = 0
         if rag_context:
-            rag_tokens = self._estimate_tokens(rag_context, model_type, lang)
+            search_tokens = self._estimate_tokens(rag_context, model_type, lang)
 
         # Step 2: Fetch SLM facts first to measure their real size
         all_facts: list[dict[str, Any]] = []
@@ -377,8 +384,8 @@ class BaseModule(TranslationMixin):
             slm_facts_str = "\n" + "\n".join(lines)
             slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
 
-        # Step 4: Build RAG section (needed before budget check for fallback)
-        rag_section = ""
+        # Step 4: Build search section (needed before budget check for fallback)
+        search_section = ""
         if rag_context:
             if rag_source == "web_search":
                 heading = (
@@ -388,9 +395,15 @@ class BaseModule(TranslationMixin):
                     else "Web search results — use this data as your primary source. "
                     "If the data is insufficient, you may supplement with your own knowledge, but do not fabricate facts."
                 )
+            elif rag_source == "history":
+                heading = (
+                    "Найденная информация из вашей переписки:"
+                    if lang == "ru"
+                    else "Found information from your conversation history:"
+                )
             else:
                 heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
-            rag_section = "\n" + heading + "\n" + rag_context
+            search_section = "\n" + heading + "\n" + rag_context
 
         # Step 5: Calculate history budget — subtract query, template, RAG, and SLM
         template_overhead = (
@@ -398,15 +411,15 @@ class BaseModule(TranslationMixin):
             if hasattr(self, "app") and self.app
             else TEMPLATE_OVERHEAD
         )
-        remaining_for_history = available_tokens - query_tokens - template_overhead - rag_tokens - slm_tokens
+        remaining_for_history = available_tokens - query_tokens - template_overhead - search_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(
-                f"No tokens available for history. Query: {query_tokens}, RAG: {rag_tokens}, "
-                f"SLM: {slm_tokens}, Available: {available_tokens} — returning RAG+SLM without history"
+                f"No tokens available for history. Query: {query_tokens}, Search: {search_tokens}, "
+                f"SLM: {slm_tokens}, Available: {available_tokens} — returning search+SLM without history"
             )
             summary_section = self._get_session_summary_section(session_id, None, lang)
-            context = rag_section + slm_facts_str + summary_section
+            context = search_section + slm_facts_str + summary_section
             return context.lstrip()
 
         # Step 6: Load history with SQL-level limit based on remaining budget.
@@ -422,14 +435,18 @@ class BaseModule(TranslationMixin):
         if (hist_meta.get("dropped_count") or 0) >= self.summary_min_messages:
             summary_section = self._get_session_summary_section(session_id, hist_meta.get("oldest_kept_id"), lang)
 
-        context = rag_section + slm_facts_str + summary_section + history_str
+        context = search_section + slm_facts_str + summary_section + history_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
         self.logger.info(
             f"Context loaded: {len(history_msgs)} history msgs ({history_tokens} tokens), "
             f"{len(all_facts)} SLM facts ({slm_tokens} tokens), "
-            + (f"{'Web search' if rag_source == 'web_search' else 'RAG'} ({rag_tokens} tokens), " if rag_tokens else "")
+            + (
+                f"{'Web search' if rag_source == 'web_search' else 'History search' if rag_source == 'history' else 'RAG'} ({search_tokens} tokens), "
+                if search_tokens
+                else ""
+            )
             + (
                 f"Summary ({self._estimate_tokens(summary_section, model_type, lang)} tokens), "
                 if summary_section
@@ -489,6 +506,10 @@ class BaseModule(TranslationMixin):
                 "Тогда это запрос к камере, а НЕ обычный вопрос.",
                 "Действие: выведи ТОЛЬКО [-CAMERA-] и код комнаты.",
                 "",
+                "ВАЖНО: камера — ТОЛЬКО просьба увидеть состояние комнаты СЕЙЧАС.",
+                "Вопросы о ПРОШЛОМ («мы смотрели снимки», «показывал раньше», «вчерашние кадры») —",
+                "это ПОИСК В ИСТОРИИ [-HISTORY-], а НЕ камера.",
+                "",
                 "Комнаты (из БД):",
             ]
             for code, forms in rooms_with_forms:
@@ -513,6 +534,10 @@ class BaseModule(TranslationMixin):
                 "Then this is a camera request, NOT a regular question.",
                 "Action: output ONLY [-CAMERA-] and the room code.",
                 "",
+                "IMPORTANT: a camera request is ONLY about seeing the room NOW.",
+                "Questions about the PAST (\u201cdid we view snapshots?\u201d, \u201cwhat you sent earlier\u201d,",
+                "\u201cyesterday's footage\u201d) are HISTORY SEARCH [-HISTORY-], NOT camera.",
+                "",
                 "Rooms (from DB):",
             ]
             for code, forms in rooms_with_forms:
@@ -530,23 +555,80 @@ class BaseModule(TranslationMixin):
 
         return "\n".join(lines)
 
+    def build_router_context(
+        self,
+        session_id: str,
+        user_id: str | None,
+        current_query: str,
+        lang: str = "ru",
+        exclude_message_id: int | None = None,
+    ) -> str:
+        """Build a compact recent-conversation digest for the router.
+
+        Lets the classifier tell retrospective questions ("did we view camera
+        snapshots?") from live ones ("show the room now") by seeing the recent
+        exchanges instead of relying on hardcoded query rules. The digest is
+        deliberately tiny (last N short messages + a few SLM facts) so the
+        router call stays fast.
+        """
+        if not session_id:
+            return ""
+        try:
+            from app.db import _extract_text_content, get_session_recent_history
+
+            messages = get_session_recent_history(
+                session_id, limit=self.ROUTER_CONTEXT_MESSAGES, exclude_message_id=exclude_message_id
+            )
+        except Exception as e:
+            self.logger.warning(f"Router context history load failed: {e}")
+            messages = []
+        lines = []
+        for msg in messages:
+            try:
+                text = _extract_text_content(msg.get("content", ""))
+            except Exception:
+                text = str(msg.get("content", ""))
+            text = text.strip()[: self.ROUTER_CONTEXT_MSG_CHARS]
+            if not text:
+                continue
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            lines.append(f"{role}: {text}")
+        if self.ROUTER_SLM_FACTS > 0:
+            slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+            if slm:
+                try:
+                    facts = slm.recall(current_query, limit=self.ROUTER_SLM_FACTS, profile=user_id)
+                    if facts:
+                        header = "From long-term memory:" if lang == "en" else "Из долговременной памяти:"
+                        lines.append(header)
+                        for fact in facts[: self.ROUTER_SLM_FACTS]:
+                            text = str(fact.get("content", fact.get("text", ""))).strip()[
+                                : self.ROUTER_CONTEXT_MSG_CHARS
+                            ]
+                            if text:
+                                lines.append(f"- {text}")
+                except Exception as e:
+                    self.logger.warning(f"Router context SLM recall failed: {e}")
+        return "\n".join(lines)
+
     # --- Existing methods with context added ---
-    def process_message(
+    def _build_router_prompt(
         self,
         message_text: str,
         current_time_str: str,
         lang: str = "ru",
-        session_id: str | None = None,
         response_style: str = "neutral",
-        user_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Process text message through router model — no history, no SLM.
-        Router only classifies the query; conversation context is handled
-        by the downstream chat/reasoning model.
+        recent_context: str = "",
+    ) -> str:
+        """Build the router text-classification prompt (pure string, no IO).
+
+        ``recent_context`` is a tiny digest of the current session built by
+        :meth:`build_router_context`; it lets the classifier tell
+        retrospective questions ("did we view camera snapshots?") from live
+        ones without hardcoded query rules.
         """
         response_language = response_language_name(lang)
         style_instruction = get_style_instruction(lang, response_style)
-
         camera_section = self._build_camera_prompt_section(lang)
 
         prompt = format_prompt(
@@ -557,9 +639,27 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "response_style": style_instruction,
                 "camera_section": camera_section,
+                "router_context": recent_context or "",
             },
             lang=lang,
         )
+        return prompt or ""
+
+    def process_message(
+        self,
+        message_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+        user_id: str | None = None,
+        recent_context: str = "",
+    ) -> dict[str, Any]:
+        """Process text message through router model — no history, no SLM.
+        Router only classifies the query; conversation context is handled
+        by the downstream chat/reasoning model.
+        """
+        prompt = self._build_router_prompt(message_text, current_time_str, lang, response_style, recent_context)
 
         if not prompt:
             self.logger.error("Error loading prompt template")
@@ -573,7 +673,7 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time/date, skills) → answer WITHOUT any marker. NEVER use [-REASONING-] for time or date questions. IMAGE generation → use [-IMAGE-]. VIDEO generation → use [-VIDEO-]. CAMERA/snapshot → use [-CAMERA-]. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. Conversions at a current rate/price (currency, crypto, units) → use [-SEARCH-], even when they involve arithmetic — never [-REASONING-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. COMPLEX tasks that also need fresh internet data → use [-REASONING-WEB-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time/date, skills) → answer WITHOUT any marker. NEVER use [-REASONING-] for time or date questions. IMAGE generation → use [-IMAGE-] ONLY when the user asks to receive an image FILE; requests to write code that draws/displays things → [-REASONING-], not [-IMAGE-]. VIDEO generation → use [-VIDEO-] ONLY when the user asks to receive a VIDEO FILE; requests to write code that shows/animates things → [-REASONING-], not [-VIDEO-]. CAMERA/snapshot of a room NOW → use [-CAMERA-]. QUESTIONS ABOUT THE PAST (what was viewed/discussed/sent earlier, including camera snapshots and other media) → use [-HISTORY-], not the action category. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. Conversions at a current rate/price (currency, crypto, units) → use [-SEARCH-], even when they involve arithmetic — never [-REASONING-]. HISTORY search (what was discussed/written earlier in our chats: 'when did we talk about...', 'what did I say about...') → use [-HISTORY-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. COMPLEX tasks that also need fresh internet data → use [-REASONING-WEB-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
             },
             {"role": "user", "content": prompt},
         ]
@@ -618,6 +718,7 @@ class BaseModule(TranslationMixin):
             "[-SEARCH-]": "search",
             "[-VIDEO-]": "video",
             "[-REMEMBER-]": "remember",
+            "[-HISTORY-]": "history",
         }
 
         for marker, action in markers.items():

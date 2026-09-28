@@ -23,6 +23,14 @@ ALLOWED_MIME_TYPES = {
     "text/csv": ".csv",
     "application/json": ".json",
     "application/epub+zip": ".epub",
+    # Images — same formats as chat uploads (auto-resize + conversion to JPEG).
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/bmp": ".bmp",
+    "image/webp": ".webp",
+    "image/tiff": ".tiff",
+    "image/gif": ".gif",
+    "image/heic": ".heic",
 }
 
 
@@ -30,7 +38,27 @@ def validate_file(file_stream, filename):
     """Validate file by extension and magic bytes.
     Returns (is_valid, error_message).
     """
-    allowed_extensions = {".pdf", ".doc", ".docx", ".txt", ".odt", ".rtf", ".csv", ".json", ".epub"}
+    allowed_extensions = {
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".odt",
+        ".rtf",
+        ".csv",
+        ".json",
+        ".epub",
+        # Images — same set as chat uploads (auto-resize + conversion in upload).
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+        ".gif",
+        ".heic",
+    }
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in allowed_extensions:
@@ -43,6 +71,13 @@ def validate_file(file_stream, filename):
 
     if mime not in ALLOWED_MIME_TYPES:
         return False, _("Unsupported file type")
+
+    # Images: chef does auto-resize + format conversion (whatever the source
+    # format — HEIC/BMP/TIFF/WebP are all converted to JPEG on upload), so a
+    # strict ext↔MIME match is intentionally skipped for image/* (same policy
+    # as chat uploads, where magic bytes win over the declared extension).
+    if mime.startswith("image/"):
+        return True, None
 
     # Verify extension matches MIME type
     expected_ext = ALLOWED_MIME_TYPES[mime]
@@ -96,6 +131,31 @@ def api_upload_document():
     doc_id = str(uuid.uuid4())
     filename = file.filename
 
+    # Track if this is an image to enqueue the right task type
+    is_image = False
+
+    # Images — same auto-resize + conversion pipeline as chat uploads, so the
+    # stored document is always a normalized JPEG (HEIC/BMP/TIFF/WebP/GIF and
+    # oversized images are converted/resized the same way the chat does).
+    image_mime = magic.from_buffer(file_content[:2048], mime=True) if file_content[:2048] else None
+    if image_mime and image_mime.startswith("image/"):
+        is_image = True
+        import base64
+
+        from app.utils import convert_to_supported_format_if_needed, resize_image_if_needed
+
+        max_image_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
+        file_b64 = base64.b64encode(file_content).decode("ascii")
+        file_b64, _ftype, img_orig_name, _resized, _od, _nd = resize_image_if_needed(
+            file_b64, image_mime, filename, max_image_size
+        )
+        file_b64, _ftype, img_new_name, _converted = convert_to_supported_format_if_needed(
+            file_b64, _ftype, _ftype and filename or filename
+        )
+        file_content = base64.b64decode(file_b64)
+        file_size = len(file_content)
+        filename = img_new_name
+
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
     user_folder = os.path.join(documents_folder, session["login"])
     os.makedirs(user_folder, exist_ok=True)
@@ -127,11 +187,12 @@ def api_upload_document():
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
 
     # Add indexing task to the queue
+    task_type = "describe_document_image" if is_image else "index_document"
     current_app.request_queue.add_request(
         user_id=session["login"],
         session_id="",  # Document indexing doesn't belong to a chat session
         request_data={
-            "type": "index_document",
+            "type": task_type,
             "doc_id": doc_id,
             "file_path": file_path,
         },

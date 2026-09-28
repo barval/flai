@@ -3,7 +3,7 @@
 Tests for SLM hybrid recall helpers (services/superlocalmemory/slm_http.py).
 
 Covers: _tokenize, _keyword_score, _recency_boost, _time_window_from_query,
-        _hybrid_recall_from_user_db.
+        _hybrid_recall_from_profile.
 """
 
 import os
@@ -127,6 +127,13 @@ class TestRecencyBoost:
 
         assert _recency_boost(None) == 1.0
 
+    def test_iso_string_timestamp(self):
+        """Daemon stores created_at as an ISO-8601 string — must not crash."""
+        from slm_http import _recency_boost
+
+        boost = _recency_boost("2026-09-25T08:45:56.995780+00:00")
+        assert 1.0 <= boost <= 1.3
+
 
 # ── _time_window_from_query ───────────────────────────────────────────
 
@@ -187,16 +194,122 @@ class TestTimeWindow:
         assert _time_window_from_query("как зовут мою собаку") is None
 
 
-# ── _hybrid_recall_from_user_db ───────────────────────────────────────
+@pytest.fixture()
+def daemon_db_iso(tmp_path):
+    """Daemon database whose created_at values are ISO-8601 strings (real format)."""
+    profile = "test_user"
+    db_path = tmp_path / "memory_iso.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE atomic_facts ("
+        "  fact_id TEXT PRIMARY KEY,"
+        "  content TEXT,"
+        "  confidence REAL,"
+        "  created_at TEXT,"
+        "  lifecycle TEXT DEFAULT 'active',"
+        "  profile_id TEXT,"
+        "  scope TEXT DEFAULT 'personal'"
+        ")"
+    )
+    conn.execute("CREATE TABLE memories (memory_id TEXT PRIMARY KEY, profile_id TEXT)")
+    ts = "2026-09-25T08:45:56.995780+00:00"
+    facts = [
+        ("f1", "Моя собака Рекс — лабрадор", 0.8, ts, profile),
+        ("f2", "У меня есть кошка Мурка", 0.85, ts, profile),
+    ]
+    for fid, content, conf, created_at, prof in facts:
+        conn.execute(
+            "INSERT INTO atomic_facts VALUES (?, ?, ?, ?, 'active', ?, 'personal')",
+            (fid, content, conf, created_at, prof),
+        )
+    conn.commit()
+    conn.close()
+    return {"path": db_path, "profile": profile}
+
+
+class TestHybridRecallIso:
+    """Hybrid recall against real daemon data (ISO created_at strings)."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_daemon_db(self, daemon_db_iso):
+        with patch("slm_http._daemon_db_path", return_value=str(daemon_db_iso["path"])):
+            yield
+
+    def test_keyword_hit_with_iso_created_at_does_not_crash(self, daemon_db_iso):
+        from slm_http import _hybrid_recall_from_profile
+
+        with patch("slm_http._semantic_recall_from_profile") as mock_sem:
+            results = _hybrid_recall_from_profile("собака Рекс", 5, daemon_db_iso["profile"])
+            assert results is not None
+            assert any("Рекс" in r["content"] for r in results)
+            mock_sem.assert_not_called()
+
+
+# ── _erasure_user_data_clean ──────────────────────────────────────────────
+
+
+class TestErasureUserDataClean:
+    def test_empty_counts(self):
+        from slm_http import _erasure_user_data_clean
+
+        assert _erasure_user_data_clean({}) is True
+
+    def test_system_counts_do_not_block(self):
+        """write_commits receipts, profile row, audit entries survive erasure by design."""
+        from slm_http import _erasure_user_data_clean
+
+        counts = {
+            "success": False,
+            "write_commits": 2,
+            "erasure_receipts": 3,
+            "profiles": 1,
+            "learning_db": 1,
+            "compliance_audit": 1,
+            "table_delete_failures": 1,
+            "residue_rows": 2,
+        }
+        assert _erasure_user_data_clean(counts) is True
+
+    def test_user_data_residue_blocks(self):
+        from slm_http import _erasure_user_data_clean
+
+        counts = {"atomic_facts": 5, "vector_store": 5}
+        assert _erasure_user_data_clean(counts) is False
+
+    def test_mixed_system_and_user_residue(self):
+        from slm_http import _erasure_user_data_clean
+
+        counts = {
+            "write_commits": 2,
+            "profiles": 1,
+            "canonical_entities": 3,
+            "memory_scenes": 1,
+        }
+        assert _erasure_user_data_clean(counts) is False
+
+    def test_failure_markers_are_not_system(self):
+        """Operational failure markers must block: they mean a layer was not reached."""
+        from slm_http import _erasure_user_data_clean
+
+        counts = {"learning_db_failed": 1}
+        assert _erasure_user_data_clean(counts) is False
+        assert _erasure_user_data_clean({"vector_store_failures": 1}) is False
+
+    def test_non_dict_returns_false(self):
+        from slm_http import _erasure_user_data_clean
+
+        assert _erasure_user_data_clean(None) is False
+        assert _erasure_user_data_clean("error body") is False
+
+
+# ── _hybrid_recall_from_profile ───────────────────────────────────────
 
 
 @pytest.fixture()
-def user_db(tmp_path):
-    """Create a minimal per-user SLM SQLite database with test facts."""
+def daemon_db(tmp_path):
+    """Create a minimal daemon SQLite database (profile-scoped) with test facts."""
     profile = "test_user"
-    db_dir = tmp_path / profile / ".superlocalmemory"
-    db_dir.mkdir(parents=True)
-    db_path = db_dir / "memory.db"
+    db_path = tmp_path / "memory.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "CREATE TABLE atomic_facts ("
@@ -204,23 +317,27 @@ def user_db(tmp_path):
         "  content TEXT,"
         "  confidence REAL,"
         "  created_at INTEGER,"
-        "  lifecycle TEXT DEFAULT 'active'"
+        "  lifecycle TEXT DEFAULT 'active',"
+        "  profile_id TEXT,"
+        "  scope TEXT DEFAULT 'personal'"
         ")"
     )
-    conn.execute("CREATE TABLE memories (memory_id TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE memories (memory_id TEXT PRIMARY KEY, profile_id TEXT)")
 
     now = int(time.time())
     facts = [
-        ("f1", "Моя собака Рекс — лабрадор", 0.8, now - 86400 * 10),
-        ("f2", "Я работаю программистом в Google", 0.9, now - 86400 * 5),
-        ("f3", "Вчера я ходил в кино на фильм Дюна", 0.7, now - 86400),
-        ("f4", "Мой любимый цвет — синий", 0.6, now - 86400 * 30),
-        ("f5", "У меня есть кошка Мурка", 0.85, now - 86400 * 2),
+        ("f1", "Моя собака Рекс — лабрадор", 0.8, now - 86400 * 10, profile),
+        ("f2", "Я работаю программистом в Google", 0.9, now - 86400 * 5, profile),
+        ("f3", "Вчера я ходил в кино на фильм Дюна", 0.7, now - 86400, profile),
+        ("f4", "Мой любимый цвет — синий", 0.6, now - 86400 * 30, profile),
+        ("f5", "У меня есть кошка Мурка", 0.85, now - 86400 * 2, profile),
+        # Another profile's facts must never leak into test_user recall
+        ("g1", "Секретная заметка другого юзера", 0.99, now - 3600, "some_other_user"),
     ]
-    for fid, content, conf, ts in facts:
+    for fid, content, conf, ts, prof in facts:
         conn.execute(
-            "INSERT INTO atomic_facts VALUES (?, ?, ?, ?, 'active')",
-            (fid, content, conf, ts),
+            "INSERT INTO atomic_facts VALUES (?, ?, ?, ?, 'active', ?, 'personal')",
+            (fid, content, conf, ts, prof),
         )
     conn.commit()
     conn.close()
@@ -229,76 +346,85 @@ def user_db(tmp_path):
 
 class TestHybridRecall:
     @pytest.fixture(autouse=True)
-    def _patch_user_db(self, user_db):
-        with patch("slm_http._user_db_path") as mock_path:
-            mock_path.return_value = str(user_db["path"])
+    def _patch_daemon_db(self, daemon_db):
+        with patch("slm_http._daemon_db_path", return_value=str(daemon_db["path"])):
             yield
 
-    def test_keyword_hit_returns_results(self, user_db):
-        from slm_http import _hybrid_recall_from_user_db
+    def test_keyword_hit_returns_results(self, daemon_db):
+        from slm_http import _hybrid_recall_from_profile
 
-        with patch("slm_http._semantic_recall_from_user_db") as mock_sem:
-            results = _hybrid_recall_from_user_db("собака Рекс", 5, user_db["profile"])
+        with patch("slm_http._semantic_recall_from_profile") as mock_sem:
+            results = _hybrid_recall_from_profile("собака Рекс", 5, daemon_db["profile"])
             assert results is not None
             assert len(results) > 0
             assert any("Рекс" in r["content"] for r in results)
             mock_sem.assert_not_called()
 
-    def test_keyword_miss_triggers_semantic(self, user_db):
-        from slm_http import _hybrid_recall_from_user_db
+    def test_other_profile_never_leaks(self, daemon_db):
+        from slm_http import _hybrid_recall_from_profile
+
+        with patch("slm_http._semantic_recall_from_profile", return_value=None):
+            results = _hybrid_recall_from_profile("секретная", 5, daemon_db["profile"])
+            assert results is None or not any("Секретная" in r["content"] for r in results)
+
+    def test_keyword_miss_triggers_semantic(self, daemon_db):
+        from slm_http import _hybrid_recall_from_profile
 
         fake_result = [{"content": "Из daemon", "score": 0.8, "confidence": 0.7, "fact_id": "d1", "created_at": 1000}]
-        with patch("slm_http._semantic_recall_from_user_db", return_value=fake_result) as mock_sem:
-            results = _hybrid_recall_from_user_db("xyz_unknown_query", 5, user_db["profile"])
+        with patch("slm_http._semantic_recall_from_profile", return_value=fake_result) as mock_sem:
+            results = _hybrid_recall_from_profile("xyz_unknown_query", 5, daemon_db["profile"])
             mock_sem.assert_called_once()
             assert results == fake_result
 
-    def test_falls_back_to_latest_when_all_miss(self, user_db):
-        from slm_http import _hybrid_recall_from_user_db
+    def test_falls_back_to_latest_when_all_miss(self, daemon_db):
+        from slm_http import _hybrid_recall_from_profile
 
-        with patch("slm_http._semantic_recall_from_user_db", return_value=None):
-            results = _hybrid_recall_from_user_db("xyz_unknown", 5, user_db["profile"])
+        with patch("slm_http._semantic_recall_from_profile", return_value=None):
+            results = _hybrid_recall_from_profile("xyz_unknown", 5, daemon_db["profile"])
             assert results is not None
             assert len(results) > 0
 
-    def test_keyword_match_google(self, user_db):
-        from slm_http import _hybrid_recall_from_user_db
+    def test_keyword_match_google(self, daemon_db):
+        from slm_http import _hybrid_recall_from_profile
 
-        with patch("slm_http._semantic_recall_from_user_db"):
-            results = _hybrid_recall_from_user_db("Google", 5, user_db["profile"])
+        with patch("slm_http._semantic_recall_from_profile"):
+            results = _hybrid_recall_from_profile("Google", 5, daemon_db["profile"])
             assert results is not None
             assert any("Google" in r["content"] for r in results)
 
-    def test_nonexistent_profile_returns_none_when_no_data(self):
-        """No user DB and no daemon available → None (route returns [])."""
-        from slm_http import _hybrid_recall_from_user_db
+    def test_no_db_returns_none_when_daemon_empty(self):
+        """No database and no daemon available → None (route returns [])."""
+        from slm_http import _hybrid_recall_from_profile
 
-        with patch("slm_http._user_db_path", return_value=None):
-            assert _hybrid_recall_from_user_db("test", 5, "no_such_user") is None
+        with (
+            patch("slm_http._daemon_db_path", return_value=None),
+            patch("slm_http._semantic_recall_from_profile", return_value=None),
+        ):
+            assert _hybrid_recall_from_profile("test", 5, "no_such_user") is None
 
-    def test_nonexistent_profile_falls_back_to_daemon(self):
-        """When the per-user DB is missing, fall back to daemon semantic recall."""
-        from slm_http import _hybrid_recall_from_user_db
+    def test_no_db_falls_back_to_daemon(self):
+        """When the daemon DB is missing, fall back to daemon semantic recall."""
+        from slm_http import _hybrid_recall_from_profile
 
         fake_result = [{"content": "Из daemon", "score": 0.8, "confidence": 0.7, "fact_id": "d1", "created_at": 1000}]
         with (
-            patch("slm_http._user_db_path", return_value=None),
-            patch("slm_http._semantic_recall_from_user_db", return_value=fake_result) as mock_sem,
+            patch("slm_http._daemon_db_path", return_value=None),
+            patch("slm_http._semantic_recall_from_profile", return_value=fake_result) as mock_sem,
         ):
-            results = _hybrid_recall_from_user_db("anything", 5, "no_such_user")
+            results = _hybrid_recall_from_profile("anything", 5, "no_such_user")
             mock_sem.assert_called_once()
             assert results == fake_result
 
-    def test_nonexistent_profile_falls_back_to_latest(self):
-        """If the daemon returns nothing too, fall back to latest per-user facts."""
-        from slm_http import _hybrid_recall_from_user_db
+    def test_no_db_falls_back_to_latest(self):
+        """If the daemon returns nothing too, fall back to latest profile facts."""
+        from slm_http import _hybrid_recall_from_profile
 
         fake_result = [{"content": "latest", "score": 0.5, "confidence": 0.5, "fact_id": "l1", "created_at": 1000}]
         with (
-            patch("slm_http._user_db_path", return_value=None),
-            patch("slm_http._semantic_recall_from_user_db", return_value=None),
-            patch("slm_http._recall_from_user_db", return_value=fake_result) as mock_latest,
+            patch("slm_http._daemon_db_path", return_value=None),
+            patch("slm_http._semantic_recall_from_profile", return_value=None),
+            patch("slm_http._recall_latest_from_profile", return_value=fake_result) as mock_latest,
         ):
-            results = _hybrid_recall_from_user_db("anything", 5, "no_such_user")
+            results = _hybrid_recall_from_profile("anything", 5, "no_such_user")
             mock_latest.assert_called_once()
             assert results == fake_result

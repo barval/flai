@@ -18,6 +18,7 @@ function fetchQueueStatus() {
         .then(data => {
             if (window.IS_RELOADING) return;
             if (!data) return;
+            if (typeof updateDocumentQueueStatus === 'function') updateDocumentQueueStatus(data);
 
             // COMPLETELY rebuild sessionQueueInfo from server data only
             // Do NOT use pendingRequests to determine status icons
@@ -157,6 +158,8 @@ function updateUIFromQueueStatus() {
         title: sessionsData[id].title,
         updated_at: sessionsData[id].updated_at,
         message_count: sessionsData[id].message_count,
+        total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+        total_completion_tokens: sessionsData[id].total_completion_tokens,
         has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
         queue_info: sessionQueueInfo[id] || null,
         ttsPlaying: currentPlayingSessionId === id

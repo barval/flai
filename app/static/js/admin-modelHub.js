@@ -10,6 +10,8 @@
     const recalcStatus = document.getElementById('hub-recalc-status');
     const ctxSlider = document.getElementById('hub-context-slider');
     const ctxValue = document.getElementById('hub-context-value');
+    const CTX_MIN = 1024;
+    const CTX_MAX = 262144;
     const typeBoxes = {
         reasoning: document.getElementById('hub-type-reasoning'),
         multimodal: document.getElementById('hub-type-multimodal'),
@@ -27,7 +29,24 @@
     Object.values(typeBoxes).forEach(cb => cb.addEventListener('change', () => {
         if (lastData) renderResults(lastData, true);
     }));
-    ctxSlider.addEventListener('input', onSliderInput);
+    ctxSlider.addEventListener('input', () => {
+        ctxValue.value = ctxSlider.value;
+        refreshFits();
+    });
+    ctxValue.addEventListener('input', () => {
+        const digits = ctxValue.value.replace(/\D+/g, '');
+        ctxValue.value = digits;
+        const n = parseInt(digits, 10);
+        if (n) ctxSlider.value = Math.max(CTX_MIN, Math.min(n, CTX_MAX));
+    });
+    ctxValue.addEventListener('change', () => {
+        const n = parseInt(ctxValue.value.replace(/\D+/g, ''), 10);
+        if (!n) { ctxValue.value = ctxSlider.value; return; }
+        const ctx = Math.max(CTX_MIN, Math.min(n, CTX_MAX));
+        ctxSlider.value = ctx;
+        ctxValue.value = String(ctx);
+        refreshFits();
+    });
 
     function esc(s) {
         return String(s).replace(/[&<>"']/g,
@@ -120,8 +139,7 @@
         if (!keepFits) { collectFits(); wireDownloadButtons(); }
     }
 
-    function onSliderInput() {
-        ctxValue.textContent = String(currentContext());
+    function refreshFits() {
         if (!results.querySelector('.hub-file-row')) return;
         // Reapply the context threshold to already-rendered rows, then recompute
         // the colored fit statuses with the new context.

@@ -225,3 +225,37 @@ def test_documents_panel_shows_queue_position_from_server_status():
     assert "position_info?.position" in docs_src
     assert "document-status-icon queued" in docs_src
     assert ".document-status-icon.queued" in queue_css
+
+
+def test_hub_context_length_is_editable_input():
+    """Model Hub 'Context length' value must be a manually editable input, not
+    a read-only span next to the slider."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert re.search(r'<input[^>]*id="hub-context-value"', admin_template), (
+        "hub-context-value must be an <input> (typing a context length by hand)"
+    )
+    assert not re.search(r'<span[^>]*id="hub-context-value"', admin_template), (
+        "hub-context-value must no longer be a <span>"
+    )
+
+
+def test_hub_context_input_filters_and_clamps():
+    """The ctxValue input must (a) strip non-digit characters while typing,
+    (b) clamp the committed value into the slider range [1024, 262144], and
+    (c) keep the slider + value display in sync and re-run the fit recalc."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    assert "CTX_MIN = 1024" in hub_src
+    assert "CTX_MAX = 262144" in hub_src
+    # Digit-only whitelist filter while typing.
+    assert re.search(r"replace\(\s*/\D", hub_src), "ctxValue input must strip non-digit characters"
+    # Commit path (Enter/blur) clamps into the slider range.
+    assert re.search(r"Math\.max\s*\([^)]*CTX_MIN", hub_src)
+    assert re.search(r"Math\.min\s*\([^)]*CTX_MAX", hub_src)
+    # Committed value must be written back to the slider and re-render fits.
+    assert "ctxSlider.value = ctx" in hub_src
+    assert "ctxValue.value = String(ctx)" in hub_src
+    assert "ctxValue.addEventListener('change'" in hub_src
+    # Slider drag still syncs the input display.
+    assert "ctxValue.value = ctxSlider.value" in hub_src

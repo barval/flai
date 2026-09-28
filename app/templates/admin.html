@@ -136,7 +136,7 @@
                 <div class="hub-filter-row">
                     <span class="hub-filter-label">{{ _('Context length') }}:</span>
                     <input type="range" id="hub-context-slider" min="1024" max="262144" step="1024" value="8192">
-                    <span id="hub-context-value" class="hub-context-value">8192</span>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" id="hub-context-value" class="hub-context-value" value="8192" aria-label="Context length">
                 </div>
             </div>
             <div class="hub-header">

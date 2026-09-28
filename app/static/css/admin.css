@@ -1121,7 +1121,7 @@ body.dark-theme .hardware-table .hw-value {
 .hub-check { display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; }
 .hub-check input { margin: 0; }
 .hub-type-ic { font-size: 1em; }
-.hub-context-value { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
+.hub-context-value { font-variant-numeric: tabular-nums; width: 7ch; min-width: 4ch; text-align: right; padding: 0.15rem 0.35rem; border: 1px solid #adb5bd; border-radius: 4px; }
 #hub-context-slider { width: 260px; max-width: 60%; }
 .hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }

@@ -194,6 +194,59 @@ def test_estimate_fit_uses_gguf_metadata_when_config_is_missing(monkeypatch):
     assert int(range_requests[0][1]["Range"].split("-")[1]) < 10 * 1024 * 1024
 
 
+def _gguf_metadata_header_wide_tail():
+    """GGUF header whose sizing keys sit behind a ~6 MB tokenizer.merges
+    array, past the old 4 MB read prefix (e.g. HauhauCS Qwen3.8-27B)."""
+    merges = [_gguf_string(f"abc{chr(ord('a') + i % 26) * 96}") for i in range(60000)]
+    fields = [
+        ("general.architecture", 8, _gguf_string("qwen35")),
+        ("tokenizer.merges", 9, struct.pack("<IQ", 8, len(merges)) + b"".join(merges)),
+        ("qwen35.block_count", 4, struct.pack("<I", 32)),
+        ("qwen35.context_length", 4, struct.pack("<I", 262144)),
+        ("qwen35.expert_count", 4, struct.pack("<I", 8)),
+    ]
+    header = b"GGUF" + struct.pack("<IQQ", 3, 0, len(fields))
+    return header + b"".join(_gguf_string(key) + struct.pack("<I", kind) + value for key, kind, value in fields)
+
+
+def test_estimate_fit_grows_gguf_head_past_4mb(monkeypatch):
+    monkeypatch.setattr(model_hub, "_gguf_arch_cache", {}, raising=False)
+    full = _gguf_metadata_header_wide_tail()
+    assert len(full) > 6 * 1024 * 1024
+    files = [{"path": "wide.gguf", "size_mb": 2400, "sha256": "a" * 64}]
+    range_ends = []
+
+    class _WideResp:
+        status_code = 206
+        url = "https://huggingface.co/org/Wide/resolve/main/wide.gguf"
+
+        def __init__(self, end):
+            self.end = end
+
+        def iter_content(self, chunk_size):
+            yield full[: self.end + 1]
+
+    def fake_hf_get(url, params=None, stream=False, extra_headers=None, timeout=30):
+        end = int(extra_headers["Range"].split("-")[1])
+        range_ends.append(end)
+        return _WideResp(end)
+
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
+    monkeypatch.setattr(
+        model_hub,
+        "_classify_model_fit",
+        lambda *args, **kwargs: {"tier": "good", "arch_max_ctx": 0},
+    )
+
+    fit = model_hub.estimate_fit("org/Wide", "wide.gguf")
+    assert fit["block_count"] == 32
+    assert fit["expert_count"] == 8
+    assert fit["arch"] == "qwen35"
+    assert max(range_ends) > 8 * 1024 * 1024
+
+
 def test_estimate_fit_blocked_without_arch(monkeypatch):
     monkeypatch.setattr(
         model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": ""}]

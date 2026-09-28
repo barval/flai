@@ -89,7 +89,10 @@ _gguf_arch_cache: dict[str, dict | None] = {}
 _files_cache: dict[str, list[dict]] = {}
 _cache_lock = threading.Lock()
 _gguf_arch_cache_lock = threading.Lock()
-_GGUF_HEAD_BYTES = 4 * 1024 * 1024
+# GGUF headers are read with a growing prefix: most answer inside 4 MB, but
+# repos with a large tokenizer.merges block (e.g. HauhauCS Qwen3.8-27B) place
+# the <arch>.block_count sizing keys past the 4 MB mark.
+_GGUF_HEADS = (4 * 1024 * 1024, 16 * 1024 * 1024, 64 * 1024 * 1024)
 
 _headers: dict[str, str] = {}
 
@@ -333,19 +336,22 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
 
         result = None
         try:
-            resp = _hf_get(
-                f"{HF_DL}/{repo}/resolve/main/{file_path}",
-                stream=True,
-                extra_headers={"Range": f"bytes=0-{_GGUF_HEAD_BYTES - 1}"},
-                timeout=30,
-            )
-            if resp.status_code == 206:
-                prefix = bytearray()
-                for chunk in resp.iter_content(chunk_size=64 * 1024):
-                    prefix.extend(chunk)
-                    if len(prefix) >= _GGUF_HEAD_BYTES:
-                        break
-                result = _parse_gguf_arch(bytes(prefix[:_GGUF_HEAD_BYTES]))
+            for head in _GGUF_HEADS:
+                resp = _hf_get(
+                    f"{HF_DL}/{repo}/resolve/main/{file_path}",
+                    stream=True,
+                    extra_headers={"Range": f"bytes=0-{head - 1}"},
+                    timeout=30,
+                )
+                if resp.status_code == 206:
+                    prefix = bytearray()
+                    for chunk in resp.iter_content(chunk_size=64 * 1024):
+                        prefix.extend(chunk)
+                        if len(prefix) >= head:
+                            break
+                    result = _parse_gguf_arch(bytes(prefix[:head]))
+                if result:
+                    break
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
 

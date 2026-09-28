@@ -38,6 +38,10 @@
     border-bottom: 2px solid #ddd;
     padding-bottom: 10px;
     flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
 }
 .admin-tab {
     padding: 8px 16px;
@@ -47,6 +51,8 @@
     font-size: 16px;
     transition: background-color 0.2s ease;
     border-bottom: 3px solid transparent;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 .admin-tab.active {
     background-color: #d0e8ff;
@@ -69,6 +75,23 @@
     overflow-y: auto;
     overflow-x: auto;
     min-height: 0; /* required for flex child to shrink properly */
+}
+
+.hub-companion-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 4px;
+    font-size: 12px;
+}
+.hub-companion-choice label {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+}
+.hub-companion-choice input {
+    margin: 0;
 }
 
 /* Users table — basic styles (overflow/max-height defined later in FIXED HEADER section) */

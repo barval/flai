@@ -262,14 +262,14 @@ _MULTIPART_RE = re.compile(r"^(?P<prefix>.*)-(?P<num>\d{4,5})-of-(?P<total>\d{4,
 
 
 def is_aux_file(path: str) -> bool:
-    """True for auxiliary files that are not loadable models: imatrix files,
-    MTP heads, non-first multi-part shards, tokenizer trunks and LLM2Vec text
-    bundles exported into a repo."""
+    """True for auxiliary files that are not standalone models."""
     base = os.path.basename(path)
     low = base.lower()
     if "imatrix" in low:
         return True
     if low.startswith("mtp-") or "/mtp/" in low:
+        return True
+    if re.search(r"-draft-(?:q\d+(?:_[a-z0-9]+)*|iq\d+(?:_[a-z0-9]+)*)\.gguf$", low) or "-fastmtp-" in low:
         return True
     if low == "tokenizer.gguf":
         return True
@@ -298,8 +298,7 @@ def _mtp_head(repo: str, model_path: str) -> dict | None:
 
 def _companion_files(repo: str, model_path: str) -> list[dict]:
     """Files fetched with ``model_path`` and stored next to it: later multi-part
-    shards (required to load the model) and a single MTP head matching the model
-    quantization (unused at runtime, but exported for disk-storage parity)."""
+    shards, matching MTP heads, and any model-specific draft sidecars."""
     files = _repo_files(repo, limit=None)
     out: list[dict] = []
     main_base = os.path.basename(model_path)
@@ -309,6 +308,31 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
         for fi in files:
             fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
             if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total and int(fm.group("num")) > 1:
+                out.append(dict(fi))
+    main_stem = os.path.splitext(main_base)[0]
+    no_mtp = re.match(r"^(?P<base>.+)-noMTP-[^-]+\.gguf$", main_base, re.IGNORECASE)
+    if no_mtp:
+        draft_prefix = no_mtp.group("base") + "-draft-"
+        draft_options = []
+        for fi in files:
+            name = os.path.basename(fi["path"])
+            if name.startswith(draft_prefix) and name.lower().endswith(("-q4_0.gguf", "-q8_0.gguf")):
+                draft = dict(fi)
+                draft["choice_group"] = "draft"
+                draft_options.append(draft)
+        preferred = next(
+            (f for f in draft_options if f["path"].lower().endswith("-q8_0.gguf")),
+            next((f for f in draft_options if f["path"].lower().endswith("-q4_0.gguf")), None),
+        )
+        if preferred:
+            for draft in draft_options:
+                draft["default"] = draft is preferred
+                out.append(draft)
+    else:
+        main_prefix = re.sub(r"-(?:Q\d+_[A-Z](?:_[A-Z]+)?|IQ\d+_[A-Z0-9_]+)$", "", main_stem, flags=re.IGNORECASE)
+        for fi in files:
+            name = os.path.basename(fi["path"])
+            if name.startswith(main_prefix + "-FastMTP-"):
                 out.append(dict(fi))
     head = _mtp_head(repo, model_path)
     if head:
@@ -341,6 +365,33 @@ def _runtime_size_mb(repo: str, file_path: str) -> float:
     return total
 
 
+def _select_companion_files(companions: list[dict], selected_paths: list[str] | None) -> list[dict]:
+    """Resolve optional companion choices, defaulting each group to its marked option."""
+    selected_paths = selected_paths or []
+    choice_groups: dict[str, list[dict]] = {}
+    required = []
+    for companion in companions:
+        group = companion.get("choice_group")
+        if group:
+            choice_groups.setdefault(group, []).append(companion)
+        else:
+            required.append(companion)
+
+    selected = []
+    allowed_paths = {c["path"] for choices in choice_groups.values() for c in choices}
+    if any(path not in allowed_paths for path in selected_paths):
+        raise DownloadBlocked("bad_path")
+    if len(selected_paths) != len(set(selected_paths)):
+        raise DownloadBlocked("bad_path")
+
+    for choices in choice_groups.values():
+        requested = [c for c in choices if c["path"] in selected_paths]
+        if len(requested) > 1:
+            raise DownloadBlocked("bad_path")
+        selected.extend(requested or [c for c in choices if c.get("default")][:1])
+    return required + selected
+
+
 def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
     """Build one search result entry for a repo dict from the HF /api/models list."""
     repo_id = r.get("id", "")
@@ -357,11 +408,28 @@ def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
         m = _MULTIPART_RE.match(os.path.basename(f["path"]))
         if m and int(m.group("num")) == 1:
             companions = [c for c in companions if not _MULTIPART_RE.match(os.path.basename(c["path"]))]
+        required_companions = [c for c in companions if not c.get("choice_group")]
+        choice_groups: dict[str, list[dict]] = {}
+        for companion in companions:
+            if companion.get("choice_group"):
+                choice_groups.setdefault(companion["choice_group"], []).append(companion)
+        companion_choices = [
+            {
+                "group": group,
+                "options": [
+                    {"path": c["path"], "size_mb": c["size_mb"], "default": c.get("default", False)} for c in choices
+                ],
+            }
+            for group, choices in choice_groups.items()
+        ]
+        default_companions = [c for choices in choice_groups.values() for c in choices if c.get("default")]
         model_files.append(
             {
                 **f,
                 "size_mb": round(_runtime_size_mb(repo_id, f["path"]), 1),
-                "companion_mb": round(sum(c["size_mb"] for c in companions), 1),
+                "companion_mb": round(sum(c["size_mb"] for c in required_companions + default_companions), 1),
+                "companion_required_mb": round(sum(c["size_mb"] for c in required_companions), 1),
+                "companion_choices": companion_choices,
             }
         )
     arch = get_repo_arch(repo_id) or {}
@@ -609,7 +677,7 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
 def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_length: int = 8192) -> dict:
     """Classify fit of ``file_path`` in ``repo`` for ``module`` without the file present."""
     target = None
-    for fi in _repo_files(repo):
+    for fi in _repo_files(repo, limit=None):
         if fi["path"] == file_path:
             target = fi
             break
@@ -656,7 +724,7 @@ def estimate_fits(repo: str, module: str = "multimodal", context_length: int = 8
     after a search, so the per-file work here is mostly arithmetic.
     """
     out: dict[str, dict] = {}
-    for fi in _repo_files(repo):
+    for fi in _repo_files(repo, limit=None):
         if is_aux_file(fi["path"]):
             continue
         try:
@@ -730,7 +798,9 @@ def _post_download_scan(models_dir: str) -> None:
 def _write_progress(job: _Job) -> None:
     try:
         r = _redis()
-        r.hset(f"model_hub:job:{job.job_id}", mapping=_job_to_dict(job))
+        progress = _job_to_dict(job)
+        progress["parts"] = json.dumps(progress["parts"])
+        r.hset(f"model_hub:job:{job.job_id}", mapping=progress)
         r.expire(f"model_hub:job:{job.job_id}", _NC_DONE)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"model_hub progress write failed: {exc}")
@@ -746,7 +816,12 @@ def _is_cancelled(job: _Job) -> bool:
     return False
 
 
-def start_download(repo: str, file_path: str, models_dir: str | None = None) -> str:
+def start_download(
+    repo: str,
+    file_path: str,
+    models_dir: str | None = None,
+    companion_paths: list[str] | None = None,
+) -> str:
     """Validate + enqueue a download; returns a job id. Raises DownloadBlocked."""
     if ".." in file_path.split("/") or file_path.startswith("/"):
         raise DownloadBlocked("bad_path")
@@ -768,7 +843,7 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
 
     try:
         target = None
-        for fi in _repo_files(repo):
+        for fi in _repo_files(repo, limit=None):
             if fi["path"] == file_path:
                 target = fi
                 break
@@ -794,7 +869,8 @@ def start_download(repo: str, file_path: str, models_dir: str | None = None) -> 
         # A companion already on disk is skipped, so free-space check and the
         # download both account only for what will actually be fetched.
         companions = []
-        for c in _companion_files(repo, file_path):
+        chosen_companions = _select_companion_files(_companion_files(repo, file_path), companion_paths)
+        for c in chosen_companions:
             if not os.path.exists(os.path.join(models_dir, os.path.basename(c["path"]))):
                 companions.append(c)
         companion_mb = sum(c["size_mb"] for c in companions)
@@ -963,9 +1039,25 @@ def _download_part(job: _Job, part: dict) -> None:
 def get_job(job_id: str) -> dict | None:
     with _jobs_lock:
         job = _JOBS.get(job_id)
-    if job is None:
+    if job is not None:
+        return _job_to_dict(job)
+    try:
+        data = _redis().hgetall(f"model_hub:job:{job_id}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"model_hub progress read failed: {exc}")
         return None
-    return _job_to_dict(job)
+    if not data:
+        return None
+    try:
+        job_data = {key: value.decode() if isinstance(value, bytes) else value for key, value in data.items()}
+        for key in ("total_mb", "received_mb", "speed_mb_s", "companions_mb"):
+            job_data[key] = float(job_data.get(key) or 0)
+        job_data["part_count"] = int(job_data.get("part_count") or 0)
+        job_data["parts"] = json.loads(job_data.get("parts") or "[]")
+        return job_data
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning(f"model_hub progress data invalid for {job_id}: {exc}")
+        return None
 
 
 def cancel_job(job_id: str) -> bool:

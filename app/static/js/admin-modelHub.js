@@ -136,17 +136,22 @@
                 const repo = esc(it.repo), file = esc(f.path);
                 const fileName = f.path.split('/').pop();
                 const isInstalled = installedList.includes(fileName);
+                const companionOptions = (f.companion_choices || []).flatMap(group => group.options || []);
+                const companionChoiceHtml = companionOptions.length
+                    ? `<div class="hub-companion-choice">${companionOptions.map(option => `
+                        <label><input type="radio" name="hub-draft-${esc(it.repo)}-${esc(f.path)}" value="${esc(option.path)}" data-companion-choice data-size-mb="${Number(option.size_mb) || 0}" ${option.default ? 'checked' : ''} ${isInstalled ? 'disabled' : ''}> ${esc(option.path.split('/').pop())} (${fmtNum(Math.ceil(option.size_mb))} ${t('MB')})</label>`).join('')}</div>`
+                    : '';
                 const action = it.gated
                     ? `<td><span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span></td>`
                     : isInstalled
                         ? `<td><span class="hub-installed">✓ ${esc(t('hub_installed'))}</span> <button class="hub-del add-user-button" data-filename="${esc(fileName)}">🗑 ${esc(t('hub_uninstall'))}</button></td>`
                         : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
                 const fitAttr = f.fit ? ` title="${esc(f.fit.message || '')}"` : '';
-                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}" data-max-ctx="${(f.fit && f.fit.arch_max_ctx) || ''}">
+                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}" data-max-ctx="${(f.fit && f.fit.arch_max_ctx) || ''}" data-companion-required-mb="${Number(f.companion_required_mb) || 0}">
                     <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} ${t('MB')}</td>
                     <td class="hub-path">${esc(f.path)}${f.companion_mb > 0
                         ? `<div class="hub-aux-note">${esc(t('hub_service_files').replace('{n}', fmtNum(Math.ceil(f.companion_mb))))}</div>`
-                        : ''}</td>
+                        : companionOptions.length ? `<div class="hub-aux-note">${esc(t('hub_service_files').replace('{n}', fmtNum(Math.ceil(f.companion_mb))))}</div>` : ''}${companionChoiceHtml}</td>
                     <td class="hub-fit ${f.fit ? fitTierClass(f.fit) : 'hub-fit-pending'}"${fitAttr}>${f.fit ? esc(fitTierLabel(f.fit)) : '…'}</td>
                     ${action}
                 </tr>`;
@@ -154,8 +159,8 @@
             html += '</tbody></table></div>';
         }
         results.innerHTML = html;
+        wireDownloadButtons();
         if (!keepFits) {
-            wireDownloadButtons();
             if (!hasFits) recalcFits('hub_calculating');
         }
     }
@@ -271,6 +276,15 @@ function fitTierClass(fit) {
         document.querySelectorAll('.hub-del').forEach((btn) => {
             btn.addEventListener('click', () => deleteDownloadedFile(btn, btn.dataset.filename));
         });
+        document.querySelectorAll('.hub-companion-choice input').forEach((input) => {
+            input.addEventListener('change', () => {
+                const row = input.closest('.hub-file-row');
+                const chosen = row.querySelector('.hub-companion-choice input:checked');
+                const total = Number(row.dataset.companionRequiredMb || 0) + Number(chosen?.dataset.sizeMb || 0);
+                const note = row.querySelector('.hub-aux-note');
+                if (note) note.textContent = t('hub_service_files').replace('{n}', fmtNum(Math.ceil(total)));
+            });
+        });
     }
 
     function deleteDownloadedFile(btn, filename) {
@@ -328,13 +342,21 @@ function fitTierClass(fit) {
     async function startDownload(btn) {
         const repo = btn.dataset.repo;
         const file = btn.dataset.file;
-        const module = btn.dataset.module || 'multimodal';
-        const row = btn.closest('.hub-file-row');
+            const module = btn.dataset.module || 'multimodal';
+            const row = btn.closest('.hub-file-row');
+        const companionPaths = row
+            ? Array.from(row.querySelectorAll('[data-companion-choice]:checked')).map(input => input.value)
+            : [];
         btn.disabled = true;
         fetchWithCSRF('/admin/api/hub/download', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo: repo, file: file, module: module })
+            body: JSON.stringify({
+                repo: repo,
+                file: file,
+                module: module,
+                companions: companionPaths
+            })
         })
         .then(r => r.json())
         .then((data) => {

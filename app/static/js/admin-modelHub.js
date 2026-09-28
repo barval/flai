@@ -6,6 +6,7 @@
     if (!input) return;
     const btn = document.getElementById('hub-search-btn');
     const results = document.getElementById('hub-results');
+    const activeDownloads = document.getElementById('hub-active-downloads');
     const scanStatus = document.getElementById('hub-scan-status');
     const recalcStatus = document.getElementById('hub-recalc-status');
     const ctxSlider = document.getElementById('hub-context-slider');
@@ -19,6 +20,7 @@
     };
 
     const typeToModule = { reasoning: 'reasoning', multimodal: 'multimodal', embedding: 'embedding' };
+    const ACTIVE_DOWNLOADS_KEY = 'flai.modelHub.activeDownloads';
     let lastData = null;
     let installedList = [];
     let recalcBusy = false;
@@ -49,6 +51,7 @@
         ctxValue.value = String(ctx);
         refreshFits();
     });
+    resumeActiveDownloads();
 
     function esc(s) {
         return String(s).replace(/[&<>"']/g,
@@ -325,18 +328,62 @@ function fitTierClass(fit) {
             .catch(showBanner);
     }
 
-    function ensureJobsHost(row) {
-        const card = row.closest('.hub-repo');
-        let host = card.querySelector('.hub-dl-jobs');
-        if (!host) {
-            host = document.createElement('div');
-            host.className = 'hub-dl-jobs';
-            // Progress sits below the repo name, never inside a table cell
-            // (a thin 10% column could not hold the bar without overlapping).
-            const head = card.querySelector('.hub-repo-head');
-            head.insertAdjacentElement('afterend', host);
+    function getActiveDownloads() {
+        try {
+            return JSON.parse(sessionStorage.getItem(ACTIVE_DOWNLOADS_KEY) || '[]');
+        } catch (_) {
+            return [];
         }
-        return host;
+    }
+
+    function saveActiveDownloads(jobs) {
+        sessionStorage.setItem(ACTIVE_DOWNLOADS_KEY, JSON.stringify(jobs));
+    }
+
+    function rememberActiveDownload(job) {
+        const jobs = getActiveDownloads().filter(item => item.job_id !== job.job_id);
+        jobs.push(job);
+        saveActiveDownloads(jobs);
+    }
+
+    function forgetActiveDownload(jobId) {
+        saveActiveDownloads(getActiveDownloads().filter(item => item.job_id !== jobId));
+    }
+
+    function createDownloadRow(job) {
+        const row = document.createElement('div');
+        row.className = 'hub-dl-job';
+        const name = document.createElement('span');
+        name.className = 'hub-dl-job-name';
+        name.textContent = job.file;
+        const wrap = document.createElement('span');
+        wrap.className = 'hub-progress-wrap';
+        const bar = document.createElement('span');
+        bar.className = 'hub-progress-bar';
+        const fill = document.createElement('span');
+        fill.className = 'hub-progress-fill';
+        bar.appendChild(fill);
+        const text = document.createElement('span');
+        text.className = 'hub-progress-text';
+        text.textContent = '…';
+        wrap.append(bar, text);
+        const cancel = document.createElement('button');
+        cancel.className = 'hub-cancel add-user-button';
+        cancel.textContent = t('hub_cancel');
+        cancel.dataset.job = job.job_id;
+        row.append(name, wrap, cancel);
+        activeDownloads.appendChild(row);
+        activeDownloads.style.display = 'block';
+        return { row, cancel };
+    }
+
+    function resumeActiveDownloads() {
+        const jobs = getActiveDownloads();
+        if (!activeDownloads || !jobs.length) return;
+        jobs.forEach(job => {
+            const ui = createDownloadRow(job);
+            pollJob(job.job_id, ui.row, ui.cancel, job.repo, job.file, job.module);
+        });
     }
 
     async function startDownload(btn) {
@@ -366,25 +413,16 @@ function fitTierClass(fit) {
                 row.querySelector('.hub-fit').title = data.error || t('hub_error');
                 return;
             }
-            const cell = document.createElement('div');
-            cell.className = 'hub-dl-job';
-            cell.innerHTML = `<span class="hub-dl-job-name">${esc(file)}</span>
-                <span class="hub-progress-wrap">
-                    <span class="hub-progress-bar"><span class="hub-progress-fill" data-fill=""></span></span>
-                    <span class="hub-progress-text">0%</span>
-                </span>`;
-            ensureJobsHost(row).appendChild(cell);
+            const activeJob = { job_id: data.job_id, repo, file, module };
+            rememberActiveDownload(activeJob);
+            const ui = createDownloadRow(activeJob);
             // The "Download" button turns into a same-size red "Cancel" button
             // in place, so no extra control piles up on top of the file name.
             // A fresh <button> is used: the old node is disabled (browsers never
             // fire click on disabled buttons) and already carries the download
             // listener, which would re-submit the job on the next click.
-            const cancelBtn = document.createElement('button');
-            cancelBtn.className = 'hub-cancel add-user-button';
-            cancelBtn.textContent = t('hub_cancel');
-            cancelBtn.dataset.job = data.job_id;
-            btn.replaceWith(cancelBtn);
-            pollJob(data.job_id, cell, cancelBtn, repo, file, module);
+            btn.replaceWith(ui.cancel);
+            pollJob(data.job_id, ui.row, ui.cancel, repo, file, module);
         })
         .catch(() => { btn.disabled = false; row.querySelector('.hub-fit').textContent = '✗'; });
     }
@@ -397,7 +435,7 @@ function fitTierClass(fit) {
         dlBtn.dataset.module = module;
         dlBtn.textContent = t('hub_download');
         dlBtn.addEventListener('click', () => startDownload(dlBtn));
-        btn.parentNode.replaceChild(dlBtn, btn);
+        if (btn.parentNode) btn.parentNode.replaceChild(dlBtn, btn);
     }
 
     function pollJob(jobId, cell, cancelBtn, repo, file, module) {
@@ -415,6 +453,9 @@ function fitTierClass(fit) {
                     const job = data.job;
                     const fill = cell.querySelector('.hub-progress-fill');
                     const text = cell.querySelector('.hub-progress-text');
+                    if (job.state === 'starting' || job.state === 'downloading' || job.state === 'verifying') {
+                        rememberActiveDownload({ job_id: jobId, repo, file, module });
+                    }
                     if (job.state === 'starting') {
                         // Worker is still resolving the file: no bytes yet, but the
                         // poller must keep ticking or the bar freezes at 0%.
@@ -435,16 +476,19 @@ function fitTierClass(fit) {
                     } else if (job.state === 'done') {
                         fill.style.width = '100%';
                         cell.innerHTML = '✓ ' + esc(t('hub_done'));
+                        forgetActiveDownload(jobId);
                         cancelBtn.remove();
                     } else if (job.state === 'cancelled') {
+                        forgetActiveDownload(jobId);
                         cell.textContent = esc(t('hub_cancelled'));
                         restoreDownload(cancelBtn, repo, file, module);
                     } else if (job.state === 'failed') {
+                        forgetActiveDownload(jobId);
                         cell.textContent = '✗ ' + esc(t('hub_failed')) + ': ' + esc(job.error || '');
                         restoreDownload(cancelBtn, repo, file, module);
                     }
                 })
-                .catch(() => { cell.textContent = '✗ ' + esc(t('hub_failed')); });
+                .catch(() => { setTimeout(tick, everyMs); });
         })();
     }
 

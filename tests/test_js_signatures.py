@@ -468,6 +468,17 @@ def test_admin_tabs_scroll_horizontally_on_narrow_screens():
     assert button and re.search(r"white-space:\s*nowrap", button.group(1))
 
 
+def test_model_hub_persists_and_restores_active_download_progress():
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    assert "sessionStorage.setItem(ACTIVE_DOWNLOADS_KEY" in hub_src
+    assert "sessionStorage.getItem(ACTIVE_DOWNLOADS_KEY" in hub_src
+    assert "resumeActiveDownloads()" in hub_src
+    assert 'id="hub-active-downloads"' in admin_template
+    assert "activeDownloads.appendChild(row)" in hub_src
+    assert "function ensureJobsHost" not in hub_src
+
+
 def test_admin_active_tab_survives_language_switch_reload():
     """Admin tab position must persist across the language-change full reload:
     initAdminTabs saves the active data-tab on click and restores it on load."""

@@ -612,6 +612,46 @@ body.dark-theme .model-card .model-desc {
        the element's hover tooltip so the row fits the mobile width. */
     .hub-type-label { display: none; }
 
+    /* Keep Model Hub controls compact; scroll long filter rows instead of
+       wrapping them into several lines on a phone. */
+    .hub-filters { gap: 0.25rem; margin-bottom: 0.5rem; }
+    .hub-filter-row {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        gap: 0.5rem;
+        padding-bottom: 0.2rem;
+        -webkit-overflow-scrolling: touch;
+    }
+    .hub-filter-row > * { flex: 0 0 auto; }
+    #hub-context-slider { width: 150px; max-width: none; }
+    .hub-header { flex-wrap: nowrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .hub-header input[type="text"] { flex: 1 1 auto; min-width: 120px; }
+    .hub-header .hub-filter-label,
+    .hub-header button { flex: 0 0 auto; white-space: nowrap; }
+
+    /* Keep the Model Hub headings and file rows aligned in a horizontal
+       viewport rather than squeezing their columns over one another. */
+    .hub-results-wrap { overflow-x: auto; }
+    .hub-columns { min-width: 680px; box-sizing: border-box; }
+    .hub-repo { min-width: 680px; box-sizing: border-box; }
+    table.hub-files { min-width: 680px; }
+
+    /* Downloaded models are a compact list with its own horizontal viewport. */
+    #models-files { overflow-x: auto; }
+    .models-files-list { min-width: 620px; }
+    .installed-file { flex-wrap: nowrap; white-space: nowrap; }
+    .installed-file-name {
+        flex: 0 0 48%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        word-break: normal;
+    }
+    .installed-file-meta,
+    .installed-file .hub-del { flex-shrink: 0; }
+
     /* Database info row: stack items vertically with each on two lines */
     .db-info {
         display: block !important;

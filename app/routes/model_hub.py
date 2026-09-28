@@ -49,12 +49,17 @@ def _hub_ok(payload: dict):
 def hub_search():
     q = (request.args.get("q") or "").strip()
     limit = min(int(request.args.get("limit", current_app.config.get("MODEL_HUB_SEARCH_LIMIT", 20))), 50)
+    ctx_arg = (request.args.get("context") or "").strip()
     try:
-        items = model_hub.search_hf(q, limit)
+        context_length = max(1024, int(ctx_arg))
+    except ValueError:
+        context_length = None
+    try:
+        items = model_hub.search_hf(q, limit, context_length=context_length)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"hub search failed: {exc}")
         return _hub_err("hub_failed")
-    return _hub_ok({"items": items})
+    return _hub_ok({"items": items, "fits_computed": context_length is not None})
 
 
 @bp.route("/fit")

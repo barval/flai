@@ -68,6 +68,11 @@ def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
     return "reasoning"
 
 
+def _module_for_type(mtype: str) -> str:
+    """Module key used by fit estimation, matching the client's type->module map."""
+    return {"reasoning": "reasoning", "multimodal": "multimodal", "embedding": "embedding"}.get(mtype, "reasoning")
+
+
 class HubError(RuntimeError):
     """Low-level HF API/HTTP failure."""
 
@@ -295,7 +300,7 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
     return list(uniq.values())
 
 
-def _search_repo(r: dict) -> dict | None:
+def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
     """Build one search result entry for a repo dict from the HF /api/models list."""
     repo_id = r.get("id", "")
     model_files = [f for f in _repo_files(repo_id) if not is_aux_file(f["path"])]
@@ -309,20 +314,30 @@ def _search_repo(r: dict) -> dict | None:
         for f in model_files
     ]
     arch = get_repo_arch(repo_id) or {}
+    mtype = classify_model_type(repo_id, arch.get("arch") or [])
+    if context_length:
+        # Fit is computed here (parallel across repos) so the client renders
+        # ready-made ratings and never spends minutes on sequential /fit calls.
+        module = _module_for_type(mtype)
+        model_files = [{**f, "fit": _file_fit(repo_id, f["path"], module, context_length)} for f in model_files]
     return {
         "repo": repo_id,
         "downloads": r.get("downloads", 0),
         "likes": r.get("likes", 0),
         "gated": bool(r.get("gated")),
         "license": r.get("license") or (r.get("cardData") or {}).get("license"),
-        "type": classify_model_type(repo_id, arch.get("arch") or []),
+        "type": mtype,
         "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
         "files": model_files,
     }
 
 
-def search_hf(query: str = "", limit: int = 20) -> list[dict]:
-    """Top GGUF downloads matching ``query``, each with its GGUF files."""
+def search_hf(query: str = "", limit: int = 20, context_length: int | None = None) -> list[dict]:
+    """Top GGUF downloads matching ``query``, each with its GGUF files.
+
+    When ``context_length`` is given, every model file carries a ready ``fit``
+    estimation; the GGUF header reads run concurrently across repos.
+    """
     resp = _hf_get(
         HF_API,
         params={
@@ -338,7 +353,7 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
     if not repos:
         return []
     with ThreadPoolExecutor(max_workers=_HUB_WORKERS) as executor:
-        items = list(executor.map(_search_repo, repos))
+        items = list(executor.map(lambda r: _search_repo(r, context_length), repos))
     return [item for item in items if item]
 
 
@@ -532,6 +547,17 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
     fit["context_length"] = int(context_length)
     fit["arch_max_ctx"] = int(arch.get("arch_max_ctx") or fit.get("arch_max_ctx") or 0)
     return fit
+
+
+def _file_fit(repo: str, file_path: str, module: str, context_length: int) -> dict:
+    """Per-file fit for the search result; never raises (error entries render as ✗)."""
+    try:
+        return estimate_fit(repo, file_path, module=module, context_length=context_length)
+    except DownloadBlocked as exc:
+        return {"error": exc.reason}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"fit failed for {repo}/{file_path}: {exc}")
+        return {"error": "hub_failed"}
 
 
 def estimate_fits(repo: str, module: str = "multimodal", context_length: int = 8192) -> dict:

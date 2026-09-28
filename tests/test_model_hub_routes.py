@@ -42,6 +42,25 @@ def test_hub_search_ok(client, test_app):
     data = resp.get_json()
     assert data["status"] == "ok"
     assert data["items"][0]["repo"] == "org/A"
+    assert data["fits_computed"] is False
+
+
+def test_hub_search_passes_context_and_marks_fits(client, test_app):
+    _login_admin(client, test_app)
+    captured = {}
+
+    def _fake_search_hf(q, limit=20, context_length=None):
+        captured["q"] = q
+        captured["context_length"] = context_length
+        return [{"repo": "org/A", "files": []}]
+
+    with patch("app.routes.model_hub.model_hub.search_hf", side_effect=_fake_search_hf):
+        resp = client.get("/admin/api/hub/search?q=sql&context=32768")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert captured["q"] == "sql"
+    assert captured["context_length"] == 32768
+    assert data["fits_computed"] is True
 
 
 def test_hub_fit_blocked_unknown_arch(client, test_app):

@@ -311,6 +311,26 @@ def test_hub_fit_batched_per_repo():
     assert "/admin/api/hub/fit?repo=" not in collect_body
 
 
+def test_hub_search_renders_fits_directly():
+    """A search with a context arg comes back with ready fit tiers: renderResults
+    paints them immediately and skips the sequential fit-all recalc phase."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # The search request always carries the current context slider value.
+    assert "&context=${currentContext()}" in hub_src
+    # renderResults reads the server-provided flag and renders fit inline.
+    assert "data.fits_computed" in hub_src
+    assert "fitTierClass(f.fit)" in hub_src
+    assert "fitTierLabel(f.fit)" in hub_src
+    # The recalc phase runs only when the search did not compute fits.
+    assert "if (!hasFits) recalcFits('hub_calculating')" in hub_src
+    # Shared tier helpers (also used by the slider recalc path) exist.
+    assert "function fitTierClass" in hub_src
+    assert "function fitTierLabel" in hub_src
+    assert "if (fit.error) return '✗'" in hub_src
+    assert "if (fit.error) return 'hub-fit-impossible'" in hub_src
+
+
 def test_hub_recalc_status_ticks_elapsed_seconds():
     """The fit-calculation status must tick elapsed seconds ('(N сек)') while
     shown — mirroring the chat phase timers — and stop when the calc finishes."""

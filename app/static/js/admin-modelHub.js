@@ -86,7 +86,7 @@
         }, 1000);
         results.innerHTML = '';
         try {
-            const res = await fetchWithCSRF(`/admin/api/hub/search?q=${encodeURIComponent(q)}`);
+            const res = await fetchWithCSRF(`/admin/api/hub/search?q=${encodeURIComponent(q)}&context=${currentContext()}`);
             const data = await res.json();
             if (data && data.items) lastData = data;
             renderResults(data);
@@ -110,6 +110,7 @@
 
     function renderResults(data, keepFits) {
         let items = (data && data.items) || [];
+        const hasFits = !!(data && data.fits_computed);
         const types = selectedTypes();
         if (types.length) items = items.filter(it => types.includes(it.type));
         if (!items.length) { results.innerHTML = note(t('hub_no_results')); return; }
@@ -135,19 +136,23 @@
                 const action = it.gated
                     ? `<td><span class="hub-badge hub-badge-gated">${esc(t('hub_gated'))}</span></td>`
                     : `<td><button class="hub-dl add-user-button" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}">${esc(t('hub_download'))}</button></td>`;
-                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}">
+                const fitAttr = f.fit ? ` title="${esc(f.fit.message || '')}"` : '';
+                html += `<tr class="hub-file-row" data-repo="${repo}" data-file="${file}" data-module="${typeToModule[it.type]}" data-gated="${it.gated ? '1' : '0'}" data-max-ctx="${(f.fit && f.fit.arch_max_ctx) || ''}">
                     <td class="hub-size">${fmtNum(Math.ceil(f.size_mb || 0))} MB</td>
                     <td class="hub-path">${esc(f.path)}${f.companion_mb > 0
                         ? `<div class="hub-aux-note">${esc(t('hub_service_files').replace('{n}', fmtNum(Math.ceil(f.companion_mb))))}</div>`
                         : ''}</td>
-                    <td class="hub-fit hub-fit-pending">…</td>
+                    <td class="hub-fit ${f.fit ? fitTierClass(f.fit) : 'hub-fit-pending'}"${fitAttr}>${f.fit ? esc(fitTierLabel(f.fit)) : '…'}</td>
                     ${action}
                 </tr>`;
             }
             html += '</tbody></table></div>';
         }
         results.innerHTML = html;
-        if (!keepFits) { recalcFits('hub_calculating'); wireDownloadButtons(); }
+        if (!keepFits) {
+            wireDownloadButtons();
+            if (!hasFits) recalcFits('hub_calculating');
+        }
     }
 
     function recalcFits(messageKey) {
@@ -229,18 +234,29 @@
         });
     }
 
-    function renderFit(cell, fit) {
-        const cls = fit.platform === 'cpu'
-            ? (fit.tier === 'cpu_offload' ? 'hub-fit-cpu' : 'hub-fit-impossible')
-            : fit.tier === 'good' ? 'hub-fit-good'
-            : fit.tier === 'cpu_offload' ? 'hub-fit-offload'
-            : fit.tier === 'impossible' ? 'hub-fit-impossible' : 'hub-fit-pending';
-        cell.className = 'hub-fit ' + cls;
-        cell.title = fit.message || '';
+function fitTierClass(fit) {
+        if (fit.error) return 'hub-fit-impossible';
         const isCpu = fit.platform === 'cpu';
-        cell.textContent = fit.tier === 'good' && !isCpu ? t('hub_fit_gpu')
-            : fit.tier === 'cpu_offload' ? (isCpu ? t('hub_fit_cpu') : t('hub_fit_gpu_cpu'))
-            : fit.tier === 'impossible' ? t('hub_fit_impossible') : '…';
+        if (isCpu) return fit.tier === 'cpu_offload' ? 'hub-fit-cpu' : 'hub-fit-impossible';
+        if (fit.tier === 'good') return 'hub-fit-good';
+        if (fit.tier === 'cpu_offload') return 'hub-fit-offload';
+        if (fit.tier === 'impossible') return 'hub-fit-impossible';
+        return 'hub-fit-pending';
+    }
+
+    function fitTierLabel(fit) {
+        if (fit.error) return '✗';
+        const isCpu = fit.platform === 'cpu';
+        if (fit.tier === 'good' && !isCpu) return t('hub_fit_gpu');
+        if (fit.tier === 'cpu_offload') return isCpu ? t('hub_fit_cpu') : t('hub_fit_gpu_cpu');
+        if (fit.tier === 'impossible') return t('hub_fit_impossible');
+        return '…';
+    }
+
+    function renderFit(cell, fit) {
+        cell.className = 'hub-fit ' + fitTierClass(fit);
+        cell.title = fit.message || '';
+        cell.textContent = fitTierLabel(fit);
     }
 
     function wireDownloadButtons() {

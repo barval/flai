@@ -325,6 +325,45 @@ def test_search_hf_parallel_keeps_order(monkeypatch):
     assert [i["repo"] for i in items] == [f"org/R{i}" for i in range(3)]
 
 
+def test_search_hf_computes_fit_when_context_given(monkeypatch):
+    """With a context argument every model file carries a ready fit, and
+    estimate_fit receives that context and the module derived from the type."""
+    repos = [{"id": "org/A", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}]
+    monkeypatch.setattr(
+        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
+    )
+    monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: {"block_count": 64})
+    captured = {}
+    monkeypatch.setattr(
+        model_hub,
+        "estimate_fit",
+        lambda repo, file, module=None, context_length=8192: (
+            captured.update(module=module, context_length=context_length),
+            {"tier": "good", "platform": "gpu"},
+        )[1],
+    )
+    items = model_hub.search_hf("q", 5, context_length=32768)
+    assert items[0]["files"][0]["fit"]["tier"] == "good"
+    assert captured["context_length"] == 32768
+    assert captured["module"] == "reasoning"
+
+
+def test_search_hf_without_context_skips_fit(monkeypatch):
+    """Without a context argument no fit is attached (legacy/render-only path)."""
+    repos = [{"id": "org/A", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}]
+    monkeypatch.setattr(
+        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
+    )
+    monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: {"block_count": 64})
+    monkeypatch.setattr(
+        model_hub, "estimate_fit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not be called"))
+    )
+    items = model_hub.search_hf("q", 5)
+    assert "fit" not in items[0]["files"][0]
+
+
 def test_arch_cache_disk_roundtrip(tmp_path, monkeypatch):
     """Arch metadata survives a restart via the JSON cache in the models dir."""
     models_dir = tmp_path / "models"

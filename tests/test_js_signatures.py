@@ -298,6 +298,19 @@ def test_hub_fit_calc_status_shown_on_first_render():
     assert "'hub_calculating': {{ _('Computing fit…')|tojson }}" in admin_template
 
 
+def test_hub_fit_batched_per_repo():
+    """Fit tiers must be fetched with one /fit-all request per repo, not one
+    /fit request per file: a 50-repo search used to queue hundreds of
+    sequential requests on the single-process server."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    collect_body = hub_src[hub_src.index("function collectFits") :]
+    assert "/admin/api/hub/fit-all?repo=" in collect_body
+    assert re.search(r"\(groups\[repo\]\s*=\s*groups\[repo\]\s*\|\|\s*\[\]\)\.push", collect_body)
+    assert "byFile[row.dataset.file]" in collect_body
+    # The old per-file endpoint must not be used by the batched path.
+    assert "/admin/api/hub/fit?repo=" not in collect_body
+
+
 def test_hub_recalc_status_ticks_elapsed_seconds():
     """The fit-calculation status must tick elapsed seconds ('(N сек)') while
     shown — mirroring the chat phase timers — and stop when the calc finishes."""

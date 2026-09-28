@@ -295,6 +295,7 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     search_payload = [{"id": "org/Repo", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0"}]
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(search_payload))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: {"block_count": 64})
 
     items = model_hub.search_hf("q", 5)
     assert len(items) == 1
@@ -305,6 +306,47 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
     by_path = {f["path"]: f for f in items[0]["files"]}
     assert by_path["Qwen3.8-27B-UD-IQ1_S.gguf"]["companion_mb"] == 1306.0
     assert by_path["Qwen3.8-27B-BF16-00001-of-00002.gguf"]["companion_mb"] == 24038.0
+
+
+def test_search_hf_parallel_keeps_order_and_prewarms_arch(monkeypatch):
+    """search_hf runs per-repo work concurrently, preserves HF order, and
+    pre-warms the GGUF arch cache for repos that lack a config.json."""
+    repos = [
+        {"id": f"org/R{i}", "downloads": i, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}
+        for i in range(3)
+    ]
+    monkeypatch.setattr(
+        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
+    )
+    monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    warmed: list[str] = []
+    monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: (warmed.append(repo), {"block_count": 64})[1])
+    items = model_hub.search_hf("q", 5)
+    assert [i["repo"] for i in items] == [f"org/R{i}" for i in range(3)]
+    assert set(warmed) == {f"org/R{i}" for i in range(3)}
+
+
+def test_estimate_fits_skips_aux_and_maps_errors(monkeypatch):
+    """estimate_fits covers only model files and surfaces per-file errors."""
+    files = [
+        {"path": "Q4_K_M.gguf", "size_mb": 10.0, "sha256": "a" * 64},
+        {"path": "Q2_K.gguf", "size_mb": 5.0, "sha256": "b" * 64},
+        {"path": "imatrix_unsloth.gguf", "size_mb": 1.0, "sha256": "c" * 64},
+        {"path": "mtp-Q4_0.gguf", "size_mb": 2.0, "sha256": "d" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+
+    def fake_estimate(repo, file_path, module="multimodal", context_length=8192):
+        if file_path == "Q2_K.gguf":
+            raise model_hub.DownloadBlocked("unknown_arch")
+        return {"tier": "good", "platform": "gpu"}
+
+    monkeypatch.setattr(model_hub, "estimate_fit", fake_estimate)
+    out = model_hub.estimate_fits("org/A", context_length=32768)
+    assert list(out) == ["Q4_K_M.gguf", "Q2_K.gguf"]
+    assert out["Q4_K_M.gguf"]["tier"] == "good"
+    assert out["Q2_K.gguf"] == {"error": "unknown_arch"}
 
 
 def _gguf_metadata_header_wide_tail():

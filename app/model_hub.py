@@ -20,6 +20,7 @@ import struct
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import redis
 import requests
@@ -39,6 +40,10 @@ _MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
 _EMBEDDING_ARCH = ("bert", "bge", "nomic", "gte", "embedding", "withlintransformerpooler", "lora")
 _MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "ollama")
 _EMBEDDING_NAME = ("embed", "bge", "mxbai", "gte", "nomic", "e5-", "instructor", "arctic-embed")
+
+# Repos are processed in parallel during search; each one does a few sequential
+# round-trips to huggingface.co (config.json tree, GGUF header Range GET).
+_HUB_WORKERS = 10
 
 
 def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
@@ -227,6 +232,37 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
     return list(uniq.values())
 
 
+def _search_repo(r: dict) -> dict | None:
+    """Build one search result entry for a repo dict from the HF /api/models list."""
+    repo_id = r.get("id", "")
+    model_files = [f for f in _repo_files(repo_id) if not is_aux_file(f["path"])]
+    if not model_files:
+        return None
+    model_files = [
+        {
+            **f,
+            "companion_mb": round(sum(c["size_mb"] for c in _companion_files(repo_id, f["path"])), 1),
+        }
+        for f in model_files
+    ]
+    arch = get_repo_arch(repo_id) or {}
+    if not arch.get("block_count"):
+        # No config.json (or no block count in it): /fit would fall back to a
+        # per-file GGUF header read. Pre-warm the repo-wide cache with the
+        # first model file so the follow-up per-file fit requests are instant.
+        _gguf_arch(repo_id, model_files[0]["path"])
+    return {
+        "repo": repo_id,
+        "downloads": r.get("downloads", 0),
+        "likes": r.get("likes", 0),
+        "gated": bool(r.get("gated")),
+        "license": r.get("license") or (r.get("cardData") or {}).get("license"),
+        "type": classify_model_type(repo_id, arch.get("arch") or []),
+        "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
+        "files": model_files,
+    }
+
+
 def search_hf(query: str = "", limit: int = 20) -> list[dict]:
     """Top GGUF downloads matching ``query``, each with its GGUF files."""
     resp = _hf_get(
@@ -240,35 +276,12 @@ def search_hf(query: str = "", limit: int = 20) -> list[dict]:
         },
         timeout=30,
     )
-    items = []
-    for r in resp.json():
-        if r.get("private"):
-            continue
-        files = _repo_files(r.get("id", ""))
-        model_files = [f for f in files if not is_aux_file(f["path"])]
-        if not model_files:
-            continue
-        model_files = [
-            {
-                **f,
-                "companion_mb": round(sum(c["size_mb"] for c in _companion_files(r.get("id", ""), f["path"])), 1),
-            }
-            for f in model_files
-        ]
-        arch = get_repo_arch(r.get("id", "")) or {}
-        items.append(
-            {
-                "repo": r.get("id", ""),
-                "downloads": r.get("downloads", 0),
-                "likes": r.get("likes", 0),
-                "gated": bool(r.get("gated")),
-                "license": r.get("license") or (r.get("cardData") or {}).get("license"),
-                "type": classify_model_type(r.get("id", ""), arch.get("arch") or []),
-                "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
-                "files": model_files,
-            }
-        )
-    return items
+    repos = [r for r in resp.json() if not r.get("private")]
+    if not repos:
+        return []
+    with ThreadPoolExecutor(max_workers=_HUB_WORKERS) as executor:
+        items = list(executor.map(_search_repo, repos))
+    return [item for item in items if item]
 
 
 def get_repo_arch(repo: str) -> dict | None:
@@ -459,6 +472,24 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
     fit["context_length"] = int(context_length)
     fit["arch_max_ctx"] = int(arch.get("arch_max_ctx") or fit.get("arch_max_ctx") or 0)
     return fit
+
+
+def estimate_fits(repo: str, module: str = "multimodal", context_length: int = 8192) -> dict:
+    """Fit classification for every model file of ``repo`` at once.
+
+    Backs the batched /fit-all endpoint: the client sends one request per repo
+    instead of one per file. Caches (arch, GGUF header, file list) are warm
+    after a search, so the per-file work here is mostly arithmetic.
+    """
+    out: dict[str, dict] = {}
+    for fi in _repo_files(repo):
+        if is_aux_file(fi["path"]):
+            continue
+        try:
+            out[fi["path"]] = estimate_fit(repo, fi["path"], module=module, context_length=context_length)
+        except DownloadBlocked as exc:
+            out[fi["path"]] = {"error": exc.reason}
+    return out
 
 
 def license_hint(license_name) -> str:

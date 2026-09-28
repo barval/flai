@@ -79,6 +79,28 @@ def test_hub_fit_uses_context_param(client, test_app):
     assert captured["module"] == "reasoning"
 
 
+def test_hub_fit_all_ok(client, test_app):
+    """/fit-all returns fits for every model file of a repo in one call."""
+    _login_admin(client, test_app)
+    fake_fits = {
+        "a.gguf": {"tier": "good", "platform": "gpu"},
+        "b.gguf": {"error": "unknown_arch"},
+    }
+    with patch("app.routes.model_hub.model_hub.estimate_fits", return_value=fake_fits):
+        resp = client.get("/admin/api/hub/fit-all?repo=org/A&module=multimodal&context=32768")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "ok"
+    assert body["fits"] == fake_fits
+    assert body["context_length"] == 32768
+
+
+def test_hub_fit_all_requires_repo(client, test_app):
+    _login_admin(client, test_app)
+    resp = client.get("/admin/api/hub/fit-all?repo=NOSLASH")
+    assert resp.status_code == 400
+
+
 def test_hub_download_ok_and_progress(client, test_app):
     _login_admin(client, test_app)
     with (

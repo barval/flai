@@ -80,6 +80,28 @@ def hub_fit():
     return _hub_ok({"fit": fit, "module": module, "context_length": context_length})
 
 
+@bp.route("/fit-all")
+@admin_required
+def hub_fit_all():
+    repo = (request.args.get("repo") or "").strip()
+    module = (request.args.get("module") or "multimodal").strip()
+    if "/" not in repo:
+        return _hub_err("bad_path")
+    cfg = get_model_config(module) or {}
+    try:
+        context_length = max(1024, int(request.args.get("context", "")))
+    except ValueError:
+        context_length = int(cfg.get("context_length", 8192))
+    try:
+        fits = model_hub.estimate_fits(repo, module=module, context_length=context_length)
+    except model_hub.DownloadBlocked as exc:
+        return _hub_err(exc.reason, extra={"module": module, "context_length": context_length})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"hub fit-all failed: {exc}")
+        return _hub_err("hub_failed")
+    return _hub_ok({"fits": fits, "module": module, "context_length": context_length})
+
+
 @bp.route("/download", methods=["POST"])
 @admin_required
 def hub_download():

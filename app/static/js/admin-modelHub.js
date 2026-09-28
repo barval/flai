@@ -185,32 +185,47 @@
 
     function collectFits(done) {
         const rows = document.querySelectorAll('.hub-file-row');
-        const total = rows.length;
-        let pending = 0;
-        if (!total) { if (done) done(); return; }
+        if (!rows.length) { if (done) done(); return; }
+        // One /fit-all request per repo instead of one /fit per file: with a
+        // single-process server a 50-repo list used to queue hundreds of
+        // sequential requests and keep "Computing fit…" alive for minutes.
+        const groups = {};
         rows.forEach((row) => {
             const repo = row.dataset.repo;
-            const file = row.dataset.file;
-            const module = row.dataset.module || 'multimodal';
-            const fitCell = row.querySelector('.hub-fit');
-            fitCell.className = 'hub-fit hub-fit-pending';
-            fitCell.textContent = '…';
-            pending++;
-            fetchWithCSRF(`/admin/api/hub/fit?repo=${encodeURIComponent(repo)}&file=${encodeURIComponent(file)}&module=${module}&context=${currentContext()}`)
+            (groups[repo] = groups[repo] || []).push(row);
+        });
+        let pending = Object.keys(groups).length;
+        const finish = () => { if (--pending === 0 && done) done(); };
+        Object.entries(groups).forEach(([repo, group]) => {
+            const module = group[0].dataset.module || 'multimodal';
+            group.forEach((row) => {
+                const fitCell = row.querySelector('.hub-fit');
+                fitCell.className = 'hub-fit hub-fit-pending';
+                fitCell.textContent = '…';
+            });
+            const context = currentContext();
+            fetchWithCSRF(`/admin/api/hub/fit-all?repo=${encodeURIComponent(repo)}&module=${module}&context=${context}`)
                 .then(r => r.json().catch(() => null))
                 .then((data) => {
-                    if (!data || data.status !== 'ok') {
-                        fitCell.textContent = '✗';
-                        fitCell.title = (data && data.error) ? data.error : t('hub_error');
-                        fitCell.classList.remove('hub-fit-pending');
-                        fitCell.classList.add('hub-fit-impossible');
-                        return;
-                    }
-                    if (data.fit && data.fit.arch_max_ctx) row.dataset.maxCtx = data.fit.arch_max_ctx;
-                    renderFit(fitCell, data.fit);
+                    const byFile = (data && data.status === 'ok' && data.fits) || {};
+                    group.forEach((row) => {
+                        const fitCell = row.querySelector('.hub-fit');
+                        const fit = byFile[row.dataset.file];
+                        if (!fit || fit.error) {
+                            fitCell.textContent = '✗';
+                            fitCell.title = fit && fit.error ? fit.error : t('hub_error');
+                            fitCell.classList.remove('hub-fit-pending');
+                            fitCell.classList.add('hub-fit-impossible');
+                            return;
+                        }
+                        if (fit.arch_max_ctx) row.dataset.maxCtx = fit.arch_max_ctx;
+                        renderFit(fitCell, fit);
+                    });
                 })
-                .catch(() => { fitCell.textContent = '…'; })
-                .finally(() => { if (--pending === 0 && done) done(); });
+                .catch(() => {
+                    group.forEach((row) => { row.querySelector('.hub-fit').textContent = '…'; });
+                })
+                .finally(finish);
         });
     }
 

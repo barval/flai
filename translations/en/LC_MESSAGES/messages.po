@@ -1485,6 +1485,11 @@ msgstr "Camera list updated"
 msgid "Cameras synced: {count}"
 msgstr "Cameras synced: {count}"
 
+#: app/queue.py
+#, python-brace-format
+msgid "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h})."
+msgstr "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h})."
+
 #: app/templates/admin.html:454
 msgid "Error syncing cameras"
 msgstr "Error syncing cameras"

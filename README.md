@@ -199,7 +199,7 @@ All services run on one machine with GPU sharing:
 FLAI ships with two deployment modes:
 
 - **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp, stable-diffusion.cpp, LTX-Video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
-- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all.
+- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all. To keep generation times bounded, image and video generation automatically downscale the output resolution (details below).
 
 > ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA versions of sd.cpp and LTX). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
 
@@ -237,7 +237,7 @@ FLAI ships with two deployment modes:
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only images:** SD generation and editing halve both sides of the resolution on CPU (~4× fewer pixels ≈ ~4× faster), so diffusion finishes inside the generation timeout (it used to hit «Image generation timeout (1800 s)» around step 3/10); the edit path also downsizes the source image, and the user is notified of the reduced resolution. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 

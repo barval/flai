@@ -127,6 +127,10 @@ On a CPU-only deployment (`app/queue.py:_plan_cpu_video` → `modules/video.py:p
 
 The largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps satisfying BOTH constraints wins; the user is notified of the exact chosen format (or a clear "too slow / not enough memory" error when nothing fits).
 
+### CPU-only mode: Image Parameters
+
+SD generation and editing on CPU (`modules/sd_cpp.py`) halve **both sides** of the resolution before the request is sent to sd-wrapper: 1024×1024 → 512×512 (~4× fewer pixels, ≈~4× faster) so the diffusion run finishes inside `SD_CPP_TIMEOUT` (previously it timed out around step 3/10). Editing also downsizes the source image itself and the target output to the same halved size. A localised notice (`resize_notice` channel, stored as a `system` assistant message) tells the user about the reduced resolution.
+
 
 ## SLM (SuperLocalMemory)
 

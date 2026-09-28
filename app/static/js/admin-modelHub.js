@@ -136,26 +136,31 @@
             html += '</tbody></table></div>';
         }
         results.innerHTML = html;
-        if (!keepFits) { collectFits(); wireDownloadButtons(); }
+        if (!keepFits) { recalcFits('hub_calculating'); wireDownloadButtons(); }
+    }
+
+    function recalcFits(messageKey) {
+        if (recalcBusy) return;
+        if (!results.querySelector('.hub-file-row')) return;
+        recalcBusy = true;
+        showStatus(recalcStatus, true);
+        recalcStatus.textContent = `🧮 ${esc(t(messageKey))}`;
+        collectFits(() => {
+            recalcBusy = false;
+            showStatus(recalcStatus, false);
+        });
     }
 
     function refreshFits() {
         if (!results.querySelector('.hub-file-row')) return;
-        // Reapply the context threshold to already-rendered rows, then recompute
-        // the colored fit statuses with the new context.
+        // Reapply the context threshold to already-rendered rows before
+        // recomputing the colored fit statuses with the new context.
         const sliderCtx = currentContext();
         results.querySelectorAll('.hub-file-row').forEach((row) => {
             const maxCtx = parseInt(row.dataset.maxCtx || '0', 10);
             row.style.display = (maxCtx > 0 && maxCtx < sliderCtx) ? 'none' : '';
         });
-        if (recalcBusy) return;
-        recalcBusy = true;
-        showStatus(recalcStatus, true);
-        recalcStatus.textContent = `🧮 ${esc(t('hub_recalculating'))}`;
-        collectFits(() => {
-            recalcBusy = false;
-            showStatus(recalcStatus, false);
-        });
+        recalcFits('hub_recalculating');
     }
 
     function collectFits(done) {

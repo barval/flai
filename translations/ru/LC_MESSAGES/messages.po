@@ -859,6 +859,10 @@ msgid "Recalculating fit…"
 msgstr "Делаю перерасчёт..."
 
 #: app/templates/admin.html:33
+msgid "Computing fit…"
+msgstr "Делаю расчёт..."
+
+#: app/templates/admin.html:34
 msgid "GPU+CPU"
 msgstr "GPU+CPU"
 

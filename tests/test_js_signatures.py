@@ -259,3 +259,62 @@ def test_hub_context_input_filters_and_clamps():
     assert "ctxValue.addEventListener('change'" in hub_src
     # Slider drag still syncs the input display.
     assert "ctxValue.value = ctxSlider.value" in hub_src
+
+
+def test_hub_status_messages_blink_smoothly():
+    """Model Hub status lines must pulse smoothly (as the chat task-progress
+    indicators do), not jump between opacity steps."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    # The animation must live on the shared .hub-scan-status class (both the
+    # search line and the recalc line blink), easing smoothly.
+    assert re.search(r"\.hub-scan-status\s*\{[^}]*animation:\s*hub-status-pulse 2s ease-in-out", admin_css)
+    # Smooth pulse, not a step: opacity eases between 0.65 and 1 over the cycle.
+    keyframes = admin_css[admin_css.index("@keyframes hub-status-pulse") :]
+    assert re.search(r"0%,\s*100%\s*\{[^}]*opacity:\s*0\.6", keyframes)
+    assert re.search(r"50%\s*\{[^}]*opacity:\s*1", keyframes)
+    assert "49%" not in keyframes
+    # The old hard step blink must be gone.
+    assert "hub-status-blink" not in admin_css
+
+
+def test_hub_fit_calc_status_shown_on_first_render():
+    """The fit-calculation status must be shown (with the 'Computing fit…'
+    label) while the colored fit tiers are fetched after the first render."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    # First render starts the calc-status + a shared recalc helper.
+    assert "recalcFits('hub_calculating')" in hub_src
+    assert "function recalcFits" in hub_src
+    # The helper shows the status, runs collectFits, hides on completion.
+    recalc_body = hub_src[hub_src.index("function recalcFits") :]
+    assert "showStatus(recalcStatus, true)" in recalc_body
+    assert "collectFits(() => {" in recalc_body
+    assert "showStatus(recalcStatus, false)" in recalc_body
+    # Repeated recalculation (slider) reuses the same helper with the old label.
+    assert "recalcFits('hub_recalculating')" in hub_src
+    # The new label must be wired in the admin TRANSLATIONS block.
+    assert "'hub_calculating': {{ _('Computing fit…')|tojson }}" in admin_template
+
+
+def test_hub_calculating_msgid_in_both_catalogs():
+    """The new 'Computing fit…' message must exist in both .po catalogs."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        assert 'msgid "Computing fit…"' in po, f"msgid missing in {lang_dir}"
+        assert "msgstr" in po[po.index('msgid "Computing fit…"') : po.index('msgid "Computing fit…"') + 200]
+
+
+def test_admin_active_tab_survives_language_switch_reload():
+    """Admin tab position must persist across the language-change full reload:
+    initAdminTabs saves the active data-tab on click and restores it on load."""
+    src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+
+    tabs_src = src[: src.index("function loadModelConfigs")]
+    assert "localStorage.setItem('admin_active_tab'" in tabs_src
+    assert "localStorage.getItem('admin_active_tab'" in tabs_src
+    # Restore must verify the saved tab still exists (Cameras is conditional).
+    assert "document.querySelector('.admin-tab[data-tab=\"' + saved" in tabs_src

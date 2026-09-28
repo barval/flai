@@ -26,8 +26,21 @@ function initAdminTabs() {
             document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             document.getElementById(target + '-tab').classList.add('active');
+            localStorage.setItem('admin_active_tab', target);
         });
     });
+    // Restore the active tab after a full reload (e.g. language switch).
+    const saved = localStorage.getItem('admin_active_tab');
+    if (saved) {
+        const savedBtn = document.querySelector('.admin-tab[data-tab="' + saved + '"]');
+        const savedContent = document.getElementById(saved + '-tab');
+        if (savedBtn && savedContent) {
+            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+            savedBtn.classList.add('active');
+            savedContent.classList.add('active');
+        }
+    }
 }
 
 function loadModelConfigs() {

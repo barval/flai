@@ -308,11 +308,15 @@ function fitTierClass(fit) {
             ensureJobsHost(row).appendChild(cell);
             // The "Download" button turns into a same-size red "Cancel" button
             // in place, so no extra control piles up on top of the file name.
-            btn.textContent = t('hub_cancel');
-            btn.classList.remove('hub-dl');
-            btn.classList.add('hub-cancel');
-            btn.dataset.job = data.job_id;
-            pollJob(data.job_id, cell, btn, repo, file, module);
+            // A fresh <button> is used: the old node is disabled (browsers never
+            // fire click on disabled buttons) and already carries the download
+            // listener, which would re-submit the job on the next click.
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'hub-cancel add-user-button';
+            cancelBtn.textContent = t('hub_cancel');
+            cancelBtn.dataset.job = data.job_id;
+            btn.replaceWith(cancelBtn);
+            pollJob(data.job_id, cell, cancelBtn, repo, file, module);
         })
         .catch(() => { btn.disabled = false; row.querySelector('.hub-fit').textContent = '✗'; });
     }

@@ -323,9 +323,10 @@ def test_hub_columns_synced_right_aligned():
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
 
     assert re.search(r"table\.hub-files\s*\{[^}]*table-layout:\s*fixed", admin_css)
-    assert "td:nth-child(1) { width: 14%" in admin_css
-    assert "td:nth-child(3) { width: 14%" in admin_css
-    assert "td:nth-child(4) { width: 20%" in admin_css
+    assert re.search(r"\.hub-file-row td:nth-child\(1\)\s*\{[^}]*width:\s*10%", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(2\)\s*\{[^}]*padding-left:\s*1\.5rem", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*width:\s*14%", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(4\)\s*\{[^}]*width:\s*20%;[^}]*text-align:\s*center", admin_css)
     assert re.search(r"\.hub-size\s*\{[^}]*text-align:\s*right", admin_css), "size column must be right aligned"
 
 
@@ -360,8 +361,9 @@ def test_hub_column_header_and_sticky_layout():
     assert re.search(r"#hub-results\s*\{[^}]*overflow-y:\s*auto", admin_css)
     assert re.search(r"#hub-results\s*\{[^}]*min-height:\s*0", admin_css)
     # Column headers align with the right-aligned size column and are centered.
-    assert "grid-template-columns: 14% 1fr 14% 20%" in admin_css
+    assert "grid-template-columns: 10% 1fr 14% 20%" in admin_css
     assert re.search(r"\.hub-columns\s*\{[^}]*text-align:\s*center", admin_css)
+    assert re.search(r"\.hub-col-name\s*\{[^}]*padding-left:\s*1\.5rem", admin_css)
 
 
 def test_hub_model_name_label_before_search():

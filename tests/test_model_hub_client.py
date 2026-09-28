@@ -194,6 +194,53 @@ def test_estimate_fit_uses_gguf_metadata_when_config_is_missing(monkeypatch):
     assert int(range_requests[0][1]["Range"].split("-")[1]) < 10 * 1024 * 1024
 
 
+def test_estimate_fit_aux_file_does_not_poison_repo_arch(monkeypatch):
+    """An imatrix / MTP / split-shard aux file (no block_count) must not poison
+    the repo-wide GGUF arch cache used by real model files."""
+    monkeypatch.setattr(model_hub, "_gguf_arch_cache", {}, raising=False)
+    no_block = b"GGUF" + struct.pack("<IQQ", 3, 0, 0)  # kv_count = 0 -> no block_count
+    good = _gguf_metadata_header()
+    payloads = {"aux.gguf": no_block, "Q4_K_M.gguf": good}
+    requested = []
+
+    class _Resp:
+        status_code = 206
+        url = "https://huggingface.co/org/P/resolve/main/aux.gguf"
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def iter_content(self, chunk_size):
+            yield self._payload
+
+    def fake_hf_get(url, params=None, stream=False, extra_headers=None, timeout=30):
+        requested.append(url)
+        return _Resp(payloads[url.rstrip("/").rsplit("/", 1)[-1]])
+
+    monkeypatch.setattr(
+        model_hub,
+        "_repo_files",
+        lambda repo, limit=50: [
+            {"path": "aux.gguf", "size_mb": 13, "sha256": "a" * 64},
+            {"path": "Q4_K_M.gguf", "size_mb": 2400, "sha256": "b" * 64},
+        ],
+    )
+    monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
+    monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
+    monkeypatch.setattr(
+        model_hub,
+        "_classify_model_fit",
+        lambda *args, **kwargs: {"tier": "good", "arch_max_ctx": 0},
+    )
+
+    with pytest.raises(model_hub.DownloadBlocked):
+        model_hub.estimate_fit("org/P", "aux.gguf", module="reasoning")
+    fit = model_hub.estimate_fit("org/P", "Q4_K_M.gguf", module="reasoning")
+
+    assert fit["block_count"] == 32
+    assert any(url.endswith("Q4_K_M.gguf") for url in requested)
+
+
 def _gguf_metadata_header_wide_tail():
     """GGUF header whose sizing keys sit behind a ~6 MB tokenizer.merges
     array, past the old 4 MB read prefix (e.g. HauhauCS Qwen3.8-27B)."""

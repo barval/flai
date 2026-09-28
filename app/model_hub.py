@@ -85,7 +85,7 @@ class DownloadFailed(RuntimeError):  # noqa: N818 - public contract name, not a 
 
 # Module-level caches (in-memory; lost on restart, that is fine for v1)
 _arch_cache: dict[str, dict | None] = {}
-_gguf_arch_cache: dict[str, dict | None] = {}
+_gguf_arch_cache: dict[tuple[str, str | None], dict | None] = {}
 _files_cache: dict[str, list[dict]] = {}
 _cache_lock = threading.Lock()
 _gguf_arch_cache_lock = threading.Lock()
@@ -328,11 +328,20 @@ def _parse_gguf_arch(data: bytes) -> dict | None:
 
 
 def _gguf_arch(repo: str, file_path: str) -> dict | None:
-    """Read GGUF sizing metadata via HTTP Range, cached once per repository."""
+    """Read GGUF sizing metadata via HTTP Range.
+
+    Cached per file so an auxiliary file without ``block_count`` (an imatrix,
+    an MTP head, a split shard) never poisons the whole repository. A positive
+    result is also stored repo-wide so sibling files reuse it.
+    """
+    key = (repo, file_path)
     with _gguf_arch_cache_lock:
-        if repo in _gguf_arch_cache:
-            cached = _gguf_arch_cache[repo]
+        if key in _gguf_arch_cache:
+            cached = _gguf_arch_cache[key]
             return dict(cached) if cached else None
+        repo_wide = _gguf_arch_cache.get((repo, None))
+        if repo_wide:
+            return dict(repo_wide)
 
         result = None
         try:
@@ -355,7 +364,9 @@ def _gguf_arch(repo: str, file_path: str) -> dict | None:
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
 
-        _gguf_arch_cache[repo] = result
+        _gguf_arch_cache[key] = result
+        if result:
+            _gguf_arch_cache[(repo, None)] = result
         return dict(result) if result else None
 
 

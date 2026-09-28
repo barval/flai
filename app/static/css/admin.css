@@ -1134,7 +1134,7 @@ body.dark-theme .hardware-table .hw-value {
 /* Fixed column header: mirrors the per-file table widths (14% | auto | 14% | 20%). */
 .hub-columns {
     display: grid;
-    grid-template-columns: 14% 1fr 14% 20%;
+    grid-template-columns: 10% 1fr 14% 20%;
     font-weight: 600;
     text-align: center;
     border-bottom: 1px solid #bbb;
@@ -1142,6 +1142,7 @@ body.dark-theme .hardware-table .hw-value {
     padding-right: 0.4rem;
     flex-shrink: 0;
 }
+.hub-col-name { padding-left: 1.5rem; text-align: left; }
 .hub-scan-status {
     padding: 0.35rem 0.6rem;
     border-radius: 4px;
@@ -1167,9 +1168,10 @@ body.dark-theme .hardware-table .hw-value {
 .hub-badge-nc { background: #e8eaf6; color: #283593; }
 table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hub-file-row td { padding: 0.25rem 0.4rem; border-top: 1px solid #ddd; font-size: 0.95em; }
-.hub-file-row td:nth-child(1) { width: 14%; }
+.hub-file-row td:nth-child(1) { width: 10%; }
+.hub-file-row td:nth-child(2) { padding-left: 1.5rem; }
 .hub-file-row td:nth-child(3) { width: 14%; }
-.hub-file-row td:nth-child(4) { width: 20%; }
+.hub-file-row td:nth-child(4) { width: 20%; text-align: center; }
 .hub-size { white-space: nowrap; color: #777; text-align: right; }
 .hub-path { word-break: break-all; }
 .hub-fit { text-align: center; white-space: nowrap; }

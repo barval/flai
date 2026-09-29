@@ -1110,7 +1110,8 @@ class RedisRequestQueue:
         """On CPU-only hosts, downgrade video params when RAM is insufficient.
 
         Called AFTER the multimodal model was unloaded, so available RAM reflects
-        real headroom. Publishes a chat notice and returns None when generation
+        real headroom. Persists the notice via save_message() (rendered to the
+        chat through the message_new SSE event) and returns None when generation
         is impossible even at the fallback resolution.
         """
         video_module = self.app.modules.get("video")
@@ -1125,8 +1126,11 @@ class RedisRequestQueue:
             prompt_data = {**prompt_data, **override}
 
         if notice:
-            if task:
-                self._publish_stream_event(task, "notice", {"message": notice})
+            # Persist via save_message() only: it publishes a message_new SSE
+            # event carrying the REAL DB id, so the client dedups (displayedMessageIds)
+            # and a later loadMessages() skips the row. Publishing a separate
+            # "notice" SSE event with a synthetic id here used to render a second
+            # copy of the same notice (observed on CPU video degrade).
             try:
                 save_message(session_id, "assistant", notice, model_name="system", response_time="0")
             except Exception:

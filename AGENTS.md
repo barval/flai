@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v12.2
+# AGENTS.md — FLAI v12.3
 
 > **Read this file first.** It contains the project's constitution: commands, critical rules, and hard constraints.
 > For deep technical details, see the `docs/` directory.
@@ -120,7 +120,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
 
 # 4. Git — Branching & No Autonomous Commits
   - **NEVER create any branch without explicit user approval.**
-  - **All development happens ONLY in the numbered main project branch** (e.g. `v11.5`, `v12.2`) that the user has designated as the current working branch for the project.
+  - **All development happens ONLY in the numbered main project branch** (e.g. `v11.5`, `v12.3`) that the user has designated as the current working branch for the project.
   - **NEVER commit directly to `master`.** `master` must only ever advance via merges (`--no-ff`) from development branches, approved by the user.
   - **Fix branches** must reference the main branch they target. Example: `fix/v12.1-chat-duplicate-render-round2`.
   - **Feature branches** must reference the main branch they target. Example: `features/v8.0-rag-classic-and-reranker`.

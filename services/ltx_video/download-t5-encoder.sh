@@ -45,6 +45,20 @@ FILES["tokenizer/special_tokens_map.json"]=""
 FILES["tokenizer/spiece.model"]=""
 FILES["tokenizer/tokenizer_config.json"]=""
 
+# True only when every declared file is present. A partial T5 (e.g. shard 1
+# after an interrupted run) silently breaks LTX-Video at inference time with
+# "No such file or directory" on the missing shard, so a download must never
+# be reported as complete without ALL files.
+t5_encoder_complete() {
+    local file
+    for file in "${!FILES[@]}"; do
+        if [ ! -f "$TARGET_DIR/$file" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 # ── helpers ─────────────────────────────────────────────────────
 
 print_structure() {
@@ -82,8 +96,7 @@ try_docker_download() {
         return 1
     fi
 
-    if [ -f "$TARGET_DIR/text_encoder/config.json" ] && \
-       [ -f "$TARGET_DIR/text_encoder/model-00001-of-00002.safetensors" ]; then
+    if t5_encoder_complete; then
         print_success
         exit 0
     fi
@@ -166,8 +179,7 @@ try_git_lfs() {
 
     cd "$SCRIPT_DIR"
 
-    if [ -f "$TARGET_DIR/text_encoder/config.json" ] && \
-       [ -f "$TARGET_DIR/text_encoder/model-00001-of-00002.safetensors" ]; then
+    if t5_encoder_complete; then
         print_success
         exit 0
     fi

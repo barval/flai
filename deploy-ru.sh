@@ -377,7 +377,7 @@ download_ltx_video_models() {
         warn "ltxv-2b-0.9.8-distilled.safetensors уже есть — пропускаю."
     fi
 
-    if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
+    if [[ ! -f "$VIDEO_DIR/t5_encoder/text_encoder/model-00002-of-00002.safetensors" ]]; then
         info "Скачиваю T5 text encoder (PixArt T5-XXL, ~18 ГБ на диске)…"
         if LANG=ru bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
             info "T5 text encoder успешно скачан."

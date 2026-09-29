@@ -384,7 +384,7 @@ download_ltx_video_models() {
     fi
 
     # T5 text encoder (PixArt T5 ≈ 8.9 GB)
-    if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
+    if [[ ! -f "$VIDEO_DIR/t5_encoder/text_encoder/model-00002-of-00002.safetensors" ]]; then
         info "Downloading T5 text encoder (PixArt T5-XXL, ~18 GB on disk)…"
         if bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
             info "T5 text encoder downloaded."

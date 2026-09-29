@@ -51,3 +51,21 @@ def test_deploy_scripts_do_not_skip_partial_t5():
     for script in (DEPLOY_SH, DEPLOY_RU_SH):
         src = script.read_text(encoding="utf-8")
         assert condition in src, f"{script.name} must gate on the final shard file, not the directory"
+
+
+def test_pip_install_flags_suppress_root_warning():
+    """Every pip install inside the model-download scripts must carry the
+    flags that silence the root-user WARNING and the pip-upgrade notice."""
+    targets = (
+        DEPLOY_SH,
+        DEPLOY_RU_SH,
+        SCRIPT,
+        REPO / "services" / "kokoro" / "download-model.sh",
+    )
+    for script in targets:
+        src = script.read_text(encoding="utf-8")
+        for line in src.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("pip install"):
+                assert "--root-user-action=ignore" in stripped, f"{script.name}: {line}"
+                assert "--disable-pip-version-check" in stripped, f"{script.name}: {line}"

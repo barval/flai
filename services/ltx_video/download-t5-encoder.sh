@@ -112,7 +112,7 @@ try_docker_download() {
         -v "$TARGET_DIR:/app/models/t5_encoder" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && python3 -c '
+pip install -q --disable-pip-version-check --root-user-action=ignore huggingface_hub && python3 -c '
 from huggingface_hub import snapshot_download
 import sys
 try:

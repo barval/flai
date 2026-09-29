@@ -29,7 +29,7 @@ download_hf() {
     local dest="$3"
     echo "Downloading $file from $repo..."
     docker run --rm -v "$(pwd):/app" python:3.11-slim bash -c "
-        pip install -q huggingface_hub && \
+        pip install -q --disable-pip-version-check --root-user-action=ignore huggingface_hub && \
         python3 -c \"
 from huggingface_hub import hf_hub_download
 import os, sys
@@ -92,7 +92,7 @@ fi
 if [ ! -d "espeak-data" ]; then
     mkdir -p espeak-data
     docker run --rm -v "$(pwd):/app" python:3.11-slim bash -c "
-        pip install -q huggingface_hub && \
+        pip install -q --disable-pip-version-check --root-user-action=ignore huggingface_hub && \
         python3 -c \"
 from huggingface_hub import snapshot_download
 import os, shutil

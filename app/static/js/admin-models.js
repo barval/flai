@@ -862,7 +862,7 @@ function renderInstalledFiles(files) {
         meta.className = 'installed-file-meta';
         meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
             + (f.path ? ' · ' + f.path : '')
-            + (f.from_hub ? ' · ' + t('hub_installed') : '');
+            + (f.from_hub ? ' · ' + t('hub_installed_via_hub') : '');
         row.appendChild(meta);
         const del = document.createElement('button');
         del.className = 'hub-del add-user-button';

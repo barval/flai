@@ -2509,6 +2509,9 @@ msgstr "Manually put .gguf files into the models directory (/models), then press
 msgid "Downloaded"
 msgstr "Downloaded"
 
+msgid "Installed via Model Hub"
+msgstr "Installed via Model Hub"
+
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Delete model {filename} and its service files from disk?"
 

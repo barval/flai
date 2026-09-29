@@ -570,6 +570,20 @@ def test_models_tab_files_panel():
         assert emoji in models_src, f"panel must tag each file with its type emoji {emoji}"
     assert "Math.ceil" in models_src, "panel size rounds up"
     assert ".toLocaleString()" in models_src, "panel size is formatted with thousands separators"
+    assert "hub_installed_via_hub" in models_src, "panel uses a dedicated 'Installed via Model Hub' label"
+
+
+def test_hub_installed_via_hub_msgid_in_both_catalogs():
+    """The panel second label must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        msgid = "Installed via Model Hub"
+        assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
+        block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
+        assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
 
 
 def test_hub_downloaded_models_msgid_in_both_catalogs():

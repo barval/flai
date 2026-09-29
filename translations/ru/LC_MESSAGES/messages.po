@@ -2520,6 +2520,9 @@ msgstr "Добавьте файлы .gguf в каталог моделей (/mod
 msgid "Downloaded"
 msgstr "Загружена"
 
+msgid "Installed via Model Hub"
+msgstr "Загружена через Хаб Моделей"
+
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Удалить модель {filename} и её служебные файлы с диска?"
 

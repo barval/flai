@@ -46,3 +46,24 @@ def test_video_image_resize_notice_is_not_emitted_twice():
     assert result == {"status": "error"}
     save_message.assert_called_once()
     assert not any(call.args[1] == "notice" for call in queue._publish_stream_event.call_args_list)
+
+
+@pytest.mark.unit
+def test_cpu_video_notice_is_emitted_via_message_new_single_channel():
+    queue = RedisRequestQueue.__new__(RedisRequestQueue)
+    queue.app = Mock()
+    video = Mock()
+    video.plan_cpu_generation.return_value = (None, "⚠ CPU preview", None)
+    queue.app.modules = {"video": video}
+    queue.logger = Mock()
+    queue._publish_stream_event = Mock()
+
+    task = {"id": "cpu-video", "session_id": "s1", "user_id": "u1"}
+    with (
+        patch("app.queue.save_message", return_value=144) as save_message,
+    ):
+        result = queue._plan_cpu_video(task, {"width": 768}, "ru", "s1")
+
+    assert result == ({"width": 768}, None)
+    save_message.assert_called_once()
+    assert not any(call.args[1] == "notice" for call in queue._publish_stream_event.call_args_list)

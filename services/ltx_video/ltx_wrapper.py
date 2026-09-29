@@ -125,14 +125,12 @@ def ensure_pipeline():
         _model_path = resolve_model_path(model_name)
 
         spatial_upscaler = config.get("spatial_upscaler_model_path", DEFAULT_UPSCALER)
-        if spatial_upscaler:
-            try:
-                _upscaler_path = resolve_model_path(spatial_upscaler)
-            except Exception:
-                logger.warning(f"Spatial upscaler {spatial_upscaler} not found, continuing without")
-                _upscaler_path = None
+        if spatial_upscaler and (Path(MODELS_DIR) / spatial_upscaler).exists():
+            _upscaler_path = str(Path(MODELS_DIR) / spatial_upscaler)
         else:
             _upscaler_path = None
+            if spatial_upscaler:
+                logger.warning(f"Spatial upscaler {spatial_upscaler} not found locally, continuing without")
 
         precision = config.get("precision", "bfloat16")
 

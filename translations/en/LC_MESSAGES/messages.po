@@ -2478,6 +2478,9 @@ msgstr "Could not connect to video generation service"
 msgid "api_error_rate_limited"
 msgstr "Rate limit reached. Wait a moment and try again."
 
+msgid "api_error_too_many_requests"
+msgstr "Too many requests are already waiting for a result. Please retry in a second."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

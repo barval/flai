@@ -319,6 +319,7 @@ readable part is always the `code`.
 | 405 | `invalid_request_error` | `method_not_allowed` | Wrong HTTP method |
 | 408 | `server_error` | `task_timeout` | Task still running after `API_SYNC_MAX_WAIT`; it was **not** cancelled |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` | The key owner's request budget is spent |
+| 429 | `rate_limit_error` | `too_many_requests` | `API_MAX_CONCURRENT_WAITS` requests already waiting (`Retry-After: 1`) |
 | 500 | `server_error` | `task_failed` | Chat task failed |
 | 502 | `server_error` | `task_failed` | Embedding task failed or returned no vectors |
 | 503 | `service_unavailable` | `api_disabled` | `API_ENABLED=false` on the server |
@@ -346,6 +347,14 @@ mind when choosing client timeouts:
   answers first. This is the default arrangement.
 - Concurrent clients do not run in parallel on the GPU; they queue. Do not
   retry aggressively on `408` — a slow answer is usually already in progress.
+- `API_MAX_CONCURRENT_WAITS` (default `64`) caps how many `/v1` requests may
+  wait for a queued task at the same time. A waiter holds a request thread for
+  up to `API_SYNC_MAX_WAIT`, so a burst of clients would otherwise pile up on a
+  single-worker server. When the cap is reached the API answers `429` with
+  `Retry-After: 1` and `code: too_many_requests` **before** enqueueing, so
+  nothing is left running. A request that is rejected, times out or finishes
+  returns its slot immediately. Async jobs (image, video) do not hold a slot
+  after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
   `POST /v1/chat/completions` and `POST /v1/embeddings`. The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
@@ -353,6 +362,25 @@ mind when choosing client timeouts:
   returns `429 rate_limit_exceeded` before any task is queued, so nothing is
   left running in the background. `GET /v1/models` and `GET /v1/flai/me` are
   not limited.
+
+### Browser clients (CORS)
+
+A page in a browser can only read a cross-origin response when the server sends
+`Access-Control-Allow-Origin`, so `/v1` answers preflights for the origins you
+allow:
+
+```
+API_CORS_ORIGINS=https://home.example, https://tools.example
+```
+
+- The list is empty by default, which keeps the API closed to browsers.
+- Origins are matched **exactly**, never by prefix, so
+  `https://home.example` does not admit `https://home.example.evil.example`.
+- Headers are added only to `/v1/*`. The web UI is never given an allow header,
+  so the list cannot be used to read the chat interface cross-origin.
+- The allowed methods are `GET, POST, DELETE, OPTIONS` and the allowed request
+  headers are `Authorization` and `Content-Type`; the preflight is cached for
+  600 s.
 
 ---
 
@@ -363,8 +391,10 @@ mind when choosing client timeouts:
 | `API_ENABLED` | `true` | Master switch. When `false`, every `/v1` request returns `503 api_disabled`. |
 | `API_SYNC_MAX_WAIT` | `600` | Seconds a synchronous or streaming request waits for its task. |
 | `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat completions and embeddings. Reported by `GET /v1/flai/me`. |
+| `API_MAX_CONCURRENT_WAITS` | `64` | Requests that may wait for a queued task at once. Reported by `GET /v1/flai/me`. |
+| `API_CORS_ORIGINS` | _(empty)_ | Comma-separated exact origins allowed to call `/v1` from a browser. Empty means no browser access. |
 
-All three are documented in `.env.example`. Changing them requires a container
+All five are documented in `.env.example`. Changing them requires a container
 restart.
 
 ---

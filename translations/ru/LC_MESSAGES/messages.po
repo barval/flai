@@ -2496,6 +2496,9 @@ msgstr "Не удалось подключиться к сервису гене�
 msgid "api_error_rate_limited"
 msgstr "Превышен лимит запросов. Подождите немного и повторите попытку."
 
+msgid "api_error_too_many_requests"
+msgstr "Слишком много запросов уже ожидают результат. Повторите попытку через секунду."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

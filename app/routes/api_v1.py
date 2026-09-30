@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from functools import wraps
+from threading import BoundedSemaphore
 from typing import Any
 
 from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
@@ -28,6 +29,10 @@ from app.api_tokens import touch_api_token, verify_api_token
 
 API_PREFIX = "/v1"
 DEFAULT_API_RATE_LIMIT = "60 per minute;1000 per hour"
+DEFAULT_MAX_CONCURRENT_WAITS = 64
+CORS_ALLOWED_HEADERS = "Authorization, Content-Type"
+CORS_MAX_AGE = "600"
+CORS_RETRY_AFTER = "1"
 
 bp = Blueprint("api_v1", __name__, url_prefix=API_PREFIX)
 
@@ -52,13 +57,14 @@ def api_error(
     code: str,
     message: str,
     param: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
     """Return the common OpenAI-shaped API error body."""
     localized_message = message if message.startswith("⚠️ ") else f"⚠️ {message}"
-    return (
-        jsonify({"error": {"message": localized_message, "type": err_type, "param": param, "code": code}}),
-        status,
-    )
+    response = jsonify({"error": {"message": localized_message, "type": err_type, "param": param, "code": code}})
+    if headers:
+        response.headers.extend(headers)
+    return response, status
 
 
 def _unauthorized() -> tuple[Any, int, dict[str, str]]:
@@ -121,6 +127,83 @@ def _api_rate_limit() -> str:
     return str(current_app.config.get("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT))
 
 
+def parse_cors_origins(raw: Any) -> list[str]:
+    """Split the configured CORS allowlist into exact origins.
+
+    Origins are matched literally, never by prefix: `https://a.example` must
+    not admit `https://a.example.evil.example`.
+    """
+    return [origin.strip() for origin in str(raw or "").split(",") if origin.strip()]
+
+
+def cors_allowlist() -> list[str]:
+    """The allowed origins, re-read per request so .env changes need no cache."""
+    return parse_cors_origins(current_app.config.get("API_CORS_ORIGINS", ""))
+
+
+def wait_slots(app: Any) -> Any:
+    """The per-app pool of requests allowed to wait for a queued task.
+
+    Sizing is read from config the first time a request asks for the pool, so
+    a test can shrink it; afterwards the real pool is kept because resizing a
+    live pool would drop in-flight waiters. `threading` matches the rest of the
+    server: gunicorn runs one gevent worker without monkey patching and the GPU
+    queue already guards itself with a `threading.Lock`.
+    """
+    slots = getattr(app, "_api_wait_slots", None)
+    if slots is None:
+        size = int(app.config.get("API_MAX_CONCURRENT_WAITS", DEFAULT_MAX_CONCURRENT_WAITS))
+        slots = BoundedSemaphore(max(1, size))
+        app._api_wait_slots = slots
+    return slots
+
+
+def _acquire_wait_slot() -> Any:
+    """Take a wait slot, or answer 429 with Retry-After when none is free."""
+    slots = wait_slots(current_app)
+    if not slots.acquire(blocking=False):
+        return api_error(
+            429,
+            "rate_limit_error",
+            "too_many_requests",
+            _("api_error_too_many_requests"),
+            headers={"Retry-After": CORS_RETRY_AFTER},
+        )
+    return None
+
+
+def _release_wait_slot() -> None:
+    slots = getattr(current_app, "_api_wait_slots", None)
+    if slots is not None:
+        slots.release()
+
+
+@bp.after_request
+def add_api_cors_headers(response: Any) -> Any:
+    """Answer browser CORS requests for `/v1` only.
+
+    A browser client needs this to read a response at all, but the allowlist is
+    opt-in and applies strictly to the API prefix, so it can never be used to
+    read the web UI cross-origin. Credentials are allowed because the API is
+    Bearer-authenticated and never relies on a cookie.
+    """
+    if not request.path.startswith(API_PREFIX):
+        return response
+    origin = request.headers.get("Origin")
+    if not origin:
+        return response
+    response.headers.add("Vary", "Origin")
+    if origin not in cors_allowlist():
+        return response
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = CORS_ALLOWED_HEADERS
+    if request.method == "OPTIONS":
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+        response.headers["Access-Control-Max-Age"] = CORS_MAX_AGE
+    return response
+
+
 @bp.app_errorhandler(RateLimitExceeded)
 def rate_limited(error: Any) -> Any:
     """Report a spent budget in the OpenAI error envelope.
@@ -165,7 +248,10 @@ def api_me():
             "is_admin": g.api_user["is_admin"],
             "language": g.api_user["language"],
             "response_style": g.api_user["response_style"],
-            "rate_limit": current_app.config.get("API_RATE_LIMIT", "60 per minute;1000 per hour"),
+            "rate_limit": current_app.config.get("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT),
+            "max_concurrent_waits": int(
+                current_app.config.get("API_MAX_CONCURRENT_WAITS", DEFAULT_MAX_CONCURRENT_WAITS)
+            ),
             "capabilities": {
                 "chat_completions": True,
                 "streaming": True,
@@ -242,6 +328,9 @@ def chat_completions():
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
         )
 
+    shed = _acquire_wait_slot()
+    if shed is not None:
+        return shed
     try:
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
@@ -249,6 +338,8 @@ def chat_completions():
         return api_error(408, "server_error", "task_timeout", message)
     except ApiTaskError as exc:
         return api_error(500, "server_error", "task_failed", exc.localized(_))
+    finally:
+        _release_wait_slot()
 
     return jsonify(serialize_chat_completion(result, task_id, session_id))
 
@@ -302,6 +393,9 @@ def embeddings():
     task_id = enqueue_embeddings(g.api_user, texts)
 
     timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
+    shed = _acquire_wait_slot()
+    if shed is not None:
+        return shed
     try:
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
@@ -309,6 +403,8 @@ def embeddings():
         return api_error(408, "server_error", "task_timeout", message)
     except ApiTaskError as exc:
         return api_error(502, "server_error", "task_failed", exc.localized(_))
+    finally:
+        _release_wait_slot()
 
     try:
         body = serialize_embeddings(result, encoding_format)

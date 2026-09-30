@@ -2474,6 +2474,10 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
 
+#: app/routes/api_v1.py
+msgid "api_error_rate_limited"
+msgstr "Rate limit reached. Wait a moment and try again."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

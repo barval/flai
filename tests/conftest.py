@@ -758,6 +758,10 @@ def test_app():
                 "MAX_DOCUMENT_SIZE_MB": 5,
                 "UPLOAD_FOLDER": os.path.join(temp_dir, "uploads"),
                 "DOCUMENTS_FOLDER": os.path.join(temp_dir, "documents"),
+                # A test that forgets to stub the bridge would otherwise poll
+                # the mock Redis in a hot loop for the production 600s budget.
+                # Tests that exercise the 408 path set their own value.
+                "API_SYNC_MAX_WAIT": 5,
             }
         )
         os.makedirs(flask_app.config["UPLOAD_FOLDER"], exist_ok=True)

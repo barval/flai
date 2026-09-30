@@ -2492,6 +2492,10 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/routes/api_v1.py
+msgid "api_error_rate_limited"
+msgstr "Превышен лимит запросов. Подождите немного и повторите попытку."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

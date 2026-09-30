@@ -318,6 +318,7 @@ readable part is always the `code`.
 | 404 | `invalid_request_error` | `session_not_found` | `metadata.session_id` belongs to another user |
 | 405 | `invalid_request_error` | `method_not_allowed` | Wrong HTTP method |
 | 408 | `server_error` | `task_timeout` | Task still running after `API_SYNC_MAX_WAIT`; it was **not** cancelled |
+| 429 | `rate_limit_error` | `rate_limit_exceeded` | The key owner's request budget is spent |
 | 500 | `server_error` | `task_failed` | Chat task failed |
 | 502 | `server_error` | `task_failed` | Embedding task failed or returned no vectors |
 | 503 | `service_unavailable` | `api_disabled` | `API_ENABLED=false` on the server |
@@ -345,8 +346,13 @@ mind when choosing client timeouts:
   answers first. This is the default arrangement.
 - Concurrent clients do not run in parallel on the GPU; they queue. Do not
   retry aggressively on `408` — a slow answer is usually already in progress.
-- There is no per-key rate limit in this phase. Keep request rates to what a
-  home assistant or a script realistically needs.
+- `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
+  `POST /v1/chat/completions` and `POST /v1/embeddings`. The budget is counted
+  per API key **owner**, not per key or per IP: several keys of one user share
+  it, and one noisy client cannot spend another user's quota. A spent budget
+  returns `429 rate_limit_exceeded` before any task is queued, so nothing is
+  left running in the background. `GET /v1/models` and `GET /v1/flai/me` are
+  not limited.
 
 ---
 
@@ -356,8 +362,9 @@ mind when choosing client timeouts:
 |---|---|---|
 | `API_ENABLED` | `true` | Master switch. When `false`, every `/v1` request returns `503 api_disabled`. |
 | `API_SYNC_MAX_WAIT` | `600` | Seconds a synchronous or streaming request waits for its task. |
+| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat completions and embeddings. Reported by `GET /v1/flai/me`. |
 
-Both are documented in `.env.example`. Changing them requires a container
+All three are documented in `.env.example`. Changing them requires a container
 restart.
 
 ---
@@ -368,7 +375,9 @@ restart.
   key.
 - Every request re-validates the session owner before touching a session, so a
   guessed `session_id` cannot reach another user's conversation.
-- The API runs in the same process as the web app and shares its rate limiter
-  and CSRF exemption, but a Bearer token is required for everything.
+- The API runs in the same process as the web app and is CSRF-exempt (it
+  cannot carry a session cookie), but a Bearer token is required for
+  everything. Its own budget is per key owner, separate from the web login
+  limiter.
 - Put the API behind a reverse proxy with TLS before exposing it outside your
   LAN: keys travel in the `Authorization` header in plain text over HTTP.

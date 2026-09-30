@@ -242,6 +242,9 @@ def load_config(app):
     # Blocking wait budget for /v1/chat/completions. Kept below the gunicorn
     # timeout (900s) so a slow task still returns 408 instead of a hard kill.
     app.config["API_SYNC_MAX_WAIT"] = int(os.getenv("API_SYNC_MAX_WAIT", "600"))
+    # Per-key-owner request budget for the GPU-backed /v1 endpoints.
+    # Reported by GET /v1/flai/me, so it must be the limit that is enforced.
+    app.config["API_RATE_LIMIT"] = os.getenv("API_RATE_LIMIT", "60 per minute;1000 per hour")
 
     # File validation settings
     app.config["MAX_EXTENSION_LENGTH"] = int(os.getenv("MAX_EXTENSION_LENGTH", 10))

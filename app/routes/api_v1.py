@@ -6,8 +6,10 @@ from typing import Any
 
 from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
 from flask_babel import gettext as _
+from flask_limiter.errors import RateLimitExceeded
 from werkzeug.exceptions import MethodNotAllowed
 
+from app import limiter
 from app.api_bridge import (
     ApiImageRejectedError,
     ApiSessionNotFoundError,
@@ -25,6 +27,7 @@ from app.api_bridge import (
 from app.api_tokens import touch_api_token, verify_api_token
 
 API_PREFIX = "/v1"
+DEFAULT_API_RATE_LIMIT = "60 per minute;1000 per hour"
 
 bp = Blueprint("api_v1", __name__, url_prefix=API_PREFIX)
 
@@ -100,6 +103,36 @@ def api_token_required(view: Callable) -> Callable:
     return wrapper
 
 
+def _api_rate_key() -> str:
+    """Rate-limit bucket of the current request.
+
+    Keyed by the key owner, not by IP, so several clients behind one NAT share
+    a budget and one noisy client cannot spend another user's quota. Falls back
+    to the remote address when the request is not authenticated.
+    """
+    user = getattr(g, "api_user", None)
+    if user:
+        return f"api:{user['login']}"
+    return f"api:{request.remote_addr or 'unknown'}"
+
+
+def _api_rate_limit() -> str:
+    """The configured budget, read per request so tests and .env can change it."""
+    return str(current_app.config.get("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT))
+
+
+@bp.app_errorhandler(RateLimitExceeded)
+def rate_limited(error: Any) -> Any:
+    """Report a spent budget in the OpenAI error envelope.
+
+    Registered app-wide because a blueprint handler only covers its own
+    blueprint; the auth blueprint keeps its own HTML 429 page.
+    """
+    if not request.path.startswith(API_PREFIX):
+        return RateLimitExceeded(error.description).get_response(request.environ)
+    return api_error(429, "rate_limit_error", "rate_limit_exceeded", _("api_error_rate_limited"))
+
+
 @bp.app_errorhandler(405)
 def method_not_allowed(error: Any) -> Any:
     """Keep a wrong HTTP method inside the OpenAI error envelope.
@@ -152,6 +185,7 @@ def api_me():
 
 @bp.route("/chat/completions", methods=["POST"])
 @api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
 def chat_completions():
     """Answer a chat request through the normal router and GPU queue.
 
@@ -235,6 +269,7 @@ def _collect_embedding_input(payload: dict[str, Any]) -> list[str] | None:
 
 @bp.route("/embeddings", methods=["POST"])
 @api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
 def embeddings():
     """Embed one string or a batch of strings with the RAG embedding model.
 

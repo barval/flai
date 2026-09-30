@@ -5,7 +5,7 @@ from base64 import b64encode
 from collections.abc import Callable
 from functools import wraps
 from threading import BoundedSemaphore
-from typing import Any
+from typing import Any, cast
 
 from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
 from flask_babel import gettext as _
@@ -21,8 +21,12 @@ from app.api_bridge import (
     enqueue_chat,
     enqueue_embeddings,
     enqueue_transcription,
+    get_api_task_owner,
+    list_api_tasks,
     normalize_chat_messages,
+    register_api_task,
     resolve_api_session,
+    sanitize_api_task_result,
     serialize_chat_completion,
     serialize_embeddings,
     stream_chat,
@@ -207,7 +211,7 @@ def add_api_cors_headers(response: Any) -> Any:
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Headers"] = CORS_ALLOWED_HEADERS
     if request.method == "OPTIONS":
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Max-Age"] = CORS_MAX_AGE
     return response
 
@@ -289,6 +293,177 @@ def api_me():
     )
 
 
+@bp.route("/flai/tasks", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_list_tasks():
+    """List recent tasks registered to the authenticated API-key owner."""
+    raw_limit = request.args.get("limit", "20")
+    try:
+        limit = max(1, min(100, int(raw_limit)))
+    except ValueError:
+        return api_error(400, "invalid_request_error", "invalid_limit", _("'limit' must be an integer"))
+
+    records = list_api_tasks(g.api_user["login"], limit=limit)
+    queue = cast(Any, current_app).request_queue
+    data = []
+    seen_task_ids: set[str] = set()
+    for record in records:
+        task_id = record["task_id"]
+        result = queue.check_result(task_id)
+        task = _serialize_api_task(task_id, record, result)
+        if task["id"] not in seen_task_ids:
+            seen_task_ids.add(task["id"])
+            data.append(task)
+    return jsonify({"object": "list", "data": data})
+
+
+@bp.route("/flai/tasks/<task_id>", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_get_task(task_id: str):
+    """Read status/result only after verifying the registry owner."""
+    record = get_api_task_owner(task_id)
+    if not record or record.get("login") != g.api_user["login"]:
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+    queue = cast(Any, current_app).request_queue
+    result = queue.check_result(task_id)
+    return jsonify(_serialize_api_task(task_id, record, result))
+
+
+@bp.route("/flai/tasks/<task_id>/cancel", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_cancel_task(task_id: str):
+    """Cancel an owned active task; queued and terminal tasks are not cancellable."""
+    record = get_api_task_owner(task_id)
+    if not record or record.get("login") != g.api_user["login"]:
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+
+    queue = cast(Any, current_app).request_queue
+    result = queue.check_result(task_id)
+    if result and result.get("status") in ("completed", "error"):
+        return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
+
+    status = _task_pending_status(queue, g.api_user["login"], g.api_user["language"], task_id)
+    if status == "queued":
+        return api_error(409, "invalid_request_error", "task_not_cancellable", _("Queued tasks cannot be cancelled"))
+    if not queue.cancel_task(task_id):
+        return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
+    result = queue.check_result(task_id)
+    if result and result.get("status") in ("completed", "error"):
+        return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
+    return jsonify({"status": "cancelling", "task_id": task_id})
+
+
+def _serialize_api_task(task_id: str, record: dict[str, str], result: dict[str, Any] | None) -> dict[str, Any]:
+    """Build a task status object without serializing raw queue/file data."""
+    queue = cast(Any, current_app).request_queue
+    original_task_id = task_id
+    parent_task_id = None
+    nested = (result or {}).get("result") or {}
+    child_id = nested.get("request_id") if nested.get("status") == "queued" else None
+    while child_id:
+        parent_task_id = task_id
+        task_id = str(child_id)
+        child_record = get_api_task_owner(task_id)
+        if child_record is None:
+            registered = register_api_task(
+                g.api_user,
+                task_id,
+                record.get("session_id", ""),
+                record.get("endpoint", ""),
+                only_if_absent=True,
+            )
+            child_record = get_api_task_owner(task_id) if registered else None
+        if (
+            child_record is None
+            or child_record.get("login") != g.api_user["login"]
+            or child_record.get("session_id", "") != record.get("session_id", "")
+            or child_record.get("endpoint", "") != record.get("endpoint", "")
+        ):
+            return {
+                "id": original_task_id,
+                "object": "flai.task",
+                "status": "error",
+                "endpoint": record.get("endpoint"),
+                "created_at": float(record.get("created_at", 0)),
+                "error": f"⚠️ {_('Task %s failed') % original_task_id}",
+            }
+        record = child_record
+        result = queue.check_result(task_id)
+        nested = (result or {}).get("result") or {}
+        child_id = nested.get("request_id") if nested.get("status") == "queued" else None
+
+    if parent_task_id and (not result or result.get("status") not in ("completed", "error")):
+        return {
+            "id": task_id,
+            "object": "flai.task",
+            "status": _task_pending_status(queue, g.api_user["login"], g.api_user["language"], task_id),
+            "endpoint": record.get("endpoint"),
+            "created_at": float(record.get("created_at", 0)),
+            "position": None,
+            "parent_task_id": parent_task_id,
+        }
+
+    if result and result.get("status") in ("completed", "error"):
+        inner_result = result.get("result") or {}
+        safe_result = sanitize_api_task_result(inner_result)
+        prompt_tokens = safe_result.pop("prompt_tokens", None)
+        completion_tokens = safe_result.pop("completion_tokens", None)
+        if prompt_tokens is not None or completion_tokens is not None:
+            safe_result["usage"] = {
+                key: value
+                for key, value in {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                }.items()
+                if value is not None
+            }
+        task_status = result["status"]
+        if task_status == "completed" and inner_result.get("is_error") and "response" not in inner_result:
+            task_status = "error"
+        response: dict[str, Any] = {
+            "id": task_id,
+            "object": "flai.task",
+            "status": task_status,
+            "endpoint": record.get("endpoint"),
+            "created_at": float(record.get("created_at", 0)),
+            "result": safe_result,
+        }
+        if task_status == "error":
+            error = result.get("error") or inner_result.get("error")
+            response["error"] = (
+                error if isinstance(error, str) and error.startswith("⚠️ ") else f"⚠️ {_('Task %s failed') % task_id}"
+            )
+        return response
+
+    pending = _task_pending_status(queue, g.api_user["login"], g.api_user["language"], task_id)
+    response = {
+        "id": task_id,
+        "object": "flai.task",
+        "status": pending,
+        "endpoint": record.get("endpoint"),
+        "created_at": float(record.get("created_at", 0)),
+        "position": None,
+    }
+    return response
+
+
+def _task_pending_status(queue: Any, login: str, lang: str, task_id: str) -> str:
+    """Distinguish processing from queued without inventing a queue position."""
+    status = queue.get_user_requests_status(login, lang=lang)
+    processing = status.get("processing") or {}
+    if processing.get("id") == task_id:
+        return "processing"
+    if any(item.get("id") == task_id for item in status.get("queued", [])):
+        processing_keys = (queue.processing_key, queue.slow_processing_key)
+        for key in processing_keys:
+            if queue.redis.hexists(key, task_id):
+                return "processing"
+    return "queued"
+
+
 @bp.route("/chat/completions", methods=["POST"])
 @api_token_required
 @limiter.limit(_api_rate_limit, key_func=_api_rate_key)
@@ -333,6 +508,7 @@ def chat_completions():
     timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
     if stream:
         task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
+        register_api_task(g.api_user, task_id, session_id, "/v1/chat/completions")
         generator = stream_chat(
             g.api_user["login"],
             task_id,
@@ -352,6 +528,7 @@ def chat_completions():
         return shed
     try:
         task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
+        register_api_task(g.api_user, task_id, session_id, "/v1/chat/completions")
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
         message = _("Task %s is still running and was not cancelled") % task_id
@@ -416,6 +593,7 @@ def embeddings():
         return shed
     try:
         task_id = enqueue_embeddings(g.api_user, texts)
+        register_api_task(g.api_user, task_id, "api", "/v1/embeddings")
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
         message = _("Task %s is still running and was not cancelled") % task_id
@@ -554,6 +732,7 @@ def audio_transcriptions():
         return shed
     try:
         task_id = enqueue_transcription(g.api_user, file_data, f.mimetype, f.filename, language)
+        register_api_task(g.api_user, task_id, "api", "/v1/audio/transcriptions")
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
         message = _("Task %s is still running and was not cancelled") % task_id

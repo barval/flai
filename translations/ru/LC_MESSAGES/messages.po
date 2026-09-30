@@ -2530,6 +2530,15 @@ msgstr "Загруженный файл слишком большой"
 msgid "Invalid audio input"
 msgstr "Некорректные аудиоданные"
 
+msgid "'limit' must be an integer"
+msgstr "Параметр 'limit' должен быть целым числом"
+
+msgid "Task is no longer cancellable"
+msgstr "Задачу уже нельзя отменить"
+
+msgid "Queued tasks cannot be cancelled"
+msgstr "Задачи в очереди нельзя отменить"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

@@ -124,7 +124,7 @@ class TestAllowedOrigin:
         headers = cors(response)
         assert headers["access-control-allow-origin"] == ORIGIN
         assert "POST" in headers["access-control-allow-methods"]
-        assert "DELETE" in headers["access-control-allow-methods"]
+        assert "DELETE" not in headers["access-control-allow-methods"]
         assert headers["access-control-max-age"] == "600"
 
     def test_allowlist_never_leaks_outside_the_api_prefix(self, cors_client):

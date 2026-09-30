@@ -70,7 +70,53 @@ def response_body(client, token, payload):
 
 @pytest.mark.unit
 class TestChatCompletions:
-    def test_returns_an_openai_chat_completion(self, client, api_token, chat_stub):
+    def test_returns_an_openai_chat_completion(self, client, api_token, chat_stub, monkeypatch):
+        class RegistryRedis:
+            def __init__(self):
+                self.hashes = {}
+                self.sorted_sets = {}
+
+            def hset(self, key, mapping):
+                self.hashes.setdefault(key, {}).update(mapping)
+
+            def hgetall(self, key):
+                return self.hashes.get(key, {})
+
+            def zadd(self, key, mapping):
+                self.sorted_sets.setdefault(key, {}).update(mapping)
+
+            def eval(
+                self,
+                script,
+                key_count,
+                task_key,
+                index_key,
+                login,
+                session_id,
+                endpoint,
+                created_at,
+                ttl,
+                task_id,
+                maximum,
+                only_if_absent,
+            ):
+                self.hashes[task_key] = {
+                    "login": login,
+                    "session_id": session_id,
+                    "endpoint": endpoint,
+                    "created_at": str(created_at),
+                }
+                self.zadd(index_key, {task_id: float(created_at)})
+                return 1
+
+            def expire(self, key, ttl):
+                return True
+
+            def close(self):
+                return None
+
+        registry = RegistryRedis()
+        monkeypatch.setattr("app.api_bridge.get_redis_client", lambda: registry)
         response = post_chat(client, api_token, {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]})
 
         assert response.status_code == 200
@@ -81,6 +127,10 @@ class TestChatCompletions:
         assert body["choices"][0]["message"] == {"role": "assistant", "content": "OK"}
         assert body["choices"][0]["finish_reason"] == "stop"
         assert body["usage"] == {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+        from app.api_bridge import get_api_task_owner
+
+        with client.application.app_context():
+            assert get_api_task_owner("task-1")["login"] == "apiowner"
 
     def test_arbitrary_model_name_is_accepted_and_ignored(self, client, api_token, chat_stub):
         for model in ("gpt-4o", "claude-3", "my-private-finetune", ""):

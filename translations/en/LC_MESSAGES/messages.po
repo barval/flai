@@ -2512,6 +2512,15 @@ msgstr "Uploaded file is too large"
 msgid "Invalid audio input"
 msgstr "Invalid audio input"
 
+msgid "'limit' must be an integer"
+msgstr "'limit' must be an integer"
+
+msgid "Task is no longer cancellable"
+msgstr "Task is no longer cancellable"
+
+msgid "Queued tasks cannot be cancelled"
+msgstr "Queued tasks cannot be cancelled"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

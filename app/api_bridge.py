@@ -73,6 +73,133 @@ def get_redis_client() -> redis_lib.Redis:
     return redis_lib.from_url(current_app.config["REDIS_URL"], decode_responses=True)
 
 
+API_TASK_KEY_PREFIX = "api:task:"
+API_TASKS_KEY_PREFIX = "api:tasks:"
+API_TASK_INDEX_MAX = 500
+REGISTER_API_TASK_SCRIPT = """
+local values = redis.call('HGETALL', KEYS[1])
+local existing = {}
+for i = 1, #values, 2 do existing[values[i]] = values[i + 1] end
+local login = ARGV[1]
+local session_id = ARGV[2]
+local endpoint = ARGV[3]
+local created_at = ARGV[4]
+local ttl = tonumber(ARGV[5])
+local task_id = ARGV[6]
+local max_tasks = tonumber(ARGV[7])
+local only_if_absent = ARGV[8] == '1'
+if only_if_absent and next(existing) then
+    if not existing.login or not existing.session_id or not existing.endpoint or not existing.created_at then
+        return 0
+    end
+    if existing.login ~= login then return 0 end
+    if existing.session_id ~= session_id or existing.endpoint ~= endpoint then return 0 end
+    created_at = existing.created_at
+else
+    redis.call('HSET', KEYS[1], 'login', login, 'session_id', session_id, 'endpoint', endpoint, 'created_at', created_at)
+end
+redis.call('ZADD', KEYS[2], created_at, task_id)
+redis.call('EXPIRE', KEYS[1], ttl)
+redis.call('EXPIRE', KEYS[2], ttl)
+local count = redis.call('ZCARD', KEYS[2])
+if count > max_tasks then redis.call('ZREMRANGEBYRANK', KEYS[2], 0, count - max_tasks - 1) end
+return 1
+"""
+API_TASK_RESULT_FIELDS = frozenset(
+    {
+        "response",
+        "text",
+        "model",
+        "model_used",
+        "prompt_tokens",
+        "completion_tokens",
+        "is_error",
+        "usage",
+        "status",
+    }
+)
+
+
+def register_api_task(
+    api_user: dict[str, Any],
+    task_id: str,
+    session_id: str,
+    endpoint: str,
+    only_if_absent: bool = False,
+) -> bool:
+    """Index a queue task under its API owner for status/cancel authorization.
+
+    For requeued IDs, ``only_if_absent`` reserves the login field with HSETNX
+    and refuses to overwrite a task already owned by a different API user.
+    """
+    login = str(api_user["login"])
+    created_at = time.time()
+    task_key = f"{API_TASK_KEY_PREFIX}{task_id}"
+    index_key = f"{API_TASKS_KEY_PREFIX}{login}"
+    session_value = session_id or ""
+    client = get_redis_client()
+    try:
+        ttl = int(current_app.config.get("REDIS_RESULT_TTL", 3600))
+        result = client.eval(
+            REGISTER_API_TASK_SCRIPT,
+            2,
+            task_key,
+            index_key,
+            login,
+            session_value,
+            endpoint,
+            str(created_at),
+            ttl,
+            task_id,
+            API_TASK_INDEX_MAX,
+            "1" if only_if_absent else "0",
+        )
+        return bool(result)
+    finally:
+        client.close()
+
+
+def get_api_task_owner(task_id: str) -> dict[str, str] | None:
+    """Return registry metadata, or ``None`` when the task is unknown/expired."""
+    client = get_redis_client()
+    try:
+        metadata = client.hgetall(f"{API_TASK_KEY_PREFIX}{task_id}")
+    finally:
+        client.close()
+    if not metadata:
+        return None
+    return {str(key): str(value) for key, value in metadata.items()}
+
+
+def list_api_tasks(login: str, limit: int = 20) -> list[dict[str, str]]:
+    """List the most recently registered tasks belonging to one API owner."""
+    client = get_redis_client()
+    try:
+        task_ids = client.zrevrange(f"{API_TASKS_KEY_PREFIX}{login}", 0, max(0, limit - 1))
+        tasks: list[dict[str, str]] = []
+        for task_id in task_ids:
+            if isinstance(task_id, bytes):
+                task_id = task_id.decode("utf-8")
+            metadata = client.hgetall(f"{API_TASK_KEY_PREFIX}{task_id}")
+            if metadata and metadata.get("login") == login:
+                tasks.append({"task_id": str(task_id), **{str(k): str(v) for k, v in metadata.items()}})
+        return tasks
+    finally:
+        client.close()
+
+
+def sanitize_api_task_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Expose safe task result fields, never paths, file bytes or credentials."""
+    safe = {key: value for key, value in result.items() if key in API_TASK_RESULT_FIELDS and key != "status"}
+    usage = safe.get("usage")
+    if isinstance(usage, dict):
+        safe["usage"] = {key: value for key, value in usage.items() if key in ("prompt_tokens", "completion_tokens")}
+    error = result.get("error")
+    if isinstance(error, str) and error.startswith("⚠️ "):
+        safe["error"] = error
+    return safe
+
+
 def client_fingerprint(client_user: str) -> str:
     """Return a stable, non-reversible fingerprint of a client-supplied user id."""
     return hashlib.sha1(client_user.encode("utf-8")).hexdigest()  # noqa: S324 - key hygiene, not security
@@ -320,12 +447,20 @@ def wait_for_result(login: str, task_id: str, timeout_s: float) -> dict[str, Any
         while True:
             stored = queue.check_result(active_id)
             if stored:
+                nxt = _next_task_id(stored)
+                if nxt:
+                    if not _register_requeued_api_task(login, active_id, nxt):
+                        raise ApiTaskError("Task %s failed", active_id)
+                    active_id = nxt
+                    continue
                 return _resolve_terminal(active_id, stored)
 
             event_data = _read_events(pubsub, active_id)
             if event_data is not None:
                 nxt = _next_task_id(event_data)
                 if nxt:
+                    if not _register_requeued_api_task(login, active_id, nxt):
+                        raise ApiTaskError("Task %s failed", active_id)
                     active_id = nxt
                     continue
                 return _resolve_terminal(active_id, event_data)
@@ -336,12 +471,28 @@ def wait_for_result(login: str, task_id: str, timeout_s: float) -> dict[str, Any
         _close_pubsub(pubsub, client)
 
 
+def _register_requeued_api_task(login: str, previous_id: str, next_id: str) -> bool:
+    """Carry API-task ownership to a requeued child task before following it."""
+    metadata = get_api_task_owner(previous_id)
+    if not metadata:
+        return False
+    if metadata.get("login") != login:
+        return False
+    return register_api_task(
+        {"login": login},
+        next_id,
+        metadata.get("session_id", ""),
+        metadata.get("endpoint", ""),
+        only_if_absent=True,
+    )
+
+
 def _resolve_terminal(task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Turn a terminal queue payload into the inner result or raise."""
     if payload.get("status") == "error":
         inner = payload.get("result") or {}
         error = inner.get("error") or payload.get("error")
-        if error:
+        if isinstance(error, str) and error.startswith("⚠️ "):
             raise ApiTaskError(error)
         raise ApiTaskError("Task %s failed", task_id)
 
@@ -352,7 +503,10 @@ def _resolve_terminal(task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         # A handler failed without producing an answer. Chat errors that carry a
         # persisted response stay 200 so the caller sees the same ⚠️ text the web
         # chat shows, matching OpenAI's "the model answered" semantics.
-        raise ApiTaskError(inner.get("error") or "Task %s failed", task_id)
+        error = inner.get("error")
+        if isinstance(error, str) and error.startswith("⚠️ "):
+            raise ApiTaskError(error)
+        raise ApiTaskError("Task %s failed", task_id)
     nxt = _next_task_id({"result": inner})
     if nxt:
         raise ApiTaskError("Task %s was requeued to %s without a follow-up", task_id, nxt)
@@ -454,8 +608,14 @@ def _stream_terminal(
 ) -> Any:
     """Yield the closing chunks of a finished task and terminate the stream."""
     if status == "error":
-        message = (result or {}).get("error") or _translate(translate, "Task %s failed", task_id)
+        message = (result or {}).get("error")
+        if not isinstance(message, str) or not message.startswith("⚠️ "):
+            message = _translate(translate, "Task %s failed", task_id)
         yield _sse(_error_payload(message, "task_failed"))
+        yield SSE_DONE
+        return
+    if result.get("is_error") and "response" not in result:
+        yield _sse(_error_payload(_translate(translate, "Task %s failed", task_id), "task_failed"))
         yield SSE_DONE
         return
 
@@ -538,6 +698,12 @@ def stream_chat(
                 elif kind == "result_completed":
                     nxt = _next_task_id(data)
                     if nxt:
+                        if not _register_requeued_api_task(login, active_id, nxt):
+                            yield _sse(
+                                _error_payload(_translate(translate, "Task %s failed", active_id), "task_failed")
+                            )
+                            yield SSE_DONE
+                            return
                         active_id = nxt
                         continue
                     yield from _stream_terminal(
@@ -554,6 +720,16 @@ def stream_chat(
             else:
                 stored = queue.check_result(active_id)
                 if stored:
+                    nxt = _next_task_id(stored)
+                    if nxt:
+                        if not _register_requeued_api_task(login, active_id, nxt):
+                            yield _sse(
+                                _error_payload(_translate(translate, "Task %s failed", active_id), "task_failed")
+                            )
+                            yield SSE_DONE
+                            return
+                        active_id = nxt
+                        continue
                     yield from _stream_terminal(
                         stored.get("status", "completed"),
                         stored.get("result") or {},

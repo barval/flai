@@ -29,6 +29,7 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | Identity and capabilities | `GET /v1/flai/me` | Shipped |
 | Speech synthesis | `POST /v1/audio/speech` | Shipped |
 | Audio transcription | `POST /v1/audio/transcriptions` | Shipped |
+| Task list/status/cancel | `/v1/flai/tasks*` | Shipped |
 | Image and video generation | `/v1/images/*`, `/v1/videos/*` | Planned |
 | Documents, deep analysis | `/v1/rlm/*` | Planned |
 
@@ -308,6 +309,65 @@ not persist the transcript into chat.
 
 ---
 
+## Asynchronous task status and cancellation
+
+Long-running FLAI operations can be polled through the owner-scoped task
+registry. A task id is not an authorization token: every read and cancel checks
+that the ID was registered to the authenticated API-key owner.
+
+```bash
+# List the most recent API tasks (limit is clamped to 1–100; default 20)
+curl http://localhost:5000/v1/flai/tasks?limit=20 \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+
+# Inspect one task
+curl http://localhost:5000/v1/flai/tasks/your-task-id \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+
+# Request cancellation of an active task
+curl -X POST http://localhost:5000/v1/flai/tasks/your-task-id/cancel \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+```
+
+- `GET /v1/flai/tasks` returns recent tasks for this API-key owner only.
+- `GET /v1/flai/tasks/{task_id}` returns `queued`, `processing`, `completed` or
+  `error`. A task requeued to a new queue ID is followed and the child ID is
+  returned with `parent_task_id`; a child with conflicting ownership metadata
+  is never read.
+- Pending task responses use `position: null` when the queue does not expose an
+  exact position for that task.
+- Results are allowlisted metadata; filesystem paths, uploaded file bytes,
+  tokens and raw queue payloads are never returned.
+- A requeued child task is followed only when its owner/session/endpoint record
+  matches the parent. Conflicting or incomplete child metadata fails closed.
+- The task-list index is capped to the most recent 500 task IDs per API user;
+  older task records still expire with `REDIS_RESULT_TTL`.
+- `POST /v1/flai/tasks/{task_id}/cancel` returns `{"status":"cancelling"}`
+  only for an active processing task. Completed, failed and still-queued tasks
+  return `409 task_not_cancellable` because the existing queue cannot remove a
+  queued item safely.
+- Unknown or another user's task ID returns `404 task_not_found`, avoiding an
+  ownership oracle.
+
+The task registry is stored in Redis for `REDIS_RESULT_TTL` seconds, matching
+queue result retention. Task list/status/cancel endpoints use the API owner's
+`API_RATE_LIMIT` budget.
+
+Example task response:
+
+```json
+{
+  "id": "a1d5b76a-...",
+  "object": "flai.task",
+  "status": "completed",
+  "endpoint": "/v1/videos",
+  "created_at": 1780152000.5,
+  "result": {"response": "⚠️ ...", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+}
+```
+
+---
+
 ## `GET /v1/models`
 
 Returns the FLAI capability ids as OpenAI model objects. The list is a
@@ -377,10 +437,13 @@ readable part is always the `code`.
 | 400 | `invalid_request_error` | `invalid_request` | `messages` or a content part is malformed |
 | 400 | `invalid_request_error` | `invalid_user`, `invalid_session_id`, `invalid_stream` | Field has the wrong type |
 | 400 | `invalid_request_error` | `invalid_input`, `invalid_encoding_format` | Embeddings field is not usable |
+| 400 | `invalid_request_error` | `invalid_limit` | Task list limit is not an integer |
 | 401 | `invalid_request_error` | `invalid_api_key` | Missing, malformed, unknown or revoked key |
 | 404 | `invalid_request_error` | `session_not_found` | `metadata.session_id` belongs to another user |
+| 404 | `invalid_request_error` | `task_not_found` | Task ID is unknown or belongs to another API user |
 | 405 | `invalid_request_error` | `method_not_allowed` | Wrong HTTP method |
 | 408 | `server_error` | `task_timeout` | Task still running after `API_SYNC_MAX_WAIT`; it was **not** cancelled |
+| 409 | `invalid_request_error` | `task_not_cancellable` | Task is terminal or still queued |
 | 413 | `invalid_request_error` | `request_too_large` | Upload exceeds Flask `MAX_CONTENT_LENGTH` |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` | The key owner's request budget is spent |
 | 429 | `rate_limit_error` | `too_many_requests` | `API_MAX_CONCURRENT_WAITS` requests already waiting (`Retry-After: 1`) |
@@ -420,7 +483,8 @@ mind when choosing client timeouts:
   returns its slot immediately. Async jobs (image, video) do not hold a slot
   after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
-  `POST /v1/chat/completions`, `POST /v1/embeddings`, and `POST /v1/audio/*`.
+  `POST /v1/chat/completions`, `POST /v1/embeddings`, `/v1/audio/*`, and
+  `/v1/flai/tasks*`.
   The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
   it, and one noisy client cannot spend another user's quota. A spent budget
@@ -443,7 +507,7 @@ API_CORS_ORIGINS=https://home.example, https://tools.example
   `https://home.example` does not admit `https://home.example.evil.example`.
 - Headers are added only to `/v1/*`. The web UI is never given an allow header,
   so the list cannot be used to read the chat interface cross-origin.
-- The allowed methods are `GET, POST, DELETE, OPTIONS` and the allowed request
+- The allowed methods are `GET, POST, OPTIONS` and the allowed request
   headers are `Authorization` and `Content-Type`; the preflight is cached for
   600 s.
 
@@ -455,7 +519,7 @@ API_CORS_ORIGINS=https://home.example, https://tools.example
 |---|---|---|
 | `API_ENABLED` | `true` | Master switch. When `false`, every `/v1` request returns `503 api_disabled`. |
 | `API_SYNC_MAX_WAIT` | `600` | Seconds a synchronous or streaming request waits for its task. |
-| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat, embeddings and audio endpoints. Reported by `GET /v1/flai/me`. |
+| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat, embeddings, audio and task-control endpoints. Reported by `GET /v1/flai/me`. |
 | `API_MAX_CONCURRENT_WAITS` | `64` | Requests that may wait for a queued task at once. Reported by `GET /v1/flai/me`. |
 | `API_CORS_ORIGINS` | _(empty)_ | Comma-separated exact origins allowed to call `/v1` from a browser. Empty means no browser access. |
 

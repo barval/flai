@@ -37,6 +37,9 @@ class FakeRedis:
         self.store = {}
         self.set_calls = []
         self.closed = False
+        self.hashes = {}
+        self.sorted_sets = {}
+        self.expirations = {}
 
     def get(self, key):
         return self.store.get(key)
@@ -44,6 +47,82 @@ class FakeRedis:
     def set(self, key, value):
         self.set_calls.append((key, value))
         self.store[key] = value
+
+    def hset(self, key, mapping):
+        self.hashes.setdefault(key, {}).update(mapping)
+
+    def hsetnx(self, key, field, value):
+        values = self.hashes.setdefault(key, {})
+        if field in values:
+            return False
+        values[field] = value
+        return True
+
+    def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    def zadd(self, key, mapping):
+        self.sorted_sets.setdefault(key, {}).update(mapping)
+
+    def zrevrange(self, key, start, stop, withscores=False):
+        values = sorted(self.sorted_sets.get(key, {}).items(), key=lambda pair: pair[1], reverse=True)
+        selected = values[start : stop + 1]
+        return selected if withscores else [member for member, _score in selected]
+
+    def zcard(self, key):
+        return len(self.sorted_sets.get(key, {}))
+
+    def zremrangebyrank(self, key, start, stop):
+        values = self.sorted_sets.get(key, {})
+        ordered = sorted(values, key=values.get)
+        stop = len(ordered) + stop if stop < 0 else stop
+        removed = ordered[start : stop + 1]
+        for member in removed:
+            values.pop(member, None)
+        return len(removed)
+
+    def eval(
+        self,
+        script,
+        key_count,
+        task_key,
+        index_key,
+        login,
+        session_id,
+        endpoint,
+        created_at,
+        ttl,
+        task_id,
+        maximum,
+        only_if_absent,
+    ):
+        existing = self.hashes.get(task_key, {})
+        if only_if_absent == "1" and existing:
+            required = ("login", "session_id", "endpoint", "created_at")
+            if any(key not in existing for key in required):
+                return 0
+            if (existing["login"], existing["session_id"], existing["endpoint"]) != (login, session_id, endpoint):
+                return 0
+            created_at = existing["created_at"]
+        else:
+            self.hashes[task_key] = {
+                "login": login,
+                "session_id": session_id,
+                "endpoint": endpoint,
+                "created_at": str(created_at),
+            }
+        self.zadd(index_key, {task_id: float(created_at)})
+        if self.zcard(index_key) > int(maximum):
+            self.zremrangebyrank(index_key, 0, -int(maximum) - 1)
+        self.expire(task_key, int(ttl))
+        self.expire(index_key, int(ttl))
+        return 1
+
+    def expire(self, key, seconds):
+        self.expirations[key] = seconds
+
+    def hdel(self, key, field):
+        return self.hashes.get(key, {}).pop(field, None) is not None
 
     def close(self):
         self.closed = True
@@ -295,21 +374,73 @@ class TestWaitForResult:
         assert bridge_deps["redis"].closed
 
     def test_nested_requeue_is_followed_to_the_next_task(self, bridge_deps):
-        bridge_deps["queue"].results["task-2"] = {
-            "status": "completed",
-            "result": assistant_result("after requeue"),
-        }
-        bridge_deps["install"](
+        redis = bridge_deps["install"](
             [
                 result_event("task-1", "completed", {"status": "queued", "request_id": "task-2"}),
                 result_event("task-2", "completed", assistant_result("after requeue")),
             ]
         )
+        redis.hset(
+            "api:task:task-1",
+            mapping={"login": "alice", "session_id": "s1", "endpoint": "/v1/chat/completions", "created_at": "1"},
+        )
+        bridge_deps["queue"].results["task-2"] = {
+            "status": "completed",
+            "result": assistant_result("after requeue"),
+        }
 
-        result = wait_for_result("alice", "task-1", 5)
+        app = Flask(__name__)
+        app.config["REDIS_RESULT_TTL"] = 3600
+        with app.app_context():
+            result = wait_for_result("alice", "task-1", 5)
 
         assert result["response"] == "after requeue"
         assert "task-2" in bridge_deps["queue"].checked
+
+    def test_requeued_task_keeps_the_registry_owner(self, bridge_deps):
+        redis = bridge_deps["install"](
+            [
+                result_event("task-1", "completed", {"status": "queued", "request_id": "task-2"}),
+                result_event("task-2", "completed", assistant_result("after requeue")),
+            ]
+        )
+        redis.hset(
+            "api:task:task-1",
+            mapping={"login": "alice", "session_id": "s1", "endpoint": "/v1/chat/completions", "created_at": "1"},
+        )
+        app = Flask(__name__)
+        app.config["REDIS_RESULT_TTL"] = 3600
+        with app.app_context():
+            wait_for_result("alice", "task-1", 5)
+
+        assert redis.hashes["api:task:task-2"]["login"] == "alice"
+        assert redis.hashes["api:task:task-2"]["session_id"] == "s1"
+        assert redis.hashes["api:task:task-2"]["endpoint"] == "/v1/chat/completions"
+
+    def test_foreign_registered_requeue_child_is_not_followed(self, bridge_deps):
+        redis = bridge_deps["install"](
+            [result_event("task-1", "completed", {"status": "queued", "request_id": "task-2"})]
+        )
+        redis.hset(
+            "api:task:task-1",
+            mapping={"login": "alice", "session_id": "s1", "endpoint": "/v1/chat/completions", "created_at": "1"},
+        )
+        redis.hset(
+            "api:task:task-2",
+            mapping={"login": "bob", "session_id": "s2", "endpoint": "/v1/videos", "created_at": "2"},
+        )
+        bridge_deps["queue"].results["task-2"] = {
+            "status": "completed",
+            "result": assistant_result("foreign result"),
+        }
+        app = Flask(__name__)
+        app.config["REDIS_RESULT_TTL"] = 3600
+
+        with app.app_context(), pytest.raises(ApiTaskError) as excinfo:
+            wait_for_result("alice", "task-1", 5)
+
+        assert excinfo.value.localized(lambda msg: msg) == "Task task-1 failed"
+        assert "task-2" not in bridge_deps["queue"].checked
 
     def test_events_for_another_task_are_ignored(self, bridge_deps):
         bridge_deps["install"]([result_event("other-task", "completed", assistant_result("nope"))])
@@ -338,6 +469,25 @@ class TestWaitForResult:
             wait_for_result("alice", "task-1", 5)
 
         assert "⚠️ " in str(excinfo.value)
+
+    def test_foreign_or_raw_queue_error_is_not_exposed_in_stream(self):
+        from app.api_bridge import _stream_terminal
+
+        chunks = list(
+            _stream_terminal(
+                "error",
+                {"error": "private database connection string"},
+                "task-1",
+                1,
+                "",
+                "s1",
+                False,
+                lambda msg: msg,
+            )
+        )
+        body = "".join(chunks)
+        assert "private database connection string" not in body
+        assert "Task task-1 failed" in body
 
     def test_timeout_reports_the_task_id_that_is_still_running(self, bridge_deps):
         bridge_deps["install"]([])
@@ -636,15 +786,22 @@ class TestStreamChat:
         assert usage_chunks[0]["usage"] == {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14}
 
     def test_requeued_phase_is_followed_without_finishing_early(self, stream_deps):
-        chunks = self.stream(
-            stream_deps,
+        app = Flask(__name__)
+        app.config["REDIS_RESULT_TTL"] = 3600
+        redis = stream_deps["install"](
             [
                 token_event("task-1", "first-"),
                 result_event("task-1", "completed", {"status": "queued", "request_id": "task-2"}),
                 token_event("task-2", "second"),
                 result_event("task-2", "completed", assistant_result("first-second")),
-            ],
+            ]
+        )["redis"]
+        redis.hset(
+            "api:task:task-1",
+            mapping={"login": "alice", "session_id": "s1", "endpoint": "/v1/chat/completions", "created_at": "1"},
         )
+        with app.app_context():
+            chunks = list(stream_chat("alice", "task-1", "s1", timeout_s=30.0))
 
         payloads, done = parse_sse(chunks)
         assert "".join(deltas(payloads)) == "first-second"
@@ -684,6 +841,35 @@ class TestStreamChat:
             {"message": "⚠️ GPU out of memory", "type": "server_error", "param": None, "code": "task_failed"}
         ]
         assert done == 1
+
+    def test_completed_handler_error_without_response_becomes_sse_error(self, stream_deps):
+        chunks = self.stream(
+            stream_deps,
+            [
+                result_event(
+                    "task-1",
+                    "completed",
+                    {"is_error": True, "error": "private raw worker error"},
+                )
+            ],
+        )
+        payloads, done = parse_sse(chunks)
+        errors = [payload["error"] for payload in payloads if "error" in payload]
+        assert errors == [
+            {"message": "Task task-1 failed", "type": "server_error", "param": None, "code": "task_failed"}
+        ]
+        assert "private raw worker error" not in "".join(chunks)
+        assert done == 1
+
+    def test_raw_queue_exception_is_not_exposed_in_sse(self, stream_deps):
+        chunks = self.stream(
+            stream_deps,
+            [result_event("task-1", "error", {"error": "private traceback at /srv/flai", "session_id": "s1"})],
+        )
+        body = "".join(chunks)
+        assert "private traceback" not in body
+        assert "/srv/flai" not in body
+        assert '"message": "Task task-1 failed"' in body
 
     def test_stalled_stream_times_out_with_an_error_chunk(self, stream_deps):
         stream_deps["clock"] = FakeClock(values=[0.0, 100.0, 200.0])

@@ -697,10 +697,16 @@ def _start_slm_merge_watcher(app: Flask) -> None:
     import threading
     import time
 
+    # Abortable wait instead of time.sleep, so the thread can be stopped
+    # instead of running for the whole lifetime of the process.
+    stop = threading.Event()
+    app._slm_watcher_stop = stop  # type: ignore[attr-defined]
+
     def _watcher() -> None:
         with app.app_context():
-            while True:
-                time.sleep(60)  # Check every minute
+            while not stop.is_set():
+                if stop.wait(60):  # Check every minute
+                    return
                 try:
                     if not hasattr(app, "_last_task_time"):
                         continue
@@ -744,5 +750,20 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                     app.logger.warning(f"SLM merge watcher error: {e}")
 
     thread = threading.Thread(target=_watcher, daemon=True, name="slm-merge-watcher")
+    app._slm_watcher_thread = thread  # type: ignore[attr-defined]
     thread.start()
     app.logger.info("SLM merge watcher started")
+
+
+def stop_slm_merge_watcher(app: Flask, timeout: float = 5) -> bool:
+    """Stop the SLM merge watcher of ``app``.  True when it is no longer running."""
+    import threading
+
+    thread = getattr(app, "_slm_watcher_thread", None)
+    if not isinstance(thread, threading.Thread):
+        return False
+    stop = getattr(app, "_slm_watcher_stop", None)
+    if isinstance(stop, threading.Event):
+        stop.set()
+    thread.join(timeout=timeout)
+    return not thread.is_alive()

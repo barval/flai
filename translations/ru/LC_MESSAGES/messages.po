@@ -491,19 +491,18 @@ msgid "No relevant documents found for query: {query}"
 msgstr "Релевантные документы не найдены для запроса: {query}"
 
 #: app/tools.py:439
-#, fuzzy
 msgid "User not identified for conversation search"
-msgstr "Пользователь не идентифицирован для поиска в документах"
+msgstr "Пользователь не идентифицирован для поиска по истории диалогов"
 
 #: app/tools.py:455
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "Conversation search error: {error}"
-msgstr "Ошибка поиска в документах: {error}"
+msgstr "Ошибка поиска по истории диалогов: {error}"
 
 #: app/tools.py:459
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "No past conversations found for query: {query}"
-msgstr "Результаты не найдены для запроса: {query}"
+msgstr "Прошлые диалоги по запросу «{query}» не найдены"
 
 #: app/tools.py:473 modules/cam.py:263 modules/cam.py:378
 msgid "CCTV service unavailable"
@@ -598,15 +597,17 @@ msgstr "Метаданные модели не найдены. Сначала н
 #, python-brace-format
 msgid "⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM."
 msgstr ""
+"⚠ Работа только на процессоре: требуется {needed} МБ, свободно {free} МБ "
+"ОЗУ."
 
 #: app/vram_estimate.py:343
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid ""
 "✗ Model cannot be loaded. Needs {needed} MB (file + KV cache), free RAM "
 "{free} MB."
 msgstr ""
-"✗ Модель не может быть запущена. Требуется {needed} МБ RAM (файл + "
-"KV-кэш), доступно {total} МБ."
+"✗ Модель не может быть запущена. Требуется {needed} МБ (файл + KV-кэш), "
+"свободно {free} МБ ОЗУ."
 
 #: app/routes/admin.py:557 app/vram_estimate.py:368
 #, python-brace-format
@@ -883,13 +884,12 @@ msgid "Task not found"
 msgstr "Задача не найдена"
 
 #: app/routes/messages.py:420 app/routes/messages.py:427
-#, fuzzy
 msgid "Message not found"
-msgstr "Сессия не найдена"
+msgstr "Сообщение не найдено"
 
 #: app/routes/messages.py:431
 msgid "No HTML code block found in this message"
-msgstr ""
+msgstr "В этом сообщении нет блока кода HTML"
 
 #: app/routes/model_hub.py:25
 msgid "Another download is already running"
@@ -1424,6 +1424,8 @@ msgstr "Превышен таймаут при получении информа
 #: app/templates/admin.html:377
 msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
 msgstr ""
+"Эту модель нельзя сохранить (недостаточно видеопамяти или ОЗУ). Выберите "
+"модель меньшего размера."
 
 #: app/templates/admin.html:379
 msgid "Please select a model first."
@@ -1742,9 +1744,8 @@ msgid "GPU+CPU"
 msgstr "GPU+CPU"
 
 #: app/templates/admin.html:493
-#, fuzzy
 msgid "CPU"
-msgstr "GPU"
+msgstr "CPU"
 
 #: app/templates/admin.html:494
 msgid "Impossible"
@@ -1961,7 +1962,6 @@ msgid "Your requests in queue / Total in queue"
 msgstr "Ваши запросы в очереди / Всего в очереди"
 
 #: app/templates/chat.html:142
-#, fuzzy
 msgid "Server error: received invalid response"
 msgstr "Ошибка сервера: получен некорректный ответ"
 
@@ -2384,9 +2384,8 @@ msgid "Could not process image file"
 msgstr "Не удалось обработать файл изображения"
 
 #: modules/multimodal.py:263
-#, fuzzy
 msgid "Multimodal model returned an empty description"
-msgstr "Модель вернула пустой ответ"
+msgstr "Мультимодальная модель вернула пустое описание"
 
 #: modules/multimodal.py:493
 msgid "Could not find JSON in model response"

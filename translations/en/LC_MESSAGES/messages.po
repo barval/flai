@@ -487,19 +487,18 @@ msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
 
 #: app/tools.py:439
-#, fuzzy
 msgid "User not identified for conversation search"
-msgstr "User not identified for document search"
+msgstr "User not identified for conversation search"
 
 #: app/tools.py:455
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "Conversation search error: {error}"
-msgstr "Document search error: {error}"
+msgstr "Conversation search error: {error}"
 
 #: app/tools.py:459
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid "No past conversations found for query: {query}"
-msgstr "No results found for query: {query}"
+msgstr "No past conversations found for query: {query}"
 
 #: app/tools.py:473 modules/cam.py:263 modules/cam.py:378
 msgid "CCTV service unavailable"
@@ -594,13 +593,13 @@ msgid "⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM."
 msgstr ""
 
 #: app/vram_estimate.py:343
-#, fuzzy, python-brace-format
+#, python-brace-format
 msgid ""
 "✗ Model cannot be loaded. Needs {needed} MB (file + KV cache), free RAM "
 "{free} MB."
 msgstr ""
-"✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), "
-"available {total} MB."
+"✗ Model cannot be loaded. Needs {needed} MB (file + KV cache), free RAM "
+"{free} MB."
 
 #: app/routes/admin.py:557 app/vram_estimate.py:368
 #, python-brace-format
@@ -875,9 +874,8 @@ msgid "Task not found"
 msgstr "Task not found"
 
 #: app/routes/messages.py:420 app/routes/messages.py:427
-#, fuzzy
 msgid "Message not found"
-msgstr "Session not found"
+msgstr "Message not found"
 
 #: app/routes/messages.py:431
 msgid "No HTML code block found in this message"
@@ -1732,9 +1730,8 @@ msgid "GPU+CPU"
 msgstr "GPU+CPU"
 
 #: app/templates/admin.html:493
-#, fuzzy
 msgid "CPU"
-msgstr "GPU"
+msgstr "CPU"
 
 #: app/templates/admin.html:494
 msgid "Impossible"
@@ -1949,7 +1946,6 @@ msgid "Your requests in queue / Total in queue"
 msgstr "Your requests in queue / Total in queue"
 
 #: app/templates/chat.html:142
-#, fuzzy
 msgid "Server error: received invalid response"
 msgstr "Server error: received invalid response"
 
@@ -2058,8 +2054,8 @@ msgstr "Your browser does not support audio recording"
 #: app/templates/chat.html:169
 msgid "secure_context_required"
 msgstr ""
-"secure_context_requiredVoice recording requires a secure connection "
-"(HTTPS). Try opening the site via HTTPS or localhost."
+"Voice recording requires a secure connection (HTTPS). Try opening the "
+"site via HTTPS or localhost."
 
 #: app/templates/chat.html:170
 msgid "microphone_access_denied"
@@ -2370,9 +2366,8 @@ msgid "Could not process image file"
 msgstr "Could not process image file"
 
 #: modules/multimodal.py:263
-#, fuzzy
 msgid "Multimodal model returned an empty description"
-msgstr "Model returned empty response"
+msgstr "Multimodal model returned an empty description"
 
 #: modules/multimodal.py:493
 msgid "Could not find JSON in model response"

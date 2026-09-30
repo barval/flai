@@ -29,6 +29,25 @@ from app import create_app
 # ── Helpers: mock external services ────────────────────────────────────
 
 
+def stop_app_background_threads(flask_app: Any) -> None:
+    """Stop the per-app daemon threads that create_app() starts.
+
+    Every create_app() spawns an SLM merge watcher and (with the llama-swap
+    backend) a crash-loop watchdog. Both poll forever and hold an app context,
+    so without this a suite that builds hundreds of apps accumulates hundreds
+    of live threads and their Redis clients. Best-effort: a test that
+    deliberately skipped a thread must not fail the teardown.
+    """
+    with contextlib.suppress(Exception):
+        from app import stop_slm_merge_watcher
+
+        stop_slm_merge_watcher(flask_app, timeout=3)
+    with contextlib.suppress(Exception):
+        from app.tasks.health_monitor import stop_watchdog
+
+        stop_watchdog(flask_app, timeout=3)
+
+
 def create_mock_redis():
     mock_redis = MagicMock()
     mock_redis.blpop.return_value = None
@@ -749,6 +768,9 @@ def test_app():
         # Teardown: stop background Redis worker threads
         if hasattr(flask_app, "request_queue"):
             flask_app.request_queue.stop_workers(timeout=3)
+
+        # Teardown: stop the per-app watcher threads (see helper above)
+        stop_app_background_threads(flask_app)
 
         # Teardown: clean real DB between tests to prevent cross-test pollution
         if not _USE_MOCK_DB:

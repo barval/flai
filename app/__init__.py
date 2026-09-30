@@ -6,7 +6,7 @@ import sys
 from datetime import UTC
 from logging import Formatter
 
-from flask import Flask, abort, jsonify, redirect, request, send_file, session, url_for
+from flask import Flask, abort, g, jsonify, redirect, request, send_file, session, url_for
 from flask_babel import Babel, gettext
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -25,7 +25,10 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def get_locale():
-    """Select language from session or Accept-Language header."""
+    """Select the API owner's language or the browser/session language."""
+    api_user = getattr(g, "api_user", None)
+    if api_user and api_user.get("language") in ("ru", "en"):
+        return api_user["language"]
     if "language" in session:
         return session["language"]
     return request.accept_languages.best_match(["ru", "en"]) or "ru"

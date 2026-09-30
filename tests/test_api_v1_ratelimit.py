@@ -1,9 +1,8 @@
 """Rate-limit contract for the expensive /v1 endpoints.
 
-`GET /v1/flai/me` advertises a rate limit, so one has to exist. Only the
-endpoints that cost GPU time are limited: the introspection endpoints stay
-free, and the budget is per API key owner so one noisy client cannot spend
-another user's quota.
+`GET /v1/flai/me` advertises a rate limit, so one has to exist. Expensive
+synchronous endpoints share the key owner's budget; introspection stays
+free, and one user cannot spend another user's quota.
 """
 
 import pytest
@@ -40,24 +39,27 @@ def limited(test_app, monkeypatch):
     )
     monkeypatch.setattr(
         "app.routes.api_v1.wait_for_result",
-        lambda login, task_id, timeout_s: {
-            "response": "OK",
-            "session_id": "session-1",
-            "model_used": "reasoning-model",
-            "is_error": False,
-            "message_id": 12,
-            "prompt_tokens": 5,
-            "completion_tokens": 2,
-        },
+        lambda login, task_id, timeout_s: (
+            {
+                "response": "OK",
+                "session_id": "session-1",
+                "model_used": "reasoning-model",
+                "is_error": False,
+                "message_id": 12,
+                "prompt_tokens": 5,
+                "completion_tokens": 2,
+            }
+            if task_id == "task-1"
+            else {"embeddings": [[0.1, 0.2]], "model": "embedding"}
+            if task_id == "task-9"
+            else {"text": "recognized words"}
+        ),
     )
     monkeypatch.setattr(
         "app.routes.api_v1.enqueue_embeddings",
         lambda api_user, texts: "task-9",
     )
-    monkeypatch.setattr(
-        "app.routes.api_v1.wait_for_result",
-        lambda login, task_id, timeout_s: {"embeddings": [[0.1, 0.2]], "model": "embedding"},
-    )
+    monkeypatch.setattr("app.routes.api_v1.enqueue_transcription", lambda *a, **k: "task-10")
     yield token
     limiter.reset()
 
@@ -74,6 +76,10 @@ def embed(client, token):
     return client.post("/v1/embeddings", json={"model": "flai-embeddings", "input": "hi"}, headers=bearer(token))
 
 
+def speech(client, token):
+    return client.post("/v1/audio/speech", json={"input": "hi"}, headers=bearer(token))
+
+
 @pytest.mark.unit
 class TestChatRateLimit:
     def test_allows_up_to_the_budget_then_returns_429(self, test_app, limited):
@@ -88,6 +94,7 @@ class TestChatRateLimit:
         assert error["code"] == "rate_limit_exceeded"
         assert error["param"] is None
         assert error["message"].startswith("⚠️ ")
+        assert blocked.headers.get("Retry-After")
 
     def test_429_is_localized_for_the_key_owner(self, test_app, limited):
         test_app.config["API_RATE_LIMIT"] = "1 per minute"
@@ -145,3 +152,54 @@ class TestBudgetIsPerUser:
         create_user(login="otherowner", password="pw-otherowner-123", name="Other", language="en")
         other_token, _ = create_api_token("otherowner", name="test")
         assert chat(client, other_token).status_code == 200
+
+
+@pytest.mark.unit
+class TestAudioRateLimits:
+    def test_speech_is_limited_per_owner(self, test_app, limited):
+        from unittest.mock import Mock
+
+        module = Mock()
+        module.available = True
+        module.backend = "kokoro"
+        module.synthesize.return_value = (b"RIFF audio", "audio/wav")
+        test_app.modules["tts"] = module
+        client = test_app.test_client()
+
+        assert speech(client, limited).status_code == 200
+        assert speech(client, limited).status_code == 200
+        blocked = speech(client, limited)
+        assert blocked.status_code == 429
+        assert blocked.get_json()["error"]["code"] == "rate_limit_exceeded"
+        assert blocked.headers.get("Retry-After")
+        assert module.synthesize.call_count == 2
+
+    def test_transcription_is_limited_before_enqueue(self, test_app, limited, monkeypatch):
+        from io import BytesIO
+        from unittest.mock import Mock
+
+        audio = Mock()
+        audio.available = True
+        audio.is_audio_file.return_value = True
+        test_app.modules["audio"] = audio
+        enqueued = []
+        monkeypatch.setattr(
+            "app.routes.api_v1.enqueue_transcription",
+            lambda *a, **k: enqueued.append(a) or "task-audio",
+        )
+        client = test_app.test_client()
+
+        def post():
+            return client.post(
+                "/v1/audio/transcriptions",
+                data={"file": (BytesIO(b"audio"), "clip.wav", "audio/wav")},
+                headers=bearer(limited),
+            )
+
+        assert post().status_code == 200
+        assert post().status_code == 200
+        blocked = post()
+        assert blocked.status_code == 429
+        assert blocked.get_json()["error"]["code"] == "rate_limit_exceeded"
+        assert blocked.headers.get("Retry-After")
+        assert len(enqueued) == 2

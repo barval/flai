@@ -1,5 +1,7 @@
 """OpenAI-compatible public API foundation."""
 
+import time
+from base64 import b64encode
 from collections.abc import Callable
 from functools import wraps
 from threading import BoundedSemaphore
@@ -8,7 +10,7 @@ from typing import Any
 from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
 from flask_babel import gettext as _
 from flask_limiter.errors import RateLimitExceeded
-from werkzeug.exceptions import MethodNotAllowed
+from werkzeug.exceptions import MethodNotAllowed, RequestEntityTooLarge
 
 from app import limiter
 from app.api_bridge import (
@@ -18,6 +20,7 @@ from app.api_bridge import (
     ApiTaskTimeoutError,
     enqueue_chat,
     enqueue_embeddings,
+    enqueue_transcription,
     normalize_chat_messages,
     resolve_api_session,
     serialize_chat_completion,
@@ -127,6 +130,11 @@ def _api_rate_limit() -> str:
     return str(current_app.config.get("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT))
 
 
+def _is_api_path(path: str) -> bool:
+    """Match `/v1` and its child routes without treating `/v1evil` as API."""
+    return path == API_PREFIX or path.startswith(f"{API_PREFIX}/")
+
+
 def parse_cors_origins(raw: Any) -> list[str]:
     """Split the configured CORS allowlist into exact origins.
 
@@ -187,7 +195,7 @@ def add_api_cors_headers(response: Any) -> Any:
     read the web UI cross-origin. Credentials are allowed because the API is
     Bearer-authenticated and never relies on a cookie.
     """
-    if not request.path.startswith(API_PREFIX):
+    if not _is_api_path(request.path):
         return response
     origin = request.headers.get("Origin")
     if not origin:
@@ -211,9 +219,11 @@ def rate_limited(error: Any) -> Any:
     Registered app-wide because a blueprint handler only covers its own
     blueprint; the auth blueprint keeps its own HTML 429 page.
     """
-    if not request.path.startswith(API_PREFIX):
-        return RateLimitExceeded(error.description).get_response(request.environ)
-    return api_error(429, "rate_limit_error", "rate_limit_exceeded", _("api_error_rate_limited"))
+    if not _is_api_path(request.path):
+        return error.get_response(request.environ)
+    current_limit = limiter.current_limit
+    headers = {"Retry-After": str(max(1, current_limit.reset_at - int(time.time())))} if current_limit else {}
+    return api_error(429, "rate_limit_error", "rate_limit_exceeded", _("api_error_rate_limited"), headers=headers)
 
 
 @bp.app_errorhandler(405)
@@ -224,10 +234,18 @@ def method_not_allowed(error: Any) -> Any:
     only, so this is registered app-wide and falls through for every path
     outside the API prefix.
     """
-    if not request.path.startswith(API_PREFIX):
+    if not _is_api_path(request.path):
         valid = getattr(error, "valid_methods", None)
         return MethodNotAllowed(valid_methods=valid).get_response(request.environ)
     return api_error(405, "invalid_request_error", "method_not_allowed", _("Method not allowed"))
+
+
+@bp.app_errorhandler(RequestEntityTooLarge)
+def api_payload_too_large(error: Any) -> Any:
+    """Return upload-size errors in the API envelope without changing web routes."""
+    if not _is_api_path(request.path):
+        return error.get_response(request.environ)
+    return api_error(413, "invalid_request_error", "request_too_large", _("Uploaded file is too large"))
 
 
 @bp.route("/models", methods=["GET"])
@@ -256,8 +274,10 @@ def api_me():
                 "chat_completions": True,
                 "streaming": True,
                 "embeddings": True,
-                "audio_speech": False,
-                "audio_transcriptions": False,
+                "audio_speech": bool(current_app.modules.get("tts") and current_app.modules["tts"].available),
+                "audio_transcriptions": bool(
+                    current_app.modules.get("audio") and current_app.modules["audio"].available
+                ),
                 "images": False,
                 "videos": False,
                 "documents": False,
@@ -310,10 +330,9 @@ def chat_completions():
     except ApiSessionNotFoundError:
         return api_error(404, "invalid_request_error", "session_not_found", _("Chat session not found"))
 
-    task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
-
     timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
     if stream:
+        task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
         generator = stream_chat(
             g.api_user["login"],
             task_id,
@@ -332,6 +351,7 @@ def chat_completions():
     if shed is not None:
         return shed
     try:
+        task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
         message = _("Task %s is still running and was not cancelled") % task_id
@@ -390,13 +410,12 @@ def embeddings():
             _("'encoding_format' must be 'float' or 'base64'"),
         )
 
-    task_id = enqueue_embeddings(g.api_user, texts)
-
     timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
     shed = _acquire_wait_slot()
     if shed is not None:
         return shed
     try:
+        task_id = enqueue_embeddings(g.api_user, texts)
         result = wait_for_result(g.api_user["login"], task_id, timeout_s)
     except ApiTaskTimeoutError:
         message = _("Task %s is still running and was not cancelled") % task_id
@@ -411,3 +430,143 @@ def embeddings():
     except ApiTaskError as exc:
         return api_error(502, "server_error", "task_failed", exc.localized(_))
     return jsonify(body)
+
+
+@bp.route("/audio/speech", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def audio_speech():
+    """Synthesize speech from text via the configured TTS service.
+
+    ``model`` and ``speed`` are accepted and ignored. ``voice`` is passed
+    through to the Kokoro backend and ignored by Piper. ``language`` and
+    ``gender`` override the key owner's defaults for this call.
+    ``response_format`` defaults to the configured backend's native format
+    (``wav`` for Kokoro, ``mp3`` for Piper). Other formats are rejected rather
+    than returning mislabeled audio.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+
+    text = payload.get("input")
+    if not isinstance(text, str) or not text.strip():
+        return api_error(400, "invalid_request_error", "invalid_input", _("'input' must be a non-empty string"))
+
+    voice = payload.get("voice")
+    if voice is not None and not isinstance(voice, str):
+        return api_error(400, "invalid_request_error", "invalid_request", _("'voice' must be a string"))
+
+    language = payload.get("language", g.api_user.get("language", "ru"))
+    if language not in ("ru", "en"):
+        return api_error(400, "invalid_request_error", "invalid_language", _("Invalid language"))
+
+    gender = payload.get("gender", g.api_user.get("voice_gender", "male"))
+    if gender not in ("male", "female"):
+        return api_error(400, "invalid_request_error", "invalid_voice_gender", _("Invalid voice gender"))
+
+    tts_module = current_app.modules.get("tts")
+    if tts_module is None or not tts_module.available:
+        return api_error(503, "service_unavailable", "tts_unavailable", _("TTS service unavailable"))
+
+    backend_formats = {"kokoro": ("wav", {"audio/wav", "audio/x-wav", "audio/wave"}), "piper": ("mp3", {"audio/mpeg"})}
+    backend_format = backend_formats.get(tts_module.backend)
+    if backend_format is None:
+        return api_error(503, "service_unavailable", "tts_unavailable", _("TTS service unavailable"))
+    native_format, accepted_mimes = backend_format
+
+    response_format = payload.get("response_format", native_format)
+    if response_format != native_format:
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_response_format",
+            _("The configured TTS backend produces {native_format}; requested: {requested_format}").format(
+                native_format=native_format, requested_format=response_format
+            ),
+        )
+
+    try:
+        audio_bytes, mime_type = tts_module.synthesize(text, language, gender, voice=voice)
+    except Exception:
+        current_app.logger.exception("API speech synthesis failed")
+        return api_error(500, "server_error", "synthesis_failed", _("TTS synthesis failed"))
+    if audio_bytes is None or not mime_type:
+        return api_error(500, "server_error", "synthesis_failed", _("TTS synthesis failed"))
+
+    mime = mime_type.split(";", 1)[0].strip().lower()
+    if mime not in accepted_mimes:
+        return api_error(500, "server_error", "synthesis_failed", _("TTS synthesis failed"))
+    ext = native_format
+
+    return Response(
+        audio_bytes,
+        mimetype=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="speech.{ext}"'},
+    )
+
+
+@bp.route("/audio/transcriptions", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def audio_transcriptions():
+    """Transcribe an uploaded audio file via the Whisper service.
+
+    The request is multipart/form-data with a required ``file`` field.
+    ``model`` is accepted and ignored. ``response_format`` must be ``json`` or
+    ``text`` — FLAI's Whisper wrapper returns plain text with no timestamps,
+    so ``srt``, ``vtt`` and ``verbose_json`` are rejected. An optional
+    ``language`` form field overrides the key owner's language.
+    """
+    if "file" not in request.files:
+        return api_error(400, "invalid_request_error", "invalid_request", _("Missing 'file' field"))
+
+    f = request.files["file"]
+    if f.filename == "":
+        return api_error(400, "invalid_request_error", "invalid_request", _("No file selected"))
+
+    response_format = request.form.get("response_format", "json")
+    if response_format not in ("json", "text"):
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_response_format",
+            _("'response_format' must be 'json' or 'text'; timestamps are not available"),
+        )
+
+    audio_module = current_app.modules.get("audio")
+    if audio_module is None or not audio_module.available:
+        return api_error(503, "service_unavailable", "audio_unavailable", _("Audio service unavailable"))
+    if not audio_module.is_audio_file(f.mimetype, f.filename):
+        return api_error(400, "invalid_request_error", "invalid_input", _("Unsupported audio format"))
+
+    file_bytes = f.read()
+    if not file_bytes:
+        return api_error(400, "invalid_request_error", "invalid_input", _("Uploaded file is empty"))
+
+    file_data = b64encode(file_bytes).decode("ascii")
+    language = request.form.get("language", g.api_user.get("language", "ru"))
+    if language not in ("ru", "en"):
+        return api_error(400, "invalid_request_error", "invalid_language", _("Invalid language"))
+    timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
+    shed = _acquire_wait_slot()
+    if shed is not None:
+        return shed
+    try:
+        task_id = enqueue_transcription(g.api_user, file_data, f.mimetype, f.filename, language)
+        result = wait_for_result(g.api_user["login"], task_id, timeout_s)
+    except ApiTaskTimeoutError:
+        message = _("Task %s is still running and was not cancelled") % task_id
+        return api_error(408, "server_error", "task_timeout", message)
+    except ApiTaskError as exc:
+        return api_error(502, "server_error", "task_failed", exc.localized(_))
+    finally:
+        _release_wait_slot()
+
+    text = result.get("text")
+    if not text:
+        return api_error(502, "server_error", "task_failed", _("Transcription produced no text"))
+
+    if response_format == "text":
+        return Response(text, mimetype="text/plain; charset=utf-8")
+    return jsonify({"text": text})

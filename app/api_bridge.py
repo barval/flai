@@ -340,7 +340,10 @@ def _resolve_terminal(task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Turn a terminal queue payload into the inner result or raise."""
     if payload.get("status") == "error":
         inner = payload.get("result") or {}
-        raise ApiTaskError(inner.get("error") or "Task %s failed", task_id)
+        error = inner.get("error") or payload.get("error")
+        if error:
+            raise ApiTaskError(error)
+        raise ApiTaskError("Task %s failed", task_id)
 
     inner = payload.get("result")
     if not isinstance(inner, dict):
@@ -593,6 +596,37 @@ def enqueue_embeddings(api_user: dict[str, Any], texts: list[str]) -> str:
         request_data,
         api_user.get("service_class", DEFAULT_SERVICE_CLASS),
         api_user.get("language", "ru"),
+    )
+    return str(task_id)
+
+
+def enqueue_transcription(
+    api_user: dict[str, Any],
+    file_data: str,
+    file_type: str | None,
+    file_name: str | None,
+    language: str | None = None,
+) -> str:
+    """Queue an audio transcription request.
+
+    Like embeddings this is stateless: the dedicated ``api_transcribe`` task type
+    writes no chat message and opens no usage account, so the transcript reaches
+    the caller only through the API response. ``language`` overrides the account
+    language for this call only.
+    """
+    request_data = {
+        "type": "api_transcribe",
+        "file_data": file_data,
+        "file_type": file_type,
+        "file_name": file_name,
+        "stream": False,
+    }
+    task_id, _queue_info = get_request_queue().add_request(
+        api_user["login"],
+        API_EMBEDDINGS_SESSION,
+        request_data,
+        api_user.get("service_class", DEFAULT_SERVICE_CLASS),
+        language or api_user.get("language", "ru"),
     )
     return str(task_id)
 

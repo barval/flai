@@ -2499,6 +2499,37 @@ msgstr "Превышен лимит запросов. Подождите нем�
 msgid "api_error_too_many_requests"
 msgstr "Слишком много запросов уже ожидают результат. Повторите попытку через секунду."
 
+msgid "'input' must be a non-empty string"
+msgstr "Поле 'input' должно содержать непустую строку"
+
+msgid "'voice' must be a string"
+msgstr "Поле 'voice' должно быть строкой"
+
+#, python-brace-format
+msgid "The configured TTS backend produces {native_format}; requested: {requested_format}"
+msgstr "Настроенный синтез речи возвращает {native_format}; запрошен формат {requested_format}"
+
+msgid "Missing 'file' field"
+msgstr "Отсутствует поле 'file'"
+
+msgid "Uploaded file is empty"
+msgstr "Загруженный файл пуст"
+
+msgid "Unsupported audio format"
+msgstr "Неподдерживаемый аудиоформат"
+
+msgid "'response_format' must be 'json' or 'text'; timestamps are not available"
+msgstr "Поле 'response_format' должно быть 'json' или 'text'; временные метки недоступны"
+
+msgid "Transcription produced no text"
+msgstr "Распознавание не вернуло текст"
+
+msgid "Uploaded file is too large"
+msgstr "Загруженный файл слишком большой"
+
+msgid "Invalid audio input"
+msgstr "Некорректные аудиоданные"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

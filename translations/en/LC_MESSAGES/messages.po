@@ -2481,6 +2481,37 @@ msgstr "Rate limit reached. Wait a moment and try again."
 msgid "api_error_too_many_requests"
 msgstr "Too many requests are already waiting for a result. Please retry in a second."
 
+msgid "'input' must be a non-empty string"
+msgstr "'input' must be a non-empty string"
+
+msgid "'voice' must be a string"
+msgstr "'voice' must be a string"
+
+#, python-brace-format
+msgid "The configured TTS backend produces {native_format}; requested: {requested_format}"
+msgstr "The configured TTS backend produces {native_format}; requested: {requested_format}"
+
+msgid "Missing 'file' field"
+msgstr "Missing 'file' field"
+
+msgid "Uploaded file is empty"
+msgstr "Uploaded file is empty"
+
+msgid "Unsupported audio format"
+msgstr "Unsupported audio format"
+
+msgid "'response_format' must be 'json' or 'text'; timestamps are not available"
+msgstr "'response_format' must be 'json' or 'text'; timestamps are not available"
+
+msgid "Transcription produced no text"
+msgstr "Transcription produced no text"
+
+msgid "Uploaded file is too large"
+msgstr "Uploaded file is too large"
+
+msgid "Invalid audio input"
+msgstr "Invalid audio input"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

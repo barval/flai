@@ -16,6 +16,7 @@ from app.api_bridge import (
     _resolve_terminal,
     enqueue_chat,
     enqueue_embeddings,
+    enqueue_transcription,
     normalize_chat_messages,
     resolve_api_session,
     serialize_chat_completion,
@@ -741,6 +742,19 @@ class TestTerminalResolution:
         with pytest.raises(ApiTaskError):
             self.resolve("error", {"error": "⚠️ GPU out of memory"})
 
+    def test_queue_error_envelope_is_used_when_inner_result_has_no_error(self):
+        with pytest.raises(ApiTaskError) as excinfo:
+            _resolve_terminal(
+                "task-1",
+                {
+                    "status": "error",
+                    "error": "⚠️ Request cancelled - too long in queue",
+                    "result": {"session_id": "api"},
+                },
+            )
+
+        assert excinfo.value.localized(lambda msg: msg) == "⚠️ Request cancelled - too long in queue"
+
     def test_missing_result_raises(self):
         with pytest.raises(ApiTaskError):
             self.resolve("completed", None)
@@ -766,6 +780,28 @@ class TestEmbeddingsBridge:
         assert request_data["type"] == "api_embedding"
         assert request_data["input"] == ["one", "two"]
         assert bridge_deps["saved"] == []
+
+    def test_enqueue_posts_api_transcription_without_a_chat_session(self, bridge_deps):
+        api_user = {"login": "alice", "service_class": 3, "language": "de"}
+
+        task_id = enqueue_transcription(api_user, "QUJD", "audio/wav", "recording.wav")
+
+        assert task_id == "task-1"
+        login, session_id, request_data, user_class, lang = bridge_deps["queue"].added[0]
+        assert (login, session_id, user_class, lang) == ("alice", "api", 3, "de")
+        assert request_data == {
+            "type": "api_transcribe",
+            "file_data": "QUJD",
+            "file_type": "audio/wav",
+            "file_name": "recording.wav",
+            "stream": False,
+        }
+        assert bridge_deps["saved"] == []
+
+    def test_transcription_language_can_override_the_account(self, bridge_deps):
+        enqueue_transcription({"login": "alice", "language": "de"}, "QUJD", "audio/wav", "a.wav", "en")
+
+        assert bridge_deps["queue"].added[0][4] == "en"
 
     def test_serialize_returns_indexed_float_vectors(self):
         body = serialize_embeddings({"embeddings": [[0.1, 0.2], [0.3]]})

@@ -27,8 +27,10 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | Embeddings | `POST /v1/embeddings` | Shipped |
 | Model list | `GET /v1/models` | Shipped |
 | Identity and capabilities | `GET /v1/flai/me` | Shipped |
+| Speech synthesis | `POST /v1/audio/speech` | Shipped |
+| Audio transcription | `POST /v1/audio/transcriptions` | Shipped |
 | Image and video generation | `/v1/images/*`, `/v1/videos/*` | Planned |
-| Audio, documents, deep analysis | `/v1/audio/*`, `/v1/rlm/*` | Planned |
+| Documents, deep analysis | `/v1/rlm/*` | Planned |
 
 Endpoints that are not listed in this table do not exist yet. A client that
 needs them should watch `CHANGELOG.md`.
@@ -249,6 +251,63 @@ curl http://localhost:5000/v1/embeddings \
 
 ---
 
+## `POST /v1/audio/speech`
+
+Synthesize text with the configured TTS backend. Kokoro returns WAV and Piper
+returns MP3; unsupported `response_format` values are rejected rather than
+silently relabeling one format as another.
+
+```bash
+curl http://localhost:5000/v1/audio/speech \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Hello from FLAI"}' \
+  --remote-name --remote-header-name
+```
+
+| Field | Behavior |
+|---|---|
+| `input` | Required, non-empty text. |
+| `voice` | Optional voice name passed to Kokoro; Piper may ignore it. |
+| `language`, `gender` | Optional FLAI extensions; language accepts `ru` or `en`, gender accepts `male` or `female`; defaults come from the API key owner's profile. |
+| `response_format` | Defaults to the backend's native format (`wav` for Kokoro, `mp3` for Piper); other formats return `400 invalid_response_format`. |
+| `model`, `speed` | Accepted and ignored; FLAI does not select a TTS model or apply speed adjustment. |
+
+The response is the audio bytes with the MIME type returned by the TTS service
+and a matching attachment name (`speech.wav` or `speech.mp3`). Speech is
+stateless and does not write a message into the user's chat. An unavailable
+TTS module returns `503`; a synthesis failure returns `500`.
+
+---
+
+## `POST /v1/audio/transcriptions`
+
+Upload an audio file as `multipart/form-data`. Transcription is queued through
+the existing queue and Whisper service, but unlike a web voice message it does
+not create a chat session, save a transcript message or publish the result to
+the shared user SSE channel.
+
+```bash
+curl http://localhost:5000/v1/audio/transcriptions \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -F "file=@meeting.wav" \
+  -F "response_format=json"
+```
+
+| Field | Behavior |
+|---|---|
+| `file` | Required multipart audio upload; validated by the configured audio module. |
+| `response_format` | `json` (default, returns `{"text":"..."}`) or `text` (plain UTF-8 text). `srt`, `vtt` and `verbose_json` are unsupported because the Whisper module does not provide timestamps. |
+| `language` | Optional FLAI extension (`ru` or `en`); defaults to the API key owner's language. |
+| `model` | Accepted and ignored; FLAI uses the configured Whisper service. |
+
+Files above Flask's `MAX_CONTENT_LENGTH` receive `413 request_too_large` in the
+OpenAI error envelope. A transcription that exceeds `API_SYNC_MAX_WAIT` returns
+`408 task_timeout`; its queue task continues, but this stateless endpoint does
+not persist the transcript into chat.
+
+---
+
 ## `GET /v1/models`
 
 Returns the FLAI capability ids as OpenAI model objects. The list is a
@@ -256,7 +315,7 @@ capability catalogue, not a set of weights: any of these ids may be handled by
 the router, and passing one as `model` changes nothing.
 
 ```json
-{"object": "list", "data": [{"id": "flai-chat", "object": "model", "owned_by": "flai", "description": "Router-selected chat"}]}
+{"object": "list", "data": [{"id": "flai-chat", "object": "model", "owned_by": "flai", "description": "Router-selected chat"}, {"id": "flai-tts", "object": "model", "owned_by": "flai", "description": "Speech synthesis"}, {"id": "flai-stt", "object": "model", "owned_by": "flai", "description": "Speech transcription"}]}
 ```
 
 ## `GET /v1/flai/me`
@@ -275,8 +334,8 @@ wants to know what the server supports before it builds a request.
     "chat_completions": true,
     "streaming": true,
     "embeddings": true,
-    "audio_speech": false,
-    "audio_transcriptions": false,
+    "audio_speech": true,
+    "audio_transcriptions": true,
     "images": false,
     "videos": false,
     "documents": false,
@@ -286,6 +345,10 @@ wants to know what the server supports before it builds a request.
   }
 }
 ```
+
+The two audio flags are true only when the configured TTS/audio modules are
+available; `flai-tts` and `flai-stt` are capability identifiers in the model
+list, not selectable weights.
 
 ---
 
@@ -318,6 +381,7 @@ readable part is always the `code`.
 | 404 | `invalid_request_error` | `session_not_found` | `metadata.session_id` belongs to another user |
 | 405 | `invalid_request_error` | `method_not_allowed` | Wrong HTTP method |
 | 408 | `server_error` | `task_timeout` | Task still running after `API_SYNC_MAX_WAIT`; it was **not** cancelled |
+| 413 | `invalid_request_error` | `request_too_large` | Upload exceeds Flask `MAX_CONTENT_LENGTH` |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` | The key owner's request budget is spent |
 | 429 | `rate_limit_error` | `too_many_requests` | `API_MAX_CONCURRENT_WAITS` requests already waiting (`Retry-After: 1`) |
 | 500 | `server_error` | `task_failed` | Chat task failed |
@@ -340,8 +404,8 @@ mind when choosing client timeouts:
   search, an image or a video takes longer.
 - `API_SYNC_MAX_WAIT` (default `600` seconds) bounds a synchronous wait. On
   expiry the API returns `408` with the task id in the message. The task keeps
-  running and its answer is still saved to the conversation — a `408` means
-  "ask again later", not "it failed".
+  running and is not cancelled; chat answers are still saved to the
+  conversation, while stateless endpoints do not create chat messages.
 - Keep the client timeout above `API_SYNC_MAX_WAIT`, or set
   `API_SYNC_MAX_WAIT` below the gunicorn timeout (900 s) so the server always
   answers first. This is the default arrangement.
@@ -356,7 +420,8 @@ mind when choosing client timeouts:
   returns its slot immediately. Async jobs (image, video) do not hold a slot
   after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
-  `POST /v1/chat/completions` and `POST /v1/embeddings`. The budget is counted
+  `POST /v1/chat/completions`, `POST /v1/embeddings`, and `POST /v1/audio/*`.
+  The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
   it, and one noisy client cannot spend another user's quota. A spent budget
   returns `429 rate_limit_exceeded` before any task is queued, so nothing is
@@ -390,7 +455,7 @@ API_CORS_ORIGINS=https://home.example, https://tools.example
 |---|---|---|
 | `API_ENABLED` | `true` | Master switch. When `false`, every `/v1` request returns `503 api_disabled`. |
 | `API_SYNC_MAX_WAIT` | `600` | Seconds a synchronous or streaming request waits for its task. |
-| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat completions and embeddings. Reported by `GET /v1/flai/me`. |
+| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat, embeddings and audio endpoints. Reported by `GET /v1/flai/me`. |
 | `API_MAX_CONCURRENT_WAITS` | `64` | Requests that may wait for a queued task at once. Reported by `GET /v1/flai/me`. |
 | `API_CORS_ORIGINS` | _(empty)_ | Comma-separated exact origins allowed to call `/v1` from a browser. Empty means no browser access. |
 

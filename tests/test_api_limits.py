@@ -79,6 +79,13 @@ class TestCorsIsOffByDefault:
         response = client.get(MODELS, headers={**bearer(tok), "Origin": ORIGIN})
         assert "access-control-allow-origin" not in cors(response)
 
+    def test_v1_prefix_lookalike_is_not_an_api_route(self, test_app):
+        from app.routes.api_v1 import _is_api_path
+
+        assert _is_api_path("/v1")
+        assert _is_api_path("/v1/audio/speech")
+        assert not _is_api_path("/v1evil")
+
 
 @pytest.mark.unit
 class TestAllowedOrigin:
@@ -147,6 +154,9 @@ class TestBoundedConcurrentWaits:
         from app.routes import api_v1
 
         test_app._api_wait_slots = FullSemaphore()
+        enqueued = []
+        monkeypatch.setattr(api_v1, "resolve_api_session", lambda *a, **k: "session-1")
+        monkeypatch.setattr(api_v1, "enqueue_chat", lambda *a, **k: enqueued.append(a))
         monkeypatch.setattr(api_v1, "wait_for_result", lambda *a, **k: {"response": "ok"})
 
         response = test_app.test_client().post(
@@ -160,11 +170,14 @@ class TestBoundedConcurrentWaits:
         assert error["type"] == "rate_limit_error"
         assert error["code"] == "too_many_requests"
         assert error["message"].startswith("⚠️ ")
+        assert enqueued == []
 
     def test_embeddings_shares_the_same_slots(self, test_app, token, monkeypatch):
         from app.routes import api_v1
 
         test_app._api_wait_slots = FullSemaphore()
+        enqueued = []
+        monkeypatch.setattr(api_v1, "enqueue_embeddings", lambda *a, **k: enqueued.append(a))
         monkeypatch.setattr(api_v1, "wait_for_result", lambda *a, **k: {"embeddings": [[0.1]]})
 
         response = test_app.test_client().post(
@@ -174,6 +187,7 @@ class TestBoundedConcurrentWaits:
         )
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "1"
+        assert enqueued == []
 
     def test_a_rejected_request_does_not_consume_a_slot(self, test_app, token):
         from app.routes.api_v1 import wait_slots

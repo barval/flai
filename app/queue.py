@@ -253,6 +253,9 @@ class RedisRequestQueue:
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
             return "fast"
+        # The API variant is the same Whisper call without a chat session.
+        if req_type == "api_transcribe":
+            return "fast"
         # Default to slow for safety
         return "slow"
 
@@ -369,6 +372,8 @@ class RedisRequestQueue:
         if req_type in ("describe_document_image", "describe_document_pdf"):
             return "multimodal"
         if task_type == "transcribe_audio":
+            return "none"
+        if req_type == "api_transcribe":
             return "none"
 
         if action_type == "rag":
@@ -533,6 +538,7 @@ class RedisRequestQueue:
         task_id = task.get("id")
         if not task_id:
             return
+        publish_result = task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe")
 
         processing_ttl = max(
             self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 60,
@@ -577,7 +583,8 @@ class RedisRequestQueue:
                 pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
                 pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
             pipe.execute()
-            self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
+            if publish_result:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
         final_result = None
@@ -594,23 +601,31 @@ class RedisRequestQueue:
                 )
                 self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
                 self.app.logger.info(f"Task {task_id} completed successfully for session {task.get('session_id')}")
-                self._publish_result_event(task, "completed", result_data)
+                if publish_result:
+                    self._publish_result_event(task, "completed", result_data)
         except Exception as e:
             self.app.logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
+            is_api_transcribe = task.get("data", {}).get("type") == "api_transcribe"
+            if is_api_transcribe:
+                lang = task.get("lang", "ru")
+                error_text = "⚠️ " + self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            else:
+                error_text = str(e)
             self.redis.hset(
                 self.results_key,
                 task_id,
                 self._serialize(
                     {
                         "status": "error",
-                        "error": str(e),
-                        "result": {"session_id": task.get("session_id")},
+                        "error": error_text,
+                        "result": {"error": error_text, "session_id": task.get("session_id")},
                         "timestamp": time.time(),
                     }
                 ),
             )
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
-            self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
+            if publish_result and not is_api_transcribe:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
         finally:
             # Drop any leftover usage account (early error return, requeue that
             # did not consume it). The thread-local must not leak into the next
@@ -3764,6 +3779,42 @@ class RedisRequestQueue:
 
         return {"status": "completed", "embeddings": vectors, "model": "embedding"}
 
+    def _process_api_transcribe_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Transcribe an uploaded audio file for the public API.
+
+        Same Whisper call as the web transcription task, but without a chat
+        session: nothing is written to the conversation and no usage account is
+        opened, because `POST /v1/audio/transcriptions` is a stateless call
+        that returns text to the caller only.
+        """
+        lang = task.get("lang", "ru")
+        data = task.get("data", {})
+        file_data = data.get("file_data")
+        file_type = data.get("file_type")
+        file_name = data.get("file_name")
+
+        if not file_data:
+            error = self.app.modules["base"]._("Invalid audio input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        audio_module = self.app.modules.get("audio")
+        if audio_module is None:
+            error = self.app.modules["base"]._("Audio service unavailable", lang=lang)
+            self.app.logger.warning("API transcription unavailable: audio module missing")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        except Exception:
+            self.app.logger.exception("API transcription failed")
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+        if not text:
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "text": text}
+
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Main entry point — delegates to specialized task handlers."""
@@ -3786,6 +3837,7 @@ class RedisRequestQueue:
             "fact_extraction_task",
             "fact_merge_task",
             "api_embedding",
+            "api_transcribe",
         ):
             _requeue_meta = task.get("data", {})
             begin_usage_account(
@@ -3817,6 +3869,8 @@ class RedisRequestQueue:
             return self._process_fact_merge(task)
         if task_type == "api_embedding":
             return self._process_api_embedding_task(task)
+        if task_type == "api_transcribe":
+            return self._process_api_transcribe_task(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]

@@ -27,6 +27,57 @@ msgstr "Сессия истекла. Обновите страницу."
 msgid "Authentication required."
 msgstr "Требуется авторизация."
 
+msgid "api_error_invalid_api_key"
+msgstr "Недействительный API-ключ"
+
+msgid "api_error_api_disabled"
+msgstr "API отключён"
+
+msgid "api_key_not_found"
+msgstr "API-ключ не найден"
+
+msgid "api_keys_title"
+msgstr "API-ключи"
+
+msgid "api_keys_button"
+msgstr "API-ключи"
+
+msgid "api_keys_close"
+msgstr "Закрыть"
+
+msgid "api_keys_hint"
+msgstr "Создавайте ключи для внешних интеграций. Секрет показывается только один раз."
+
+msgid "api_keys_name_placeholder"
+msgstr "Название ключа, например Home Assistant"
+
+msgid "api_keys_create"
+msgstr "Создать ключ"
+
+msgid "api_keys_copy"
+msgstr "Скопировать ключ"
+
+msgid "api_keys_copy_once"
+msgstr "Скопируйте ключ сейчас. Повторно он не будет показан."
+
+msgid "api_keys_col_name"
+msgstr "Название"
+
+msgid "api_keys_col_key"
+msgstr "Ключ"
+
+msgid "api_keys_col_created"
+msgstr "Создан"
+
+msgid "api_keys_col_last_used"
+msgstr "Использован"
+
+msgid "api_keys_revoke"
+msgstr "Отозвать"
+
+msgid "api_keys_revoke_confirm"
+msgstr "Отозвать этот API-ключ? Интеграции с ним перестанут работать."
+
 #: app/__init__.py:446 app/routes/admin.py:253 app/routes/admin.py:294
 #: app/routes/admin.py:318 app/routes/admin.py:334 app/routes/admin.py:346
 #: app/routes/admin.py:371 app/routes/admin.py:417 app/routes/admin.py:1709
@@ -2531,4 +2582,3 @@ msgstr "Загруженные модели"
 
 msgid "This model is currently selected as the active model for a module. Choose a different model first."
 msgstr "Эта модель выбрана основной для одного из модулей. Сначала выберите другую модель."
-

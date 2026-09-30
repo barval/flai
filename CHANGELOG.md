@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.3] — Unreleased
 
+### Added
+
+- **API foundation:** self-service per-user API keys are stored as SHA-256 digests and can be revoked. A Bearer-authenticated `/v1` blueprint exposes `GET /v1/models` and `GET /v1/flai/me`. API identity is request-local and does not create a browser session cookie. API keys are managed from the shared authenticated header.
+
 ## [v12.2] — Unreleased
 
 ### Added

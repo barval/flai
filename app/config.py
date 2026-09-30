@@ -237,6 +237,9 @@ def load_config(app):
     # Image token estimation
     app.config["IMAGE_TOKENS_PER_IMAGE"] = int(os.getenv("IMAGE_TOKENS_PER_IMAGE", 1000))
 
+    # Public OpenAI-compatible API
+    app.config["API_ENABLED"] = os.getenv("API_ENABLED", "true").lower() == "true"
+
     # File validation settings
     app.config["MAX_EXTENSION_LENGTH"] = int(os.getenv("MAX_EXTENSION_LENGTH", 10))
 

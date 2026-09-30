@@ -7,6 +7,19 @@
 .dark-theme header {
     background-color: #1a2632;
 }
+.dark-theme .api-keys-panel {
+    color: #e0e0e0;
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .api-keys-table th,
+.dark-theme .api-keys-table td { border-bottom-color: #444; }
+.dark-theme .api-keys-create input {
+    color: #e0e0e0;
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .api-keys-revoke { color: #e74c3c; border-color: #e74c3c; }
 .dark-theme .sessions-sidebar {
     background-color: #2d2d2d;
     border-right-color: #444;

@@ -26,6 +26,57 @@ msgstr "Session expired. Please refresh the page."
 msgid "Authentication required."
 msgstr "Authentication required."
 
+msgid "api_error_invalid_api_key"
+msgstr "Invalid API key"
+
+msgid "api_error_api_disabled"
+msgstr "API is disabled"
+
+msgid "api_key_not_found"
+msgstr "API key not found"
+
+msgid "api_keys_title"
+msgstr "API keys"
+
+msgid "api_keys_button"
+msgstr "API keys"
+
+msgid "api_keys_close"
+msgstr "Close"
+
+msgid "api_keys_hint"
+msgstr "Create keys for external integrations. A secret is shown only once."
+
+msgid "api_keys_name_placeholder"
+msgstr "Key name, e.g. Home Assistant"
+
+msgid "api_keys_create"
+msgstr "Create key"
+
+msgid "api_keys_copy"
+msgstr "Copy key"
+
+msgid "api_keys_copy_once"
+msgstr "Copy this key now. It will not be shown again."
+
+msgid "api_keys_col_name"
+msgstr "Name"
+
+msgid "api_keys_col_key"
+msgstr "Key"
+
+msgid "api_keys_col_created"
+msgstr "Created"
+
+msgid "api_keys_col_last_used"
+msgstr "Last used"
+
+msgid "api_keys_revoke"
+msgstr "Revoke"
+
+msgid "api_keys_revoke_confirm"
+msgstr "Revoke this API key? Integrations using it will stop working."
+
 #: app/__init__.py:446 app/routes/admin.py:253 app/routes/admin.py:294
 #: app/routes/admin.py:318 app/routes/admin.py:334 app/routes/admin.py:346
 #: app/routes/admin.py:371 app/routes/admin.py:417 app/routes/admin.py:1709
@@ -2520,4 +2571,3 @@ msgstr "Downloaded models"
 
 msgid "This model is currently selected as the active model for a module. Choose a different model first."
 msgstr "This model is currently selected as the active model for a module. Choose a different model first."
-

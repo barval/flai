@@ -47,6 +47,37 @@
                         {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                     </button>
                 </div>
+                <button class="api-keys-btn" id="api-keys-btn" title="{{ _('api_keys_title') }}">🔑 {{ _('api_keys_button') }}</button>
+                <div class="api-keys-panel" id="api-keys-panel" hidden
+                     data-revoke-label="{{ _('api_keys_revoke') }}"
+                     data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
+                    <div class="api-keys-header">
+                        <span>{{ _('api_keys_title') }}</span>
+                        <button class="api-keys-close" id="api-keys-close" title="{{ _('api_keys_close') }}">✕</button>
+                    </div>
+                    <p class="api-keys-hint">{{ _('api_keys_hint') }}</p>
+                    <div class="api-keys-create">
+                        <input type="text" id="api-key-name" placeholder="{{ _('api_keys_name_placeholder') }}" maxlength="64">
+                        <button id="api-key-create">{{ _('api_keys_create') }}</button>
+                    </div>
+                    <div class="api-keys-once" id="api-key-once" hidden>
+                        <code id="api-key-plaintext"></code>
+                        <p>{{ _('api_keys_copy_once') }}</p>
+                        <button id="api-key-copy">{{ _('api_keys_copy') }}</button>
+                    </div>
+                    <table class="api-keys-table">
+                        <thead>
+                            <tr>
+                                <th>{{ _('api_keys_col_name') }}</th>
+                                <th>{{ _('api_keys_col_key') }}</th>
+                                <th>{{ _('api_keys_col_created') }}</th>
+                                <th>{{ _('api_keys_col_last_used') }}</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="api-keys-body"></tbody>
+                    </table>
+                </div>
                 <form action="{{ url_for('auth.logout') }}" method="post" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="logout-button">{{ _('Logout') }}</button>
@@ -99,6 +130,9 @@
     <script src="{{ url_for('static', filename='js/base-translations.js', v=config.STATIC_VERSION) }}"></script>
     <!-- Header JavaScript module -->
     <script src="{{ url_for('static', filename='js/header.js', v=config.STATIC_VERSION) }}"></script>
+    {% if 'login' in session %}
+    <script src="{{ url_for('static', filename='js/api-keys.js', v=config.STATIC_VERSION) }}"></script>
+    {% endif %}
     <!-- Guest theme switcher script -->
     <script src="{{ url_for('static', filename='js/guest-theme.js', v=config.STATIC_VERSION) }}"></script>
 </body>

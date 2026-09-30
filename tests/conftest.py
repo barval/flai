@@ -86,8 +86,10 @@ class _MockDatabase:
         self._storage: dict[str, dict] = {}
         self._visits: dict[tuple, dict] = {}
         self._user_sessions: dict[str, dict] = {}
+        self._api_tokens: list[dict] = []
         self._next_user_id = 1
         self._next_msg_id = 1
+        self._next_api_token_id = 1
 
         # State updated by _execute and read by fetchone / fetchall
         self._fetched: Any = None
@@ -343,11 +345,46 @@ class _MockDatabase:
             self._result(dict(data) if data else None, rowcount=1 if data else 0)
             return
 
+        if "FROM API_TOKENS" in sql_u:
+            rows = list(self._api_tokens)
+            if "REVOKED_AT IS NULL" in sql_u:
+                rows = [row for row in rows if row["revoked_at"] is None]
+            if "TOKEN_HASH = %S" in sql_u:
+                rows = [row for row in rows if row["token_hash"] == params[0]]
+            if "LOGIN = %S" in sql_u:
+                rows = [row for row in rows if row["login"] == params[0]]
+            selected_columns = sql[sql_u.index("SELECT") + len("SELECT") : sql_u.index("FROM")]
+            columns = [column.strip().split()[-1].strip('"') for column in selected_columns.split(",")]
+            rows = [{column: row[column] for column in columns if column in row} for row in rows]
+            if "ORDER BY" in sql_u:
+                rows.sort(key=lambda row: (row.get("created_at") or "", row.get("id", 0)), reverse=True)
+                self._result([dict(row) for row in rows], rowcount=len(rows))
+            else:
+                self._result(dict(rows[0]) if rows else None, rowcount=1 if rows else 0)
+            return
+
         self._result(None, rowcount=0)
 
     # ── INSERT ─────────────────────────────────────────────────────────
 
     def _do_insert(self, sql: str, sql_u: str, params: tuple):
+        if "INTO API_TOKENS" in sql_u:
+            token_id = self._next_api_token_id
+            self._next_api_token_id += 1
+            row = {
+                "id": token_id,
+                "login": params[0],
+                "name": params[1],
+                "token_hash": params[2],
+                "token_prefix": params[3],
+                "created_at": None,
+                "last_used_at": None,
+                "revoked_at": None,
+            }
+            self._api_tokens.append(row)
+            self._result({"id": token_id, "created_at": None}, rowcount=1)
+            return
+
         # INTO users
         if "INTO USERS" in sql_u:
             login = params[0]
@@ -502,6 +539,21 @@ class _MockDatabase:
     # ── UPDATE ─────────────────────────────────────────────────────────
 
     def _do_update(self, sql: str, sql_u: str, params: tuple):
+        if "API_TOKENS" in sql_u:
+            token_id = params[0]
+            login = params[1] if len(params) > 1 else None
+            for row in self._api_tokens:
+                if row["id"] != token_id or (login is not None and row["login"] != login):
+                    continue
+                if "SET REVOKED_AT = CURRENT_TIMESTAMP" in sql_u:
+                    row["revoked_at"] = "now"
+                if "LAST_USED_AT = CURRENT_TIMESTAMP" in sql_u:
+                    row["last_used_at"] = "now"
+                self._result(None, rowcount=1)
+                return
+            self._result(None, rowcount=0)
+            return
+
         # UPDATE user_sessions (must come BEFORE the USERS check to avoid substring match)
         if "USER_SESSIONS" in sql_u:
             uid = params[-1]

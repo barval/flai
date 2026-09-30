@@ -2521,6 +2521,39 @@ msgstr "Task is no longer cancellable"
 msgid "Queued tasks cannot be cancelled"
 msgstr "Queued tasks cannot be cancelled"
 
+msgid "'prompt' must be a non-empty string"
+msgstr "'prompt' must be a non-empty string"
+
+msgid "Only response_format 'url' is supported for asynchronous image generation"
+msgstr "Only response_format 'url' is supported for asynchronous image generation"
+
+msgid "Only response_format 'url' is supported for asynchronous image edits"
+msgstr "Only response_format 'url' is supported for asynchronous image edits"
+
+msgid "Missing 'image' upload"
+msgstr "Missing 'image' upload"
+
+msgid "Unsupported image format"
+msgstr "Unsupported image format"
+
+msgid "Image editing module unavailable"
+msgstr "Image editing module unavailable"
+
+msgid "Video generation option is out of range"
+msgstr "Video generation option is out of range"
+
+msgid "Video dimensions must be multiples of 32"
+msgstr "Video dimensions must be multiples of 32"
+
+msgid "Unsupported video frame rate"
+msgstr "Unsupported video frame rate"
+
+msgid "Video output exceeds the supported size or duration"
+msgstr "Video output exceeds the supported size or duration"
+
+msgid "Generated media not found"
+msgstr "Generated media not found"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

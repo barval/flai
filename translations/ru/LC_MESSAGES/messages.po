@@ -2539,6 +2539,39 @@ msgstr "Задачу уже нельзя отменить"
 msgid "Queued tasks cannot be cancelled"
 msgstr "Задачи в очереди нельзя отменить"
 
+msgid "'prompt' must be a non-empty string"
+msgstr "Поле 'prompt' должно содержать непустую строку"
+
+msgid "Only response_format 'url' is supported for asynchronous image generation"
+msgstr "Для асинхронной генерации изображений поддерживается только response_format 'url'"
+
+msgid "Only response_format 'url' is supported for asynchronous image edits"
+msgstr "Для асинхронного редактирования изображений поддерживается только response_format 'url'"
+
+msgid "Missing 'image' upload"
+msgstr "Не загружено изображение в поле 'image'"
+
+msgid "Unsupported image format"
+msgstr "Неподдерживаемый формат изображения"
+
+msgid "Image editing module unavailable"
+msgstr "Модуль редактирования изображений недоступен"
+
+msgid "Video generation option is out of range"
+msgstr "Значение параметра генерации видео вне допустимого диапазона"
+
+msgid "Video dimensions must be multiples of 32"
+msgstr "Размеры видео должны быть кратны 32"
+
+msgid "Unsupported video frame rate"
+msgstr "Неподдерживаемая частота кадров видео"
+
+msgid "Video output exceeds the supported size or duration"
+msgstr "Размер или длительность видео превышает поддерживаемый предел"
+
+msgid "Generated media not found"
+msgstr "Сгенерированный файл не найден"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

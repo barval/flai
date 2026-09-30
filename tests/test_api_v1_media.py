@@ -61,6 +61,27 @@ def post_audio(client, token, content=WAV, filename="clip.wav", content_type="au
     return client.post(TRANSCRIPTIONS, data=data, headers=bearer(token), content_type="multipart/form-data")
 
 
+def png_bytes():
+    from PIL import Image
+
+    output = io.BytesIO()
+    Image.new("RGB", (8, 8), color="red").save(output, format="PNG")
+    return output.getvalue()
+
+
+def install_media_modules(test_app, *, image=True, video=True, multimodal=True):
+    modules = {}
+    for name, available in (("image", image), ("video", video), ("multimodal", multimodal)):
+        module = Mock()
+        module.available = available
+        module.check_availability.return_value = available
+        if name == "multimodal":
+            module.validate_image.return_value = (True, None)
+        modules[name] = module
+    test_app.modules.update(modules)
+    return modules
+
+
 @pytest.fixture
 def transcribe_stub(test_app, monkeypatch):
     """Stub the bridge and the new queue task; capture what was enqueued."""
@@ -589,6 +610,351 @@ class TestCapabilityFlags:
     def test_audio_endpoints_are_advertised_in_models(self, client, api_user):
         ids = {m["id"] for m in client.get("/v1/models", headers=bearer(api_user)).get_json()["data"]}
         assert {"flai-tts", "flai-stt"} <= ids
+
+
+@pytest.mark.unit
+class TestImageVideoEndpoints:
+    def test_generation_and_edit_capability_flags_follow_module_availability(self, client, api_user, test_app):
+        install_media_modules(test_app, image=False, video=True)
+        response = client.get("/v1/flai/me", headers=bearer(api_user))
+        caps = response.get_json()["capabilities"]
+        assert caps["images"] is False
+        assert caps["videos"] is True
+
+    def test_media_content_is_owner_scoped_and_under_upload_root(
+        self, client, api_user, test_app, monkeypatch, tmp_path
+    ):
+        session_id = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+        test_app.config["UPLOAD_FOLDER"] = str(tmp_path)
+        media = tmp_path / session_id / "generated.png"
+        media.parent.mkdir(parents=True)
+        media.write_bytes(png_bytes())
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: {"login": "apiuser", "session_id": session_id, "endpoint": "/v1/images/generations"},
+        )
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_message",
+            lambda login, owner_session_id, message_id: {
+                "file_path": f"{owner_session_id}/generated.png",
+                "file_type": "image/png",
+                "file_name": "generated.png",
+            },
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {"message_id": 42}},
+        )
+        response = client.get("/v1/flai/tasks/media-task/content", headers=bearer(api_user))
+        assert response.status_code == 200, response.get_json()
+        assert response.data == png_bytes()
+
+    def test_media_content_rejects_traversal_and_foreign_owner(self, client, api_user, test_app, monkeypatch):
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: (
+                {"login": "someone-else", "session_id": "s1", "endpoint": "/v1/videos"}
+                if task_id == "foreign-media"
+                else {"login": "apiuser", "session_id": "s1", "endpoint": "/v1/videos"}
+            ),
+        )
+        response = client.get("/v1/flai/tasks/foreign-media/content", headers=bearer(api_user))
+        assert response.status_code == 404
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_message",
+            lambda login, session_id, message_id: {
+                "file_path": "../../etc/passwd",
+                "file_type": "text/plain",
+                "file_name": "passwd",
+            },
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {"message_id": 1}},
+        )
+        response = client.get("/v1/flai/tasks/bad-path/content", headers=bearer(api_user))
+        assert response.status_code == 404
+
+    def test_task_content_requires_a_terminal_result_with_message_id(self, client, api_user, test_app, monkeypatch):
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: {"login": "apiuser", "session_id": "s1", "endpoint": "/v1/videos"},
+        )
+        monkeypatch.setattr(test_app.request_queue, "check_result", lambda task_id: None)
+        media_lookup = []
+        monkeypatch.setattr("app.routes.api_v1.get_api_task_message", lambda *args: media_lookup.append(args))
+        response = client.get("/v1/flai/tasks/pending-media/content", headers=bearer(api_user))
+        assert response.status_code == 404
+        assert media_lookup == []
+
+    def test_task_content_does_not_query_without_message_id(self, client, api_user, test_app, monkeypatch):
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: {"login": "apiuser", "session_id": "s1", "endpoint": "/v1/images/generations"},
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {}},
+        )
+        media_lookup = []
+        monkeypatch.setattr("app.routes.api_v1.get_api_task_message", lambda *args: media_lookup.append(args))
+        response = client.get("/v1/flai/tasks/no-message/content", headers=bearer(api_user))
+        assert response.status_code == 404
+        assert media_lookup == []
+
+    def test_task_and_video_poll_routes_share_owner_scoped_status(self, client, api_user, test_app, monkeypatch):
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: {"login": "apiuser", "session_id": "s1", "endpoint": "/v1/videos"},
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {"response": "done"}},
+        )
+        task = client.get("/v1/flai/tasks/video-poll", headers=bearer(api_user))
+        video = client.get("/v1/videos/video-poll", headers=bearer(api_user))
+        assert task.status_code == video.status_code == 200
+        assert task.get_json()["status"] == "completed"
+        assert video.get_json()["status"] == "completed"
+
+    def test_image_generation_uses_native_queue_and_returns_202(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        enqueued = {}
+        registered = {}
+
+        def _enqueue(api_user_arg, session_id, prompt, response_style):
+            enqueued.update(login=api_user_arg["login"], session_id=session_id, prompt=prompt, style=response_style)
+            return "image-task", {"position": 2, "estimated_seconds": 10, "queue_type": "slow"}
+
+        monkeypatch.setattr("app.routes.api_v1.enqueue_image_generation", _enqueue, raising=False)
+        monkeypatch.setattr(
+            "app.routes.api_v1.register_api_task",
+            lambda user, task_id, session_id, endpoint: registered.update(
+                login=user["login"], task_id=task_id, session_id=session_id, endpoint=endpoint
+            ),
+            raising=False,
+        )
+        generated = []
+        test_app.modules["image"]._call_wrapper.side_effect = lambda *a, **k: generated.append(a)
+
+        response = client.post(
+            "/v1/images/generations",
+            json={"prompt": "a red cat", "response_format": "url"},
+            headers=bearer(api_user),
+        )
+
+        assert response.status_code == 202
+        assert response.get_json()["id"] == "image-task"
+        assert response.get_json()["status"] == "queued"
+        assert response.get_json()["poll_url"].endswith("/v1/flai/tasks/image-task")
+        assert enqueued["prompt"] == "a red cat"
+        assert enqueued["login"] == registered["login"] == "apiuser"
+        assert registered["task_id"] == "image-task"
+        assert registered["endpoint"] == "/v1/images/generations"
+        assert generated == []
+
+    def test_image_generation_b64_json_is_rejected_without_enqueue(self, client, api_user, monkeypatch):
+        enqueued = []
+        monkeypatch.setattr(
+            "app.routes.api_v1.enqueue_image_generation", lambda *a, **k: enqueued.append(a), raising=False
+        )
+        response = client.post(
+            "/v1/images/generations",
+            json={"prompt": "a red cat", "response_format": "b64_json"},
+            headers=bearer(api_user),
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"]["code"] == "invalid_response_format"
+        assert enqueued == []
+
+    def test_image_generation_creates_owned_session_and_persists_prompt(self, client, api_user, monkeypatch):
+        install_media_modules(client.application)
+        persisted = []
+        monkeypatch.setattr("app.routes.api_v1.resolve_api_session", lambda *a, **k: "owned-session")
+        monkeypatch.setattr("app.routes.api_v1.resolve_api_session", lambda *a, **k: "owned-session")
+        monkeypatch.setattr("app.api_bridge.save_message", lambda *a, **k: persisted.append((a, k)) or 50)
+        monkeypatch.setattr("app.api_bridge.update_session_visit", lambda *a, **k: None)
+        response = client.post("/v1/images/generations", json={"prompt": "red cat"}, headers=bearer(api_user))
+        assert response.status_code == 202
+        assert persisted[0][1]["user_id"] == "apiuser"
+        assert "red cat" in persisted[0][0][2]
+
+    def test_image_edit_queues_base64_image_after_quota_and_resize(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        captured = {}
+
+        def _enqueue(api_user_arg, session_id, prompt, file_data, file_type, file_name, response_style):
+            captured.update(
+                login=api_user_arg["login"],
+                session_id=session_id,
+                prompt=prompt,
+                file_data=file_data,
+                file_type=file_type,
+                file_name=file_name,
+            )
+            return "edit-task", {}
+
+        monkeypatch.setattr("app.routes.api_v1.enqueue_image_edit", _enqueue, raising=False)
+        monkeypatch.setattr("app.routes.api_v1.resolve_api_session", lambda *a, **k: "owned-session")
+        monkeypatch.setattr("app.routes.api_v1.register_api_task", lambda *a: None, raising=False)
+        monkeypatch.setattr("app.routes.api_v1.check_upload_quota", lambda login, size: None, raising=False)
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: "session/input.png")
+        monkeypatch.setattr("app.api_bridge.save_message", lambda *a, **k: 60)
+        monkeypatch.setattr("app.api_bridge.update_session_visit", lambda *a, **k: None)
+        monkeypatch.setattr(
+            "app.routes.api_v1.resize_image_if_needed",
+            lambda data, file_type, filename, max_size: (data, file_type, filename, False, None, None),
+            raising=False,
+        )
+        monkeypatch.setattr("app.routes.api_v1.magic.from_buffer", lambda data, mime=True: "image/png", raising=False)
+        generated = []
+        test_app.modules["image"].edit_image.side_effect = lambda *a, **k: generated.append(a)
+        data = {"prompt": "make it blue", "image": (io.BytesIO(png_bytes()), "source.png", "image/png")}
+
+        response = client.post(
+            "/v1/images/edits", data=data, headers=bearer(api_user), content_type="multipart/form-data"
+        )
+
+        assert response.status_code == 202
+        assert captured["login"] == "apiuser"
+        assert captured["prompt"] == "make it blue"
+        assert captured["file_type"] == "image/png"
+        assert base64.b64decode(captured["file_data"]) == png_bytes()
+        assert generated == []
+
+    def test_image_edit_checks_quota_before_queue(self, client, api_user, test_app, monkeypatch):
+        enqueued = []
+        monkeypatch.setattr("app.routes.api_v1.enqueue_image_edit", lambda *a, **k: enqueued.append(a), raising=False)
+        monkeypatch.setattr("app.routes.api_v1.magic.from_buffer", lambda data, mime=True: "image/png", raising=False)
+        monkeypatch.setattr("app.routes.api_v1.check_upload_quota", lambda login, size: "quota exceeded", raising=False)
+        data = {"prompt": "edit", "image": (io.BytesIO(png_bytes()), "source.png", "image/png")}
+        response = client.post(
+            "/v1/images/edits", data=data, headers=bearer(api_user), content_type="multipart/form-data"
+        )
+        assert response.status_code == 413
+        assert enqueued == []
+
+    def test_image_edit_rejects_non_image_and_missing_prompt(self, client, api_user, monkeypatch):
+        install_media_modules(client.application)
+        enqueued = []
+        monkeypatch.setattr("app.routes.api_v1.enqueue_image_edit", lambda *a, **k: enqueued.append(a), raising=False)
+        data = {"prompt": "edit", "image": (io.BytesIO(b"not an image"), "note.txt", "text/plain")}
+        monkeypatch.setattr("app.routes.api_v1.magic.from_buffer", lambda data, mime=True: "text/plain")
+        response = client.post(
+            "/v1/images/edits", data=data, headers=bearer(api_user), content_type="multipart/form-data"
+        )
+        assert response.status_code == 400
+        assert enqueued == []
+        response = client.post(
+            "/v1/images/edits",
+            data={"image": (io.BytesIO(png_bytes()), "source.png", "image/png")},
+            headers=bearer(api_user),
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 400
+
+    def test_video_options_are_validated_and_return_async_job(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        captured = {}
+
+        def _enqueue(api_user_arg, session_id, prompt, options):
+            captured.update(login=api_user_arg["login"], session_id=session_id, prompt=prompt, options=options)
+            return "video-task", {}
+
+        monkeypatch.setattr("app.routes.api_v1.enqueue_video_generation", _enqueue, raising=False)
+        monkeypatch.setattr("app.routes.api_v1.register_api_task", lambda *a: None, raising=False)
+        generated = []
+        test_app.modules["video"].generate_video.side_effect = lambda *a, **k: generated.append(a)
+        response = client.post(
+            "/v1/videos",
+            json={"prompt": "waves at sunset", "width": 512, "height": 512, "num_frames": 57, "frame_rate": 6},
+            headers=bearer(api_user),
+        )
+        assert response.status_code == 202
+        assert response.get_json()["poll_url"].endswith("/v1/videos/video-task")
+        assert captured["options"] == {"width": 512, "height": 512, "num_frames": 57, "frame_rate": 6}
+        assert generated == []
+
+    def test_video_rejects_unsupported_options_before_queue(self, client, api_user, monkeypatch):
+        enqueued = []
+        monkeypatch.setattr(
+            "app.routes.api_v1.enqueue_video_generation", lambda *a, **k: enqueued.append(a), raising=False
+        )
+        response = client.post("/v1/videos", json={"prompt": "waves", "quality": "ultra"}, headers=bearer(api_user))
+        assert response.status_code == 400
+        assert response.get_json()["error"]["code"] == "invalid_video_options"
+        assert enqueued == []
+
+    def test_video_missing_module_returns_503(self, client, api_user, test_app, monkeypatch):
+        test_app.modules.pop("video", None)
+        enqueued = []
+        monkeypatch.setattr(
+            "app.routes.api_v1.enqueue_video_generation", lambda *a, **k: enqueued.append(a), raising=False
+        )
+        response = client.post("/v1/videos", json={"prompt": "waves"}, headers=bearer(api_user))
+        assert response.status_code == 503
+        assert enqueued == []
+
+    def test_task_content_requires_owner_and_resolves_under_upload_root(
+        self, client, api_user, test_app, monkeypatch, tmp_path
+    ):
+
+        session_id = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+        test_app.config["UPLOAD_FOLDER"] = str(tmp_path)
+        media = tmp_path / session_id / "generated.png"
+        media.parent.mkdir(parents=True)
+        media.write_bytes(png_bytes())
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: {"login": "apiuser", "session_id": session_id, "endpoint": "/v1/images/generations"},
+        )
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_message",
+            lambda login, owner_session_id, message_id: {
+                "file_path": f"{owner_session_id}/generated.png",
+                "file_type": "image/png",
+                "file_name": "generated.png",
+            },
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {"message_id": 42, "file_path": "exists"}},
+        )
+        response = client.get("/v1/flai/tasks/media-task/content", headers=bearer(api_user))
+        assert response.status_code == 200
+        assert response.data == png_bytes()
+
+    def test_task_content_rejects_foreign_id_and_traversal(self, client, api_user, test_app, monkeypatch):
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_owner",
+            lambda task_id: (
+                {"login": "another-user", "session_id": "s1", "endpoint": "/v1/videos"}
+                if task_id == "foreign"
+                else {"login": "apiuser", "session_id": "s1", "endpoint": "/v1/videos"}
+            ),
+        )
+        response = client.get("/v1/flai/tasks/foreign/content", headers=bearer(api_user))
+        assert response.status_code == 404
+        monkeypatch.setattr(
+            "app.routes.api_v1.get_api_task_message",
+            lambda login, session_id, message_id: {
+                "file_path": "../../etc/passwd",
+                "file_type": "text/plain",
+                "file_name": "passwd",
+            },
+        )
+        monkeypatch.setattr(
+            test_app.request_queue,
+            "check_result",
+            lambda task_id: {"status": "completed", "result": {"message_id": 1}},
+        )
+        response = client.get("/v1/flai/tasks/traversal/content", headers=bearer(api_user))
+        assert response.status_code == 404
 
 
 @pytest.mark.unit

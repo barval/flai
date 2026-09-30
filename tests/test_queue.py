@@ -892,3 +892,58 @@ class TestApiEmbeddingTask:
             q._process_request(self._task(["hello"]))
 
         begin.assert_not_called()
+
+
+@pytest.mark.unit
+class TestApiImageEditTask:
+    def test_api_edit_has_a_dedicated_slow_queue_type(self):
+        from app.queue import RedisRequestQueue
+
+        queue = RedisRequestQueue.__new__(RedisRequestQueue)
+        task = {"type": "api_image_edit", "data": {"type": "image", "file_type": "image/png", "text": "edit"}}
+        assert queue._classify_task(task) == "slow"
+
+    def test_api_edit_reserves_the_multimodal_model(self):
+        from app.queue import RedisRequestQueue
+
+        queue = RedisRequestQueue.__new__(RedisRequestQueue)
+        assert queue._get_model_for_task({"type": "api_image_edit", "data": {"type": "image"}}) == "multimodal"
+
+    def test_api_edit_dispatches_to_the_existing_worker_handler(self):
+        from app.queue import RedisRequestQueue
+
+        queue = RedisRequestQueue.__new__(RedisRequestQueue)
+        queue.app = Mock()
+        queue.app._last_task_time = None
+        base = Mock()
+        base._ = lambda message, lang="en": message
+        queue.app.modules = {"base": base, "resource_manager": Mock()}
+        queue._process_image_edit_task = Mock(return_value={"status": "completed"})
+        queue._process_image_chat_task = Mock(side_effect=AssertionError("API image edit used the chat handler"))
+        task = {
+            "id": "api-edit-1",
+            "type": "api_image_edit",
+            "user_id": "alice",
+            "session_id": "session-1",
+            "lang": "en",
+            "user_class": 2,
+            "data": {
+                "type": "image",
+                "text": "make it blue",
+                "file_data": "AAAA",
+                "file_type": "image/png",
+                "file_name": "source.png",
+                "response_style": "neutral",
+            },
+        }
+        queue._process_request(task)
+        queue._process_image_edit_task.assert_called_once_with(
+            "make it blue",
+            "AAAA",
+            "image/png",
+            "session-1",
+            "alice",
+            "en",
+            "neutral",
+            task=task,
+        )

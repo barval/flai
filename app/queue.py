@@ -208,6 +208,8 @@ class RedisRequestQueue:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
         task_type = task.get("type", "")
+        if task_type == "api_image_edit":
+            return "slow"
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
         if task_type == "fact_merge_task":
@@ -234,7 +236,7 @@ class RedisRequestQueue:
                 return "slow"
             return "fast"
         # Image generation (re-queued from router) is slow
-        if req_type == "image_gen":
+        if req_type in ("image_gen", "api_image_edit") or task_type == "api_image_edit":
             return "slow"
         if req_type == "rlm_analysis":
             return "slow"
@@ -260,7 +262,13 @@ class RedisRequestQueue:
         return "slow"
 
     def add_request(
-        self, user_id: str, session_id: str, request_data: dict[str, Any], user_class: int, lang: str = "ru"
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+        task_type: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Add a request to the appropriate queue (fast or slow)."""
         task_id = str(uuid.uuid4())
@@ -273,6 +281,8 @@ class RedisRequestQueue:
             "lang": lang,
             "timestamp": time.time(),
         }
+        if task_type:
+            task["type"] = task_type
 
         # Classify and route to appropriate queue
         queue_type = self._classify_task(task)
@@ -302,6 +312,24 @@ class RedisRequestQueue:
             "estimated_seconds": self._estimate_wait(queue_type, position),
             "queue_type": queue_type,
         }
+
+    def add_api_image_edit(
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+    ) -> tuple[str, dict[str, Any]]:
+        """Queue an explicit API image edit as a slow worker task."""
+        return self.add_request(
+            user_id,
+            session_id,
+            request_data,
+            user_class,
+            lang=lang,
+            task_type="api_image_edit",
+        )
 
     def add_reindex_all_task(self, lang: str = "ru") -> str:
         """Add a reindex-all task to the slow queue."""
@@ -369,7 +397,11 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if task_type == "api_image_edit":
+            return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
+            return "multimodal"
+        if req_type == "api_image_edit" or task_type == "api_image_edit":
             return "multimodal"
         if task_type == "transcribe_audio":
             return "none"
@@ -1348,6 +1380,7 @@ class RedisRequestQueue:
             self.app.logger.warning("Edit: no image_data in result")
 
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -1500,6 +1533,7 @@ class RedisRequestQueue:
 
         mm_model = self._get_model_name("multimodal") or "unknown"
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -2117,7 +2151,15 @@ class RedisRequestQueue:
             return self._process_video_gen_task_from_image(
                 query, file_data, session_id, user_id, lang, response_style, task=task
             )
-        return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
+        return self._process_video_gen_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            task=task,
+            generation_options=request_data,
+        )
 
     def _process_video_gen_task(
         self,
@@ -2127,6 +2169,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        generation_options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
@@ -2161,6 +2204,9 @@ class RedisRequestQueue:
             mm_time = round(time.time() - mm_start, 1)
             if error:
                 return self._build_error_response(session_id, error, mm_time, lang)
+            for option in ("width", "height", "num_frames", "frame_rate", "seed"):
+                if generation_options and option in generation_options:
+                    prompt_data[option] = generation_options[option]
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
@@ -2249,6 +2295,7 @@ class RedisRequestQueue:
 
             mm_model = self._get_model_name("multimodal") or "unknown"
             extra = {
+                "task_id": task.get("id") if task else None,
                 "file_path": file_path,
                 "file_name": video_result["file_name"],
                 "file_size": video_result["file_size"],
@@ -3871,6 +3918,30 @@ class RedisRequestQueue:
             return self._process_api_embedding_task(task)
         if task_type == "api_transcribe":
             return self._process_api_transcribe_task(task)
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
 
         user_id = task["user_id"]
         session_id = task["session_id"]

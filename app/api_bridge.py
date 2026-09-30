@@ -12,7 +12,7 @@ import redis as redis_lib
 from flask import current_app
 
 from app.db import create_session, save_message, update_session_visit
-from app.utils import validate_session_ownership
+from app.utils import save_uploaded_file, validate_session_ownership
 
 CONVERSATION_KEY_PREFIX = "api_conv:"
 SESSION_TITLE_PREFIX = "flai:conv:"
@@ -171,6 +171,30 @@ def get_api_task_owner(task_id: str) -> dict[str, str] | None:
     return {str(key): str(value) for key, value in metadata.items()}
 
 
+def get_api_task_message(login: str, session_id: str, message_id: int) -> dict[str, Any] | None:
+    """Fetch generated media metadata through an owner-checked session join."""
+    if not session_id or message_id <= 0:
+        return None
+    from app.database import get_db
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT m.id, m.session_id, m.file_path, m.file_name, m.file_type
+            FROM messages AS m
+            JOIN chat_sessions AS cs ON cs.id = m.session_id
+            WHERE m.id = %s AND m.session_id = %s AND cs.user_id = %s AND m.role = 'assistant'
+              AND m.file_path IS NOT NULL AND m.file_path != ''
+              AND m.model_type IN ('image_gen', 'image_edit', 'video')
+            LIMIT 1
+            """,
+            (message_id, session_id, login),
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
 def list_api_tasks(login: str, limit: int = 20) -> list[dict[str, str]]:
     """List the most recently registered tasks belonging to one API owner."""
     client = get_redis_client()
@@ -198,6 +222,127 @@ def sanitize_api_task_result(result: dict[str, Any]) -> dict[str, Any]:
     if isinstance(error, str) and error.startswith("⚠️ "):
         safe["error"] = error
     return safe
+
+
+def enqueue_image_generation(
+    api_user: dict[str, Any],
+    session_id: str,
+    prompt: str,
+    response_style: str,
+) -> tuple[str, dict[str, Any]]:
+    """Queue an explicit public-API image generation request."""
+    message_id = save_message(
+        session_id,
+        "user",
+        _build_user_content(prompt, []),
+        user_id=api_user["login"],
+        response_style=response_style,
+    )
+    update_session_visit(api_user["login"], session_id)
+    request_data = {
+        "type": "image_gen",
+        "text": prompt,
+        "current_message_id": message_id,
+        "preview": prompt[:50] + "..." if len(prompt) > 50 else prompt,
+        "response_style": response_style,
+        "stream": False,
+    }
+    task_id, queue_info = get_request_queue().add_request(
+        api_user["login"],
+        session_id,
+        request_data,
+        api_user.get("service_class", DEFAULT_SERVICE_CLASS),
+        api_user.get("language", "ru"),
+    )
+    return str(task_id), dict(queue_info)
+
+
+def enqueue_image_edit(
+    api_user: dict[str, Any],
+    session_id: str,
+    prompt: str,
+    file_data: str,
+    file_type: str,
+    file_name: str,
+    response_style: str,
+) -> tuple[str, dict[str, Any]]:
+    """Queue an explicit image edit through the normal serialized GPU worker."""
+    file_path = save_uploaded_file(
+        file_data=file_data,
+        filename=file_name,
+        session_id=session_id,
+        upload_folder=current_app.config["UPLOAD_FOLDER"],
+        user_id=api_user["login"],
+    )
+    message_id = save_message(
+        session_id,
+        "user",
+        _build_user_content(
+            prompt,
+            [{"type": "image", "file_data": file_data, "file_type": file_type, "file_name": file_name}],
+        ),
+        file_data,
+        file_type,
+        file_name,
+        file_path=file_path,
+        user_id=api_user["login"],
+        response_style=response_style,
+    )
+    update_session_visit(api_user["login"], session_id)
+    request_data = {
+        "type": "image",
+        "text": prompt,
+        "current_message_id": message_id,
+        "file_data": file_data,
+        "file_type": file_type,
+        "file_name": file_name,
+        "preview": prompt[:50] + "..." if len(prompt) > 50 else prompt,
+        "response_style": response_style,
+        "stream": False,
+        "file_path": file_path,
+    }
+    task_id, queue_info = get_request_queue().add_api_image_edit(
+        api_user["login"],
+        session_id,
+        request_data,
+        api_user.get("service_class", DEFAULT_SERVICE_CLASS),
+        api_user.get("language", "ru"),
+    )
+    return str(task_id), dict(queue_info)
+
+
+def enqueue_video_generation(
+    api_user: dict[str, Any],
+    session_id: str,
+    prompt: str,
+    options: dict[str, int],
+) -> tuple[str, dict[str, Any]]:
+    """Queue an explicit public-API video generation request."""
+    message_id = save_message(
+        session_id,
+        "user",
+        _build_user_content(prompt, []),
+        user_id=api_user["login"],
+        response_style=api_user.get("response_style", DEFAULT_RESPONSE_STYLE),
+    )
+    update_session_visit(api_user["login"], session_id)
+    request_data = {
+        "type": "video",
+        "text": prompt,
+        "current_message_id": message_id,
+        "preview": prompt[:50] + "..." if len(prompt) > 50 else prompt,
+        "response_style": api_user.get("response_style", DEFAULT_RESPONSE_STYLE),
+        "stream": False,
+        **options,
+    }
+    task_id, queue_info = get_request_queue().add_request(
+        api_user["login"],
+        session_id,
+        request_data,
+        api_user.get("service_class", DEFAULT_SERVICE_CLASS),
+        api_user.get("language", "ru"),
+    )
+    return str(task_id), dict(queue_info)
 
 
 def client_fingerprint(client_user: str) -> str:

@@ -30,7 +30,9 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | Speech synthesis | `POST /v1/audio/speech` | Shipped |
 | Audio transcription | `POST /v1/audio/transcriptions` | Shipped |
 | Task list/status/cancel | `/v1/flai/tasks*` | Shipped |
-| Image and video generation | `/v1/images/*`, `/v1/videos/*` | Planned |
+| Task media download | `GET /v1/flai/tasks/{task_id}/content` | Shipped |
+| Image generation/edits | `POST /v1/images/generations`, `POST /v1/images/edits` | Shipped |
+| Video generation | `POST /v1/videos`, `GET /v1/videos/{task_id}` | Shipped |
 | Documents, deep analysis | `/v1/rlm/*` | Planned |
 
 Endpoints that are not listed in this table do not exist yet. A client that
@@ -368,6 +370,73 @@ Example task response:
 
 ---
 
+## Asynchronous image and video generation
+
+Images and videos are produced by the same serialized GPU queue as web chat:
+the endpoints enqueue a task and return `202 Accepted` with a poll URL. No
+model generation ever runs inside the HTTP request, and `API_MAX_CONCURRENT_WAITS`
+is not consumed by an async job after it is enqueued.
+
+```bash
+# Generate an image from a prompt
+curl http://localhost:5000/v1/images/generations \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a lighthouse at dusk", "model": "flai-image"}'
+
+# Edit an uploaded image (multipart)
+curl http://localhost:5000/v1/images/edits \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -F image=@photo.jpg \
+  -F prompt="make it winter"
+
+# Start a video generation
+curl http://localhost:5000/v1/videos \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "waves on a beach", "size": "768x512", "seconds": 4}'
+```
+
+- `response_format` must be `url` (default). `b64_json` is rejected with
+  `400 invalid_request_error`: the payload is stored server-side, so clients
+  download it via the content URL instead of receiving megabytes inline.
+- Image edits require a multipart `image` upload and a non-empty `prompt`;
+  path-like file references are never accepted.
+- Video options (`size`, `seconds`, `quality`, `fps`) are validated against the
+  configured `VideoModule`; unsupported values return `400` instead of being
+  passed through silently.
+- When the image or video module is missing or unavailable the endpoints
+  return `503 service_unavailable`.
+- Every response carries the prompt in the task record, and the conversation
+  turn (prompt + generated media) is persisted into the API session history.
+
+The task id in the `202` body is polled through the owner-scoped endpoints
+above. A completed media task adds `content_url` to the response, and video
+tasks mirror it as `url` (OpenAI video-job shape):
+
+```json
+{
+  "id": "a1d5b76a-...",
+  "object": "flai.task",
+  "status": "completed",
+  "endpoint": "/v1/images/generations",
+  "content_url": "/v1/flai/tasks/a1d5b76a-.../content",
+  "result": {"response": "Image generated", "usage": {"prompt_tokens": 12, "completion_tokens": 0}}
+}
+```
+
+### `GET /v1/flai/tasks/{task_id}/content`
+
+Downloads the generated media for a completed task. The check is layered: the
+task must belong to the authenticated owner, and the underlying message is
+fetched with a join proving the session belongs to the same owner. The file is
+resolved with `realpath` under `UPLOAD_FOLDER`; caller-provided paths are never
+accepted, so traversal or a foreign task returns `404 task_not_found` without a
+filesystem oracle. The response is `send_file` bytes with the stored MIME type
+and a safe filename.
+
+---
+
 ## `GET /v1/models`
 
 Returns the FLAI capability ids as OpenAI model objects. The list is a
@@ -396,8 +465,8 @@ wants to know what the server supports before it builds a request.
     "embeddings": true,
     "audio_speech": true,
     "audio_transcriptions": true,
-    "images": false,
-    "videos": false,
+    "images": true,
+    "videos": true,
     "documents": false,
     "rlm": false,
     "tools": false,
@@ -408,7 +477,9 @@ wants to know what the server supports before it builds a request.
 
 The two audio flags are true only when the configured TTS/audio modules are
 available; `flai-tts` and `flai-stt` are capability identifiers in the model
-list, not selectable weights.
+list, not selectable weights. `images` and `videos` are true only when the
+image/video module **and** the multimodal model (used for prompt enrichment)
+are both available.
 
 ---
 
@@ -483,8 +554,8 @@ mind when choosing client timeouts:
   returns its slot immediately. Async jobs (image, video) do not hold a slot
   after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
-  `POST /v1/chat/completions`, `POST /v1/embeddings`, `/v1/audio/*`, and
-  `/v1/flai/tasks*`.
+  `POST /v1/chat/completions`, `POST /v1/embeddings`, `/v1/audio/*`,
+  `/v1/images/*`, `/v1/videos*`, and `/v1/flai/tasks*`.
   The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
   it, and one noisy client cannot spend another user's quota. A spent budget

@@ -2,6 +2,7 @@
 
 import json
 import time
+from contextlib import contextmanager
 from unittest.mock import Mock
 
 import pytest
@@ -303,7 +304,7 @@ class TestApiTaskRoutes:
 
         owner, _ = task_tokens
         with test_app.app_context():
-            register_api_task({"login": "taskowner"}, "done", "s1", "/v1/images")
+            register_api_task({"login": "taskowner"}, "done", "s1", "/v1/images/generations")
         monkeypatch.setattr(
             test_app.request_queue,
             "check_result",
@@ -315,6 +316,7 @@ class TestApiTaskRoutes:
                     "file_data": "base64secret",
                     "prompt_tokens": 8,
                     "completion_tokens": 9,
+                    "message_id": 42,
                 },
             },
         )
@@ -324,6 +326,7 @@ class TestApiTaskRoutes:
             "response": "generated",
             "usage": {"prompt_tokens": 8, "completion_tokens": 9},
         }
+        assert response.get_json()["content_url"] == "/v1/flai/tasks/done/content"
         assert "/private/" not in response.get_data(as_text=True)
         assert "base64secret" not in response.get_data(as_text=True)
 
@@ -523,3 +526,38 @@ def test_task_result_sanitizer_never_returns_paths_tokens_or_file_payloads():
     assert "/private/" not in json.dumps(result)
     assert "base64secret" not in json.dumps(result)
     assert "rawtoken" not in json.dumps(result)
+
+
+@pytest.mark.unit
+def test_api_task_message_lookup_joins_session_owner_and_exact_message(monkeypatch):
+    from app.api_bridge import get_api_task_message
+
+    class Cursor:
+        def __init__(self):
+            self.query = None
+            self.params = None
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchone(self):
+            return {"id": 42, "file_path": "session-1/output.png", "file_type": "image/png", "file_name": "output.png"}
+
+    cursor = Cursor()
+
+    class Connection:
+        def cursor(self):
+            return cursor
+
+    @contextmanager
+    def fake_get_db():
+        yield Connection()
+
+    monkeypatch.setattr("app.database.get_db", fake_get_db)
+    record = get_api_task_message("alice", "owned-session", 42)
+
+    assert record["id"] == 42
+    assert "JOIN chat_sessions AS cs ON cs.id = m.session_id" in cursor.query
+    assert "cs.user_id = %s" in cursor.query
+    assert cursor.params == (42, "owned-session", "alice")

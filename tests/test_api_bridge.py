@@ -16,7 +16,10 @@ from app.api_bridge import (
     _resolve_terminal,
     enqueue_chat,
     enqueue_embeddings,
+    enqueue_image_edit,
+    enqueue_image_generation,
     enqueue_transcription,
+    enqueue_video_generation,
     normalize_chat_messages,
     resolve_api_session,
     serialize_chat_completion,
@@ -268,6 +271,11 @@ class FakeQueue:
         task_id = f"task-{len(self.added) + 1}"
         self.added.append((user_id, session_id, request_data, user_class, lang))
         return task_id, {"position": 1, "estimated_seconds": 3, "queue_type": "fast"}
+
+    def add_api_image_edit(self, user_id, session_id, request_data, user_class, lang="ru"):
+        task_id = f"task-{len(self.added) + 1}"
+        self.added.append((user_id, session_id, request_data, user_class, lang, "api_image_edit"))
+        return task_id, {"position": 2, "estimated_seconds": 20, "queue_type": "slow"}
 
     def check_result(self, request_id):
         self.checked.append(request_id)
@@ -988,6 +996,107 @@ class TestEmbeddingsBridge:
         enqueue_transcription({"login": "alice", "language": "de"}, "QUJD", "audio/wav", "a.wav", "en")
 
         assert bridge_deps["queue"].added[0][4] == "en"
+
+    def test_enqueue_image_generation_adds_native_task_and_preserves_identity(self, bridge_deps):
+        task_id, info = enqueue_image_generation(
+            {"login": "alice", "service_class": 3, "language": "en", "response_style": "friendly"},
+            "session-1",
+            "red cat",
+            "friendly",
+        )
+        login, session_id, request_data, user_class, lang = bridge_deps["queue"].added[0]
+        assert (task_id, info["queue_type"]) == ("task-1", "fast")
+        assert (login, session_id, user_class, lang) == ("alice", "session-1", 3, "en")
+        assert request_data["type"] == "image_gen"
+        assert request_data["text"] == "red cat"
+        assert request_data["response_style"] == "friendly"
+
+    def test_enqueue_image_edit_uses_explicit_top_level_task_type(self, bridge_deps, monkeypatch):
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: "session-1/source.png")
+        app = Flask(__name__)
+        app.config["UPLOAD_FOLDER"] = "/tmp/api-tests"
+        with app.app_context():
+            task_id, _info = enqueue_image_edit(
+                {"login": "alice", "service_class": 2, "language": "ru"},
+                "session-1",
+                "blue cat",
+                "AAAA",
+                "image/png",
+                "source.png",
+                "neutral",
+            )
+        login, session_id, request_data, user_class, lang, task_type = bridge_deps["queue"].added[0]
+        assert task_id == "task-1"
+        assert (login, session_id, user_class, lang) == ("alice", "session-1", 2, "ru")
+        assert task_type == "api_image_edit"
+        assert request_data == {
+            "type": "image",
+            "text": "blue cat",
+            "file_data": "AAAA",
+            "file_type": "image/png",
+            "file_name": "source.png",
+            "current_message_id": 4242,
+            "preview": "blue cat",
+            "file_path": "session-1/source.png",
+            "response_style": "neutral",
+            "stream": False,
+        }
+
+    def test_enqueue_video_preserves_native_generation_options(self, bridge_deps):
+        options = {"width": 512, "height": 512, "num_frames": 57, "frame_rate": 6}
+        task_id, _info = enqueue_video_generation(api_user(), "session-1", "ocean waves", options)
+        login, session_id, request_data, user_class, lang = bridge_deps["queue"].added[0]
+        assert task_id == "task-1"
+        assert (login, session_id, user_class, lang) == ("alice", "session-1", 2, "en")
+        assert {key: request_data[key] for key in options} == options
+        assert request_data["type"] == "video"
+        assert request_data["text"] == "ocean waves"
+
+    def test_image_generation_persists_user_prompt_and_queues_native_task(self, bridge_deps):
+        api_user_data = {"login": "alice", "service_class": 3, "language": "en", "response_style": "friendly"}
+        task_id, info = enqueue_image_generation(api_user_data, "s1", "red cat", "friendly")
+
+        assert task_id == "task-1"
+        args, kwargs = bridge_deps["saved"][0]
+        assert args[:2] == ("s1", "user")
+        assert json.loads(args[2]) == [{"type": "text", "text": "red cat"}]
+        assert kwargs["user_id"] == "alice"
+        assert bridge_deps["queue"].added[0][2]["type"] == "image_gen"
+        assert bridge_deps["queue"].added[0][2]["stream"] is False
+        assert info["queue_type"] == "fast"
+
+    def test_image_edit_persists_image_and_enqueues_api_image_edit(self, bridge_deps, monkeypatch):
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: "s1/input.png")
+        app = Flask(__name__)
+        app.config["UPLOAD_FOLDER"] = "/tmp/flai-tests"
+        with app.app_context():
+            task_id, _info = enqueue_image_edit(
+                api_user(), "s1", "make it blue", "QUJD", "image/png", "input.png", "neutral"
+            )
+
+        args, kwargs = bridge_deps["saved"][0]
+        assert task_id == "task-1"
+        assert args[3:6] == ("QUJD", "image/png", "input.png")
+        assert kwargs["file_path"] == "s1/input.png"
+        assert json.loads(args[2]) == [
+            {"type": "text", "text": "make it blue"},
+            {"type": "image", "file_data": "QUJD", "file_type": "image/png", "file_name": "input.png"},
+        ]
+        assert kwargs["user_id"] == "alice"
+        queued = bridge_deps["queue"].added[0][2]
+        assert queued["type"] == "image"
+        assert queued["file_data"] == "QUJD"
+        assert bridge_deps["queue"].added[0][5] == "api_image_edit"
+
+    def test_video_generation_persists_user_prompt(self, bridge_deps):
+        task_id, _info = enqueue_video_generation(api_user(), "s1", "ocean waves", {})
+
+        args, kwargs = bridge_deps["saved"][0]
+        assert task_id == "task-1"
+        assert args[:2] == ("s1", "user")
+        assert json.loads(args[2]) == [{"type": "text", "text": "ocean waves"}]
+        assert kwargs["user_id"] == "alice"
+        assert bridge_deps["queue"].added[0][2]["type"] == "video"
 
     def test_serialize_returns_indexed_float_vectors(self):
         body = serialize_embeddings({"embeddings": [[0.1, 0.2], [0.3]]})

@@ -1,5 +1,8 @@
 """OpenAI-compatible public API foundation."""
 
+import json
+import mimetypes
+import os
 import time
 from base64 import b64encode
 from collections.abc import Callable
@@ -7,10 +10,12 @@ from functools import wraps
 from threading import BoundedSemaphore
 from typing import Any, cast
 
-from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
+import magic
+from flask import Blueprint, Response, current_app, g, jsonify, request, send_file, stream_with_context
 from flask_babel import gettext as _
 from flask_limiter.errors import RateLimitExceeded
 from werkzeug.exceptions import MethodNotAllowed, RequestEntityTooLarge
+from werkzeug.utils import secure_filename
 
 from app import limiter
 from app.api_bridge import (
@@ -20,7 +25,11 @@ from app.api_bridge import (
     ApiTaskTimeoutError,
     enqueue_chat,
     enqueue_embeddings,
+    enqueue_image_edit,
+    enqueue_image_generation,
     enqueue_transcription,
+    enqueue_video_generation,
+    get_api_task_message,
     get_api_task_owner,
     list_api_tasks,
     normalize_chat_messages,
@@ -33,6 +42,7 @@ from app.api_bridge import (
     wait_for_result,
 )
 from app.api_tokens import touch_api_token, verify_api_token
+from app.utils import check_upload_quota, convert_to_supported_format_if_needed, resize_image_if_needed
 
 API_PREFIX = "/v1"
 DEFAULT_API_RATE_LIMIT = "60 per minute;1000 per hour"
@@ -282,8 +292,18 @@ def api_me():
                 "audio_transcriptions": bool(
                     current_app.modules.get("audio") and current_app.modules["audio"].available
                 ),
-                "images": False,
-                "videos": False,
+                "images": bool(
+                    current_app.modules.get("image")
+                    and current_app.modules["image"].available
+                    and current_app.modules.get("multimodal")
+                    and current_app.modules["multimodal"].available
+                ),
+                "videos": bool(
+                    current_app.modules.get("video")
+                    and current_app.modules["video"].available
+                    and current_app.modules.get("multimodal")
+                    and current_app.modules["multimodal"].available
+                ),
                 "documents": False,
                 "rlm": False,
                 "tools": False,
@@ -354,6 +374,66 @@ def api_cancel_task(task_id: str):
     if result and result.get("status") in ("completed", "error"):
         return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
     return jsonify({"status": "cancelling", "task_id": task_id})
+
+
+@bp.route("/flai/tasks/<task_id>/content", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_task_content(task_id: str):
+    """Download generated media after checking task and message ownership."""
+    record = get_api_task_owner(task_id)
+    if not record or record.get("login") != g.api_user["login"]:
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+
+    queue = cast(Any, current_app).request_queue
+    seen = set()
+    active_id = task_id
+    active_record = record
+    result = queue.check_result(active_id)
+    while result and result.get("status") == "completed":
+        inner = result.get("result") or {}
+        child_id = inner.get("request_id") if inner.get("status") == "queued" else None
+        if not child_id:
+            break
+        child_id = str(child_id)
+        if child_id in seen:
+            return api_error(404, "invalid_request_error", "media_not_found", _("Generated media not found"))
+        seen.add(child_id)
+        child = get_api_task_owner(child_id)
+        if (
+            not child
+            or child.get("login") != record.get("login")
+            or child.get("session_id") != record.get("session_id")
+            or child.get("endpoint") != record.get("endpoint")
+        ):
+            return api_error(404, "invalid_request_error", "media_not_found", _("Generated media not found"))
+        active_id = child_id
+        active_record = child
+        result = queue.check_result(active_id)
+
+    message_id = (
+        (result.get("result") or {}).get("message_id") if result and result.get("status") == "completed" else None
+    )
+    if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id <= 0:
+        return api_error(404, "invalid_request_error", "media_not_found", _("Generated media not found"))
+
+    media = get_api_task_message(g.api_user["login"], active_record.get("session_id", ""), message_id)
+    if not media:
+        return api_error(404, "invalid_request_error", "media_not_found", _("Generated media not found"))
+
+    upload_root = os.path.realpath(current_app.config["UPLOAD_FOLDER"])
+    target = os.path.realpath(os.path.join(upload_root, media.get("file_path") or ""))
+    try:
+        inside_root = os.path.commonpath((upload_root, target)) == upload_root
+    except ValueError:
+        inside_root = False
+    if not inside_root or not os.path.isfile(target):
+        current_app.logger.warning("Generated API task media failed upload-root containment")
+        return api_error(404, "invalid_request_error", "media_not_found", _("Generated media not found"))
+
+    filename = secure_filename(os.path.basename(media.get("file_name") or target)) or os.path.basename(target)
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return send_file(target, mimetype=media_type, as_attachment=True, download_name=filename)
 
 
 def _serialize_api_task(task_id: str, record: dict[str, str], result: dict[str, Any] | None) -> dict[str, Any]:
@@ -436,6 +516,14 @@ def _serialize_api_task(task_id: str, record: dict[str, str], result: dict[str, 
             response["error"] = (
                 error if isinstance(error, str) and error.startswith("⚠️ ") else f"⚠️ {_('Task %s failed') % task_id}"
             )
+        elif isinstance(inner_result.get("message_id"), int) and record.get("endpoint") in (
+            "/v1/images/generations",
+            "/v1/images/edits",
+            "/v1/videos",
+        ):
+            response["content_url"] = f"/v1/flai/tasks/{task_id}/content"
+            if record.get("endpoint") == "/v1/videos":
+                response["url"] = response["content_url"]
         return response
 
     pending = _task_pending_status(queue, g.api_user["login"], g.api_user["language"], task_id)
@@ -462,6 +550,246 @@ def _task_pending_status(queue: Any, login: str, lang: str, task_id: str) -> str
             if queue.redis.hexists(key, task_id):
                 return "processing"
     return "queued"
+
+
+def _async_task_response(task_id: str, status_url: str, output_format: str | None = None) -> tuple[Any, int]:
+    """Return the common 202 body for explicit asynchronous operations."""
+    body = {"id": task_id, "object": "flai.task", "status": "queued", "poll_url": status_url}
+    if output_format is not None:
+        body["output_format"] = output_format
+    return jsonify(body), 202
+
+
+def _resolve_media_session(payload: dict[str, Any]) -> str | tuple[Any, int]:
+    """Resolve an API-owned session for an explicit image/video operation."""
+    raw_metadata = payload.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    requested_session_id = metadata.get("session_id")
+    if requested_session_id is not None and not isinstance(requested_session_id, str):
+        return api_error(
+            400, "invalid_request_error", "invalid_session_id", _("'metadata.session_id' must be a string")
+        )
+    client_user = payload.get("user")
+    if client_user is not None and not isinstance(client_user, str):
+        return api_error(400, "invalid_request_error", "invalid_user", _("'user' must be a string"))
+    try:
+        return resolve_api_session(g.api_user, requested_session_id, client_user)
+    except ApiSessionNotFoundError:
+        return api_error(404, "invalid_request_error", "session_not_found", _("Chat session not found"))
+
+
+@bp.route("/images/generations", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def image_generations():
+    """Queue native image generation; clients retrieve the image from task content."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return api_error(400, "invalid_request_error", "invalid_input", _("'prompt' must be a non-empty string"))
+    if payload.get("response_format", "url") != "url":
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_response_format",
+            _("Only response_format 'url' is supported for asynchronous image generation"),
+        )
+
+    image_module = current_app.modules.get("image")
+    if image_module is None:
+        return api_error(503, "service_unavailable", "image_unavailable", _("Image generation module unavailable"))
+    image_module.check_availability()
+    if not image_module.available:
+        return api_error(503, "service_unavailable", "image_unavailable", _("Image generation module unavailable"))
+
+    session_id = _resolve_media_session(payload)
+    if not isinstance(session_id, str):
+        return session_id
+    task_id, _queue_info = enqueue_image_generation(
+        g.api_user,
+        session_id,
+        prompt.strip(),
+        g.api_user.get("response_style", "neutral"),
+    )
+    register_api_task(g.api_user, task_id, session_id, "/v1/images/generations")
+    response, status = _async_task_response(task_id, f"/v1/flai/tasks/{task_id}", output_format="url")
+    response.headers["Location"] = f"/v1/flai/tasks/{task_id}"
+    return response, status
+
+
+@bp.route("/images/edits", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def image_edits():
+    """Validate an uploaded source image and queue a native API image edit."""
+    prompt = request.form.get("prompt", "")
+    if not prompt.strip():
+        return api_error(400, "invalid_request_error", "invalid_input", _("'prompt' must be a non-empty string"))
+    if request.form.get("response_format", "url") != "url":
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_response_format",
+            _("Only response_format 'url' is supported for asynchronous image edits"),
+        )
+    if "image" not in request.files or not request.files["image"].filename:
+        return api_error(400, "invalid_request_error", "invalid_request", _("Missing 'image' upload"))
+
+    upload = request.files["image"]
+    source_bytes = upload.read()
+    if not source_bytes:
+        return api_error(400, "invalid_request_error", "invalid_input", _("Uploaded file is empty"))
+    detected_type = magic.from_buffer(source_bytes[:2048], mime=True) if source_bytes else None
+    if not detected_type or not detected_type.startswith("image/"):
+        return api_error(400, "invalid_request_error", "invalid_input", _("Unsupported image format"))
+    quota_error = check_upload_quota(g.api_user["login"], len(source_bytes))
+    if quota_error:
+        return api_error(413, "invalid_request_error", "upload_quota_exceeded", quota_error)
+
+    image_module = current_app.modules.get("image")
+    multimodal = current_app.modules.get("multimodal")
+    if image_module is None or multimodal is None:
+        return api_error(503, "service_unavailable", "image_unavailable", _("Image editing module unavailable"))
+    image_module.check_availability()
+    if not image_module.available or not multimodal.available:
+        return api_error(503, "service_unavailable", "image_unavailable", _("Image editing module unavailable"))
+
+    filename = secure_filename(upload.filename or "image.png") or "image.png"
+    file_type = detected_type
+    file_data = b64encode(source_bytes).decode("ascii")
+    file_data, file_type, filename, _converted = convert_to_supported_format_if_needed(file_data, file_type, filename)
+    file_data, file_type, filename, _resized, _original_size, _new_size = resize_image_if_needed(
+        file_data,
+        file_type,
+        filename,
+        current_app.config.get("MAX_IMAGE_SIZE", 1536),
+    )
+    image_size = int(len(file_data) * 3 / 4)
+    valid, validation_error = multimodal.validate_image(
+        file_data, file_type, filename, image_size, lang=g.api_user["language"]
+    )
+    if not valid:
+        return api_error(
+            400, "invalid_request_error", "invalid_input", validation_error or _("Unsupported image format")
+        )
+
+    form_payload = {
+        "metadata": request.form.get("metadata"),
+        "user": request.form.get("user"),
+    }
+    if form_payload["metadata"]:
+        try:
+            form_payload["metadata"] = json.loads(form_payload["metadata"])
+        except (TypeError, json.JSONDecodeError):
+            return api_error(400, "invalid_request_error", "invalid_metadata", _("'metadata' must be a JSON object"))
+    if form_payload["user"] is None:
+        form_payload.pop("user")
+    session_id = _resolve_media_session(form_payload)
+    if not isinstance(session_id, str):
+        return session_id
+    task_id, _queue_info = enqueue_image_edit(
+        g.api_user,
+        session_id,
+        prompt.strip(),
+        file_data,
+        file_type,
+        filename,
+        g.api_user.get("response_style", "neutral"),
+    )
+    register_api_task(g.api_user, task_id, session_id, "/v1/images/edits")
+    response, status = _async_task_response(task_id, f"/v1/flai/tasks/{task_id}")
+    response.headers["Location"] = f"/v1/flai/tasks/{task_id}"
+    return response, status
+
+
+@bp.route("/videos", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def video_generations():
+    """Queue text-to-video generation with options supported by VideoModule."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return api_error(400, "invalid_request_error", "invalid_input", _("'prompt' must be a non-empty string"))
+    if payload.get("model") is not None and not isinstance(payload.get("model"), str):
+        return api_error(400, "invalid_request_error", "invalid_model", _("'model' must be a string"))
+    option_ranges = {
+        "width": (256, 1024),
+        "height": (256, 1024),
+        "num_frames": (9, 240),
+        "frame_rate": (6, 24),
+        "seed": (-1, 2**31 - 1),
+    }
+    options: dict[str, int] = {}
+    for key, value in payload.items():
+        if key in ("prompt", "model", "user", "metadata"):
+            continue
+        bounds = option_ranges.get(key)
+        if bounds is None or isinstance(value, bool) or not isinstance(value, int):
+            return api_error(
+                400, "invalid_request_error", "invalid_video_options", _("Unsupported video generation options")
+            )
+        if not bounds[0] <= value <= bounds[1]:
+            return api_error(
+                400, "invalid_request_error", "invalid_video_options", _("Video generation option is out of range")
+            )
+        if key in ("width", "height") and value % 32:
+            return api_error(
+                400, "invalid_request_error", "invalid_video_options", _("Video dimensions must be multiples of 32")
+            )
+        if key == "frame_rate" and value not in (6, 12, 16, 24):
+            return api_error(400, "invalid_request_error", "invalid_video_options", _("Unsupported video frame rate"))
+        options[key] = value
+
+    width = options.get("width", 768)
+    height = options.get("height", 512)
+    num_frames = options.get("num_frames", 240)
+    frame_rate = options.get("frame_rate", 24)
+    if width * height * num_frames > 768 * 512 * 240 or num_frames > frame_rate * 10:
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_video_options",
+            _("Video output exceeds the supported size or duration"),
+        )
+
+    video_module = current_app.modules.get("video")
+    multimodal = current_app.modules.get("multimodal")
+    if video_module is None or multimodal is None:
+        return api_error(503, "service_unavailable", "video_unavailable", _("Video generation module unavailable"))
+    video_module.check_availability()
+    if not video_module.available or not multimodal.available:
+        return api_error(503, "service_unavailable", "video_unavailable", _("Video generation module unavailable"))
+
+    session_id = _resolve_media_session(payload)
+    if not isinstance(session_id, str):
+        return session_id
+    task_id, _queue_info = enqueue_video_generation(g.api_user, session_id, prompt.strip(), options)
+    register_api_task(g.api_user, task_id, session_id, "/v1/videos")
+    response, status = _async_task_response(task_id, f"/v1/videos/{task_id}")
+    response.headers["Location"] = f"/v1/videos/{task_id}"
+    return response, status
+
+
+@bp.route("/videos/<task_id>", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def get_video_task(task_id: str):
+    """Return a video-shaped view of an owner-scoped task."""
+    record = get_api_task_owner(task_id)
+    if not record or record.get("login") != g.api_user["login"] or record.get("endpoint") != "/v1/videos":
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+    task = _serialize_api_task(task_id, record, cast(Any, current_app).request_queue.check_result(task_id))
+    response = dict(task)
+    response["object"] = "video"
+    response["task_status_url"] = f"/v1/flai/tasks/{response['id']}"
+    if response.get("content_url"):
+        response["url"] = response["content_url"]
+    return jsonify(response)
 
 
 @bp.route("/chat/completions", methods=["POST"])

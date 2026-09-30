@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.3\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 12:38+0300\n"
+"POT-Creation-Date: 2026-09-30 11:08+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -18,76 +18,90 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: app/__init__.py:423 app/__init__.py:439
+#: app/__init__.py:441 app/__init__.py:457
 msgid "Session expired. Please refresh the page."
 msgstr "Session expired. Please refresh the page."
 
-#: app/__init__.py:431
+#: app/__init__.py:449
 msgid "Authentication required."
 msgstr "Authentication required."
 
-msgid "api_error_invalid_api_key"
-msgstr "Invalid API key"
-
-msgid "api_error_api_disabled"
-msgstr "API is disabled"
-
-msgid "api_key_not_found"
-msgstr "API key not found"
-
-msgid "api_keys_title"
-msgstr "API keys"
-
-msgid "api_keys_button"
-msgstr "API keys"
-
-msgid "api_keys_close"
-msgstr "Close"
-
-msgid "api_keys_hint"
-msgstr "Create keys for external integrations. A secret is shown only once."
-
-msgid "api_keys_name_placeholder"
-msgstr "Key name, e.g. Home Assistant"
-
-msgid "api_keys_create"
-msgstr "Create key"
-
-msgid "api_keys_copy"
-msgstr "Copy key"
-
-msgid "api_keys_copy_once"
-msgstr "Copy this key now. It will not be shown again."
-
-msgid "api_keys_col_name"
-msgstr "Name"
-
-msgid "api_keys_col_key"
-msgstr "Key"
-
-msgid "api_keys_col_created"
-msgstr "Created"
-
-msgid "api_keys_col_last_used"
-msgstr "Last used"
-
-msgid "api_keys_revoke"
-msgstr "Revoke"
-
-msgid "api_keys_revoke_confirm"
-msgstr "Revoke this API key? Integrations using it will stop working."
-
-#: app/__init__.py:446 app/routes/admin.py:253 app/routes/admin.py:294
+#: app/__init__.py:464 app/routes/admin.py:253 app/routes/admin.py:294
 #: app/routes/admin.py:318 app/routes/admin.py:334 app/routes/admin.py:346
-#: app/routes/admin.py:371 app/routes/admin.py:417 app/routes/admin.py:1709
-#: app/routes/admin.py:1726 app/routes/admin.py:1756
-#: app/templates/admin.html:302 modules/video.py:490
+#: app/routes/admin.py:371 app/routes/admin.py:417 app/routes/admin.py:1727
+#: app/routes/admin.py:1744 app/routes/admin.py:1774
+#: app/templates/admin.html:310 modules/video.py:490
 msgid "Internal server error"
 msgstr "Internal server error"
 
-#: app/__init__.py:452
+#: app/__init__.py:470
 msgid "Not found"
 msgstr "Not found"
+
+#: app/api_bridge.py:132
+msgid "Only data: URLs are supported for image content parts"
+msgstr "Only data: URLs are supported for image content parts"
+
+#: app/api_bridge.py:136
+msgid "Image data URL must be base64 encoded"
+msgstr "Image data URL must be base64 encoded"
+
+#: app/api_bridge.py:140
+msgid "Only image content parts are supported"
+msgstr "Only image content parts are supported"
+
+#: app/api_bridge.py:144
+msgid "Image data URL is empty"
+msgstr "Image data URL is empty"
+
+#: app/api_bridge.py:161
+msgid "'messages' must be a non-empty array"
+msgstr "'messages' must be a non-empty array"
+
+#: app/api_bridge.py:167
+msgid "Each entry of 'messages' must be an object"
+msgstr "Each entry of 'messages' must be an object"
+
+#: app/api_bridge.py:171
+msgid "Each message needs a supported 'role'"
+msgstr "Each message needs a supported 'role'"
+
+#: app/api_bridge.py:181
+msgid "Message content must be a string or an array of parts"
+msgstr "Message content must be a string or an array of parts"
+
+#: app/api_bridge.py:185
+msgid "Each content part must be an object"
+msgstr "Each content part must be an object"
+
+#: app/api_bridge.py:198
+#, python-format
+msgid "Unsupported content part type: %s"
+msgstr "Unsupported content part type: %s"
+
+#: app/api_bridge.py:202
+msgid "'messages' contains no text or image content"
+msgstr "'messages' contains no text or image content"
+
+#: app/api_bridge.py:339 app/api_bridge.py:348
+#, python-format
+msgid "Task %s failed"
+msgstr "Task %s failed"
+
+#: app/api_bridge.py:343
+#, python-format
+msgid "Task %s returned no result"
+msgstr "Task %s returned no result"
+
+#: app/api_bridge.py:351
+#, python-format
+msgid "Task %s was requeued to %s without a follow-up"
+msgstr "Task %s was requeued to %s without a follow-up"
+
+#: app/api_bridge.py:605
+#, python-format
+msgid "Task %s returned no vectors"
+msgstr "Task %s returned no vectors"
 
 #: app/db.py:192 app/db.py:220 app/routes/sessions.py:152
 #: app/routes/sessions.py:220 app/templates/chat.html:19
@@ -112,8 +126,8 @@ msgstr ""
 msgid "Server is busy. All slots are occupied. Please try again shortly."
 msgstr "Сервер занят. Все слоты заняты. Попробуйте снова через несколько секунд."
 
-#: app/llamacpp_client.py:141 app/routes/admin.py:829 modules/sd_cpp.py:283
-#: modules/sd_cpp.py:436
+#: app/llamacpp_client.py:141 app/routes/admin.py:829 modules/sd_cpp.py:294
+#: modules/sd_cpp.py:475
 #, python-brace-format
 msgid "HTTP error {status}"
 msgstr "HTTP error {status}"
@@ -148,10 +162,10 @@ msgstr "Could not connect to llama-server"
 
 #: app/llamacpp_client.py:664 app/llamacpp_client.py:849
 #: app/llamacpp_client.py:1090 app/llamacpp_client.py:1367
-#: app/routes/admin.py:265 app/routes/admin.py:906 app/routes/admin.py:1333
-#: app/routes/admin.py:1406 app/routes/admin.py:1555
-#: app/templates/admin.html:301 app/templates/chat.html:141 modules/cam.py:371
-#: modules/sd_cpp.py:293 modules/sd_cpp.py:448 modules/video.py:502
+#: app/routes/admin.py:265 app/routes/admin.py:924 app/routes/admin.py:1351
+#: app/routes/admin.py:1424 app/routes/admin.py:1573
+#: app/templates/admin.html:309 app/templates/chat.html:141 modules/cam.py:371
+#: modules/sd_cpp.py:304 modules/sd_cpp.py:487 modules/video.py:502
 msgid "Error"
 msgstr "Error"
 
@@ -170,27 +184,36 @@ msgstr "Internal error: no response from model"
 msgid "GPU memory unavailable. Please try again."
 msgstr "GPU memory unavailable. Please try again."
 
-#: app/queue.py:548
+#: app/queue.py:555
 #, python-brace-format
 msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
 msgstr "Request cancelled - too long in queue ({queue_time:.1f}s)"
 
-#: app/queue.py:1215 app/queue.py:1234 app/queue.py:1369 app/queue.py:1394
-#: app/queue.py:2104 app/queue.py:2145 app/queue.py:2273 app/queue.py:2342
+#: app/queue.py:1226 app/queue.py:1245 app/queue.py:1398 app/queue.py:1423
+#: app/queue.py:2153 app/queue.py:2194 app/queue.py:2322 app/queue.py:2391
 msgid "Task cancelled"
 msgstr "Task cancelled"
 
 # GPU memory error messages
-#: app/queue.py:1220 app/queue.py:1374 app/queue.py:2083 app/queue.py:2250
+#: app/queue.py:1231 app/queue.py:1403 app/queue.py:2132 app/queue.py:2299
 #: modules/multimodal.py:261
 msgid "GPU memory unavailable. Try again in a moment."
 msgstr "GPU memory unavailable. Try again in a moment."
 
-#: app/queue.py:1259
+#: app/queue.py:1270
 msgid "Image editing failed"
 msgstr "Image editing failed"
 
-#: app/queue.py:1275
+#: app/queue.py:1287 app/queue.py:1459
+#, python-brace-format
+msgid ""
+"CPU mode: reduced resolution {new_w}×{new_h} (requested "
+"{orig_w}×{orig_h})."
+msgstr ""
+"CPU mode: reduced resolution {new_w}×{new_h} (requested "
+"{orig_w}×{orig_h})."
+
+#: app/queue.py:1304
 #, python-brace-format
 msgid ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
@@ -199,61 +222,61 @@ msgstr ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
 "resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
 
-#: app/queue.py:1289
+#: app/queue.py:1318
 #, python-brace-format
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
 
-#: app/queue.py:1349 app/queue.py:1354
+#: app/queue.py:1378 app/queue.py:1383
 msgid "Image generation module unavailable"
 msgstr "Image generation module unavailable"
 
-#: app/queue.py:1378 app/queue.py:2088 app/queue.py:2254
+#: app/queue.py:1407 app/queue.py:2137 app/queue.py:2303
 msgid "GPU memory check failed. Please try again."
 msgstr "GPU memory check failed. Please try again."
 
-#: app/queue.py:1426 app/templates/chat.html:126
+#: app/queue.py:1473 app/templates/chat.html:126
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Image generated from request: {query}"
 
-#: app/queue.py:1482
+#: app/queue.py:1531
 msgid "Video request"
 msgstr "Video request"
 
-#: app/queue.py:1529
+#: app/queue.py:1578
 msgid "Image request"
 msgstr "Image request"
 
-#: app/queue.py:1575
+#: app/queue.py:1624
 msgid "Reasoning request"
 msgstr "Reasoning request"
 
-#: app/queue.py:1628 app/templates/chat.html:89
+#: app/queue.py:1677 app/templates/chat.html:89
 msgid "Deep analysis"
 msgstr "Deep analysis"
 
-#: app/queue.py:1633 app/queue.py:1726 app/routes/messages.py:293
+#: app/queue.py:1682 app/queue.py:1775 app/routes/messages.py:293
 msgid "Image"
 msgstr "Image"
 
-#: app/queue.py:1656
+#: app/queue.py:1705
 msgid "No documents selected for analysis"
 msgstr "No documents selected for analysis"
 
-#: app/queue.py:1695 app/queue.py:1707 app/queue.py:1751 app/queue.py:1934
+#: app/queue.py:1744 app/queue.py:1756 app/queue.py:1800 app/queue.py:1983
 msgid "Reasoning model unavailable: GPU memory check failed. Try again."
 msgstr "Reasoning model unavailable: GPU memory check failed. Try again."
 
-#: app/queue.py:1716 app/queue.py:1723
+#: app/queue.py:1765 app/queue.py:1772
 msgid "Unable to recognize the image for deep analysis"
 msgstr "Unable to recognize the image for deep analysis"
 
-#: app/queue.py:1731
+#: app/queue.py:1780
 msgid "Selected documents contain no extractable text"
 msgstr "Selected documents contain no extractable text"
 
-#: app/queue.py:1740
+#: app/queue.py:1789
 #, python-brace-format
 msgid ""
 "The selected documents are too large for deep analysis (limit: {limit} "
@@ -262,7 +285,7 @@ msgstr ""
 "The selected documents are too large for deep analysis (limit: {limit} "
 "characters). Select fewer or smaller documents."
 
-#: app/queue.py:1791
+#: app/queue.py:1840
 msgid ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
@@ -270,11 +293,11 @@ msgstr ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
 
-#: app/queue.py:1794
+#: app/queue.py:1843
 msgid "Deep analysis: the model produced an empty answer."
 msgstr "Deep analysis: the model produced an empty answer."
 
-#: app/queue.py:1797
+#: app/queue.py:1846
 msgid ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
@@ -282,24 +305,24 @@ msgstr ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
 
-#: app/queue.py:1808 app/queue.py:2005
+#: app/queue.py:1857 app/queue.py:2054
 msgid "No response from reasoning model"
 msgstr "No response from reasoning model"
 
-#: app/queue.py:1901 app/queue.py:2701 app/queue.py:2983 modules/rag.py:410
+#: app/queue.py:1950 app/queue.py:2750 app/queue.py:3032 modules/rag.py:410
 #: modules/rag.py:470
 msgid "Source"
 msgstr "Source"
 
-#: app/queue.py:2070 app/queue.py:2237
+#: app/queue.py:2119 app/queue.py:2286
 msgid "Video generation module unavailable"
 msgstr "Video generation module unavailable"
 
-#: app/queue.py:2117 app/queue.py:2283
+#: app/queue.py:2166 app/queue.py:2332
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "GPU memory unavailable after unloading LLM. Try again."
 
-#: app/queue.py:2152 app/queue.py:2349
+#: app/queue.py:2201 app/queue.py:2398
 msgid ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
@@ -307,12 +330,12 @@ msgstr ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
 
-#: app/queue.py:2173 app/queue.py:2392
+#: app/queue.py:2222 app/queue.py:2441
 #, python-brace-format
 msgid "Video generated from request: {query}"
 msgstr "Video generated from request: {query}"
 
-#: app/queue.py:2264 app/queue.py:3811 app/queue.py:3913
+#: app/queue.py:2313 app/queue.py:3900 app/queue.py:4002
 #: modules/multimodal.py:224 modules/multimodal.py:243
 #: modules/multimodal.py:277 modules/multimodal.py:315
 #: modules/multimodal.py:369 modules/multimodal.py:434
@@ -320,7 +343,7 @@ msgstr "Video generated from request: {query}"
 msgid "Multimodal model unavailable"
 msgstr "Multimodal model unavailable"
 
-#: app/queue.py:2302 app/queue.py:2380
+#: app/queue.py:2351 app/queue.py:2429
 #, python-brace-format
 msgid ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
@@ -329,20 +352,20 @@ msgstr ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
 "resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
 
-#: app/queue.py:2458 app/queue.py:2548
+#: app/queue.py:2507 app/queue.py:2597
 msgid "Camera module unavailable"
 msgstr "Camera module unavailable"
 
-#: app/queue.py:2468 app/queue.py:2560 app/templates/chat.html:127
+#: app/queue.py:2517 app/queue.py:2609 app/templates/chat.html:127
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Camera snapshot: {room_name}"
 
-#: app/queue.py:2789
+#: app/queue.py:2838
 msgid "Web search is not available"
 msgstr "Web search is not available"
 
-#: app/queue.py:2827
+#: app/queue.py:2876
 msgid ""
 "Search services are temporarily unavailable. Please try again in a few "
 "minutes."
@@ -350,11 +373,11 @@ msgstr ""
 "Search services are temporarily unavailable due to limits on external "
 "search engines. Please try your request again in a few minutes."
 
-#: app/queue.py:2838
+#: app/queue.py:2887
 msgid "Web search failed"
 msgstr "Web search failed"
 
-#: app/queue.py:3393 modules/base.py:666 modules/base.py:795
+#: app/queue.py:3442 modules/base.py:666 modules/base.py:795
 #: modules/base.py:854 modules/multimodal.py:228 modules/multimodal.py:251
 #: modules/multimodal.py:282 modules/multimodal.py:331
 #: modules/multimodal.py:381 modules/multimodal.py:446
@@ -362,52 +385,64 @@ msgstr "Web search failed"
 msgid "Error loading prompt template"
 msgstr "Error loading prompt template"
 
-#: app/queue.py:3521
+#: app/queue.py:3570
 msgid "No response from chat model. Try rephrasing your request."
 msgstr "No response from chat model. Try rephrasing your request."
 
-#: app/queue.py:3788
+#: app/queue.py:3746
+msgid "Invalid embedding input"
+msgstr "Invalid embedding input"
+
+#: app/queue.py:3751
+msgid "Embeddings are temporarily unavailable"
+msgstr "Embeddings are temporarily unavailable"
+
+#: app/queue.py:3762
+msgid "Failed to compute embeddings"
+msgstr "Failed to compute embeddings"
+
+#: app/queue.py:3877
 msgid "Unknown request type"
 msgstr "Unknown request type"
 
-#: app/queue.py:3842 app/queue.py:4007
+#: app/queue.py:3931 app/queue.py:4096
 msgid "Image editing request was empty"
 msgstr "Image editing request was empty"
 
-#: app/queue.py:3860 app/queue.py:4034
+#: app/queue.py:3949 app/queue.py:4123
 msgid "Video request was empty"
 msgstr "Video request was empty"
 
-#: app/queue.py:3870
+#: app/queue.py:3959
 msgid "Failed to process image request. Please try again."
 msgstr "Failed to process image request. Please try again."
 
-#: app/queue.py:3874 app/queue.py:3928
+#: app/queue.py:3963 app/queue.py:4017
 msgid "Invalid image"
 msgstr "Invalid image"
 
-#: app/queue.py:4090 app/queue.py:4176
+#: app/queue.py:4179 app/queue.py:4265
 msgid "Audio service unavailable"
 msgstr "Audio service unavailable"
 
-#: app/queue.py:4109 app/queue.py:4184 app/templates/chat.html:120
+#: app/queue.py:4198 app/queue.py:4273 app/templates/chat.html:120
 msgid "Failed to recognize speech"
 msgstr "Failed to recognize speech"
 
-#: app/queue.py:4127 app/queue.py:4191 app/templates/chat.html:125
+#: app/queue.py:4216 app/queue.py:4280 app/templates/chat.html:125
 msgid "Transcribed"
 msgstr "Transcribed"
 
-#: app/queue.py:4142 app/queue.py:4214 app/queue.py:4225
+#: app/queue.py:4231 app/queue.py:4303 app/queue.py:4314
 #: app/routes/messages.py:257 app/templates/chat.html:121
 msgid "Voice request"
 msgstr "Voice request"
 
-#: app/queue.py:4282 app/queue.py:4515 app/routes/admin.py:1587
+#: app/queue.py:4371 app/queue.py:4604 app/routes/admin.py:1605
 msgid "RAG module unavailable"
 msgstr "RAG module unavailable"
 
-#: app/queue.py:4682 app/templates/chat.html:128
+#: app/queue.py:4771 app/templates/chat.html:128
 msgid "Unknown session"
 msgstr "Unknown session"
 
@@ -516,35 +551,35 @@ msgstr ""
 msgid "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
 msgstr "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
 
-#: app/utils.py:1548
+#: app/utils.py:1574
 msgid "Image generation failed. Try again later."
 msgstr "Image generation failed. Try again later."
 
-#: app/utils.py:1549
+#: app/utils.py:1575
 msgid "Image generation produced empty output."
 msgstr "Image generation produced empty output."
 
-#: app/utils.py:1550
+#: app/utils.py:1576
 msgid "Image generation error. Check logs for details."
 msgstr "Image generation error. Check logs for details."
 
-#: app/utils.py:1551
+#: app/utils.py:1577
 msgid "Image editing failed. Try again later."
 msgstr "Image editing failed. Try again later."
 
-#: app/utils.py:1552
+#: app/utils.py:1578
 msgid "Image editing produced empty output."
 msgstr "Image editing produced empty output."
 
-#: app/utils.py:1553
+#: app/utils.py:1579
 msgid "No editing instructions provided."
 msgstr "No editing instructions provided."
 
-#: app/utils.py:1554
+#: app/utils.py:1580
 msgid "No source image provided."
 msgstr "No source image provided."
 
-#: app/utils.py:1555
+#: app/utils.py:1581
 #, python-brace-format
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Image editing timeout ({timeout}s)"
@@ -594,15 +629,15 @@ msgstr ""
 msgid "Forbidden"
 msgstr "Forbidden"
 
-#: app/routes/admin.py:275 app/templates/admin.html:303
+#: app/routes/admin.py:275 app/templates/admin.html:311
 msgid "Missing fields"
 msgstr "Missing fields"
 
-#: app/routes/admin.py:277 app/templates/admin.html:304
+#: app/routes/admin.py:277 app/templates/admin.html:312
 msgid "Login already exists"
 msgstr "Login already exists"
 
-#: app/routes/admin.py:329 app/templates/admin.html:305
+#: app/routes/admin.py:329 app/templates/admin.html:313
 msgid "New password not specified"
 msgstr "New password not specified"
 
@@ -628,26 +663,91 @@ msgstr "⚠ Partial CPU offload needed"
 msgid "Missing url"
 msgstr "Missing url"
 
-#: app/routes/admin.py:875 app/routes/admin.py:1187
+#: app/routes/admin.py:893 app/routes/admin.py:1205
 msgid "Missing \"url\" parameter"
 msgstr "Missing \"url\" parameter"
 
-#: app/routes/admin.py:903 app/routes/admin.py:1330
+#: app/routes/admin.py:921 app/routes/admin.py:1348
 #, python-brace-format
 msgid "llama-server returned {status}"
 msgstr "llama-server returned {status}"
 
-#: app/routes/admin.py:1548
+#: app/routes/admin.py:1566
 msgid "Request queue not available"
 msgstr "Request queue not available"
 
-#: app/routes/admin.py:1552
+#: app/routes/admin.py:1570
 msgid "Reindex started"
 msgstr "Reindex started"
 
-#: app/routes/admin.py:1788 app/templates/admin.html:453
+#: app/routes/admin.py:1806 app/templates/admin.html:461
 msgid "Camera unavailable"
 msgstr "Camera unavailable"
+
+#: app/routes/api_keys.py:27 app/routes/api_keys.py:36
+#: app/routes/api_keys.py:49 app/routes/documents.py:93
+#: app/routes/documents.py:100 app/routes/documents.py:211
+#: app/routes/documents.py:241 app/routes/messages.py:25
+#: app/routes/messages.py:56 app/routes/messages.py:329
+#: app/routes/messages.py:412 app/routes/queue.py:118 app/routes/queue.py:142
+#: app/routes/queue.py:158 app/routes/queue.py:167 app/routes/rlm.py:20
+#: app/routes/sessions.py:86 app/routes/sessions.py:93
+#: app/routes/sessions.py:114 app/routes/sessions.py:130
+#: app/routes/sessions.py:145 app/routes/sessions.py:170
+#: app/routes/sessions.py:193 app/routes/sessions.py:205 app/routes/tts.py:13
+#: app/templates/chat.html:118 modules/cam.py:395 modules/cam.py:401
+#: modules/cam.py:409 modules/cam.py:429
+msgid "Not authorized"
+msgstr "Not authorized"
+
+#: app/routes/api_keys.py:51
+msgid "api_key_not_found"
+msgstr "API key not found"
+
+#: app/routes/api_v1.py:66
+msgid "api_error_invalid_api_key"
+msgstr "Invalid API key"
+
+#: app/routes/api_v1.py:77
+msgid "api_error_api_disabled"
+msgstr "API is disabled"
+
+#: app/routes/api_v1.py:114
+msgid "Method not allowed"
+msgstr "Method not allowed"
+
+#: app/routes/api_v1.py:165 app/routes/api_v1.py:245
+msgid "Request body must be a JSON object"
+msgstr "Request body must be a JSON object"
+
+#: app/routes/api_v1.py:175
+msgid "'user' must be a string"
+msgstr "'user' must be a string"
+
+#: app/routes/api_v1.py:178
+msgid "'metadata.session_id' must be a string"
+msgstr "'metadata.session_id' must be a string"
+
+#: app/routes/api_v1.py:182
+msgid "'stream' must be a boolean"
+msgstr "'stream' must be a boolean"
+
+#: app/routes/api_v1.py:189
+msgid "Chat session not found"
+msgstr "Chat session not found"
+
+#: app/routes/api_v1.py:212 app/routes/api_v1.py:271
+#, python-format
+msgid "Task %s is still running and was not cancelled"
+msgstr "Task %s is still running and was not cancelled"
+
+#: app/routes/api_v1.py:253
+msgid "'input' must be a non-empty string or an array of non-empty strings"
+msgstr "'input' must be a non-empty string or an array of non-empty strings"
+
+#: app/routes/api_v1.py:262
+msgid "'encoding_format' must be 'float' or 'base64'"
+msgstr "'encoding_format' must be 'float' or 'base64'"
 
 #: app/routes/auth.py:20 app/routes/auth.py:21
 msgid "Too many attempts. Please try again later."
@@ -681,7 +781,7 @@ msgstr "Invalid response style"
 msgid "Invalid backup type"
 msgstr "Invalid backup type"
 
-#: app/routes/backups.py:250 app/templates/admin.html:430
+#: app/routes/backups.py:250 app/templates/admin.html:438
 msgid "Error creating backup"
 msgstr "Error creating backup"
 
@@ -697,7 +797,7 @@ msgstr "Backup file not found"
 msgid "Archive checksum mismatch. File may be corrupted."
 msgstr "Archive checksum mismatch. File may be corrupted."
 
-#: app/routes/backups.py:362 app/templates/admin.html:431
+#: app/routes/backups.py:362 app/templates/admin.html:439
 msgid "Error restoring backup"
 msgstr "Error restoring backup"
 
@@ -713,20 +813,6 @@ msgstr "Unsupported file type"
 #: app/routes/documents.py:85
 msgid "File type does not match extension"
 msgstr "File type does not match extension"
-
-#: app/routes/documents.py:93 app/routes/documents.py:100
-#: app/routes/documents.py:211 app/routes/documents.py:241
-#: app/routes/messages.py:25 app/routes/messages.py:56
-#: app/routes/messages.py:329 app/routes/messages.py:412
-#: app/routes/queue.py:118 app/routes/queue.py:142 app/routes/queue.py:158
-#: app/routes/queue.py:167 app/routes/rlm.py:20 app/routes/sessions.py:86
-#: app/routes/sessions.py:93 app/routes/sessions.py:114
-#: app/routes/sessions.py:130 app/routes/sessions.py:145
-#: app/routes/sessions.py:170 app/routes/sessions.py:193
-#: app/routes/sessions.py:205 app/routes/tts.py:13 app/templates/chat.html:118
-#: modules/cam.py:395 modules/cam.py:401 modules/cam.py:409 modules/cam.py:429
-msgid "Not authorized"
-msgstr "Not authorized"
 
 #: app/routes/documents.py:102
 msgid "No file provided"
@@ -833,6 +919,14 @@ msgstr "Model architecture not found in the repository (config.json missing)"
 msgid "Model Hub request failed. Try again later."
 msgstr "Model Hub request failed. Try again later."
 
+#: app/routes/model_hub.py:35
+msgid ""
+"This model is currently selected as the active model for a module. Choose"
+" a different model first."
+msgstr ""
+"This model is currently selected as the active model for a module. Choose"
+" a different model first."
+
 #: app/routes/rlm.py:24
 msgid "Deep analysis is disabled"
 msgstr "Deep analysis is disabled"
@@ -869,7 +963,7 @@ msgstr "TTS synthesis failed"
 msgid "Admin Panel"
 msgstr "Admin Panel"
 
-#: app/templates/admin.html:9 app/templates/admin.html:456
+#: app/templates/admin.html:9 app/templates/admin.html:464
 msgid "Hardware"
 msgstr "Hardware"
 
@@ -885,16 +979,16 @@ msgstr "Model Hub"
 msgid "Models"
 msgstr "Models"
 
-#: app/templates/admin.html:14 app/templates/admin.html:444
+#: app/templates/admin.html:14 app/templates/admin.html:452
 msgid "Cameras"
 msgstr "Cameras"
 
 # Backup/restore translations
-#: app/templates/admin.html:16 app/templates/admin.html:415
+#: app/templates/admin.html:16 app/templates/admin.html:423
 msgid "Backups"
 msgstr "Backups"
 
-#: app/templates/admin.html:23 app/templates/admin.html:457
+#: app/templates/admin.html:23 app/templates/admin.html:465
 msgid "Update hardware list"
 msgstr "Update hardware list"
 
@@ -902,55 +996,55 @@ msgstr "Update hardware list"
 msgid "Add user"
 msgstr "Add user"
 
-#: app/templates/admin.html:41 app/templates/admin.html:334
+#: app/templates/admin.html:41 app/templates/admin.html:342
 msgid "User DB"
 msgstr "User DB"
 
 #: app/templates/admin.html:41 app/templates/admin.html:42
 #: app/templates/admin.html:43 app/templates/admin.html:44
-#: app/templates/admin.html:338 app/templates/admin.html:367
+#: app/templates/admin.html:346 app/templates/admin.html:375
 msgid "MB"
 msgstr "MB"
 
-#: app/templates/admin.html:42 app/templates/admin.html:335
+#: app/templates/admin.html:42 app/templates/admin.html:343
 msgid "Chat DB"
 msgstr "Chat DB"
 
-#: app/templates/admin.html:43 app/templates/admin.html:336
+#: app/templates/admin.html:43 app/templates/admin.html:344
 msgid "Files DB"
 msgstr "Files DB"
 
-#: app/templates/admin.html:44 app/templates/admin.html:337
+#: app/templates/admin.html:44 app/templates/admin.html:345
 msgid "Documents DB"
 msgstr "Documents DB"
 
-#: app/templates/admin.html:51 app/templates/admin.html:170
-#: app/templates/admin.html:313 app/templates/admin.html:449
+#: app/templates/admin.html:51 app/templates/admin.html:178
+#: app/templates/admin.html:321 app/templates/admin.html:457
 msgid "Status"
 msgstr "Status"
 
-#: app/templates/admin.html:52 app/templates/admin.html:234
-#: app/templates/admin.html:314 app/templates/login.html:14
+#: app/templates/admin.html:52 app/templates/admin.html:242
+#: app/templates/admin.html:322 app/templates/login.html:14
 #: app/templates/login.html:23
 msgid "Login"
 msgstr "Login"
 
-#: app/templates/admin.html:53 app/templates/admin.html:238
-#: app/templates/admin.html:315 app/templates/login.html:18
+#: app/templates/admin.html:53 app/templates/admin.html:246
+#: app/templates/admin.html:323 app/templates/login.html:18
 msgid "Password"
 msgstr "Password"
 
-#: app/templates/admin.html:54 app/templates/admin.html:242
-#: app/templates/admin.html:316
+#: app/templates/admin.html:54 app/templates/admin.html:250
+#: app/templates/admin.html:324
 msgid "Name"
 msgstr "Name"
 
-#: app/templates/admin.html:55 app/templates/admin.html:246
-#: app/templates/admin.html:317
+#: app/templates/admin.html:55 app/templates/admin.html:254
+#: app/templates/admin.html:325
 msgid "Class"
 msgstr "Class"
 
-#: app/templates/admin.html:56 app/templates/admin.html:318
+#: app/templates/admin.html:56 app/templates/admin.html:326
 #: app/templates/chat.html:18 app/templates/chat.html:137
 msgid "Sessions"
 msgstr "Sessions"
@@ -963,16 +1057,16 @@ msgstr "Outgoing tokens"
 msgid "Incoming tokens"
 msgstr "Incoming tokens"
 
-#: app/templates/admin.html:59 app/templates/admin.html:319
+#: app/templates/admin.html:59 app/templates/admin.html:327
 #: app/templates/chat.html:62 app/templates/chat.html:139
 msgid "Messages"
 msgstr "Messages"
 
-#: app/templates/admin.html:60 app/templates/admin.html:320
+#: app/templates/admin.html:60 app/templates/admin.html:328
 msgid "Files"
 msgstr "Files"
 
-#: app/templates/admin.html:61 app/templates/admin.html:321
+#: app/templates/admin.html:61 app/templates/admin.html:329
 #: app/templates/chat.html:13 app/templates/chat.html:138
 msgid "Documents"
 msgstr "Documents"
@@ -981,45 +1075,45 @@ msgstr "Documents"
 msgid "SLM Facts"
 msgstr "SLM Facts"
 
-#: app/templates/admin.html:64 app/templates/admin.html:260
-#: app/templates/admin.html:322
+#: app/templates/admin.html:64 app/templates/admin.html:268
+#: app/templates/admin.html:330
 msgid "Camera access"
 msgstr "Camera access"
 
-#: app/templates/admin.html:66 app/templates/admin.html:210
-#: app/templates/admin.html:323 app/templates/admin.html:441
+#: app/templates/admin.html:66 app/templates/admin.html:218
+#: app/templates/admin.html:331 app/templates/admin.html:449
 msgid "Actions"
 msgstr "Actions"
 
-#: app/templates/admin.html:80 app/templates/admin.html:340
+#: app/templates/admin.html:80 app/templates/admin.html:348
 msgid "Refresh models from llama-server"
 msgstr "Refresh models from llama-server"
 
-#: app/templates/admin.html:80 app/templates/admin.html:341
+#: app/templates/admin.html:80 app/templates/admin.html:349
 msgid "Update model list"
 msgstr "Update model list"
 
-#: app/templates/admin.html:89 app/templates/admin.html:380
+#: app/templates/admin.html:89 app/templates/admin.html:388
 msgid "Chunks"
 msgstr "Chunks"
 
-#: app/templates/admin.html:92 app/templates/admin.html:381
+#: app/templates/admin.html:92 app/templates/admin.html:389
 msgid "Chunk Size (characters)"
 msgstr "Chunk Size (characters)"
 
-#: app/templates/admin.html:96 app/templates/admin.html:382
+#: app/templates/admin.html:96 app/templates/admin.html:390
 msgid "Chunk Overlap (characters)"
 msgstr "Chunk Overlap (characters)"
 
-#: app/templates/admin.html:100 app/templates/admin.html:383
+#: app/templates/admin.html:100 app/templates/admin.html:391
 msgid "Chunk Strategy"
 msgstr "Chunk Strategy"
 
-#: app/templates/admin.html:102 app/templates/admin.html:384
+#: app/templates/admin.html:102 app/templates/admin.html:392
 msgid "Fixed (by size)"
 msgstr "Fixed (by size)"
 
-#: app/templates/admin.html:103 app/templates/admin.html:385
+#: app/templates/admin.html:103 app/templates/admin.html:393
 msgid "Structural (by headings)"
 msgstr "Structural (by headings)"
 
@@ -1035,397 +1129,401 @@ msgstr "Threshold (documents)"
 msgid "Threshold (reasoning)"
 msgstr "Threshold (reasoning)"
 
-#: app/templates/admin.html:121 app/templates/admin.html:289
-#: app/templates/admin.html:307 app/templates/admin.html:379
+#: app/templates/admin.html:121 app/templates/admin.html:297
+#: app/templates/admin.html:315 app/templates/admin.html:387
 msgid "Save"
 msgstr "Save"
 
-#: app/templates/admin.html:131
+#: app/templates/admin.html:125
+msgid "Downloaded models"
+msgstr "Downloaded models"
+
+#: app/templates/admin.html:135
 msgid "Model types"
 msgstr "Model types"
 
-#: app/templates/admin.html:132
+#: app/templates/admin.html:136
 msgid "Reasoning models"
 msgstr "Reasoning models"
 
-#: app/templates/admin.html:133
+#: app/templates/admin.html:137
 msgid "Multimodal models"
 msgstr "Multimodal models"
 
-#: app/templates/admin.html:134
+#: app/templates/admin.html:138
 msgid "Embedding models"
 msgstr "Embedding models"
 
-#: app/templates/admin.html:137
+#: app/templates/admin.html:141
 msgid "Context length"
 msgstr "Context length"
 
-#: app/templates/admin.html:143
+#: app/templates/admin.html:147
 msgid "Model name"
 msgstr "Model name"
 
-#: app/templates/admin.html:144
+#: app/templates/admin.html:148
 msgid "Search models on Hugging Face…"
 msgstr "Search models on Hugging Face…"
 
-#: app/templates/admin.html:145 app/templates/admin.html:467
+#: app/templates/admin.html:149 app/templates/admin.html:475
 msgid "Search"
 msgstr "Search"
 
-#: app/templates/admin.html:150 app/templates/admin.html:208
-#: app/templates/admin.html:439
+#: app/templates/admin.html:157 app/templates/admin.html:216
+#: app/templates/admin.html:447
 msgid "Size"
 msgstr "Size"
 
-#: app/templates/admin.html:151
+#: app/templates/admin.html:158
 msgid "File name"
 msgstr "File name"
 
-#: app/templates/admin.html:152
+#: app/templates/admin.html:159
 msgid "Fit"
 msgstr "Fit"
 
-#: app/templates/admin.html:153
+#: app/templates/admin.html:160
 msgid "Download file"
 msgstr "Download file"
 
-#: app/templates/admin.html:163 app/templates/admin.html:445
+#: app/templates/admin.html:171 app/templates/admin.html:453
 msgid "Update camera list"
 msgstr "Update camera list"
 
-#: app/templates/admin.html:171 app/templates/admin.html:446
+#: app/templates/admin.html:179 app/templates/admin.html:454
 msgid "Code"
 msgstr "Code"
 
-#: app/templates/admin.html:172 app/templates/admin.html:447
+#: app/templates/admin.html:180 app/templates/admin.html:455
 msgid "Room"
 msgstr "Room"
 
-#: app/templates/admin.html:173 app/templates/admin.html:448
+#: app/templates/admin.html:181 app/templates/admin.html:456
 msgid "Preview"
 msgstr "Preview"
 
-#: app/templates/admin.html:181 app/templates/admin.html:450
+#: app/templates/admin.html:189 app/templates/admin.html:458
 msgid "No cameras configured"
 msgstr "No cameras configured"
 
-#: app/templates/admin.html:191 app/templates/admin.html:442
+#: app/templates/admin.html:199 app/templates/admin.html:450
 msgid "Update backup list"
 msgstr "Update backup list"
 
-#: app/templates/admin.html:193 app/templates/admin.html:416
+#: app/templates/admin.html:201 app/templates/admin.html:424
 msgid "Backup type"
 msgstr "Backup type"
 
-#: app/templates/admin.html:195 app/templates/admin.html:417
+#: app/templates/admin.html:203 app/templates/admin.html:425
 msgid "Users only"
 msgstr "Users only"
 
-#: app/templates/admin.html:196 app/templates/admin.html:418
+#: app/templates/admin.html:204 app/templates/admin.html:426
 msgid "Full (users + chats + files)"
 msgstr "Full (users + chats + files)"
 
-#: app/templates/admin.html:198 app/templates/admin.html:419
+#: app/templates/admin.html:206 app/templates/admin.html:427
 msgid "Create backup"
 msgstr "Create backup"
 
-#: app/templates/admin.html:206 app/templates/admin.html:437
+#: app/templates/admin.html:214 app/templates/admin.html:445
 msgid "Filename"
 msgstr "Filename"
 
-#: app/templates/admin.html:207 app/templates/admin.html:438
+#: app/templates/admin.html:215 app/templates/admin.html:446
 msgid "Type"
 msgstr "Type"
 
-#: app/templates/admin.html:209 app/templates/admin.html:440
+#: app/templates/admin.html:217 app/templates/admin.html:448
 msgid "Created"
 msgstr "Created"
 
-#: app/templates/admin.html:219 app/templates/admin.html:423
+#: app/templates/admin.html:227 app/templates/admin.html:431
 msgid "No backups found"
 msgstr "No backups found"
 
-#: app/templates/admin.html:229 app/templates/admin.html:327
+#: app/templates/admin.html:237 app/templates/admin.html:335
 msgid "New user"
 msgstr "New user"
 
-#: app/templates/admin.html:235 app/templates/admin.html:328
+#: app/templates/admin.html:243 app/templates/admin.html:336
 msgid "Only lowercase letters and digits"
 msgstr "Only lowercase letters and digits"
 
-#: app/templates/admin.html:248 app/templates/admin.html:329
+#: app/templates/admin.html:256 app/templates/admin.html:337
 msgid "highest"
 msgstr "highest"
 
-#: app/templates/admin.html:249 app/templates/admin.html:330
+#: app/templates/admin.html:257 app/templates/admin.html:338
 msgid "medium"
 msgstr "medium"
 
-#: app/templates/admin.html:250 app/templates/admin.html:331
+#: app/templates/admin.html:258 app/templates/admin.html:339
 msgid "lowest"
 msgstr "lowest"
 
-#: app/templates/admin.html:255 app/templates/admin.html:324
+#: app/templates/admin.html:263 app/templates/admin.html:332
 msgid "Active"
 msgstr "Active"
 
-#: app/templates/admin.html:268 app/templates/admin.html:332
+#: app/templates/admin.html:276 app/templates/admin.html:340
 msgid "Leave all unchecked to deny access to all cameras."
 msgstr "Leave all unchecked to deny access to all cameras."
 
-#: app/templates/admin.html:271 app/templates/admin.html:325
+#: app/templates/admin.html:279 app/templates/admin.html:333
 msgid "Create"
 msgstr "Create"
 
-#: app/templates/admin.html:280 app/templates/admin.html:311
+#: app/templates/admin.html:288 app/templates/admin.html:319
 msgid "Change password"
 msgstr "Change password"
 
-#: app/templates/admin.html:286 app/templates/admin.html:326
+#: app/templates/admin.html:294 app/templates/admin.html:334
 msgid "New password"
 msgstr "New password"
 
-#: app/templates/admin.html:300
+#: app/templates/admin.html:308
 #, python-brace-format
 msgid "Delete user {login}?"
 msgstr "Delete user {login}?"
 
-#: app/templates/admin.html:306
+#: app/templates/admin.html:314
 msgid "OK"
 msgstr "OK"
 
-#: app/templates/admin.html:308 app/templates/admin.html:479
+#: app/templates/admin.html:316 app/templates/admin.html:487
 msgid "Cancel"
 msgstr "Cancel"
 
-#: app/templates/admin.html:309
+#: app/templates/admin.html:317
 msgid "Change"
 msgstr "Change"
 
-#: app/templates/admin.html:310
+#: app/templates/admin.html:318
 msgid "delete"
 msgstr "Delete"
 
-#: app/templates/admin.html:312
+#: app/templates/admin.html:320
 msgid "Delete user"
 msgstr "Delete user"
 
-#: app/templates/admin.html:333 app/templates/chat.html:158
+#: app/templates/admin.html:341 app/templates/chat.html:158
 msgid "unknown_error"
 msgstr "Unknown error"
 
-#: app/templates/admin.html:342
+#: app/templates/admin.html:350
 msgid "Saved"
 msgstr "Saved"
 
-#: app/templates/admin.html:344 app/templates/chat.html:47
+#: app/templates/admin.html:352 app/templates/chat.html:47
 #: app/templates/chat.html:136
 msgid "Chat"
 msgstr "Chat"
 
-#: app/templates/admin.html:345
+#: app/templates/admin.html:353
 msgid "Reasoning"
 msgstr "Reasoning"
 
-#: app/templates/admin.html:346
+#: app/templates/admin.html:354
 msgid "Multimodal"
 msgstr "Multimodal"
 
-#: app/templates/admin.html:347
+#: app/templates/admin.html:355
 msgid "Embedding"
 msgstr "Embedding"
 
-#: app/templates/admin.html:348
+#: app/templates/admin.html:356
 msgid "-- Select model --"
 msgstr "-- Select model --"
 
-#: app/templates/admin.html:349 app/templates/chat.html:114
+#: app/templates/admin.html:357 app/templates/chat.html:114
 msgid "Loading..."
 msgstr "Loading..."
 
-#: app/templates/admin.html:350
+#: app/templates/admin.html:358
 msgid "No llama-server URL provided"
 msgstr "No llama-server URL provided"
 
-#: app/templates/admin.html:351
+#: app/templates/admin.html:359
 msgid "Context Length"
 msgstr "Context Length"
 
-#: app/templates/admin.html:352
+#: app/templates/admin.html:360
 msgid "Temperature"
 msgstr "Temperature"
 
-#: app/templates/admin.html:353
+#: app/templates/admin.html:361
 msgid "Top P"
 msgstr "Top P"
 
-#: app/templates/admin.html:354
+#: app/templates/admin.html:362
 msgid "Timeout (s)"
 msgstr "Timeout (s)"
 
-#: app/templates/admin.html:355
+#: app/templates/admin.html:363
 msgid "Architecture:"
 msgstr "Architecture:"
 
-#: app/templates/admin.html:356
+#: app/templates/admin.html:364
 msgid "Parameters:"
 msgstr "Parameters:"
 
-#: app/templates/admin.html:357
+#: app/templates/admin.html:365
 msgid "Quantization:"
 msgstr "Quantization:"
 
-#: app/templates/admin.html:358
+#: app/templates/admin.html:366
 msgid "Max context length:"
 msgstr "Max context length:"
 
-#: app/templates/admin.html:359
+#: app/templates/admin.html:367
 msgid "from GGUF file"
 msgstr "from GGUF file"
 
-#: app/templates/admin.html:360
+#: app/templates/admin.html:368
 msgid "from known models"
 msgstr "from known models"
 
-#: app/templates/admin.html:361
+#: app/templates/admin.html:369
 msgid "Embedding length:"
 msgstr "Embedding length:"
 
-#: app/templates/admin.html:362
+#: app/templates/admin.html:370
 msgid "File size:"
 msgstr "File size:"
 
-#: app/templates/admin.html:363
+#: app/templates/admin.html:371
 msgid "Type:"
 msgstr "Type:"
 
-#: app/templates/admin.html:364
+#: app/templates/admin.html:372
 msgid "MTP support:"
 msgstr "MTP support:"
 
-#: app/templates/admin.html:365
+#: app/templates/admin.html:373
 msgid "yes"
 msgstr "yes"
 
-#: app/templates/admin.html:366
+#: app/templates/admin.html:374
 msgid "no"
 msgstr "no"
 
-#: app/templates/admin.html:368
+#: app/templates/admin.html:376
 msgid "timeout_fetching_model_info"
 msgstr "Timeout fetching model info"
 
-#: app/templates/admin.html:369
+#: app/templates/admin.html:377
 msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
 msgstr ""
 
-#: app/templates/admin.html:371
+#: app/templates/admin.html:379
 msgid "Please select a model first."
 msgstr "Please select a model first."
 
-#: app/templates/admin.html:372
+#: app/templates/admin.html:380
 msgid "Context length must be at least 512."
 msgstr "Context length must be at least 512."
 
-#: app/templates/admin.html:373
+#: app/templates/admin.html:381
 #, python-brace-format
 msgid "Context length cannot exceed {max} (max for this model)."
 msgstr "Context length cannot exceed {max} (max for this model)."
 
-#: app/templates/admin.html:374
+#: app/templates/admin.html:382
 msgid "Temperature must be between 0.0 and 2.0."
 msgstr "Temperature must be between 0.0 and 2.0."
 
-#: app/templates/admin.html:375
+#: app/templates/admin.html:383
 msgid "Top P must be between 0.0 and 1.0."
 msgstr "Top P must be between 0.0 and 1.0."
 
-#: app/templates/admin.html:376
+#: app/templates/admin.html:384
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Timeout must be between 0 and 1200 seconds."
 
-#: app/templates/admin.html:377
+#: app/templates/admin.html:385
 msgid "Repeat Penalty"
 msgstr "Repeat Penalty"
 
-#: app/templates/admin.html:378
+#: app/templates/admin.html:386
 msgid "Repeat penalty must be between 1.0 and 2.0."
 msgstr "Repeat penalty must be between 1.0 and 2.0."
 
-#: app/templates/admin.html:386
+#: app/templates/admin.html:394
 msgid "Chunk configuration saved. Reindexing started."
 msgstr "Chunk configuration saved. Reindexing started."
 
-#: app/templates/admin.html:387
+#: app/templates/admin.html:395
 msgid "Chunk configuration saved."
 msgstr "Chunk configuration saved."
 
-#: app/templates/admin.html:388
+#: app/templates/admin.html:396
 msgid "vram_optimal"
 msgstr "Used VRAM: 100%, RAM: 0% - optimal"
 
-#: app/templates/admin.html:389
+#: app/templates/admin.html:397
 msgid "vram_optimal_dynamic"
 msgstr "Used VRAM: %1%%, RAM: 0% - optimal"
 
-#: app/templates/admin.html:390
+#: app/templates/admin.html:398
 msgid "vram_estimated"
 msgstr "VRAM: ~%1% MB / %2% MB (%3%%) — estimated"
 
 # VRAM management messages
-#: app/templates/admin.html:391
+#: app/templates/admin.html:399
 msgid "vram_measured"
 msgstr "VRAM: %1% MB / %2% MB (%3%%) — measured (%4% measurements)"
 
-#: app/templates/admin.html:392
+#: app/templates/admin.html:400
 msgid "vram_detail"
 msgstr " (model=%1% + KV=%2% + compute=%3% MB)"
 
-#: app/templates/admin.html:393
+#: app/templates/admin.html:401
 msgid "calculating_vram"
 msgstr "Calculating..."
 
-#: app/templates/admin.html:394
+#: app/templates/admin.html:402
 msgid "vram_partial_high"
 msgstr "Used VRAM: 100%, RAM: %2%% - good"
 
-#: app/templates/admin.html:395
+#: app/templates/admin.html:403
 msgid "vram_partial_med"
 msgstr "Used VRAM: 100%, RAM: %2%% - moderate"
 
-#: app/templates/admin.html:396
+#: app/templates/admin.html:404
 msgid "vram_partial_low"
 msgstr "Used VRAM: 100%, RAM: %2%% - slow, delays"
 
-#: app/templates/admin.html:397
+#: app/templates/admin.html:405
 msgid "no_gpu_full"
 msgstr "No GPU. Used %1%% RAM - slow"
 
-#: app/templates/admin.html:398
+#: app/templates/admin.html:406
 msgid "ram_estimate"
 msgstr "Used %1%% RAM"
 
-#: app/templates/admin.html:399
+#: app/templates/admin.html:407
 msgid "no_gpu_low"
 msgstr "No GPU. Used %1%% RAM - very slow"
 
-#: app/templates/admin.html:400
+#: app/templates/admin.html:408
 msgid "vram_nodata_gpu"
 msgstr "GPU: %1% MB (no model data)"
 
-#: app/templates/admin.html:401
+#: app/templates/admin.html:409
 msgid "vram_nodata"
 msgstr "No data for estimation"
 
-#: app/templates/admin.html:402
+#: app/templates/admin.html:410
 msgid "ngl_info"
 msgstr "ngl=%1%, layers=%2%"
 
-#: app/templates/admin.html:403
+#: app/templates/admin.html:411
 msgid "ngl_offload_hint"
 msgstr "(%1%/%2% layers on GPU, ~5-10× slower)"
 
-#: app/templates/admin.html:404
+#: app/templates/admin.html:412
 msgid ""
 "Reindexing all documents with new embedding model started. This may take "
 "a while."
@@ -1433,52 +1531,52 @@ msgstr ""
 "Reindexing all documents with new embedding model started. This may take "
 "a while."
 
-#: app/templates/admin.html:405
+#: app/templates/admin.html:413
 msgid "Reindex all documents? This will rebuild all document embeddings."
 msgstr "Reindex all documents? This will rebuild all document embeddings."
 
-#: app/templates/admin.html:407
+#: app/templates/admin.html:415
 msgid "Local"
 msgstr "Local"
 
-#: app/templates/admin.html:408
+#: app/templates/admin.html:416
 msgid "Please provide llama-server URL first"
 msgstr "Please provide llama-server URL first"
 
-#: app/templates/admin.html:409
+#: app/templates/admin.html:417
 msgid "Please provide llama-server URL first."
 msgstr "Please provide llama-server URL first."
 
-#: app/templates/admin.html:410
+#: app/templates/admin.html:418
 msgid "Please provide llama-server URL."
 msgstr "Please provide llama-server URL."
 
-#: app/templates/admin.html:412
+#: app/templates/admin.html:420
 msgid "llama-server available"
 msgstr "llama-server available"
 
-#: app/templates/admin.html:413
+#: app/templates/admin.html:421
 msgid "llama-server unavailable"
 msgstr "llama-server unavailable"
 
-#: app/templates/admin.html:420
+#: app/templates/admin.html:428
 msgid "Restore"
 msgstr "Restore"
 
-#: app/templates/admin.html:421
+#: app/templates/admin.html:429 app/templates/admin.html:500
 msgid "Delete"
 msgstr "Delete"
 
-#: app/templates/admin.html:422 app/templates/admin.html:489
+#: app/templates/admin.html:430 app/templates/admin.html:497
 msgid "Download"
 msgstr "Download"
 
-#: app/templates/admin.html:424
+#: app/templates/admin.html:432
 #, python-brace-format
 msgid "Restore users database from {filename}? Current data will be replaced."
 msgstr "Restore users database from {filename}? Current data will be replaced."
 
-#: app/templates/admin.html:425
+#: app/templates/admin.html:433
 #, python-brace-format
 msgid ""
 "Restore full backup from {filename}? All data (users, chats, documents, "
@@ -1487,175 +1585,195 @@ msgstr ""
 "Restore full backup from {filename}? All data (users, chats, documents, "
 "files) will be replaced."
 
-#: app/templates/admin.html:426
+#: app/templates/admin.html:434
 #, python-brace-format
 msgid "Delete file {filename}? This action cannot be undone."
 msgstr "Delete file {filename}? This action cannot be undone."
 
-#: app/templates/admin.html:427
+#: app/templates/admin.html:435
 #, python-brace-format
 msgid "Backup created: {filename}"
 msgstr "Backup created: {filename}"
 
-#: app/templates/admin.html:428
+#: app/templates/admin.html:436
 #, python-brace-format
 msgid "Data restored from: {filename}"
 msgstr "Data restored from: {filename}"
 
-#: app/templates/admin.html:429
+#: app/templates/admin.html:437
 #, python-brace-format
 msgid "File deleted: {filename}"
 msgstr "File deleted: {filename}"
 
-#: app/templates/admin.html:432
+#: app/templates/admin.html:440
 msgid "Error deleting backup"
 msgstr "Error deleting backup"
 
-#: app/templates/admin.html:433
+#: app/templates/admin.html:441
 msgid "Refresh list"
 msgstr "Refresh list"
 
-#: app/templates/admin.html:434
+#: app/templates/admin.html:442
 msgid "Success"
 msgstr "Success"
 
-#: app/templates/admin.html:435
+#: app/templates/admin.html:443
 msgid "Creating..."
 msgstr "Creating..."
 
-#: app/templates/admin.html:436
+#: app/templates/admin.html:444
 msgid "Restoring..."
 msgstr "Restoring..."
 
-#: app/templates/admin.html:451
+#: app/templates/admin.html:459
 msgid "Camera list updated"
 msgstr "Camera list updated"
 
-#: app/templates/admin.html:452
+#: app/templates/admin.html:460
 #, python-brace-format
 msgid "Cameras synced: {count}"
 msgstr "Cameras synced: {count}"
 
-#: app/queue.py
-#, python-brace-format
-msgid "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h})."
-msgstr "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h})."
-
-#: app/templates/admin.html:454
+#: app/templates/admin.html:462
 msgid "Error syncing cameras"
 msgstr "Error syncing cameras"
 
-#: app/templates/admin.html:458
+#: app/templates/admin.html:466
 msgid "Platform"
 msgstr "Platform"
 
-#: app/templates/admin.html:459 app/templates/admin.html:483
+#: app/templates/admin.html:467 app/templates/admin.html:491
 msgid "GPU"
 msgstr "GPU"
 
-#: app/templates/admin.html:460
+#: app/templates/admin.html:468
 msgid "CPU cores"
 msgstr "CPU cores"
 
-#: app/templates/admin.html:461
+#: app/templates/admin.html:469
 msgid "VRAM"
 msgstr "VRAM"
 
-#: app/templates/admin.html:462
+#: app/templates/admin.html:470
 msgid "RAM"
 msgstr "RAM"
 
-#: app/templates/admin.html:463
+#: app/templates/admin.html:471
 msgid "total"
 msgstr "total"
 
-#: app/templates/admin.html:464
+#: app/templates/admin.html:472
 msgid "available"
 msgstr "available"
 
-#: app/templates/admin.html:465
+#: app/templates/admin.html:473
 msgid "GB"
 msgstr "GB"
 
-#: app/templates/admin.html:468
+#: app/templates/admin.html:476
 msgid "Searching…"
 msgstr "Searching…"
 
-#: app/templates/admin.html:469
+#: app/templates/admin.html:477
 msgid "Enter a search query…"
 msgstr "Enter a search query…"
 
-#: app/templates/admin.html:470
+#: app/templates/admin.html:478
 msgid "No models found"
 msgstr "No models found"
 
-#: app/templates/admin.html:471
+#: app/templates/admin.html:479
 msgid "Model Hub request failed"
 msgstr "Model Hub request failed"
 
-#: app/templates/admin.html:472
+#: app/templates/admin.html:480
 msgid "Access required"
 msgstr "Access required"
 
-#: app/templates/admin.html:473
+#: app/templates/admin.html:481
 msgid "Non-commercial"
 msgstr "Non-commercial"
 
-#: app/templates/admin.html:474
+#: app/templates/admin.html:482
 #, python-brace-format
 msgid "Downloading {pct}% — {total} MB"
 msgstr "Downloading {pct}% — {total} MB"
 
-#: app/templates/admin.html:475
+#: app/templates/admin.html:483
 msgid "Verifying checksum…"
 msgstr "Verifying checksum…"
 
-#: app/templates/admin.html:476
+#: app/templates/admin.html:484
 msgid "Downloaded — refresh the Models tab"
 msgstr "Downloaded — refresh the Models tab"
 
-#: app/templates/admin.html:477
+#: app/templates/admin.html:485
 msgid "Download failed"
 msgstr "Download failed"
 
-#: app/templates/admin.html:478
+#: app/templates/admin.html:486
 msgid "Download cancelled"
 msgstr "Download cancelled"
 
-#: app/templates/admin.html:480
+#: app/templates/admin.html:488
 msgid "Searching for suitable models…"
 msgstr "Searching for suitable models…"
 
-#: app/templates/admin.html:481
+#: app/templates/admin.html:489
 msgid "Recalculating fit…"
 msgstr "Recalculating fit…"
 
-#: app/templates/admin.html:482
+#: app/templates/admin.html:490
 msgid "Computing fit…"
 msgstr "Computing fit…"
 
-#: app/templates/admin.html:484
+#: app/templates/admin.html:492
 msgid "GPU+CPU"
 msgstr "GPU+CPU"
 
-#: app/templates/admin.html:485
+#: app/templates/admin.html:493
 #, fuzzy
 msgid "CPU"
 msgstr "GPU"
 
-#: app/templates/admin.html:486
+#: app/templates/admin.html:494
 msgid "Impossible"
 msgstr "Impossible"
 
-#: app/templates/admin.html:487
+#: app/templates/admin.html:495
 msgid "sec"
 msgstr " s"
 
-#: app/templates/admin.html:488
+#: app/templates/admin.html:496
 msgid "Max context"
 msgstr "Max context"
 
-#: app/templates/admin.html:490
+#: app/templates/admin.html:498
+msgid "Downloaded"
+msgstr "Downloaded"
+
+#: app/templates/admin.html:499
+msgid "Installed via Model Hub"
+msgstr "Installed via Model Hub"
+
+#: app/templates/admin.html:501
+#, python-brace-format
+msgid "Delete model {filename} and its service files from disk?"
+msgstr "Delete model {filename} and its service files from disk?"
+
+#: app/templates/admin.html:502
+msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
+msgstr "No access to Hugging Face — downloads from the Model Hub are unavailable"
+
+#: app/templates/admin.html:503
+msgid ""
+"Manually put .gguf files into the models directory (/models), then press "
+"Update model list in the Models tab"
+msgstr ""
+"Manually put .gguf files into the models directory (/models), then press "
+"Update model list in the Models tab"
+
+#: app/templates/admin.html:504
 #, python-brace-format
 msgid "Service files totalling {n} MB will be downloaded with the model"
 msgstr "Service files totalling {n} MB will be downloaded with the model"
@@ -1672,15 +1790,71 @@ msgstr "Administrator"
 msgid "toggle_voice_gender"
 msgstr "Toggle voice gender"
 
-#: app/templates/base.html:46 app/templates/base.html:65
+#: app/templates/base.html:46 app/templates/base.html:96
 msgid "Toggle theme"
 msgstr "Toggle theme"
 
+#: app/templates/base.html:50 app/templates/base.html:55
+msgid "api_keys_title"
+msgstr "API keys"
+
+#: app/templates/base.html:50
+msgid "api_keys_button"
+msgstr "API keys"
+
 #: app/templates/base.html:52
+msgid "api_keys_revoke"
+msgstr "Revoke"
+
+#: app/templates/base.html:53
+msgid "api_keys_revoke_confirm"
+msgstr "Revoke this API key? Integrations using it will stop working."
+
+#: app/templates/base.html:56
+msgid "api_keys_close"
+msgstr "Close"
+
+#: app/templates/base.html:58
+msgid "api_keys_hint"
+msgstr "Create keys for external integrations. A secret is shown only once."
+
+#: app/templates/base.html:60
+msgid "api_keys_name_placeholder"
+msgstr "Key name, e.g. Home Assistant"
+
+#: app/templates/base.html:61
+msgid "api_keys_create"
+msgstr "Create key"
+
+#: app/templates/base.html:65
+msgid "api_keys_copy_once"
+msgstr "Copy this key now. It will not be shown again."
+
+#: app/templates/base.html:66
+msgid "api_keys_copy"
+msgstr "Copy key"
+
+#: app/templates/base.html:71
+msgid "api_keys_col_name"
+msgstr "Name"
+
+#: app/templates/base.html:72
+msgid "api_keys_col_key"
+msgstr "Key"
+
+#: app/templates/base.html:73
+msgid "api_keys_col_created"
+msgstr "Created"
+
+#: app/templates/base.html:74
+msgid "api_keys_col_last_used"
+msgstr "Last used"
+
+#: app/templates/base.html:83
 msgid "Logout"
 msgstr "Logout"
 
-#: app/templates/base.html:78 app/templates/chat.html:174
+#: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v12.3 (c) 2026 Valery Barsukov"
 
@@ -2209,37 +2383,37 @@ msgstr "Could not find JSON in model response"
 msgid "JSON parsing error: {error}"
 msgstr "JSON parsing error: {error}"
 
-#: modules/sd_cpp.py:263
+#: modules/sd_cpp.py:273
 msgid "sd-wrapper returned no image data"
 msgstr "sd-wrapper returned no image data"
 
-#: modules/sd_cpp.py:280
+#: modules/sd_cpp.py:291
 msgid "sd-wrapper returned no image"
 msgstr "sd-wrapper returned no image"
 
-#: modules/sd_cpp.py:287
+#: modules/sd_cpp.py:298
 #, python-brace-format
 msgid "Image generation timeout ({timeout}s)"
 msgstr "Image generation timeout ({timeout}s)"
 
-#: modules/sd_cpp.py:290
+#: modules/sd_cpp.py:301
 msgid "Could not connect to sd-wrapper"
 msgstr "Could not connect to sd-wrapper"
 
-#: modules/sd_cpp.py:413
+#: modules/sd_cpp.py:451
 msgid "Edit result has no image data."
 msgstr "Edit result has no image data."
 
-#: modules/sd_cpp.py:433
+#: modules/sd_cpp.py:472
 msgid "Edit returned no image."
 msgstr "Edit returned no image."
 
-#: modules/sd_cpp.py:442
+#: modules/sd_cpp.py:481
 #, python-brace-format
 msgid "Editing timeout ({timeout}s)"
 msgstr "Editing timeout ({timeout}s)"
 
-#: modules/sd_cpp.py:445
+#: modules/sd_cpp.py:484
 msgid "Could not connect to editor."
 msgstr "Could not connect to editor."
 
@@ -2550,24 +2724,3 @@ msgstr "Could not connect to video generation service"
 #~ "The multimodal module requires a Vision"
 #~ " model (with mmproj), not a plain "
 #~ "chat model."
-
-msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
-msgstr "No access to Hugging Face — downloads from the Model Hub are unavailable"
-
-msgid "Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab"
-msgstr "Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab"
-
-msgid "Downloaded"
-msgstr "Downloaded"
-
-msgid "Installed via Model Hub"
-msgstr "Installed via Model Hub"
-
-msgid "Delete model {filename} and its service files from disk?"
-msgstr "Delete model {filename} and its service files from disk?"
-
-msgid "Downloaded models"
-msgstr "Downloaded models"
-
-msgid "This model is currently selected as the active model for a module. Choose a different model first."
-msgstr "This model is currently selected as the active model for a module. Choose a different model first."

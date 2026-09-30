@@ -3,6 +3,7 @@
 
 import hashlib
 import hmac
+import inspect
 import json
 import time
 from unittest.mock import Mock, patch
@@ -747,3 +748,147 @@ class TestSearchQueryNormalization:
 
         assert [c.args[0] for c in search.search.call_args_list] == [original, "перевести по текущему курсу в рубли"]
         assert queue._requeue_reasoning_task.call_args.args[0] == question
+
+
+@pytest.mark.unit
+class TestApiEmbeddingTask:
+    """The public embeddings endpoint reaches the embedding model through the queue.
+
+    A Flask route must never call the embedding model directly, so the task type
+    has to be classified for the worker that holds the GPU lock.
+    """
+
+    @staticmethod
+    def _queue(modules=None, embeddings=None):
+        from app.queue import RedisRequestQueue
+
+        q = RedisRequestQueue.__new__(RedisRequestQueue)
+        app = Mock()
+        app.config = {}
+        app.logger = Mock()
+        base = Mock()
+        base._ = Mock(side_effect=lambda msg, lang="ru": msg)
+        app.modules = {"base": base}
+        if modules:
+            app.modules.update(modules)
+        q.app = app
+        if embeddings is not None:
+            rag = modules["rag"]
+            rag._get_batch_embeddings = Mock(return_value=embeddings)
+        return q
+
+    @staticmethod
+    def _task(texts):
+        return {
+            "id": "task-1",
+            "user_id": "u1",
+            "session_id": "",
+            "lang": "en",
+            "data": {"type": "api_embedding", "input": texts},
+        }
+
+    def test_api_embedding_maps_to_the_embedding_model(self):
+        from app.queue import RedisRequestQueue
+
+        q = RedisRequestQueue.__new__(RedisRequestQueue)
+        task = {"type": "api_embedding", "data": {"type": "api_embedding"}}
+        assert q._get_model_for_task(task) == "embedding"
+
+    def test_api_embedding_is_classified_fast(self):
+        from app.queue import RedisRequestQueue
+
+        q = RedisRequestQueue.__new__(RedisRequestQueue)
+        assert q._classify_task({"data": {"type": "api_embedding"}}) == "fast"
+
+    def test_api_embedding_model_is_held_by_the_gpu_lock(self):
+        from app.queue import RedisRequestQueue
+
+        q = RedisRequestQueue.__new__(RedisRequestQueue)
+        model = q._get_model_for_task({"data": {"type": "api_embedding"}})
+        source = inspect.getsource(RedisRequestQueue._worker_loop_fast)
+        assert model in ("multimodal", "reasoning", "embedding")
+        assert '"embedding"' in source
+
+    def test_api_embedding_processor_returns_one_vector_per_input(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[[0.1, 0.2], [0.3, 0.4]])
+
+        result = q._process_api_embedding_task(self._task(["first", "second"]))
+
+        assert result["status"] == "completed"
+        assert result["embeddings"] == [[0.1, 0.2], [0.3, 0.4]]
+        assert result["model"] == "embedding"
+        rag._get_batch_embeddings.assert_called_once_with(["first", "second"])
+
+    def test_api_embedding_processor_rejects_empty_input(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[])
+
+        result = q._process_api_embedding_task(self._task([]))
+
+        assert result["is_error"] is True
+        assert result["error"].startswith("⚠️ ")
+        rag._get_batch_embeddings.assert_not_called()
+
+    def test_api_embedding_processor_rejects_non_string_members(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[])
+
+        result = q._process_api_embedding_task(self._task(["ok", 7]))
+
+        assert result["is_error"] is True
+        rag._get_batch_embeddings.assert_not_called()
+
+    def test_api_embedding_processor_errors_when_rag_unavailable(self):
+        rag = Mock()
+        rag.available = False
+        q = self._queue({"rag": rag}, embeddings=[[0.1]])
+
+        result = q._process_api_embedding_task(self._task(["hello"]))
+
+        assert result["is_error"] is True
+        assert result["error"].startswith("⚠️ ")
+        rag._get_batch_embeddings.assert_not_called()
+
+    def test_api_embedding_processor_errors_when_rag_missing(self):
+        q = self._queue()
+
+        result = q._process_api_embedding_task(self._task(["hello"]))
+
+        assert result["is_error"] is True
+        assert result["error"].startswith("⚠️ ")
+
+    def test_api_embedding_processor_rejects_failed_vector(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[[0.1, 0.2], None])
+
+        result = q._process_api_embedding_task(self._task(["first", "second"]))
+
+        assert result["is_error"] is True
+        assert "embeddings" not in result
+        assert "response" not in result
+
+    def test_api_embedding_dispatch_reaches_processor(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[[0.5]])
+        q._process_api_embedding_task = Mock(return_value={"status": "completed", "embeddings": [[0.5]]})
+
+        result = q._process_request(self._task(["hello"]))
+
+        assert result == {"status": "completed", "embeddings": [[0.5]]}
+        q._process_api_embedding_task.assert_called_once()
+
+    def test_api_embedding_opens_no_usage_account(self):
+        rag = Mock()
+        rag.available = True
+        q = self._queue({"rag": rag}, embeddings=[[0.5]])
+
+        with patch("app.queue.begin_usage_account") as begin:
+            q._process_request(self._task(["hello"]))
+
+        begin.assert_not_called()

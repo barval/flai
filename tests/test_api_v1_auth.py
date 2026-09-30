@@ -105,6 +105,8 @@ class TestApiV1Authentication:
         body = response.get_json()
         assert body["login"] == "apiowner"
         assert body["language"] == "en"
-        assert body["capabilities"]["chat_completions"] is False
+        assert body["capabilities"]["chat_completions"] is True
+        assert body["capabilities"]["streaming"] is True
+        assert body["capabilities"]["embeddings"] is True
         assert body["capabilities"]["tools"] is False
         assert body["capabilities"]["response_format_json_schema"] is False

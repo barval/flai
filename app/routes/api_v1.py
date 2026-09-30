@@ -4,12 +4,29 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request, stream_with_context
 from flask_babel import gettext as _
+from werkzeug.exceptions import MethodNotAllowed
 
+from app.api_bridge import (
+    ApiImageRejectedError,
+    ApiSessionNotFoundError,
+    ApiTaskError,
+    ApiTaskTimeoutError,
+    enqueue_chat,
+    enqueue_embeddings,
+    normalize_chat_messages,
+    resolve_api_session,
+    serialize_chat_completion,
+    serialize_embeddings,
+    stream_chat,
+    wait_for_result,
+)
 from app.api_tokens import touch_api_token, verify_api_token
 
-bp = Blueprint("api_v1", __name__, url_prefix="/v1")
+API_PREFIX = "/v1"
+
+bp = Blueprint("api_v1", __name__, url_prefix=API_PREFIX)
 
 API_MODELS: list[dict[str, str]] = [
     {"id": "flai-chat", "object": "model", "owned_by": "flai", "description": "Router-selected chat"},
@@ -83,6 +100,20 @@ def api_token_required(view: Callable) -> Callable:
     return wrapper
 
 
+@bp.app_errorhandler(405)
+def method_not_allowed(error: Any) -> Any:
+    """Keep a wrong HTTP method inside the OpenAI error envelope.
+
+    Flask dispatches routing errors (405, unknown path) to app-level handlers
+    only, so this is registered app-wide and falls through for every path
+    outside the API prefix.
+    """
+    if not request.path.startswith(API_PREFIX):
+        valid = getattr(error, "valid_methods", None)
+        return MethodNotAllowed(valid_methods=valid).get_response(request.environ)
+    return api_error(405, "invalid_request_error", "method_not_allowed", _("Method not allowed"))
+
+
 @bp.route("/models", methods=["GET"])
 @api_token_required
 def list_models():
@@ -103,9 +134,9 @@ def api_me():
             "response_style": g.api_user["response_style"],
             "rate_limit": current_app.config.get("API_RATE_LIMIT", "60 per minute;1000 per hour"),
             "capabilities": {
-                "chat_completions": False,
-                "streaming": False,
-                "embeddings": False,
+                "chat_completions": True,
+                "streaming": True,
+                "embeddings": True,
                 "audio_speech": False,
                 "audio_transcriptions": False,
                 "images": False,
@@ -117,3 +148,135 @@ def api_me():
             },
         }
     )
+
+
+@bp.route("/chat/completions", methods=["POST"])
+@api_token_required
+def chat_completions():
+    """Answer a chat request through the normal router and GPU queue.
+
+    The request is persisted and queued exactly like a web message, so the LLM
+    router — not this route — decides which subsystem handles the prompt. The
+    ``model`` field is accepted and ignored: FLAI exposes capabilities, not
+    interchangeable weights.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+
+    try:
+        text, images = normalize_chat_messages(payload.get("messages"))
+    except ApiImageRejectedError as exc:
+        return api_error(400, "invalid_request_error", "invalid_request", exc.localized(_))
+
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    client_user = payload.get("user")
+    if client_user is not None and not isinstance(client_user, str):
+        return api_error(400, "invalid_request_error", "invalid_user", _("'user' must be a string"))
+    requested_session_id = metadata.get("session_id")
+    if requested_session_id is not None and not isinstance(requested_session_id, str):
+        return api_error(
+            400, "invalid_request_error", "invalid_session_id", _("'metadata.session_id' must be a string")
+        )
+
+    stream = payload.get("stream", False)
+    if not isinstance(stream, bool):
+        return api_error(400, "invalid_request_error", "invalid_stream", _("'stream' must be a boolean"))
+    stream_options = payload.get("stream_options") if isinstance(payload.get("stream_options"), dict) else {}
+    include_usage = bool(stream_options.get("include_usage", False))
+
+    try:
+        session_id = resolve_api_session(g.api_user, requested_session_id, client_user)
+    except ApiSessionNotFoundError:
+        return api_error(404, "invalid_request_error", "session_not_found", _("Chat session not found"))
+
+    task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
+
+    timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
+    if stream:
+        generator = stream_chat(
+            g.api_user["login"],
+            task_id,
+            session_id,
+            include_usage=include_usage,
+            timeout_s=timeout_s,
+            translate=_,
+        )
+        return Response(
+            stream_with_context(generator),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+        )
+
+    try:
+        result = wait_for_result(g.api_user["login"], task_id, timeout_s)
+    except ApiTaskTimeoutError:
+        message = _("Task %s is still running and was not cancelled") % task_id
+        return api_error(408, "server_error", "task_timeout", message)
+    except ApiTaskError as exc:
+        return api_error(500, "server_error", "task_failed", exc.localized(_))
+
+    return jsonify(serialize_chat_completion(result, task_id, session_id))
+
+
+def _collect_embedding_input(payload: dict[str, Any]) -> list[str] | None:
+    """Normalize the OpenAI ``input`` field into a list of non-empty strings."""
+    raw = payload.get("input")
+    if isinstance(raw, str):
+        texts = [raw]
+    elif isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+        texts = raw
+    else:
+        return None
+    if not texts or not all(text.strip() for text in texts):
+        return None
+    return texts
+
+
+@bp.route("/embeddings", methods=["POST"])
+@api_token_required
+def embeddings():
+    """Embed one string or a batch of strings with the RAG embedding model.
+
+    ``model``, ``dimensions`` and ``user`` are accepted and ignored: FLAI has a
+    single embedding model. The request runs on the fast worker but still holds
+    the GPU lock, so it queues like any other model call.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+
+    texts = _collect_embedding_input(payload)
+    if texts is None:
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_input",
+            _("'input' must be a non-empty string or an array of non-empty strings"),
+        )
+
+    encoding_format = payload.get("encoding_format", "float")
+    if encoding_format not in ("float", "base64"):
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_encoding_format",
+            _("'encoding_format' must be 'float' or 'base64'"),
+        )
+
+    task_id = enqueue_embeddings(g.api_user, texts)
+
+    timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
+    try:
+        result = wait_for_result(g.api_user["login"], task_id, timeout_s)
+    except ApiTaskTimeoutError:
+        message = _("Task %s is still running and was not cancelled") % task_id
+        return api_error(408, "server_error", "task_timeout", message)
+    except ApiTaskError as exc:
+        return api_error(502, "server_error", "task_failed", exc.localized(_))
+
+    try:
+        body = serialize_embeddings(result, encoding_format)
+    except ApiTaskError as exc:
+        return api_error(502, "server_error", "task_failed", exc.localized(_))
+    return jsonify(body)

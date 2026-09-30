@@ -243,6 +243,10 @@ class RedisRequestQueue:
         # Text tasks are fast
         if req_type == "text":
             return "fast"
+        # Embeddings are short GPU calls — keep them off the slow worker that
+        # serves user-facing video/image generation.
+        if req_type == "api_embedding":
+            return "fast"
         # Video tasks are slow
         if req_type == "video":
             return "slow"
@@ -392,6 +396,9 @@ class RedisRequestQueue:
 
         if req_type == "text":
             return "multimodal"
+
+        if req_type == "api_embedding":
+            return "embedding"
 
         return "multimodal"
 
@@ -3725,6 +3732,38 @@ class RedisRequestQueue:
             self.app.logger.warning(f"Fact merge failed: {e}")
             return {"status": "ok"}
 
+    def _process_api_embedding_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Compute embeddings for the public API through the RAG module.
+
+        Runs on the fast worker under `_gpu_lock` because `_get_model_for_task`
+        classifies the task as "embedding". No chat message is persisted: an
+        embedding request has no session, no history and no assistant turn.
+        """
+        lang = task.get("lang", "ru")
+        texts = task.get("data", {}).get("input")
+
+        if not isinstance(texts, list) or not texts or not all(isinstance(text, str) and text for text in texts):
+            error = self.app.modules["base"]._("Invalid embedding input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        rag = self.app.modules.get("rag")
+        if rag is None or not getattr(rag, "available", False):
+            error = self.app.modules["base"]._("Embeddings are temporarily unavailable", lang=lang)
+            self.app.logger.warning("API embeddings unavailable: rag module not ready")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            vectors = rag._get_batch_embeddings(texts)
+        except Exception as e:
+            self.app.logger.error(f"API embeddings failed: {e}", exc_info=True)
+            vectors = None
+
+        if not vectors or any(vector is None for vector in vectors):
+            error = self.app.modules["base"]._("Failed to compute embeddings", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "embeddings": vectors, "model": "embedding"}
+
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Main entry point — delegates to specialized task handlers."""
@@ -3741,7 +3780,13 @@ class RedisRequestQueue:
         # so phases merge into the same bill. Indexing/merge tasks do not call
         # LLMs or _save_and_respond — their accounts are dropped by the
         # _process_single_task finally clause.
-        if task_type not in ("index_document", "reindex_all_embeddings", "fact_extraction_task", "fact_merge_task"):
+        if task_type not in (
+            "index_document",
+            "reindex_all_embeddings",
+            "fact_extraction_task",
+            "fact_merge_task",
+            "api_embedding",
+        ):
             _requeue_meta = task.get("data", {})
             begin_usage_account(
                 _requeue_meta.get("request_id") or task.get("id") or uuid.uuid4().hex,
@@ -3770,6 +3815,8 @@ class RedisRequestQueue:
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
             return self._process_fact_merge(task)
+        if task_type == "api_embedding":
+            return self._process_api_embedding_task(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]

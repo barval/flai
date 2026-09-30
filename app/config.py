@@ -239,6 +239,9 @@ def load_config(app):
 
     # Public OpenAI-compatible API
     app.config["API_ENABLED"] = os.getenv("API_ENABLED", "true").lower() == "true"
+    # Blocking wait budget for /v1/chat/completions. Kept below the gunicorn
+    # timeout (900s) so a slow task still returns 408 instead of a hard kill.
+    app.config["API_SYNC_MAX_WAIT"] = int(os.getenv("API_SYNC_MAX_WAIT", "600"))
 
     # File validation settings
     app.config["MAX_EXTENSION_LENGTH"] = int(os.getenv("MAX_EXTENSION_LENGTH", 10))

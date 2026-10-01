@@ -1,0 +1,31 @@
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+<link rel="stylesheet" type="text/css" href="{{ swagger_ui_css }}">
+<!-- Customize the app.config['SWAGGER']['favicon'] -->
+<link rel="icon" type="image/png" href="{{ favicon }}" sizes="64x64 32x32 16x16" />
+<!--
+  Local override of flasgger's ui3 head.html: the upstream template links a
+  Google Fonts stylesheet, which FLAI forbids (no CDN links) and which the app
+  CSP already blocks. Swagger UI ships its own fonts via the bundled CSS.
+-->
+<style>
+    html
+    {
+    box-sizing: border-box;
+    overflow: -moz-scrollbars-vertical;
+    overflow-y: scroll;
+    }
+
+    *,
+    *:before,
+    *:after
+    {
+    box-sizing: inherit;
+    }
+
+    body
+    {
+    margin:0;
+    background: #fafafa;
+    }
+</style>

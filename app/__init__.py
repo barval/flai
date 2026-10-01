@@ -5,7 +5,9 @@ import os
 import sys
 from datetime import UTC
 from logging import Formatter
+from pathlib import Path
 
+from flasgger import Swagger
 from flask import Flask, abort, g, jsonify, redirect, request, send_file, session, url_for
 from flask_babel import Babel, gettext
 from flask_limiter import Limiter
@@ -22,6 +24,10 @@ from .userdb import get_user_by_login, init_user_db
 babel = Babel()
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
+
+# Absolute on purpose: flasgger resolves a relative template_file against
+# app.root_path (the `app/` package), not the project root.
+API_V1_SPEC_PATH = Path(__file__).resolve().parent.parent / "docs" / "openapi-v1.yaml"
 
 
 def get_locale():
@@ -340,6 +346,30 @@ def create_app():
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)
+
+    # Interactive API documentation: Swagger UI over the hand-written spec in
+    # docs/openapi-v1.yaml. flasgger bundles the UI assets, so the page works
+    # offline, and both endpoints are deliberately public — a spec is not data.
+    Swagger(
+        app,
+        template_file=str(API_V1_SPEC_PATH),
+        config={
+            "openapi": "3.0.3",
+            "title": "FLAI API",
+            "specs": [
+                {
+                    "endpoint": "flai_v1",
+                    "route": "/v1/openapi.json",
+                    # The spec is maintained by hand; never scan view docstrings.
+                    "rule_filter": lambda rule: False,
+                    "model_filter": lambda tag: False,
+                }
+            ],
+            "specs_route": "/v1/docs",
+            "oauth_redirect": "/v1/docs/oauth2-redirect.html",
+        },
+        merge=True,
+    )
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):

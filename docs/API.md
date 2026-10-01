@@ -15,6 +15,24 @@ why the `model` field is accepted and ignored.
 Everything runs on the existing GPU queue, so the API obeys the same
 serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 
+## Interactive documentation
+
+| What | Where |
+|---|---|
+| Swagger UI (browse and try every endpoint) | `/v1/docs` |
+| OpenAPI 3.0.3 document (machine readable) | `/v1/openapi.json` |
+
+Both are served from `docs/openapi-v1.yaml` and work **without a Bearer key**,
+because a spec is not data — but every operation they document requires one.
+The UI ships with the server, so the page renders offline with no CDN.
+
+> `docs/openapi.yaml` is a separate, older document for the internal web/admin
+> API. It predates `/v1` and is not served; use `/v1/openapi.json` for
+> integrations.
+
+This file is the prose contract; the two above are generated from the same
+endpoint list and are kept in sync by `tests/test_api_docs.py`.
+
 ---
 
 ## Status
@@ -37,6 +55,7 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | Video generation | `POST /v1/videos`, `GET /v1/videos/{task_id}` | Shipped |
 | Deep analysis (RLM) | `POST /v1/flai/rlm` | Shipped |
 | Sessions and history | `/v1/flai/sessions*` | Shipped |
+| Interactive reference | `/v1/docs`, `/v1/openapi.json` | Shipped |
 | Documents, deep analysis UI | Web UI only | Web UI |
 
 Endpoints that are not listed in this table do not exist yet. A client that
@@ -454,7 +473,7 @@ curl http://localhost:5000/v1/images/edits \
 curl http://localhost:5000/v1/videos \
   -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "waves on a beach", "size": "768x512", "seconds": 4}'
+  -d '{"prompt": "waves on a beach", "width": 768, "height": 512, "num_frames": 96, "frame_rate": 12}'
 ```
 
 - `response_format` must be `url` (default). `b64_json` is rejected with
@@ -462,9 +481,20 @@ curl http://localhost:5000/v1/videos \
   download it via the content URL instead of receiving megabytes inline.
 - Image edits require a multipart `image` upload and a non-empty `prompt`;
   path-like file references are never accepted.
-- Video options (`size`, `seconds`, `quality`, `fps`) are validated against the
-  configured `VideoModule`; unsupported values return `400` instead of being
-  passed through silently.
+- Video options are validated against the configured `VideoModule` instead of
+  being passed through. Any key other than `prompt`, `model`, `user` and
+  `metadata` must be an **integer** inside its range; anything else is rejected
+  with `400 invalid_video_options`.
+
+  | Option | Range | Default |
+  |---|---|---|
+  | `width`, `height` | 256–1024, multiples of 32 | 768, 512 |
+  | `num_frames` | 9–240 | 240 |
+  | `frame_rate` | 6, 12, 16 or 24 | 24 |
+  | `seed` | -1 … 2³¹−1 | model default |
+
+  Total pixels are capped at `768x512x240` and the duration at 10 s
+  (`num_frames <= frame_rate * 10`); exceeding either is `400`.
 - When the image or video module is missing or unavailable the endpoints
   return `503 service_unavailable`.
 - Every response carries the prompt in the task record, and the conversation

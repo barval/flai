@@ -34,6 +34,10 @@ EXPECTED_ENDPOINTS = {
     "/v1/flai/sessions/<session_id>/messages": {"GET", "HEAD", "OPTIONS"},
 }
 
+# Documentation routes are part of the served surface but not of the API
+# contract: they need no Bearer token and are covered by tests/test_api_docs.py.
+DOC_ROUTES = {"/v1/openapi.json", "/v1/docs", "/v1/docs/oauth2-redirect.html"}
+
 
 def _collect_v1_rules(test_app):
     return {rule.rule: rule.methods for rule in test_app.url_map.iter_rules() if rule.rule.startswith("/v1")}
@@ -44,7 +48,7 @@ def test_every_documented_v1_endpoint_is_registered(test_app):
     rules = _collect_v1_rules(test_app)
     missing = sorted(set(EXPECTED_ENDPOINTS) - set(rules))
     assert not missing, f"Documented endpoints missing from the app: {missing}"
-    unexpected = sorted(set(rules) - set(EXPECTED_ENDPOINTS) - {"/v1", "/v1/static/<path:filename>"})
+    unexpected = set(rules) - set(EXPECTED_ENDPOINTS) - {"/v1", "/v1/static/<path:filename>"} - DOC_ROUTES
     assert not unexpected, f"Undocumented /v1 endpoints registered: {unexpected}"
     for path, methods in EXPECTED_ENDPOINTS.items():
         assert methods <= rules[path], f"{path}: expected methods {methods}, got {rules[path]}"

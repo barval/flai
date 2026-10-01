@@ -39,6 +39,11 @@
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Each user's profile is deleted together with their FLAI account
 - 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
 
+### 🔌 Programmatic Access
+- 🔑 **API Keys (OpenAI-compatible)** – create per-user API keys in the web UI to call FLAI programmatically via Bearer tokens
+- 🌐 **Public OpenAI-compatible API (/v1)** – REST endpoints for chat completions (sync + SSE), embeddings, TTS/transcription, async media (images/videos) with owner-checked downloads, files/documents, RLM deep analysis, sessions/history; owner-scoped task polling
+- 📑 **Interactive API Docs** – Swagger UI at `/v1/docs` and OpenAPI JSON at `/v1/openapi.json` (from `docs/openapi-v1.yaml`)
+
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
 - 🖼️ **Scanned PDF OCR and document images** – scanned PDF pages and uploaded document images are processed by the multimodal model; recognized text is indexed for search
@@ -84,7 +89,7 @@
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
 - 📈 **System Monitoring** – view database sizes and system statistics
-- 🔧 **CLI Tools** – manage admin password via Flask CLI command
+- 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands
 
 ---
 
@@ -149,13 +154,14 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. See `docs/API.md`. |
+| **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
 
 ### Core Components
 
 | Component | Purpose | Technology | Default Port |
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
+| **Public API (/v1) + Swagger UI** | OpenAI-compatible REST API, Bearer auth, interactive docs at `/v1/docs` | Python (Flask + flasgger) | 5000 (same as Flask) |
 | **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
 | **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
@@ -546,7 +552,10 @@ Now you can:
 - 📹 **View Cameras** — IP camera snapshots analyzed by AI
 - 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (adds relevant facts alongside history, enable with `--with-slm`)
 - 💾 **Backup & Restore** — full or user-only backups from the admin panel
-- 🔧 **CLI Tools** — admin password reset, orphaned file cleanup
+- 🔧 **CLI Tools** — admin password reset, upload cleanup, message migration, SLM import/cleanup/checkpoint reset
+- 🔑 **Create API Keys** — generate per-user Bearer tokens in the web UI for programmatic access
+- 🌐 **Call the `/v1` API** – chat completions (sync + SSE), embeddings, TTS/transcription, async image/video, files, RLM, sessions
+- 📑 **Browse Interactive API Docs** — open `/v1/docs` in your browser for the Swagger UI (spec from `docs/openapi-v1.yaml`)
 
 ---
 
@@ -635,6 +644,23 @@ QUEUE_MAX_WAIT_TIME=300
 **Debug:**
 ```bash
 DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
+```
+
+**Public API (/v1):**
+```bash
+API_RATE_LIMIT=60 per minute;1000 per hour  # Per-key-owner request budget for chat, embeddings, audio, media, files, RLM, sessions, tasks
+API_MAX_CONCURRENT_WAITS=64                 # Max synchronous waiters before 429 with Retry-After
+API_CORS_ORIGINS=                           # Comma-separated exact origins allowed to call /v1 from browser (empty = closed)
+API_SYNC_MAX_WAIT=600                       # Seconds a sync/streaming request waits for its task (default 600)
+```
+
+**Model Hub:**
+```bash
+MODEL_HUB_MAX_FILE_GB=40              # Max single GGUF file size to allow (GB)
+MODEL_HUB_FREE_MARGIN_GB=4            # Required free disk margin for downloads (GB)
+MODEL_HUB_SEARCH_LIMIT=20             # Max results per Hugging Face search
+MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
+HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 ```
 
 ### Domain Access and HTTPS (Reverse Proxy)

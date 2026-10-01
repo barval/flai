@@ -1970,10 +1970,6 @@ msgstr "Переключить тему"
 msgid "api_keys_title"
 msgstr "API-ключи"
 
-#: app/templates/base.html:50
-msgid "api_keys_button"
-msgstr "API-ключи"
-
 #: app/templates/base.html:52
 msgid "api_keys_revoke"
 msgstr "Отозвать"

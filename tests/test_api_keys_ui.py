@@ -70,6 +70,32 @@ class TestApiKeyManagementRoutes:
         html = response.get_data(as_text=True)
         assert 'id="api-keys-panel"' in html
         assert 'id="api-keys-btn"' in html
+        assert 'class="api-keys-btn"' not in html
+
+    def test_username_label_is_the_key_panel_trigger(self, logged_in_client):
+        response = logged_in_client.get("/chat")
+
+        html = response.get_data(as_text=True)
+        trigger = re.search(r"<button[^>]*id=\"api-keys-btn\"[^>]*>(.*?)</button>", html, re.S)
+        assert trigger is not None
+        assert "Key Owner" in trigger.group(1)
+        assert 'aria-controls="api-keys-panel"' in trigger.group(0)
+
+    def test_admin_header_trigger_shows_administrator_label(self, client, test_app):
+        create_user(login="adminkey", password="pw-adminkey-123", name="Root")
+        with client.session_transaction() as browser_session:
+            browser_session["login"] = "adminkey"
+            browser_session["user_id"] = "adminkey"
+            browser_session["name"] = "Root"
+            browser_session["is_admin"] = True
+
+        response = client.get("/admin/")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        trigger = re.search(r"<button[^>]*id=\"api-keys-btn\"[^>]*>(.*?)</button>", html, re.S)
+        assert trigger is not None
+        assert "Root" not in trigger.group(1)
 
     def test_key_management_post_requires_csrf_when_enabled(self, logged_in_client, test_app):
         test_app.config["WTF_CSRF_ENABLED"] = True

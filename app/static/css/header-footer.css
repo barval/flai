@@ -10,17 +10,24 @@ header {
     align-items: center;
 }
 
-.api-keys-btn {
-    margin-left: 8px;
-    padding: 0.25rem 0.5rem;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+.user-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 40vw;
+    padding: 0.15rem 0.4rem;
+    overflow: hidden;
+    color: #ecf0f1;
+    background: none;
+    border: 1px solid transparent;
     border-radius: 4px;
+    font-size: 0.9rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     cursor: pointer;
-    font-size: 0.85rem;
 }
-.api-keys-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.user-name:hover { background: rgba(255, 255, 255, 0.15); }
+.user-name:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .api-keys-panel {
     position: absolute;
     top: 52px;

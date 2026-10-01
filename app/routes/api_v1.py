@@ -803,6 +803,59 @@ def get_video_task(task_id: str):
     return jsonify(response)
 
 
+def _resolve_chat_session(payload: dict[str, Any]) -> str | tuple[Any, int]:
+    """Resolve the API-owned chat session for a chat-shaped request body.
+
+    ``metadata.session_id`` wins when it is a string, then the standard
+    ``user`` field selects a long-lived conversation, and a request without
+    either gets a fresh throwaway session.
+    """
+    raw_metadata = payload.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    requested_session_id = metadata.get("session_id")
+    if requested_session_id is not None and not isinstance(requested_session_id, str):
+        return api_error(
+            400, "invalid_request_error", "invalid_session_id", _("'metadata.session_id' must be a string")
+        )
+    client_user = payload.get("user")
+    if client_user is not None and not isinstance(client_user, str):
+        return api_error(400, "invalid_request_error", "invalid_user", _("'user' must be a string"))
+    try:
+        return resolve_api_session(g.api_user, requested_session_id, client_user)
+    except ApiSessionNotFoundError:
+        return api_error(404, "invalid_request_error", "session_not_found", _("Chat session not found"))
+
+
+@bp.route("/flai/chat/async", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def chat_async():
+    """Queue a chat request and return its task id immediately.
+
+    The body is the same as `/v1/chat/completions`, and the task is enqueued
+    exactly the same way, so the LLM router — not this route — decides which
+    subsystem handles the prompt. The caller polls `GET /v1/flai/tasks/{id}`
+    and reads the answer from `result.response`. No wait slot is taken,
+    because the HTTP request returns before the model runs.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return api_error(400, "invalid_request_error", "invalid_body", _("Request body must be a JSON object"))
+
+    try:
+        text, images = normalize_chat_messages(payload.get("messages"))
+    except ApiImageRejectedError as exc:
+        return api_error(400, "invalid_request_error", "invalid_request", exc.localized(_))
+
+    session_id = _resolve_chat_session(payload)
+    if isinstance(session_id, tuple):
+        return session_id
+
+    task_id, _queue_info = enqueue_chat(g.api_user, session_id, text, images)
+    register_api_task(g.api_user, task_id, session_id, "/v1/flai/chat/async")
+    return _async_task_response(task_id, f"/v1/flai/tasks/{task_id}")
+
+
 @bp.route("/chat/completions", methods=["POST"])
 @api_token_required
 @limiter.limit(_api_rate_limit, key_func=_api_rate_key)
@@ -823,26 +876,15 @@ def chat_completions():
     except ApiImageRejectedError as exc:
         return api_error(400, "invalid_request_error", "invalid_request", exc.localized(_))
 
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-    client_user = payload.get("user")
-    if client_user is not None and not isinstance(client_user, str):
-        return api_error(400, "invalid_request_error", "invalid_user", _("'user' must be a string"))
-    requested_session_id = metadata.get("session_id")
-    if requested_session_id is not None and not isinstance(requested_session_id, str):
-        return api_error(
-            400, "invalid_request_error", "invalid_session_id", _("'metadata.session_id' must be a string")
-        )
-
     stream = payload.get("stream", False)
     if not isinstance(stream, bool):
         return api_error(400, "invalid_request_error", "invalid_stream", _("'stream' must be a boolean"))
     stream_options = payload.get("stream_options") if isinstance(payload.get("stream_options"), dict) else {}
     include_usage = bool(stream_options.get("include_usage", False))
 
-    try:
-        session_id = resolve_api_session(g.api_user, requested_session_id, client_user)
-    except ApiSessionNotFoundError:
-        return api_error(404, "invalid_request_error", "session_not_found", _("Chat session not found"))
+    session_id = _resolve_chat_session(payload)
+    if isinstance(session_id, tuple):
+        return session_id
 
     timeout_s = current_app.config.get("API_SYNC_MAX_WAIT", 600)
     if stream:

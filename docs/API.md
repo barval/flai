@@ -24,6 +24,7 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | API keys | Web UI, `/api/api-keys/*` | Shipped |
 | Chat completion (sync) | `POST /v1/chat/completions` | Shipped |
 | Chat completion (SSE stream) | `POST /v1/chat/completions` with `stream: true` | Shipped |
+| Chat completion (async) | `POST /v1/flai/chat/async` | Shipped |
 | Embeddings | `POST /v1/embeddings` | Shipped |
 | Model list | `GET /v1/models` | Shipped |
 | Identity and capabilities | `GET /v1/flai/me` | Shipped |
@@ -220,6 +221,62 @@ These are accepted so that stock OpenAI clients work, and they change nothing:
 | `response_format` | Ignored. Asking for JSON does not force JSON; put "answer with JSON only" in the message instead. |
 | `n`, `temperature`, `max_tokens`, `stop`, `presence_penalty` | Accepted and ignored. Generation parameters are fixed per route. |
 | `user` | Used for session continuity (see above), not by OpenAI semantics. |
+
+---
+
+## `POST /v1/flai/chat/async`
+
+Fire-and-poll chat: the request is queued exactly like `/v1/chat/completions`
+and answered immediately with a task id, so a client never holds an open HTTP
+connection while the GPU queue works.
+
+```bash
+curl http://localhost:5000/v1/flai/chat/async \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"user": "client-42", "messages": [{"role": "user", "content": "Compare the contracts"}]}'
+```
+
+```json
+HTTP/1.1 202 Accepted
+{
+  "id": "b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10",
+  "object": "flai.task",
+  "status": "queued",
+  "poll_url": "/v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10"
+}
+```
+
+Poll `poll_url` with the same Bearer key:
+
+```bash
+curl http://localhost:5000/v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10 \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+```
+
+```json
+{
+  "id": "b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10",
+  "object": "flai.task",
+  "status": "completed",
+  "result": {
+    "response": "Both contracts cover the same period…",
+    "usage": {"prompt_tokens": 1120, "completion_tokens": 340}
+  }
+}
+```
+
+- The body is the same as `/v1/chat/completions`: `messages`, plus `user` or
+  `metadata.session_id` for session continuity. `model`, `stream`, `tools` and
+  `response_format` are accepted and ignored (see the table above).
+- The user turn is persisted and queued before the response is sent, so the
+  answer also appears in the web UI thread for that session.
+- `status` moves through `queued` → `processing` → `completed` / `error` /
+  `cancelled`; `result.response` holds the answer text.
+- Cancellation is `POST /v1/flai/tasks/{task_id}/cancel`. A chat task has no
+  generated file, so `/content` does not apply to it.
+- No synchronous wait slot is taken: the request returns before the model runs,
+  so this endpoint does not consume `API_MAX_CONCURRENT_WAITS`.
 
 ---
 
@@ -654,8 +711,9 @@ mind when choosing client timeouts:
   after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
   `POST /v1/chat/completions`, `POST /v1/embeddings`, `/v1/audio/*`,
-  `/v1/images/*`, `/v1/videos*`, `/v1/flai/tasks*`, `/v1/files*`,
-  `/v1/flai/documents*`, `POST /v1/flai/rlm` and `/v1/flai/sessions*`.
+  `/v1/images/*`, `/v1/videos*`, `/v1/flai/tasks*`, `/v1/flai/chat/async`,
+  `/v1/files*`, `/v1/flai/documents*`, `POST /v1/flai/rlm` and
+  `/v1/flai/sessions*`.
   The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
   it, and one noisy client cannot spend another user's quota. A spent budget

@@ -25,6 +25,7 @@ EXPECTED_ENDPOINTS = {
     "/v1/flai/tasks/<task_id>": {"GET", "HEAD", "OPTIONS"},
     "/v1/flai/tasks/<task_id>/cancel": {"POST", "OPTIONS"},
     "/v1/flai/tasks/<task_id>/content": {"GET", "HEAD", "OPTIONS"},
+    "/v1/flai/chat/async": {"POST", "OPTIONS"},
     "/v1/flai/documents": {"GET", "POST", "HEAD", "OPTIONS"},
     "/v1/flai/documents/<file_id>": {"GET", "DELETE", "HEAD", "OPTIONS"},
     "/v1/flai/documents/<file_id>/content": {"GET", "HEAD", "OPTIONS"},

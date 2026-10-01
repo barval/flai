@@ -542,21 +542,21 @@ def get_user_documents(user_id):
             uploaded_dt = None
             if doc.get("uploaded_at"):
                 dt = doc["uploaded_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     uploaded_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):
                         uploaded_dt = datetime.strptime(str(doc["uploaded_at"])[:19], "%Y-%m-%d %H:%M:%S")
             if doc.get("indexed_at"):
                 dt = doc["indexed_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     indexed_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):
                         indexed_dt = datetime.strptime(str(doc["indexed_at"])[:19], "%Y-%m-%d %H:%M:%S")
             if doc.get("indexing_started_at"):
                 dt = doc["indexing_started_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     indexing_started_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):

@@ -31,9 +31,12 @@ serialization and VRAM rules as the web UI: one model at a time, on one GPU.
 | Audio transcription | `POST /v1/audio/transcriptions` | Shipped |
 | Task list/status/cancel | `/v1/flai/tasks*` | Shipped |
 | Task media download | `GET /v1/flai/tasks/{task_id}/content` | Shipped |
+| Files and documents | `/v1/files*`, `/v1/flai/documents*` | Shipped |
 | Image generation/edits | `POST /v1/images/generations`, `POST /v1/images/edits` | Shipped |
 | Video generation | `POST /v1/videos`, `GET /v1/videos/{task_id}` | Shipped |
-| Documents, deep analysis | `/v1/rlm/*` | Planned |
+| Deep analysis (RLM) | `POST /v1/flai/rlm` | Shipped |
+| Sessions and history | `/v1/flai/sessions*` | Shipped |
+| Documents, deep analysis UI | Web UI only | Web UI |
 
 Endpoints that are not listed in this table do not exist yet. A client that
 needs them should watch `CHANGELOG.md`.
@@ -437,6 +440,102 @@ and a safe filename.
 
 ---
 
+## Files and documents
+
+User documents are exposed both through the OpenAI Files-shaped `/v1/files`
+routes and FLAI aliases under `/v1/flai/documents`. Both families call the same
+handlers, so ownership, quota and validation behavior is identical.
+
+```bash
+# List your documents
+curl http://localhost:5000/v1/files -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+
+# Upload a document (multipart). It is validated, stored and queued for indexing.
+curl http://localhost:5000/v1/files \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -F file=@report.pdf
+
+# Fetch metadata / download / delete
+curl http://localhost:5000/v1/files/{file_id} -H "Authorization: Bearer flai_..."
+curl http://localhost:5000/v1/files/{file_id}/content -H "Authorization: Bearer flai_..." -o report.pdf
+curl -X DELETE http://localhost:5000/v1/files/{file_id} -H "Authorization: Bearer flai_..."
+```
+
+- List/metadata entries contain only `id`, `object: "file"`, `filename`,
+  `bytes`, `created_at`, `purpose: "assistants"` and the FLAI extension
+  `index_status` (`pending`, `processing`, `indexed`, `error`).
+- Uploads reuse the web validation chain: allowed extension + magic bytes,
+  `MAX_DOCUMENT_SIZE_MB` (`413`), per-user document quota (`413`). Images are
+  auto-resized and converted exactly like chat uploads.
+- Storage names are UUIDs under `DOCUMENTS_FOLDER/<login>/`; responses never
+  contain filesystem paths.
+- The download endpoint resolves the stored relative path with `realpath`
+  containment; foreign and unknown ids return the same `404 file_not_found`.
+- Deletion removes the RAG index entry (when the RAG module is available), the
+  stored file and the database record for the owner only.
+
+---
+
+## Deep analysis (RLM)
+
+`POST /v1/flai/rlm` runs an explicit deep-analysis task over caller-owned
+documents (and optionally one uploaded image) through the same GPU-serialized
+queue the web chat uses. It requires `RLM_ENABLED`; otherwise the endpoint
+returns `403 rlm_disabled` and `GET /v1/flai/me` reports `rlm: false`.
+
+```bash
+curl http://localhost:5000/v1/flai/rlm \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "session_id": "3f2b1c4d-...",
+        "doc_ids": ["a1b2c3d4-..."],
+        "question": "Compare the risk sections of these contracts"
+      }'
+```
+
+- `session_id` must be an owned session (`404 session_not_found` otherwise)
+  and every `doc_ids` entry must be owned (`404 document_not_found`); at least
+  one document or an uploaded image is required (`400`).
+- A multipart variant accepts `file` (image), `session_id`, `doc_ids` (JSON
+  array string) and `question` form fields; the image passes the same quota and
+  resize cap as chat uploads and is persisted with the question.
+- The user turn is saved into the API session history, and the response is
+  `202 Accepted` with `task_id`, `position` and `user_message_id`.
+- Poll the returned `task_id` through `/v1/flai/tasks/{task_id}` — the task is
+  registered in the owner index automatically.
+
+---
+
+## Sessions and history
+
+API conversations are ordinary FLAI chat sessions; these endpoints let a client
+list, create and read them without touching the web UI's last-session pointer.
+
+```bash
+# List sessions owned by the key owner
+curl http://localhost:5000/v1/flai/sessions -H "Authorization: Bearer flai_..."
+
+# Create a session (optional title; defaults to a localized "New session")
+curl -X POST http://localhost:5000/v1/flai/sessions \
+  -H "Authorization: Bearer flai_..." \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Support bot"}'
+
+# Read history (limit clamped to 1–200, offset >= 0)
+curl "http://localhost:5000/v1/flai/sessions/{session_id}/messages?limit=50&offset=0" \
+  -H "Authorization: Bearer flai_..."
+```
+
+- List responses are `{"object": "list", "data": [{id, title, created_at}, ...]}`.
+- Message responses mirror the web API shape:
+  `{"messages": [...], "limit", "offset", "has_more"}`; file payloads already
+  stored on disk are redacted from `file_data` by the shared DB helper.
+- Foreign or unknown session ids return `404 session_not_found`.
+- `/v1` responses never set a cookie: API identity is request-local.
+
+---
+
 ## `GET /v1/models`
 
 Returns the FLAI capability ids as OpenAI model objects. The list is a
@@ -467,8 +566,8 @@ wants to know what the server supports before it builds a request.
     "audio_transcriptions": true,
     "images": true,
     "videos": true,
-    "documents": false,
-    "rlm": false,
+    "documents": true,
+    "rlm": true,
     "tools": false,
     "response_format_json_schema": false
   }
@@ -555,7 +654,8 @@ mind when choosing client timeouts:
   after they are enqueued.
 - `API_RATE_LIMIT` (default `60 per minute;1000 per hour`) bounds
   `POST /v1/chat/completions`, `POST /v1/embeddings`, `/v1/audio/*`,
-  `/v1/images/*`, `/v1/videos*`, and `/v1/flai/tasks*`.
+  `/v1/images/*`, `/v1/videos*`, `/v1/flai/tasks*`, `/v1/files*`,
+  `/v1/flai/documents*`, `POST /v1/flai/rlm` and `/v1/flai/sessions*`.
   The budget is counted
   per API key **owner**, not per key or per IP: several keys of one user share
   it, and one noisy client cannot spend another user's quota. A spent budget
@@ -590,7 +690,7 @@ API_CORS_ORIGINS=https://home.example, https://tools.example
 |---|---|---|
 | `API_ENABLED` | `true` | Master switch. When `false`, every `/v1` request returns `503 api_disabled`. |
 | `API_SYNC_MAX_WAIT` | `600` | Seconds a synchronous or streaming request waits for its task. |
-| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat, embeddings, audio and task-control endpoints. Reported by `GET /v1/flai/me`. |
+| `API_RATE_LIMIT` | `60 per minute;1000 per hour` | Request budget per key owner for chat, embeddings, audio, media generation, files/documents, deep analysis, sessions and task-control endpoints. Reported by `GET /v1/flai/me`. |
 | `API_MAX_CONCURRENT_WAITS` | `64` | Requests that may wait for a queued task at once. Reported by `GET /v1/flai/me`. |
 | `API_CORS_ORIGINS` | _(empty)_ | Comma-separated exact origins allowed to call `/v1` from a browser. Empty means no browser access. |
 

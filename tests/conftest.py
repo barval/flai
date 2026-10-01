@@ -708,6 +708,101 @@ class _MockDatabase:
         self._result(None, rowcount=0)
 
 
+class FakeRedis:
+    """In-memory Redis double for the API task registry Lua script."""
+
+    def __init__(self):
+        self.hashes = {}
+        self.sorted_sets = {}
+        self.expirations = {}
+
+    def hset(self, key, mapping):
+        self.hashes.setdefault(key, {}).update(mapping)
+
+    def hsetnx(self, key, field, value):
+        values = self.hashes.setdefault(key, {})
+        if field in values:
+            return False
+        values[field] = value
+        return True
+
+    def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    def zadd(self, key, mapping):
+        self.sorted_sets.setdefault(key, {}).update(mapping)
+
+    def zrevrange(self, key, start, stop, withscores=False):
+        values = sorted(self.sorted_sets.get(key, {}).items(), key=lambda pair: pair[1], reverse=True)
+        selected = values[start : stop + 1]
+        return selected if withscores else [member for member, _score in selected]
+
+    def zcard(self, key):
+        return len(self.sorted_sets.get(key, {}))
+
+    def zremrangebyrank(self, key, start, stop):
+        values = self.sorted_sets.get(key, {})
+        ordered = sorted(values, key=values.get)
+        stop = len(ordered) + stop if stop < 0 else stop
+        removed = ordered[start : stop + 1]
+        for member in removed:
+            values.pop(member, None)
+        return len(removed)
+
+    def eval(
+        self,
+        script,
+        key_count,
+        task_key,
+        index_key,
+        login,
+        session_id,
+        endpoint,
+        created_at,
+        ttl,
+        task_id,
+        maximum,
+        only_if_absent,
+    ):
+        existing = self.hashes.get(task_key, {})
+        if only_if_absent == "1" and existing:
+            required = ("login", "session_id", "endpoint", "created_at")
+            if any(key not in existing for key in required):
+                return 0
+            if (existing["login"], existing["session_id"], existing["endpoint"]) != (login, session_id, endpoint):
+                return 0
+            created_at = existing["created_at"]
+        else:
+            self.hashes[task_key] = {
+                "login": login,
+                "session_id": session_id,
+                "endpoint": endpoint,
+                "created_at": str(created_at),
+            }
+        self.zadd(index_key, {task_id: float(created_at)})
+        if self.zcard(index_key) > int(maximum):
+            self.zremrangebyrank(index_key, 0, -int(maximum) - 1)
+        self.expire(task_key, int(ttl))
+        self.expire(index_key, int(ttl))
+        return 1
+
+    def expire(self, key, seconds):
+        self.expirations[key] = seconds
+
+    def hdel(self, key, field):
+        return self.hashes.get(key, {}).pop(field, None) is not None
+
+    def close(self):
+        return None
+
+
+@pytest.fixture
+def task_redis(monkeypatch):
+    redis = FakeRedis()
+    monkeypatch.setattr("app.api_bridge.get_redis_client", lambda: redis)
+    return redis
+
+
 # ── Fixtures ───────────────────────────────────────────────────────────
 
 

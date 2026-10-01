@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.3\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-30 11:08+0300\n"
+"POT-Creation-Date: 2026-10-01 10:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -19,15 +19,15 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: app/__init__.py:441 app/__init__.py:457
+#: app/__init__.py:444 app/__init__.py:460
 msgid "Session expired. Please refresh the page."
 msgstr "Сессия истекла. Обновите страницу."
 
-#: app/__init__.py:449
+#: app/__init__.py:452
 msgid "Authentication required."
 msgstr "Требуется авторизация."
 
-#: app/__init__.py:464 app/routes/admin.py:253 app/routes/admin.py:294
+#: app/__init__.py:467 app/routes/admin.py:253 app/routes/admin.py:294
 #: app/routes/admin.py:318 app/routes/admin.py:334 app/routes/admin.py:346
 #: app/routes/admin.py:371 app/routes/admin.py:417 app/routes/admin.py:1727
 #: app/routes/admin.py:1744 app/routes/admin.py:1774
@@ -35,78 +35,79 @@ msgstr "Требуется авторизация."
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
-#: app/__init__.py:470
+#: app/__init__.py:473
 msgid "Not found"
 msgstr "Не найдено"
 
-#: app/api_bridge.py:132
+#: app/api_bridge.py:405 app/api_bridge.py:468
 msgid "Only data: URLs are supported for image content parts"
 msgstr "Для частей с изображениями поддерживаются только URL вида data:"
 
-#: app/api_bridge.py:136
+#: app/api_bridge.py:409
 msgid "Image data URL must be base64 encoded"
 msgstr "URL данных изображения должен быть в кодировке base64"
 
-#: app/api_bridge.py:140
+#: app/api_bridge.py:413
 msgid "Only image content parts are supported"
 msgstr "Поддерживаются только части содержимого с изображениями"
 
-#: app/api_bridge.py:144
+#: app/api_bridge.py:417
 msgid "Image data URL is empty"
 msgstr "URL данных изображения пуст"
 
-#: app/api_bridge.py:161
+#: app/api_bridge.py:434
 msgid "'messages' must be a non-empty array"
 msgstr "'messages' должен быть непустым массивом"
 
-#: app/api_bridge.py:167
+#: app/api_bridge.py:440
 msgid "Each entry of 'messages' must be an object"
 msgstr "Каждый элемент 'messages' должен быть объектом"
 
-#: app/api_bridge.py:171
+#: app/api_bridge.py:444
 msgid "Each message needs a supported 'role'"
 msgstr "У каждого сообщения должна быть поддерживаемая роль"
 
-#: app/api_bridge.py:181
+#: app/api_bridge.py:454
 msgid "Message content must be a string or an array of parts"
 msgstr "Содержимое сообщения должно быть строкой или массивом частей"
 
-#: app/api_bridge.py:185
+#: app/api_bridge.py:458
 msgid "Each content part must be an object"
 msgstr "Каждая часть содержимого должна быть объектом"
 
-#: app/api_bridge.py:198
+#: app/api_bridge.py:473
 #, python-format
 msgid "Unsupported content part type: %s"
 msgstr "Неподдерживаемый тип части содержимого: %s"
 
-#: app/api_bridge.py:202
+#: app/api_bridge.py:477
 msgid "'messages' contains no text or image content"
 msgstr "В 'messages' нет текста или изображений"
 
-#: app/api_bridge.py:339 app/api_bridge.py:348
+#: app/api_bridge.py:598 app/api_bridge.py:608 app/api_bridge.py:642
+#: app/api_bridge.py:654 app/routes/api_v1.py:482 app/routes/api_v1.py:528
 #, python-format
 msgid "Task %s failed"
 msgstr "Задача %s завершилась с ошибкой"
 
-#: app/api_bridge.py:343
+#: app/api_bridge.py:646
 #, python-format
 msgid "Task %s returned no result"
 msgstr "Задача %s не вернула результат"
 
-#: app/api_bridge.py:351
+#: app/api_bridge.py:657
 #, python-format
 msgid "Task %s was requeued to %s without a follow-up"
 msgstr "Задача %s была переочередлена на %s без продолжения"
 
-#: app/api_bridge.py:605
+#: app/api_bridge.py:964
 #, python-format
 msgid "Task %s returned no vectors"
 msgstr "Задача %s не вернула векторы"
 
-#: app/db.py:192 app/db.py:220 app/routes/sessions.py:152
-#: app/routes/sessions.py:220 app/templates/chat.html:19
-#: app/templates/chat.html:129
+#: app/db.py:192 app/db.py:220 app/routes/api_v1.py:1444
+#: app/routes/sessions.py:152 app/routes/sessions.py:220
+#: app/templates/chat.html:19 app/templates/chat.html:129
 msgid "New session"
 msgstr "Новый сеанс"
 
@@ -187,27 +188,32 @@ msgstr "Внутренняя ошибка: модель не ответила"
 msgid "GPU memory unavailable. Please try again."
 msgstr "Память GPU недоступна. Попробуйте снова."
 
-#: app/queue.py:555
+#: app/queue.py:593
 #, python-brace-format
 msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
 msgstr "Запрос отменён - слишком долго в очереди ({queue_time:.1f}с)"
 
-#: app/queue.py:1226 app/queue.py:1245 app/queue.py:1398 app/queue.py:1423
-#: app/queue.py:2153 app/queue.py:2194 app/queue.py:2322 app/queue.py:2391
+#: app/queue.py:643 app/queue.py:3857 app/queue.py:3860 app/queue.py:4323
+#: app/queue.py:4398 app/templates/chat.html:120
+msgid "Failed to recognize speech"
+msgstr "Не удалось распознать речь"
+
+#: app/queue.py:1273 app/queue.py:1292 app/queue.py:1446 app/queue.py:1471
+#: app/queue.py:2214 app/queue.py:2255 app/queue.py:2384 app/queue.py:2453
 msgid "Task cancelled"
 msgstr "Задача отменена"
 
 # GPU memory error messages
-#: app/queue.py:1231 app/queue.py:1403 app/queue.py:2132 app/queue.py:2299
+#: app/queue.py:1278 app/queue.py:1451 app/queue.py:2190 app/queue.py:2361
 #: modules/multimodal.py:261
 msgid "GPU memory unavailable. Try again in a moment."
 msgstr "Память GPU недоступна. Попробуйте снова."
 
-#: app/queue.py:1270
+#: app/queue.py:1317
 msgid "Image editing failed"
 msgstr "Редактирование изображения не удалось"
 
-#: app/queue.py:1287 app/queue.py:1459
+#: app/queue.py:1334 app/queue.py:1507
 #, python-brace-format
 msgid ""
 "CPU mode: reduced resolution {new_w}×{new_h} (requested "
@@ -216,7 +222,7 @@ msgstr ""
 "Режим CPU: сниженное разрешение {new_w}×{new_h} (запрошено "
 "{orig_w}×{orig_h})."
 
-#: app/queue.py:1304
+#: app/queue.py:1351
 #, python-brace-format
 msgid ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
@@ -225,63 +231,64 @@ msgstr ""
 "Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение"
 " уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
 
-#: app/queue.py:1318
+#: app/queue.py:1365
 #, python-brace-format
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
 
-#: app/queue.py:1378 app/queue.py:1383
+#: app/queue.py:1426 app/queue.py:1431 app/routes/api_v1.py:613
+#: app/routes/api_v1.py:616
 msgid "Image generation module unavailable"
 msgstr "Модуль генерации изображений недоступен"
 
-#: app/queue.py:1407 app/queue.py:2137 app/queue.py:2303
+#: app/queue.py:1455 app/queue.py:2195 app/queue.py:2365
 msgid "GPU memory check failed. Please try again."
 msgstr "Проверка памяти GPU не удалась. Попробуйте снова."
 
-#: app/queue.py:1473 app/templates/chat.html:126
+#: app/queue.py:1521 app/templates/chat.html:126
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
 
-#: app/queue.py:1531
+#: app/queue.py:1580
 msgid "Video request"
 msgstr "Запрос видео"
 
-#: app/queue.py:1578
+#: app/queue.py:1627
 msgid "Image request"
 msgstr "Запрос изображения"
 
-#: app/queue.py:1624
+#: app/queue.py:1673
 msgid "Reasoning request"
 msgstr "Запрос рассуждений"
 
-#: app/queue.py:1677 app/templates/chat.html:89
+#: app/queue.py:1726 app/templates/chat.html:89
 msgid "Deep analysis"
 msgstr "Глубокий анализ"
 
-#: app/queue.py:1682 app/queue.py:1775 app/routes/messages.py:293
+#: app/queue.py:1731 app/queue.py:1824 app/routes/messages.py:293
 msgid "Image"
 msgstr "Изображение"
 
-#: app/queue.py:1705
+#: app/queue.py:1754
 msgid "No documents selected for analysis"
 msgstr "Для анализа не выбрано ни одного документа"
 
-#: app/queue.py:1744 app/queue.py:1756 app/queue.py:1800 app/queue.py:1983
+#: app/queue.py:1793 app/queue.py:1805 app/queue.py:1849 app/queue.py:2032
 msgid "Reasoning model unavailable: GPU memory check failed. Try again."
 msgstr ""
 "Модель рассуждения недоступна: проверка памяти GPU не удалась. Попробуйте"
 " снова."
 
-#: app/queue.py:1765 app/queue.py:1772
+#: app/queue.py:1814 app/queue.py:1821
 msgid "Unable to recognize the image for deep analysis"
 msgstr "Не удалось распознать изображение для глубокого анализа"
 
-#: app/queue.py:1780
+#: app/queue.py:1829
 msgid "Selected documents contain no extractable text"
 msgstr "В выбранных документах нет извлекаемого текста"
 
-#: app/queue.py:1789
+#: app/queue.py:1838
 #, python-brace-format
 msgid ""
 "The selected documents are too large for deep analysis (limit: {limit} "
@@ -290,7 +297,7 @@ msgstr ""
 "Выбранные документы слишком велики для глубокого анализа (лимит: {limit} "
 "символов). Выберите меньше документов или файлы поменьше."
 
-#: app/queue.py:1840
+#: app/queue.py:1889
 msgid ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
@@ -298,11 +305,11 @@ msgstr ""
 "Глубокий анализ: модель не дошла до окончательного ответа за отведённое "
 "число шагов."
 
-#: app/queue.py:1843
+#: app/queue.py:1892
 msgid "Deep analysis: the model produced an empty answer."
 msgstr "Глубокий анализ: модель выдала пустой ответ."
 
-#: app/queue.py:1846
+#: app/queue.py:1895
 msgid ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
@@ -310,35 +317,36 @@ msgstr ""
 "Глубокий анализ: превышен лимит времени задачи. Частичная сводка шагов "
 "сохранена."
 
-#: app/queue.py:1857 app/queue.py:2054
+#: app/queue.py:1906 app/queue.py:2103
 msgid "No response from reasoning model"
 msgstr "Не удалось получить ответ от модели рассуждений"
 
-#: app/queue.py:1950 app/queue.py:2750 app/queue.py:3032 modules/rag.py:410
+#: app/queue.py:1999 app/queue.py:2812 app/queue.py:3094 modules/rag.py:410
 #: modules/rag.py:470
 msgid "Source"
 msgstr "Источник"
 
-#: app/queue.py:2119 app/queue.py:2286
+#: app/queue.py:2177 app/queue.py:2348 app/routes/api_v1.py:774
+#: app/routes/api_v1.py:777
 msgid "Video generation module unavailable"
 msgstr "Модуль генерации видео недоступен"
 
-#: app/queue.py:2166 app/queue.py:2332
+#: app/queue.py:2227 app/queue.py:2394
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "Память GPU недоступна после выгрузки LLM. Попробуйте снова."
 
-#: app/queue.py:2201 app/queue.py:2398
+#: app/queue.py:2262 app/queue.py:2460
 msgid ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
 msgstr "Генерация видео не удалась: память GPU исчерпана. Упростите запрос."
 
-#: app/queue.py:2222 app/queue.py:2441
+#: app/queue.py:2283 app/queue.py:2503
 #, python-brace-format
 msgid "Video generated from request: {query}"
 msgstr "Видео сгенерировано по запросу: {query}"
 
-#: app/queue.py:2313 app/queue.py:3900 app/queue.py:4002
+#: app/queue.py:2375 app/queue.py:4025 app/queue.py:4127
 #: modules/multimodal.py:224 modules/multimodal.py:243
 #: modules/multimodal.py:277 modules/multimodal.py:315
 #: modules/multimodal.py:369 modules/multimodal.py:434
@@ -346,7 +354,7 @@ msgstr "Видео сгенерировано по запросу: {query}"
 msgid "Multimodal model unavailable"
 msgstr "Мультимодальная модель недоступна"
 
-#: app/queue.py:2351 app/queue.py:2429
+#: app/queue.py:2413 app/queue.py:2491
 #, python-brace-format
 msgid ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
@@ -355,20 +363,20 @@ msgstr ""
 "Максимальное разрешение для видео — {max_w}×{max_h}. Изображение "
 "уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
 
-#: app/queue.py:2507 app/queue.py:2597
+#: app/queue.py:2569 app/queue.py:2659
 msgid "Camera module unavailable"
 msgstr "Модуль камер недоступен"
 
-#: app/queue.py:2517 app/queue.py:2609 app/templates/chat.html:127
+#: app/queue.py:2579 app/queue.py:2671 app/templates/chat.html:127
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Снимок с камеры: {room_name}"
 
-#: app/queue.py:2838
+#: app/queue.py:2900
 msgid "Web search is not available"
 msgstr "Веб-поиск недоступен"
 
-#: app/queue.py:2876
+#: app/queue.py:2938
 msgid ""
 "Search services are temporarily unavailable. Please try again in a few "
 "minutes."
@@ -377,11 +385,11 @@ msgstr ""
 "поисковиков. Пожалуйста, попробуйте повторить запрос через несколько "
 "минут."
 
-#: app/queue.py:2887
+#: app/queue.py:2949
 msgid "Web search failed"
 msgstr "Ошибка веб-поиска"
 
-#: app/queue.py:3442 modules/base.py:666 modules/base.py:795
+#: app/queue.py:3504 modules/base.py:666 modules/base.py:795
 #: modules/base.py:854 modules/multimodal.py:228 modules/multimodal.py:251
 #: modules/multimodal.py:282 modules/multimodal.py:331
 #: modules/multimodal.py:381 modules/multimodal.py:446
@@ -389,64 +397,65 @@ msgstr "Ошибка веб-поиска"
 msgid "Error loading prompt template"
 msgstr "Ошибка загрузки шаблона промпта"
 
-#: app/queue.py:3570
+#: app/queue.py:3632
 msgid "No response from chat model. Try rephrasing your request."
 msgstr "Не удалось получить ответ от модели. Попробуйте переформулировать запрос."
 
-#: app/queue.py:3746
+#: app/queue.py:3808
 msgid "Invalid embedding input"
 msgstr "Некорректные входные данные для эмбеддингов"
 
-#: app/queue.py:3751
+#: app/queue.py:3813
 msgid "Embeddings are temporarily unavailable"
 msgstr "Эмбеддинги временно недоступны"
 
-#: app/queue.py:3762
+#: app/queue.py:3824
 msgid "Failed to compute embeddings"
 msgstr "Не удалось вычислить эмбеддинги"
 
-#: app/queue.py:3877
-msgid "Unknown request type"
-msgstr "Неизвестный тип запроса"
+#: app/queue.py:3844
+msgid "Invalid audio input"
+msgstr "Некорректные аудиоданные"
 
-#: app/queue.py:3931 app/queue.py:4096
-msgid "Image editing request was empty"
-msgstr "Запрос на редактирование изображения пуст"
-
-#: app/queue.py:3949 app/queue.py:4123
-msgid "Video request was empty"
-msgstr "Запрос на создание видео пуст"
-
-#: app/queue.py:3959
-msgid "Failed to process image request. Please try again."
-msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
-
-#: app/queue.py:3963 app/queue.py:4017
-msgid "Invalid image"
-msgstr "Неверное изображение"
-
-#: app/queue.py:4179 app/queue.py:4265
+#: app/queue.py:3849 app/queue.py:4304 app/queue.py:4390
+#: app/routes/api_v1.py:1056
 msgid "Audio service unavailable"
 msgstr "Сервис аудио недоступен"
 
-#: app/queue.py:4198 app/queue.py:4273 app/templates/chat.html:120
-msgid "Failed to recognize speech"
-msgstr "Не удалось распознать речь"
+#: app/queue.py:4002
+msgid "Unknown request type"
+msgstr "Неизвестный тип запроса"
 
-#: app/queue.py:4216 app/queue.py:4280 app/templates/chat.html:125
+#: app/queue.py:4056 app/queue.py:4221
+msgid "Image editing request was empty"
+msgstr "Запрос на редактирование изображения пуст"
+
+#: app/queue.py:4074 app/queue.py:4248
+msgid "Video request was empty"
+msgstr "Запрос на создание видео пуст"
+
+#: app/queue.py:4084
+msgid "Failed to process image request. Please try again."
+msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
+
+#: app/queue.py:4088 app/queue.py:4142
+msgid "Invalid image"
+msgstr "Неверное изображение"
+
+#: app/queue.py:4341 app/queue.py:4405 app/templates/chat.html:125
 msgid "Transcribed"
 msgstr "Распознано"
 
-#: app/queue.py:4231 app/queue.py:4303 app/queue.py:4314
+#: app/queue.py:4356 app/queue.py:4428 app/queue.py:4439
 #: app/routes/messages.py:257 app/templates/chat.html:121
 msgid "Voice request"
 msgstr "Голосовой запрос"
 
-#: app/queue.py:4371 app/queue.py:4604 app/routes/admin.py:1605
+#: app/queue.py:4496 app/queue.py:4729 app/routes/admin.py:1605
 msgid "RAG module unavailable"
 msgstr "RAG модуль недоступен"
 
-#: app/queue.py:4771 app/templates/chat.html:128
+#: app/queue.py:4896 app/templates/chat.html:128
 msgid "Unknown session"
 msgstr "Неизвестный сеанс"
 
@@ -711,52 +720,255 @@ msgstr "Не авторизован"
 msgid "api_key_not_found"
 msgstr "API-ключ не найден"
 
-#: app/routes/api_v1.py:66
+#: app/routes/api_v1.py:103
 msgid "api_error_invalid_api_key"
 msgstr "Недействительный API-ключ"
 
-#: app/routes/api_v1.py:77
+#: app/routes/api_v1.py:114
 msgid "api_error_api_disabled"
 msgstr "API отключён"
 
-#: app/routes/api_v1.py:114
+#: app/routes/api_v1.py:202
+msgid "api_error_too_many_requests"
+msgstr ""
+"Слишком много запросов уже ожидают результат. Повторите попытку через "
+"секунду."
+
+#: app/routes/api_v1.py:251
+msgid "api_error_rate_limited"
+msgstr "Превышен лимит запросов. Подождите немного и повторите попытку."
+
+#: app/routes/api_v1.py:265
 msgid "Method not allowed"
 msgstr "«Метод не поддерживается»"
 
-#: app/routes/api_v1.py:165 app/routes/api_v1.py:245
-msgid "Request body must be a JSON object"
-msgstr "Тело запроса должно быть JSON-объектом"
+#: app/routes/api_v1.py:273 app/routes/api_v1.py:1203
+msgid "Uploaded file is too large"
+msgstr "Загруженный файл слишком большой"
 
-#: app/routes/api_v1.py:175
-msgid "'user' must be a string"
-msgstr "'user' должен быть строкой"
+#: app/routes/api_v1.py:336
+msgid "'limit' must be an integer"
+msgstr "Параметр 'limit' должен быть целым числом"
 
-#: app/routes/api_v1.py:178
+#: app/routes/api_v1.py:359 app/routes/api_v1.py:372 app/routes/api_v1.py:397
+#: app/routes/api_v1.py:796 app/routes/messages.py:333
+msgid "Task not found"
+msgstr "Задача не найдена"
+
+#: app/routes/api_v1.py:377 app/routes/api_v1.py:383 app/routes/api_v1.py:386
+msgid "Task is no longer cancellable"
+msgstr "Задачу уже нельзя отменить"
+
+#: app/routes/api_v1.py:381
+msgid "Queued tasks cannot be cancelled"
+msgstr "Задачи в очереди нельзя отменить"
+
+#: app/routes/api_v1.py:411 app/routes/api_v1.py:420 app/routes/api_v1.py:429
+#: app/routes/api_v1.py:433 app/routes/api_v1.py:443
+msgid "Generated media not found"
+msgstr "Сгенерированный файл не найден"
+
+#: app/routes/api_v1.py:581 app/routes/api_v1.py:833
 msgid "'metadata.session_id' must be a string"
 msgstr "'metadata.session_id' должен быть строкой"
 
-#: app/routes/api_v1.py:182
-msgid "'stream' must be a boolean"
-msgstr "'stream' должен быть логическим значением"
+#: app/routes/api_v1.py:585 app/routes/api_v1.py:829
+msgid "'user' must be a string"
+msgstr "'user' должен быть строкой"
 
-#: app/routes/api_v1.py:189
+#: app/routes/api_v1.py:589 app/routes/api_v1.py:845
 msgid "Chat session not found"
 msgstr "Чат-сессия не найдена"
 
-#: app/routes/api_v1.py:212 app/routes/api_v1.py:271
+#: app/routes/api_v1.py:599 app/routes/api_v1.py:725 app/routes/api_v1.py:819
+#: app/routes/api_v1.py:909 app/routes/api_v1.py:967 app/routes/api_v1.py:1324
+#: app/routes/api_v1.py:1434
+msgid "Request body must be a JSON object"
+msgstr "Тело запроса должно быть JSON-объектом"
+
+#: app/routes/api_v1.py:602 app/routes/api_v1.py:640 app/routes/api_v1.py:728
+msgid "'prompt' must be a non-empty string"
+msgstr "Поле 'prompt' должно содержать непустую строку"
+
+#: app/routes/api_v1.py:608
+msgid "Only response_format 'url' is supported for asynchronous image generation"
+msgstr ""
+"Для асинхронной генерации изображений поддерживается только "
+"response_format 'url'"
+
+#: app/routes/api_v1.py:646
+msgid "Only response_format 'url' is supported for asynchronous image edits"
+msgstr ""
+"Для асинхронного редактирования изображений поддерживается только "
+"response_format 'url'"
+
+#: app/routes/api_v1.py:649
+msgid "Missing 'image' upload"
+msgstr "Не загружено изображение в поле 'image'"
+
+#: app/routes/api_v1.py:654 app/routes/api_v1.py:1062
+msgid "Uploaded file is empty"
+msgstr "Загруженный файл пуст"
+
+#: app/routes/api_v1.py:657 app/routes/api_v1.py:686
+msgid "Unsupported image format"
+msgstr "Неподдерживаемый формат изображения"
+
+#: app/routes/api_v1.py:665 app/routes/api_v1.py:668
+msgid "Image editing module unavailable"
+msgstr "Модуль редактирования изображений недоступен"
+
+#: app/routes/api_v1.py:697
+msgid "'metadata' must be a JSON object"
+msgstr "Поле 'metadata' должно быть JSON-объектом"
+
+#: app/routes/api_v1.py:730
+msgid "'model' must be a string"
+msgstr "Поле 'model' должно быть строкой"
+
+#: app/routes/api_v1.py:745
+msgid "Unsupported video generation options"
+msgstr "Неподдерживаемые параметры генерации видео"
+
+#: app/routes/api_v1.py:749
+msgid "Video generation option is out of range"
+msgstr "Значение параметра генерации видео вне допустимого диапазона"
+
+#: app/routes/api_v1.py:753
+msgid "Video dimensions must be multiples of 32"
+msgstr "Размеры видео должны быть кратны 32"
+
+#: app/routes/api_v1.py:756
+msgid "Unsupported video frame rate"
+msgstr "Неподдерживаемая частота кадров видео"
+
+#: app/routes/api_v1.py:768
+msgid "Video output exceeds the supported size or duration"
+msgstr "Размер или длительность видео превышает поддерживаемый предел"
+
+#: app/routes/api_v1.py:838
+msgid "'stream' must be a boolean"
+msgstr "'stream' должен быть логическим значением"
+
+#: app/routes/api_v1.py:873 app/routes/api_v1.py:938 app/routes/api_v1.py:1077
 #, python-format
 msgid "Task %s is still running and was not cancelled"
 msgstr "Задача %s всё ещё выполняется и не была отменена"
 
-#: app/routes/api_v1.py:253
+#: app/routes/api_v1.py:917
 msgid "'input' must be a non-empty string or an array of non-empty strings"
 msgstr ""
 "«Параметр 'input' должен быть непустой строкой или массивом непустых "
 "строк»"
 
-#: app/routes/api_v1.py:262
+#: app/routes/api_v1.py:926
 msgid "'encoding_format' must be 'float' or 'base64'"
 msgstr "«Параметр 'encoding_format' должен быть 'float' или 'base64'»"
+
+#: app/routes/api_v1.py:971
+msgid "'input' must be a non-empty string"
+msgstr "Поле 'input' должно содержать непустую строку"
+
+#: app/routes/api_v1.py:975
+msgid "'voice' must be a string"
+msgstr "Поле 'voice' должно быть строкой"
+
+#: app/routes/api_v1.py:979 app/routes/api_v1.py:1067 app/routes/auth.py:92
+msgid "Invalid language"
+msgstr "Некорректный язык"
+
+#: app/routes/api_v1.py:983 app/routes/auth.py:102
+msgid "Invalid voice gender"
+msgstr "Некорректный пол голоса"
+
+#: app/routes/api_v1.py:987 app/routes/api_v1.py:992 app/routes/tts.py:26
+msgid "TTS service unavailable"
+msgstr "Сервис озвучки недоступен"
+
+#: app/routes/api_v1.py:1001
+#, python-brace-format
+msgid ""
+"The configured TTS backend produces {native_format}; requested: "
+"{requested_format}"
+msgstr ""
+"Настроенный синтез речи возвращает {native_format}; запрошен формат "
+"{requested_format}"
+
+#: app/routes/api_v1.py:1010 app/routes/api_v1.py:1012
+#: app/routes/api_v1.py:1016 app/routes/tts.py:30
+msgid "TTS synthesis failed"
+msgstr "Ошибка синтеза речи"
+
+#: app/routes/api_v1.py:1039 app/routes/api_v1.py:1191
+msgid "Missing 'file' field"
+msgstr "Отсутствует поле 'file'"
+
+#: app/routes/api_v1.py:1043 app/routes/api_v1.py:1194
+#: app/routes/documents.py:105
+msgid "No file selected"
+msgstr "Файл не выбран"
+
+#: app/routes/api_v1.py:1051
+msgid "'response_format' must be 'json' or 'text'; timestamps are not available"
+msgstr ""
+"Поле 'response_format' должно быть 'json' или 'text'; временные метки "
+"недоступны"
+
+#: app/routes/api_v1.py:1058
+msgid "Unsupported audio format"
+msgstr "Неподдерживаемый аудиоформат"
+
+#: app/routes/api_v1.py:1086
+msgid "Transcription produced no text"
+msgstr "Распознавание не вернуло текст"
+
+#: app/routes/api_v1.py:1121 app/routes/api_v1.py:1133
+#: app/routes/api_v1.py:1135 app/routes/api_v1.py:1356
+#: app/routes/documents.py:214 app/routes/documents.py:244 app/routes/rlm.py:64
+msgid "Document not found"
+msgstr "Документ не найден"
+
+#: app/routes/api_v1.py:1199 app/routes/documents.py:65
+#: app/routes/documents.py:73 modules/multimodal.py:116
+msgid "Unsupported file type"
+msgstr "Неподдерживаемый тип файла"
+
+#: app/routes/api_v1.py:1238 app/routes/documents.py:172
+#: app/routes/model_hub.py:30
+msgid "Invalid file path"
+msgstr "Некорректный путь к файлу"
+
+#: app/routes/api_v1.py:1304 app/routes/rlm.py:24
+msgid "Deep analysis is disabled"
+msgstr "Глубокий анализ отключён"
+
+#: app/routes/api_v1.py:1329
+msgid "'question' must be a string"
+msgstr "Поле 'question' должно быть строкой"
+
+#: app/routes/api_v1.py:1338 app/routes/api_v1.py:1347 app/routes/rlm.py:52
+#: app/routes/rlm.py:55
+msgid "Select at least one document and enter a question"
+msgstr "Выберите хотя бы один документ и введите вопрос"
+
+#: app/routes/api_v1.py:1341
+msgid "'doc_ids' must be a list of strings"
+msgstr "Поле 'doc_ids' должно быть списком строк"
+
+#: app/routes/api_v1.py:1351 app/routes/api_v1.py:1462
+#: app/routes/messages.py:30 app/routes/rlm.py:59 app/routes/sessions.py:118
+#: app/routes/sessions.py:149 app/routes/sessions.py:196
+#: app/routes/sessions.py:212 app/templates/chat.html:133
+msgid "Session not found"
+msgstr "Сессия не найдена"
+
+#: app/routes/api_v1.py:1437
+msgid "'title' must be a string"
+msgstr "Поле 'title' должно быть строкой"
+
+#: app/routes/api_v1.py:1467
+msgid "'limit' and 'offset' must be integers"
+msgstr "Параметры 'limit' и 'offset' должны быть целыми числами"
 
 #: app/routes/auth.py:20 app/routes/auth.py:21
 msgid "Too many attempts. Please try again later."
@@ -769,14 +981,6 @@ msgstr "Все поля обязательны"
 #: app/routes/auth.py:71
 msgid "Invalid login or password"
 msgstr "Неверный логин или пароль"
-
-#: app/routes/auth.py:92
-msgid "Invalid language"
-msgstr "Некорректный язык"
-
-#: app/routes/auth.py:102
-msgid "Invalid voice gender"
-msgstr "Некорректный пол голоса"
 
 #: app/routes/auth.py:112
 msgid "Invalid theme"
@@ -814,11 +1018,6 @@ msgstr "Ошибка при восстановлении"
 msgid "File not found"
 msgstr "Файл не найден"
 
-#: app/routes/documents.py:65 app/routes/documents.py:73
-#: modules/multimodal.py:116
-msgid "Unsupported file type"
-msgstr "Неподдерживаемый тип файла"
-
 #: app/routes/documents.py:85
 msgid "File type does not match extension"
 msgstr "Тип файла не соответствует расширению"
@@ -827,34 +1026,16 @@ msgstr "Тип файла не соответствует расширению"
 msgid "No file provided"
 msgstr "Файл не предоставлен"
 
-#: app/routes/documents.py:105
-msgid "No file selected"
-msgstr "Файл не выбран"
-
 #: app/routes/documents.py:122 app/routes/messages.py:209
 #: modules/multimodal.py:110
 #, python-brace-format
 msgid "Maximum file size {max_size} MB"
 msgstr "Максимальный размер файла {max_size} Мб"
 
-#: app/routes/documents.py:172 app/routes/model_hub.py:30
-msgid "Invalid file path"
-msgstr "Некорректный путь к файлу"
-
-#: app/routes/documents.py:214 app/routes/documents.py:244 app/routes/rlm.py:64
-msgid "Document not found"
-msgstr "Документ не найден"
-
 #: app/routes/documents.py:225 app/routes/documents.py:261
 #: app/templates/chat.html:132
 msgid "Permission denied"
 msgstr "Нет доступа"
-
-#: app/routes/messages.py:30 app/routes/rlm.py:59 app/routes/sessions.py:118
-#: app/routes/sessions.py:149 app/routes/sessions.py:196
-#: app/routes/sessions.py:212 app/templates/chat.html:133
-msgid "Session not found"
-msgstr "Сессия не найдена"
 
 #: app/routes/messages.py:159 app/templates/chat.html:119
 msgid "Empty message"
@@ -878,10 +1059,6 @@ msgstr "Запрос поставлен в очередь (позиция {pos})
 #: app/routes/messages.py:302 app/templates/chat.html:177
 msgid "Text request"
 msgstr "Текстовый запрос"
-
-#: app/routes/messages.py:333
-msgid "Task not found"
-msgstr "Задача не найдена"
 
 #: app/routes/messages.py:420 app/routes/messages.py:427
 msgid "Message not found"
@@ -935,14 +1112,6 @@ msgstr ""
 "Эта модель выбрана основной для одного из модулей. Сначала выберите "
 "другую модель."
 
-#: app/routes/rlm.py:24
-msgid "Deep analysis is disabled"
-msgstr "Глубокий анализ отключён"
-
-#: app/routes/rlm.py:52 app/routes/rlm.py:55
-msgid "Select at least one document and enter a question"
-msgstr "Выберите хотя бы один документ и введите вопрос"
-
 #: app/routes/sessions.py:99 app/routes/sessions.py:174
 msgid "Session not found or access denied"
 msgstr "Сессия не найдена или доступ запрещён"
@@ -958,14 +1127,6 @@ msgstr "Нет активного сеанса"
 #: app/routes/tts.py:17
 msgid "Missing text"
 msgstr "Отсутствует текст"
-
-#: app/routes/tts.py:26
-msgid "TTS service unavailable"
-msgstr "Сервис озвучки недоступен"
-
-#: app/routes/tts.py:30
-msgid "TTS synthesis failed"
-msgstr "Ошибка синтеза речи"
 
 #: app/templates/admin.html:5
 msgid "Admin Panel"
@@ -2492,86 +2653,6 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
-#: app/routes/api_v1.py
-msgid "api_error_rate_limited"
-msgstr "Превышен лимит запросов. Подождите немного и повторите попытку."
-
-msgid "api_error_too_many_requests"
-msgstr "Слишком много запросов уже ожидают результат. Повторите попытку через секунду."
-
-msgid "'input' must be a non-empty string"
-msgstr "Поле 'input' должно содержать непустую строку"
-
-msgid "'voice' must be a string"
-msgstr "Поле 'voice' должно быть строкой"
-
-#, python-brace-format
-msgid "The configured TTS backend produces {native_format}; requested: {requested_format}"
-msgstr "Настроенный синтез речи возвращает {native_format}; запрошен формат {requested_format}"
-
-msgid "Missing 'file' field"
-msgstr "Отсутствует поле 'file'"
-
-msgid "Uploaded file is empty"
-msgstr "Загруженный файл пуст"
-
-msgid "Unsupported audio format"
-msgstr "Неподдерживаемый аудиоформат"
-
-msgid "'response_format' must be 'json' or 'text'; timestamps are not available"
-msgstr "Поле 'response_format' должно быть 'json' или 'text'; временные метки недоступны"
-
-msgid "Transcription produced no text"
-msgstr "Распознавание не вернуло текст"
-
-msgid "Uploaded file is too large"
-msgstr "Загруженный файл слишком большой"
-
-msgid "Invalid audio input"
-msgstr "Некорректные аудиоданные"
-
-msgid "'limit' must be an integer"
-msgstr "Параметр 'limit' должен быть целым числом"
-
-msgid "Task is no longer cancellable"
-msgstr "Задачу уже нельзя отменить"
-
-msgid "Queued tasks cannot be cancelled"
-msgstr "Задачи в очереди нельзя отменить"
-
-msgid "'prompt' must be a non-empty string"
-msgstr "Поле 'prompt' должно содержать непустую строку"
-
-msgid "Only response_format 'url' is supported for asynchronous image generation"
-msgstr "Для асинхронной генерации изображений поддерживается только response_format 'url'"
-
-msgid "Only response_format 'url' is supported for asynchronous image edits"
-msgstr "Для асинхронного редактирования изображений поддерживается только response_format 'url'"
-
-msgid "Missing 'image' upload"
-msgstr "Не загружено изображение в поле 'image'"
-
-msgid "Unsupported image format"
-msgstr "Неподдерживаемый формат изображения"
-
-msgid "Image editing module unavailable"
-msgstr "Модуль редактирования изображений недоступен"
-
-msgid "Video generation option is out of range"
-msgstr "Значение параметра генерации видео вне допустимого диапазона"
-
-msgid "Video dimensions must be multiples of 32"
-msgstr "Размеры видео должны быть кратны 32"
-
-msgid "Unsupported video frame rate"
-msgstr "Неподдерживаемая частота кадров видео"
-
-msgid "Video output exceeds the supported size or duration"
-msgstr "Размер или длительность видео превышает поддерживаемый предел"
-
-msgid "Generated media not found"
-msgstr "Сгенерированный файл не найден"
-
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 
@@ -2818,3 +2899,4 @@ msgstr "Сгенерированный файл не найден"
 #~ "Для мультимодального модуля нужна "
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
+

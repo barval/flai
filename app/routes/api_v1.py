@@ -1,11 +1,14 @@
 """OpenAI-compatible public API foundation."""
 
+import io
 import json
 import mimetypes
 import os
 import time
-from base64 import b64encode
+import uuid
+from base64 import b64decode, b64encode
 from collections.abc import Callable
+from datetime import datetime
 from functools import wraps
 from threading import BoundedSemaphore
 from typing import Any, cast
@@ -17,7 +20,7 @@ from flask_limiter.errors import RateLimitExceeded
 from werkzeug.exceptions import MethodNotAllowed, RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
-from app import limiter
+from app import db, limiter
 from app.api_bridge import (
     ApiImageRejectedError,
     ApiSessionNotFoundError,
@@ -42,7 +45,15 @@ from app.api_bridge import (
     wait_for_result,
 )
 from app.api_tokens import touch_api_token, verify_api_token
-from app.utils import check_upload_quota, convert_to_supported_format_if_needed, resize_image_if_needed
+from app.routes.documents import validate_file
+from app.utils import (
+    check_document_quota,
+    check_upload_quota,
+    convert_to_supported_format_if_needed,
+    resize_image_if_needed,
+    save_uploaded_file,
+    validate_session_ownership,
+)
 
 API_PREFIX = "/v1"
 DEFAULT_API_RATE_LIMIT = "60 per minute;1000 per hour"
@@ -304,8 +315,8 @@ def api_me():
                     and current_app.modules.get("multimodal")
                     and current_app.modules["multimodal"].available
                 ),
-                "documents": False,
-                "rlm": False,
+                "documents": True,
+                "rlm": bool(current_app.config.get("RLM_ENABLED", True)),
                 "tools": False,
                 "response_format_json_schema": False,
             },
@@ -1077,3 +1088,391 @@ def audio_transcriptions():
     if response_format == "text":
         return Response(text, mimetype="text/plain; charset=utf-8")
     return jsonify({"text": text})
+
+
+# ---------------------------------------------------------------------------
+# Files (OpenAI-compatible) and FLAI document aliases
+# ---------------------------------------------------------------------------
+
+
+def _serialize_api_file(doc: dict[str, Any]) -> dict[str, Any]:
+    created_at = doc.get("uploaded_at")
+    if created_at is not None and hasattr(created_at, "timestamp"):
+        created_at = created_at.timestamp()
+    else:
+        try:
+            created_at = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S").timestamp()
+        except (TypeError, ValueError):
+            created_at = 0.0
+    return {
+        "id": doc["id"],
+        "object": "file",
+        "filename": doc["filename"],
+        "bytes": doc.get("file_size") or 0,
+        "created_at": created_at,
+        "purpose": "assistants",
+        "index_status": doc.get("index_status"),
+    }
+
+
+def _owned_document_or_404(file_id: str) -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
+    doc = db.get_document(file_id, g.api_user["login"])
+    if not doc:
+        return None, api_error(404, "invalid_request_error", "file_not_found", _("Document not found"))
+    return doc, None
+
+
+def _document_disk_path(doc: dict[str, Any]) -> tuple[str | None, tuple[Any, int] | None]:
+    """Resolve a stored document path under DOCUMENTS_FOLDER with containment."""
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    file_path = os.path.join(documents_folder, doc["file_path"])
+    real_file_path = os.path.realpath(file_path)
+    real_documents_folder = os.path.realpath(documents_folder)
+    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
+        current_app.logger.warning("API document path traversal attempt blocked: %s", doc["file_path"])
+        return None, api_error(404, "invalid_request_error", "file_not_found", _("Document not found"))
+    if not os.path.isfile(real_file_path):
+        return None, api_error(404, "invalid_request_error", "file_not_found", _("Document not found"))
+    return real_file_path, None
+
+
+def _api_list_documents():
+    docs = db.get_user_documents(g.api_user["login"])
+    return jsonify({"object": "list", "data": [_serialize_api_file(doc) for doc in docs]})
+
+
+def _api_file_metadata(file_id: str):
+    doc, err = _owned_document_or_404(file_id)
+    if err is not None or doc is None:
+        return err
+    return jsonify(_serialize_api_file(doc))
+
+
+def _api_file_content(file_id: str):
+    doc, err = _owned_document_or_404(file_id)
+    if err is not None or doc is None:
+        return err
+    file_path, err = _document_disk_path(doc)
+    if err is not None or file_path is None:
+        return err
+    mimetype, _ = mimetypes.guess_type(file_path)
+    return send_file(
+        file_path,
+        mimetype=mimetype or "application/octet-stream",
+        as_attachment=True,
+        download_name=doc["filename"],
+    )
+
+
+def _api_file_delete(file_id: str):
+    doc, err = _owned_document_or_404(file_id)
+    if err is not None or doc is None:
+        return err
+    login = g.api_user["login"]
+    rag = cast(Any, current_app).modules.get("rag")
+    if rag and rag.available:
+        try:
+            rag.delete_document(doc["id"], login)
+        except Exception:
+            current_app.logger.exception("Failed to delete document from index")
+    file_path, err = _document_disk_path(doc)
+    if err is not None or file_path is None:
+        return err
+    try:
+        os.remove(file_path)
+    except OSError:
+        current_app.logger.exception("Failed to delete document file %s", file_path)
+    db.delete_document(doc["id"], login)
+    return jsonify({"id": doc["id"], "object": "file", "deleted": True})
+
+
+def _api_upload_document():
+    if "file" not in request.files:
+        return api_error(400, "invalid_request_error", "invalid_request", _("Missing 'file' field"))
+    upload = request.files["file"]
+    if upload.filename == "":
+        return api_error(400, "invalid_request_error", "invalid_request", _("No file selected"))
+
+    file_content = upload.read()
+    is_valid, validation_error = validate_file(io.BytesIO(file_content), upload.filename)
+    if not is_valid:
+        return api_error(400, "invalid_request_error", "invalid_input", validation_error or _("Unsupported file type"))
+
+    max_size_mb = current_app.config["MAX_DOCUMENT_SIZE_MB"]
+    if len(file_content) > max_size_mb * 1024 * 1024:
+        return api_error(413, "invalid_request_error", "request_too_large", _("Uploaded file is too large"))
+
+    quota_error = check_document_quota(g.api_user["login"])
+    if quota_error:
+        return api_error(413, "invalid_request_error", "document_quota_exceeded", quota_error)
+
+    login = g.api_user["login"]
+    doc_id = str(uuid.uuid4())
+    filename = upload.filename
+    is_image = False
+
+    image_mime = magic.from_buffer(file_content[:2048], mime=True) if file_content[:2048] else None
+    if image_mime and image_mime.startswith("image/"):
+        is_image = True
+        max_image_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
+        file_b64 = b64encode(file_content).decode("ascii")
+        file_b64, _ftype, _img_orig_name, _resized, _od, _nd = resize_image_if_needed(
+            file_b64, image_mime, filename, max_image_size
+        )
+        file_b64, _ftype, img_new_name, _converted = convert_to_supported_format_if_needed(
+            file_b64, _ftype, _ftype and filename or filename
+        )
+        file_content = b64decode(file_b64)
+        filename = img_new_name
+
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    user_folder = os.path.join(documents_folder, login)
+    os.makedirs(user_folder, exist_ok=True)
+    safe_ext = os.path.splitext(filename)[1].lower()
+    safe_filename = f"{doc_id}{safe_ext}"
+    file_path = os.path.join(user_folder, safe_filename)
+
+    real_file_path = os.path.realpath(file_path)
+    real_user_folder = os.path.realpath(user_folder)
+    if not real_file_path.startswith(real_user_folder + os.sep):
+        return api_error(400, "invalid_request_error", "invalid_file_path", _("Invalid file path"))
+
+    with open(real_file_path, "wb") as handle:
+        handle.write(file_content)
+
+    relative_path = os.path.join(login, safe_filename)
+    db.save_document(login, doc_id, filename, len(file_content), safe_ext, relative_path)
+    db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
+
+    task_type = "describe_document_image" if is_image else "index_document"
+    current_app.request_queue.add_request(
+        user_id=login,
+        session_id="",  # Document indexing doesn't belong to a chat session
+        request_data={"type": task_type, "doc_id": doc_id, "file_path": real_file_path},
+        user_class=g.api_user.get("service_class", 2),
+        lang=g.api_user.get("language", "ru"),
+    )
+
+    doc = db.get_document(doc_id, login)
+    if doc is None:  # pragma: no cover - saved above
+        doc = {
+            "id": doc_id,
+            "filename": filename,
+            "file_size": len(file_content),
+            "uploaded_at": None,
+            "index_status": db.INDEX_STATUS_PENDING,
+        }
+    return jsonify(_serialize_api_file(doc))
+
+
+@bp.route("/files", methods=["GET", "POST"])
+@bp.route("/flai/documents", methods=["GET", "POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_files_collection():
+    """List the caller's documents or upload a new one."""
+    if request.method == "POST":
+        return _api_upload_document()
+    return _api_list_documents()
+
+
+@bp.route("/files/<file_id>", methods=["GET", "DELETE"])
+@bp.route("/flai/documents/<file_id>", methods=["GET", "DELETE"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_files_item(file_id: str):
+    """Fetch one owner-owned document record or delete it."""
+    if request.method == "DELETE":
+        return _api_file_delete(file_id)
+    return _api_file_metadata(file_id)
+
+
+@bp.route("/files/<file_id>/content", methods=["GET"])
+@bp.route("/flai/documents/<file_id>/content", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_files_content(file_id: str):
+    """Download an owner-owned document after a realpath containment check."""
+    return _api_file_content(file_id)
+
+
+# ---------------------------------------------------------------------------
+# RLM deep analysis
+# ---------------------------------------------------------------------------
+
+
+@bp.route("/flai/rlm", methods=["POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_rlm_analysis():
+    """Run a deep-analysis (RLM) task over caller-owned documents."""
+    if not current_app.config.get("RLM_ENABLED", True):
+        return api_error(403, "invalid_request_error", "rlm_disabled", _("Deep analysis is disabled"))
+
+    login = g.api_user["login"]
+    if request.content_type and "multipart/form-data" in request.content_type:
+        session_id = request.form.get("session_id")
+        try:
+            doc_ids = json.loads(request.form.get("doc_ids") or "[]")
+        except (ValueError, TypeError):
+            doc_ids = []
+        question = (request.form.get("question") or "").strip()
+        file_data = file_type = file_name = None
+        if "file" in request.files:
+            upload = request.files["file"]
+            if upload and upload.filename:
+                file_data = b64encode(upload.read()).decode("utf-8")
+                file_type = upload.content_type or "application/octet-stream"
+                file_name = upload.filename
+    else:
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return api_error(400, "invalid_request_error", "invalid_request", _("Request body must be a JSON object"))
+        session_id = payload.get("session_id")
+        doc_ids = payload.get("doc_ids") or []
+        question = payload.get("question")
+        if question is not None and not isinstance(question, str):
+            return api_error(400, "invalid_request_error", "invalid_request", _("'question' must be a string"))
+        question = (question or "").strip()
+        file_data = file_type = file_name = None
+
+    if not session_id or not isinstance(session_id, str) or not question:
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_request",
+            _("Select at least one document and enter a question"),
+        )
+    if not isinstance(doc_ids, list) or any(not isinstance(doc_id, str) for doc_id in doc_ids):
+        return api_error(400, "invalid_request_error", "invalid_request", _("'doc_ids' must be a list of strings"))
+    if not doc_ids and not file_data:
+        return api_error(
+            400,
+            "invalid_request_error",
+            "invalid_request",
+            _("Select at least one document and enter a question"),
+        )
+
+    if not validate_session_ownership(session_id, login):
+        return api_error(404, "invalid_request_error", "session_not_found", _("Session not found"))
+
+    owned = {doc["id"] for doc in (db.get_user_documents(login) or [])}
+    owned_doc_ids = [doc_id for doc_id in doc_ids if doc_id in owned]
+    if len(owned_doc_ids) != len(doc_ids):
+        return api_error(404, "invalid_request_error", "document_not_found", _("Document not found"))
+
+    file_path = None
+    if file_data:
+        if file_size := len(b64decode(file_data)):
+            quota_error = check_upload_quota(login, file_size)
+            if quota_error:
+                return api_error(413, "invalid_request_error", "upload_quota_exceeded", quota_error)
+        file_data, file_type, file_name, _resized, _orig_dims, _new_dims = resize_image_if_needed(
+            file_data, file_type, file_name, current_app.config.get("MAX_IMAGE_SIZE", 1536)
+        )
+        file_path = save_uploaded_file(
+            file_data=file_data,
+            filename=file_name,
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=login,
+        )
+
+    user_content: list[dict[str, str]] = []
+    if question:
+        user_content.append({"type": "text", "text": question})
+    if file_data:
+        user_content.append({"type": "image", "file_data": file_data, "file_type": file_type, "file_name": file_name})
+    user_content_json = json.dumps(user_content, ensure_ascii=False)
+    user_message_id = db.save_message(session_id, "user", user_content_json, file_data, file_type, file_name, file_path)
+
+    db.update_session_visit(login, session_id)
+
+    with db.get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s AND role = 'user'", (session_id,))
+        if cursor.fetchone()["cnt"] == 1:
+            db.update_session_title(session_id, question, file_name)
+
+    task_id, info = current_app.request_queue.add_rlm_task(
+        login,
+        session_id,
+        owned_doc_ids,
+        question,
+        user_class=g.api_user["service_class"],
+        lang=g.api_user["language"],
+        image_data=file_data,
+        image_type=file_type,
+        image_name=file_name,
+    )
+    register_api_task(g.api_user, task_id, session_id, "/v1/flai/rlm")
+
+    return jsonify(
+        {
+            "task_id": task_id,
+            "position": info["position"],
+            "user_message_id": user_message_id,
+        }
+    ), 202
+
+
+# ---------------------------------------------------------------------------
+# Sessions and history
+# ---------------------------------------------------------------------------
+
+
+def _serialize_api_session(session: dict[str, Any]) -> dict[str, Any]:
+    created_at = session.get("created_at")
+    if created_at is not None and hasattr(created_at, "isoformat"):
+        created_at = created_at.isoformat(sep=" ")
+    return {"id": session["id"], "title": session.get("title") or "", "created_at": created_at}
+
+
+@bp.route("/flai/sessions", methods=["GET", "POST"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_sessions_collection():
+    """List or create sessions owned by the API-key owner."""
+    login = g.api_user["login"]
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return api_error(400, "invalid_request_error", "invalid_request", _("Request body must be a JSON object"))
+        title = payload.get("title")
+        if title is not None and not isinstance(title, str):
+            return api_error(400, "invalid_request_error", "invalid_request", _("'title' must be a string"))
+        if title:
+            title = title.strip()[:200]
+        else:
+            from flask_babel import force_locale
+
+            with force_locale(g.api_user["language"]):
+                title = _("New session")
+        session_id = db.create_session(login, title=title, lang=g.api_user["language"])
+        created_at = ""
+        for session in db.get_user_sessions(login):
+            if session["id"] == session_id:
+                created_at = _serialize_api_session(session)["created_at"] or ""
+                break
+        return jsonify({"id": session_id, "title": title, "created_at": created_at})
+    sessions = db.get_user_sessions(login)
+    return jsonify({"object": "list", "data": [_serialize_api_session(s) for s in sessions]})
+
+
+@bp.route("/flai/sessions/<session_id>/messages", methods=["GET"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_session_messages(session_id: str):
+    """Read owner-scoped message history with pagination."""
+    if not validate_session_ownership(session_id, g.api_user["login"]):
+        return api_error(404, "invalid_request_error", "session_not_found", _("Session not found"))
+    try:
+        limit = int(request.args.get("limit", 100))
+        offset = int(request.args.get("offset", 0))
+    except (TypeError, ValueError):
+        return api_error(400, "invalid_request_error", "invalid_request", _("'limit' and 'offset' must be integers"))
+    limit = min(max(limit, 1), 200)
+    offset = max(offset, 0)
+    since = request.args.get("since")
+    messages = db.get_session_messages(session_id, since=since, limit=limit, offset=offset)
+    return jsonify({"messages": messages, "limit": limit, "offset": offset, "has_more": len(messages) >= limit})

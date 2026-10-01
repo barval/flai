@@ -11,11 +11,19 @@ For critical rules and commands, see the root `AGENTS.md`.
 ## Entrypoint & Structure
 
 - **`app/__init__.py:create_app()`** — Flask application factory.
-- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`.
+- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`, `api_v1` (public OpenAI-compatible API).
 - **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`, `rlm`.
 - **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save; auto-rollback covers both model swaps — restores the fallback model — and context-only changes — restores `context_length`), `health_monitor.py` (crash-loop watchdog).
 - **Templates** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Static**: `app/static/css/` (all CSS), `app/static/js/` (all JS). No inline styles, no CDN.
+
+## Public OpenAI-compatible API (v12.3)
+
+- **Bearer identity is request-local.** `app/routes/api_v1.py:api_token_required` verifies a per-user API key (SHA-256 digest stored by the web API-key panel) and fills `flask.g.api_user` (login, service class, language, style…). The `/v1` blueprint never reads or writes Flask `session`, sets no cookies and is CSRF-exempt.
+- **A capability router, not a model server.** Chat is persisted and enqueued exactly like a web message, so the LLM router decides which subsystem answers (RAG/search/history/reasoning/image/video). `model`, `tools`, `response_format` and sampling parameters are accepted and ignored where documented.
+- **`app/api_bridge.py`** owns session resolution (`api_conv:<login>:<sha1(user)>` pointers, `metadata.session_id` pinning), enqueue, synchronous/SSE waiting, and the Redis task-owner registry (`api:task:<id>` hash + capped 500-ID per-owner sorted set, `REDIS_RESULT_TTL`); requeued children are followed only with an exact ownership metadata match.
+- **Everything heavy goes through the existing queue.** Embeddings/transcriptions run as dedicated `api_*` task types on the fast worker; images, videos, edits and RLM enqueue on the slow worker with the standard GPU lock — no model generation ever runs inside an HTTP request. Media results are served owner-checked via `GET /v1/flai/tasks/{task_id}/content` with realpath containment under `UPLOAD_FOLDER`.
+- **Limits and errors.** `API_RATE_LIMIT` is enforced per key owner (OpenAI 429 before enqueue), `API_MAX_CONCURRENT_WAITS` caps synchronous waiters, `API_CORS_ORIGINS` allowlists exact browser origins, and every failure uses the localized OpenAI error envelope starting with `⚠️ `. Full contract: `docs/API.md`; tests: `tests/test_api_v1_*.py`, `tests/test_api_tasks.py`, `tests/test_api_documents.py`, `tests/test_api_rlm.py`, `tests/test_api_sessions.py`, `tests/test_api_inventory.py`.
 
 ## LLM Client
 

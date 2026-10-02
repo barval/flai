@@ -14,6 +14,7 @@
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
         {% endif %}
         <button class="admin-tab" data-tab="backups">{{ _('Backups') }}</button>
+        <button class="admin-tab" data-tab="branding">{{ _('Personalization') }}</button>
     </div>
 
     <!-- Hardware tab content -->
@@ -225,6 +226,43 @@
             </div>
             <div id="no-backups-msg" class="no-backups">
                 {{ _('No backups found') }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Branding (Personalization) tab content -->
+    <div id="branding-tab" class="admin-tab-content">
+        <div class="branding-container">
+            <div class="branding-section">
+                <h3>{{ _('Custom logo') }}</h3>
+                <p class="branding-hint">{{ _('Replaces the logo in the site header. PNG, JPEG or WebP up to 2 MB; scaled automatically. The built-in logo stays in the About dialog.') }}</p>
+                <div class="branding-logo-row">
+                    <img id="branding-logo-preview" src="{{ url_for('static', filename='logo-header.png') }}" alt="" class="branding-logo-preview">
+                    <div class="branding-logo-actions">
+                        <input type="file" id="branding-logo-input" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
+                        <button type="button" id="branding-logo-upload-btn" class="add-user-button">📤 {{ _('Upload logo') }}</button>
+                        <button type="button" id="branding-logo-delete-btn" class="btn-danger" hidden>🗑 {{ _('Delete logo') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="branding-section">
+                <h3>{{ _('Site name') }}</h3>
+                <p class="branding-hint">{{ _('Shown next to the logo in the header, in the browser tab title and in exported chats. Both language variants are required — until both are filled in, the default brand name is used. Max {n} characters.').format(n=40) }}</p>
+                <form id="branding-names-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="form-group">
+                        <label for="branding-name-ru">{{ _('Russian (ru)') }}:</label>
+                        <input type="text" id="branding-name-ru" maxlength="40" placeholder="{{ _('branding_placeholder_ru') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="branding-name-en">{{ _('English (en)') }}:</label>
+                        <input type="text" id="branding-name-en" maxlength="40" placeholder="{{ _('branding_placeholder_en') }}">
+                    </div>
+                    <div class="branding-names-actions">
+                        <button type="submit" class="btn-primary">💾 {{ _('Save names') }}</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -501,7 +539,15 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_delete_confirm': {{ _('Delete model {filename} and its service files from disk?')|tojson }},
     'hub_no_hf_access': {{ _('No access to Hugging Face — downloads from the Model Hub are unavailable')|tojson }},
     'hub_manual_upload': {{ _('Manually put .gguf files into the models directory (/models), then press Update model list in the Models tab')|tojson }},
-    'hub_service_files': {{ _('Service files totalling {n} MB will be downloaded with the model')|tojson }}
+    'hub_service_files': {{ _('Service files totalling {n} MB will be downloaded with the model')|tojson }},
+    'branding_load_error': {{ _('Failed to load branding settings')|tojson }},
+    'branding_logo_uploaded': {{ _('Logo uploaded')|tojson }},
+    'branding_logo_deleted': {{ _('Custom logo deleted — the built-in logo is shown')|tojson }},
+    'branding_logo_too_large': {{ _('Logo is too large (max 2 MB)')|tojson }},
+    'branding_names_saved': {{ _('Site names saved')|tojson }},
+    'branding_both_required': {{ _('Both language variants are required')|tojson }},
+    'branding_name_too_long': {{ _('Site name is too long (max 40 characters per language)')|tojson }},
+    'branding_upload_failed': {{ _('Logo upload failed')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -512,6 +558,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin-models.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-modelHub.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-backups.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-branding.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
 {% endif %}

@@ -2,11 +2,14 @@
 import logging
 import mimetypes
 import os
+import re
 import sys
 from datetime import UTC
 from logging import Formatter
+from pathlib import Path
 
-from flask import Flask, abort, jsonify, redirect, request, send_file, session, url_for
+from flasgger import Swagger
+from flask import Flask, abort, g, jsonify, redirect, request, send_file, session, url_for
 from flask_babel import Babel, gettext
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -23,9 +26,16 @@ babel = Babel()
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
 
+# Absolute on purpose: flasgger resolves a relative template_file against
+# app.root_path (the `app/` package), not the project root.
+API_V1_SPEC_PATH = Path(__file__).resolve().parent.parent / "docs" / "openapi-v1.yaml"
+
 
 def get_locale():
-    """Select language from session or Accept-Language header."""
+    """Select the API owner's language or the browser/session language."""
+    api_user = getattr(g, "api_user", None)
+    if api_user and api_user.get("language") in ("ru", "en"):
+        return api_user["language"]
     if "language" in session:
         return session["language"]
     return request.accept_languages.best_match(["ru", "en"]) or "ru"
@@ -130,6 +140,39 @@ def create_app():
     register_babel(app)
     app.jinja_env.add_extension("jinja2.ext.i18n")  # for _() in templates
     app.jinja_env.globals["_"] = gettext
+
+    # Site branding (admin Personalization tab): logo + localized site name.
+    # Resolved per request; DB failures degrade to the built-in brand silently.
+    @app.context_processor
+    def _inject_branding() -> dict:
+        lang = get_locale() or "ru"
+        try:
+            from app import db as app_db
+
+            branding = app_db.get_branding_settings()
+            logo_rel = branding.get("logo_path")
+            logo_url = None
+            if logo_rel:
+                logo_file = os.path.realpath(os.path.join(app.config.get("BRANDING_FOLDER", "data/branding"), logo_rel))
+                branding_dir = os.path.realpath(app.config.get("BRANDING_FOLDER", "data/branding"))
+                if logo_file.startswith(branding_dir + os.sep) and os.path.isfile(logo_file):
+                    from datetime import datetime
+
+                    stamp = branding.get("logo_updated_at") or branding.get("updated_at") or ""
+                    version = (
+                        str(int(stamp.timestamp()))
+                        if isinstance(stamp, datetime)
+                        else re.sub(r"[^0-9]", "", str(stamp))[:10]
+                    )
+                    logo_url = f"/admin/api/branding/logo?v={version}" if version else "/admin/api/branding/logo"
+            name = (branding.get("site_name_ru") if lang == "ru" else branding.get("site_name_en")) or ""
+        except Exception as e:
+            app.logger.warning(f"Branding lookup failed, using defaults: {e}")
+            logo_url = None
+            name = ""
+        if not name:
+            name = gettext("FLAI")
+        return {"branding_logo_url": logo_url, "branding_site_name": name}
 
     # Initialize CSRF protection
     csrf.init_app(app)
@@ -303,7 +346,22 @@ def create_app():
     init_events_publisher(app)
 
     # Register blueprints (new modular structure)
-    from .routes import admin, auth, backups, chat, documents, events, messages, model_hub, queue, rlm, sessions, tts
+    from .routes import (
+        admin,
+        api_keys,
+        api_v1,
+        auth,
+        backups,
+        chat,
+        documents,
+        events,
+        messages,
+        model_hub,
+        queue,
+        rlm,
+        sessions,
+        tts,
+    )
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -319,6 +377,33 @@ def create_app():
     app.register_blueprint(events.bp)
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
+    csrf.exempt(api_v1.bp)
+    app.register_blueprint(api_v1.bp)
+    app.register_blueprint(api_keys.bp)
+
+    # Interactive API documentation: Swagger UI over the hand-written spec in
+    # docs/openapi-v1.yaml. flasgger bundles the UI assets, so the page works
+    # offline, and both endpoints are deliberately public — a spec is not data.
+    Swagger(
+        app,
+        template_file=str(API_V1_SPEC_PATH),
+        config={
+            "openapi": "3.0.3",
+            "title": "FLAI API",
+            "specs": [
+                {
+                    "endpoint": "flai_v1",
+                    "route": "/v1/openapi.json",
+                    # The spec is maintained by hand; never scan view docstrings.
+                    "rule_filter": lambda rule: False,
+                    "model_filter": lambda tag: False,
+                }
+            ],
+            "specs_route": "/v1/docs",
+            "oauth_redirect": "/v1/docs/oauth2-redirect.html",
+        },
+        merge=True,
+    )
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):
@@ -593,7 +678,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="12.2"} 1')
+        metrics_output.append('flai_web_info{version="12.3"} 1')
 
         # Queue metrics
         try:
@@ -679,10 +764,16 @@ def _start_slm_merge_watcher(app: Flask) -> None:
     import threading
     import time
 
+    # Abortable wait instead of time.sleep, so the thread can be stopped
+    # instead of running for the whole lifetime of the process.
+    stop = threading.Event()
+    app._slm_watcher_stop = stop  # type: ignore[attr-defined]
+
     def _watcher() -> None:
         with app.app_context():
-            while True:
-                time.sleep(60)  # Check every minute
+            while not stop.is_set():
+                if stop.wait(60):  # Check every minute
+                    return
                 try:
                     if not hasattr(app, "_last_task_time"):
                         continue
@@ -726,5 +817,20 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                     app.logger.warning(f"SLM merge watcher error: {e}")
 
     thread = threading.Thread(target=_watcher, daemon=True, name="slm-merge-watcher")
+    app._slm_watcher_thread = thread  # type: ignore[attr-defined]
     thread.start()
     app.logger.info("SLM merge watcher started")
+
+
+def stop_slm_merge_watcher(app: Flask, timeout: float = 5) -> bool:
+    """Stop the SLM merge watcher of ``app``.  True when it is no longer running."""
+    import threading
+
+    thread = getattr(app, "_slm_watcher_thread", None)
+    if not isinstance(thread, threading.Thread):
+        return False
+    stop = getattr(app, "_slm_watcher_stop", None)
+    if isinstance(stop, threading.Event):
+        stop.set()
+    thread.join(timeout=timeout)
+    return not thread.is_alive()

@@ -29,6 +29,25 @@ from app import create_app
 # ── Helpers: mock external services ────────────────────────────────────
 
 
+def stop_app_background_threads(flask_app: Any) -> None:
+    """Stop the per-app daemon threads that create_app() starts.
+
+    Every create_app() spawns an SLM merge watcher and (with the llama-swap
+    backend) a crash-loop watchdog. Both poll forever and hold an app context,
+    so without this a suite that builds hundreds of apps accumulates hundreds
+    of live threads and their Redis clients. Best-effort: a test that
+    deliberately skipped a thread must not fail the teardown.
+    """
+    with contextlib.suppress(Exception):
+        from app import stop_slm_merge_watcher
+
+        stop_slm_merge_watcher(flask_app, timeout=3)
+    with contextlib.suppress(Exception):
+        from app.tasks.health_monitor import stop_watchdog
+
+        stop_watchdog(flask_app, timeout=3)
+
+
 def create_mock_redis():
     mock_redis = MagicMock()
     mock_redis.blpop.return_value = None
@@ -86,8 +105,18 @@ class _MockDatabase:
         self._storage: dict[str, dict] = {}
         self._visits: dict[tuple, dict] = {}
         self._user_sessions: dict[str, dict] = {}
+        self._api_tokens: list[dict] = []
+        self._branding: dict = {
+            "id": 1,
+            "logo_path": None,
+            "logo_updated_at": None,
+            "site_name_ru": "",
+            "site_name_en": "",
+            "updated_at": None,
+        }
         self._next_user_id = 1
         self._next_msg_id = 1
+        self._next_api_token_id = 1
 
         # State updated by _execute and read by fetchone / fetchall
         self._fetched: Any = None
@@ -343,11 +372,51 @@ class _MockDatabase:
             self._result(dict(data) if data else None, rowcount=1 if data else 0)
             return
 
+        if "FROM API_TOKENS" in sql_u:
+            rows = list(self._api_tokens)
+            if "REVOKED_AT IS NULL" in sql_u:
+                rows = [row for row in rows if row["revoked_at"] is None]
+            if "TOKEN_HASH = %S" in sql_u:
+                rows = [row for row in rows if row["token_hash"] == params[0]]
+            if "LOGIN = %S" in sql_u:
+                rows = [row for row in rows if row["login"] == params[0]]
+            selected_columns = sql[sql_u.index("SELECT") + len("SELECT") : sql_u.index("FROM")]
+            columns = [column.strip().split()[-1].strip('"') for column in selected_columns.split(",")]
+            rows = [{column: row[column] for column in columns if column in row} for row in rows]
+            if "ORDER BY" in sql_u:
+                rows.sort(key=lambda row: (row.get("created_at") or "", row.get("id", 0)), reverse=True)
+                self._result([dict(row) for row in rows], rowcount=len(rows))
+            else:
+                self._result(dict(rows[0]) if rows else None, rowcount=1 if rows else 0)
+            return
+
+        # FROM branding_settings (singleton branding row)
+        if "FROM BRANDING_SETTINGS" in sql_u:
+            self._result(dict(self._branding), rowcount=1)
+            return
+
         self._result(None, rowcount=0)
 
     # ── INSERT ─────────────────────────────────────────────────────────
 
     def _do_insert(self, sql: str, sql_u: str, params: tuple):
+        if "INTO API_TOKENS" in sql_u:
+            token_id = self._next_api_token_id
+            self._next_api_token_id += 1
+            row = {
+                "id": token_id,
+                "login": params[0],
+                "name": params[1],
+                "token_hash": params[2],
+                "token_prefix": params[3],
+                "created_at": None,
+                "last_used_at": None,
+                "revoked_at": None,
+            }
+            self._api_tokens.append(row)
+            self._result({"id": token_id, "created_at": None}, rowcount=1)
+            return
+
         # INTO users
         if "INTO USERS" in sql_u:
             login = params[0]
@@ -502,6 +571,21 @@ class _MockDatabase:
     # ── UPDATE ─────────────────────────────────────────────────────────
 
     def _do_update(self, sql: str, sql_u: str, params: tuple):
+        if "API_TOKENS" in sql_u:
+            token_id = params[0]
+            login = params[1] if len(params) > 1 else None
+            for row in self._api_tokens:
+                if row["id"] != token_id or (login is not None and row["login"] != login):
+                    continue
+                if "SET REVOKED_AT = CURRENT_TIMESTAMP" in sql_u:
+                    row["revoked_at"] = "now"
+                if "LAST_USED_AT = CURRENT_TIMESTAMP" in sql_u:
+                    row["last_used_at"] = "now"
+                self._result(None, rowcount=1)
+                return
+            self._result(None, rowcount=0)
+            return
+
         # UPDATE user_sessions (must come BEFORE the USERS check to avoid substring match)
         if "USER_SESSIONS" in sql_u:
             uid = params[-1]
@@ -562,6 +646,18 @@ class _MockDatabase:
                             if i < len(params) - 1:
                                 doc[field] = params[i]
                     break
+            self._result(None, rowcount=1)
+            return
+
+        # UPDATE branding_settings (singleton row)
+        if "BRANDING_SETTINGS" in sql_u:
+            set_clause = sql[sql.index("SET") + 3 :]
+            if "WHERE" in set_clause.upper():
+                set_clause = set_clause[: set_clause.upper().index("WHERE")]
+            fields = re.findall(r"(\w+)\s*=\s*%s", set_clause, re.IGNORECASE)
+            for i, field in enumerate(fields):
+                if i < len(params):
+                    self._branding[field] = params[i]
             self._result(None, rowcount=1)
             return
 
@@ -637,6 +733,101 @@ class _MockDatabase:
         self._result(None, rowcount=0)
 
 
+class FakeRedis:
+    """In-memory Redis double for the API task registry Lua script."""
+
+    def __init__(self):
+        self.hashes = {}
+        self.sorted_sets = {}
+        self.expirations = {}
+
+    def hset(self, key, mapping):
+        self.hashes.setdefault(key, {}).update(mapping)
+
+    def hsetnx(self, key, field, value):
+        values = self.hashes.setdefault(key, {})
+        if field in values:
+            return False
+        values[field] = value
+        return True
+
+    def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    def zadd(self, key, mapping):
+        self.sorted_sets.setdefault(key, {}).update(mapping)
+
+    def zrevrange(self, key, start, stop, withscores=False):
+        values = sorted(self.sorted_sets.get(key, {}).items(), key=lambda pair: pair[1], reverse=True)
+        selected = values[start : stop + 1]
+        return selected if withscores else [member for member, _score in selected]
+
+    def zcard(self, key):
+        return len(self.sorted_sets.get(key, {}))
+
+    def zremrangebyrank(self, key, start, stop):
+        values = self.sorted_sets.get(key, {})
+        ordered = sorted(values, key=values.get)
+        stop = len(ordered) + stop if stop < 0 else stop
+        removed = ordered[start : stop + 1]
+        for member in removed:
+            values.pop(member, None)
+        return len(removed)
+
+    def eval(
+        self,
+        script,
+        key_count,
+        task_key,
+        index_key,
+        login,
+        session_id,
+        endpoint,
+        created_at,
+        ttl,
+        task_id,
+        maximum,
+        only_if_absent,
+    ):
+        existing = self.hashes.get(task_key, {})
+        if only_if_absent == "1" and existing:
+            required = ("login", "session_id", "endpoint", "created_at")
+            if any(key not in existing for key in required):
+                return 0
+            if (existing["login"], existing["session_id"], existing["endpoint"]) != (login, session_id, endpoint):
+                return 0
+            created_at = existing["created_at"]
+        else:
+            self.hashes[task_key] = {
+                "login": login,
+                "session_id": session_id,
+                "endpoint": endpoint,
+                "created_at": str(created_at),
+            }
+        self.zadd(index_key, {task_id: float(created_at)})
+        if self.zcard(index_key) > int(maximum):
+            self.zremrangebyrank(index_key, 0, -int(maximum) - 1)
+        self.expire(task_key, int(ttl))
+        self.expire(index_key, int(ttl))
+        return 1
+
+    def expire(self, key, seconds):
+        self.expirations[key] = seconds
+
+    def hdel(self, key, field):
+        return self.hashes.get(key, {}).pop(field, None) is not None
+
+    def close(self):
+        return None
+
+
+@pytest.fixture
+def task_redis(monkeypatch):
+    redis = FakeRedis()
+    monkeypatch.setattr("app.api_bridge.get_redis_client", lambda: redis)
+    return redis
+
+
 # ── Fixtures ───────────────────────────────────────────────────────────
 
 
@@ -687,6 +878,10 @@ def test_app():
                 "MAX_DOCUMENT_SIZE_MB": 5,
                 "UPLOAD_FOLDER": os.path.join(temp_dir, "uploads"),
                 "DOCUMENTS_FOLDER": os.path.join(temp_dir, "documents"),
+                # A test that forgets to stub the bridge would otherwise poll
+                # the mock Redis in a hot loop for the production 600s budget.
+                # Tests that exercise the 408 path set their own value.
+                "API_SYNC_MAX_WAIT": 5,
             }
         )
         os.makedirs(flask_app.config["UPLOAD_FOLDER"], exist_ok=True)
@@ -697,6 +892,9 @@ def test_app():
         # Teardown: stop background Redis worker threads
         if hasattr(flask_app, "request_queue"):
             flask_app.request_queue.stop_workers(timeout=3)
+
+        # Teardown: stop the per-app watcher threads (see helper above)
+        stop_app_background_threads(flask_app)
 
         # Teardown: clean real DB between tests to prevent cross-test pollution
         if not _USE_MOCK_DB:

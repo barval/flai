@@ -49,10 +49,11 @@ FULL_TABLES = [
     "model_vram_estimates",
     "slm_import_progress",
     "camera_rooms",
+    "branding_settings",
 ]
 
 # Directories included in 'full' backup
-FULL_DIRS = ["data/documents", "data/uploads", "data/slm"]
+FULL_DIRS = ["data/documents", "data/uploads", "data/slm", "data/branding"]
 
 
 def admin_required(f):

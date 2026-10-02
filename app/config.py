@@ -172,6 +172,10 @@ def load_config(app):
     app.config["DOCUMENTS_FOLDER"] = os.getenv("DOCUMENTS_FOLDER", "data/documents")
     os.makedirs(app.config["DOCUMENTS_FOLDER"], exist_ok=True)
 
+    # Admin branding assets (custom logo, Personalization tab)
+    app.config["BRANDING_FOLDER"] = os.getenv("BRANDING_FOLDER", "data/branding")
+    os.makedirs(app.config["BRANDING_FOLDER"], exist_ok=True)
+
     # Timezone setup
     if app.config["TIMEZONE_STR"]:
         try:
@@ -236,6 +240,23 @@ def load_config(app):
 
     # Image token estimation
     app.config["IMAGE_TOKENS_PER_IMAGE"] = int(os.getenv("IMAGE_TOKENS_PER_IMAGE", 1000))
+
+    # Public OpenAI-compatible API
+    app.config["API_ENABLED"] = os.getenv("API_ENABLED", "true").lower() == "true"
+    # Blocking wait budget for /v1/chat/completions. Kept below the gunicorn
+    # timeout (900s) so a slow task still returns 408 instead of a hard kill.
+    app.config["API_SYNC_MAX_WAIT"] = int(os.getenv("API_SYNC_MAX_WAIT", "600"))
+    # Per-key-owner request budget for the expensive /v1 endpoints.
+    # Reported by GET /v1/flai/me, so it must be the limit that is enforced.
+    app.config["API_RATE_LIMIT"] = os.getenv("API_RATE_LIMIT", "60 per minute;1000 per hour")
+    # How many /v1 requests may wait for a queued task at the same time. Each
+    # waiter holds a request thread for up to API_SYNC_MAX_WAIT, so an uncapped
+    # burst would pile up on a single-worker server; a full set is shed with
+    # 429 instead of queueing silently.
+    app.config["API_MAX_CONCURRENT_WAITS"] = int(os.getenv("API_MAX_CONCURRENT_WAITS", "64"))
+    # Comma-separated exact origins allowed to call /v1 from a browser. Empty
+    # (the default) keeps the API closed to browser clients.
+    app.config["API_CORS_ORIGINS"] = os.getenv("API_CORS_ORIGINS", "")
 
     # File validation settings
     app.config["MAX_EXTENSION_LENGTH"] = int(os.getenv("MAX_EXTENSION_LENGTH", 10))

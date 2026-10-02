@@ -39,6 +39,11 @@
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Each user's profile is deleted together with their FLAI account
 - 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
 
+### 🔌 Programmatic Access
+- 🔑 **API Keys (OpenAI-compatible)** – create per-user API keys in the web UI to call FLAI programmatically via Bearer tokens
+- 🌐 **Public OpenAI-compatible API (/v1)** – REST endpoints for chat completions (sync + SSE), embeddings, TTS/transcription, async media (images/videos) with owner-checked downloads, files/documents, RLM deep analysis, sessions/history; owner-scoped task polling
+- 📑 **Interactive API Docs** – Swagger UI at `/v1/docs` and OpenAPI JSON at `/v1/openapi.json` (from `docs/openapi-v1.yaml`)
+
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
 - 🖼️ **Scanned PDF OCR and document images** – scanned PDF pages and uploaded document images are processed by the multimodal model; recognized text is indexed for search
@@ -82,9 +87,10 @@
 - 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
 - 🧭 **Model Hub** – search Hugging Face for GGUF models with a GPU/RAM fit estimate before downloading, download with progress/resume, delete downloaded files, and keep working offline
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
+- 🎨 **Personalization** – upload a custom header logo (PNG/JPEG/WebP, auto-scaled) and set the site name in Russian and English (both required, max 40 chars each); the name is shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens. A saved branding set is included in full backups and the custom logo is replaced by the built-in one as soon as it is deleted
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
 - 📈 **System Monitoring** – view database sizes and system statistics
-- 🔧 **CLI Tools** – manage admin password via Flask CLI command
+- 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands
 
 ---
 
@@ -145,22 +151,19 @@ Notes:
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v12.2
+### What's New in v12.3
 
 | Feature | Notes |
 |---------|-------|
-| **Model Hub** | Search Hugging Face for models from a new admin tab, check that a model fits your GPU/RAM before downloading, and download it with progress and resume. Progress remains visible while changing searches and is restored after reloading the page. Multi-part model sizes include all shards; draft/MTP and FastMTP files are shown as service files, not independent models. Supported noMTP models offer a Q4/Q8 draft choice (Q8 by default). Already-downloaded files show a ✓ Downloaded badge with a Delete button — in the Hub itself and in the «Downloaded models» panel on the Models tab. When Hugging Face is unreachable the tab warns you and points to the manual path: drop `.gguf` files into `/models` and press «Update model list». |
-| **Conversation history search** | Ask about earlier conversations to search messages across past sessions; broad “what have we discussed?” requests produce an overview. The router can invoke this automatically, and chat tool-calling can use `history_search`. |
-| **SuperLocalMemory tied to user accounts** | Long-term memory now runs as **per-user daemon profiles** (`profile_id` + install-token auth): each account gets its own isolated memory store, and deleting the account permanently wipes its profile through the wrapper's new `/delete-profile` route — temporary switch → GDPR erase (confirm-guarded) → restore the previously active profile → remove the profile row. A failure is logged and never blocks the account deletion. Hybrid recall also no longer returns 500 on ISO-8601 `created_at` timestamps (keywords hits work again). |
-| **Admin panel token columns fixed** | The «Outgoing tokens» and «Incoming tokens» columns in the admin Users table showed the opposite totals — outgoing displayed the user-prompt sum and incoming the model-reply sum. The SQL aliases now match the headers, fixing the table, sorting and the JSON API. |
-
-> **Mobile admin panel:** Model Hub filter rows and model tables scroll horizontally on narrow screens. The Downloaded models list also scrolls horizontally so long filenames and controls remain readable.
+| **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
+| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.3» / «FLAI v12.3»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
 
 ### Core Components
 
 | Component | Purpose | Technology | Default Port |
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
+| **Public API (/v1) + Swagger UI** | OpenAI-compatible REST API, Bearer auth, interactive docs at `/v1/docs` | Python (Flask + flasgger) | 5000 (same as Flask) |
 | **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
 | **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
@@ -551,7 +554,11 @@ Now you can:
 - 📹 **View Cameras** — IP camera snapshots analyzed by AI
 - 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (adds relevant facts alongside history, enable with `--with-slm`)
 - 💾 **Backup & Restore** — full or user-only backups from the admin panel
-- 🔧 **CLI Tools** — admin password reset, orphaned file cleanup
+- 🎨 **Personalize the site** — upload your own header logo and set the site name (RU + EN) in the admin Personalization tab
+- 🔧 **CLI Tools** — admin password reset, upload cleanup, message migration, SLM import/cleanup/checkpoint reset
+- 🔑 **Create API Keys** — generate per-user Bearer tokens in the web UI for programmatic access
+- 🌐 **Call the `/v1` API** – chat completions (sync + SSE), embeddings, TTS/transcription, async image/video, files, RLM, sessions
+- 📑 **Browse Interactive API Docs** — open `/v1/docs` in your browser for the Swagger UI (spec from `docs/openapi-v1.yaml`)
 
 ---
 
@@ -640,6 +647,23 @@ QUEUE_MAX_WAIT_TIME=300
 **Debug:**
 ```bash
 DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
+```
+
+**Public API (/v1):**
+```bash
+API_RATE_LIMIT=60 per minute;1000 per hour  # Per-key-owner request budget for chat, embeddings, audio, media, files, RLM, sessions, tasks
+API_MAX_CONCURRENT_WAITS=64                 # Max synchronous waiters before 429 with Retry-After
+API_CORS_ORIGINS=                           # Comma-separated exact origins allowed to call /v1 from browser (empty = closed)
+API_SYNC_MAX_WAIT=600                       # Seconds a sync/streaming request waits for its task (default 600)
+```
+
+**Model Hub:**
+```bash
+MODEL_HUB_MAX_FILE_GB=40              # Max single GGUF file size to allow (GB)
+MODEL_HUB_FREE_MARGIN_GB=4            # Required free disk margin for downloads (GB)
+MODEL_HUB_SEARCH_LIMIT=20             # Max results per Hugging Face search
+MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
+HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 ```
 
 ### Domain Access and HTTPS (Reverse Proxy)

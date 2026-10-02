@@ -631,6 +631,21 @@ def _init_postgresql():
     # the codebase can never fall back to a chat-only configuration.
     c.execute("DELETE FROM model_configs WHERE module = 'chat'")
 
+    # Branding settings — admin-configurable site identity (singleton row).
+    # site_name_* are empty by default: an empty pair renders the built-in
+    # brand name; a custom logo path is only set by an upload.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS branding_settings (
+            id            INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            logo_path     TEXT,
+            logo_updated_at TIMESTAMP,
+            site_name_ru  TEXT NOT NULL DEFAULT '',
+            site_name_en  TEXT NOT NULL DEFAULT '',
+            updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
+
     # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
     # so the lightweight models don't burn RAM with oversized KV cache.
     # v11.4: bumps are VRAM-aware — capped by the same auto-fit logic as the

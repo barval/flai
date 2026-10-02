@@ -7,7 +7,7 @@
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 100px); /* 50px header + 50px footer */
+    height: calc(100vh - 80px); /* 50px header + 30px footer */
 }
 
 .admin-panel-title {
@@ -75,6 +75,8 @@
     overflow-y: auto;
     overflow-x: auto;
     min-height: 0; /* required for flex child to shrink properly */
+    /* Room for the last block so it is fully visible when scrolled to the bottom */
+    padding-bottom: 16px;
 }
 
 .hub-companion-choice {
@@ -167,7 +169,7 @@
 .cameras-table-wrapper {
     position: relative;
     overflow-y: auto;
-    max-height: calc(100vh - 340px);
+    max-height: calc(100vh - 320px);
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     flex: 1;
@@ -604,7 +606,10 @@ body.dark-theme .model-card .model-desc {
 /* ===== MOBILE ADAPTATIONS ===== */
 @media (max-width: 768px) {
     .admin-container {
-        height: calc(100vh - 125px); /* header 75px + footer 50px */
+        /* 75px header + 30px footer + ~20px mobile-viewport error (100vh vs dvh).
+           dvh tracks the visible viewport; the px fallback covers old browsers. */
+        height: calc(100vh - 125px);
+        height: calc(100dvh - 105px);
         padding: 15px;
     }
 
@@ -672,7 +677,7 @@ body.admin-page .voice-gender-switcher {
 .users-table-wrapper {
     position: relative;
     overflow-y: auto;
-    max-height: calc(100vh - 340px); /* header(50) + title(30) + tabs(50) + tab-header(60) + padding(40) + footer(50) + margins(60) */
+    max-height: calc(100vh - 320px); /* header(50) + title(30) + tabs(50) + tab-header(60) + padding(40) + footer(30) + margins(60) */
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     flex: 1;
@@ -850,7 +855,7 @@ body.admin-page .voice-gender-switcher {
 .backups-table-wrapper {
     position: relative;
     overflow-y: auto;
-    max-height: calc(100vh - 340px);
+    max-height: calc(100vh - 320px);
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     flex: 1;
@@ -1402,6 +1407,14 @@ body.dark-theme .installed-file-meta { color: #aaa; }
 }
 .branding-names-actions {
     margin-top: 4px;
+}
+
+/* Branding tab logo buttons must match the .btn-primary "Save names"
+   button: same 14px font and the same 8px/16px border-box height. */
+.branding-logo-actions .add-user-button,
+.branding-logo-actions .btn-danger {
+    font-size: 14px;
+    padding: 8px 16px;
 }
 
 @media (max-width: 600px) {

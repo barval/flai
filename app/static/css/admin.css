@@ -1356,3 +1356,57 @@ body.dark-theme .installed-file-meta { color: #aaa; }
     .installed-file-meta,
     .installed-file .hub-del { flex-shrink: 0; }
 }
+
+/* ===== BRANDING (PERSONALIZATION) TAB ===== */
+.branding-container {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 640px;
+}
+.branding-section {
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+.branding-section h3 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    color: #2c3e50;
+}
+.branding-hint {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    line-height: 1.4;
+}
+.branding-logo-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.branding-logo-preview {
+    height: 40px;
+    width: auto;
+    max-width: 160px;
+    object-fit: contain;
+    border: 1px dashed #ccc;
+    border-radius: 6px;
+    padding: 4px;
+    background: #fafafa;
+}
+.branding-logo-actions {
+    display: flex;
+    gap: 10px;
+}
+.branding-names-actions {
+    margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+    .branding-logo-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

@@ -836,3 +836,62 @@ def update_session_summary(session_id, summary, summary_upto_id):
             """,
             (summary, summary_upto_id, get_current_time_for_db(), session_id),
         )
+
+
+# ── Branding settings (admin "Personalization" tab) ─────────────
+
+
+def _branding_now() -> str:
+    """Current DB timestamp; falls back to naive now() outside an app context."""
+    try:
+        from app.utils import get_current_time_in_timezone_for_db
+
+        return get_current_time_in_timezone_for_db()
+    except RuntimeError:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_branding_settings() -> dict:
+    """Return the singleton branding row (always exists after init_db)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT logo_path, logo_updated_at, site_name_ru, site_name_en, updated_at FROM branding_settings WHERE id = 1"
+        )
+        row = c.fetchone()
+        if not row:
+            return {
+                "logo_path": None,
+                "logo_updated_at": None,
+                "site_name_ru": "",
+                "site_name_en": "",
+                "updated_at": None,
+            }
+        return {
+            "logo_path": row["logo_path"],
+            "logo_updated_at": row["logo_updated_at"],
+            "site_name_ru": row["site_name_ru"] or "",
+            "site_name_en": row["site_name_en"] or "",
+            "updated_at": row["updated_at"],
+        }
+
+
+def set_branding_logo(file_path: str | None) -> None:
+    """Store (or clear with None) the custom logo path; updates the timestamp."""
+    now = _branding_now()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE branding_settings SET logo_path = %s, logo_updated_at = %s, updated_at = %s WHERE id = 1",
+            (file_path, now if file_path else None, now),
+        )
+
+
+def set_branding_site_names(site_name_ru: str, site_name_en: str) -> None:
+    """Store both localized site names; empty values mean 'use the default brand name'."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE branding_settings SET site_name_ru = %s, site_name_en = %s, updated_at = %s WHERE id = 1",
+            (site_name_ru, site_name_en, _branding_now()),
+        )

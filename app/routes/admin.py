@@ -2,13 +2,17 @@
 import json
 import logging
 import os
+import re
 import subprocess
+import uuid
 from functools import wraps
 
+import magic
 import requests
 from flask import Blueprint, current_app, jsonify, render_template, request, session
 from flask_babel import gettext as _
 
+from app import db
 from app.database import get_db
 from app.model_config import get_model_config
 from app.userdb import create_user, delete_user, get_user_by_login, list_users, update_password, update_user
@@ -1804,3 +1808,182 @@ def proxy_camera_snapshot(code):
             continue
 
     return jsonify({"error": _("Camera unavailable")}), 503
+
+
+# ── Branding (Personalization tab) ──────────────────────────────
+
+BRANDING_LOGO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB upload cap before validation
+BRANDING_LOGO_RESIZE_PX = 128  # covers the 40px header and the 72px about dialog on retina
+BRANDING_NAME_MAX_CHARS = 40  # per language
+BRANDING_MIME_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+}
+BRANDING_ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _branding_dir() -> str:
+    """Resolve (and create) the branding storage folder under data/."""
+    folder = os.path.join(current_app.config.get("BRANDING_FOLDER", "data/branding"))
+    os.makedirs(folder, exist_ok=True)
+    real = os.path.realpath(folder)
+    os.makedirs(real, exist_ok=True)
+    return real
+
+
+def _branding_logo_url(branding: dict) -> str | None:
+    """Public URL of the custom logo, or None when the built-in one is used."""
+    rel_path = branding.get("logo_path")
+    if not rel_path:
+        return None
+    folder = _branding_dir()
+    full = os.path.realpath(os.path.join(folder, rel_path))
+    if not full.startswith(folder + os.sep) or not os.path.isfile(full):
+        return None
+    # Cache-buster: browsers must pick up a replaced file immediately.
+    from datetime import datetime
+
+    stamp = branding.get("logo_updated_at") or branding.get("updated_at") or ""
+    version = ""
+    if isinstance(stamp, datetime):
+        version = str(int(stamp.timestamp()))
+    elif stamp:
+        version = re.sub(r"[^0-9]", "", str(stamp))[:10]
+    return f"/admin/api/branding/logo{('?v=' + version) if version else ''}"
+
+
+@bp.route("/api/branding/logo", methods=["GET"])
+def branding_logo():
+    """Serve the custom logo file (admin-uploaded, realpath-contained)."""
+    if not session.get("is_admin"):
+        return jsonify({"error": _("Forbidden")}), 403
+    branding = db.get_branding_settings()
+    rel_path = branding.get("logo_path")
+    if not rel_path:
+        return jsonify({"error": _("No custom logo uploaded")}), 404
+    folder = _branding_dir()
+    full = os.path.realpath(os.path.join(folder, rel_path))
+    if not full.startswith(folder + os.sep) or not os.path.isfile(full):
+        return jsonify({"error": _("No custom logo uploaded")}), 404
+    from flask import send_file
+
+    return send_file(full, mimetype="image/png")
+
+
+@bp.route("/api/branding", methods=["GET"])
+@admin_required
+def api_get_branding():
+    """Current branding state for the Personalization tab."""
+    branding = db.get_branding_settings()
+    return jsonify(
+        {
+            "has_logo": bool(branding.get("logo_path")),
+            "logo_url": _branding_logo_url(branding),
+            "site_name_ru": branding.get("site_name_ru") or "",
+            "site_name_en": branding.get("site_name_en") or "",
+        }
+    )
+
+
+@bp.route("/api/branding/logo", methods=["POST"])
+@admin_required
+def api_upload_branding_logo():
+    """Upload and normalize a custom logo (auto-scaled, converted to PNG)."""
+    if "logo" not in request.files:
+        return jsonify({"error": _("No logo file uploaded")}), 400
+    upload = request.files["logo"]
+    if not upload or not upload.filename:
+        return jsonify({"error": _("No logo file uploaded")}), 400
+
+    data = upload.read()
+    if not data:
+        return jsonify({"error": _("Uploaded file is empty")}), 400
+    if len(data) > BRANDING_LOGO_MAX_BYTES:
+        return jsonify({"error": _("Logo is too large (max 2 MB)")}), 413
+
+    detected = magic.from_buffer(data[:2048], mime=True)
+    if detected not in BRANDING_MIME_TYPES:
+        return jsonify({"error": _("Unsupported logo format (PNG, JPEG or WebP)")}), 400
+    ext = os.path.splitext(upload.filename or "")[1].lower()
+    if ext not in BRANDING_ALLOWED_EXTENSIONS:
+        return jsonify({"error": _("Unsupported logo format (PNG, JPEG or WebP)")}), 400
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.open(BytesIO(data))
+        img.load()
+        if img.width < 16 or img.height < 16:
+            return jsonify({"error": _("Logo is too small (minimum 16x16)")}), 400
+        # Convert to PNG with alpha preserved; scale down to the longest side cap.
+        if img.mode not in ("RGBA", "LA"):
+            img = img.convert("RGBA")
+        long_side = max(img.size)
+        if long_side > BRANDING_LOGO_RESIZE_PX:
+            scale = BRANDING_LOGO_RESIZE_PX / long_side
+            img = img.resize(
+                (max(1, round(img.width * scale)), max(1, round(img.height * scale))),
+                Image.LANCZOS,
+            )
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+    except Exception as e:
+        logger.warning(f"Branding logo processing failed: {e}")
+        return jsonify({"error": _("Invalid image file")}), 400
+
+    folder = _branding_dir()
+    rel_name = f"logo-{uuid.uuid4().hex}.png"
+    full_path = os.path.join(folder, rel_name)
+    with open(full_path, "wb") as f:
+        f.write(png_bytes)
+
+    db.set_branding_logo(rel_name)
+    branding = db.get_branding_settings()
+    return jsonify({"ok": True, "logo_url": _branding_logo_url(branding), "bytes": len(png_bytes)})
+
+
+@bp.route("/api/branding/logo", methods=["DELETE"])
+@admin_required
+def api_delete_branding_logo():
+    """Delete the custom logo; the built-in FLAI logo is rendered again."""
+    branding = db.get_branding_settings()
+    rel_path = branding.get("logo_path")
+    if rel_path:
+        folder = _branding_dir()
+        full = os.path.realpath(os.path.join(folder, rel_path))
+        if full.startswith(folder + os.sep) and os.path.isfile(full):
+            try:
+                os.remove(full)
+            except OSError as e:
+                logger.warning(f"Failed to remove branding logo {full}: {e}")
+    db.set_branding_logo(None)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/branding/names", methods=["POST"])
+@admin_required
+def api_set_branding_names():
+    """Save the localized site names — both languages are required at once.
+
+    Emptying either field resets the whole pair to the built-in brand name:
+    a half-translated brand is worse than a default one.
+    """
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": _("Request body must be a JSON object")}), 400
+    ru = str(payload.get("site_name_ru") or "").strip()
+    en = str(payload.get("site_name_en") or "").strip()
+    if not ru and not en:
+        # Deliberate reset to defaults.
+        db.set_branding_site_names("", "")
+        return jsonify({"ok": True, "site_name_ru": "", "site_name_en": ""})
+    if len(ru) > BRANDING_NAME_MAX_CHARS or len(en) > BRANDING_NAME_MAX_CHARS:
+        return jsonify({"error": _("Site name is too long (max 40 characters per language)")}), 400
+    if not ru or not en:
+        return jsonify({"error": _("Both language variants are required")}), 400
+    db.set_branding_site_names(ru, en)
+    return jsonify({"ok": True, "site_name_ru": ru, "site_name_en": en})

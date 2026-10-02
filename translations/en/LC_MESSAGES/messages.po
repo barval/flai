@@ -1930,6 +1930,108 @@ msgstr ""
 msgid "Service files totalling {n} MB will be downloaded with the model"
 msgstr "Service files totalling {n} MB will be downloaded with the model"
 
+#: app/templates/admin.html
+msgid "Personalization"
+msgstr "Personalization"
+
+#: app/templates/admin.html
+msgid "Custom logo"
+msgstr "Custom logo"
+
+#: app/templates/admin.html
+msgid ""
+"Replaces the logo in the site header. PNG, JPEG or WebP up to 2 MB; scaled "
+"automatically. The built-in logo stays in the About dialog."
+msgstr ""
+"Replaces the logo in the site header. PNG, JPEG or WebP up to 2 MB; scaled "
+"automatically. The built-in logo stays in the About dialog."
+
+#: app/templates/admin.html
+msgid "Upload logo"
+msgstr "Upload logo"
+
+#: app/templates/admin.html
+msgid "Delete logo"
+msgstr "Delete logo"
+
+#: app/templates/admin.html
+msgid "Site name"
+msgstr "Site name"
+
+#: app/templates/admin.html
+msgid ""
+"Shown next to the logo in the header, in the browser tab title and in "
+"exported chats. Both language variants are required — until both are filled "
+"in, the default brand name is used. Max {n} characters."
+msgstr ""
+"Shown next to the logo in the header, in the browser tab title and in "
+"exported chats. Both language variants are required — until both are filled "
+"in, the default brand name is used. Max {n} characters."
+
+#: app/templates/admin.html
+msgid "Russian (ru)"
+msgstr "Russian (ru)"
+
+#: app/templates/admin.html
+msgid "English (en)"
+msgstr "English (en)"
+
+#: app/templates/admin.html
+msgid "Save names"
+msgstr "Save names"
+
+#: app/templates/admin.html
+msgid "Failed to load branding settings"
+msgstr "Failed to load branding settings"
+
+#: app/templates/admin.html
+msgid "Logo uploaded"
+msgstr "Logo uploaded"
+
+#: app/templates/admin.html
+msgid "Custom logo deleted — the built-in logo is shown"
+msgstr "Custom logo deleted — the built-in logo is shown"
+
+#: app/templates/admin.html
+msgid "Logo is too large (max 2 MB)"
+msgstr "Logo is too large (max 2 MB)"
+
+#: app/templates/admin.html
+msgid "Site names saved"
+msgstr "Site names saved"
+
+#: app/templates/admin.html
+msgid "Both language variants are required"
+msgstr "Both language variants are required"
+
+#: app/templates/admin.html
+msgid "Site name is too long (max 40 characters per language)"
+msgstr "Site name is too long (max 40 characters per language)"
+
+#: app/templates/admin.html
+msgid "Logo upload failed"
+msgstr "Logo upload failed"
+
+#: app/templates/admin.html
+msgid "Unsupported logo format (PNG, JPEG or WebP)"
+msgstr "Unsupported logo format (PNG, JPEG or WebP)"
+
+#: app/templates/admin.html
+msgid "Logo is too small (minimum 16x16)"
+msgstr "Logo is too small (minimum 16x16)"
+
+#: app/templates/admin.html
+msgid "Invalid image file"
+msgstr "Invalid image file"
+
+#: app/templates/admin.html
+msgid "No logo file uploaded"
+msgstr "No logo file uploaded"
+
+#: app/templates/admin.html
+msgid "No custom logo uploaded"
+msgstr "No custom logo uploaded"
+
 #: app/templates/base.html:7 app/templates/base.html:25
 msgid "FLAI"
 msgstr "FLAI"
@@ -2004,7 +2106,23 @@ msgstr "Logout"
 
 #: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v12.3 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v12.3"
+
+#: app/templates/base.html
+msgid "footer_short"
+msgstr "FLAI v12.3"
+
+#: app/templates/base.html
+msgid "footer_copyright"
+msgstr "(c) 2026 Valery Barsukov"
+
+#: app/templates/base.html
+msgid "footer_about_hint"
+msgstr "About"
+
+#: app/templates/base.html
+msgid "close_about"
+msgstr "Close"
 
 #: app/templates/chat.html:14 app/templates/chat.html:186
 msgid "New document"

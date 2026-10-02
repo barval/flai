@@ -172,6 +172,10 @@ def load_config(app):
     app.config["DOCUMENTS_FOLDER"] = os.getenv("DOCUMENTS_FOLDER", "data/documents")
     os.makedirs(app.config["DOCUMENTS_FOLDER"], exist_ok=True)
 
+    # Admin branding assets (custom logo, Personalization tab)
+    app.config["BRANDING_FOLDER"] = os.getenv("BRANDING_FOLDER", "data/branding")
+    os.makedirs(app.config["BRANDING_FOLDER"], exist_ok=True)
+
     # Timezone setup
     if app.config["TIMEZONE_STR"]:
         try:

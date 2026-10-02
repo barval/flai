@@ -2,6 +2,7 @@
 import logging
 import mimetypes
 import os
+import re
 import sys
 from datetime import UTC
 from logging import Formatter
@@ -139,6 +140,39 @@ def create_app():
     register_babel(app)
     app.jinja_env.add_extension("jinja2.ext.i18n")  # for _() in templates
     app.jinja_env.globals["_"] = gettext
+
+    # Site branding (admin Personalization tab): logo + localized site name.
+    # Resolved per request; DB failures degrade to the built-in brand silently.
+    @app.context_processor
+    def _inject_branding() -> dict:
+        lang = get_locale() or "ru"
+        try:
+            from app import db as app_db
+
+            branding = app_db.get_branding_settings()
+            logo_rel = branding.get("logo_path")
+            logo_url = None
+            if logo_rel:
+                logo_file = os.path.realpath(os.path.join(app.config.get("BRANDING_FOLDER", "data/branding"), logo_rel))
+                branding_dir = os.path.realpath(app.config.get("BRANDING_FOLDER", "data/branding"))
+                if logo_file.startswith(branding_dir + os.sep) and os.path.isfile(logo_file):
+                    from datetime import datetime
+
+                    stamp = branding.get("logo_updated_at") or branding.get("updated_at") or ""
+                    version = (
+                        str(int(stamp.timestamp()))
+                        if isinstance(stamp, datetime)
+                        else re.sub(r"[^0-9]", "", str(stamp))[:10]
+                    )
+                    logo_url = f"/admin/api/branding/logo?v={version}" if version else "/admin/api/branding/logo"
+            name = (branding.get("site_name_ru") if lang == "ru" else branding.get("site_name_en")) or ""
+        except Exception as e:
+            app.logger.warning(f"Branding lookup failed, using defaults: {e}")
+            logo_url = None
+            name = ""
+        if not name:
+            name = gettext("footer_text")
+        return {"branding_logo_url": logo_url, "branding_site_name": name}
 
     # Initialize CSRF protection
     csrf.init_app(app)

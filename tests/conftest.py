@@ -106,6 +106,14 @@ class _MockDatabase:
         self._visits: dict[tuple, dict] = {}
         self._user_sessions: dict[str, dict] = {}
         self._api_tokens: list[dict] = []
+        self._branding: dict = {
+            "id": 1,
+            "logo_path": None,
+            "logo_updated_at": None,
+            "site_name_ru": "",
+            "site_name_en": "",
+            "updated_at": None,
+        }
         self._next_user_id = 1
         self._next_msg_id = 1
         self._next_api_token_id = 1
@@ -382,6 +390,11 @@ class _MockDatabase:
                 self._result(dict(rows[0]) if rows else None, rowcount=1 if rows else 0)
             return
 
+        # FROM branding_settings (singleton branding row)
+        if "FROM BRANDING_SETTINGS" in sql_u:
+            self._result(dict(self._branding), rowcount=1)
+            return
+
         self._result(None, rowcount=0)
 
     # ── INSERT ─────────────────────────────────────────────────────────
@@ -633,6 +646,18 @@ class _MockDatabase:
                             if i < len(params) - 1:
                                 doc[field] = params[i]
                     break
+            self._result(None, rowcount=1)
+            return
+
+        # UPDATE branding_settings (singleton row)
+        if "BRANDING_SETTINGS" in sql_u:
+            set_clause = sql[sql.index("SET") + 3 :]
+            if "WHERE" in set_clause.upper():
+                set_clause = set_clause[: set_clause.upper().index("WHERE")]
+            fields = re.findall(r"(\w+)\s*=\s*%s", set_clause, re.IGNORECASE)
+            for i, field in enumerate(fields):
+                if i < len(params):
+                    self._branding[field] = params[i]
             self._result(None, rowcount=1)
             return
 

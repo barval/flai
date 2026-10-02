@@ -253,11 +253,11 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="form-group">
                         <label for="branding-name-ru">{{ _('Russian (ru)') }}:</label>
-                        <input type="text" id="branding-name-ru" maxlength="40" placeholder="{{ _('FLAI') }}">
+                        <input type="text" id="branding-name-ru" maxlength="40" placeholder="{{ _('branding_placeholder_ru') }}">
                     </div>
                     <div class="form-group">
                         <label for="branding-name-en">{{ _('English (en)') }}:</label>
-                        <input type="text" id="branding-name-en" maxlength="40" placeholder="{{ _('FLAI') }}">
+                        <input type="text" id="branding-name-en" maxlength="40" placeholder="{{ _('branding_placeholder_en') }}">
                     </div>
                     <div class="branding-names-actions">
                         <button type="submit" class="btn-primary">💾 {{ _('Save names') }}</button>

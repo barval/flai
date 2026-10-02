@@ -1955,6 +1955,14 @@ msgid "Personalization"
 msgstr "Персонализация"
 
 #: app/templates/admin.html
+msgid "branding_placeholder_ru"
+msgstr "ПЛИИ"
+
+#: app/templates/admin.html
+msgid "branding_placeholder_en"
+msgstr "FLAI"
+
+#: app/templates/admin.html
 msgid "Custom logo"
 msgstr "Свой логотип"
 

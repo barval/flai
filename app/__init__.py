@@ -171,7 +171,7 @@ def create_app():
             logo_url = None
             name = ""
         if not name:
-            name = gettext("footer_text")
+            name = gettext("FLAI")
         return {"branding_logo_url": logo_url, "branding_site_name": name}
 
     # Initialize CSRF protection

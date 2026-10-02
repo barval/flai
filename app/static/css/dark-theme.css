@@ -530,3 +530,38 @@
     border-color: #555;
     color: #ecf0f1;
 }
+
+/* ===== FOOTER ABOUT DIALOG (dark theme) ===== */
+.dark-theme .about-modal-content {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #444;
+}
+.dark-theme .about-modal-content h2 {
+    color: #ecf0f1;
+}
+.dark-theme .about-modal-close {
+    color: #aaa;
+}
+.dark-theme .about-modal-close:hover {
+    color: #fff;
+}
+.dark-theme .about-modal-close:focus-visible {
+    outline-color: #ecf0f1;
+}
+
+/* ===== ADMIN PERSONALIZATION TAB (dark theme) ===== */
+.dark-theme .branding-section {
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .branding-section h3 {
+    color: #ecf0f1;
+}
+.dark-theme .branding-hint {
+    color: #aaa;
+}
+.dark-theme .branding-logo-preview {
+    background: #3a3a3a;
+    border-color: #555;
+}

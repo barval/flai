@@ -87,6 +87,7 @@
 - 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
 - 🧭 **Model Hub** – search Hugging Face for GGUF models with a GPU/RAM fit estimate before downloading, download with progress/resume, delete downloaded files, and keep working offline
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
+- 🎨 **Personalization** – upload a custom header logo (PNG/JPEG/WebP, auto-scaled) and set the site name in Russian and English (both required, max 40 chars each); the name is shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens. A saved branding set is included in full backups and the custom logo is replaced by the built-in one as soon as it is deleted
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands
@@ -155,6 +156,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | Feature | Notes |
 |---------|-------|
 | **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
+| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.3» / «FLAI v12.3»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
 
 ### Core Components
 
@@ -552,6 +554,7 @@ Now you can:
 - 📹 **View Cameras** — IP camera snapshots analyzed by AI
 - 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (adds relevant facts alongside history, enable with `--with-slm`)
 - 💾 **Backup & Restore** — full or user-only backups from the admin panel
+- 🎨 **Personalize the site** — upload your own header logo and set the site name (RU + EN) in the admin Personalization tab
 - 🔧 **CLI Tools** — admin password reset, upload cleanup, message migration, SLM import/cleanup/checkpoint reset
 - 🔑 **Create API Keys** — generate per-user Bearer tokens in the web UI for programmatic access
 - 🌐 **Call the `/v1` API** – chat completions (sync + SSE), embeddings, TTS/transcription, async image/video, files, RLM, sessions

@@ -1855,9 +1855,12 @@ def _branding_logo_url(branding: dict) -> str | None:
 
 @bp.route("/api/branding/logo", methods=["GET"])
 def branding_logo():
-    """Serve the custom logo file (admin-uploaded, realpath-contained)."""
-    if not session.get("is_admin"):
-        return jsonify({"error": _("Forbidden")}), 403
+    """Serve the custom logo file.
+
+    Deliberately public: the logo is a header element rendered on the login
+    screen and for every non-admin user, not admin data. The file itself is
+    realpath-contained and server-generated; upload/delete stay admin-only.
+    """
     branding = db.get_branding_settings()
     rel_path = branding.get("logo_path")
     if not rel_path:

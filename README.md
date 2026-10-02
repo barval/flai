@@ -151,12 +151,12 @@ Notes:
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v12.3
+### What's New in v12.4
 
 | Feature | Notes |
 |---------|-------|
 | **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
-| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.3» / «FLAI v12.3»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
+| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.4» / «FLAI v12.4»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
 
 ### Core Components
 

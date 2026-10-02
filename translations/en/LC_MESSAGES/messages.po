@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.3\n"
+"Project-Id-Version: FLAI 12.4\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-01 10:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -2114,11 +2114,11 @@ msgstr "Logout"
 
 #: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v12.3"
+msgstr "Fully Local AI (FLAI) v12.4"
 
 #: app/templates/base.html
 msgid "footer_short"
-msgstr "FLAI v12.3"
+msgstr "FLAI v12.4"
 
 #: app/templates/base.html
 msgid "footer_copyright"

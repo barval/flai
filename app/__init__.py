@@ -678,7 +678,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="12.3"} 1')
+        metrics_output.append('flai_web_info{version="12.4"} 1')
 
         # Queue metrics
         try:

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ _('FLAI') }}</title>
+    <title>{{ branding_site_name or _('FLAI') }}</title>
     <link rel="stylesheet" href="/static/css/base.css">
     <link rel="stylesheet" href="/static/css/header-footer.css">
     <link rel="stylesheet" href="/static/css/login.css">
@@ -21,12 +21,17 @@
 </head>
 <body class="{% if session.get('theme') == 'dark' %}dark-theme{% endif %}">
     <header>
-        <img src="{{ url_for('static', filename='logo-header.png') }}" alt="FLAI Logo" class="header-logo">
-        <h1>{{ _('FLAI') }}</h1>
+        {% if branding_logo_url %}
+        <img src="{{ branding_logo_url }}" alt="" class="header-logo">
+        {% else %}
+        <img src="{{ url_for('static', filename='logo-header.png') }}" alt="" class="header-logo">
+        {% endif %}
+        <h1 class="{% if branding_site_name %}brand-name{% endif %}">{{ branding_site_name or _('FLAI') }}</h1>
         {% if 'login' in session %}
         <div class="logout-container">
             <div class="header-row row1">
-                <span class="user-name">{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
+                <button type="button" class="user-name" id="api-keys-btn"
+                        title="{{ _('api_keys_title') }}" aria-haspopup="dialog" aria-controls="api-keys-panel">{{ session['name'] if not session.get('is_admin') else _('Administrator') }} ▾</button>
                 <div class="language-switcher">
                     <select id="language-select" onchange="switchLanguage(this.value)">
                         <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
@@ -46,6 +51,36 @@
                     <button id="theme-toggle" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
                         {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                     </button>
+                </div>
+                <div class="api-keys-panel" id="api-keys-panel" hidden
+                     data-revoke-label="{{ _('api_keys_revoke') }}"
+                     data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
+                    <div class="api-keys-header">
+                        <span>{{ _('api_keys_title') }}</span>
+                        <button class="api-keys-close" id="api-keys-close" title="{{ _('api_keys_close') }}">✕</button>
+                    </div>
+                    <p class="api-keys-hint">{{ _('api_keys_hint') }}</p>
+                    <div class="api-keys-create">
+                        <input type="text" id="api-key-name" placeholder="{{ _('api_keys_name_placeholder') }}" maxlength="64">
+                        <button id="api-key-create">{{ _('api_keys_create') }}</button>
+                    </div>
+                    <div class="api-keys-once" id="api-key-once" hidden>
+                        <code id="api-key-plaintext"></code>
+                        <p>{{ _('api_keys_copy_once') }}</p>
+                        <button id="api-key-copy">{{ _('api_keys_copy') }}</button>
+                    </div>
+                    <table class="api-keys-table">
+                        <thead>
+                            <tr>
+                                <th>{{ _('api_keys_col_name') }}</th>
+                                <th>{{ _('api_keys_col_key') }}</th>
+                                <th>{{ _('api_keys_col_created') }}</th>
+                                <th>{{ _('api_keys_col_last_used') }}</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="api-keys-body"></tbody>
+                    </table>
                 </div>
                 <form action="{{ url_for('auth.logout') }}" method="post" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -74,17 +109,22 @@
     </main>
     
     <footer>
-        <div class="footer-content">
-            {% set footer_text = _('footer_text') %}
-            {% if '(c)' in footer_text %}
-                {% set parts = footer_text.split('(c)', 1) %}
-                <div class="footer-line1">{{ parts[0].strip() }}</div>
-                <div class="footer-line2">(c) {{ parts[1].strip() }}</div>
-            {% else %}
-                <div class="footer-line1">{{ footer_text }}</div>
-            {% endif %}
-        </div>
+        <button type="button" class="footer-brand" id="footer-about-btn"
+                aria-haspopup="dialog" aria-controls="footer-about-modal" title="{{ _('footer_about_hint') }}">
+            {{ _('footer_short') }}
+        </button>
     </footer>
+
+    <!-- About dialog: full name, logo and copyright (click the footer brand) -->
+    <div id="footer-about-modal" class="about-modal" hidden>
+        <div class="about-modal-backdrop" data-close-about></div>
+        <div class="about-modal-content" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
+            <button type="button" class="about-modal-close" data-close-about aria-label="{{ _('close_about') }}">&times;</button>
+            <img src="{{ url_for('static', filename='logo-header.png') }}" alt="" class="about-logo">
+            <h2 id="about-modal-title">{{ _('footer_text') }}</h2>
+            <p class="about-copyright">{{ _('footer_copyright') }}</p>
+        </div>
+    </div>
 
     <!-- Translations for JavaScript (base keys) - moved to base-translations.js -->
 
@@ -99,7 +139,12 @@
     <script src="{{ url_for('static', filename='js/base-translations.js', v=config.STATIC_VERSION) }}"></script>
     <!-- Header JavaScript module -->
     <script src="{{ url_for('static', filename='js/header.js', v=config.STATIC_VERSION) }}"></script>
+    {% if 'login' in session %}
+    <script src="{{ url_for('static', filename='js/api-keys.js', v=config.STATIC_VERSION) }}"></script>
+    {% endif %}
     <!-- Guest theme switcher script -->
     <script src="{{ url_for('static', filename='js/guest-theme.js', v=config.STATIC_VERSION) }}"></script>
+    <!-- Footer brand "About" dialog -->
+    <script src="{{ url_for('static', filename='js/footer-about.js', v=config.STATIC_VERSION) }}"></script>
 </body>
 </html>

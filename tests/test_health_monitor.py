@@ -119,6 +119,41 @@ class TestStartWatchdog:
             assert mock_thread_cls.call_args.kwargs["name"] == "flai-watchdog"
 
 
+class TestStopWatchdog:
+    """The watchdog thread must be stoppable.
+
+    Every ``create_app()`` starts one, so a test suite that builds hundreds of
+    apps accumulates hundreds of unstoppable polling threads. They are daemon
+    threads, so the process still exits, but they keep app contexts, Redis
+    clients and a poll loop alive for the whole run.
+    """
+
+    def test_stop_watchdog_terminates_a_running_thread(self):
+        app = MagicMock()
+        with (
+            patch.object(hm, "is_gpu_busy", return_value=False),
+            patch.object(hm, "_get_running", return_value=[]),
+        ):
+            hm.start_watchdog(app)
+            thread = app._watchdog_thread
+            assert thread.is_alive()
+
+            assert hm.stop_watchdog(app, timeout=5) is True
+            assert not thread.is_alive()
+
+    def test_stop_watchdog_without_start_is_a_noop(self):
+        assert hm.stop_watchdog(MagicMock(), timeout=0) is False
+
+    def test_restart_after_stop_starts_a_live_thread(self):
+        app = MagicMock()
+        with patch.object(hm, "_get_running", return_value=[]):
+            hm.start_watchdog(app)
+            hm.stop_watchdog(app, timeout=5)
+            hm.start_watchdog(app)
+            assert app._watchdog_thread.is_alive()
+            hm.stop_watchdog(app, timeout=5)
+
+
 class TestWatchdogGpuBusyGuard:
     """The watchdog must not health-check llama-swap while a GPU transaction
     (SD, video, or an ensure_vram_for unload+wait cycle) is in progress —
@@ -139,20 +174,25 @@ class TestWatchdogGpuBusyGuard:
             assert hm.is_gpu_busy() is False
 
     def test_watchdog_loop_skips_tick_when_gpu_busy(self):
-        sleeps = []
+        waits = []
 
-        def fake_sleep(seconds):
-            sleeps.append(seconds)
-            if len(sleeps) >= 2:
-                raise KeyboardInterrupt
+        class FakeStop:
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                waits.append(seconds)
+                if len(waits) >= 2:
+                    raise KeyboardInterrupt
+                return False
 
         with (
+            patch.object(hm, "_stop_event_for", return_value=FakeStop()),
             patch.object(hm, "is_gpu_busy", return_value=True),
             patch.object(hm, "_get_running") as get_running,
-            patch.object(hm.time, "sleep", side_effect=fake_sleep),
             pytest.raises(KeyboardInterrupt),
         ):
             hm._watchdog_loop(MagicMock())
 
-        assert sleeps == [30, hm.WATCHDOG_INTERVAL_S]
+        assert waits == [30, hm.WATCHDOG_INTERVAL_S]
         get_running.assert_not_called()

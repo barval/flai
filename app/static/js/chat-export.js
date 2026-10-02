@@ -60,14 +60,8 @@ async function saveChatAsHTML() {
     const now = new Date();
     const timestamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
 
-    let footerLine1 = footerText, footerLine2 = '';
-    if (footerText.includes('(c)')) {
-        const parts = footerText.split('(c)');
-        footerLine1 = parts[0].trim();
-        footerLine2 = '(c)' + (parts[1] || '').trim();
-    } else {
-        footerLine1 = footerText;
-    }
+    let footerLine1 = footerText;
+    const footerCopyright = t('footer_copyright') || '';
 
     // Collect all message elements and their media
     const messageElements = [];
@@ -386,7 +380,7 @@ ${fileHtml}
         '<footer>\n' +
         '<div class="footer-content">\n' +
         '<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' +
-        (footerLine2 ? '<div class="footer-line2">' + escapeHtml(footerLine2) + '</div>' : '') + '\n' +
+        (footerCopyright ? '<div class="footer-line2">' + escapeHtml(footerCopyright) + '</div>' : '') + '\n' +
         '</div>\n' +
         '</footer>\n' +
         '</body>\n' +

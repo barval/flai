@@ -7,6 +7,19 @@
 .dark-theme header {
     background-color: #1a2632;
 }
+.dark-theme .api-keys-panel {
+    color: #e0e0e0;
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .api-keys-table th,
+.dark-theme .api-keys-table td { border-bottom-color: #444; }
+.dark-theme .api-keys-create input {
+    color: #e0e0e0;
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .api-keys-revoke { color: #e74c3c; border-color: #e74c3c; }
 .dark-theme .sessions-sidebar {
     background-color: #2d2d2d;
     border-right-color: #444;
@@ -516,4 +529,39 @@
     background-color: #333;
     border-color: #555;
     color: #ecf0f1;
+}
+
+/* ===== FOOTER ABOUT DIALOG (dark theme) ===== */
+.dark-theme .about-modal-content {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #444;
+}
+.dark-theme .about-modal-content h2 {
+    color: #ecf0f1;
+}
+.dark-theme .about-modal-close {
+    color: #aaa;
+}
+.dark-theme .about-modal-close:hover {
+    color: #fff;
+}
+.dark-theme .about-modal-close:focus-visible {
+    outline-color: #ecf0f1;
+}
+
+/* ===== ADMIN PERSONALIZATION TAB (dark theme) ===== */
+.dark-theme .branding-section {
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .branding-section h3 {
+    color: #ecf0f1;
+}
+.dark-theme .branding-hint {
+    color: #aaa;
+}
+.dark-theme .branding-logo-preview {
+    background: #3a3a3a;
+    border-color: #555;
 }

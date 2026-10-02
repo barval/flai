@@ -1,4 +1,4 @@
-# Localization (i18n) — FLAI v12.2
+# Localization (i18n) — FLAI v12.3
 
 This document describes the localization system, Flask-Babel usage, and rules for translating READMEs. Read it when adding user-facing strings or updating README files.
 
@@ -40,13 +40,19 @@ message = _tr("Error: {status}").format(status=status)
 ```
 
 ## pybabel Extraction
-Always use `-k _tr` flag when extracting, since `_tr` is a custom keyword not recognized by default:
+Always use the keyword flags when extracting, since `_tr` is a custom keyword not recognized by default.
+`ApiImageRejectedError` and `ApiTaskError` in `app/api_bridge.py` carry message ids as their first
+argument, so they are registered as keywords too — otherwise API error strings never reach the catalogs:
 
 ```bash
-pybabel extract -F babel.cfg -k _tr -o translations/messages.pot .
+pybabel extract -F babel.cfg -k _tr -k ApiImageRejectedError -k ApiTaskError -o translations/messages.pot .
 pybabel update -i translations/messages.pot -d translations
 pybabel compile -d translations  # after editing .po files
 ```
+
+`pybabel update` fills new entries with fuzzy guesses from similar msgids. Always review the new
+`#, fuzzy` blocks and replace them with a real translation — a wrong guess is worse than an empty
+string because the UI shows it as a finished translation.
 
 ## Translation System (v9.0+)
 Compiled `.mo` files are **tracked in git** together with the source `.po` files, so every fresh clone ships working translations out of the box (the `./translations:/app/translations` bind-mount in `docker-compose.gpu.yml` overrides the image-baked catalogs, which are also compiled at build time via `RUN pybabel compile -d translations` in the Dockerfile). After editing `.po` files, run `pybabel compile -d translations` on the host and commit both `.po` and `.mo`. `deploy.sh`/`deploy-ru.sh` refresh the catalogs automatically during deployment and warn loudly if any catalog is missing. All site features work in both Russian and English profiles.

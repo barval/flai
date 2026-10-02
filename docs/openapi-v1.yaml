@@ -1,0 +1,1545 @@
+openapi: 3.0.3
+
+info:
+  title: FLAI API
+  version: 12.3.0
+  description: |
+    **FLAI is a capability router, not a model server.** A chat request is
+    persisted and queued exactly like a web message, so the LLM router — not
+    the endpoint — decides whether the prompt is answered by the reasoning
+    model, document search (RAG), web search, the vision model, image/video
+    generation or deep analysis (RLM).
+
+    Consequently `model`, `tools`, `response_format` and the sampling
+    parameters are **accepted and ignored** rather than silently faked. Put
+    "answer with JSON only" into the message itself when you need JSON.
+
+    ## Authentication
+
+    Send a per-user API key as a Bearer token. Keys are created in the web UI
+    (**API keys**, opened from the username in the header) and the secret is
+    shown exactly once. The API never sets a cookie and never touches the web
+    browser session, so a script needs no login. Every request runs with the
+    key owner's models, documents, response style and language.
+
+    ## Conventions
+
+    * Errors use the OpenAI envelope `{"error": {"message", "type", "param",
+      "code"}}`; the message starts with `⚠️ ` and is localized to the key
+      owner's language.
+    * Generation never runs inside an HTTP request. Heavy work (image, video,
+      deep analysis, or chat via `/v1/flai/chat/async`) answers `202` with a
+      `poll_url`; light work (chat, embeddings, audio) answers inline.
+    * `429` is returned when the per-key-owner budget (`API_RATE_LIMIT`, 60 per
+      minute and 1000 per hour by default) is spent, or when more than
+      `API_MAX_CONCURRENT_WAITS` synchronous waiters are already parked.
+      `Retry-After` tells you when to come back.
+    * Poll a task with `GET /v1/flai/tasks/{task_id}`: the answer of a
+      completed chat task is in `result.response`, real token counts in
+      `result.usage`.
+
+    The same contract is available as prose in `docs/API.md`.
+  contact:
+    name: FLAI
+    url: https://github.com/barval/flai
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Local instance
+
+tags:
+  - name: Meta
+    description: Model list and key capabilities
+  - name: Chat
+    description: OpenAI-compatible chat, synchronous, streaming and asynchronous
+  - name: Embeddings
+    description: Vector embeddings from the RAG model
+  - name: Audio
+    description: Speech synthesis and transcription
+  - name: Media
+    description: Image and video generation
+  - name: Tasks
+    description: Task list, status, cancellation and media download
+  - name: Documents
+    description: File upload, indexing and retrieval
+  - name: Deep analysis
+    description: Multi-step RLM analysis over documents
+  - name: Sessions
+    description: Session list, creation and message history
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/models:
+    get:
+      tags: [Meta]
+      summary: List capability ids
+      description: |
+        Returns the FLAI capability ids as OpenAI model objects. The list is a
+        capability catalogue, not a set of weights: any of these ids may be
+        handled by the router, and passing one as `model` changes nothing.
+
+        Not rate limited.
+      operationId: listModels
+      responses:
+        '200':
+          description: Capability catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: list}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Model'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/me:
+    get:
+      tags: [Meta]
+      summary: Identity and feature flags of the key owner
+      description: |
+        Useful for a setup screen that wants to know what this server supports
+        before it builds a request. The two audio flags are true only when the
+        configured TTS/STT modules are available; `images` and `videos` are true
+        only when the image/video module **and** the multimodal model (used for
+        prompt enrichment) are both available.
+
+        Not rate limited.
+      operationId: getMe
+      responses:
+        '200':
+          description: Owner profile and capabilities.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Me'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/chat/completions:
+    post:
+      tags: [Chat]
+      summary: Create a chat completion (synchronous or SSE stream)
+      description: |
+        The main entry point. The request is persisted and queued exactly like a
+        web message, so the LLM router decides which subsystem answers it: the
+        reasoning model, document search (RAG), web search, the vision model,
+        image/video generation or deep analysis.
+
+        **Session continuity.** Send the full history in `messages` (stateless,
+        the default) and FLAI continues from its own stored history. Alternatively
+        pass a stable `user` value to pin one internal session per
+        `(login, user)` pair, or send `metadata.session_id` from a previous
+        `flai_session_id` to continue exactly that session.
+
+        **Streaming** (`stream: true`) answers `text/event-stream` with standard
+        `chat.completion.chunk` objects and ends with `data: [DONE]`. Only the
+        answer is streamed — progress stages never appear as assistant text — and
+        a `: ping` keep-alive is sent every 15 s of silence. If the client
+        disconnects the task keeps running and the answer still lands in the web
+        chat. `stream_options.include_usage` defaults to `false`.
+
+        **Images** are sent as OpenAI `image_url` parts with an inline `data:`
+        URL; the URL must be base64 `image/*`, and a remote URL is rejected with
+        `400` because FLAI is offline.
+
+        `model`, `tools`, `response_format` and the sampling parameters are
+        accepted and ignored; the response always reports `flai-chat`.
+      operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChatRequest'}
+            examples:
+              question:
+                summary: Stateless question
+                value:
+                  model: flai-chat
+                  messages:
+                    - {role: user, content: 'Summarize the news about local elections'}
+              pinned:
+                summary: Continue a pinned session
+                value:
+                  user: home-assistant
+                  metadata: {session_id: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d}
+                  messages:
+                    - {role: user, content: 'And the garden?'}
+              vision:
+                summary: Ask about an inline image
+                value:
+                  messages:
+                    - role: user
+                      content:
+                        - {type: text, text: 'What is on this photo?'}
+                        - type: image_url
+                          image_url:
+                            url: 'data:image/jpeg;base64,/9j/4AAQSk...'
+      responses:
+        '200':
+          description: |
+            A `chat.completion` object, or an SSE stream of
+            `chat.completion.chunk` objects when `stream: true`.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatCompletion'}
+            text/event-stream:
+              schema: {$ref: '#/components/schemas/ChatCompletionChunk'}
+              examples:
+                stream:
+                  summary: Answer in chunks, then usage, then DONE
+                  value: |
+                    data: {"id":"chatcmpl-8f1c...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+                    data: {"id":"chatcmpl-8f1c...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"VRAM"},"finish_reason":null}]}
+
+                    data: {"id":"chatcmpl-8f1c...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"flai_session_id":"3f2b..."}
+
+                    data: {"id":"chatcmpl-8f1c...","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":31,"completion_tokens":24,"total_tokens":55}}
+
+                    data: [DONE]
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '408': {$ref: '#/components/responses/TaskTimeout'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/TaskFailed'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/chat/async:
+    post:
+      tags: [Chat]
+      summary: Enqueue a chat completion and return a task id
+      description: |
+        Fire-and-poll chat: the request is queued exactly like
+        `/v1/chat/completions` and answered immediately with a task id, so a
+        client never holds an open HTTP connection while the GPU queue works.
+
+        The body is the same as `/v1/chat/completions`. The user turn is
+        persisted and queued **before** the response is sent, so the answer also
+        appears in the web UI thread for that session. No synchronous wait slot
+        is taken, so this endpoint does not consume `API_MAX_CONCURRENT_WAITS`.
+
+        Poll `poll_url` with the same key; a completed task holds the answer in
+        `result.response` and real token counts in `result.usage`. Cancel with
+        `POST /v1/flai/tasks/{task_id}/cancel`. A chat task generates no file, so
+        `/content` does not apply to it.
+      operationId: createChatAsync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChatRequest'}
+            example:
+              user: client-42
+              messages:
+                - {role: user, content: 'Compare the contracts'}
+      responses:
+        '202':
+          description: Task accepted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskAccepted'}
+              example:
+                id: b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10
+                object: flai.task
+                status: queued
+                poll_url: /v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/embeddings:
+    post:
+      tags: [Embeddings]
+      summary: Create embeddings
+      description: |
+        `input` accepts a single non-empty string or an array of non-empty
+        strings; token arrays are not supported. `encoding_format` accepts
+        `float` (default) and `base64` (little-endian float32, the OpenAI wire
+        format). `model`, `dimensions` and `user` are accepted and ignored: FLAI
+        has one embedding model and one dimension.
+
+        The request creates no chat session and stores no message. It still goes
+        through the queue and takes the GPU lock, so a large batch waits behind a
+        running generation instead of competing with it. `usage` is reported as
+        zeros because the embedding path does not bill tokens.
+      operationId: createEmbeddings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input:
+                  description: Text or list of texts to embed.
+                  oneOf:
+                    - {type: string, minLength: 1}
+                    - {type: array, minItems: 1, items: {type: string, minLength: 1}}
+                encoding_format:
+                  type: string
+                  enum: [float, base64]
+                  default: float
+                model: {type: string, description: Accepted and ignored.}
+                dimensions: {type: integer, description: Accepted and ignored.}
+                user: {type: string, description: Accepted and ignored.}
+            example:
+              input: [first document, second document]
+              encoding_format: float
+      responses:
+        '200':
+          description: Embedding vectors.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EmbeddingList'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '502': {$ref: '#/components/responses/EmbeddingFailed'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/audio/speech:
+    post:
+      tags: [Audio]
+      summary: Synthesize speech
+      description: |
+        Synthesize text with the configured TTS backend. Kokoro returns WAV and
+        Piper returns MP3; an unsupported `response_format` is rejected instead
+        of silently relabeling one format as another. `language` and `gender` are
+        FLAI extensions and default to the API key owner's profile. `model` and
+        `speed` are accepted and ignored.
+
+        Speech is stateless and writes nothing into the user's chat. An
+        unavailable TTS module returns `503`; a synthesis failure returns `500`.
+      operationId: createSpeech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                input: {type: string, minLength: 1, description: Text to synthesize.}
+                voice: {type: string, description: Voice name passed to Kokoro; Piper may ignore it.}
+                language: {type: string, enum: [ru, en]}
+                gender: {type: string, enum: [male, female]}
+                response_format:
+                  type: string
+                  enum: [wav, mp3]
+                  description: Defaults to the backend's native format.
+                model: {type: string, description: Accepted and ignored.}
+                speed: {type: number, description: Accepted and ignored.}
+            example: {input: Hello from FLAI}
+      responses:
+        '200':
+          description: Audio bytes with the MIME type returned by the TTS service.
+          headers:
+            Content-Disposition:
+              description: Attachment name, `speech.wav` or `speech.mp3`.
+              schema: {type: string}
+          content:
+            audio/wav: {schema: {type: string, format: binary}}
+            audio/mpeg: {schema: {type: string, format: binary}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/ServerError'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/audio/transcriptions:
+    post:
+      tags: [Audio]
+      summary: Transcribe an audio file
+      description: |
+        Transcription is queued through the existing queue and Whisper service,
+        but unlike a web voice message it does **not** create a chat session,
+        save a transcript message or publish to the shared user SSE channel.
+        `response_format` accepts `json` (default) or `text`; `srt`, `vtt` and
+        `verbose_json` are unsupported because the Whisper module provides no
+        timestamps. `language` is an FLAI extension and `model` is ignored.
+
+        A transcription that exceeds `API_SYNC_MAX_WAIT` returns `408`; its queue
+        task continues, but this stateless endpoint does not persist the
+        transcript into chat.
+      operationId: createTranscription
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: Audio upload validated by the configured audio module.}
+                response_format: {type: string, enum: [json, text], default: json}
+                language: {type: string, enum: [ru, en]}
+                model: {type: string, description: Accepted and ignored.}
+      responses:
+        '200':
+          description: Transcript.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: {type: string}
+            text/plain:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '408': {$ref: '#/components/responses/TaskTimeout'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/ServerError'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/images/generations:
+    post:
+      tags: [Media]
+      summary: Generate an image from a prompt
+      description: |
+        Queues native image generation on the same serialized GPU queue as web
+        chat and returns `202`. No model generation ever runs inside the HTTP
+        request, and `API_MAX_CONCURRENT_WAITS` is not consumed after the task is
+        enqueued.
+
+        `response_format` must be `url` (default); `b64_json` is rejected with
+        `400 invalid_response_format` because the payload is stored server-side
+        and downloaded through the content URL instead of being sent inline.
+        The conversation turn (prompt + generated image) is persisted into the
+        API session history.
+      operationId: generateImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: {type: string, minLength: 1}
+                response_format: {type: string, enum: [url], default: url}
+                model: {type: string, description: Accepted and ignored.}
+                user: {type: string, description: FLAI session continuity, not OpenAI semantics.}
+                metadata:
+                  type: object
+                  description: FLAI extension; `session_id` pins a session.
+                  properties:
+                    session_id: {type: string}
+            example: {prompt: a lighthouse at dusk, model: flai-image}
+      responses:
+        '202':
+          description: Task accepted.
+          headers:
+            Location:
+              description: Poll URL of the new task.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/images/edits:
+    post:
+      tags: [Media]
+      summary: Edit an uploaded image
+      description: |
+        Queues a native API image edit. The multipart `image` upload is checked
+        for magic bytes, passed through the upload quota and then resized and
+        converted exactly like a chat upload; path-like file references are never
+        accepted. The image and the edited result are persisted with the prompt
+        into the API session history.
+      operationId: editImage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, prompt]
+              properties:
+                image: {type: string, format: binary}
+                prompt: {type: string, minLength: 1}
+                response_format: {type: string, enum: [url], default: url}
+                user: {type: string}
+                metadata:
+                  type: string
+                  description: 'JSON object as a form field, e.g. `{"session_id": "..."}`.'
+      responses:
+        '202':
+          description: Task accepted.
+          headers:
+            Location:
+              description: Poll URL of the new task.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/videos:
+    post:
+      tags: [Media]
+      summary: Start a text-to-video generation
+      description: |
+        Queues video generation and returns `202` with a `poll_url` pointing at
+        `/v1/videos/{task_id}` (the OpenAI video-job shape).
+
+        Options are validated against the configured `VideoModule`: every key
+        other than `prompt`, `model`, `user` and `metadata` must be an integer
+        inside its range, otherwise `400 invalid_video_options`. Defaults are
+        768x512, 240 frames at 24 fps. Total pixels are capped at
+        768x512x240 and the duration at 10 seconds, and `width`/`height` must be
+        multiples of 32. `frame_rate` accepts 6, 12, 16 or 24.
+      operationId: generateVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: {type: string, minLength: 1}
+                width: {type: integer, minimum: 256, maximum: 1024, default: 768, multipleOf: 32}
+                height: {type: integer, minimum: 256, maximum: 1024, default: 512, multipleOf: 32}
+                num_frames: {type: integer, minimum: 9, maximum: 240, default: 240}
+                frame_rate: {type: integer, enum: [6, 12, 16, 24], default: 24}
+                seed: {type: integer, minimum: -1, maximum: 2147483647}
+                model: {type: string, description: Accepted and ignored.}
+                user: {type: string}
+                metadata:
+                  type: object
+                  properties:
+                    session_id: {type: string}
+            example:
+              prompt: waves on a beach
+              width: 768
+              height: 512
+              num_frames: 96
+              frame_rate: 12
+      responses:
+        '202':
+          description: Task accepted.
+          headers:
+            Location:
+              description: Poll URL of the new video job.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/videos/{task_id}:
+    get:
+      tags: [Media]
+      summary: Get a video job
+      description: |
+        The OpenAI-shaped view of a video task owned by the key owner: the same
+        object as `/v1/flai/tasks/{task_id}` with `object: "video"`, a
+        `task_status_url` and, once completed, `url` mirroring `content_url`.
+        A task created by another endpoint is `404 task_not_found`.
+      operationId: getVideoTask
+      parameters:
+        - {$ref: '#/components/parameters/TaskId'}
+      responses:
+        '200':
+          description: Video job state.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VideoTask'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/TaskNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/tasks:
+    get:
+      tags: [Tasks]
+      summary: List recent tasks of the key owner
+      description: |
+        A task id is not an authorization token: every read, cancel and download
+        verifies that the id was registered to the authenticated key owner. The
+        index is capped at the most recent 500 task ids per API user; older
+        records still expire with `REDIS_RESULT_TTL`.
+      operationId: listTasks
+      parameters:
+        - name: limit
+          in: query
+          description: Clamped to 1–100.
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Recent tasks, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: list}
+                  data: {type: array, items: {$ref: '#/components/schemas/Task'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      summary: Get task status and result
+      description: |
+        `status` is `queued`, `processing`, `completed` or `error`. A task
+        requeued to a new queue id is followed silently and the child id is
+        returned with `parent_task_id`; a child with conflicting ownership
+        metadata is never read and the parent is reported as `error`. Pending
+        tasks use `position: null` when the queue does not expose an exact
+        position.
+
+        Results are allowlisted metadata: filesystem paths, uploaded bytes,
+        tokens and raw queue payloads are never returned, and untrusted queue
+        error text is replaced with a safe localized message.
+      operationId: getTask
+      parameters:
+        - {$ref: '#/components/parameters/TaskId'}
+      responses:
+        '200':
+          description: Task state.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Task'}
+              examples:
+                completed:
+                  summary: Completed media task
+                  value:
+                    id: a1d5b76a-...
+                    object: flai.task
+                    status: completed
+                    endpoint: /v1/images/generations
+                    created_at: 1780152000.5
+                    content_url: /v1/flai/tasks/a1d5b76a-.../content
+                    result:
+                      response: Image generated
+                      usage: {prompt_tokens: 12, completion_tokens: 0}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/TaskNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/tasks/{task_id}/cancel:
+    post:
+      tags: [Tasks]
+      summary: Cancel an active task
+      description: |
+        Returns `{"status": "cancelling"}` only for a task that is already
+        processing. Completed, failed and still-queued tasks return
+        `409 task_not_cancellable`, because the existing queue cannot remove a
+        queued item safely. An unknown or another user's id is
+        `404 task_not_found`, so there is no ownership oracle.
+      operationId: cancelTask
+      parameters:
+        - {$ref: '#/components/parameters/TaskId'}
+      responses:
+        '200':
+          description: Cancellation requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: cancelling}
+                  task_id: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/TaskNotFound'}
+        '409': {$ref: '#/components/responses/TaskNotCancellable'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/tasks/{task_id}/content:
+    get:
+      tags: [Tasks]
+      summary: Download the media generated by a task
+      description: |
+        The check is layered: the task must belong to the authenticated owner,
+        and the underlying message is fetched with a join proving the session
+        belongs to the same owner. The file is resolved with `realpath`
+        containment under `UPLOAD_FOLDER`, so caller-provided paths are never
+        accepted and traversal or a foreign task returns `404 task_not_found`
+        without a filesystem oracle. A chat task generates no file, so this
+        endpoint does not apply to it.
+      operationId: getTaskContent
+      parameters:
+        - {$ref: '#/components/parameters/TaskId'}
+      responses:
+        '200':
+          description: The stored file with its MIME type and a safe filename.
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            video/mp4: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/TaskNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/files:
+    get:
+      tags: [Documents]
+      summary: List your documents
+      description: |
+        Alias: `/v1/flai/documents` calls the same handler, so ownership, quota
+        and validation behavior is identical. Responses never contain filesystem
+        paths; storage names are UUIDs under `DOCUMENTS_FOLDER/<login>/`.
+      operationId: listFiles
+      responses:
+        '200':
+          description: Documents owned by the key owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: list}
+                  data: {type: array, items: {$ref: '#/components/schemas/FileObject'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+    post:
+      tags: [Documents]
+      summary: Upload a document
+      description: |
+        The file is validated (allowed extension **and** magic bytes), stored
+        under a UUID name and queued for RAG indexing, which reports back through
+        `index_status`. Uploads reuse the web validation chain:
+        `MAX_DOCUMENT_SIZE_MB` and the per-user document quota answer `413`, and
+        images are auto-resized and converted exactly like chat uploads.
+
+        A PDF with no extractable text is queued for page OCR instead, so a
+        scanned document still becomes searchable.
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '200':
+          description: Stored document record; indexing runs in the background.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FileObject'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/files/{file_id}:
+    get:
+      tags: [Documents]
+      summary: Get document metadata
+      description: 'Alias: `/v1/flai/documents/{file_id}`.'
+      operationId: getFile
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: Document record.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FileObject'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+    delete:
+      tags: [Documents]
+      summary: Delete a document
+      description: |
+        Removes the RAG index entry (when the RAG module is available), the
+        stored file and the database record — for the owner only.
+      operationId: deleteFile
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: {type: boolean, example: true}
+                  id: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/files/{file_id}/content:
+    get:
+      tags: [Documents]
+      summary: Download a document
+      description: |
+        Alias: `/v1/flai/documents/{file_id}/content`. The stored relative path is
+        resolved with `realpath` containment; foreign and unknown ids return the
+        same `404 file_not_found`.
+      operationId: getFileContent
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: File bytes with the original filename.
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            text/plain: {schema: {type: string, format: binary}}
+            application/octet-stream: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/documents:
+    get:
+      tags: [Documents]
+      summary: List your documents (alias)
+      description: Identical to `GET /v1/files`.
+      operationId: listDocuments
+      responses:
+        '200':
+          description: Documents owned by the key owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: list}
+                  data: {type: array, items: {$ref: '#/components/schemas/FileObject'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+    post:
+      tags: [Documents]
+      summary: Upload a document (alias)
+      description: Identical to `POST /v1/files`.
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '200':
+          description: Stored document record; indexing runs in the background.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FileObject'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/documents/{file_id}:
+    get:
+      tags: [Documents]
+      summary: Get document metadata (alias)
+      description: Identical to `GET /v1/files/{file_id}`.
+      operationId: getDocument
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: Document record.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FileObject'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+    delete:
+      tags: [Documents]
+      summary: Delete a document (alias)
+      description: Identical to `DELETE /v1/files/{file_id}`.
+      operationId: deleteDocument
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: {type: boolean, example: true}
+                  id: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/documents/{file_id}/content:
+    get:
+      tags: [Documents]
+      summary: Download a document (alias)
+      description: Identical to `GET /v1/files/{file_id}/content`.
+      operationId: getDocumentContent
+      parameters:
+        - {$ref: '#/components/parameters/FileId'}
+      responses:
+        '200':
+          description: File bytes with the original filename.
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            text/plain: {schema: {type: string, format: binary}}
+            application/octet-stream: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/FileNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/rlm:
+    post:
+      tags: [Deep analysis]
+      summary: Start a multi-step deep analysis over your documents
+      description: |
+        Runs an explicit deep-analysis task on the same GPU-serialized queue the
+        web chat uses. Requires `RLM_ENABLED`; otherwise the endpoint returns
+        `403 rlm_disabled` and `GET /v1/flai/me` reports `rlm: false`.
+
+        `session_id` must be an owned session (`404 session_not_found`) and every
+        `doc_ids` entry must be owned (`404 document_not_found`). At least one
+        document or one uploaded image is required, plus a non-empty `question`.
+
+        The multipart variant accepts `file` (image), `session_id`, `doc_ids`
+        (a JSON array as a string) and `question` form fields; the image passes
+        the same quota and resize cap as a chat upload. The user turn is saved
+        into the session history before the response is sent. The whole analysis
+        holds the GPU lock for its full duration, so expect it to queue behind
+        other GPU work; poll the returned `task_id`.
+      operationId: createDeepAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, question]
+              properties:
+                session_id: {type: string}
+                doc_ids: {type: array, items: {type: string}}
+                question: {type: string, minLength: 1}
+            example:
+              session_id: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              doc_ids: [a1b2c3d4-...]
+              question: Compare the risk sections of these contracts
+          multipart/form-data:
+            schema:
+              type: object
+              required: [session_id, question]
+              properties:
+                session_id: {type: string}
+                doc_ids: {type: string, description: 'JSON array, e.g. `["a1b2c3d4-..."]`.'}
+                question: {type: string, minLength: 1}
+                file: {type: string, format: binary, description: Optional image to describe and add to the corpus.}
+      responses:
+        '202':
+          description: Analysis queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id: {type: string}
+                  position: {type: integer, nullable: true}
+                  user_message_id: {type: integer}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/RlmDisabled'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/sessions:
+    get:
+      tags: [Sessions]
+      summary: List sessions owned by the key owner
+      description: |
+        Reading or writing sessions through `/v1` never touches the web UI's
+        last-session pointer, and `/v1` responses never set a cookie — API
+        identity is request-local.
+      operationId: listSessions
+      responses:
+        '200':
+          description: Sessions of the key owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: list}
+                  data: {type: array, items: {$ref: '#/components/schemas/Session'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+    post:
+      tags: [Sessions]
+      summary: Create a session
+      description: |
+        The title is trimmed to 200 characters; an omitted title defaults to a
+        localized «New session» in the key owner's language. Use the returned id
+        as `metadata.session_id` on a chat request to start the conversation
+        there.
+      operationId: createSession
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: {type: string, maxLength: 200}
+            example: {title: Support bot}
+      responses:
+        '200':
+          description: Created session.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Session'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/sessions/{session_id}/messages:
+    get:
+      tags: [Sessions]
+      summary: Read session history
+      description: |
+        Mirrors the web message shape. `limit` is clamped to 1–200 (default 100)
+        and `offset` to `>= 0`. File payloads already stored on disk are redacted
+        from `file_data` by the shared DB helper, so a history read never hands
+        out server paths. A foreign or unknown session is
+        `404 session_not_found`.
+      operationId: listSessionMessages
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: since
+          in: query
+          description: Only messages newer than this timestamp.
+          schema: {type: string}
+      responses:
+        '200':
+          description: Page of messages.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages: {type: array, items: {$ref: '#/components/schemas/ChatMessage'}}
+                  limit: {type: integer}
+                  offset: {type: integer}
+                  has_more: {type: boolean}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: |
+        A per-user API key created in the web UI (**API keys**, opened from the
+        username in the header). The secret is shown exactly once and only its
+        SHA-256 digest is stored. The key identifies a **user**: every request
+        runs with that user's models, documents, response style and language. A
+        revoked key stops working on the next request.
+
+        Send it as `Authorization: Bearer <key>`. The `/v1` blueprint never sets
+        a cookie and never uses the Flask web session, so a script needs no
+        login — and a browser holding a web session stays logged in separately.
+
+  parameters:
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: |
+        A task id is not an authorization token. Every read, cancel and download
+        checks that the id was registered to the authenticated key owner, so an
+        unknown or foreign id is `404 task_not_found`.
+      schema: {type: string}
+    FileId:
+      name: file_id
+      in: path
+      required: true
+      description: Document id owned by the key owner.
+      schema: {type: string}
+
+  responses:
+    BadRequest:
+      description: |
+        Malformed request (`400 invalid_request_error`). Codes include
+        `invalid_body`, `invalid_request`, `invalid_user`, `invalid_session_id`,
+        `invalid_stream`, `invalid_input`, `invalid_encoding_format`,
+        `invalid_limit`, `invalid_video_options`, `invalid_response_format`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    Unauthorized:
+      description: |
+        Missing, malformed, unknown or revoked key
+        (`401 invalid_api_key`, `type: authentication_error`,
+        `WWW-Authenticate: Bearer`).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    SessionNotFound:
+      description: |
+        `metadata.session_id` belongs to another user
+        (`404 session_not_found`).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    TaskNotFound:
+      description: |
+        Task id is unknown or belongs to another API user
+        (`404 task_not_found`).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    FileNotFound:
+      description: |
+        Document id is unknown or belongs to another user
+        (`404 file_not_found`).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    TaskNotCancellable:
+      description: |
+        `409 task_not_cancellable` — the task is terminal or still queued. The
+        queue cannot remove a queued item safely, so queued tasks are reported
+        as not cancellable.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    TooLarge:
+      description: |
+        `413 request_too_large` when the upload exceeds Flask
+        `MAX_CONTENT_LENGTH`, or the per-user document/upload quota
+        (`413 upload_quota_exceeded`).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    RateLimited:
+      description: |
+        `429 rate_limit_error`. `rate_limit_exceeded` means the key owner's
+        budget (`API_RATE_LIMIT`, 60 per minute and 1000 per hour by default) is
+        spent — counted per **key owner**, so several keys of one user share it.
+        `too_many_requests` means `API_MAX_CONCURRENT_WAITS` requests are already
+        waiting and is answered **before** enqueueing, with `Retry-After: 1`.
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema: {type: integer}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    TaskTimeout:
+      description: |
+        `408 task_timeout` — the task was still running after
+        `API_SYNC_MAX_WAIT` (default 600 s). It was **not** cancelled and keeps
+        running in the background; the task id is in the message. Do not retry
+        aggressively, a slow answer is usually already in progress.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    TaskFailed:
+      description: |
+        `500 task_failed` — the chat task failed. In a stream a task error
+        arrives as an SSE `error` object followed by `data: [DONE]`, because the
+        status line is already sent by then.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    EmbeddingFailed:
+      description: |
+        `502 task_failed` — the embedding task failed or returned no vectors.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    ServerError:
+      description: '`500 server_error` — the operation failed.'
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    ApiDisabled:
+      description: |
+        `503 api_disabled` when `API_ENABLED=false` on the server, or
+        `503 service_unavailable` when the module behind the endpoint (image,
+        video, TTS) is not available in this deployment. Check
+        `GET /v1/flai/me` for the real capability set.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    RlmDisabled:
+      description: |
+        `403 rlm_disabled` — `RLM_ENABLED` is false on the server.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: {$ref: '#/components/schemas/Error'}
+    Error:
+      type: object
+      required: [message, type]
+      description: |
+        The machine-readable part is always `code`. `message` is localized to the
+        key owner's language and always starts with `⚠️ `.
+      properties:
+        message: {type: string, example: '⚠️ Chat session not found'}
+        type:
+          type: string
+          enum: [invalid_request_error, authentication_error, rate_limit_error, server_error, service_unavailable]
+        param: {type: string, nullable: true, example: null}
+        code: {type: string, example: session_not_found}
+
+    Model:
+      type: object
+      properties:
+        id: {type: string, example: flai-chat}
+        object: {type: string, example: model}
+        owned_by: {type: string, example: flai}
+        description: {type: string, example: Router-selected chat}
+
+    Me:
+      type: object
+      properties:
+        login: {type: string, example: valery}
+        service_class: {type: integer, example: 2}
+        is_admin: {type: boolean, example: true}
+        language: {type: string, enum: [ru, en], example: en}
+        response_style: {type: string, example: neutral}
+        rate_limit: {type: string, example: 60 per minute;1000 per hour}
+        max_concurrent_waits: {type: integer, example: 64}
+        capabilities:
+          type: object
+          properties:
+            chat_completions: {type: boolean}
+            streaming: {type: boolean}
+            embeddings: {type: boolean}
+            audio_speech: {type: boolean}
+            audio_transcriptions: {type: boolean}
+            images: {type: boolean}
+            videos: {type: boolean}
+            documents: {type: boolean}
+            rlm: {type: boolean}
+            tools: {type: boolean, description: Always false — FLAI calls no external functions.}
+            response_format_json_schema: {type: boolean, description: Always false — `response_format` is ignored.}
+
+    ChatMessage:
+      type: object
+      required: [role]
+      properties:
+        role: {type: string, enum: [system, user, assistant]}
+        content:
+          description: |
+            A plain string, or a list of content parts. An image is sent as an
+            OpenAI `image_url` part whose `url` is an inline base64 `data:`
+            URL; a remote URL is rejected because FLAI is offline.
+          oneOf:
+            - {type: string}
+            - type: array
+              items: {$ref: '#/components/schemas/ContentPart'}
+      example: {role: user, content: 'Summarize the news about local elections'}
+
+    ContentPart:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [text, image_url]}
+        text: {type: string}
+        image_url:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              description: |
+                Must start with `data:`, be base64 encoded and have an `image/*`
+                media type. Remote URLs are rejected with `400`. If several image
+                parts are present, the first one is used and the rest dropped.
+              example: 'data:image/jpeg;base64,/9j/4AAQSk...'
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ChatMessage'}
+        model:
+          type: string
+          description: |
+            Accepted and ignored, including an unknown value. FLAI routes by
+            capability; the response always reports `flai-chat`.
+          example: flai-chat
+        stream: {type: boolean, default: false}
+        stream_options:
+          type: object
+          description: '`include_usage` is honoured; other keys are ignored.'
+          properties:
+            include_usage: {type: boolean, default: false}
+        user:
+          type: string
+          description: |
+            FLAI session continuity, not OpenAI semantics. FLAI maps the pair
+            `(login, user)` to one internal chat session and reuses it, so the
+            next call with the same value continues the thread. Reuse a value
+            only from a single integration — two clients sharing it share a
+            conversation.
+        metadata:
+          type: object
+          description: |
+            FLAI extension. `metadata.session_id` pins exactly the session
+            returned earlier as `flai_session_id`; an id of another user is
+            `404 session_not_found`.
+          properties:
+            session_id: {type: string}
+        tools: {type: array, items: {type: object}, description: Accepted and ignored.}
+        tool_choice: {description: Accepted and ignored.}
+        response_format:
+          description: |
+            Accepted and ignored. Asking for JSON does not force JSON; put
+            «answer with JSON only» into the message instead.
+        temperature: {type: number, description: Accepted and ignored.}
+        max_tokens: {type: integer, description: Accepted and ignored.}
+        n: {type: integer, description: Accepted and ignored.}
+        stop: {description: Accepted and ignored.}
+        presence_penalty: {type: number, description: Accepted and ignored.}
+
+    Usage:
+      type: object
+      description: |
+        Real token counts recorded by the model that produced the answer. The
+        values are `0` when a route does not use a tokenized model.
+      properties:
+        prompt_tokens: {type: integer, example: 31}
+        completion_tokens: {type: integer, example: 24}
+        total_tokens: {type: integer, example: 55}
+
+    ChatCompletion:
+      type: object
+      properties:
+        id: {type: string, example: 'chatcmpl-8f1c...'}
+        object: {type: string, example: chat.completion}
+        created: {type: integer, example: 1759000000}
+        model: {type: string, example: flai-chat}
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: {type: integer, example: 0}
+              message:
+                type: object
+                properties:
+                  role: {type: string, example: assistant}
+                  content: {type: string}
+              finish_reason: {type: string, example: stop}
+        usage: {$ref: '#/components/schemas/Usage'}
+        flai_session_id:
+          type: string
+          description: Session to continue by sending it back as `metadata.session_id`.
+          example: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+
+    ChatCompletionChunk:
+      type: object
+      description: |
+        One SSE frame of a streaming answer. The first chunk opens the assistant
+        role, the last content-free chunk carries `finish_reason: stop`, an
+        optional usage-only chunk follows when `stream_options.include_usage` is
+        true, and the stream always ends with `data: [DONE]`.
+      properties:
+        id: {type: string, example: 'chatcmpl-8f1c...'}
+        object: {type: string, example: chat.completion.chunk}
+        model: {type: string, example: flai-chat}
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index: {type: integer, example: 0}
+              delta:
+                type: object
+                properties:
+                  role: {type: string}
+                  content: {type: string}
+              finish_reason: {type: string, nullable: true, example: stop}
+        usage: {$ref: '#/components/schemas/Usage'}
+        flai_session_id: {type: string}
+
+    TaskAccepted:
+      type: object
+      description: The `202` body of every asynchronous operation.
+      properties:
+        id: {type: string, example: b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10}
+        object: {type: string, example: flai.task}
+        status: {type: string, example: queued}
+        poll_url: {type: string, example: '/v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10'}
+        output_format: {type: string, example: url}
+
+    Task:
+      type: object
+      properties:
+        id: {type: string, example: a1d5b76a-...}
+        object: {type: string, example: flai.task}
+        status: {type: string, enum: [queued, processing, completed, error, cancelled]}
+        endpoint: {type: string, example: /v1/images/generations}
+        created_at: {type: number, format: double, example: 1780152000.5}
+        position: {type: integer, nullable: true, description: '`null` when the queue exposes no exact position.'}
+        parent_task_id: {type: string, description: Present when the task was requeued and this id is the child.}
+        content_url:
+          type: string
+          description: |
+            Present on a completed media task. Download it with
+            `GET /v1/flai/tasks/{task_id}/content`.
+        error: {type: string, description: 'Localized `⚠️ ` message; raw queue error text is never exposed.'}
+        result:
+          type: object
+          description: |
+            Allowlisted result metadata. Filesystem paths, uploaded bytes and raw
+            queue payloads are never included.
+          properties:
+            response: {type: string}
+            usage:
+              type: object
+              properties:
+                prompt_tokens: {type: integer}
+                completion_tokens: {type: integer}
+
+    VideoTask:
+      type: object
+      description: The OpenAI video-job view of a `/v1/videos` task.
+      properties:
+        id: {type: string}
+        object: {type: string, example: video}
+        status: {type: string, enum: [queued, processing, completed, error, cancelled]}
+        endpoint: {type: string, example: /v1/videos}
+        created_at: {type: number, format: double}
+        task_status_url: {type: string, example: '/v1/flai/tasks/a1d5b76a-...'}
+        content_url: {type: string}
+        url: {type: string, description: Mirrors `content_url` once completed.}
+        error: {type: string}
+
+    EmbeddingList:
+      type: object
+      properties:
+        object: {type: string, example: list}
+        model: {type: string, example: flai-embeddings}
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object: {type: string, example: embedding}
+              index: {type: integer}
+              embedding:
+                description: Floats, or a base64 little-endian float32 string when requested.
+                oneOf:
+                  - {type: array, items: {type: number}}
+                  - {type: string, format: byte}
+        usage:
+          type: object
+          description: Reported as zeros — the embedding path does not bill tokens.
+          properties:
+            prompt_tokens: {type: integer, example: 0}
+            total_tokens: {type: integer, example: 0}
+
+    FileObject:
+      type: object
+      description: |
+        OpenAI Files-shaped record with the FLAI `index_status` extension.
+        Filesystem paths are never exposed.
+      properties:
+        id: {type: string, example: a1b2c3d4-...}
+        object: {type: string, example: file}
+        filename: {type: string, example: report.pdf}
+        bytes: {type: integer, example: 284915}
+        created_at: {type: number, format: double}
+        purpose: {type: string, example: assistants}
+        index_status: {type: string, enum: [pending, processing, indexed, error]}
+
+    Session:
+      type: object
+      properties:
+        id: {type: string, example: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d}
+        title: {type: string}
+        created_at: {type: string}
+

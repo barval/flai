@@ -140,26 +140,43 @@ def _auto_rollback(app: Any, module: str) -> bool:
     return _rollback(app, module, f"watchdog-rollback-{module}")
 
 
+def _stop_event_for(app: Any) -> threading.Event:
+    """Return the app's watchdog stop event, creating it on first use.
+
+    The event lives on the app so a process that builds several apps (a test
+    suite) can stop each of them independently.
+    """
+    event = getattr(app, "_watchdog_stop", None)
+    if not isinstance(event, threading.Event):
+        event = threading.Event()
+        app._watchdog_stop = event
+    return event
+
+
 def _watchdog_loop(app: Any) -> None:
     """Main watchdog loop.  Polls /running + health-checks each model."""
     swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+    stop = _stop_event_for(app)
 
-    # Wait a bit for app warmup
-    time.sleep(30)
+    # Wait a bit for app warmup (abortable: a test teardown must not wait 30s)
+    if stop.wait(30):
+        return
 
-    while True:
+    while not stop.is_set():
         try:
             if is_gpu_busy():
                 # GPU transaction in progress — skip the whole tick. Touching
                 # llama-swap now would respawn the model being unloaded.
-                time.sleep(WATCHDOG_INTERVAL_S)
+                if stop.wait(WATCHDOG_INTERVAL_S):
+                    return
                 continue
 
             with app.app_context():
                 running = _get_running(swap_url)
                 if not running:
                     # Nothing loaded — nothing to monitor
-                    time.sleep(WATCHDOG_INTERVAL_S)
+                    if stop.wait(WATCHDOG_INTERVAL_S):
+                        return
                     continue
 
                 for model in running:
@@ -182,16 +199,33 @@ def _watchdog_loop(app: Any) -> None:
         except Exception as e:
             logger.exception(f"watchdog loop error: {e}")
 
-        time.sleep(WATCHDOG_INTERVAL_S)
+        if stop.wait(WATCHDOG_INTERVAL_S):
+            return
 
 
 def start_watchdog(app: Any) -> None:
     """Start the watchdog thread.  Safe to call once at app startup."""
+    _stop_event_for(app).clear()
     thread = threading.Thread(
         target=_watchdog_loop,
         args=(app,),
         daemon=True,
         name="flai-watchdog",
     )
+    app._watchdog_thread = thread
     thread.start()
     logger.info("Watchdog started: crash loop detection enabled")
+
+
+def stop_watchdog(app: Any, timeout: float = 5) -> bool:
+    """Stop the watchdog thread of ``app``.  True when it is no longer running.
+
+    The loop waits on its stop event instead of sleeping, so a stop request is
+    honoured immediately instead of after the current poll interval.
+    """
+    thread = getattr(app, "_watchdog_thread", None)
+    if not isinstance(thread, threading.Thread):
+        return False
+    _stop_event_for(app).set()
+    thread.join(timeout=timeout)
+    return not thread.is_alive()

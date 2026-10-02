@@ -2,7 +2,7 @@
 /* ===== CHAT CONTAINER ===== */
 .chat-container {
     display: flex;
-    height: calc(100vh - 100px);
+    height: calc(100vh - 80px); /* 50px header + 30px footer */
     width: 100%;
     max-width: 100%;
     margin: 0;

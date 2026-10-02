@@ -1,4 +1,4 @@
-# Testing — FLAI v12.2
+# Testing — FLAI v12.3
 
 This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
 
@@ -78,6 +78,16 @@ pytest tests/test_admin_routes.py  # specific file
 Fixed in v9.0:
 `Babel(flask_app)` added to `app` fixture (was causing KeyError 'babel')
 `test_restore_backup` fixed via `dirs_exist_ok=True` in `app/routes/backups.py:restore_backup()` (was causing `shutil.copytree FileExistsError` on `data/slm`)
+
+`tests/test_api_docs.py` **(NEW in v12.3)**
+
+5 tests for the interactive API reference: Swagger UI served without any CDN references (asset `src`/`href` on `script`/`link`/`img` tags only — plain `<a href>` attribution links load nothing), a valid OpenAPI 3.0.3 document at `/v1/openapi.json`, global Bearer authentication declared, **route drift guard** (every registered `/v1` route must have a spec entry and vice versa, doc routes `/v1/docs*` + `/v1/openapi.json` excluded), and key paths presence. The drift guard keeps `docs/openapi-v1.yaml` from falling behind the implementation.
+
+`tests/test_api_inventory.py` **(NEW in v12.3)**
+
+Contract guard enumerating all 23 expected `/v1` endpoints with their method sets; fails the build on a missing or unexpected route (documentation routes `/v1/docs`, `/v1/docs/oauth2-redirect.html`, `/v1/openapi.json` are allowlisted separately).
+
+Public `/v1` API test files (all added in v12.3): `test_api_v1_auth.py` (Bearer auth, 8 tests), `test_api_v1_chat.py` (chat sync/SSE/session continuity, 28 tests), `test_api_v1_embeddings.py` (12 tests), `test_api_v1_media.py` (image/video/audio generation, 77 tests), `test_api_v1_ratelimit.py` (9 tests), `test_api_chat_async.py` (async chat + poll, 16 tests), `test_api_tasks.py` (owner-scoped task list/status/cancel/content, 27 tests), `test_api_documents.py` (12 tests), `test_api_rlm.py` (8 tests), `test_api_sessions.py` (8 tests), `test_api_limits.py` (19 tests: wait-slot cap, CORS), `test_api_bridge.py` (68 tests: session resolution, enqueue, wait, stream, requeue ownership), `test_api_tokens.py` (API key management, 11 tests).
 
 ### Known Test Issues
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture. Not blocking, but slow.

@@ -208,6 +208,8 @@ class RedisRequestQueue:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
         task_type = task.get("type", "")
+        if task_type == "api_image_edit":
+            return "slow"
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
         if task_type == "fact_merge_task":
@@ -234,7 +236,7 @@ class RedisRequestQueue:
                 return "slow"
             return "fast"
         # Image generation (re-queued from router) is slow
-        if req_type == "image_gen":
+        if req_type in ("image_gen", "api_image_edit") or task_type == "api_image_edit":
             return "slow"
         if req_type == "rlm_analysis":
             return "slow"
@@ -243,17 +245,30 @@ class RedisRequestQueue:
         # Text tasks are fast
         if req_type == "text":
             return "fast"
+        # Embeddings are short GPU calls — keep them off the slow worker that
+        # serves user-facing video/image generation.
+        if req_type == "api_embedding":
+            return "fast"
         # Video tasks are slow
         if req_type == "video":
             return "slow"
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
             return "fast"
+        # The API variant is the same Whisper call without a chat session.
+        if req_type == "api_transcribe":
+            return "fast"
         # Default to slow for safety
         return "slow"
 
     def add_request(
-        self, user_id: str, session_id: str, request_data: dict[str, Any], user_class: int, lang: str = "ru"
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+        task_type: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Add a request to the appropriate queue (fast or slow)."""
         task_id = str(uuid.uuid4())
@@ -266,6 +281,8 @@ class RedisRequestQueue:
             "lang": lang,
             "timestamp": time.time(),
         }
+        if task_type:
+            task["type"] = task_type
 
         # Classify and route to appropriate queue
         queue_type = self._classify_task(task)
@@ -295,6 +312,24 @@ class RedisRequestQueue:
             "estimated_seconds": self._estimate_wait(queue_type, position),
             "queue_type": queue_type,
         }
+
+    def add_api_image_edit(
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+    ) -> tuple[str, dict[str, Any]]:
+        """Queue an explicit API image edit as a slow worker task."""
+        return self.add_request(
+            user_id,
+            session_id,
+            request_data,
+            user_class,
+            lang=lang,
+            task_type="api_image_edit",
+        )
 
     def add_reindex_all_task(self, lang: str = "ru") -> str:
         """Add a reindex-all task to the slow queue."""
@@ -362,9 +397,15 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if task_type == "api_image_edit":
+            return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
             return "multimodal"
+        if req_type == "api_image_edit" or task_type == "api_image_edit":
+            return "multimodal"
         if task_type == "transcribe_audio":
+            return "none"
+        if req_type == "api_transcribe":
             return "none"
 
         if action_type == "rag":
@@ -392,6 +433,9 @@ class RedisRequestQueue:
 
         if req_type == "text":
             return "multimodal"
+
+        if req_type == "api_embedding":
+            return "embedding"
 
         return "multimodal"
 
@@ -526,6 +570,7 @@ class RedisRequestQueue:
         task_id = task.get("id")
         if not task_id:
             return
+        publish_result = task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe")
 
         processing_ttl = max(
             self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 60,
@@ -570,7 +615,8 @@ class RedisRequestQueue:
                 pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
                 pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
             pipe.execute()
-            self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
+            if publish_result:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
         final_result = None
@@ -587,23 +633,31 @@ class RedisRequestQueue:
                 )
                 self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
                 self.app.logger.info(f"Task {task_id} completed successfully for session {task.get('session_id')}")
-                self._publish_result_event(task, "completed", result_data)
+                if publish_result:
+                    self._publish_result_event(task, "completed", result_data)
         except Exception as e:
             self.app.logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
+            is_api_transcribe = task.get("data", {}).get("type") == "api_transcribe"
+            if is_api_transcribe:
+                lang = task.get("lang", "ru")
+                error_text = "⚠️ " + self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            else:
+                error_text = str(e)
             self.redis.hset(
                 self.results_key,
                 task_id,
                 self._serialize(
                     {
                         "status": "error",
-                        "error": str(e),
-                        "result": {"session_id": task.get("session_id")},
+                        "error": error_text,
+                        "result": {"error": error_text, "session_id": task.get("session_id")},
                         "timestamp": time.time(),
                     }
                 ),
             )
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
-            self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
+            if publish_result and not is_api_transcribe:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
         finally:
             # Drop any leftover usage account (early error return, requeue that
             # did not consume it). The thread-local must not leak into the next
@@ -1326,6 +1380,7 @@ class RedisRequestQueue:
             self.app.logger.warning("Edit: no image_data in result")
 
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -1478,6 +1533,7 @@ class RedisRequestQueue:
 
         mm_model = self._get_model_name("multimodal") or "unknown"
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -2095,7 +2151,15 @@ class RedisRequestQueue:
             return self._process_video_gen_task_from_image(
                 query, file_data, session_id, user_id, lang, response_style, task=task
             )
-        return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
+        return self._process_video_gen_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            task=task,
+            generation_options=request_data,
+        )
 
     def _process_video_gen_task(
         self,
@@ -2105,6 +2169,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        generation_options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
@@ -2139,6 +2204,9 @@ class RedisRequestQueue:
             mm_time = round(time.time() - mm_start, 1)
             if error:
                 return self._build_error_response(session_id, error, mm_time, lang)
+            for option in ("width", "height", "num_frames", "frame_rate", "seed"):
+                if generation_options and option in generation_options:
+                    prompt_data[option] = generation_options[option]
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
@@ -2227,6 +2295,7 @@ class RedisRequestQueue:
 
             mm_model = self._get_model_name("multimodal") or "unknown"
             extra = {
+                "task_id": task.get("id") if task else None,
                 "file_path": file_path,
                 "file_name": video_result["file_name"],
                 "file_size": video_result["file_size"],
@@ -3725,6 +3794,74 @@ class RedisRequestQueue:
             self.app.logger.warning(f"Fact merge failed: {e}")
             return {"status": "ok"}
 
+    def _process_api_embedding_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Compute embeddings for the public API through the RAG module.
+
+        Runs on the fast worker under `_gpu_lock` because `_get_model_for_task`
+        classifies the task as "embedding". No chat message is persisted: an
+        embedding request has no session, no history and no assistant turn.
+        """
+        lang = task.get("lang", "ru")
+        texts = task.get("data", {}).get("input")
+
+        if not isinstance(texts, list) or not texts or not all(isinstance(text, str) and text for text in texts):
+            error = self.app.modules["base"]._("Invalid embedding input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        rag = self.app.modules.get("rag")
+        if rag is None or not getattr(rag, "available", False):
+            error = self.app.modules["base"]._("Embeddings are temporarily unavailable", lang=lang)
+            self.app.logger.warning("API embeddings unavailable: rag module not ready")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            vectors = rag._get_batch_embeddings(texts)
+        except Exception as e:
+            self.app.logger.error(f"API embeddings failed: {e}", exc_info=True)
+            vectors = None
+
+        if not vectors or any(vector is None for vector in vectors):
+            error = self.app.modules["base"]._("Failed to compute embeddings", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "embeddings": vectors, "model": "embedding"}
+
+    def _process_api_transcribe_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Transcribe an uploaded audio file for the public API.
+
+        Same Whisper call as the web transcription task, but without a chat
+        session: nothing is written to the conversation and no usage account is
+        opened, because `POST /v1/audio/transcriptions` is a stateless call
+        that returns text to the caller only.
+        """
+        lang = task.get("lang", "ru")
+        data = task.get("data", {})
+        file_data = data.get("file_data")
+        file_type = data.get("file_type")
+        file_name = data.get("file_name")
+
+        if not file_data:
+            error = self.app.modules["base"]._("Invalid audio input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        audio_module = self.app.modules.get("audio")
+        if audio_module is None:
+            error = self.app.modules["base"]._("Audio service unavailable", lang=lang)
+            self.app.logger.warning("API transcription unavailable: audio module missing")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        except Exception:
+            self.app.logger.exception("API transcription failed")
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+        if not text:
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "text": text}
+
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Main entry point — delegates to specialized task handlers."""
@@ -3741,7 +3878,14 @@ class RedisRequestQueue:
         # so phases merge into the same bill. Indexing/merge tasks do not call
         # LLMs or _save_and_respond — their accounts are dropped by the
         # _process_single_task finally clause.
-        if task_type not in ("index_document", "reindex_all_embeddings", "fact_extraction_task", "fact_merge_task"):
+        if task_type not in (
+            "index_document",
+            "reindex_all_embeddings",
+            "fact_extraction_task",
+            "fact_merge_task",
+            "api_embedding",
+            "api_transcribe",
+        ):
             _requeue_meta = task.get("data", {})
             begin_usage_account(
                 _requeue_meta.get("request_id") or task.get("id") or uuid.uuid4().hex,
@@ -3770,6 +3914,34 @@ class RedisRequestQueue:
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
             return self._process_fact_merge(task)
+        if task_type == "api_embedding":
+            return self._process_api_embedding_task(task)
+        if task_type == "api_transcribe":
+            return self._process_api_transcribe_task(task)
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
 
         user_id = task["user_id"]
         session_id = task["session_id"]

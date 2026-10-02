@@ -274,6 +274,19 @@ def init_user_db() -> None:
             )
         """)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS response_style TEXT DEFAULT 'neutral'")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id SERIAL PRIMARY KEY,
+                login TEXT NOT NULL REFERENCES users(login) ON DELETE CASCADE,
+                name TEXT NOT NULL DEFAULT 'api',
+                token_hash TEXT NOT NULL UNIQUE,
+                token_prefix TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP,
+                revoked_at TIMESTAMP
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_api_tokens_login ON api_tokens (login)")
     _ensure_admin_exists()
 
 

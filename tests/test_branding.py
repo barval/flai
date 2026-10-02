@@ -82,6 +82,32 @@ class TestBrandingApi:
     def test_logo_serves_404_without_upload(self, admin_client):
         assert admin_client.get("/admin/api/branding/logo").status_code == 404
 
+    def test_logo_get_is_public(self, client, branding_app):
+        """The header logo renders on the login screen and for non-admins.
+
+        GET must not require an admin session: the logo is a header element,
+        not admin data. Upload/delete stay admin-only.
+        """
+        # Admin uploads a real logo file.
+        admin_client = TestBrandingApi._admin(client)
+        resp = admin_client.post(
+            "/admin/api/branding/logo",
+            data={"logo": (io.BytesIO(_png_bytes()), "logo.png")},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        # An anonymous (login-screen) client fetches it without a session.
+        logo = client.get("/admin/api/branding/logo")
+        assert logo.status_code == 200
+        assert logo.mimetype == "image/png"
+
+    @staticmethod
+    def _admin(client):
+        with client.session_transaction() as sess:
+            sess["login"] = "admin"
+            sess["is_admin"] = True
+        return client
+
     def test_upload_logo_normalizes_to_png(self, branding_app, admin_client):
         data = _png_bytes((512, 256))
         resp = admin_client.post(

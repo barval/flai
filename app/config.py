@@ -105,6 +105,15 @@ def load_config(app):
     app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 5000))
     app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
 
+    # Tavily web search (optional per-user provider, tried before SearXNG)
+    app.config["TAVILY_ENABLED"] = os.getenv("TAVILY_ENABLED", "true").lower() not in ("false", "0", "no")
+    app.config["TAVILY_API_URL"] = os.getenv("TAVILY_API_URL", "https://api.tavily.com")
+    app.config["TAVILY_TIMEOUT"] = int(os.getenv("TAVILY_TIMEOUT", 20))
+    app.config["TAVILY_USAGE_TIMEOUT"] = int(os.getenv("TAVILY_USAGE_TIMEOUT", 8))
+    app.config["TAVILY_MAX_RESULTS"] = int(os.getenv("TAVILY_MAX_RESULTS", 7))
+    app.config["TAVILY_SEARCH_DEPTH"] = os.getenv("TAVILY_SEARCH_DEPTH", "basic")
+    app.config["TAVILY_ADMIN_CACHE_TTL"] = int(os.getenv("TAVILY_ADMIN_CACHE_TTL", 300))
+
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
     app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))

@@ -106,7 +106,7 @@ def load_config(app):
     app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
 
     # Tavily web search (optional per-user provider, tried before SearXNG)
-    app.config["TAVILY_ENABLED"] = os.getenv("TAVILY_ENABLED", "true").lower() not in ("false", "0", "no")
+    app.config["TAVILY_ENABLED"] = os.getenv("TAVILY_ENABLED", "true").lower() in ("true", "1", "yes")
     app.config["TAVILY_API_URL"] = os.getenv("TAVILY_API_URL", "https://api.tavily.com")
     app.config["TAVILY_TIMEOUT"] = int(os.getenv("TAVILY_TIMEOUT", 20))
     app.config["TAVILY_USAGE_TIMEOUT"] = int(os.getenv("TAVILY_USAGE_TIMEOUT", 8))

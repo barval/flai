@@ -28,7 +28,14 @@ def get_tavily_key(login: str) -> str | None:
 
 
 def set_tavily_key(login: str, key: str) -> None:
-    """Store the Tavily key for a user and stamp the addition time."""
+    """Store the Tavily key for a user and stamp the addition time.
+
+    An empty key clears the stored key together with its timestamp, so a user
+    without a key never looks like one who added one.
+    """
+    if not key:
+        delete_tavily_key(login)
+        return
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -37,7 +44,7 @@ def set_tavily_key(login: str, key: str) -> None:
             SET tavily_api_key = %s, tavily_key_added_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
             WHERE login = %s
             """,
-            (key or None, login),
+            (key, login),
         )
 
 

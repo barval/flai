@@ -3076,3 +3076,6 @@ msgstr "Tavily отклонил API-ключ. Проверьте ключ и п�
 
 msgid "footer_short_name"
 msgstr "ПЛИИ"
+
+msgid "You already have a Tavily key. Delete it before adding a new one."
+msgstr "У вас уже есть ключ Tavily. Удалите его, прежде чем добавлять новый."

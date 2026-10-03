@@ -3051,3 +3051,6 @@ msgstr "Tavily rejected the API key. Please check it and try again."
 
 msgid "footer_short_name"
 msgstr "FLAI"
+
+msgid "You already have a Tavily key. Delete it before adding a new one."
+msgstr "You already have a Tavily key. Delete it before adding a new one."

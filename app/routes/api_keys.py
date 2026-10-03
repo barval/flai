@@ -100,6 +100,8 @@ def save_tavily():
     key = str(payload.get("api_key", "")).strip()
     if not is_valid_tavily_key_shape(key):
         return jsonify({"error": "⚠️ " + _("Invalid Tavily API key format")}), 400
+    if get_tavily_key(login):
+        return jsonify({"error": "⚠️ " + _("You already have a Tavily key. Delete it before adding a new one.")}), 409
     usage = _tavily_usage(key)
     if usage["status"] == STATUS_INVALID:
         return jsonify({"error": "⚠️ " + _("Tavily rejected the API key. Please check it and try again.")}), 400

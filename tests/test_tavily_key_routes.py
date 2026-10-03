@@ -74,6 +74,19 @@ class TestTavilyKeyRoutes:
         assert response.get_json()["status"] == "unavailable"
         assert tavily_client.get("/api-keys/tavily").get_json()["has_key"] is True
 
+    def test_second_key_is_rejected_without_replacing_the_first(self, tavily_client):
+        with patch("app.routes.api_keys.fetch_tavily_usage", return_value=_usage()):
+            tavily_client.post("/api-keys/tavily", json={"api_key": "tvly-abcdefgh12345678"})
+
+        with patch("app.routes.api_keys.fetch_tavily_usage") as usage:
+            response = tavily_client.post("/api-keys/tavily", json={"api_key": "tvly-zyxwvu9876543210"})
+
+        assert response.status_code == 409
+        assert response.get_json()["error"].startswith("⚠️ ")
+        usage.assert_not_called()  # No second credit spent on /usage either.
+        listed = tavily_client.get("/api-keys/tavily").get_json()
+        assert listed["masked_key"] == "tvly-…5678"
+
     def test_delete_clears_the_key(self, tavily_client):
         with patch("app.routes.api_keys.fetch_tavily_usage", return_value=_usage()):
             tavily_client.post("/api-keys/tavily", json={"api_key": "tvly-abcdefgh12345678"})

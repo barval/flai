@@ -2152,11 +2152,9 @@ msgstr "Выйти"
 
 #: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v12.4"
+msgstr "Полностью Локальный ИИ (ПЛИИ)"
 
 #: app/templates/base.html
-msgid "footer_short"
-msgstr "ПЛИИ v12.4"
 
 #: app/templates/base.html
 msgid "footer_copyright"
@@ -3075,3 +3073,6 @@ msgstr "Неверный формат API-ключа Tavily"
 
 msgid "Tavily rejected the API key. Please check it and try again."
 msgstr "Tavily отклонил API-ключ. Проверьте ключ и попробуйте снова."
+
+msgid "footer_short_name"
+msgstr "ПЛИИ"

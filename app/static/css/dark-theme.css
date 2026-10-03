@@ -545,6 +545,9 @@
 .dark-theme .about-modal-content h2 {
     color: #ecf0f1;
 }
+.dark-theme .about-github a {
+    color: #ecf0f1;
+}
 .dark-theme .about-modal-close {
     color: #aaa;
 }

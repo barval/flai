@@ -134,17 +134,19 @@
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="{{ _('footer_about_hint') }}">
-            {{ _('footer_short') }}
+            {{ _('footer_short_name') }} v{{ config.APP_VERSION }}
         </button>
     </footer>
 
-    <!-- About dialog: full name, logo and copyright (click the footer brand) -->
+    <!-- About dialog: full name, version, project link and copyright (click the footer brand) -->
     <div id="footer-about-modal" class="about-modal" hidden>
         <div class="about-modal-backdrop" data-close-about></div>
         <div class="about-modal-content" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
             <button type="button" class="about-modal-close" data-close-about aria-label="{{ _('close_about') }}">&times;</button>
             <img src="{{ url_for('static', filename='logo-header.png') }}" alt="" class="about-logo">
             <h2 id="about-modal-title">{{ _('footer_text') }}</h2>
+            <p class="about-version">v{{ config.APP_VERSION }}</p>
+            <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">{{ _('footer_copyright') }}</p>
         </div>
     </div>

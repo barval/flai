@@ -2130,11 +2130,9 @@ msgstr "Logout"
 
 #: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v12.4"
+msgstr "Fully Local AI (FLAI)"
 
 #: app/templates/base.html
-msgid "footer_short"
-msgstr "FLAI v12.4"
 
 #: app/templates/base.html
 msgid "footer_copyright"
@@ -3050,3 +3048,6 @@ msgstr "Invalid Tavily API key format"
 
 msgid "Tavily rejected the API key. Please check it and try again."
 msgstr "Tavily rejected the API key. Please check it and try again."
+
+msgid "footer_short_name"
+msgstr "FLAI"

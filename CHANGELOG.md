@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
-- Tavily-first web search: every user can add a free personal Tavily API key (1000 credits/month) in the profile popup, and search tries Tavily before the local SearXNG engine, falling back automatically when the key is missing, rejected, the service is down or the monthly quota is spent. The popup shows the plan limit, usage and remaining credits; the admin Users tab lists each user's remaining credits and FLAI API key count.
+- Tavily-first web search: every user can add a free personal Tavily API key (1000 credits/month) in the profile popup, and search tries Tavily before the local SearXNG engine, falling back automatically when the key is missing, rejected, the service is down or the monthly quota is spent. The popup shows the plan limit, usage and remaining credits; the admin Users tab lists each user's remaining credits and FLAI API key count. One key per user: a second `POST /api-keys/tavily` returns `409` with a localized message before any Tavily call is made (no credit spent). Admin quotas are fetched in a 4-thread pool and cached in Redis for `TAVILY_ADMIN_CACHE_TTL` (300 s). Tests: `tests/test_tavily_keys.py`, `tests/test_tavily_search.py`, `tests/test_tavily_key_routes.py`, `tests/test_tavily_popup_ui.py`, `tests/test_admin_users_columns.py`.
 
 ### Changed
 

@@ -101,7 +101,7 @@ Every user message is classified by the router model into one of the categories 
 | Category (marker) | Route | What runs | Context injected into the reasoning prompt |
 |---|---|---|---|
 | `[-RAG-]` | **Document search (RAG)** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
-| `[-SEARCH-]` | **Web search** | SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
+| `[-SEARCH-]` | **Web search** | Tavily first (per-user key), then SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
 | `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
 | `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
 | `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
@@ -120,6 +120,25 @@ Every user message is classified by the router model into one of the categories 
 - Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
 - The router decides the **action time** first: requests about the **past** («we watched», «you showed earlier», «yesterday's snapshots») route to history search, while action categories (camera, image, video…) are only for requests to be performed now/in the future and never capture questions about the past.
 - Classification may use a tiny **session micro-context** — the last `ROUTER_CONTEXT_MESSAGES` messages plus up to `ROUTER_SLM_FACTS` long-term-memory facts — so a follow-up like «did we look at the camera images?» is answered from history instead of firing the camera again.
+
+### 🌐 Tavily web search (per-user key)
+
+Web search has always gone through the self-hosted **SearXNG** metasearch engine, which is free but limited: its snippets are short, popular sites dominate the results and it is easy to hit engine rate limits. Starting with v12.4 every user can attach their own **Tavily** API key — a purpose-built AI search API whose free tier grants **1000 credits per month** (a basic search costs 1 credit), returns clean, content-rich snippets and answers niche queries (repositories, documentation, price lookups) noticeably better than a generic metasearch.
+
+**How to enable it:**
+
+1. Create a free account at [app.tavily.com](https://app.tavily.com/home) and copy the API key (`tvly-…`).
+2. In FLAI, click your **name in the header** → the profile popup opens.
+3. In the «Internet search via Tavily» section paste the key and click **Add key**. The key is verified against Tavily's `/usage` endpoint before it is stored — an invalid key is rejected and never saved.
+4. The popup then shows the key mask (`tvly-…xxxx`), the plan limit, the credits used this month and the credits left. A key can be deleted at any time with **Delete key**; only one key per user is allowed, so adding a second one requires deleting the first.
+
+**How it works afterwards:**
+
+- Every web search (router category `[-SEARCH-]`, the `web_search` tool during chat, deep analysis fetches and `/v1` chat) now queries **Tavily first** and falls back to the local SearXNG engine automatically whenever the key is missing, the provider is disabled, the key is rejected, the monthly quota is exhausted or the service is unavailable — search never breaks, it just uses the slower free path.
+- A thin Tavily answer is topped up from SearXNG for free instead of spending a second credit on the same query.
+- The key is stored server-side only and is never returned to the browser (only the `tvly-…xxxx` mask) and never written to logs.
+- Admins see each user's remaining Tavily credits and FLAI API key count in the admin Users tab (fetched lazily and cached for 5 minutes, so opening the page does not spend credits).
+- The instance stays fully functional without any Tavily key — this is an optional quality upgrade, not a requirement.
 
 ---
 
@@ -155,9 +174,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
-| **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left. |
-| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.4» / «FLAI v12.4»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
+| **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left; the admin Users tab lists each user's remaining credits and FLAI API key count. See the «Tavily web search» section under *Types of Requests & Search Mechanisms* for the full how-to. |
+| **Four-line About dialog, single version source** | The footer About dialog now shows exactly four lines — full name, version, project link and copyright — with the version coming from a single `APP_VERSION` constant in `app/config.py` (the Prometheus metric, the footer label, the browser and exported chats all read the same value; the release checklist shrinks to one line). |
 
 ### Core Components
 

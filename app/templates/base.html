@@ -15,6 +15,7 @@
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script>
         window.DEBUG_JS = {% if config.get('DEBUG_JS') %}true{% else %}false{% endif %};
+        window.FLAI_VERSION = {{ config.APP_VERSION|tojson }};
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     </script>

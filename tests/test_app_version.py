@@ -24,3 +24,23 @@ class TestAppVersion:
         pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
         assert ".".join(pyproject["project"]["version"].split(".")[:2]) == APP_VERSION
+
+
+@pytest.mark.unit
+class TestVersionReachesTheBrowser:
+    def test_base_template_publishes_the_version(self, client):
+        html = client.get("/login").get_data(as_text=True)
+
+        assert re.search(r'window\.FLAI_VERSION\s*=\s*"[^"]+";', html)
+
+    def test_base_global_matches_the_configured_version(self, client, test_app):
+        html = client.get("/login").get_data(as_text=True)
+        match = re.search(r'window\.FLAI_VERSION\s*=\s*"([^"]+)";', html)
+
+        assert match.group(1) == test_app.config["APP_VERSION"]
+
+    def test_chat_export_uses_the_global_instead_of_a_literal(self):
+        src = Path("app/static/js/chat-export.js").read_text(encoding="utf-8")
+
+        assert "window.FLAI_VERSION" in src
+        assert not re.search(r"footer_text'\)\s*\+\s*' v\d", src)

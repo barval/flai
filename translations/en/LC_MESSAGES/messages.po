@@ -1228,7 +1228,23 @@ msgstr "Documents"
 msgid "SLM Facts"
 msgstr "SLM Facts"
 
-#: app/templates/admin.html:64 app/templates/admin.html:268
+#: app/templates/admin.html:63
+msgid "Tavily API"
+msgstr "Tavily API"
+
+#: app/templates/admin.html:64
+msgid "FLAI API"
+msgstr "FLAI API"
+
+#: app/templates/admin.html:369
+msgid "Tavily API - unavailable"
+msgstr "Tavily API - unavailable"
+
+#: app/templates/admin.html:370
+msgid "Tavily API - invalid key"
+msgstr "Tavily API - invalid key"
+
+#: app/templates/admin.html:66 app/templates/admin.html:268
 #: app/templates/admin.html:330
 msgid "Camera access"
 msgstr "Camera access"

@@ -133,17 +133,26 @@ def fetch_tavily_usage(api_key: str, api_url: str, timeout: int) -> dict:
         logger.warning("Tavily usage returned a non-JSON body")
         return result
 
-    key_info = payload.get("key") or {}
-    account = payload.get("account") or {}
+    if not isinstance(payload, dict):
+        payload = {}
+    key_info = payload.get("key")
+    if not isinstance(key_info, dict):
+        key_info = {}
+    account = payload.get("account")
+    if not isinstance(account, dict):
+        account = {}
+
     limit = key_info.get("limit")
-    if limit is None:
+    if type(limit) is not int:
         limit = account.get("plan_limit")
     used = key_info.get("usage")
-    if used is None:
+    if type(used) is not int:
         used = account.get("plan_usage")
+    if type(limit) is not int or type(used) is not int:
+        limit = used = None
 
     remaining = None
-    if isinstance(limit, int) and isinstance(used, int):
+    if type(limit) is int and type(used) is int:
         remaining = max(limit - used, 0)
     result.update(
         {

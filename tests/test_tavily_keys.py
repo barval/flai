@@ -152,7 +152,11 @@ class TestFetchTavilyUsage:
         return _Resp()
 
     def test_no_key_short_circuits(self):
-        assert tavily_keys.fetch_tavily_usage("", "https://api.tavily.com", 8)["status"] == "no_key"
+        with patch("app.tavily_keys.requests") as mock_requests:
+            usage = tavily_keys.fetch_tavily_usage("", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "no_key"
+        mock_requests.get.assert_not_called()
 
     def test_remaining_credits_are_reported(self, test_app):
         payload = {"key": {"usage": 120, "limit": 1000}, "account": {"current_plan": "Free"}}
@@ -188,9 +192,10 @@ class TestFetchTavilyUsage:
 
         assert (usage["limit"], usage["used"], usage["remaining"]) == (1000, 10, 990)
 
-    def test_unauthorized_is_invalid(self, test_app):
+    @pytest.mark.parametrize("status_code", [401, 403])
+    def test_rejected_key_is_invalid(self, test_app, status_code):
         with patch("app.tavily_keys.requests") as mock_requests:
-            mock_requests.get.return_value = self._response(401)
+            mock_requests.get.return_value = self._response(status_code)
 
             usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
 
@@ -204,13 +209,24 @@ class TestFetchTavilyUsage:
 
         assert usage["status"] == "unavailable"
 
-    def test_server_error_is_unavailable(self, test_app):
+    @pytest.mark.parametrize("status_code", [429, 503])
+    def test_failed_request_is_unavailable(self, test_app, status_code):
         with patch("app.tavily_keys.requests") as mock_requests:
-            mock_requests.get.return_value = self._response(503)
+            mock_requests.get.return_value = self._response(status_code)
 
             usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
 
         assert usage["status"] == "unavailable"
+
+    def test_trailing_slash_in_api_url_is_normalized(self, test_app):
+        payload = {"key": {"usage": 1, "limit": 10}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com/", 8)
+
+        assert mock_requests.get.call_args.args[0] == "https://api.tavily.com/usage"
+        assert usage["status"] == "ok"
 
     def test_non_json_body_is_unavailable(self, test_app):
         with patch("app.tavily_keys.requests") as mock_requests:
@@ -219,3 +235,60 @@ class TestFetchTavilyUsage:
             usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
 
         assert usage["status"] == "unavailable"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param([{"key": {}}], id="list-body"),
+            pytest.param("not-an-object", id="string-body"),
+            pytest.param(7, id="int-body"),
+            pytest.param({"key": ["limit"]}, id="key-is-list"),
+            pytest.param({"key": "tvly-nope"}, id="key-is-string"),
+            pytest.param({"account": "team"}, id="account-is-string"),
+        ],
+    )
+    def test_wrong_typed_body_degrades_to_a_normalized_result(self, test_app, payload):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage == {"status": "ok", "plan": None, "limit": None, "used": None, "remaining": None}
+
+    @pytest.mark.parametrize(
+        "key_info",
+        [
+            pytest.param({"limit": True, "usage": True}, id="booleans"),
+            pytest.param({"limit": "1000", "usage": "900"}, id="strings"),
+            pytest.param({"limit": 1000.0, "usage": 900.0}, id="floats"),
+        ],
+    )
+    def test_non_integer_quota_is_not_treated_as_a_number(self, test_app, key_info):
+        payload = {"key": key_info, "account": {"plan_limit": 1000, "plan_usage": 10}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "ok"
+        assert (usage["limit"], usage["used"], usage["remaining"]) == (1000, 10, 990)
+
+    def test_non_integer_quota_without_account_totals_renders_unknown(self, test_app):
+        payload = {"key": {"limit": "1000", "usage": "900"}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "ok"
+        assert (usage["limit"], usage["used"], usage["remaining"]) == (None, None, None)
+
+    def test_non_integer_account_totals_render_unknown(self, test_app):
+        payload = {"key": {}, "account": {"plan_limit": "1000", "plan_usage": "900"}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "ok"
+        assert (usage["limit"], usage["used"], usage["remaining"]) == (None, None, None)

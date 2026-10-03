@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - Tavily-first web search: every user can add a free personal Tavily API key (1000 credits/month) in the profile popup, and search tries Tavily before the local SearXNG engine, falling back automatically when the key is missing, rejected, the service is down or the monthly quota is spent. The popup shows the plan limit, usage and remaining credits; the admin Users tab lists each user's remaining credits and FLAI API key count.
 
+### Changed
+
+- **The version has a single source and the About dialog spells the project out** — the footer label, the About dialog and the exported chat each carried their own copy of the version string, and the dialog itself showed only the full name and the copyright. `APP_VERSION` in `app/config.py` is now the only place the version is defined (the Prometheus `flai_web_info` metric and `window.FLAI_VERSION` read it from there; the Docker image installs `requirements.txt` only, so package metadata could not be used), the dialog renders four lines — full name, `v12.4`, `https://github.com/barval/flai` and the copyright — and the footer label and chat export reuse the same constant. Tests: `tests/test_app_version.py`, `tests/test_branding.py`.
+
 ## [v12.3] — 2026-10-02
 
 ### Added

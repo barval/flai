@@ -372,15 +372,19 @@ def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
 
 
 def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
-    """Search the web via SearXNG module."""
+    """Search the web via Tavily (when the user has a key) or SearXNG."""
+    from app.tavily_keys import get_tavily_key
+
     app = ctx.get("app")
     search_module = app.modules.get("search") if app else None
-    if not search_module or not search_module.available:
+    user_id = ctx.get("user_id")
+    api_key = get_tavily_key(user_id) if isinstance(user_id, str) and user_id else None
+    if not search_module or (not search_module.available and not api_key):
         with force_locale(lang):
             return str(_("Web search service unavailable"))
 
     max_results = app.config.get("SEARXNG_MAX_RESULTS", 7) if app else 7
-    results = search_module.search(query, lang=lang, max_results=max_results)
+    results, _provider = search_module.search_with_fallback(query, lang=lang, max_results=max_results, api_key=api_key)
     if not results:
         with force_locale(lang):
             return str(_("No results found for query: {query}").format(query=query))

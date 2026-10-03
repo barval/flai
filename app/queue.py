@@ -2895,9 +2895,12 @@ class RedisRequestQueue:
         self.app.logger.info(
             f"Process web search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
         )
+        from app.tavily_keys import get_tavily_key
+
         search = self.app.modules.get("search")
-        if not search or not search.available:
+        if not search:
             return _no_search(self.app.modules["base"]._("Web search is not available", lang), 0)
+        api_key = get_tavily_key(user_id) if user_id else None
 
         search_start = time.time()
         try:
@@ -2907,12 +2910,28 @@ class RedisRequestQueue:
             )
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
-            results = search.search(query, lang=lang)
+            results, provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             if task and results:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
-            # Degraded engines return few/noisy results with near-empty snippets.
-            # A second attempt often clears transient CAPTCHA/rate-limit failures.
+            # A thin Tavily answer leaves too little context for the reasoning
+            # model. SearXNG is free, so top it up from there instead of spending
+            # a second Tavily credit. The `provider` guard keeps the pre-v12.4
+            # path byte-for-byte identical: when SearXNG already answered, the
+            # simplified-query retry below is the only extra attempt.
+            thin = (
+                not results
+                or len(search_context) < 2000
+                or not any(len((r.get("content") or "").strip()) > 500 for r in results)
+            )
+            if thin and provider != "searxng" and search.available:
+                supplemented = search.search(query, lang=lang)
+                if supplemented:
+                    supplemented_ctx = search.format_results_context(
+                        supplemented, lang=lang, max_chars=search_max_chars
+                    )
+                    if len(supplemented_ctx) > len(search_context):
+                        results, search_context, provider = supplemented, supplemented_ctx, "searxng"
             if (
                 not results
                 or len(search_context) < 2000
@@ -2922,14 +2941,14 @@ class RedisRequestQueue:
 
                 retry_query = simplify_search_query(query)
                 self.app.logger.warning(
-                    f"SearXNG returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
+                    f"Web search returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
                 )
                 retried = search.search(retry_query, lang=lang)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
                     if len(retried_ctx) > len(search_context):
-                        results, search_context = retried, retried_ctx
+                        results, search_context, provider = retried, retried_ctx, "searxng"
             search_time = round(time.time() - search_start, 1)
             if not results:
                 self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
@@ -2940,7 +2959,7 @@ class RedisRequestQueue:
                     search_time,
                 )
             self.app.logger.info(
-                f"Web search: '{query[:60]}...' → {len(results)} results, "
+                f"Web search via {provider}: '{query[:60]}...' -> {len(results)} results, "
                 f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"
             )
         except Exception as e:

@@ -283,3 +283,126 @@ class TestTavilyResultNormalization:
             module.search_with_fallback("q", api_key="tvly-key")
 
         fetch.assert_not_called()
+
+
+@pytest.mark.unit
+class TestQueueSearchUsesTavilyFirst:
+    @staticmethod
+    def _queue(monkeypatch, tavily_results, searxng_results):
+        from app.queue import RedisRequestQueue
+
+        monkeypatch.setattr("app.tavily_keys.get_tavily_key", lambda login: "tvly-key")
+
+        app = MagicMock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = MagicMock()
+        base = MagicMock()
+        base.get_search_context_limit.return_value = 10000
+        base._.side_effect = lambda msg, lang="ru": msg
+        search = MagicMock()
+        search.available = True
+        search.search_with_fallback.side_effect = lambda q, lang="ru", **kw: (
+            (tavily_results, "tavily") if kw.get("api_key") else (searxng_results, "searxng")
+        )
+        search.search.return_value = searxng_results
+        search.format_results_context.side_effect = lambda res, **kw: "x" * 4000 if res else ""
+        app.modules = {"base": base, "search": search}
+
+        queue = RedisRequestQueue.__new__(RedisRequestQueue)
+        queue.app = app
+        queue._publish_stream_event = MagicMock()
+        queue._build_error_response = MagicMock(return_value={"error": "⚠️ boom"})
+        queue._requeue_reasoning_task = MagicMock(return_value={"status": "queued"})
+        return queue, search
+
+    def test_thin_tavily_context_is_upgraded_from_searxng_without_a_second_tavily_call(self, monkeypatch):
+        queue, search = self._queue(
+            monkeypatch,
+            tavily_results=[{"title": "t", "url": "u", "content": "c"}],
+            searxng_results=[{"title": "t", "url": "u", "content": "c" * 900}],
+        )
+
+        queue._process_search_task("q", "s1", "u1", "ru", "neutral")
+
+        search.search_with_fallback.assert_called_once()
+        assert search.search_with_fallback.call_args.kwargs["api_key"] == "tvly-key"
+        search.search.assert_called()
+        queue._requeue_reasoning_task.assert_called_once()
+
+    def test_rich_tavily_context_is_not_supplemented(self, monkeypatch):
+        rich = [{"title": f"t{i}", "url": f"u{i}", "content": "c" * 3000} for i in range(6)]
+        queue, search = self._queue(monkeypatch, tavily_results=rich, searxng_results=[])
+
+        queue._process_search_task("q", "s1", "u1", "ru", "neutral")
+
+        search.search.assert_not_called()
+
+    def test_search_without_a_user_key_never_reaches_tavily(self, monkeypatch):
+        queue, search = self._queue(monkeypatch, tavily_results=[], searxng_results=[])
+        monkeypatch.setattr("app.tavily_keys.get_tavily_key", lambda login: None)
+
+        queue._process_search_task("q", "s1", "u1", "ru", "neutral")
+
+        assert search.search_with_fallback.call_args.kwargs["api_key"] is None
+
+
+@pytest.mark.unit
+class TestToolWebSearchUsesTavilyFirst:
+    """The chat tool must reach the provider policy too, not SearXNG directly."""
+
+    @staticmethod
+    def _ctx(monkeypatch, results, available=True):
+        monkeypatch.setattr("app.tavily_keys.get_tavily_key", lambda login: "tvly-key")
+
+        app = MagicMock()
+        app.config = {"SEARXNG_MAX_RESULTS": 7}
+        search = MagicMock()
+        search.available = available
+        search.search_with_fallback.return_value = (results, "tavily")
+        search.format_results_context.return_value = "formatted context"
+        app.modules = {"search": search}
+        return {"app": app, "user_id": "u1"}, search
+
+    def test_tool_search_passes_the_user_key_to_the_policy(self, monkeypatch):
+        from app.tools import _exec_web_search
+
+        ctx, search = self._ctx(monkeypatch, [{"title": "t", "url": "u", "content": "c"}])
+
+        assert _exec_web_search(ctx, "q") == "formatted context"
+        assert search.search_with_fallback.call_args.kwargs["api_key"] == "tvly-key"
+        search.search.assert_not_called()
+
+    def test_tool_search_survives_searxng_being_down(self, monkeypatch):
+        """A Tavily-only deployment must still get search results from the tool."""
+        from app.tools import _exec_web_search
+
+        ctx, search = self._ctx(monkeypatch, [{"title": "t", "url": "u", "content": "c"}], available=False)
+
+        assert _exec_web_search(ctx, "q") == "formatted context"
+        assert search.search_with_fallback.call_args.kwargs["api_key"] == "tvly-key"
+        search.search.assert_not_called()
+
+
+@pytest.mark.unit
+class TestRlmWebFetchUsesTavilyFirst:
+    """The RLM deep-analysis web_fetch tool must reach the provider policy too."""
+
+    def test_broker_passes_the_user_key_to_the_policy(self, monkeypatch):
+        from modules.rlm import RlmModule, _RlmBroker
+
+        monkeypatch.setattr("app.tavily_keys.get_tavily_key", lambda login: "tvly-key")
+
+        app = MagicMock()
+        search = MagicMock()
+        search.available = False  # SearXNG down: only Tavily can answer
+        search.search_with_fallback.return_value = ([{"title": "t", "url": "u", "content": "page"}], "tavily")
+        app.modules = {"search": search}
+
+        module = RlmModule(app)
+        broker = _RlmBroker(module, "en", 1024, 5, user_id="u1")
+
+        out = module.broker_web_fetch("q", broker)
+
+        assert out.startswith("[t](u)")
+        assert search.search_with_fallback.call_args.kwargs["api_key"] == "tvly-key"
+        search.search.assert_not_called()

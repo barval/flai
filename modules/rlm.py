@@ -169,13 +169,21 @@ def _obs_trunc_for_context(steps: int, configured_trunc: int, boot_tokens: int) 
 class _RlmBroker:
     """Serves sandbox callbacks and direct tool calls."""
 
-    def __init__(self, module: RlmModule, lang: str, sub_max_tokens: int, web_max_fetches: int) -> None:
+    def __init__(
+        self,
+        module: RlmModule,
+        lang: str,
+        sub_max_tokens: int,
+        web_max_fetches: int,
+        user_id: str = "",
+    ) -> None:
         self.module = module
         self.lang = lang
         self.sub_max_tokens = sub_max_tokens
         self.web_max_fetches = web_max_fetches
         self.web_fetches = 0
         self.seen_queries: set[str] = set()
+        self.user_id = user_id
 
     def llm(self, prompt: str, text: str = "") -> str:
         return self.module.broker_llm(prompt, text)
@@ -294,10 +302,14 @@ class RlmModule:
             return "That query was already searched earlier. Do not repeat lookups — use the gathered information and call final(answer)."
         broker.seen_queries.add(query)
         broker.web_fetches += 1
+        from app.tavily_keys import get_tavily_key
+
         search = self.app.modules.get("search")
-        if not search or not getattr(search, "available", False):
+        api_key = get_tavily_key(broker.user_id) if broker.user_id else None
+        if not search or (not getattr(search, "available", False) and not api_key):
             return "Web search is unavailable."
-        results = search.search(query, lang=broker.lang, max_results=3) or []
+        results, _provider = search.search_with_fallback(query, lang=broker.lang, max_results=3, api_key=api_key)
+        results = results or []
         if not results:
             return "No web results found."
         parts = []
@@ -367,7 +379,7 @@ class RlmModule:
             {"role": "system", "content": self.build_system_prompt(lang, max_steps=max_steps)},
             {"role": "user", "content": user_prompt},
         ]
-        broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches)
+        broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches, user_id=user_id)
         sandbox = RlmSandbox(corpus, broker, code_timeout=code_timeout)
         self.lang = lang
         sandbox.start()

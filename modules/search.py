@@ -348,13 +348,22 @@ class SearchModule(TranslationMixin):
             self.logger.warning(f"Tavily search returned HTTP {resp.status_code}: {query[:60]}...")
             return []
         try:
-            raw_results = (resp.json() or {}).get("results") or []
+            body = resp.json() or {}
         except ValueError:
             self.logger.warning("Tavily search returned a non-JSON body")
+            return []
+        if not isinstance(body, dict):
+            self.logger.warning(f"Tavily search returned an unexpected body type: {type(body).__name__}")
+            return []
+        raw_results = body.get("results") or []
+        if not isinstance(raw_results, list):
+            self.logger.warning(f"Tavily search returned an unexpected results type: {type(raw_results).__name__}")
             return []
 
         results: list[dict] = []
         for r in raw_results:
+            if not isinstance(r, dict):
+                continue
             url = (r.get("url") or "").strip()
             if not url:
                 continue
@@ -404,10 +413,13 @@ class SearchModule(TranslationMixin):
         """
         limit = max_results or self.max_results
         if self.tavily_enabled and api_key:
-            results = self._search_tavily(query, lang, api_key, limit)
+            # TAVILY_MAX_RESULTS is a ceiling on the Tavily request only; an explicit
+            # caller limit below it still wins. SearXNG keeps `limit`.
+            tavily_limit = min(limit, self.tavily_max_results)
+            results = self._search_tavily(query, lang, api_key, tavily_limit)
             if results:
                 return results, "tavily"
-            self.logger.warning(f"Tavily unusable for '{query[:80]}' — falling back to SearXNG")
+            self.logger.debug(f"Tavily returned no results for '{query[:80]}' — falling back to SearXNG")
         return self.search(query, lang=lang, max_results=limit), "searxng"
 
     def _fetch_page_content(self, url: str, timeout: int = 8) -> str:

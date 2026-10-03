@@ -10,8 +10,11 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
+APP_VERSION = "12.4"
+
 
 def load_config(app):
+    app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
     if not app.config["SECRET_KEY"]:

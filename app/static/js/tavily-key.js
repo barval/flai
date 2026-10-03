@@ -5,7 +5,7 @@
 
     function el(id) { return document.getElementById(id); }
 
-    function request(url, options = {}) {
+    function request(url, options) {
         if (typeof fetchWithCSRF === 'function') return fetchWithCSRF(url, options);
         return fetch(url, { credentials: 'same-origin', ...options });
     }
@@ -26,44 +26,30 @@
     }
 
     function render(data) {
-        const section = el('tavily-section');
         const input = el('tavily-key-input');
-        const action = el('tavily-key-action');
-        const saved = el('tavily-key-saved');
+        const addRow = el('tavily-create');
+        const savedRow = el('tavily-saved');
         const masked = el('tavily-key-masked');
         const quota = el('tavily-quota');
-        if (!section || !input || !action || !saved || !masked || !quota) return;
-
-        const labels = {
-            add: section.dataset.addLabel,
-            remove: section.dataset.deleteLabel,
-            invalid: section.dataset.invalidLabel,
-            exhausted: section.dataset.exhaustedLabel,
-            unavailable: section.dataset.unavailableLabel,
-        };
+        if (!input || !addRow || !savedRow || !masked || !quota) return;
 
         if (data.has_key) {
-            input.hidden = true;
-            action.textContent = labels.remove;
-            action.classList.add('tavily-delete');
-            saved.hidden = false;
+            addRow.hidden = true;
+            savedRow.hidden = false;
             masked.textContent = data.masked_key || '';
-            quota.textContent = formatQuota(section.dataset.quotaTemplate || '', data);
+            quota.textContent = formatQuota(el('tavily-section').dataset.quotaTemplate || '', data);
             quota.hidden = false;
-            if (data.status === 'exhausted') setStatus(labels.exhausted);
-            else if (data.status === 'invalid') setStatus(labels.invalid);
-            else if (data.status === 'unavailable') setStatus(labels.unavailable);
+            if (data.status === 'exhausted') setStatus(el('tavily-section').dataset.exhaustedLabel);
+            else if (data.status === 'invalid') setStatus(el('tavily-section').dataset.invalidLabel);
+            else if (data.status === 'unavailable') setStatus(el('tavily-section').dataset.unavailableLabel);
             else setStatus('');
         } else {
             input.hidden = false;
             input.value = '';
-            action.textContent = labels.add;
-            action.classList.remove('tavily-delete');
-            saved.hidden = true;
-            quota.hidden = true;
+            addRow.hidden = false;
+            savedRow.hidden = true;
             setStatus('');
         }
-        section.dataset.hasKey = data.has_key ? '1' : '0';
     }
 
     async function load() {
@@ -93,19 +79,15 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        const section = el('tavily-section');
         const panel = el('api-keys-panel');
         const trigger = el('api-keys-btn');
-        const action = el('tavily-key-action');
         const input = el('tavily-key-input');
-        if (!section || !panel || !trigger || !action || !input) return;
+        const addBtn = el('tavily-key-add-btn');
+        const delBtn = el('tavily-key-del-btn');
+        if (!panel || !trigger || !input || !addBtn || !delBtn) return;
 
-        action.addEventListener('click', () => {
-            if (section.dataset.hasKey === '1') {
-                remove();
-            } else if (input.value.trim()) {
-                save(input.value.trim());
-            }
+        addBtn.addEventListener('click', () => {
+            if (input.value.trim()) save(input.value.trim());
         });
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && input.value.trim()) {
@@ -113,6 +95,7 @@
                 save(input.value.trim());
             }
         });
+        delBtn.addEventListener('click', remove);
 
         trigger.addEventListener('click', () => {
             if (!panel.hidden) load();

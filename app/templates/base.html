@@ -71,10 +71,13 @@
                         <div class="tavily-create">
                             <input type="text" id="tavily-key-input" maxlength="128" autocomplete="off"
                                    placeholder="{{ _('tavily_key_placeholder') }}">
-                            <button id="tavily-key-action">{{ _('tavily_add_key') }}</button>
+                            <button id="tavily-key-add-btn">{{ _('tavily_add_key') }}</button>
                         </div>
                         <div class="tavily-saved" id="tavily-key-saved" hidden>
-                            <code id="tavily-key-masked"></code>
+                            <div class="tavily-saved-row">
+                                <code id="tavily-key-masked"></code>
+                                <button id="tavily-key-del-btn">{{ _('tavily_delete_key') }}</button>
+                            </div>
                             <span class="tavily-status" id="tavily-status" hidden></span>
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>

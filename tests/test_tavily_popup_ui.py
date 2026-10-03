@@ -24,7 +24,8 @@ class TestTavilyPopupMarkup:
 
         assert 'id="tavily-section"' in html
         assert 'id="tavily-key-input"' in html
-        assert 'id="tavily-key-action"' in html
+        assert 'id="tavily-key-add-btn"' in html
+        assert 'id="tavily-key-del-btn"' in html
         assert html.index('id="tavily-section"') < html.index('class="api-keys-header"')
 
     def test_registration_link_points_at_tavily(self, popup_client):

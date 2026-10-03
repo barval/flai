@@ -62,6 +62,10 @@ class TestValidateUrl:
         with patch("app.crawler_guard.socket.getaddrinfo", side_effect=socket.gaierror), pytest.raises(BlockedUrlError):
             validate_url("http://nonexistent.example/")
 
+    def test_out_of_range_port_is_blocked_error(self):
+        with pytest.raises(BlockedUrlError):
+            validate_url("http://example.com:99999/")
+
     def test_empty_and_malformed_urls_are_rejected(self):
         for url in ("", "not-a-url", "http://", "https:// "):
             with pytest.raises(BlockedUrlError):

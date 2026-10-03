@@ -39,9 +39,13 @@ def validate_url(url: str) -> str:
     if parts.username is not None or parts.password is not None:
         raise BlockedUrlError("Credentials in URLs are not allowed")
     try:
+        port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise BlockedUrlError("Invalid URL port") from exc
+    try:
         infos = socket.getaddrinfo(
             parts.hostname,
-            parts.port or (443 if parts.scheme.lower() == "https" else 80),
+            port,
             proto=socket.IPPROTO_TCP,
         )
     except (socket.gaierror, OSError) as exc:

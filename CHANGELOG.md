@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.4] — Unreleased
 
+### Added
+
+- Tavily-first web search: every user can add a free personal Tavily API key (1000 credits/month) in the profile popup, and search tries Tavily before the local SearXNG engine, falling back automatically when the key is missing, rejected, the service is down or the monthly quota is spent. The popup shows the plan limit, usage and remaining credits; the admin Users tab lists each user's remaining credits and FLAI API key count.
+
 ## [v12.3] — 2026-10-02
 
 ### Added

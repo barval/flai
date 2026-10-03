@@ -240,6 +240,20 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 - **Date normalization** — `enhance_query_with_date()` in `modules/search.py` resolves relative date words («позавчера/вчера/сегодня», English equivalents) to absolute dates in the user's timezone (`app.config["TIMEZONE"]`) before POSTing to SearXNG: «Какие ИТ новости были вчера?» → «Какие ИТ новости были вчера (14 сентября 2026)?». Engines otherwise return generic section landing pages instead of dated articles. Queries without relative date words are untouched — this is query normalization, not routing.
 
+### Tavily provider (v12.4)
+
+`SearchModule.search_with_fallback()` is the single entry point for all web
+search. When the requesting user has stored a Tavily key
+(`app/tavily_keys.py`) and `TAVILY_ENABLED` is true, `_search_tavily()` runs
+first (`POST {TAVILY_API_URL}/search`, `Authorization: Bearer`, `search_depth`
+from `TAVILY_SEARCH_DEPTH`, `include_raw_content=false`). Tavily results reuse
+the `{title, url, content}` contract; snippets shorter than 300 chars are filled
+from the page via trafilatura, exactly like the SearXNG path. Relative dates are
+not normalized for Tavily — it resolves them natively. Any failure (missing key,
+disabled provider, 401/403, 429, timeout, malformed body, zero results) falls
+back to `search()`, the unchanged SearXNG implementation. The caller receives
+`(results, provider)` so it can log which backend answered.
+
 ## Router Classification & Session Context (v12.1)
 
 The classifier lives in `modules/base.py:process_message()` (`temperature=0.1`) and reads the category prompt from `prompts/{ru,en}/base_text.template`.

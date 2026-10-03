@@ -20,6 +20,11 @@
     border-color: #555;
 }
 .dark-theme .api-keys-revoke { color: #e74c3c; border-color: #e74c3c; }
+.dark-theme .tavily-section { border-bottom-color: #444; }
+.dark-theme .tavily-create input { background: #2a2a2a; color: #eee; border-color: #555; }
+.dark-theme .tavily-create button { background: #4a4a4a; border-color: #666; color: #eee; }
+.dark-theme .tavily-create button.tavily-delete { background: none; color: #e74c3c; border-color: #e74c3c; }
+.dark-theme .tavily-status { color: #f0b429; }
 .dark-theme .sessions-sidebar {
     background-color: #2d2d2d;
     border-right-color: #444;

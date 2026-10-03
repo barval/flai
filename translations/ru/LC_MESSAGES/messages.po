@@ -2078,7 +2078,7 @@ msgstr "Переключить тему"
 
 #: app/templates/base.html:50 app/templates/base.html:55
 msgid "api_keys_title"
-msgstr "API-ключи"
+msgstr "ПЛИИ API ключи"
 
 #: app/templates/base.html:52
 msgid "api_keys_revoke"
@@ -3021,6 +3021,37 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Для мультимодального модуля нужна "
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
+
+#. Tavily Popup
+msgid "tavily_section_title"
+msgstr "Поиск в Интернет через Tavily"
+
+msgid "tavily_hint"
+msgstr "Бесплатный тариф — 1000 кредитов в месяц. Поисковые запросы отправляются на внешний сервис Tavily."
+
+msgid "tavily_get_key"
+msgstr "Получить ключ"
+
+msgid "tavily_key_placeholder"
+msgstr "tvly-…"
+
+msgid "tavily_add_key"
+msgstr "Добавить ключ"
+
+msgid "tavily_delete_key"
+msgstr "Удалить ключ"
+
+msgid "tavily_quota"
+msgstr "Лимит тарифа: {limit} кредитов/мес · Использовано: {used} · Осталось: {remaining}"
+
+msgid "tavily_status_unavailable"
+msgstr "Tavily API - недоступен"
+
+msgid "tavily_status_exhausted"
+msgstr "Tavily API - лимит исчерпан"
+
+msgid "tavily_status_invalid"
+msgstr "Tavily API - неверный ключ"
 
 #. Tavily
 msgid "Invalid Tavily API key format"

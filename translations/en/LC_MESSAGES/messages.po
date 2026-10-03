@@ -2058,7 +2058,7 @@ msgstr "Toggle theme"
 
 #: app/templates/base.html:50 app/templates/base.html:55
 msgid "api_keys_title"
-msgstr "API keys"
+msgstr "FLAI API keys"
 
 #: app/templates/base.html:52
 msgid "api_keys_revoke"
@@ -2996,6 +2996,37 @@ msgstr "Could not connect to video generation service"
 #~ "The multimodal module requires a Vision"
 #~ " model (with mmproj), not a plain "
 #~ "chat model."
+
+#. Tavily Popup
+msgid "tavily_section_title"
+msgstr "Internet search via Tavily"
+
+msgid "tavily_hint"
+msgstr "The free plan includes 1000 credits per month. Search queries are sent to the external Tavily service."
+
+msgid "tavily_get_key"
+msgstr "Get a key"
+
+msgid "tavily_key_placeholder"
+msgstr "tvly-…"
+
+msgid "tavily_add_key"
+msgstr "Add key"
+
+msgid "tavily_delete_key"
+msgstr "Delete key"
+
+msgid "tavily_quota"
+msgstr "Plan limit: {limit} credits/month · Used: {used} · Remaining: {remaining}"
+
+msgid "tavily_status_unavailable"
+msgstr "Tavily API - unavailable"
+
+msgid "tavily_status_exhausted"
+msgstr "Tavily API - quota exhausted"
+
+msgid "tavily_status_invalid"
+msgstr "Tavily API - invalid key"
 
 #. Tavily
 msgid "Invalid Tavily API key format"

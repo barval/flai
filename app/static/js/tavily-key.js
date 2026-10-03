@@ -28,7 +28,7 @@
     function render(data) {
         const input = el('tavily-key-input');
         const addRow = el('tavily-create');
-        const savedRow = el('tavily-saved');
+        const savedRow = el('tavily-key-saved');
         const masked = el('tavily-key-masked');
         const quota = el('tavily-quota');
         if (!input || !addRow || !savedRow || !masked || !quota) return;

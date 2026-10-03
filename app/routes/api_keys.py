@@ -1,11 +1,37 @@
 """Session-authenticated key management for the web UI."""
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, session
 from flask_babel import gettext as _
 
 from app.api_tokens import create_api_token, list_api_tokens, revoke_api_token
+from app.tavily_keys import (
+    STATUS_INVALID,
+    STATUS_NO_KEY,
+    STATUS_UNAVAILABLE,
+    delete_tavily_key,
+    fetch_tavily_usage,
+    get_tavily_key,
+    is_valid_tavily_key_shape,
+    mask_tavily_key,
+    set_tavily_key,
+)
 
 bp = Blueprint("api_keys", __name__, url_prefix="/api-keys")
+
+
+def _tavily_disabled() -> bool:
+    return not current_app.config.get("TAVILY_ENABLED", True)
+
+
+def _tavily_usage(key: str) -> dict:
+    """Look up the credit quota, honoring the global kill switch."""
+    if _tavily_disabled():
+        return {"status": STATUS_UNAVAILABLE, "plan": None, "limit": None, "used": None, "remaining": None}
+    return fetch_tavily_usage(
+        key,
+        current_app.config.get("TAVILY_API_URL", "https://api.tavily.com"),
+        current_app.config.get("TAVILY_USAGE_TIMEOUT", 8),
+    )
 
 
 def _serialize_token(record: dict) -> dict:
@@ -50,3 +76,42 @@ def revoke_token(token_id: int):
     if not revoke_api_token(login, token_id):
         return jsonify({"error": "⚠️ " + _("api_key_not_found")}), 404
     return jsonify({"status": "revoked"})
+
+
+@bp.route("/tavily", methods=["GET"])
+def get_tavily():
+    """Return the caller's Tavily key state and credit quota."""
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    key = get_tavily_key(login)
+    if not key:
+        return jsonify({"has_key": False, "masked_key": "", "status": STATUS_NO_KEY})
+    return jsonify({"has_key": True, "masked_key": mask_tavily_key(key), **_tavily_usage(key)})
+
+
+@bp.route("/tavily", methods=["POST"])
+def save_tavily():
+    """Validate and store the caller's Tavily key."""
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    payload = request.get_json(silent=True) or {}
+    key = str(payload.get("api_key", "")).strip()
+    if not is_valid_tavily_key_shape(key):
+        return jsonify({"error": "⚠️ " + _("Invalid Tavily API key format")}), 400
+    usage = _tavily_usage(key)
+    if usage["status"] == STATUS_INVALID:
+        return jsonify({"error": "⚠️ " + _("Tavily rejected the API key. Please check it and try again.")}), 400
+    set_tavily_key(login, key)
+    return jsonify({"has_key": True, "masked_key": mask_tavily_key(key), **usage}), 201
+
+
+@bp.route("/tavily", methods=["DELETE"])
+def remove_tavily():
+    """Remove the caller's Tavily key."""
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    delete_tavily_key(login)
+    return jsonify({"status": STATUS_NO_KEY})

@@ -3022,3 +3022,9 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
 
+#. Tavily
+msgid "Invalid Tavily API key format"
+msgstr "Неверный формат API-ключа Tavily"
+
+msgid "Tavily rejected the API key. Please check it and try again."
+msgstr "Tavily отклонил API-ключ. Проверьте ключ и попробуйте снова."

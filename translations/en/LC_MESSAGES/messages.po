@@ -2997,3 +2997,9 @@ msgstr "Could not connect to video generation service"
 #~ " model (with mmproj), not a plain "
 #~ "chat model."
 
+#. Tavily
+msgid "Invalid Tavily API key format"
+msgstr "Invalid Tavily API key format"
+
+msgid "Tavily rejected the API key. Please check it and try again."
+msgstr "Tavily rejected the API key. Please check it and try again."

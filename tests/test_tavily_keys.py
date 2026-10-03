@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests as real_requests
 from flask import Flask
 
 from app import config as config_mod
@@ -133,3 +134,88 @@ class TestTavilyEnabledFlag:
     @pytest.mark.parametrize("raw", ["false", "0", "no", "off", "disabled", "none", "", "maybe"])
     def test_everything_else_fails_closed(self, monkeypatch, raw):
         assert _tavily_enabled(monkeypatch, raw) is False
+
+
+@pytest.mark.unit
+class TestFetchTavilyUsage:
+    @staticmethod
+    def _response(status_code=200, payload=None):
+        class _Resp:
+            def __init__(self):
+                self.status_code = status_code
+
+            def json(self):
+                if payload is None:
+                    raise ValueError("no json")
+                return payload
+
+        return _Resp()
+
+    def test_no_key_short_circuits(self):
+        assert tavily_keys.fetch_tavily_usage("", "https://api.tavily.com", 8)["status"] == "no_key"
+
+    def test_remaining_credits_are_reported(self, test_app):
+        payload = {"key": {"usage": 120, "limit": 1000}, "account": {"current_plan": "Free"}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage == {
+            "status": "ok",
+            "plan": "Free",
+            "limit": 1000,
+            "used": 120,
+            "remaining": 880,
+        }
+
+    def test_spent_quota_is_exhausted(self, test_app):
+        payload = {"key": {"usage": 1000, "limit": 1000}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "exhausted"
+        assert usage["remaining"] == 0
+
+    def test_missing_key_fields_fall_back_to_account_totals(self, test_app):
+        payload = {"key": {}, "account": {"plan_usage": 10, "plan_limit": 1000}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert (usage["limit"], usage["used"], usage["remaining"]) == (1000, 10, 990)
+
+    def test_unauthorized_is_invalid(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(401)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "invalid"
+
+    def test_transport_error_is_unavailable(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.side_effect = real_requests.ConnectionError("boom")
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "unavailable"
+
+    def test_server_error_is_unavailable(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(503)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "unavailable"
+
+    def test_non_json_body_is_unavailable(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "unavailable"

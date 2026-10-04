@@ -3095,12 +3095,14 @@ msgstr "⚠️ This address is not available for reading"
 msgid "Failed to read the page"
 msgstr "⚠️ Failed to read the page"
 
-
-msgid "stage_crawl_start"
+#. crawler stage progress (chat.html)
+msgid "Starting web crawl..."
 msgstr "Starting web crawl..."
 
-msgid "stage_crawl_page"
+#. crawler stage progress (chat.html)
+msgid "Crawling page %s..."
 msgstr "Crawling page %s..."
 
-msgid "stage_crawl_indexing"
+#. crawler stage progress (chat.html)
+msgid "Indexing crawled content..."
 msgstr "Indexing crawled content..."

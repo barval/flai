@@ -83,6 +83,17 @@ enable_env_features() {
             sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
         fi
     fi
+    if [[ "$WITH_CRAWLER" == "true" ]]; then
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Enabling deep web crawl (Crawl4AI) in .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=true|' .env
+        fi
+    else
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Disabling deep web crawl (Crawl4AI) in .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=false|' .env
+        fi
+    fi
     if [[ "$WITH_SLM" == "true" ]]; then
         if grep -q '^# SLM_URL=' .env 2>/dev/null; then
             info "Enabling long-term memory (SLM) in .env..."
@@ -763,6 +774,7 @@ WITH_IMAGE_GEN=false
 WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
+WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"

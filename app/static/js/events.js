@@ -301,7 +301,7 @@ function onTaskProgress(data) {
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count));
+    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages));
     _showHeaderCancelButton(data.task_id);
 }
 

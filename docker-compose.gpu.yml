@@ -485,16 +485,6 @@ services:
           cpus: '0.5'
           memory: 256M
 
-networks:
-  flai_network:
-    name: flai_network
-    driver: bridge
-
-volumes:
-  redis_data:
-  postgres_data:
-  qdrant_data:
-  slm_data:
   # ============================================================
   # CRAWLER (Optional - Crawl4AI for deep page reading)
   # ============================================================
@@ -516,3 +506,14 @@ volumes:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  flai_network:
+    name: flai_network
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
+  qdrant_data:
+  slm_data:

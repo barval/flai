@@ -3120,12 +3120,14 @@ msgstr "⚠️ Этот адрес недоступен для чтения"
 msgid "Failed to read the page"
 msgstr "⚠️ Не удалось прочитать страницу"
 
-
-msgid "stage_crawl_start"
+#. crawler stage progress (chat.html)
+msgid "Starting web crawl..."
 msgstr "Начинаю обход веб-страниц..."
 
-msgid "stage_crawl_page"
+#. crawler stage progress (chat.html)
+msgid "Crawling page %s..."
 msgstr "Обхожу страницу %s..."
 
-msgid "stage_crawl_indexing"
+#. crawler stage progress (chat.html)
+msgid "Indexing crawled content..."
 msgstr "Индексирую полученный контент..."

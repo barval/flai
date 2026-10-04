@@ -55,12 +55,17 @@ class CrawlerModule:
         return markdown[:limit]
 
     def crawl_site(self, url: str, max_pages: int | None = None, max_depth: int | None = None) -> list[dict]:
-        """Crawl the starting domain up to the configured limits.
+        """Crawl the starting URL up to the configured limits.
 
         The sidecar deliberately forbids deep-crawl strategies on untrusted
         requests (arbitrary strategy objects), so the BFS lives here: fetch
-        pages one by one via /md?f=raw, collect same-domain links from the
-        markdown, and stop at the page/depth/char caps.
+        pages one by one via /md?f=raw, collect links from the markdown, and
+        stop at the page/depth/char caps.
+
+        Scope: when the start URL points deeper than the domain root (a path
+        beyond "/"), the traversal is confined to that path prefix — the docs
+        section stays the docs section instead of drifting into the whole
+        portal's navigation.
         """
         clean = validate_url(url)
         pages_cap = max_pages or int(self.app.config.get("CRAWL_MAX_PAGES", 50))
@@ -73,6 +78,13 @@ class CrawlerModule:
         start = urlsplit(clean)
         base = f"{start.scheme}://{start.netloc}"
         domain = start.hostname or ""
+        path = start.path or "/"
+        # Crawl scope: the starting URL's directory prefix. A link to the
+        # domain root (https://site.com) crawls the whole domain; a link to
+        # https://site.com/docs/ (or /docs/page.html) is confined to /docs/.
+        scope_prefix = path if path.endswith("/") else path.rsplit("/", 1)[0] + "/"
+        if scope_prefix == "//":
+            scope_prefix = "/"
 
         collected: list[dict] = []
         seen: set[str] = set()
@@ -90,7 +102,7 @@ class CrawlerModule:
                 continue
             if depth < depth_cap:
                 for link in _extract_links(markdown, base, domain):
-                    if link not in seen:
+                    if link not in seen and _in_scope(link, domain, scope_prefix):
                         frontier.append((link, depth + 1))
             trimmed = markdown[:page_cap]
             if used + len(trimmed) > total_cap and collected:
@@ -133,3 +145,13 @@ def _extract_links(markdown: str, base: str, domain: str) -> list[str]:
             clean += f"?{parsed.query}"
         links.append(clean)
     return links
+
+
+def _in_scope(url: str, domain: str, scope_prefix: str) -> bool:
+    """True for same-host links within the crawl's path-prefix scope."""
+    parsed = urlsplit(url)
+    if parsed.hostname != domain or parsed.scheme not in ("http", "https"):
+        return False
+    if scope_prefix == "/":
+        return True
+    return parsed.path == scope_prefix.rstrip("/") or parsed.path.startswith(scope_prefix)

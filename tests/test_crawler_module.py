@@ -137,3 +137,33 @@ class TestCrawlSite:
         with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
             out = module.crawl_site("https://example.com", max_pages=3, max_depth=1)
         assert out[-1] == {"url": "https://example.com/live", "markdown": "LIVE"}
+
+    def test_deep_start_url_is_confined_to_its_path_prefix(self, module):
+        # Start at /docs/: sibling sections of the portal (/blog/, /pricing,
+        # the root page) stay out of scope even though they are same-domain.
+        start = {
+            "url": "https://site.com/docs/",
+            "markdown": "[Guide](/docs/guide.html) [Blog](/blog/x) [Pricing](/pricing) [Root](/)",
+            "success": True,
+        }
+        guide = {"url": "https://site.com/docs/guide.html", "markdown": "GUIDE", "success": True}
+        blog = {"url": "https://site.com/blog/x", "markdown": "BLOG", "success": True}
+        root = {"url": "https://site.com", "markdown": "ROOT", "success": True}
+        responses = [start, guide, blog, root]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
+            out = module.crawl_site("https://site.com/docs/", max_pages=5, max_depth=1)
+        assert [p["url"] for p in out] == ["https://site.com/docs/", "https://site.com/docs/guide.html"]
+
+    def test_domain_root_start_crawls_whole_domain(self, module):
+        # A root start has scope "/" — every same-domain link is in scope.
+        start = {
+            "url": "https://site.com",
+            "markdown": "[Docs](/docs/a) [Blog](/blog/x)",
+            "success": True,
+        }
+        docs = {"url": "https://site.com/docs/a", "markdown": "DOCS", "success": True}
+        blog = {"url": "https://site.com/blog/x", "markdown": "BLOG", "success": True}
+        responses = [start, docs, blog]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
+            out = module.crawl_site("https://site.com", max_pages=5, max_depth=1)
+        assert [p["url"] for p in out] == ["https://site.com", "https://site.com/docs/a", "https://site.com/blog/x"]

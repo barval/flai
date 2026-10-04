@@ -12,6 +12,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_OK = (True, "indexed", "embed-model", False)
 
 
+def queue_mod_site_blocked(url: str, max_pages: int | None = None, max_depth: int | None = None) -> list[dict]:
+    """crawl_site stand-in that raises the anti-bot error."""
+    from modules.crawler import SiteBlockedError
+
+    raise SiteBlockedError("Blocked by anti-bot protection")
+
+
 class _FakeBase:
     """Minimal stand-in for the base module: echoes the msgid, formatted.
 
@@ -330,6 +337,26 @@ class TestCrawlTask:
         assert "https://site.com/b" in context
         assert "https://site.com/c" not in context
         assert len(context) <= 10000 + 10
+
+    def test_site_blocked_falls_back_to_ordinary_search(self, mock_app, mock_redis):
+        """Anti-bot block is not a dead end: the task falls back to a web search."""
+        q, crawler = _queue(mock_app)
+        crawler.crawl_site.side_effect = queue_mod_site_blocked
+        with (
+            patch("app.queue.db"),
+            patch("app.queue.check_document_quota", return_value=None),
+            patch.object(queue_mod.RedisRequestQueue, "_process_search_task") as search_mock,
+        ):
+            search_mock.return_value = {"status": "queued", "task_id": "search-1"}
+            q._process_crawl_task(_crawl_task("t-sb", query="изучи https://blocked.example.com"))
+
+        search_mock.assert_called_once()
+        kwargs = search_mock.call_args.kwargs
+        # The reasoning model is told WHY the crawl failed.
+        assert "anti-bot" in (kwargs.get("reasoning_query") or "")
+        assert kwargs.get("task") is not None
+        # No document stored, no reasoning requeue from the crawl itself.
+        q._requeue_reasoning_task.assert_not_called()
 
     def test_zero_pages_is_a_persisted_soft_error(self, mock_app, saved_messages, tmp_path):
         q, crawler = _queue(mock_app)

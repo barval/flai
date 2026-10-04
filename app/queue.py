@@ -3354,6 +3354,7 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, quota_error, 0, lang)
 
         crawl_start = time.time()
+        site_blocked = False
         try:
             pages = self._crawl_with_progress(crawler, url, task)
         except Exception as e:
@@ -3365,14 +3366,11 @@ class RedisRequestQueue:
                 return self._crawl_error(session_id, "This address is not available for reading", lang)
             if isinstance(e, SiteBlockedError):
                 self.logger.warning(f"Crawl blocked by the site itself: {url} — {e}")
-                return self._crawl_error(
-                    session_id,
-                    "The site blocked automated access (anti-bot protection)",
-                    lang,
-                    round(time.time() - crawl_start, 1),
-                )
-            self.logger.error(f"Crawl failed for {url}: {e}")
-            pages = []
+                site_blocked = True
+                pages = []
+            else:
+                self.logger.error(f"Crawl failed for {url}: {e}")
+                pages = []
         crawl_time = round(time.time() - crawl_start, 1)
 
         if task.get("id") and self._is_task_cancelled(task["id"]):
@@ -3380,6 +3378,35 @@ class RedisRequestQueue:
             return self._crawl_error(session_id, "Task cancelled", lang, round(time.time() - start_time, 1))
 
         if not pages:
+            if site_blocked:
+                # Second pass: the site itself refused automated access, so a
+                # plain web search is the only way to still answer the user.
+                # The reasoning model is told why the crawl failed, so the
+                # answer opens with the anti-bot note instead of silently
+                # pretending the search covers the site.
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
+                base = self.app.modules.get("base")
+                note = base._("The site blocked automated access (anti-bot protection)", lang) if base else ""
+                fallback_query = f"{query}\n\n({note})" if note else query
+                fallback = self._process_search_task(
+                    query,
+                    session_id,
+                    user_id,
+                    lang,
+                    data.get("response_style", "neutral"),
+                    task=task,
+                    reasoning_query=fallback_query,
+                )
+                if fallback.get("status") == "queued":
+                    self.logger.info(f"Crawl blocked by {url} — fell back to ordinary web search")
+                    return fallback
+                self.logger.warning(f"Crawl blocked by {url} and ordinary search failed too")
+                return self._build_error_response(
+                    session_id,
+                    note or self.app.modules["base"]._("Web search failed", lang),
+                    crawl_time,
+                    lang,
+                )
             return self._crawl_error(
                 session_id,
                 "Could not read any pages from {domain}",

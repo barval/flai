@@ -2521,7 +2521,7 @@ msgid "tool_read_page"
 msgstr "Reading the page..."
 
 msgid "The site blocked automated access (anti-bot protection)"
-msgstr "The site refused automated access (anti-bot protection). Try ordinary search."
+msgstr "The site refused automated access (anti-bot protection). Falling back to ordinary search."
 
 
 

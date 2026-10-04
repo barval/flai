@@ -2517,6 +2517,10 @@ msgstr "Searching documents..."
 msgid "tool_camera_snapshot"
 msgstr "Getting snapshot..."
 
+msgid "tool_read_page"
+msgstr "Reading the page..."
+
+
 #: app/templates/chat.html:217
 msgid "Preparing resources..."
 msgstr "⏳ Preparing resources..."

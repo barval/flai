@@ -227,6 +227,7 @@ const TOOL_META = {
     web_search: ['🌐', 'tool_web_search'],
     rag_search: ['📚', 'tool_rag_search'],
     camera_snapshot: ['📹', 'tool_camera_snapshot'],
+    read_page: ['🕸️', 'tool_read_page'],
 };
 
 function getToolLabel(toolName) {

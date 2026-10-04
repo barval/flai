@@ -3358,10 +3358,19 @@ class RedisRequestQueue:
             pages = self._crawl_with_progress(crawler, url, task)
         except Exception as e:
             from app.crawler_guard import BlockedUrlError
+            from modules.crawler import SiteBlockedError
 
             if isinstance(e, BlockedUrlError):
                 self.logger.warning(f"Crawl blocked: {url} — {e}")
                 return self._crawl_error(session_id, "This address is not available for reading", lang)
+            if isinstance(e, SiteBlockedError):
+                self.logger.warning(f"Crawl blocked by the site itself: {url} — {e}")
+                return self._crawl_error(
+                    session_id,
+                    "The site blocked automated access (anti-bot protection)",
+                    lang,
+                    round(time.time() - crawl_start, 1),
+                )
             self.logger.error(f"Crawl failed for {url}: {e}")
             pages = []
         crawl_time = round(time.time() - crawl_start, 1)

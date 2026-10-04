@@ -2542,6 +2542,10 @@ msgstr "Получаю снимок..."
 msgid "tool_read_page"
 msgstr "Открываю страницу..."
 
+msgid "The site blocked automated access (anti-bot protection)"
+msgstr "Сайт закрыт для автоматического доступа (антибот-защита). Попробуйте обычный поиск."
+
+
 
 #: app/templates/chat.html:217
 msgid "Preparing resources..."

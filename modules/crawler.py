@@ -4,6 +4,7 @@ The container is optional (profile with-crawler). Every caller treats an
 unavailable crawler as "feature off" — availability is checked, never assumed.
 """
 
+import contextlib
 import logging
 import re
 import time
@@ -14,6 +15,10 @@ import requests
 from app.crawler_guard import validate_url
 
 logger = logging.getLogger(__name__)
+
+
+class SiteBlockedError(Exception):
+    """The target site refused automated access (anti-bot / 403 / empty shell)."""
 
 
 class CrawlerModule:
@@ -97,7 +102,12 @@ class CrawlerModule:
             if current in seen:
                 continue
             seen.add(current)
-            markdown = self._fetch_markdown(current)
+            try:
+                markdown = self._fetch_markdown(current)
+            except SiteBlockedError:
+                if current == clean:
+                    raise  # the START page is blocked — the whole crawl is futile
+                continue  # a blocked inner page just drops out of the queue
             if not markdown:
                 continue
             if depth < depth_cap:
@@ -120,10 +130,27 @@ class CrawlerModule:
                 headers=self._headers(),
                 timeout=self._timeout("CRAWL_PAGE_TIMEOUT_S", 30),
             )
+            if resp.status_code == 502:
+                # Crawl4AI's anti-bot gate: the site answered, but with an
+                # empty JS shell / explicit block page, not with content.
+                with contextlib.suppress(OSError):
+                    detail = str(resp.json().get("detail", ""))[:200]
+                raise SiteBlockedError(detail or "blocked by anti-bot protection")
             resp.raise_for_status()
-            return resp.json().get("markdown") or ""
+            markdown = resp.json().get("markdown") or ""
+            if self._looks_like_block_page(markdown):
+                raise SiteBlockedError("block page instead of content")
+            return markdown
+        except requests.HTTPError:
+            raise
         except OSError:
             return ""
+
+    @staticmethod
+    def _looks_like_block_page(markdown: str) -> bool:
+        """Detect the classic 403 block page some shops serve instead of content."""
+        head = markdown[:400].lower()
+        return ("403 error" in head or "401 error" in head) and "forbidden" in head
 
 
 def _extract_links(markdown: str, base: str, domain: str) -> list[str]:

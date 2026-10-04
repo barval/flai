@@ -2520,6 +2520,10 @@ msgstr "Getting snapshot..."
 msgid "tool_read_page"
 msgstr "Reading the page..."
 
+msgid "The site blocked automated access (anti-bot protection)"
+msgstr "The site refused automated access (anti-bot protection). Try ordinary search."
+
+
 
 #: app/templates/chat.html:217
 msgid "Preparing resources..."

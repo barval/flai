@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from modules.crawler import CrawlerModule
+from modules.crawler import CrawlerModule, SiteBlockedError
 
 
 @pytest.fixture
@@ -167,3 +167,39 @@ class TestCrawlSite:
         with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
             out = module.crawl_site("https://site.com", max_pages=5, max_depth=1)
         assert [p["url"] for p in out] == ["https://site.com", "https://site.com/docs/a", "https://site.com/blog/x"]
+
+
+@pytest.mark.unit
+class TestSiteBlocked:
+    def _blocked_502(self):
+        resp = MagicMock()
+        resp.status_code = 502
+        resp.json.return_value = {"detail": "Blocked by anti-bot protection: structural shell"}
+        return resp
+
+    def test_start_page_502_raises_site_blocked(self, module):
+        with (
+            patch("modules.crawler.requests.post", return_value=self._blocked_502()),
+            pytest.raises(SiteBlockedError),
+        ):
+            module.crawl_site("https://dns-shop.ru")
+
+    def test_block_page_markdown_raises_site_blocked(self, module):
+        block_page = {"markdown": "403 Error\nForbidden\nAccess to dns-shop.ru is forbidden.\nIP: 1.2.3.4"}
+        with (
+            patch("modules.crawler.requests.post", return_value=_resp(200, block_page)),
+            pytest.raises(SiteBlockedError),
+        ):
+            module.crawl_site("https://dns-shop.ru")
+
+    def test_blocked_inner_page_is_skipped(self, module):
+        home = {"url": "https://site.com", "markdown": "[x](/x) [y](/y)", "success": True}
+        blocked_x = {"url": "https://site.com/x", "markdown": "403 Error\nForbidden\nAccess is forbidden"}
+        y = {"url": "https://site.com/y", "markdown": "PAGE Y", "success": True}
+        responses = [home, blocked_x, y]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
+            out = module.crawl_site("https://site.com", max_pages=3, max_depth=1)
+        assert out == [
+            {"url": "https://site.com", "markdown": "[x](/x) [y](/y)"},
+            {"url": "https://site.com/y", "markdown": "PAGE Y"},
+        ]

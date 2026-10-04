@@ -12,16 +12,6 @@
 [English](README.md) | [Russian](README-ru.md)
 </div>
 
-### 🎬 Video Overview
-
-<p align="center">
-  <a href="https://gitea.prits.top/barval-my/flai/raw/branch/master/docs/flai_english.mp4">
-    <img src="docs/flai_english.png" width="720" alt="FLAI video overview">
-  </a>
-</p>
-
----
-
 ## ✨ Features
 
 ### 🤖 Core AI Capabilities
@@ -141,9 +131,9 @@ Web search has always gone through the self-hosted **SearXNG** metasearch engine
 - Admins see each user's remaining Tavily credits and FLAI API key count in the admin Users tab (fetched lazily and cached for 5 minutes, so opening the page does not spend credits).
 - The instance stays fully functional without any Tavily key — this is an optional quality upgrade, not a requirement.
 
-### 🕸️ Site reading & deep study (Crawl4AI, optional)
+### 🕸️ Site reading & deep study (Crawl4AI)
 
-For URLs you paste in chat and for whole-site deep-study requests, FLAI can use an optional **Crawl4AI** sidecar (enabled with `--with-crawler` at deploy time, or by setting `CRAWL_ENABLED=true` in `.env`).
+For URLs you paste in chat and for whole-site deep-study requests, FLAI can use **Crawl4AI** sidecar (enabled with `--with-crawler` at deploy time, or by setting `CRAWL_ENABLED=true` in `.env`).
 
 **`read_page(url)` — one URL in a real browser**
 
@@ -215,7 +205,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | Feature | Notes |
 |---------|-------|
 | **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left; the admin Users tab lists each user's remaining credits and FLAI API key count. See the «Tavily web search» section under *Types of Requests & Search Mechanisms* for the full how-to. |
-| **Web crawler (Crawl4AI, optional)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
+| **Web crawler (Crawl4AI)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
 | **Four-line About dialog, single version source** | The footer About dialog now shows exactly four lines — full name, version, project link and copyright — with the version coming from a single `APP_VERSION` constant in `app/config.py` (the Prometheus metric, the footer label, the browser and exported chats all read the same value; the release checklist shrinks to one line). |
 
 ### Core Components

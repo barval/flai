@@ -298,6 +298,39 @@ class TestCrawlTask:
         run_indexing.assert_not_called()
         q._requeue_reasoning_task.assert_not_called()
 
+    def test_crawl_context_never_exceeds_the_search_limit(self, mock_app):
+        """A single 50k-char page must not blow the reasoning prompt.
+
+        Regression: the old first-page exception accepted a page larger than
+        the whole context budget (50035 chars → 25802 estimated tokens vs the
+        23347-token limit → "Request too long" after every github.com crawl).
+        """
+        q, _ = _queue(mock_app)
+        limit = mock_app.modules["base"].get_search_context_limit()  # 10000 in the fake
+        pages = [
+            {"url": "https://site.com/a", "markdown": "x" * 50000},
+            {"url": "https://site.com/b", "markdown": "y" * 50000},
+        ]
+        context = q._crawl_context(pages)
+        assert len(context) <= limit + 10  # + header/section overhead
+        # Deterministic prefix: the first page fills the budget, the second is cut off.
+        assert context.startswith("## https://site.com/a")
+        assert "https://site.com/b" not in context
+
+    def test_crawl_context_splits_budget_across_pages(self, mock_app):
+        q, _ = _queue(mock_app)
+        pages = [
+            {"url": "https://site.com/a", "markdown": "a" * 6000},
+            {"url": "https://site.com/b", "markdown": "b" * 6000},
+            {"url": "https://site.com/c", "markdown": "c" * 6000},
+        ]
+        context = q._crawl_context(pages)
+        # 10000-char budget: page a (6000) + page b truncated to ~4000; page c cut off.
+        assert "https://site.com/a" in context
+        assert "https://site.com/b" in context
+        assert "https://site.com/c" not in context
+        assert len(context) <= 10000 + 10
+
     def test_zero_pages_is_a_persisted_soft_error(self, mock_app, saved_messages, tmp_path):
         q, crawler = _queue(mock_app)
         mock_app.config["DOCUMENTS_FOLDER"] = str(tmp_path)

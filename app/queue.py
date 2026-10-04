@@ -3297,6 +3297,11 @@ class RedisRequestQueue:
         """Join crawled pages into a reasoning context capped at the search limit.
 
         Overflow keeps the first pages (deterministic prefix, no shuffling).
+        Every section is truncated to the remaining budget — a single oversized
+        page (per-page cap 50k chars) must not blow the whole prompt (the
+        first-page exception below existed for 2-8k pages and flooded the
+        reasoning prompt when pages hit the 50k cap; seen as 50035-char
+        contexts → "Prompt too large: 25802 tokens (max: 23347)").
         """
         base = self.app.modules.get("base")
         limit = 10000
@@ -3305,11 +3310,15 @@ class RedisRequestQueue:
                 limit = int(base.get_search_context_limit())
             except (TypeError, ValueError):
                 limit = 10000
-        parts: list[str] = []
+        parts: list[dict] = []
         total = 0
         for page in pages:
-            section = f"## {page.get('url', '')}\n\n{page.get('markdown', '')}"
-            if total + len(section) > limit and parts:
+            header = f"## {page.get('url', '')}\n\n"
+            remaining = limit - total - len(header)
+            if remaining <= 0 and parts:
+                break
+            section = f"{header}{(page.get('markdown') or '')[: max(remaining, 0)]}"
+            if not section.strip():
                 break
             parts.append(section)
             total += len(section) + 2

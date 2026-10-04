@@ -49,6 +49,7 @@ FORBIDDEN: file/code creation → category 8. URLs/websites → category 6.
 
 ## 6. WEB SEARCH — [-SEARCH-] and query
 Current information: news, weather, prices, statistics, websites, URLs.
+TOP EXCLUSION: the message contains ONE link and asks about THAT PAGE'S CONTENT ('What is this project https://… ?', 'What is on this page?', 'What is this site about?') → that is NOT search. Answer WITHOUT a marker: ordinary chat opens the page with the read_page tool and answers from its content. Search cannot open addresses — [-SEARCH-] on such a query answers from strangers' pages instead of the given one.
 CONVERSION/CALCULATION: to convert or compare an amount at a live rate or price (currency, crypto, units, stocks), the query must ask for the RATE/PRICE itself (e.g. "GBP to RUB exchange rate"), never restate the arithmetic or include a fractional amount — engines answer those with a converter widget and no links.
 IMPORTANT: Person's name → category 5, NOT 6.
 IMPORTANT: ONE link + a question about its CONTENT ('what is this project <URL>', 'what is on this page', 'what is this site about') → NOT 6. That is ordinary chat: answer without a marker — the page will be opened by the read_page tool. Category 6 searches the web for FACTS about an entity; it cannot open the address itself.

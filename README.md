@@ -155,13 +155,14 @@ When the user explicitly asks to "study this site", "analyze the whole documenta
 | Situation | Behavior |
 |---|---|
 | Container disabled or down | `read_page` unregistered; `[-CRAWL-]` fails with a localized message (never silently falls back to light search) |
+| Site refuses automated access (anti-bot) | A notice is shown and FLAI **falls back to ordinary web search** (Tavily → SearXNG) so you still get an answer |
 | 0 usable pages | Localized soft error suggesting ordinary search |
 | Limits reached | Clean stop; collected prefix is indexed |
 | Document quota full | Localized quota error; content discarded |
 
 **SSRF posture**
 
-Every URL passes `app/crawler_guard.py:validate_url()` before it leaves the app: only http/https, all resolved addresses must be globally routable (no RFC 1918, loopback, link-local, 169.254.169.254, CGNAT, ULA, multicast), credentials in URLs rejected. Deep crawls additionally pass `allowed_domains`. Trafilatura remains the first-step extractor everywhere it runs; the crawler is the second step for pages that need a real browser.
+Every URL passes `app/crawler_guard.py:validate_url()` before it leaves the app: only http/https, all resolved addresses must be globally routable (no RFC 1918, loopback, link-local, 169.254.169.254, CGNAT, ULA, multicast), credentials in URLs rejected. A start URL deeper than the domain root (e.g. `https://site.com/docs/`) is confined to that path prefix — sibling sections of the portal are not crawled. Trafilatura remains the first-step extractor everywhere it runs; the crawler is the second step for pages that need a real browser. Some large shops (e.g. DNS-Shop) block datacenter IPs outright — for those FLAI automatically answers via ordinary search.
 
 **Progress stages**
 
@@ -205,7 +206,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | Feature | Notes |
 |---------|-------|
 | **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left; the admin Users tab lists each user's remaining credits and FLAI API key count. See the «Tavily web search» section under *Types of Requests & Search Mechanisms* for the full how-to. |
-| **Web crawler (Crawl4AI)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
+| **Web crawler (Crawl4AI)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). If a site refuses automated access (anti-bot), FLAI falls back to ordinary search so you still get an answer. Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
 | **Four-line About dialog, single version source** | The footer About dialog now shows exactly four lines — full name, version, project link and copyright — with the version coming from a single `APP_VERSION` constant in `app/config.py` (the Prometheus metric, the footer label, the browser and exported chats all read the same value; the release checklist shrinks to one line). |
 
 ### Core Components
@@ -565,7 +566,7 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 #### CPU-only mode (no GPU required)
 
-For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). All timeout values are already increased for CPU speed.
+For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). Timeout values are already increased for CPU speed: image generation/editing gets 45 minutes (`SD_CPP_TIMEOUT=2700`), video generation gets 2 hours (`LTX_VIDEO_TIMEOUT=7200`), and the video planner's automatic time budget follows at 85% of that.
 
 > 🔄 **Switching between GPU and CPU is instant — no rebuild needed.** Image-generation and video images are tagged per backend and **coexist** in the local registry: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` and `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Re-running `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) simply switches compose files and reuses the already-built image of the matching tag — ideal for quick CPU sanity checks even on a GPU machine.
 

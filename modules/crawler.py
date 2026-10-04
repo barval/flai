@@ -5,6 +5,9 @@ unavailable crawler as "feature off" — availability is checked, never assumed.
 """
 
 import logging
+import re
+import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -33,6 +36,10 @@ class CrawlerModule:
     def _timeout(self, key: str, default: int) -> int:
         return int(self.app.config.get(key, default))
 
+    def _headers(self) -> dict:
+        token = self.app.config.get("CRAWL_API_TOKEN") or ""
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
     def read_page(self, url: str, max_chars: int | None = None) -> str:
         """Render one page in the browser and return its markdown."""
         clean = validate_url(url)
@@ -40,47 +47,89 @@ class CrawlerModule:
         resp = requests.post(
             f"{self.app.config['CRAWLER_URL']}/md",
             json={"url": clean},
+            headers=self._headers(),
             timeout=self._timeout("CRAWL_PAGE_TIMEOUT_S", 30),
         )
         resp.raise_for_status()
-        markdown = (resp.json().get("data") or {}).get("markdown") or ""
+        markdown = resp.json().get("markdown") or ""
         return markdown[:limit]
 
     def crawl_site(self, url: str, max_pages: int | None = None, max_depth: int | None = None) -> list[dict]:
-        """Crawl the starting domain up to the configured limits."""
+        """Crawl the starting domain up to the configured limits.
+
+        The sidecar deliberately forbids deep-crawl strategies on untrusted
+        requests (arbitrary strategy objects), so the BFS lives here: fetch
+        pages one by one via /md?f=raw, collect same-domain links from the
+        markdown, and stop at the page/depth/char caps.
+        """
         clean = validate_url(url)
         pages_cap = max_pages or int(self.app.config.get("CRAWL_MAX_PAGES", 50))
         depth_cap = max_depth or int(self.app.config.get("CRAWL_MAX_DEPTH", 3))
         total_cap = int(self.app.config.get("CRAWL_MAX_TOTAL_CHARS", 1000000))
-        resp = requests.post(
-            f"{self.app.config['CRAWLER_URL']}/crawl",
-            json={
-                "urls": [clean],
-                "browser_config": {"headless": True},
-                "crawler_config": {
-                    "mode": "deep",
-                    "max_pages": pages_cap,
-                    "max_depth": depth_cap,
-                    "allowed_domains": [_domain_of(clean)],
-                },
-            },
-            timeout=self._timeout("CRAWL_TIMEOUT_S", 300),
-        )
-        resp.raise_for_status()
+        page_cap = self._timeout("CRAWL_MAX_PAGE_CHARS", 50000)
+        timeout = self._timeout("CRAWL_TIMEOUT_S", 300)
+        deadline = time.monotonic() + timeout
+
+        start = urlsplit(clean)
+        base = f"{start.scheme}://{start.netloc}"
+        domain = start.hostname or ""
+
         collected: list[dict] = []
+        seen: set[str] = set()
         used = 0
-        for page in resp.json().get("results") or []:
-            markdown = (page.get("markdown") or "")[: self._timeout("CRAWL_MAX_PAGE_CHARS", 50000)]
+        frontier: list[tuple[str, int]] = [(clean, 0)]
+        while frontier and len(collected) < pages_cap and used < total_cap:
+            if time.monotonic() > deadline:
+                break
+            current, depth = frontier.pop(0)
+            if current in seen:
+                continue
+            seen.add(current)
+            markdown = self._fetch_markdown(current)
             if not markdown:
                 continue
-            if used + len(markdown) > total_cap and collected:
+            if depth < depth_cap:
+                for link in _extract_links(markdown, base, domain):
+                    if link not in seen:
+                        frontier.append((link, depth + 1))
+            trimmed = markdown[:page_cap]
+            if used + len(trimmed) > total_cap and collected:
                 break
-            collected.append({"url": page.get("url") or clean, "markdown": markdown})
-            used += len(markdown)
+            collected.append({"url": current, "markdown": trimmed})
+            used += len(trimmed)
         return collected
 
+    def _fetch_markdown(self, url: str) -> str:
+        """Fetch one page with links preserved (raw filter) for the crawler BFS."""
+        try:
+            resp = requests.post(
+                f"{self.app.config['CRAWLER_URL']}/md",
+                json={"url": url, "f": "raw"},
+                headers=self._headers(),
+                timeout=self._timeout("CRAWL_PAGE_TIMEOUT_S", 30),
+            )
+            resp.raise_for_status()
+            return resp.json().get("markdown") or ""
+        except OSError:
+            return ""
 
-def _domain_of(url: str) -> str:
-    from urllib.parse import urlsplit
 
-    return urlsplit(url).hostname or ""
+def _extract_links(markdown: str, base: str, domain: str) -> list[str]:
+    """Same-domain http(s) links found in a raw-markdown page."""
+    links: list[str] = []
+    for target in re.findall(r"\[[^\]]*\]\(([^)\s]+)[^)]*\)", markdown):
+        if target.startswith("//"):
+            target = f"{urlsplit(base).scheme}:{target}"
+        if not target.startswith(("http://", "https://")):
+            if target.startswith("/"):
+                target = base + target
+            else:
+                continue
+        parsed = urlsplit(target)
+        if parsed.hostname != domain or parsed.scheme not in ("http", "https"):
+            continue
+        clean = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if parsed.query:
+            clean += f"?{parsed.query}"
+        links.append(clean)
+    return links

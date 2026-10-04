@@ -35,6 +35,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - PYTHONDONTWRITEBYTECODE=1
+      - CRAWL_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
     networks:
       - flai_network
     restart: unless-stopped
@@ -489,11 +490,13 @@ services:
   # CRAWLER (Optional - Crawl4AI for deep page reading)
   # ============================================================
   crawler:
-    image: crawl4ai/crawl4ai:0.7.4
+    image: unclecode/crawl4ai:0.9.4
     container_name: flai-crawler
     profiles: ["with-crawler"]
     networks: [flai_network]
     mem_limit: 2g
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=5)"]

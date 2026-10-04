@@ -120,6 +120,7 @@ def load_config(app):
     # Web crawler (optional Crawl4AI sidecar; reads pages and deep-studies sites)
     app.config["CRAWL_ENABLED"] = os.getenv("CRAWL_ENABLED", "false").lower() in ("true", "1", "yes")
     app.config["CRAWLER_URL"] = os.getenv("CRAWLER_URL", "http://flai-crawler:11235")
+    app.config["CRAWL_API_TOKEN"] = os.getenv("CRAWL_API_TOKEN", "")
     app.config["CRAWL_MAX_PAGES"] = int(os.getenv("CRAWL_MAX_PAGES", 50))
     app.config["CRAWL_MAX_DEPTH"] = int(os.getenv("CRAWL_MAX_DEPTH", 3))
     app.config["CRAWL_TIMEOUT_S"] = int(os.getenv("CRAWL_TIMEOUT_S", 300))

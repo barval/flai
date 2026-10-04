@@ -1,5 +1,6 @@
 """HTTP-contract tests for the Crawl4AI client wrapper."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,7 +46,7 @@ class TestAvailability:
 @pytest.mark.unit
 class TestReadPage:
     def test_reads_markdown_from_crawl4ai_payload(self, module):
-        payload = {"data": {"markdown": "# Title\n\nBody"}}
+        payload = {"url": "https://example.com/a", "markdown": "# Title\n\nBody", "success": True}
         with (
             patch("modules.crawler.requests.post", return_value=_resp(200, payload)),
             patch("modules.crawler.requests.get", return_value=_resp(200)),
@@ -53,7 +54,7 @@ class TestReadPage:
             assert module.read_page("https://example.com/a") == "# Title\n\nBody"
 
     def test_truncates_to_max_chars(self, module):
-        payload = {"data": {"markdown": "x" * 70000}}
+        payload = {"url": "https://example.com/a", "markdown": "x" * 70000, "success": True}
         with (
             patch("modules.crawler.requests.post", return_value=_resp(200, payload)),
             patch("modules.crawler.requests.get", return_value=_resp(200)),
@@ -68,36 +69,71 @@ class TestReadPage:
         ):
             module.read_page("https://example.com/a")
 
+    def test_sends_bearer_token_when_configured(self, module):
+        module.app.config["CRAWL_API_TOKEN"] = "secret-token"
+        payload = {"url": "https://example.com/a", "markdown": "ok", "success": True}
+        with (
+            patch("modules.crawler.requests.post", return_value=_resp(200, payload)) as post_mock,
+            patch("modules.crawler.requests.get", return_value=_resp(200)),
+        ):
+            module.read_page("https://example.com/a")
+        assert post_mock.call_args.kwargs["headers"] == {"Authorization": "Bearer secret-token"}
+
 
 @pytest.mark.unit
 class TestCrawlSite:
     def test_returns_page_list(self, module):
-        pages = {
-            "results": [
-                {"url": "https://example.com/a", "markdown": "A"},
-                {"url": "https://example.com/b", "markdown": "B"},
-            ]
+        # The client-side BFS calls /md per page (deep crawl is forbidden
+        # server-side on untrusted requests); links come from the raw markdown.
+        home = {
+            "url": "https://example.com/",
+            "markdown": "# Home\n\n[Page A](/a) [Page B](https://example.com/b) [Other](https://other.org/x)",
+            "success": True,
         }
-        with (
-            patch("modules.crawler.requests.post", return_value=_resp(200, pages)) as post_mock,
-            patch("modules.crawler.requests.get", return_value=_resp(200)),
-        ):
-            pages_out = module.crawl_site("https://example.com")
+        page_a = {"url": "https://example.com/a", "markdown": "AAA", "success": True}
+        page_b = {"url": "https://example.com/b", "markdown": "BBB", "success": True}
+        responses = [home, page_a, page_b]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
+            pages_out = module.crawl_site("https://example.com", max_pages=3, max_depth=1)
         assert pages_out == [
-            {"url": "https://example.com/a", "markdown": "A"},
-            {"url": "https://example.com/b", "markdown": "B"},
+            {
+                "url": "https://example.com",
+                "markdown": "# Home\n\n[Page A](/a) [Page B](https://example.com/b) [Other](https://other.org/x)",
+            },
+            {"url": "https://example.com/a", "markdown": "AAA"},
+            {"url": "https://example.com/b", "markdown": "BBB"},
         ]
-        # The deep-crawl request pins the starting domain server-side.
-        body = post_mock.call_args.kwargs["json"]
-        assert body["crawler_config"]["allowed_domains"] == ["example.com"]
-        assert body["crawler_config"]["max_pages"] == 50
+
+    def test_skips_failed_and_empty_pages(self, module):
+        home = {"url": "https://example.com/", "markdown": "", "success": True}
+        with patch("modules.crawler.requests.post", return_value=_resp(200, home)):
+            assert module.crawl_site("https://example.com") == []
 
     def test_caps_pages_and_total_chars(self, module):
-        big = {"results": [{"url": f"https://example.com/{i}", "markdown": "y" * 60000} for i in range(60)]}
-        with (
-            patch("modules.crawler.requests.post", return_value=_resp(200, big)),
-            patch("modules.crawler.requests.get", return_value=_resp(200)),
-        ):
-            module.app.config["CRAWL_MAX_TOTAL_CHARS"] = 120000
+        module.app.config["CRAWL_MAX_TOTAL_CHARS"] = 120000
+        home = {"url": "https://example.com", "markdown": "x" * 60000 + "\n[a](/a) [b](/b)", "success": True}
+        page_a = {"url": "https://example.com/a", "markdown": "y" * 60000, "success": True}
+        page_b = {"url": "https://example.com/b", "markdown": "z" * 60000, "success": True}
+        responses = [home, page_a, page_b]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
             out = module.crawl_site("https://example.com")
-        assert len(out) == 2  # 2 × 60000 = 120000 budget exhausted
+        assert len(out) == 2  # 60000 + 50000(truncated) = 110000; page B would exceed → stop
+        assert len(out[1]["markdown"]) == 50000
+
+    def test_respects_deadline(self, module):
+        module.app.config["CRAWL_TIMEOUT_S"] = 1
+        with patch(
+            "modules.crawler.requests.post",
+            side_effect=lambda *a, **k: (time.sleep(2), _resp(200, {"markdown": "x", "success": True}))[1],
+        ):
+            out = module.crawl_site("https://example.com", max_pages=10)
+        assert len(out) <= 1  # deadline stops after the first fetch
+
+    def test_broken_links_are_dropped_not_fatal(self, module):
+        home = {"url": "https://example.com/", "markdown": "[dead](/dead) [live](/live)", "success": True}
+        dead_error = {"url": "https://example.com/dead", "markdown": "", "success": True}
+        live = {"url": "https://example.com/live", "markdown": "LIVE", "success": True}
+        responses = [home, dead_error, live]
+        with patch("modules.crawler.requests.post", side_effect=lambda *a, **k: _resp(200, responses.pop(0))):
+            out = module.crawl_site("https://example.com", max_pages=3, max_depth=1)
+        assert out[-1] == {"url": "https://example.com/live", "markdown": "LIVE"}

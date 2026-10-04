@@ -3079,3 +3079,15 @@ msgstr "ПЛИИ"
 
 msgid "You already have a Tavily key. Delete it before adding a new one."
 msgstr "У вас уже есть ключ Tavily. Удалите его, прежде чем добавлять новый."
+
+#. read_page tool (crawler)
+msgid "Page reading service is unavailable"
+msgstr "⚠️ Сервис чтения страниц недоступен"
+
+#. read_page tool (crawler)
+msgid "This address is not available for reading"
+msgstr "⚠️ Этот адрес недоступен для чтения"
+
+#. read_page tool (crawler)
+msgid "Failed to read the page"
+msgstr "⚠️ Не удалось прочитать страницу"

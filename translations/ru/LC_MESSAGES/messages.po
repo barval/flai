@@ -3122,12 +3122,12 @@ msgstr "⚠️ Не удалось прочитать страницу"
 
 #. crawler stage progress (chat.html)
 msgid "Starting web crawl..."
-msgstr "Начинаю обход веб-страниц..."
+msgstr "🕸️ Начинаю обход веб-страниц..."
 
 #. crawler stage progress (chat.html)
 msgid "Crawling page %s..."
-msgstr "Обхожу страницу %s..."
+msgstr "🕸️ Обхожу страницу %s..."
 
 #. crawler stage progress (chat.html)
 msgid "Indexing crawled content..."
-msgstr "Индексирую полученный контент..."
+msgstr "🕸️ Индексирую полученный контент..."

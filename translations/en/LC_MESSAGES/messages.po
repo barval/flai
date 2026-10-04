@@ -3097,12 +3097,12 @@ msgstr "⚠️ Failed to read the page"
 
 #. crawler stage progress (chat.html)
 msgid "Starting web crawl..."
-msgstr "Starting web crawl..."
+msgstr "🕸️ Starting web crawl..."
 
 #. crawler stage progress (chat.html)
 msgid "Crawling page %s..."
-msgstr "Crawling page %s..."
+msgstr "🕸️ Crawling page %s..."
 
 #. crawler stage progress (chat.html)
 msgid "Indexing crawled content..."
-msgstr "Indexing crawled content..."
+msgstr "🕸️ Indexing crawled content..."

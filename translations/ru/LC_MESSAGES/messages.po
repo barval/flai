@@ -203,6 +203,26 @@ msgstr "Не удалось распознать речь"
 msgid "Task cancelled"
 msgstr "Задача отменена"
 
+#. crawl task ([-CRAWL-] deep site study)
+msgid "Crawler service is unavailable"
+msgstr "⚠️ Сервис изучения сайтов недоступен. Проверьте, что запущен контейнер flai-crawler."
+
+# stage label: the crawler is studying the site
+msgid "Studying the site…"
+msgstr "Изучаю сайт…"
+
+# stage label: the crawl results are being indexed for RAG
+msgid "Indexing the collected materials…"
+msgstr "Индексирую собранные материалы…"
+
+#, python-brace-format
+msgid "Could not read any pages from {domain}"
+msgstr "⚠️ Не удалось прочитать ни одной страницы с {domain}. Попробуйте обычный поиск."
+
+#. crawl task: post-crawl quota re-check (materials are discarded, not saved)
+msgid "Document quota reached — the collected materials were not saved"
+msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
+
 # GPU memory error messages
 #: app/queue.py:1278 app/queue.py:1451 app/queue.py:2190 app/queue.py:2361
 #: modules/multimodal.py:261

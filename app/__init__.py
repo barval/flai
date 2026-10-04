@@ -241,6 +241,10 @@ def create_app():
 
     modules["rlm"] = RlmModule(app)
 
+    from modules.crawler import CrawlerModule
+
+    modules["crawler"] = CrawlerModule(app)
+
     if app.config.get("SD_WRAPPER_URL"):
         from modules.sd_cpp import SdCppModule
 

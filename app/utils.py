@@ -14,7 +14,7 @@ from typing import Any
 import pytz
 from docx import Document
 from flask import current_app
-from flask_babel import gettext
+from flask_babel import force_locale, gettext
 from PIL import Image
 
 PROMPTS_DIR = "prompts"
@@ -1112,16 +1112,30 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
     return None
 
 
-def check_document_quota(user_id: str) -> str | None:
+def check_document_quota(user_id: str, excluded_doc_id: str | None = None, lang: str | None = None) -> str | None:
     """Check if user has exceeded document quota.
 
     Args:
         user_id: User login
+        excluded_doc_id: Optional document id left out of both the count and the
+            size sum. Callers that REPLACE a document (the crawl task
+            re-crawling a saved domain) pass its id, so replacing it is not
+            mistaken for uploading one more document.
+        lang: Optional user language. Web callers inherit it from the request;
+            queue workers (the crawl task) have no request context, so they pass
+            the task language — without it gettext() raises and the broad
+            exception handler below would silently disable the quota.
 
     Returns:
         Error message if quota exceeded, None if OK
     """
     from .database import get_db
+
+    def _text(msgid: str, **params: Any) -> str:
+        if lang:
+            with force_locale(lang):
+                return str(gettext(msgid).format(**params))
+        return str(gettext(msgid).format(**params))
 
     max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 50)
     max_mb = current_app.config.get("MAX_DOCUMENTS_STORAGE_MB", 50)
@@ -1129,19 +1143,31 @@ def check_document_quota(user_id: str) -> str | None:
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s", (user_id,))
+            if excluded_doc_id:
+                c.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s AND id <> %s",
+                    (user_id, excluded_doc_id),
+                )
+            else:
+                c.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s",
+                    (user_id,),
+                )
             row = c.fetchone()
             count, total_bytes = row["count"], row["coalesce"]
 
             if count >= max_docs:
-                return gettext(  # type: ignore[no-any-return]
-                    "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
-                ).format(count=count, max_docs=max_docs)
+                return _text(
+                    "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more.",
+                    count=count,
+                    max_docs=max_docs,
+                )
             if total_bytes + 1 > max_mb * 1024 * 1024:
-                used_mb = total_bytes / (1024 * 1024)
-                return gettext(  # type: ignore[no-any-return]
-                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
-                ).format(used_mb=used_mb, max_mb=max_mb)
+                return _text(
+                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used.",
+                    used_mb=total_bytes / (1024 * 1024),
+                    max_mb=max_mb,
+                )
     except Exception:
         pass  # Don't block upload on DB errors
 

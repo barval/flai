@@ -207,6 +207,10 @@ msgstr "Задача отменена"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Сервис изучения сайтов недоступен. Проверьте, что запущен контейнер flai-crawler."
 
+#. crawl task: the user's message carried no address to study
+msgid "No link found in your message"
+msgstr "⚠️ В вашем сообщении нет ссылки. Отправьте адрес сайта, который нужно изучить."
+
 # stage label: the crawler is studying the site
 msgid "Studying the site…"
 msgstr "Изучаю сайт…"
@@ -222,6 +226,10 @@ msgstr "⚠️ Не удалось прочитать ни одной стран
 #. crawl task: post-crawl quota re-check (materials are discarded, not saved)
 msgid "Document quota reached — the collected materials were not saved"
 msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
+
+#. crawl task: the crawled pages could not be written to the document store
+msgid "Failed to save the collected materials"
+msgstr "⚠️ Не удалось сохранить собранные материалы."
 
 # GPU memory error messages
 #: app/queue.py:1278 app/queue.py:1451 app/queue.py:2190 app/queue.py:2361

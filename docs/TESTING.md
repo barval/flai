@@ -89,6 +89,8 @@ Contract guard enumerating all 23 expected `/v1` endpoints with their method set
 
 Public `/v1` API test files (all added in v12.3): `test_api_v1_auth.py` (Bearer auth, 8 tests), `test_api_v1_chat.py` (chat sync/SSE/session continuity, 28 tests), `test_api_v1_embeddings.py` (12 tests), `test_api_v1_media.py` (image/video/audio generation, 77 tests), `test_api_v1_ratelimit.py` (9 tests), `test_api_chat_async.py` (async chat + poll, 16 tests), `test_api_tasks.py` (owner-scoped task list/status/cancel/content, 27 tests), `test_api_documents.py` (12 tests), `test_api_rlm.py` (8 tests), `test_api_sessions.py` (8 tests), `test_api_limits.py` (19 tests: wait-slot cap, CORS), `test_api_bridge.py` (68 tests: session resolution, enqueue, wait, stream, requeue ownership), `test_api_tokens.py` (API key management, 11 tests).
 
+**Web Crawler (Crawl4AI, v12.4) test files (all NEW in v12.4):** `test_crawler_guard.py` (SSRF ranges), `test_crawler_config.py`, `test_crawler_module.py`, `test_read_page_tool.py`, `test_router_crawl.py`, `test_crawl_task.py`, `test_crawl_ui.py`.
+
 ### Known Test Issues
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture. Not blocking, but slow.
   - **Load tests** (`tests/load/`) excluded from pytest collection — require locust fixtures. Run separately: `locust -f tests/load/locustfile.py --host http://localhost:5000` or `locust -f tests/load/locustfile_public.py --host http://localhost:5000` for public endpoints.

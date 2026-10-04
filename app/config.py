@@ -117,6 +117,17 @@ def load_config(app):
     app.config["TAVILY_SEARCH_DEPTH"] = os.getenv("TAVILY_SEARCH_DEPTH", "basic")
     app.config["TAVILY_ADMIN_CACHE_TTL"] = int(os.getenv("TAVILY_ADMIN_CACHE_TTL", 300))
 
+    # Web crawler (optional Crawl4AI sidecar; reads pages and deep-studies sites)
+    app.config["CRAWL_ENABLED"] = os.getenv("CRAWL_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["CRAWLER_URL"] = os.getenv("CRAWLER_URL", "http://flai-crawler:11235")
+    app.config["CRAWL_MAX_PAGES"] = int(os.getenv("CRAWL_MAX_PAGES", 50))
+    app.config["CRAWL_MAX_DEPTH"] = int(os.getenv("CRAWL_MAX_DEPTH", 3))
+    app.config["CRAWL_TIMEOUT_S"] = int(os.getenv("CRAWL_TIMEOUT_S", 300))
+    app.config["CRAWL_PAGE_TIMEOUT_S"] = int(os.getenv("CRAWL_PAGE_TIMEOUT_S", 30))
+    app.config["CRAWL_MAX_PAGE_CHARS"] = int(os.getenv("CRAWL_MAX_PAGE_CHARS", 50000))
+    app.config["CRAWL_MAX_TOTAL_CHARS"] = int(os.getenv("CRAWL_MAX_TOTAL_CHARS", 1000000))
+    app.config["CRAWL_CONCURRENCY"] = int(os.getenv("CRAWL_CONCURRENCY", 2))
+
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
     app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))

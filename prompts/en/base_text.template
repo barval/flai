@@ -74,6 +74,11 @@ A complex query (analysis, comparison, essay, overview, conclusions) that needs 
 IMPORTANT: if a complex query relies on current data, this marker takes priority over category 8.
 DO NOT include: simple questions (category 1), plain fact lookup (category 6), writing code without external data (category 8).
 
+## 11. DEEP SITE STUDY — [-CRAWL-] and the request
+The request asks to THOROUGHLY study a site or its section: 'study the docs at X', 'go through all of docs.y.com about Z and analyze in depth', 'crawl the site and collect everything about…', 'dig into the site and prepare an overview'.
+This is MULTI-PAGE reading (minutes), not a single-fact lookup.
+Do NOT include: ordinary fact search (category 6), complex question with fresh data (category 10), or opening one specific link (that is ordinary chat — the read_page tool).
+
 # INPUT DATA
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."
 Current time: {current_time_str}.

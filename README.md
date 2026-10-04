@@ -96,12 +96,15 @@ Every user message is classified by the router model into one of the categories 
 | `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
 | `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
 | `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
+| `[-CRAWL-]` | **Deep site study** | Crawl4AI sidecar crawls the site (client-side BFS, ≤50 pages, depth ≤3, 5-min budget; path-prefix scope for deep start URLs) → document replaced in your Documents panel → indexed → reasoning over the corpus | Crawled pages as `## <url>` sections (context-budget capped) + SLM + summary + history |
+| `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current camera frame; multimodal model analyzes it | Snapshot description + SLM + history |
 | `[-REMEMBER-]` | **Remember fact** | SLM fact extraction (background, CPU-only) | — (writes to long-term memory) |
 | `[-IMAGE-]` / `[-VIDEO-]` | **Image / video generation** | Stable Diffusion / LTX-Video (GPU containers) | — (no LLM context) |
-| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, camera) + SLM + history |
+| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, read_page, camera) + SLM + history |
 
 **Notes:**
 - RAG, Web, and History are mutually exclusive per request — only one search mechanism runs.
+- A message with ONE link asking about that page's content («what is this project <URL>») is not routed to `[-SEARCH-]` or `[-CRAWL-]` — it is ordinary chat, and the `read_page` tool opens the link. Deep site study (`[-CRAWL-]`) is for explicit multi-page requests only; if the target site blocks automated access (anti-bot), the task falls back to ordinary web search.
 - `history_search` is also available as a native tool during ordinary chat; its public name matches `rag_search` and `web_search`.
 - History search is lexical in both Russian and English profiles; queries are not automatically translated between languages.
 - The router model classifies based on the user's intent; there is no hardcoded keyword routing.

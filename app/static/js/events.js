@@ -272,6 +272,9 @@ const STAGE_LABEL_KEYS = {
     rlm_searching_web: 'stage_rlm_searching_web',
     rlm_submodel: 'stage_rlm_submodel',
     rlm_finalizing: 'stage_rlm_finalizing',
+    crawl_start: 'stage_crawl_start',
+    crawl_page: 'stage_crawl_page',
+    crawl_indexing: 'stage_crawl_indexing',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
@@ -280,6 +283,7 @@ const STAGE_COUNTER_KEYS = {
     searching_web: 'stage_web_results',
     searching_history: 'stage_history_found',
     rlm_step: 'stage_rlm_step',
+    crawl_page: 'stage_crawl_page',
 };
 
 function getStageLabel(stage, count) {

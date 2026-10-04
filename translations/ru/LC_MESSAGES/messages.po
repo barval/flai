@@ -3119,3 +3119,13 @@ msgstr "⚠️ Этот адрес недоступен для чтения"
 #. read_page tool (crawler)
 msgid "Failed to read the page"
 msgstr "⚠️ Не удалось прочитать страницу"
+
+
+msgid "stage_crawl_start"
+msgstr "Начинаю обход веб-страниц..."
+
+msgid "stage_crawl_page"
+msgstr "Обхожу страницу %s..."
+
+msgid "stage_crawl_indexing"
+msgstr "Индексирую полученный контент..."

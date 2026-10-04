@@ -3094,3 +3094,13 @@ msgstr "⚠️ This address is not available for reading"
 #. read_page tool (crawler)
 msgid "Failed to read the page"
 msgstr "⚠️ Failed to read the page"
+
+
+msgid "stage_crawl_start"
+msgstr "Starting web crawl..."
+
+msgid "stage_crawl_page"
+msgstr "Crawling page %s..."
+
+msgid "stage_crawl_indexing"
+msgstr "Indexing crawled content..."

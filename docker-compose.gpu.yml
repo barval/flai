@@ -495,3 +495,24 @@ volumes:
   postgres_data:
   qdrant_data:
   slm_data:
+  # ============================================================
+  # CRAWLER (Optional - Crawl4AI for deep page reading)
+  # ============================================================
+  crawler:
+    image: crawl4ai/crawl4ai:0.7.4
+    container_name: flai-crawler
+    profiles: ["with-crawler"]
+    networks: [flai_network]
+    mem_limit: 2g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

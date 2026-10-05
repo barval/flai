@@ -78,7 +78,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 - **Tavily-first web search** — every user can attach a free personal Tavily key (1000 credits/month) in the profile popup. Search tries Tavily and degrades to the local SearXNG engine on any failure, so a spent quota or an invalid key never breaks search. → [SEARCH.md](docs/SEARCH.md)
 - **Web crawler (Crawl4AI)** — an optional sidecar reads a pasted URL in a real browser (`read_page`) and, for an explicit «study this site» request, crawls the domain (≤50 pages, depth ≤3, 5-minute budget), replaces the per-domain document, indexes it through the normal RAG pipeline and answers from it — including in Deep Analysis. → [SEARCH.md](docs/SEARCH.md)
 - **CPU timeouts scaled up** — CPU-only image generation gets 45 minutes and video 2 hours, so slow media generation finishes instead of dying at step 3/10. → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- **A single version source** — the About dialog spells the project out and the version string comes from one constant. → [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md)
+- **A single version source** — the About dialog spells the project out and the version string comes from one constant. The exported chat repeats the site footer: the brand label opens the same About dialog, with the custom logo embedded in the header and the dialog. → [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md)
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 

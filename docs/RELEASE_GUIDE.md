@@ -184,12 +184,8 @@ All notable changes to FLAI are documented in this file.
 ```
 
 ### Documentation Philosophy
-  - **AGENTS.md** — Constitution: commands, critical rules, hard constraints. Always read by AI agents.
-  - **docs/ARCHITECTURE.md** — Deep technical architecture. Read when modifying core logic.
-  - **docs/VRAM_MANAGEMENT.md** — VRAM rules, GPU queue, model protection. Read when touching GPU-related code.
-  - **docs/LOCALIZATION.md** — i18n rules, Flask-Babel, README translations. Read when adding user-facing strings.
-  - **docs/TESTING.md** — Testing infrastructure, fixtures, mocking. Read when writing tests.
-  - **docs/RELEASE_GUIDE.md** — Release process, version bumps. Read when preparing a new version.
-  - **CHANGELOG.md** — Historical changes, bug fixes, migration notes. Read when debugging or understanding why something works this way.
-
-Keep each file focused on its topic. Avoid duplication. Cross-reference between files when needed.
+  - **AGENTS.md** — Constitution: commands, critical rules, hard constraints. Always read by AI agents. Its Documentation Map is the index of every `docs/` file.
+  - **README.md** — Short overview plus quick start. Every topic has a dedicated `docs/` file linked from the section that mentions it.
+  - **One topic per file** — a reader with a specific question must land directly on the answer. Do not grow the README back into a manual.
+  - **No duplication** — a fact lives in exactly one file; other files link to it. When moving material, delete the original.
+  - **Translation parity** — every user- or admin-facing `docs/X.md` has a `docs/X-ru.md` twin with the same section structure, updated in the same commit.

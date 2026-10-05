@@ -98,8 +98,6 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 
 ## Model Lifecycle on a Single Consumer GPU
 
-## Model Lifecycle on a Single Consumer GPU
-
 All llama.cpp models share a single group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time.
 
 **TTLs**:

@@ -1,37 +1,100 @@
-# Testing — FLAI v12.4
+# Development
 
-This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
+Contributor guide for FLAI: where the code lives, how to run the test suite, and the CLI tools that ship with the app. For project rules and hard constraints, read [../AGENTS.md](../AGENTS.md) — this document assumes you have.
 
-> **v10.0 note:** All test fixtures migrated from `chat` → `multimodal` module type across 12+ test files. `test_validators.py` updated `MODULE_TYPES` assertions to `{"multimodal", "reasoning", "embedding"}` (chat removed). `test_model_config.py` — seed `params[0]` is now the multimodal model. `test_base_module.py` — `_modules["chat"]` replaced with `_modules["multimodal"]`. `conftest.py` — `reasoning_model = params[0]` (first seed entry, was chat).
+## Code layout
 
-> **Note (v9.2):** Reasoning retry-on-empty in `app/queue.py` is covered by existing queue tests (no new tests — the change reuses the same streaming path with an extra attempt loop). Smart SD offload level selection in `modules/sd_cpp.py` is covered by existing SD module tests (`test_sd_cpp_module.py`). RAG reconnection (`check_availability()`) tested implicitly via existing RAG tests. `query_points()` migration in `modules/rag.py` covered by existing RAG tests.
+| Path | What lives there |
+|------|------------------|
+| `app/__init__.py` | `create_app()` — the Flask entry point and blueprint registration |
+| `app/routes/` | HTTP layer: auth, chat, admin, queue, messages, sessions, documents, backups, events, debug, rlm, `/v1` |
+| `app/queue.py` | `RedisRequestQueue` — fast (CPU) and slow (GPU) workers, VRAM serialization, task handlers |
+| `app/resource_manager.py` | Per-module KV cost, VRAM estimation, `ensure_vram_for()` |
+| `app/llamacpp_client.py` | `DirectLlamaBackend` and `LlamaSwapBackend` |
+| `app/database.py` | `get_db()`, schema init, `_autofit_context()` |
+| `app/tasks/` | Background tasks: `dry_load.py`, `health_monitor.py` |
+| `modules/` | Model subsystems: base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video, crawler, rlm |
+| `prompts/ru/`, `prompts/en/` | Prompt templates, `skills.txt` (single source of truth for capability lists) |
+| `services/` | Non-Python services (kokoro TTS, ltxvideo wrapper) |
+| `tests/` | pytest suite, `tests/load/` for Locust |
+| `translations/` | Flask-Babel catalogs (`en`, `ru`) |
 
-> **v9.1 change:** `_fetch_page_content()` in `tests/test_search_module.py` is tested implicitly via existing search tests (no new tests needed — existing tests mock `requests` and do not trigger page fetch). `test_search_sends_correct_params` verifies correct POST parameters. All 15 search module tests pass.
+## Lint and type check
 
-## Test Structure
+```bash
+ruff check .
+mypy app/ modules/               # CI runs with `|| true` — does not block
+```
+
+## Tests
+
+FLAI ships tests for every key component, plus load tests for the web interface.
+
+### Install
+
+```bash
+pip install -e ".[test]"
+```
+
+### Run
+
+```bash
+pytest                           # everything
+pytest -m unit                   # only unit tests (no external deps)
+pytest -m "not slow"             # skip slow tests
+pytest -m "not (requires_db or requires_redis)"
+pytest --cov=app --cov=modules --cov-report=html
+pytest tests/test_queue.py       # a specific file
+```
+
+FLAI includes comprehensive testing for all key components and load testing for the web interface.
+
+### Load testing
+
+Load tests use [Locust](https://locust.io/) to simulate concurrent users.
+
+```bash
+# Install Locust (if not already installed)
+pip install locust
+
+# Web interface — open http://localhost:8089
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Headless mode — 10 users, spawn 2/sec, run 1 minute
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
+
+# Using the convenience script
+./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
+```
+
+See [tests/load/README.md](../tests/load/README.md) for detailed load testing instructions.
+
+---
+
+### Test structure
 
 - **Fixtures** in `tests/conftest.py`:
   - `test_app` — isolated app + temp dirs
   - `client` — Flask test client
   - `runner` — CLI runner
 
-## Mocking External Services
+### Mocking external services
 
 **External services are ALWAYS mocked**:
 - Redis (`redis.from_url`)
 - llama.cpp (`app.llamacpp_client.LlamaCppClient`)
 - Qdrant (`modules.rag.QdrantClient`)
 
-## Database Mode
+### Database mode
 
 - **Mock by default** (no `DATABASE_URL`).
 - **In CI** (`DATABASE_URL` set) — real PostgreSQL with `TRUNCATE` between tests via `test_app` teardown.
 
-## Background Workers
+### Background workers
 
 `RedisRequestQueue` threads are stopped via `stop_workers(timeout=3)` in `test_app` teardown to prevent pytest hang.
 
-## Available Markers
+### Available markers
 
 - `unit` — fast unit tests
 - `integration` — tests requiring external services (mocked)
@@ -40,18 +103,7 @@ This document describes the testing infrastructure, fixtures, mocking strategy, 
 - `requires_db` — tests requiring PostgreSQL
 - `requires_redis` — tests requiring Redis
 
-### Running Tests by Marker
-
-```bash
-pytest                           # all tests
-pytest -m unit                   # only unit tests
-pytest -m "not slow"             # skip slow tests
-pytest -m "not e2e"              # skip e2e tests
-pytest --cov=app --cov=modules --cov-report=html  # with coverage
-pytest tests/test_admin_routes.py  # specific file
-```
-
-### Test Examples
+### Test examples
 
 `tests/test_resource_manager_ltx_unload.py`
 
@@ -91,16 +143,48 @@ Public `/v1` API test files (all added in v12.3): `test_api_v1_auth.py` (Bearer 
 
 **Web Crawler (Crawl4AI, v12.4) test files (all NEW in v12.4):** `test_crawler_guard.py` (8 tests: SSRF ranges, credentials, port), `test_crawler_config.py` (3 tests: allow-list defaults, env parsing), `test_crawler_module.py` (15 tests: availability, /md contract, client-side BFS scope, caps, deadline, anti-bot `SiteBlockedError`), `test_read_page_tool.py` (7 tests: tool schema, gating, localized errors), `test_router_crawl.py` (2 tests: `[-CRAWL-]` marker parsing, search marker untouched), `test_crawl_task.py` (42 tests: dedicated executor, no GPU coupling outside the indexing lock, domain replacement, quota, context budget, anti-bot fallback to web search), `test_crawl_ui.py` (15 tests: compose service placement + no published ports, `docker compose config`, stage labels in ru/en catalogs vs chat.html msgids, counter reads `data.pages`, deploy flag init).
 
-### Known Test Issues
+### Known test issues
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture. Not blocking, but slow.
   - **Load tests** (`tests/load/`) excluded from pytest collection — require locust fixtures. Run separately: `locust -f tests/load/locustfile.py --host http://localhost:5000` or `locust -f tests/load/locustfile_public.py --host http://localhost:5000` for public endpoints.
 
-### Test Infrastructure Fixes (v9.0)
+### Test infrastructure fixes (v9.0)
   - `tests/test_backups.py`: `Babel(flask_app)` added.
   - `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
   - `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`.
   - `tests/test_morph.py` **(NEW):** 16 tests for pymorphy3 morphological analysis.
 
-## Configuration
+## Configuration for contributors
 
 When adding or changing environment variables in `app/config.py`, both `.env` and `.env.example` MUST be updated. `.env` contains real values; `.env.example` has placeholders and comments. Section order must match.
+
+When adding or changing environment variables in `app/config.py`, both `.env` and `.env.example` MUST be updated. `.env` contains real values, `.env.example` has placeholders and comments. Section order must match, and secrets from `.env` must never reach `.env.example`. The full variable reference lives in [CONFIGURATION.md](CONFIGURATION.md).
+
+## CLI tools
+
+```bash
+docker exec flai-web flask admin-password <password>
+docker exec flai-web flask cleanup-uploads
+docker exec flai-web flask migrate-messages-format [--dry-run]
+docker exec flai-web flask import-history-to-slm [--force] [user_id]
+```
+
+Long-term memory maintenance talks to the SLM container directly:
+
+```bash
+# All users
+docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
+
+# Single user
+docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({'profile':'valery'}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
+```
+
+## Dev server
+
+```bash
+python wsgi.py                  # 0.0.0.0:5000, debug=True
+gunicorn -c gunicorn_config.py wsgi:app   # production: 1 worker, 900s timeout
+```
+
+## Documentation
+
+Readme-level documentation is user-facing and translated. Code-level documentation is English-only. See [../AGENTS.md](../AGENTS.md) rule 6.

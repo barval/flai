@@ -5,15 +5,37 @@
 
 ## 📚 Documentation Map
 
+The README is a short overview plus quick start. Every topic below has a dedicated file — read the one that matches what you are changing.
+
 | Topic | File | When to read |
 |-------|------|--------------|
 | Full architecture, modules, data flow | `docs/ARCHITECTURE.md` | When modifying core logic, queue, or modules |
-| VRAM management, GPU queue, model protection | `docs/VRAM_MANAGEMENT.md` | When touching `resource_manager.py`, `queue.py`, video/multimodal |
-| Localization, `_tr()`, Flask-Babel, README translations | `docs/LOCALIZATION.md` | When adding user-facing strings or updating READMEs |
+| VRAM management, GPU queue, context auto-fit | `docs/VRAM_MANAGEMENT.md` | When touching `resource_manager.py`, `queue.py`, video/multimodal |
+| Context window budget and allocation | `docs/CONTEXT.md` | When changing context budgets, trimming, or summaries |
+| Measured model throughput | `docs/BENCHMARKS.md` | When quoting model performance or hardware tiers |
+| Model files, download commands, licenses | `docs/MODELS.md` | When adding/removing a model or updating the seed list |
+| Environment variables, `.env` reference | `docs/CONFIGURATION.md` | When adding/removing/changing a config key |
+| Web search, Tavily keys, Crawl4AI | `docs/SEARCH.md` | When touching `modules/search.py`, `modules/crawler.py`, Tavily |
+| Deep analysis (RLM) | `docs/DEEP_ANALYSIS.md` | When touching RLM, `app/rlm_sandbox.py`, `modules/rlm.py` |
+| Image generation and editing | `docs/IMAGE_GENERATION.md` | When touching `modules/sd_cpp.py` |
+| Video generation (LTX-Video) | `docs/VIDEO.md` | When touching `modules/video.py` |
+| Voice (Whisper, Piper, Kokoro) | `docs/VOICE.md` | When touching `modules/audio.py`, `modules/tts.py` |
+| Camera integration | `docs/CAMERA.md` | When touching `modules/cam.py` |
+| Long-term memory (SLM) | `docs/MEMORY.md` | When touching `app/slm_rules.py` or the SLM service |
+| Documents, RAG setup, PDF OCR | `docs/DOCUMENTS.md` | When touching `modules/rag.py` or document uploads |
+| Users, backups, Model Hub, branding | `docs/ADMINISTRATION.md` | When touching `app/routes/admin.py`, Model Hub, backups |
+| Health endpoint, Prometheus metrics | `docs/MONITORING.md` | When touching `/health`, `flai_web_info`, monitoring UI |
 | Public OpenAI-compatible API, `/v1` endpoints, keys, errors | `docs/API.md` | When changing `/v1/*`, `app/api_bridge.py`, or the API key UI |
-| Testing, fixtures, markers, mocking | `docs/TESTING.md` | When writing or running tests |
+| Code layout, tests, markers, CLI tools | `docs/DEVELOPMENT.md` | When writing or running tests, or adding a CLI command |
+| Localization, `_tr()`, Flask-Babel, README translations | `docs/LOCALIZATION.md` | When adding user-facing strings or updating READMEs |
+| Troubleshooting common problems | `docs/TROUBLESHOOTING.md` | When a deployment fails or a feature misbehaves |
+| Frequently asked questions | `docs/FAQ.md` | When the answer belongs to user-facing onboarding |
+| How to contribute | `CONTRIBUTING.md` | When preparing a pull request |
+| Planned and in-progress work | `docs/ROADMAP.md` | When deciding whether a feature is planned |
 | Release process, version bumps, README updates | `docs/RELEASE_GUIDE.md` | When preparing a new version |
-| Historical changes, bug fixes, migration notes | `CHANGELOG.md` | When debugging or understanding why something works this way |
+| Historical changes, bug fixes, migration notes | `CHANGELOG.md` | When debugging or understanding why it works this way |
+
+**Translation parity is enforced** for every user- or admin-facing document: a `docs/X.md` without a `-ru` suffix is English-only, and its `docs/X-ru.md` twin must mirror it section for section. See rule 6.
 
 ## Commands (exact)
 
@@ -142,10 +164,11 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Run destructive statements inside a transaction (`BEGIN; ... ; ROLLBACK` to preview, `COMMIT` only after verifying the affected rows look right).
 
 # 6. Documentation Language
-  - **AGENTS.md, `CHANGELOG.md`, `README.md`, and all `docs/*.md` must be written in English only.** No Cyrillic allowed, including historical entries.
+  - **AGENTS.md, `CHANGELOG.md`, `README.md`, and `docs/*.md` (English editions, i.e. every `docs/X.md` **without** a `-ru` suffix) must be written in English only.** No Cyrillic allowed, including historical entries.
   - All code comments and log messages must be in English.
   - All user-facing messages (UI, notifications, errors) must use the selected user language (i18n).
-  - The only exceptions: `deploy-ru.sh`, `README-ru.md`, and `LICENSE-ru` may contain Russian.
+  - Russian is allowed **only** in these files: `deploy-ru.sh`, `README-ru.md`, `LICENSE-ru`, `CONTRIBUTING-ru.md`, and any `docs/*-ru.md`.
+  - **Translation parity:** every `docs/X.md` that is user- or admin-facing must have a `docs/X-ru.md` twin with the same section structure (same heading count and order). When you add a section to one, add it to the other in the same commit. Russian terms follow the wording already established in `README-ru.md` and the `translations/ru` catalogs — do not invent new terms for the same concept.
 
   ---
 

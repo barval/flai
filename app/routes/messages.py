@@ -254,6 +254,19 @@ def send_message():
             user_id=user_id,
         )
 
+        # Persist EVERY extra image to disk too. Without this, images 2..N
+        # existed only as base64 inside the content JSON, and the history
+        # loader strips file_data for messages that have a file_path — so the
+        # extra thumbnails were unrenderable after a page reload.
+        for part in extra_images:
+            part["path"] = save_uploaded_file(
+                file_data=part["data"],
+                filename=part["name"],
+                session_id=session_id,
+                upload_folder=current_app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+
     if request_type == "audio":
         limit_mb = current_app.config["MAX_VOICE_SIZE_MB"] if voice_record else current_app.config["MAX_AUDIO_SIZE_MB"]
         # When image + voice, check voice file size (not image)
@@ -271,12 +284,26 @@ def send_message():
             content_type = "audio"
         else:
             content_type = "file"
+        # The first image part carries file_path too (its file was saved
+        # above) so the history loader can strip its base64 payload.
         user_content.append(
-            {"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name}
+            {
+                "type": content_type,
+                "file_data": file_data,
+                "file_type": file_type,
+                "file_name": file_name,
+                "file_path": file_path if content_type == "image" else None,
+            }
         )
     for part in extra_images:
         user_content.append(
-            {"type": "image", "file_data": part["data"], "file_type": part["type"], "file_name": part["name"]}
+            {
+                "type": "image",
+                "file_data": part["data"],
+                "file_type": part["type"],
+                "file_name": part["name"],
+                "file_path": part["path"],
+            }
         )
     if doc_part is not None:
         user_content.append(

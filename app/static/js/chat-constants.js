@@ -4,7 +4,8 @@
 let currentSessionId = window.initialSessionId;
 let isSending = false;               // Flag to prevent double sending
 let isSwitchingSession = false;      // Flag to block sync during session switch
-let attachedFile = null;
+let attachedFile = null;             // legacy single-attachment slot (voice+image combo)
+let attachedFiles = [];              // multi-attachment queue (max window.FLAI_MAX_CHAT_IMAGES)
 let defaultModelName = 'qwen3-vl:8b-instruct';
 let sessionsData = {};
 let newMessageIndicators = {};

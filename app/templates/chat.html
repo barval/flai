@@ -68,14 +68,8 @@
         <!-- Chat messages area -->
         <div class="chat-messages" id="chat-messages"></div>
 
-        <!-- File preview container (shown when a file is attached) -->
-        <div id="file-preview-container" class="hidden">
-            <div>
-                <span id="file-preview-name"></span>
-                <span id="file-preview-size"></span>
-                <button id="remove-file-button">✕</button>
-            </div>
-        </div>
+        <!-- File preview container (shown when files are attached) -->
+        <div id="file-preview-container" class="hidden"></div>
 
         <!-- Image modal for enlarging images -->
         <div id="image-modal" class="image-modal" onclick="closeImageModal()">
@@ -92,7 +86,7 @@
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
-            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" class="hidden">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" multiple class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
         </div>
@@ -108,6 +102,7 @@
 <script>
 window.initialSessionId = {{ current_session|tojson }};
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
+window.FLAI_MAX_CHAT_IMAGES = {{ config.MAX_CHAT_IMAGES|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
@@ -154,6 +149,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'click_to_enlarge': {{ _("click_to_enlarge")|tojson }},
     'image': {{ _("image")|tojson }},
     'enter_message_or_file': {{ _("enter_message_or_file")|tojson }},
+    'max_images_reached': {{ _("max_images_reached")|tojson }},
+    'remove_file': {{ _("remove_file")|tojson }},
     'request_timeout': {{ _("request_timeout")|tojson }},
     'unknown_error': {{ _("unknown_error")|tojson }},
     'copied': {{ _("copied")|tojson }},

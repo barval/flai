@@ -106,22 +106,13 @@ if (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'))
     attachedVoiceBlob = file;
     isVoiceRecorded = true;
     setLocalTranscribing(currentSessionId, true);
-    const preview = document.getElementById('file-preview-container');
-    document.getElementById('file-preview-name').textContent =
-        attachedFile.name + ' + \uD83C\uDFA4 ' + file.name;
-    const sizeSpan = document.getElementById('file-preview-size');
-    if (sizeSpan) sizeSpan.textContent = '';
-    preview.classList.remove('hidden');
+    renderAttachmentChips();
 } else {
     // No image — original behavior
     attachedFile = file;
     isVoiceRecorded = true;
     setLocalTranscribing(currentSessionId, true);
-    const preview = document.getElementById('file-preview-container');
-    document.getElementById('file-preview-name').textContent = file.name;
-    const fileSize = formatFileSize(file.size);
-    document.getElementById('file-preview-size').textContent = ' (' + fileSize + ')';
-    preview.style.display = 'block';
+    renderAttachmentChips();
 }
 sendMessage();
 }

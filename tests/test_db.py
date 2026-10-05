@@ -151,6 +151,65 @@ class TestDatabase:
             messages = get_session_messages(session_id)
             assert len(messages) == 0
 
+    def test_delete_session_removes_extra_image_files(self, test_app):
+        """Session deletion removes every image file referenced in content JSON.
+
+        Multi-attachment chat stores images 2..N only inside the content JSON
+        (the file_path column holds the first image alone) — the deletion
+        routine must unlink those files too and subtract them from the user
+        storage counter.
+        """
+        username = generate_unique_name()
+        with test_app.app_context():
+            import json as _json
+            import os as _os
+
+            from app.db import create_session, delete_session_and_messages, save_message
+
+            upload_folder = test_app.config["UPLOAD_FOLDER"]
+            sess_dir = _os.path.join(upload_folder, "sess-test")
+            _os.makedirs(sess_dir, exist_ok=True)
+            paths = []
+            for name in ("a.png", "b.png", "c.png"):
+                p = _os.path.join(sess_dir, name)
+                with open(p, "wb") as f:
+                    f.write(b"x" * 10)
+                paths.append(p)
+
+            content = _json.dumps(
+                [
+                    {"type": "text", "text": "compare"},
+                    {
+                        "type": "image",
+                        "file_data": None,
+                        "file_type": "image/png",
+                        "file_name": "a.png",
+                        "file_path": "sess-test/a.png",
+                    },
+                    {
+                        "type": "image",
+                        "file_data": None,
+                        "file_type": "image/png",
+                        "file_name": "b.png",
+                        "file_path": "sess-test/b.png",
+                    },
+                    {
+                        "type": "image",
+                        "file_data": None,
+                        "file_type": "image/png",
+                        "file_name": "c.png",
+                        "file_path": "sess-test/c.png",
+                    },
+                ]
+            )
+            session_id = create_session(username, title="Extra files test")
+            save_message(session_id, "user", content, file_path="sess-test/a.png")
+
+            result = delete_session_and_messages(session_id, username, upload_folder=upload_folder)
+            assert result is True
+            for p in paths:
+                assert not _os.path.exists(p), f"file must be deleted from disk: {p}"
+
 
 @pytest.mark.unit
 def test_get_user_sessions_token_totals(test_app):

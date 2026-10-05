@@ -71,7 +71,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 ## 🆕 What's New in v12.4
 
-- **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. Every image is stored on disk and stays visible in the chat after a page reload; deleting a session frees the space of all its attached images. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Deep analysis with attachments** — the 🔬 toggle accepts up to 4 images (each becomes a corpus «document») and chat-attached documents, so the Documents-panel selection is optional. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
 - **«Draw something similar» with examples** — attach example images to an image-generation request; each example is described and the descriptions steer the SD prompt. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Higher limits** — documents 25 MB, per-user document storage 250 MB, request body 75 MB; scanned-PDF OCR gets a 30-minute budget per document with a partial-indexing notice. → [CONFIGURATION.md](docs/CONFIGURATION.md)

@@ -895,15 +895,11 @@ document.addEventListener('DOMContentLoaded', function() {
         e.target.value = '';
     });
 
-    document.getElementById('remove-file-button').addEventListener('click', function() {
-        attachedFile = null;
-        attachedVoiceBlob = null;
-        document.getElementById('file-input').value = '';
-        // FIX: Add 'hidden' class back instead of setting display
-        document.getElementById('file-preview-container').classList.add('hidden');
-        renderAttachmentChips();
-    });
-    
+    // The legacy remove-file-button / file-preview-name spans were replaced
+    // by attachment chips (renderAttachmentChips) — their click handlers must
+    // NOT be registered here: getElementById returns null for the removed
+    // markup and a TypeError killed every later init binding (save button,
+    // voice recording, Escape handler).
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
 
     document.getElementById('cancel-stream-header').addEventListener('click', function () {

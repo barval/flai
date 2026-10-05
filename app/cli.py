@@ -38,14 +38,30 @@ def cleanup_uploads(dry_run):
 
     click.echo(f"Scanning {upload_folder} ...")
 
-    # Collect all file paths referenced in DB
+    # Collect all file paths referenced in DB: the file_path column plus
+    # file_path fields inside message content JSON (extra multi-attachment
+    # chat images are stored there).
     db_files = set()
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT file_path FROM messages WHERE file_path IS NOT NULL")
+        c.execute("SELECT file_path, content FROM messages WHERE file_path IS NOT NULL OR content IS NOT NULL")
+        import json
+
         for row in c.fetchall():
             if row["file_path"]:
                 db_files.add(row["file_path"])
+            content = row["content"]
+            if not content:
+                continue
+            try:
+                parsed = json.loads(content)
+            except Exception:
+                continue
+            if not isinstance(parsed, list):
+                continue
+            for item in parsed:
+                if isinstance(item, dict) and item.get("file_path"):
+                    db_files.add(item["file_path"])
 
     click.echo(f"Files referenced in DB: {len(db_files)}")
 

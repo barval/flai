@@ -62,6 +62,24 @@ class TestAttachmentChips:
         assert "readExtraAsBase64" in CHAT_INIT
         assert "displayUserMessage(null, null, null, null, extraParts)" in CHAT_INIT
 
+
+class TestExportAllAttachments:
+    def test_export_collects_every_media_element(self):
+        # Save-as-HTML used querySelector (first match only), so images 2..N
+        # of a multi-attachment message were silently dropped from the export.
+        export_src = pathlib.Path("app/static/js/chat-export.js").read_text(encoding="utf-8")
+        assert "querySelectorAll('.attached-image')" in export_src
+        assert "querySelectorAll('audio')" in export_src
+        assert "querySelectorAll('video')" in export_src
+        # per-message media info keeps arrays, not single slots
+        assert "images: []" in export_src
+        assert "audios: []" in export_src
+        assert "videos: []" in export_src
+        # render loops over the arrays
+        assert "for (const image of msg.media.images)" in export_src
+        assert "for (const audio of msg.media.audios)" in export_src
+        assert "for (const video of msg.media.videos)" in export_src
+
     def test_css_for_chips_light_and_dark(self):
         assert ".attachment-chip" in CHAT_CSS
         assert ".attachment-chip-thumb" in CHAT_CSS

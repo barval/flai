@@ -84,38 +84,37 @@ async function saveChatAsHTML() {
         const contentEl = msgEl.querySelector('.message-content');
         const contentHtml = contentEl ? contentEl.innerHTML : '';
 
-        // Find all media elements
-        const imageEl = msgEl.querySelector('.attached-image');
-        const audioEl = msgEl.querySelector('audio');
-        const videoEl = msgEl.querySelector('video');
+        // Find all media elements (multi-attachment messages carry several
+        // images: the legacy first one plus the .extra-attachments row).
+        const imageEls = msgEl.querySelectorAll('.attached-image');
+        const audioEls = msgEl.querySelectorAll('audio');
+        const videoEls = msgEl.querySelectorAll('video');
         const fileEl = msgEl.querySelector('.attached-file');
 
         // DEBUG: Log media elements for each message
         dlog('Message', index, '-', role, ':', {
-            hasImage: !!imageEl,
-            imageSrc: imageEl ? imageEl.src.substring(0, 80) : null,
-            hasAudio: !!audioEl,
-            audioSrc: audioEl ? audioEl.src.substring(0, 80) : null,
-            hasVideo: !!videoEl,
-            videoSrc: videoEl ? videoEl.src.substring(0, 80) : null,
+            imageCount: imageEls.length,
+            audioCount: audioEls.length,
+            videoCount: videoEls.length,
             hasFile: !!fileEl
         });
 
         const mediaInfo = {
-            image: null,
-            audio: null,
-            video: null,
+            images: [],
+            audios: [],
+            videos: [],
             file: null
         };
 
-        // Collect image - FIX: Check if src CONTAINS /api/files/ not just starts with
-        if (imageEl && imageEl.src) {
+        // Collect images - FIX: Check if src CONTAINS /api/files/ not just starts with
+        for (const imageEl of imageEls) {
+            if (!imageEl.src) continue;
             if (imageEl.src.includes('/api/files/')) {
-                mediaInfo.image = {
+                mediaInfo.images.push({
                     url: imageEl.src,
                     alt: imageEl.alt || t('image'),
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: imageEl.src,
                     type: 'image',
@@ -123,22 +122,22 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added image to fetch:', imageEl.src);
             } else if (imageEl.src.startsWith('data:')) {
-                mediaInfo.image = {
+                mediaInfo.images.push({
                     src: imageEl.src,
                     alt: imageEl.alt || t('image')
-                };
+                });
                 dlog('Image already base64, skipping fetch');
             }
         }
 
         // Collect audio - FIX: Check if src CONTAINS /api/files/ not just starts with
-        // FIX: Removed !imageEl condition - audio should be collected regardless
-        if (audioEl && audioEl.src) {
+        for (const audioEl of audioEls) {
+            if (!audioEl.src) continue;
             if (audioEl.src.includes('/api/files/')) {
-                mediaInfo.audio = {
+                mediaInfo.audios.push({
                     url: audioEl.src,
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: audioEl.src,
                     type: 'audio',
@@ -146,20 +145,21 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added audio to fetch:', audioEl.src);
             } else if (audioEl.src.startsWith('data:')) {
-                mediaInfo.audio = {
+                mediaInfo.audios.push({
                     src: audioEl.src
-                };
+                });
                 dlog('Audio already base64, skipping fetch');
             }
         }
 
         // Collect video
-        if (videoEl && videoEl.src) {
+        for (const videoEl of videoEls) {
+            if (!videoEl.src) continue;
             if (videoEl.src.includes('/api/files/')) {
-                mediaInfo.video = {
+                mediaInfo.videos.push({
                     url: videoEl.src,
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: videoEl.src,
                     type: 'video',
@@ -167,9 +167,9 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added video to fetch:', videoEl.src);
             } else if (videoEl.src.startsWith('data:')) {
-                mediaInfo.video = {
+                mediaInfo.videos.push({
                     src: videoEl.src
-                };
+                });
                 dlog('Video already base64, skipping fetch');
             }
         }
@@ -254,46 +254,46 @@ async function saveChatAsHTML() {
     const messagesHtml = messageElements.map((msg, msgIdx) => {
         let fileHtml = '';
         
-        // Add image with base64
-        if (msg.media.image) {
-            let imgSrc = msg.media.image.src;
-            if (!imgSrc && msg.media.image.index !== undefined) {
-                imgSrc = mediaBase64Results[msg.media.image.index];
+        // Add images with base64 (multi-attachment messages carry several)
+        for (const image of msg.media.images) {
+            let imgSrc = image.src;
+            if (!imgSrc && image.index !== undefined) {
+                imgSrc = mediaBase64Results[image.index];
             }
             if (imgSrc) {
-                fileHtml += '<div class="image-container"><img src="' + imgSrc + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
+                fileHtml += '<div class="image-container"><img src="' + imgSrc + '" class="attached-image" alt="' + escapeHtml(image.alt) + '"></div>';
             } else {
                 // Fallback to original URL if base64 conversion failed
-                dwarn('Image missing base64, using original URL:', msg.media.image.url);
-                fileHtml += '<div class="image-container"><img src="' + msg.media.image.url + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
+                dwarn('Image missing base64, using original URL:', image.url);
+                fileHtml += '<div class="image-container"><img src="' + image.url + '" class="attached-image" alt="' + escapeHtml(image.alt) + '"></div>';
             }
         }
 
         // Add audio with base64
-        if (msg.media.audio) {
-            let audioSrc = msg.media.audio.src;
-            if (!audioSrc && msg.media.audio.index !== undefined) {
-                audioSrc = mediaBase64Results[msg.media.audio.index];
+        for (const audio of msg.media.audios) {
+            let audioSrc = audio.src;
+            if (!audioSrc && audio.index !== undefined) {
+                audioSrc = mediaBase64Results[audio.index];
             }
             if (audioSrc) {
                 fileHtml += '<div class="audio-container"><audio controls src="' + audioSrc + '"></audio></div>';
             } else {
-                dwarn('Audio missing base64, using original URL:', msg.media.audio.url);
-                fileHtml += '<div class="audio-container"><audio controls src="' + msg.media.audio.url + '"></audio></div>';
+                dwarn('Audio missing base64, using original URL:', audio.url);
+                fileHtml += '<div class="audio-container"><audio controls src="' + audio.url + '"></audio></div>';
             }
         }
 
         // Add video with base64
-        if (msg.media.video) {
-            let videoSrc = msg.media.video.src;
-            if (!videoSrc && msg.media.video.index !== undefined) {
-                videoSrc = mediaBase64Results[msg.media.video.index];
+        for (const video of msg.media.videos) {
+            let videoSrc = video.src;
+            if (!videoSrc && video.index !== undefined) {
+                videoSrc = mediaBase64Results[video.index];
             }
             if (videoSrc) {
                 fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + videoSrc + '"></video></div>';
             } else {
-                dwarn('Video missing base64, using original URL:', msg.media.video.url);
-                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + msg.media.video.url + '"></video></div>';
+                dwarn('Video missing base64, using original URL:', video.url);
+                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + video.url + '"></video></div>';
             }
         }
 

@@ -417,8 +417,28 @@ def set_last_session(user_id, session_id):
 def delete_session_and_messages(session_id, user_id, upload_folder=None):
     """Delete a session, its messages, and associated files from disk.
     Also updates user_storage quota by subtracting file sizes.
+
+    File sources are both the messages.file_path column AND file_path fields
+    inside the content JSON (extra multi-attachment chat images are stored
+    there — the column only holds the first image).
     """
     total_deleted_bytes = 0
+    deleted_rel_paths: set[str] = set()
+
+    def _remove_file(rel_path: str) -> None:
+        nonlocal total_deleted_bytes
+        if not rel_path or rel_path in deleted_rel_paths:
+            return
+        deleted_rel_paths.add(rel_path)
+        full_path = os.path.join(upload_folder, rel_path) if upload_folder and not os.path.isabs(rel_path) else rel_path
+        if os.path.exists(full_path):
+            try:
+                total_deleted_bytes += os.path.getsize(full_path)
+                os.remove(full_path)
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
 
     with get_db() as conn:
         c = conn.cursor()
@@ -426,23 +446,22 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
         row = c.fetchone()
         if not row or row["user_id"] != user_id:
             return False
-        c.execute("SELECT file_path FROM messages WHERE session_id = %s AND file_path IS NOT NULL", (session_id,))
+        c.execute("SELECT file_path, content FROM messages WHERE session_id = %s", (session_id,))
         rows = c.fetchall()
         for row in rows:
-            file_path = row["file_path"]
-            if file_path:
-                if upload_folder and not os.path.isabs(file_path):
-                    full_path = os.path.join(upload_folder, file_path)
-                else:
-                    full_path = file_path
-                if os.path.exists(full_path):
-                    try:
-                        total_deleted_bytes += os.path.getsize(full_path)
-                        os.remove(full_path)
-                    except Exception as e:
-                        import logging
-
-                        logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
+            _remove_file(row["file_path"])
+            content = row["content"]
+            if not content:
+                continue
+            try:
+                parsed = json.loads(content)
+            except Exception:
+                continue
+            if not isinstance(parsed, list):
+                continue
+            for item in parsed:
+                if isinstance(item, dict) and item.get("file_path"):
+                    _remove_file(item["file_path"])
 
         c.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
         c.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))

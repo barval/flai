@@ -269,11 +269,15 @@ def init_user_db() -> None:
                 voice_gender TEXT DEFAULT 'male',
                 theme TEXT DEFAULT 'light',
                 response_style TEXT DEFAULT 'neutral',
+                tavily_api_key TEXT,
+                tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS response_style TEXT DEFAULT 'neutral'")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_api_key TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         c.execute("""
             CREATE TABLE IF NOT EXISTS api_tokens (
                 id SERIAL PRIMARY KEY,

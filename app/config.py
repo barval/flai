@@ -10,8 +10,11 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
+APP_VERSION = "12.4"
+
 
 def load_config(app):
+    app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
     if not app.config["SECRET_KEY"]:
@@ -104,6 +107,27 @@ def load_config(app):
     app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 7))
     app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 5000))
     app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
+
+    # Tavily web search (optional per-user provider, tried before SearXNG)
+    app.config["TAVILY_ENABLED"] = os.getenv("TAVILY_ENABLED", "true").lower() in ("true", "1", "yes")
+    app.config["TAVILY_API_URL"] = os.getenv("TAVILY_API_URL", "https://api.tavily.com")
+    app.config["TAVILY_TIMEOUT"] = int(os.getenv("TAVILY_TIMEOUT", 20))
+    app.config["TAVILY_USAGE_TIMEOUT"] = int(os.getenv("TAVILY_USAGE_TIMEOUT", 8))
+    app.config["TAVILY_MAX_RESULTS"] = int(os.getenv("TAVILY_MAX_RESULTS", 7))
+    app.config["TAVILY_SEARCH_DEPTH"] = os.getenv("TAVILY_SEARCH_DEPTH", "basic")
+    app.config["TAVILY_ADMIN_CACHE_TTL"] = int(os.getenv("TAVILY_ADMIN_CACHE_TTL", 300))
+
+    # Web crawler (optional Crawl4AI sidecar; reads pages and deep-studies sites)
+    app.config["CRAWL_ENABLED"] = os.getenv("CRAWL_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["CRAWLER_URL"] = os.getenv("CRAWLER_URL", "http://flai-crawler:11235")
+    app.config["CRAWL_API_TOKEN"] = os.getenv("CRAWL_API_TOKEN", "")
+    app.config["CRAWL_MAX_PAGES"] = int(os.getenv("CRAWL_MAX_PAGES", 50))
+    app.config["CRAWL_MAX_DEPTH"] = int(os.getenv("CRAWL_MAX_DEPTH", 3))
+    app.config["CRAWL_TIMEOUT_S"] = int(os.getenv("CRAWL_TIMEOUT_S", 300))
+    app.config["CRAWL_PAGE_TIMEOUT_S"] = int(os.getenv("CRAWL_PAGE_TIMEOUT_S", 30))
+    app.config["CRAWL_MAX_PAGE_CHARS"] = int(os.getenv("CRAWL_MAX_PAGE_CHARS", 50000))
+    app.config["CRAWL_MAX_TOTAL_CHARS"] = int(os.getenv("CRAWL_MAX_TOTAL_CHARS", 1000000))
+    app.config["CRAWL_CONCURRENCY"] = int(os.getenv("CRAWL_CONCURRENCY", 2))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))

@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from functools import wraps
 
 import magic
@@ -220,12 +222,14 @@ def get_users():
                         (SELECT COUNT(DISTINCT m2.file_path)
                          FROM messages m2
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id
-                         WHERE cs2.user_id = %s AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count
+                         WHERE cs2.user_id = %s AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count,
+                        (SELECT COUNT(*) FROM api_tokens
+                         WHERE login = %s AND revoked_at IS NULL) as api_keys_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = %s
                 """,
-                    (u["login"], u["login"], u["login"]),
+                    (u["login"], u["login"], u["login"], u["login"]),
                 )
                 stats = c.fetchone()
 
@@ -236,6 +240,11 @@ def get_users():
                 u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
+                u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
+
+                # The raw Tavily key must never reach the admin payload.
+                u_dict["has_tavily_key"] = bool(u_dict.pop("tavily_api_key", None))
+                u_dict.setdefault("api_keys_count", 0)
 
                 # SLM fact count lives in the daemon memory.db on a
                 # root-owned named volume reachable only inside flai-slm;
@@ -255,6 +264,79 @@ def get_users():
     except Exception as e:
         logger.error(f"Error in get_users: {str(e)}", exc_info=True)
         return jsonify({"error": _("Internal server error")}), 500
+
+
+@bp.route("/api/users/tavily-usage", methods=["GET"])
+@admin_required
+def get_users_tavily_usage():
+    """Return each user's Tavily credit state for the Users tab.
+
+    Quota values are cached in Redis so opening the admin page never performs one
+    Tavily round trip per user; keys without a cached entry are fetched in a
+    small thread pool. Key material is never included in the response.
+    """
+    from app.api_bridge import get_redis_client
+    from app.tavily_keys import STATUS_NO_KEY, fetch_tavily_usage
+
+    users = list_users(exclude_admin=True)
+    api_url = current_app.config.get("TAVILY_API_URL", "https://api.tavily.com")
+    timeout = current_app.config.get("TAVILY_USAGE_TIMEOUT", 8)
+    ttl = current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300)
+
+    # list_users() is a single SELECT *, so the key is already in memory here —
+    # one query for every user instead of one query per user.
+    keys: dict[str, str] = {}
+    result: dict[str, dict] = {}
+    for user in users:
+        key = user.get("tavily_api_key") or ""
+        if not key:
+            result[user["login"]] = {"has_key": False, "status": STATUS_NO_KEY, "remaining": None}
+        else:
+            keys[user["login"]] = key
+            result[user["login"]] = {"has_key": True, "status": None, "remaining": None}
+
+    if not keys:
+        return jsonify(result)
+
+    redis_client = None
+    try:
+        redis_client = get_redis_client()
+    except Exception as e:
+        logger.warning(f"Redis unavailable for Tavily usage cache: {e}")
+
+    pending: dict[str, str] = {}
+    for login in keys:
+        cached = None
+        if redis_client is not None:
+            try:
+                cached = redis_client.get(f"admin:tavily_usage:{login}")
+            except Exception as e:
+                logger.warning(f"Tavily usage cache read failed for {login}: {e}")
+        if cached:
+            try:
+                result[login].update(json.loads(cached))
+                continue
+            except (TypeError, ValueError):
+                logger.warning(f"Ignoring malformed Tavily usage cache entry for {login}")
+        pending[login] = keys[login]
+
+    if pending:
+
+        def _fetch(login: str) -> tuple[str, dict]:
+            return login, fetch_tavily_usage(pending[login], api_url, timeout)
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for login, usage in executor.map(_fetch, pending):
+                result[login].update(usage)
+                if redis_client is not None:
+                    try:
+                        redis_client.set(f"admin:tavily_usage:{login}", json.dumps(usage), ex=ttl)
+                    except Exception as e:
+                        logger.warning(f"Tavily usage cache write failed for {login}: {e}")
+    if redis_client is not None:
+        with suppress(Exception):
+            redis_client.close()
+    return jsonify(result)
 
 
 @bp.route("/api/users", methods=["POST"])

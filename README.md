@@ -38,6 +38,7 @@
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper or Kokoro TTS (backend selectable at deploy time)
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Each user's profile is deleted together with their FLAI account
 - 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
+- 🕸️ **Web crawler (optional)** – open pasted URLs and deep-study whole sites via an optional Crawl4AI sidecar; results land in your Documents and are searchable with RAG and Deep analysis
 
 ### 🔌 Programmatic Access
 - 🔑 **API Keys (OpenAI-compatible)** – create per-user API keys in the web UI to call FLAI programmatically via Bearer tokens
@@ -101,16 +102,19 @@ Every user message is classified by the router model into one of the categories 
 | Category (marker) | Route | What runs | Context injected into the reasoning prompt |
 |---|---|---|---|
 | `[-RAG-]` | **Document search (RAG)** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
-| `[-SEARCH-]` | **Web search** | SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
+| `[-SEARCH-]` | **Web search** | Tavily first (per-user key), then SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
 | `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
 | `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
 | `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
+| `[-CRAWL-]` | **Deep site study** | Crawl4AI sidecar crawls the site (client-side BFS, ≤50 pages, depth ≤3, 5-min budget; path-prefix scope for deep start URLs) → document replaced in your Documents panel → indexed → reasoning over the corpus | Crawled pages as `## <url>` sections (context-budget capped) + SLM + summary + history |
+| `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current camera frame; multimodal model analyzes it | Snapshot description + SLM + history |
 | `[-REMEMBER-]` | **Remember fact** | SLM fact extraction (background, CPU-only) | — (writes to long-term memory) |
 | `[-IMAGE-]` / `[-VIDEO-]` | **Image / video generation** | Stable Diffusion / LTX-Video (GPU containers) | — (no LLM context) |
-| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, camera) + SLM + history |
+| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, read_page, camera) + SLM + history |
 
 **Notes:**
 - RAG, Web, and History are mutually exclusive per request — only one search mechanism runs.
+- A message with ONE link asking about that page's content («what is this project <URL>») is not routed to `[-SEARCH-]` or `[-CRAWL-]` — it is ordinary chat, and the `read_page` tool opens the link. Deep site study (`[-CRAWL-]`) is for explicit multi-page requests only; if the target site blocks automated access (anti-bot), the task falls back to ordinary web search.
 - `history_search` is also available as a native tool during ordinary chat; its public name matches `rag_search` and `web_search`.
 - History search is lexical in both Russian and English profiles; queries are not automatically translated between languages.
 - The router model classifies based on the user's intent; there is no hardcoded keyword routing.
@@ -120,6 +124,65 @@ Every user message is classified by the router model into one of the categories 
 - Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
 - The router decides the **action time** first: requests about the **past** («we watched», «you showed earlier», «yesterday's snapshots») route to history search, while action categories (camera, image, video…) are only for requests to be performed now/in the future and never capture questions about the past.
 - Classification may use a tiny **session micro-context** — the last `ROUTER_CONTEXT_MESSAGES` messages plus up to `ROUTER_SLM_FACTS` long-term-memory facts — so a follow-up like «did we look at the camera images?» is answered from history instead of firing the camera again.
+
+### 🌐 Tavily web search (per-user key)
+
+Web search has always gone through the self-hosted **SearXNG** metasearch engine, which is free but limited: its snippets are short, popular sites dominate the results and it is easy to hit engine rate limits. Starting with v12.4 every user can attach their own **Tavily** API key — a purpose-built AI search API whose free tier grants **1000 credits per month** (a basic search costs 1 credit), returns clean, content-rich snippets and answers niche queries (repositories, documentation, price lookups) noticeably better than a generic metasearch.
+
+**How to enable it:**
+
+1. Create a free account at [app.tavily.com](https://app.tavily.com/home) and copy the API key (`tvly-…`).
+2. In FLAI, click your **name in the header** → the profile popup opens.
+3. In the «Internet search via Tavily» section paste the key and click **Add key**. The key is verified against Tavily's `/usage` endpoint before it is stored — an invalid key is rejected and never saved.
+4. The popup then shows the key mask (`tvly-…xxxx`), the plan limit, the credits used this month and the credits left. A key can be deleted at any time with **Delete key**; only one key per user is allowed, so adding a second one requires deleting the first.
+
+**How it works afterwards:**
+
+- Every web search (router category `[-SEARCH-]`, the `web_search` tool during chat, deep analysis fetches and `/v1` chat) now queries **Tavily first** and falls back to the local SearXNG engine automatically whenever the key is missing, the provider is disabled, the key is rejected, the monthly quota is exhausted or the service is unavailable — search never breaks, it just uses the slower free path.
+- A thin Tavily answer is topped up from SearXNG for free instead of spending a second credit on the same query.
+- The key is stored server-side only and is never returned to the browser (only the `tvly-…xxxx` mask) and never written to logs.
+- Admins see each user's remaining Tavily credits and FLAI API key count in the admin Users tab (fetched lazily and cached for 5 minutes, so opening the page does not spend credits).
+- The instance stays fully functional without any Tavily key — this is an optional quality upgrade, not a requirement.
+
+### 🕸️ Site reading & deep study (Crawl4AI)
+
+For URLs you paste in chat and for whole-site deep-study requests, FLAI can use **Crawl4AI** sidecar (enabled with `--with-crawler` at deploy time, or by setting `CRAWL_ENABLED=true` in `.env`).
+
+**`read_page(url)` — one URL in a real browser**
+
+When you paste a link (e.g. a documentation page, a product listing, a GitHub issue) the `[-CRAWL-]` category is **not** triggered — instead the native `read_page` tool fires automatically (fast worker, no queue slot, no GPU). It fetches the page in a real browser (Playwright + Chromium inside the sidecar), extracts clean markdown via trafilatura, and returns it to the model. The tool is registered only when the crawler container is reachable; if the container is down, the request falls through to the normal flow and the URL is not read.
+
+**`[-CRAWL-]` — deep site study**
+
+When the user explicitly asks to "study this site", "analyze the whole documentation", "read everything on example.com" the router emits the `[-CRAWL-]` marker. FLAI then:
+
+1. Crawls the starting domain (up to `CRAWL_MAX_PAGES=50`, `CRAWL_MAX_DEPTH=3`, `CRAWL_TIMEOUT_S=300`), following only same-domain links.
+2. Concatenates pages as `## <url>` sections, bounded by `CRAWL_MAX_TOTAL_CHARS=1,000,000` (the per-page cap is `CRAWL_MAX_PAGE_CHARS=50,000`).
+3. **Replaces** any existing user document whose filename equals the registrable domain (e.g. `docs.example.com` → `docs.example.com.txt`). The replacement deletes the old RAG entry, the file, and the DB row before writing the new one.
+4. Runs the **shared document-indexing core** synchronously (the same pipeline as document uploads) — embeddings → Qdrant → RAG.
+5. **Requeues reasoning** with `rag_source="crawler"`; the `file_coverage` flag ensures the fresh document reaches the prompt.
+6. The resulting document appears in your **Documents panel** under the domain name, ready for ordinary RAG, web search top-up, or **Deep Analysis (RLM)**.
+
+**Degradation**
+
+| Situation | Behavior |
+|---|---|
+| Container disabled or down | `read_page` unregistered; `[-CRAWL-]` fails with a localized message (never silently falls back to light search) |
+| Site refuses automated access (anti-bot) | A notice is shown and FLAI **falls back to ordinary web search** (Tavily → SearXNG) so you still get an answer |
+| 0 usable pages | Localized soft error suggesting ordinary search |
+| Limits reached | Clean stop; collected prefix is indexed |
+| Document quota full | Localized quota error; content discarded |
+
+**SSRF posture**
+
+Every URL passes `app/crawler_guard.py:validate_url()` before it leaves the app: only http/https, all resolved addresses must be globally routable (no RFC 1918, loopback, link-local, 169.254.169.254, CGNAT, ULA, multicast), credentials in URLs rejected. A start URL deeper than the domain root (e.g. `https://site.com/docs/`) is confined to that path prefix — sibling sections of the portal are not crawled. Trafilatura remains the first-step extractor everywhere it runs; the crawler is the second step for pages that need a real browser. Some large shops (e.g. DNS-Shop) block datacenter IPs outright — for those FLAI automatically answers via ordinary search.
+
+**Progress stages**
+
+While a crawl runs you will see these streamed status labels in the chat:
+- `crawl_start` — «Starting web crawl...»
+- `crawl_page` (with page count) — «Crawling page N...»
+- `crawl_indexing` — «Indexing crawled content...»
 
 ---
 
@@ -151,12 +214,13 @@ Notes:
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v12.3
+### What's New in v12.4
 
 | Feature | Notes |
 |---------|-------|
-| **Public OpenAI-compatible API** | Every account can create API keys in the web UI and call FLAI programmatically: `POST /v1/chat/completions` (sync and SSE streaming, router-routed like web chat), `POST /v1/embeddings`, speech synthesis/transcription, async image/video generation with owner-checked download of results, user documents (OpenAI Files-shaped `/v1/files`), RLM deep analysis over your documents, and session/history management — all under `/v1` with Bearer keys, per-owner rate limits, OpenAI-style errors and no cookies. **Interactive Swagger UI at `/v1/docs` (spec `docs/openapi-v1.yaml`)**. See `docs/API.md`. |
-| **Personalization** | A new admin tab lets the admin brand the instance: upload a custom header logo (PNG/JPEG/WebP ≤ 2 MB, auto-scaled, converted to PNG) and set the site name in Russian and English — both variants are required (max 40 chars each), otherwise the default brand («ПЛИИ» / «FLAI») is used. The name appears in the header, the browser tab title and exported chats. The footer became a single short line («ПЛИИ v12.3» / «FLAI v12.3»); clicking it opens an About dialog with the full name and copyright. The dialog and the admin tab follow the light/dark theme, and the layout formulas were recalculated so tab content is no longer clipped at the bottom on mobile. |
+| **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left; the admin Users tab lists each user's remaining credits and FLAI API key count. See the «Tavily web search» section under *Types of Requests & Search Mechanisms* for the full how-to. |
+| **Web crawler (Crawl4AI)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). If a site refuses automated access (anti-bot), FLAI falls back to ordinary search so you still get an answer. Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
+| **Four-line About dialog, single version source** | The footer About dialog now shows exactly four lines — full name, version, project link and copyright — with the version coming from a single `APP_VERSION` constant in `app/config.py` (the Prometheus metric, the footer label, the browser and exported chats all read the same value; the release checklist shrinks to one line). |
 
 ### Core Components
 
@@ -368,7 +432,7 @@ cd flai
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Full stack
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search --with-crawler
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -377,7 +441,7 @@ cd flai
 > **CPU-only deployment (no NVIDIA GPU):** add the `--cpu` flag. Nominal `docker-compose.cpu.yml` is selected automatically when `nvidia-smi` is not found, but `--cpu` forces it.
 >
 > ```bash
-> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search --with-crawler
 > ```
 
 > **Environment keys are generated automatically:** the script copies `.env.example` to `.env` and fills in `SECRET_KEY` and `QDRANT_API_KEY` with secure random values itself — you only need to edit `.env` manually to set your timezone, API URLs, or other preferences. If the first run is interrupted after `.env` was created, re-running the same command skips reconfiguration and continues with the downloads.
@@ -515,7 +579,7 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 #### CPU-only mode (no GPU required)
 
-For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). All timeout values are already increased for CPU speed.
+For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). Timeout values are already increased for CPU speed: image generation/editing gets 45 minutes (`SD_CPP_TIMEOUT=2700`), video generation gets 2 hours (`LTX_VIDEO_TIMEOUT=7200`), and the video planner's automatic time budget follows at 85% of that.
 
 > 🔄 **Switching between GPU and CPU is instant — no rebuild needed.** Image-generation and video images are tagged per backend and **coexist** in the local registry: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` and `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Re-running `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) simply switches compose files and reuses the already-built image of the matching tag — ideal for quick CPU sanity checks even on a GPU machine.
 

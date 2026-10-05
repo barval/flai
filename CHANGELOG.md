@@ -4,7 +4,25 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [v12.3] — Unreleased
+## [v12.4] — Unreleased
+
+### Added
+
+- Tavily-first web search: every user can add a free personal Tavily API key (1000 credits/month) in the profile popup, and search tries Tavily before the local SearXNG engine, falling back automatically when the key is missing, rejected, the service is down or the monthly quota is spent. The popup shows the plan limit, usage and remaining credits; the admin Users tab lists each user's remaining credits and FLAI API key count. One key per user: a second `POST /api-keys/tavily` returns `409` with a localized message before any Tavily call is made (no credit spent). Admin quotas are fetched in a 4-thread pool and cached in Redis for `TAVILY_ADMIN_CACHE_TTL` (300 s). Tests: `tests/test_tavily_keys.py`, `tests/test_tavily_search.py`, `tests/test_tavily_key_routes.py`, `tests/test_tavily_popup_ui.py`, `tests/test_admin_users_columns.py`.
+
+- Web crawler (Crawl4AI): an optional sidecar (compose profile `with-crawler`) gives FLAI a real-browser reader. A pasted URL can be opened and read as a native chat tool (`read_page`), and an explicit "study this site" request routes to the new `[-CRAWL-]` category: FLAI crawls the site (≤50 pages, depth ≤3, 5-minute budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline as uploads, and answers from it — including in Deep analysis mode. Every URL passes an SSRF guard before leaving the app; light search (Tavily → SearXNG) is unchanged.
+
+### Fixed
+
+- Web crawler deployment and runtime (post-integration pass): the compose service uses the real `unclecode/crawl4ai:0.9.4` image (the fictional `crawl4ai/crawl4ai` tag made every `with-crawler` launch fail on pull) and binds the network interface only when `CRAWL4AI_API_TOKEN` is set (token wired through compose and `.env(.example)`); the client talks the 0.9.4 API (`/md` top-level markdown, client-side BFS because the sidecar forbids deep-crawl strategies on untrusted requests); a start URL deeper than the domain root is confined to its path prefix; the crawl context is capped at the real search-context budget (a 50k-char first page no longer overflows the reasoning prompt with «Request too long»); anti-bot blocks (DNS-Shop-style 403/502 pages) raise a distinct error and fall back to ordinary web search instead of dead-ending the user; single-link content questions («что за проект <URL>?») are excluded from categories 6 and 11 so `read_page` opens them (the classifier flipped 2 of 4 runs to search before); crawl stage labels and the `read_page` tool label carry the 🕸️ emoji and localized text in both profiles; `docker compose config` validates, deploy scripts initialize `WITH_CRAWLER` before use, and UI tests assert behaviour instead of string presence. Tests: `tests/test_crawler_module.py`, `tests/test_crawl_task.py`, `tests/test_crawl_ui.py` (+152 crawler tests total).
+
+### Changed
+
+- **CPU timeouts scaled for slower media generation** — CPU-only image generation/editing gets 1.5× and video 2× the headroom: `SD_CPP_TIMEOUT` 1800 → 2700 s, the CPU client `LTX_VIDEO_TIMEOUT` pinned to 7200 s in `docker-compose.cpu.yml` (the shared `.env` value stays GPU-tuned), and the LTX container's `LTX_GUNICORN_TIMEOUT` raised 7300 → 14600 s so long runs surface as a localized timeout error instead of a dropped connection. The video CPU planner's auto time-budget (85% of the timeout) and the queue processing TTL follow automatically.
+
+- **The version has a single source and the About dialog spells the project out** — the footer label, the About dialog and the exported chat each carried their own copy of the version string, and the dialog itself showed only the full name and the copyright. `APP_VERSION` in `app/config.py` is now the only place the version is defined (the Prometheus `flai_web_info` metric and `window.FLAI_VERSION` read it from there; the Docker image installs `requirements.txt` only, so package metadata could not be used), the dialog renders four lines — full name, `v12.4`, `https://github.com/barval/flai` and the copyright — and the footer label and chat export reuse the same constant. Tests: `tests/test_app_version.py`, `tests/test_branding.py`.
+
+## [v12.3] — 2026-10-02
 
 ### Added
 

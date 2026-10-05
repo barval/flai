@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.3 — Single-Server Deployment Script
+# FLAI v12.4 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -81,6 +81,17 @@ enable_env_features() {
         if grep -q '^SEARXNG_URL=' .env 2>/dev/null; then
             info "Disabling web search (SearXNG) in .env..."
             sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
+        fi
+    fi
+    if [[ "$WITH_CRAWLER" == "true" ]]; then
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Enabling deep web crawl (Crawl4AI) in .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=true|' .env
+        fi
+    else
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Disabling deep web crawl (Crawl4AI) in .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=false|' .env
         fi
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
@@ -572,6 +583,7 @@ resolve_stack() {
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
+    [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
     if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
@@ -693,7 +705,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.3 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v12.4 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -709,7 +721,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v12.3 — Deployment Script
+FLAI v12.4 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -762,6 +774,7 @@ WITH_IMAGE_GEN=false
 WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
+WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
@@ -776,6 +789,7 @@ for arg in "$@"; do
         --with-video)                    WITH_VIDEO=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
+        --with-crawler)                  WITH_CRAWLER=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
@@ -795,7 +809,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.3 — Deployment Script"
+    echo "  FLAI v12.4 — Deployment Script"
     echo "============================================"
     echo ""
 

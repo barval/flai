@@ -20,7 +20,7 @@ def load_config(app):
     if not app.config["SECRET_KEY"]:
         raise ValueError("SECRET_KEY must be set in .env file")
     app.config["JSON_AS_ASCII"] = False
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "50")) * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "75")) * 1024 * 1024
     app.config["TIMEZONE_STR"] = os.getenv("TIMEZONE")
     app.config["REDIS_URL"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     app.config["DEBUG_API_ENABLED"] = os.getenv("DEBUG_API_ENABLED", "false").lower() == "true"
@@ -53,7 +53,7 @@ def load_config(app):
 
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
-    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 50))
+    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 250))
     app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 50))
 
     # Image validation settings (shared)
@@ -61,11 +61,21 @@ def load_config(app):
     app.config["MAX_IMAGE_HEIGHT"] = int(os.getenv("MAX_IMAGE_HEIGHT", 2160))
     app.config["MAX_IMAGE_SIZE_MB"] = int(os.getenv("MAX_IMAGE_SIZE_MB", 5))
     app.config["MAX_IMAGE_SIZE"] = int(os.getenv("MAX_IMAGE_SIZE", 1536))
+    # Multi-image messages: when more than one image is attached, every image is
+    # downscaled to this long side first — 4 images × ~1–4K vision tokens must
+    # fit small context windows too.
+    app.config["MAX_CHAT_IMAGES"] = int(os.getenv("MAX_CHAT_IMAGES", 4))
+    app.config["MAX_IMAGE_SIZE_MULTI"] = int(os.getenv("MAX_IMAGE_SIZE_MULTI", 1024))
 
     # Document upload settings
-    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 10))
+    app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 25))
     app.config["MAX_VOICE_SIZE_MB"] = int(os.getenv("MAX_VOICE_SIZE_MB", 5))
     app.config["MAX_AUDIO_SIZE_MB"] = int(os.getenv("MAX_AUDIO_SIZE_MB", 4))
+
+    # Scanned-PDF OCR page budget (chat documents and Documents uploads share it):
+    # after this many seconds the collected pages are indexed and the user is
+    # notified how far the recognition got.
+    app.config["OCR_TIME_BUDGET_S"] = int(os.getenv("OCR_TIME_BUDGET_S", 1800))
 
     # Whisper ASR settings
     app.config["WHISPER_API_URL"] = os.getenv("WHISPER_API_URL", "http://flai-whisper:9000/asr")

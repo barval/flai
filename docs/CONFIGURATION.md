@@ -35,10 +35,13 @@ SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
+MAX_IMAGE_SIZE_MULTI=1024       # Per-image long side when several images are attached
+MAX_CHAT_IMAGES=4               # Max images per chat message (also for deep analysis)
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
-MAX_DOCUMENT_SIZE_MB=10         # Max upload size of a document
+MAX_DOCUMENT_SIZE_MB=25         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
+OCR_TIME_BUDGET_S=1800          # Scanned-PDF OCR budget per document task (0 = unlimited)
 ```
 
 **Service Retry Settings:**
@@ -122,7 +125,7 @@ server {
     listen 80;
     server_name flai.example.com;
 
-    # Must be >= MAX_CONTENT_LENGTH_MB from .env (default 50 MB)
+    # Must be >= MAX_CONTENT_LENGTH_MB from .env (default 75 MB)
     client_max_body_size 200m;
 
     location / {

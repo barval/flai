@@ -236,6 +236,47 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
         return response, None
 
+    def process_images_with_text(
+        self,
+        images: list[str],
+        user_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> tuple[str | None, str | None]:
+        """Process SEVERAL images with text in one multimodal call (compare,
+        group questions). The caller is responsible for the fallback path when
+        this fails — here we only report the error back."""
+        if not images:
+            return None, self._("Error loading prompt template", lang)
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        if not prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        converted = [self._ensure_llamacpp_compatible(data)[0] for data in images]
+        response = self.llamacpp.chat_with_images(text=prompt, images=converted, model_type="multimodal", lang=lang)
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100] if response else 'None'}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+        return response, None
+
+    def describe_images_for_context(
+        self, images: list[str], lang: str = "ru"
+    ) -> list[tuple[str, str | None, str | None]]:
+        """Describe each image one by one for the multi-image fallback path.
+
+        Returns a list of (image_data, description, error) tuples in input
+        order; errors are collected instead of aborting the batch."""
+        results: list[tuple[str, str | None, str | None]] = []
+        for data in images:
+            description, error = self.describe_image_for_rlm(data, lang)
+            results.append((data, description, error))
+        return results
+
     def describe_image_for_rlm(self, image_data: str, lang: str = "ru") -> tuple[str | None, str | None]:
         """Produce a maximally detailed text description of an image for the RLM
         deep-analysis pipeline. The description is treated as a corpus document."""
@@ -285,6 +326,30 @@ class MultimodalModule(TranslationMixin):
         converted_data, _ = self._ensure_llamacpp_compatible(image_data)
         yield from self.llamacpp.chat_with_image_stream(
             text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
+        )
+
+    def process_images_with_text_stream(
+        self,
+        images: list[str],
+        user_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> Generator[str, None, None]:
+        """Stream multimodal response for SEVERAL images + text, token by token."""
+        if not self.check_availability():
+            yield "⚠️ " + self._("Multimodal model unavailable", lang)
+            return
+
+        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        if not prompt:
+            yield "⚠️ " + self._("Error loading prompt template", lang)
+            return
+
+        converted = [self._ensure_llamacpp_compatible(data)[0] for data in images]
+        yield from self.llamacpp.chat_with_images_stream(
+            text=prompt, images=converted, model_type="multimodal", lang=lang
         )
 
     def _ensure_llamacpp_compatible(self, image_data: str) -> tuple[str, bool]:

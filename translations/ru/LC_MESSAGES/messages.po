@@ -3139,3 +3139,27 @@ msgstr "🕸️ Обхожу страницу %s..."
 #. crawler stage progress (chat.html)
 msgid "Indexing crawled content..."
 msgstr "🕸️ Индексирую полученный контент..."
+
+#. multi-attachment cap (chat-init.js)
+msgid "max_images_reached"
+msgstr "Максимум %s изображений в одном сообщении"
+
+#. attachment chip remove button title (chat-init.js)
+msgid "remove_file"
+msgstr "Убрать вложение"
+
+#. multiple documents in one chat message (messages.py)
+msgid "Multiple documents are not supported in one message"
+msgstr "В одно сообщение можно приложить только один документ"
+
+#. attached document indexing failure (queue.py doc_chat)
+msgid "Could not index the attached document. It was saved to your Documents; try again later."
+msgstr "Не удалось проиндексировать приложенный документ. Он сохранён в разделе «Документы»; попробуйте позже."
+
+#. scanned PDF OCR time budget reached (queue.py)
+msgid "OCR time budget reached: recognized the first {pages} of {total} pages. They are being indexed now."
+msgstr "Достигнут лимит времени распознавания: распознаны первые {pages} из {total} страниц. Они сейчас индексируются."
+
+#. image generation with attached example images (queue.py)
+msgid "Reference examples (draw something similar):"
+msgstr "Примеры для подражания (нарисуй что-то похожее):"

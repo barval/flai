@@ -107,7 +107,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - **Voice messages** — Whisper ASR transcription.
 - **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
 - **Camera snapshots (optional)** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
-- **Attachments** — images, audio and documents, plus clipboard paste (Ctrl+V / mobile «Paste»); an image takes priority over text.
+- **Attachments** — up to 4 images, one document, audio, or a voice message in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions). Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
 - **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
 

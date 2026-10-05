@@ -562,12 +562,27 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             try {
                 const parts = JSON.parse(content);
                 let textContent = '';
+                const contentAttachments = [];
                 parts.forEach(part => {
                     if (part.type === 'text') textContent += part.text + '\n';
+                    else if ((part.type === 'image' || part.type === 'audio' || part.type === 'file')
+                        && (part.file_data || part.file_path)) {
+                        // Render the legacy first attachment via the fileData
+                        // parameters (below); the rest become inline chips.
+                        contentAttachments.push(part);
+                    }
                 });
                 if (textContent) {
                     const escapedText = escapeHtml(textContent.trim());
                     contentHTML += marked.parse(escapedText);
+                }
+                // Extra attachments beyond the legacy first one: render inline.
+                // The first entry stays on the legacy path so the existing
+                // rendering (click-to-enlarge, download links) is unchanged.
+                if (contentAttachments.length > 1 && role === 'user') {
+                    window.__extraAttachments = contentAttachments.slice(1);
+                } else {
+                    window.__extraAttachments = null;
                 }
             } catch (e) {
                 const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
@@ -646,6 +661,52 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 msgDiv.appendChild(fileDiv);
             }
         }
+    }
+
+    // Extra attachments (beyond the legacy first one) from the content JSON:
+    // thumbnails for images, audio players, emoji file chips.
+    const extraAttachments = window.__extraAttachments;
+    window.__extraAttachments = null;
+    if (extraAttachments && extraAttachments.length > 0) {
+        const extraRow = document.createElement('div');
+        extraRow.className = 'extra-attachments';
+        for (const part of extraAttachments) {
+            const partUrl = part.file_path ? '/api/files/' + part.file_path
+                : 'data:' + part.file_type + ';base64,' + part.file_data;
+            if (part.type === 'image' || (part.file_type && part.file_type.startsWith('image/'))) {
+                const imgWrap = document.createElement('div');
+                imgWrap.className = 'image-container';
+                const img = document.createElement('img');
+                img.src = partUrl;
+                img.loading = 'lazy';
+                img.className = 'attached-image';
+                img.alt = part.file_name || 'attached image';
+                img.title = t('click_to_enlarge');
+                img.onclick = function () { openImageModal(this.src, part.file_name || t('image')); };
+                imgWrap.appendChild(img);
+                extraRow.appendChild(imgWrap);
+            } else if (part.type === 'audio' || (part.file_type && part.file_type.startsWith('audio/'))) {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = partUrl;
+                audio.preload = 'metadata';
+                extraRow.appendChild(audio);
+            } else {
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'attached-file';
+                const icon = document.createElement('span');
+                icon.className = 'file-icon';
+                icon.textContent = '📄';
+                const link = document.createElement('a');
+                link.href = partUrl;
+                link.download = part.file_name || 'file';
+                link.textContent = part.file_name || 'file';
+                fileDiv.appendChild(icon);
+                fileDiv.appendChild(link);
+                extraRow.appendChild(fileDiv);
+            }
+        }
+        msgDiv.appendChild(extraRow);
     }
 
     container.appendChild(msgDiv);

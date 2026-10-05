@@ -726,7 +726,7 @@ class TestImageVideoEndpoints:
         enqueued = {}
         registered = {}
 
-        def _enqueue(api_user_arg, session_id, prompt, response_style):
+        def _enqueue(api_user_arg, session_id, prompt, response_style, image_references=None):
             enqueued.update(login=api_user_arg["login"], session_id=session_id, prompt=prompt, style=response_style)
             return "image-task", {"position": 2, "estimated_seconds": 10, "queue_type": "slow"}
 
@@ -756,6 +756,78 @@ class TestImageVideoEndpoints:
         assert registered["task_id"] == "image-task"
         assert registered["endpoint"] == "/v1/images/generations"
         assert generated == []
+
+    def test_image_generation_accepts_image_references(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        enqueued = {}
+
+        def _enqueue(api_user_arg, session_id, prompt, response_style, image_references=None):
+            enqueued.update(
+                prompt=prompt,
+                refs=[r["file_data"] for r in (image_references or [])],
+            )
+            return "image-task", {"position": 1, "estimated_seconds": 10, "queue_type": "slow"}
+
+        monkeypatch.setattr("app.routes.api_v1.enqueue_image_generation", _enqueue, raising=False)
+        monkeypatch.setattr(
+            "app.routes.api_v1.register_api_task",
+            lambda *a, **k: None,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "app.api_bridge.parse_data_url",
+            lambda url: ("IMGDATA", "image/png", "image.png"),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "app.routes.api_v1.parse_data_url",
+            lambda url: ("IMGDATA", "image/png", "image.png"),
+            raising=False,
+        )
+        response = client.post(
+            "/v1/images/generations",
+            json={
+                "prompt": "draw something similar",
+                "image_references": [
+                    {"image_url": {"url": "data:image/png;base64,AAAA"}},
+                    {"image_url": {"url": "data:image/png;base64,BBBB"}},
+                ],
+            },
+            headers=bearer(api_user),
+        )
+        assert response.status_code == 202, response.get_json()
+        assert enqueued["prompt"] == "draw something similar"
+        assert enqueued["refs"] == ["IMGDATA", "IMGDATA"]
+
+    def test_image_generation_rejects_non_data_image_references(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        response = client.post(
+            "/v1/images/generations",
+            json={
+                "prompt": "draw",
+                "image_references": [{"image_url": {"url": "https://example.com/cat.png"}}],
+            },
+            headers=bearer(api_user),
+        )
+        assert response.status_code == 400
+        assert "data:" in response.get_json()["error"]["message"]
+
+    def test_image_generation_rejects_too_many_image_references(self, client, api_user, test_app, monkeypatch):
+        install_media_modules(test_app)
+        test_app.config["MAX_CHAT_IMAGES"] = 2
+        response = client.post(
+            "/v1/images/generations",
+            json={
+                "prompt": "draw",
+                "image_references": [
+                    {"image_url": {"url": "data:image/png;base64,A"}},
+                    {"image_url": {"url": "data:image/png;base64,B"}},
+                    {"image_url": {"url": "data:image/png;base64,C"}},
+                ],
+            },
+            headers=bearer(api_user),
+        )
+        assert response.status_code == 400
 
     def test_image_generation_b64_json_is_rejected_without_enqueue(self, client, api_user, monkeypatch):
         enqueued = []

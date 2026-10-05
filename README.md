@@ -18,7 +18,7 @@
 - **One GPU queue, strictly serialized.** VRAM is cleaned unconditionally between GPU tasks; a model is loaded only after the previous one is gone.
 - **An LLM router decides what happens.** Every message is classified into one of eleven categories — there is no keyword routing anywhere in the code.
 - **Multimodal, multilingual, persistent.** Images and scanned PDFs are read by a vision model, the UI is English/Russian, and long-term memory survives across sessions.
-- **A public OpenAI-compatible API.** `/v1/chat/completions`, embeddings, media, audio, files and RLM, with per-user keys and an interactive reference at `/v1/docs`.
+- **A public OpenAI-compatible API.** `/v1/chat/completions`, embeddings, media, audio, files and RLM, with per-user keys and an interactive reference at `/v1/docs`. Multi-image chat, deep analysis with images and «draw something similar» references work through the API exactly like in the web chat.
 - **GPU or CPU.** 8 GB of VRAM runs the core stack; larger models and full-resolution video need more VRAM. CPU-only mode runs the same features, slower, with automatic downscaling for media.
 - **One command to deploy.** `./deploy.sh --download-models --with-image-gen …` builds, downloads models and starts everything.
 
@@ -117,7 +117,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ### 🔌 API & automation
 - **Per-user API keys** — created in the web UI, stored as SHA-256 digests, revocable.
-- **OpenAI-compatible `/v1`** — chat completions (sync + SSE), async chat, embeddings, image and video generation, audio speech and transcription, files and documents, RLM, sessions and owner-scoped task polling.
+- **OpenAI-compatible `/v1`** — chat completions (sync + SSE), async chat, embeddings, image and video generation, audio speech and transcription, files and documents, RLM, sessions and owner-scoped task polling. Multi-image chat requests, deep-analysis image attachments and image-generation references are accepted (up to 4 images, one joint vision call).
 - **Interactive reference** — Swagger UI at `/v1/docs`, OpenAPI document at `/v1/openapi.json`, served offline with bundled assets. → [API.md](docs/API.md)
 
 ### ⚙️ Administration

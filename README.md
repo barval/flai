@@ -14,12 +14,12 @@
 
 ## TL;DR
 
-- **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service in the path.
+- **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service in the path (optional Tavily web search is the only opt-in cloud service).
 - **One GPU queue, strictly serialized.** VRAM is cleaned unconditionally between GPU tasks; a model is loaded only after the previous one is gone.
 - **An LLM router decides what happens.** Every message is classified into one of eleven categories — there is no keyword routing anywhere in the code.
 - **Multimodal, multilingual, persistent.** Images and scanned PDFs are read by a vision model, the UI is English/Russian, and long-term memory survives across sessions.
 - **A public OpenAI-compatible API.** `/v1/chat/completions`, embeddings, media, audio, files and RLM, with per-user keys and an interactive reference at `/v1/docs`.
-- **GPU or CPU.** 8 GB of VRAM is enough for the whole stack; CPU-only mode runs the same features, slower, with automatic downscaling for media.
+- **GPU or CPU.** 8 GB of VRAM runs the core stack; larger models and full-resolution video need more VRAM. CPU-only mode runs the same features, slower, with automatic downscaling for media.
 - **One command to deploy.** `./deploy.sh --download-models --with-image-gen …` builds, downloads models and starts everything.
 
 ## 📑 Contents
@@ -106,7 +106,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 ### 🗣️ Voice, camera & web UI
 - **Voice messages** — Whisper ASR transcription.
 - **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
-- **Camera snapshots** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
+- **Camera snapshots (optional)** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
 - **Attachments** — images, audio and documents, plus clipboard paste (Ctrl+V / mobile «Paste»); an image takes priority over text.
 - **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
 - **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
@@ -339,7 +339,7 @@ Then log in as `admin` at `http://localhost:5000`:
 
 ### Everything is configured with environment variables
 
-Every service has a profile, and everything else lives in `.env`: compose profiles, timeouts, VRAM and memory limits, model URLs, search keys, Tavily and crawler settings, API rate limits, branding. The complete reference with defaults is in [CONFIGURATION.md](docs/CONFIGURATION.md).
+Every service has a profile, and most settings live in `.env`: compose profiles, timeouts, VRAM and memory limits, model URLs, search keys, Tavily and crawler settings, API rate limits, branding. Many runtime settings (models, users, backups, branding, cameras) are managed in the admin panel. The complete reference with defaults is in [CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### You're ready
 

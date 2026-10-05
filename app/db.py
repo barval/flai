@@ -151,13 +151,16 @@ def get_session_messages(
                     if current_app.config.get("TIMEZONE") and dt.tzinfo is None:
                         dt = current_app.config["TIMEZONE"].localize(dt)
                     msg_dict["timestamp"] = dt.isoformat()
-            # Strip base64 file_data from content JSON when file is on disk
+            # Strip base64 file_data from content JSON only for parts that
+            # have their own file_path on disk (extra chat images are saved
+            # individually; their file_data may still be the only source for
+            # older rows or parts without a stored file).
             if msg_dict.get("file_path") and msg_dict.get("content"):
                 try:
                     parsed = json.loads(msg_dict["content"])
                     if isinstance(parsed, list):
                         for item in parsed:
-                            if isinstance(item, dict) and "file_data" in item:
+                            if isinstance(item, dict) and "file_data" in item and item.get("file_path"):
                                 item["file_data"] = None
                         msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
                 except Exception as e:

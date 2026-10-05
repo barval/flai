@@ -48,6 +48,20 @@ class TestAttachmentChips:
         assert "__extraAttachments" in CHAT_MESSAGES
         assert "extra-attachments" in CHAT_MESSAGES
 
+    def test_extra_attachments_skip_parts_without_source(self):
+        # history reloads strip file_data for stored parts; a part with
+        # neither file_path nor file_data must not become a broken data: URL
+        m = CHAT_MESSAGES.index("window.__extraAttachments;")
+        block = CHAT_MESSAGES[m : m + 900]
+        assert "const hasSource = part.file_path || part.file_data;" in block
+        assert "if (!hasSource) continue;" in block
+
+    def test_optimistic_render_includes_multi_queue(self):
+        # the no-legacy-file branch reads queued images and passes them into
+        # the optimistic user message (images visible before the POST returns)
+        assert "readExtraAsBase64" in CHAT_INIT
+        assert "displayUserMessage(null, null, null, null, extraParts)" in CHAT_INIT
+
     def test_css_for_chips_light_and_dark(self):
         assert ".attachment-chip" in CHAT_CSS
         assert ".attachment-chip-thumb" in CHAT_CSS

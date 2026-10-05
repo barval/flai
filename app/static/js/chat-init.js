@@ -405,7 +405,25 @@ async function sendMessage() {
     const isAudioFile = (tempAttachedFile && tempAttachedFile.type && tempAttachedFile.type.startsWith('audio/'))
         || tempFiles.some(isAudioTypeFile);
 
-    const displayUserMessage = (fileData, fileType, fileName, filePath) => {
+    // Read the multi-queue images as base64 so the optimistic message shows
+    // them right away. Previously only the legacy single-slot file was
+    // rendered — with several images the user saw text only until F5.
+    const readExtraAsBase64 = async (files) => {
+        const out = [];
+        for (const f of files) {
+            if (!isImageFile(f)) continue;
+            const data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1] || '');
+                reader.onerror = reject;
+                reader.readAsDataURL(f);
+            });
+            out.push({ data, type: f.type, name: f.name });
+        }
+        return out;
+    };
+
+    const displayUserMessage = (fileData, fileType, fileName, filePath, extraParts) => {
         if (window.IS_RELOADING) return;
 
         if (fileData || filePath) {
@@ -413,6 +431,9 @@ async function sendMessage() {
             if (fileType && fileType.startsWith('image/')) type = "image";
             else if (fileType && fileType.startsWith('audio/')) type = "audio";
             userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
+        }
+        for (const p of (extraParts || [])) {
+            userContent.push({ "type": "image", "file_data": p.data, "file_type": p.type, "file_name": p.name });
         }
 
         const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
@@ -716,7 +737,10 @@ async function sendMessage() {
         
     } else {
         try {
-            displayUserMessage(null, null, null, null);
+            // Multi-image send: read the queued images first, render the
+            // optimistic message with them visible, then send.
+            const extraParts = await readExtraAsBase64(tempFiles);
+            displayUserMessage(null, null, null, null, extraParts);
             sendToServer();
             // For text messages, button remains locked until response (unlocked in finally)
         } catch (err) {

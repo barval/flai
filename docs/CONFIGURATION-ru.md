@@ -106,7 +106,7 @@ HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 
 По умолчанию веб-интерфейс доступен по адресу `http://<server-ip>:5000` — веб-сервис публикует порт `5000` (`"5000:5000"` в `docker-compose.gpu.yml` / `docker-compose.cpu.yml`), и Gunicorn слушает `0.0.0.0:5000`.
 
-Чтобы разместить FLAI под собственным доменом, поставьте перед ним reverse proxy (nginx, Caddy, Traefik). Приложение доверяет прокси-заголовкам (`ProxyFix`: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`), поэтому редиректы и `url_for` автоматически подхватят ваш домен и схему HTTPS.
+Чтобы разместить ПЛИИ под собственным доменом, поставьте перед ним reverse proxy (nginx, Caddy, Traefik). Приложение доверяет прокси-заголовкам (`ProxyFix`: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`), поэтому редиректы и `url_for` автоматически подхватят ваш домен и схему HTTPS.
 
 **Шаг 1.** (опционально) Закройте прямой доступ к порту 5000: в `docker-compose.gpu.yml` / `docker-compose.cpu.yml` замените `"5000:5000"` на `"127.0.0.1:5000:5000"` и перезапустите командой `docker compose -f docker-compose.gpu.yml up -d flai-web`.
 

@@ -80,6 +80,33 @@ class TestExportAllAttachments:
         assert "for (const audio of msg.media.audios)" in export_src
         assert "for (const video of msg.media.videos)" in export_src
 
+    def test_export_footer_mirrors_site_about_dialog(self):
+        export_src = pathlib.Path("app/static/js/chat-export.js").read_text(encoding="utf-8")
+        # one-line brand label like the live site (no retired two-line footer)
+        assert "footer-brand" in export_src
+        assert "footer_short_name" in export_src
+        assert "footer-line1" not in export_src and "footer-line2" not in export_src
+        # embedded About dialog: full name, version, GitHub link, copyright
+        assert "export-about-modal" in export_src
+        assert "footer_text" in export_src
+        assert "footer_copyright" in export_src
+        assert "https://github.com/barval/flai" in export_src
+        # logo inside the dialog, inline open/close JS with Escape
+        assert "about-logo" in export_src
+        assert "about-modal-close" in export_src
+        assert 'e.key === "Escape"' in export_src
+
+    def test_export_dialog_keys_available_to_chat_js(self):
+        # the export reads footer_short_name/footer_about_hint/close_about
+        # through t() — chat.html must inject all three into TRANSLATIONS
+        assert "'footer_short_name'" in CHAT_HTML
+        assert "'footer_about_hint'" in CHAT_HTML
+        assert "'close_about'" in CHAT_HTML
+
+    def test_export_css_has_footer_brand(self):
+        export_css = pathlib.Path("app/static/css/export.css").read_text(encoding="utf-8")
+        assert "footer .footer-brand" in export_css
+
     def test_css_for_chips_light_and_dark(self):
         assert ".attachment-chip" in CHAT_CSS
         assert ".attachment-chip-thumb" in CHAT_CSS

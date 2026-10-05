@@ -229,17 +229,23 @@ def enqueue_image_generation(
     session_id: str,
     prompt: str,
     response_style: str,
+    image_references: list[dict[str, str]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Queue an explicit public-API image generation request."""
+    """Queue an explicit public-API image generation request.
+
+    ``image_references`` are optional example images («draw something
+    similar»): each is described by the multimodal model and the descriptions
+    steer the SD prompt, mirroring the web `[-IMAGE-]` path.
+    """
     message_id = save_message(
         session_id,
         "user",
-        _build_user_content(prompt, []),
+        _build_user_content(prompt, image_references or []),
         user_id=api_user["login"],
         response_style=response_style,
     )
     update_session_visit(api_user["login"], session_id)
-    request_data = {
+    request_data: dict[str, Any] = {
         "type": "image_gen",
         "text": prompt,
         "current_message_id": message_id,
@@ -247,6 +253,8 @@ def enqueue_image_generation(
         "response_style": response_style,
         "stream": False,
     }
+    if image_references:
+        request_data["images"] = [ref["file_data"] for ref in image_references]
     task_id, queue_info = get_request_queue().add_request(
         api_user["login"],
         session_id,
@@ -425,16 +433,18 @@ def parse_data_url(url: str) -> tuple[str, str, str]:
 
 
 def normalize_chat_messages(messages: Any) -> tuple[str, list[dict[str, str]]]:
-    """Return the concatenated user text and the first image of an OpenAI request.
+    """Return the concatenated user text and the images of an OpenAI request.
 
-    A FLAI task carries at most one image, so the first image part wins and any
-    later one is dropped rather than silently mis-attached.
+    Up to ``MAX_CHAT_IMAGES`` image parts are kept (parity with the web
+    multi-attachment chat); parts beyond the cap are rejected with a
+    localized error instead of being silently mis-attached.
     """
     if not isinstance(messages, list) or not messages:
         raise ApiImageRejectedError("'messages' must be a non-empty array")
 
     texts: list[str] = []
     images: list[dict[str, str]] = []
+    max_images = current_app.config.get("MAX_CHAT_IMAGES", 4)
     for message in messages:
         if not isinstance(message, dict):
             raise ApiImageRejectedError("Each entry of 'messages' must be an object")
@@ -462,13 +472,14 @@ def normalize_chat_messages(messages: Any) -> tuple[str, list[dict[str, str]]]:
                 if isinstance(part_text, str) and part_text:
                     texts.append(part_text)
             elif part_type == "image_url":
+                if len(images) >= max_images:
+                    raise ApiImageRejectedError("max_images_reached", str(max_images))
                 image_url = part.get("image_url")
                 url = image_url.get("url") if isinstance(image_url, dict) else image_url
                 if not isinstance(url, str):
                     raise ApiImageRejectedError("Only data: URLs are supported for image content parts")
                 file_data, file_type, file_name = parse_data_url(url)
-                if not images:
-                    images.append({"file_data": file_data, "file_type": file_type, "file_name": file_name})
+                images.append({"file_data": file_data, "file_type": file_type, "file_name": file_name})
             else:
                 raise ApiImageRejectedError("Unsupported content part type: %s", part_type)
 
@@ -485,6 +496,43 @@ def _build_user_content(text: str, images: list[dict[str, str]]) -> str:
         content.append({"type": "text", "text": text})
     content.extend(images)
     return json.dumps(content, ensure_ascii=False)
+
+
+def _enqueue_chat_data(
+    text: str,
+    images: list[dict[str, str]] | None,
+    request_type: str,
+    message_id: int,
+    preview: str,
+    response_style: str,
+) -> dict[str, Any]:
+    """Build the web-shaped request_data for a text or image chat task.
+
+    Mirrors the web route: the first image keeps the legacy ``file_data``
+    columns, the full list travels in ``images`` so the slow worker runs the
+    joint multi-image call with the per-image fallback.
+    """
+    images = images or []
+    data: dict[str, Any] = {
+        "type": request_type,
+        "text": text,
+        "preview": preview,
+        "response_style": response_style,
+        "stream": True,
+    }
+    if request_type == "image":
+        first = images[0]
+        data.update(
+            {
+                "file_data": first["file_data"],
+                "file_type": first["file_type"],
+                "file_name": first["file_name"],
+                "images": [img["file_data"] for img in images],
+            }
+        )
+    else:
+        data["current_message_id"] = message_id
+    return data
 
 
 def enqueue_chat(
@@ -524,25 +572,13 @@ def enqueue_chat(
 
     preview = text[:PREVIEW_CHARS] if text else (file_name or "")
     if images:
-        request_data: dict[str, Any] = {
-            "type": "image",
-            "text": text,
-            "file_data": file_data,
-            "file_type": file_type,
-            "file_name": file_name,
-            "preview": f"{preview}..." if text else (file_name or "Image"),
-            "response_style": response_style,
-            "stream": True,
-        }
+        preview = f"{preview}..." if text else (file_name or "Image")
+        request_type = "image"
     else:
-        request_data = {
-            "type": "text",
-            "text": text,
-            "current_message_id": message_id,
-            "preview": f"{preview}..." if text else "Text request",
-            "response_style": response_style,
-            "stream": True,
-        }
+        preview = f"{preview}..." if text else "Text request"
+        request_type = "text"
+
+    request_data = _enqueue_chat_data(text, images, request_type, message_id, preview, response_style)
 
     task_id, queue_info = get_request_queue().add_request(login, session_id, request_data, service_class, lang)
     return str(task_id), dict(queue_info)

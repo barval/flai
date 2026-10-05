@@ -223,8 +223,10 @@ URL вида `data:`:
 
 Ограничения: URL должен начинаться с `data:`, быть закодирован в base64 и иметь MIME-тип
 вида `image/*`. Удалённые URL отклоняются с `400` — ПЛИИ работает офлайн и не будет
-за вас скачивать изображение из интернета. Если частей-изображений несколько,
-используется первая, а остальные отбрасываются.
+за вас скачивать изображение из интернета. В одном запросе сохраняется до
+`MAX_CHAT_IMAGES` (4) частей-изображений (паритет с мультивложениями веб-чата): они
+обрабатываются одним совместным вызовом модели зрения с запасным путём по одному
+изображению при сбое. Запрос с числом изображений сверх лимита отклоняется с `400`.
 
 ### Принимаемые и игнорируемые параметры
 
@@ -462,6 +464,18 @@ curl http://localhost:5000/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"prompt": "a lighthouse at dusk", "model": "flai-image"}'
 
+# Generate in the style of attached examples ("draw something similar")
+curl http://localhost:5000/v1/images/generations \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "prompt": "a lighthouse at dusk",
+        "image_references": [
+          {"image_url": {"url": "data:image/png;base64,/9j/4AAQSk..."}},
+          {"image_url": {"url": "data:image/png;base64,R0lGODlh..."}}
+        ]
+      }'
+
 # Edit an uploaded image (multipart)
 curl http://localhost:5000/v1/images/edits \
   -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
@@ -474,6 +488,11 @@ curl http://localhost:5000/v1/videos \
   -H "Content-Type: application/json" \
   -d '{"prompt": "waves on a beach", "width": 768, "height": 512, "num_frames": 96, "frame_rate": 12}'
 ```
+
+`image_references` (необязательно, до `MAX_CHAT_IMAGES`) повторяет веб-поток
+«нарисуй что-то похожее»: каждый пример описывается моделью зрения, и описания
+направляют промпт SD. Принимаются только инлайновые `data:` URL; превышение
+лимита возвращает `400`.
 
 - `response_format` должен быть `url` (по умолчанию). `b64_json` отклоняется с
   `400 invalid_request_error`: payload хранится на сервере, поэтому клиенты
@@ -567,7 +586,7 @@ curl -X DELETE http://localhost:5000/v1/files/{file_id} -H "Authorization: Beare
 ## Глубокий анализ (RLM)
 
 `POST /v1/flai/rlm` запускает явную задачу глубокого анализа по принадлежащим
-вызывающему документам (и, по желанию, по одному загруженному изображению) через ту
+вызывающему документам (и, по желанию, по приложенным изображениям) через ту
 же сериализованную по GPU очередь, что и веб-чат. Требуется `RLM_ENABLED`; иначе
 эндпоинт возвращает `403 rlm_disabled`, а `GET /v1/flai/me` сообщает `rlm: false`.
 
@@ -578,19 +597,21 @@ curl http://localhost:5000/v1/flai/rlm \
   -d '{
         "session_id": "3f2b1c4d-...",
         "doc_ids": ["a1b2c3d4-..."],
-        "question": "Compare the risk sections of these contracts"
+        "question": "Compare the risk sections of these contracts",
+        "images": [{"image_url": {"url": "data:image/png;base64,/9j/4AAQSk..."}}]
       }'
 ```
 
 - `session_id` должен быть собственной сессией (иначе `404 session_not_found`),
   и каждая запись в `doc_ids` должна принадлежать пользователю
-  (`404 document_not_found`); требуется хотя бы один документ или загруженное
+  (`404 document_not_found`); требуется хотя бы один документ или приложенное
   изображение (`400`).
-- Многочастный вариант принимает поля формы `files` (до `MAX_CHAT_IMAGES`
-  изображений; одиночное поле `file` по-прежнему работает), `session_id`,
-  `doc_ids` (строка с JSON-массивом) и `question`; каждое изображение проходит те же
-  квоты и ограничение по уменьшению, что и загрузки из чата (при нескольких
-  картинках действует лимит `MAX_IMAGE_SIZE_MULTI`), и сохраняется вместе с вопросом.
+- Изображения (до `MAX_CHAT_IMAGES`): многочастный вариант принимает `files`
+  (одиночное поле `file` по-прежнему работает), JSON-тело — `images` в виде
+  OpenAI-частей `image_url` с инлайновыми `data:` URL. Каждое изображение
+  проходит те же квоты и ограничение по уменьшению, что и загрузки из чата,
+  и попадает в корпус анализа отдельным документом «Изображение (имя)» —
+  точно как в глубоком анализе веб-интерфейса.
 - Ход пользователя сохраняется в истории API-сессии, а ответ — `202 Accepted`
   с `task_id`, `position` и `user_message_id`.
 - Опрашивайте возвращённый `task_id` через `/v1/flai/tasks/{task_id}` — задача

@@ -419,6 +419,9 @@ paths:
         `response_format` must be `url` (default); `b64_json` is rejected with
         `400 invalid_response_format` because the payload is stored server-side
         and downloaded through the content URL instead of being sent inline.
+        Optional `image_references` (up to `MAX_CHAT_IMAGES` inline `data:` URLs)
+        mirror the web «draw something similar» flow: each example is described
+        by the multimodal model and the descriptions steer the SD prompt.
         The conversation turn (prompt + generated image) is persisted into the
         API session history.
       operationId: generateImage
@@ -432,6 +435,10 @@ paths:
               properties:
                 prompt: {type: string, minLength: 1}
                 response_format: {type: string, enum: [url], default: url}
+                image_references:
+                  type: array
+                  maxItems: 4
+                  items: {$ref: '#/components/schemas/ImageUrlPart'}
                 model: {type: string, description: Accepted and ignored.}
                 user: {type: string, description: FLAI session continuity, not OpenAI semantics.}
                 metadata:
@@ -955,14 +962,16 @@ paths:
 
         `session_id` must be an owned session (`404 session_not_found`) and every
         `doc_ids` entry must be owned (`404 document_not_found`). At least one
-        document or one uploaded image is required, plus a non-empty `question`.
+        document or one attached image is required, plus a non-empty `question`.
 
-        The multipart variant accepts `file` (image), `session_id`, `doc_ids`
-        (a JSON array as a string) and `question` form fields; the image passes
-        the same quota and resize cap as a chat upload. The user turn is saved
-        into the session history before the response is sent. The whole analysis
-        holds the GPU lock for its full duration, so expect it to queue behind
-        other GPU work; poll the returned `task_id`.
+        Up to `MAX_CHAT_IMAGES` images may be attached: the multipart variant
+        accepts `files` (the legacy single `file` field still works), the JSON
+        body accepts `images` as OpenAI-style `image_url` parts with inline
+        `data:` URLs. Every image passes the same quota and resize cap as a chat
+        upload and joins the corpus as an «Image (name)» document. The user turn
+        is saved into the session history before the response is sent. The whole
+        analysis holds the GPU lock for its full duration, so expect it to queue
+        behind other GPU work; poll the returned `task_id`.
       operationId: createDeepAnalysis
       requestBody:
         required: true
@@ -975,10 +984,15 @@ paths:
                 session_id: {type: string}
                 doc_ids: {type: array, items: {type: string}}
                 question: {type: string, minLength: 1}
+                images:
+                  type: array
+                  maxItems: 4
+                  items: {$ref: '#/components/schemas/ImageUrlPart'}
             example:
               session_id: 3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
               doc_ids: [a1b2c3d4-...]
               question: Compare the risk sections of these contracts
+              images: [{image_url: {url: 'data:image/png;base64,/9j/4AAQSk...'}}]
           multipart/form-data:
             schema:
               type: object
@@ -987,7 +1001,11 @@ paths:
                 session_id: {type: string}
                 doc_ids: {type: string, description: 'JSON array, e.g. `["a1b2c3d4-..."]`.'}
                 question: {type: string, minLength: 1}
-                file: {type: string, format: binary, description: Optional image to describe and add to the corpus.}
+                files:
+                  type: array
+                  maxItems: 4
+                  items: {type: string, format: binary, description: Image to describe and add to the corpus.}
+                file: {type: string, format: binary, description: Legacy single-image field (still works).}
       responses:
         '202':
           description: Analysis queued.
@@ -1250,6 +1268,20 @@ components:
           schema: {$ref: '#/components/schemas/ErrorEnvelope'}
 
   schemas:
+    ImageUrlPart:
+      type: object
+      required: [image_url]
+      properties:
+        image_url:
+          oneOf:
+            - type: string
+              description: Inline `data:` URL (must be base64, `image/*`).
+            - type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  description: Inline `data:` URL (must be base64, `image/*`); remote URLs are rejected with 400.
     ErrorEnvelope:
       type: object
       required: [error]

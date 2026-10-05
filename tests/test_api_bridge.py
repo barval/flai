@@ -350,6 +350,23 @@ class TestEnqueueChat:
 
         assert bridge_deps["queue"].added[0][2]["type"] == "image"
 
+    def test_multi_image_turn_carries_the_full_list(self, bridge_deps):
+        second = {"file_data": "BBBB", "file_type": "image/png", "file_name": "image-b.png"}
+        enqueue_chat(api_user(), "s1", "compare", [PARSED_IMAGE, second])
+
+        request_data = bridge_deps["queue"].added[0][2]
+        assert request_data["type"] == "image"
+        # the first image keeps the legacy file_data columns
+        assert request_data["file_data"] == "AAAA"
+        # and the whole list travels in `images` (web parity)
+        assert request_data["images"] == ["AAAA", "BBBB"]
+        # the user turn persists both parts
+        assert json.loads(bridge_deps["saved"][0][0][2]) == [
+            {"type": "text", "text": "compare"},
+            PARSED_IMAGE,
+            second,
+        ]
+
     def test_queue_submission_is_attempted_even_when_persisting_fails(self, bridge_deps, monkeypatch):
         monkeypatch.setattr(
             "app.api_bridge.save_message",
@@ -605,14 +622,27 @@ class TestNormalizeChatMessages:
         assert seen["max_size"] == 999
         assert images[0]["file_data"] == "RESIZED"
 
-    def test_first_image_wins_and_later_ones_are_dropped(self, monkeypatch):
+    def test_all_images_are_kept_up_to_the_cap(self, monkeypatch):
         monkeypatch.setattr(
             "app.utils.resize_image_if_needed", lambda data, ftype, name, size: (data, ftype, name, False, None, None)
         )
         second = {"type": "image_url", "image_url": {"url": "data:image/png;base64,BBBB"}}
-        _, images = normalize_chat_messages([{"role": "user", "content": [IMAGE_URL_PART, second]}])
+        third = {"type": "image_url", "image_url": {"url": "data:image/png;base64,CCCC"}}
+        _, images = normalize_chat_messages([{"role": "user", "content": [IMAGE_URL_PART, second, third]}])
 
-        assert images == [PARSED_IMAGE]
+        assert [img["file_data"] for img in images] == ["AAAA", "BBBB", "CCCC"]
+
+    def test_images_beyond_the_cap_are_rejected(self, monkeypatch, _app_context):
+        monkeypatch.setattr(
+            "app.utils.resize_image_if_needed", lambda data, ftype, name, size: (data, ftype, name, False, None, None)
+        )
+        _app_context.config["MAX_CHAT_IMAGES"] = 2
+        second = {"type": "image_url", "image_url": {"url": "data:image/png;base64,BBBB"}}
+        third = {"type": "image_url", "image_url": {"url": "data:image/png;base64,CCCC"}}
+        with pytest.raises(ApiImageRejectedError) as exc_info:
+            normalize_chat_messages([{"role": "user", "content": [IMAGE_URL_PART, second, third]}])
+        assert exc_info.value.msgid == "max_images_reached"
+        assert exc_info.value.msgid_args == ("2",)
 
     @pytest.mark.parametrize(
         "url",

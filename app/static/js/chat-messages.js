@@ -671,6 +671,12 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const extraRow = document.createElement('div');
         extraRow.className = 'extra-attachments';
         for (const part of extraAttachments) {
+            // A part needs either a server path or inline base64. History
+            // reloads strip file_data for parts that have a file_path, and
+            // legacy rows may have neither — building a data: URL from null
+            // produced a broken image, so such parts are skipped.
+            const hasSource = part.file_path || part.file_data;
+            if (!hasSource) continue;
             const partUrl = part.file_path ? '/api/files/' + part.file_path
                 : 'data:' + part.file_type + ';base64,' + part.file_data;
             if (part.type === 'image' || (part.file_type && part.file_type.startsWith('image/'))) {

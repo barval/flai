@@ -2,11 +2,15 @@
 multimodal multi-image helpers with the per-image fallback path."""
 
 import base64
+import json as _json
 import logging
+import os
+import pathlib
 
 PNG_1PX = base64.b64encode(
     b"\x89PNG\r\n\x1a\n" + b"0" * 40  # not a real PNG; tests mock the network
 ).decode("ascii")
+PNG_1PX_RAW = b"\x89PNG\r\n\x1a\n" + b"0" * 40
 
 
 class TestChatWithImages:
@@ -203,6 +207,96 @@ class TestImageChatTaskMulti:
         q = self._queue(monkeypatch)
         result = q._process_image_chat_task("img1", "image/jpeg", "a.jpg", "question", "s1", "now", "ru", "user1")
         assert result["response"] == "single answer"
+
+
+class TestMultiAttachmentPersistence:
+    """send_message persists every extra image to disk and stores file_path
+    in the content JSON; get_session_messages keeps base64 only for parts
+    without a stored file."""
+
+    def _login(self, client):
+        with client.application.app_context():
+            from app.userdb import create_user, get_user_by_login
+
+            if not get_user_by_login("multiatt"):
+                create_user("multiatt", "pass123", "Multi Attachment")
+
+        client.post("/login", data={"login": "multiatt", "password": "pass123"})
+        resp = client.post("/api/sessions/new")
+        self._session_id = resp.get_json()["id"]
+
+    def _png_file(self, name="img.png"):
+        import io
+
+        return (io.BytesIO(PNG_1PX_RAW), name, "image/png")
+
+    def test_send_message_saves_every_image_to_disk(self, client, test_app):
+        self._login(client)
+        response = client.post(
+            "/api/send_message",
+            data={"message": "compare", "file": [self._png_file("a.png"), self._png_file("b.png")]},
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200, response.get_json()
+        upload_folder = test_app.config["UPLOAD_FOLDER"]
+        saved = list(pathlib.Path(upload_folder).rglob("*.png"))
+        assert len(saved) == 2, f"expected both images on disk, found {saved}"
+
+    def test_content_json_keeps_file_paths(self, client, test_app):
+        self._login(client)
+        response = client.post(
+            "/api/send_message",
+            data={"message": "compare", "file": [self._png_file("a.png"), self._png_file("b.png")]},
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        with test_app.app_context():
+            from app import db as dbmod
+
+            session_id = self._session_id
+            msgs = dbmod.get_session_messages(session_id)
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        assert user_msgs, "user message missing from history"
+        parts = _json.loads(user_msgs[-1]["content"])
+        image_parts = [p for p in parts if p.get("type") == "image"]
+        assert len(image_parts) == 2
+        for p in image_parts:
+            assert p.get("file_path"), "every image part must carry file_path"
+        full = os.path.join(test_app.config["UPLOAD_FOLDER"], image_parts[0]["file_path"])
+        assert os.path.exists(full)
+
+    def test_history_strips_file_data_only_for_parts_with_file_path(self, test_app):
+        with test_app.app_context():
+            from app.db import create_session, get_session_messages, save_message
+
+            username = "multiatt-history"
+            session_id = create_session(username, title="strip test")
+            content = _json.dumps(
+                [
+                    {"type": "text", "text": "q"},
+                    {
+                        "type": "image",
+                        "file_data": "AAAA",
+                        "file_type": "image/png",
+                        "file_name": "a.png",
+                        "file_path": "sess/a.png",
+                    },
+                    {
+                        "type": "image",
+                        "file_data": "BBBB",
+                        "file_type": "image/png",
+                        "file_name": "b.png",
+                        "file_path": None,
+                    },
+                ]
+            )
+            save_message(session_id, "user", content, file_path="sess/a.png")
+            msgs = get_session_messages(session_id)
+            parts = _json.loads(msgs[0]["content"])
+            images = [p for p in parts if p.get("type") == "image"]
+            assert images[0]["file_data"] is None, "part with file_path must be stripped"
+            assert images[0]["file_path"] == "sess/a.png"
+            assert images[1]["file_data"] == "BBBB", "part without file_path keeps base64"
 
 
 class TestDocChatTask:

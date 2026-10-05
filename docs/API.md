@@ -225,8 +225,11 @@ URL:
 
 Constraints: the URL must start with `data:`, be base64 encoded and have an
 `image/*` media type. Remote URLs are rejected with `400` — FLAI runs offline
-and will not fetch an image from the internet on your behalf. If several image
-parts are present, the first one is used and the rest are dropped.
+and will not fetch an image from the internet on your behalf. Up to
+`MAX_CHAT_IMAGES` (4) image parts are kept in one request (parity with the web
+multi-attachment chat): they are answered in one joint vision call, with a
+per-image fallback when the joint call fails. A request with more than the cap
+is rejected with `400`.
 
 ### Accepted and ignored parameters
 
@@ -463,6 +466,18 @@ curl http://localhost:5000/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"prompt": "a lighthouse at dusk", "model": "flai-image"}'
 
+# Generate in the style of attached examples ("draw something similar")
+curl http://localhost:5000/v1/images/generations \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "prompt": "a lighthouse at dusk",
+        "image_references": [
+          {"image_url": {"url": "data:image/png;base64,/9j/4AAQSk..."}},
+          {"image_url": {"url": "data:image/png;base64,R0lGODlh..."}}
+        ]
+      }'
+
 # Edit an uploaded image (multipart)
 curl http://localhost:5000/v1/images/edits \
   -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx" \
@@ -475,6 +490,11 @@ curl http://localhost:5000/v1/videos \
   -H "Content-Type: application/json" \
   -d '{"prompt": "waves on a beach", "width": 768, "height": 512, "num_frames": 96, "frame_rate": 12}'
 ```
+
+`image_references` (optional, up to `MAX_CHAT_IMAGES`) mirrors the web
+«draw something similar» flow: each example is described by the multimodal
+model and the descriptions steer the SD prompt. Only inline `data:` URLs are
+accepted; more references than the cap return `400`.
 
 - `response_format` must be `url` (default). `b64_json` is rejected with
   `400 invalid_request_error`: the payload is stored server-side, so clients
@@ -566,7 +586,7 @@ curl -X DELETE http://localhost:5000/v1/files/{file_id} -H "Authorization: Beare
 ## Deep analysis (RLM)
 
 `POST /v1/flai/rlm` runs an explicit deep-analysis task over caller-owned
-documents (and optionally one uploaded image) through the same GPU-serialized
+documents (and optionally attached images) through the same GPU-serialized
 queue the web chat uses. It requires `RLM_ENABLED`; otherwise the endpoint
 returns `403 rlm_disabled` and `GET /v1/flai/me` reports `rlm: false`.
 
@@ -577,18 +597,19 @@ curl http://localhost:5000/v1/flai/rlm \
   -d '{
         "session_id": "3f2b1c4d-...",
         "doc_ids": ["a1b2c3d4-..."],
-        "question": "Compare the risk sections of these contracts"
+        "question": "Compare the risk sections of these contracts",
+        "images": [{"image_url": {"url": "data:image/png;base64,/9j/4AAQSk..."}}]
       }'
 ```
 
 - `session_id` must be an owned session (`404 session_not_found` otherwise)
   and every `doc_ids` entry must be owned (`404 document_not_found`); at least
-  one document or an uploaded image is required (`400`).
-- A multipart variant accepts `files` (up to `MAX_CHAT_IMAGES` images; the
-  legacy single `file` field still works), `session_id`, `doc_ids` (JSON array
-  string) and `question` form fields; every image passes the same quota and
-  resize cap as chat uploads (with the multi-image `MAX_IMAGE_SIZE_MULTI` cap
-  when several are attached) and is persisted with the question.
+  one document or an attached image is required (`400`).
+- Images (up to `MAX_CHAT_IMAGES`): a multipart variant accepts `files` (the
+  legacy single `file` field still works), a JSON body accepts `images` as
+  OpenAI-style `image_url` parts with inline `data:` URLs. Every image passes
+  the same quota and resize cap as chat uploads and joins the analysis corpus
+  as its own «Image (name)» document, exactly like the web deep analysis.
 - The user turn is saved into the API session history, and the response is
   `202 Accepted` with `task_id`, `position` and `user_message_id`.
 - Poll the returned `task_id` through `/v1/flai/tasks/{task_id}` — the task is

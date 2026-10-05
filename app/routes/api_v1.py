@@ -36,6 +36,7 @@ from app.api_bridge import (
     get_api_task_owner,
     list_api_tasks,
     normalize_chat_messages,
+    parse_data_url,
     register_api_task,
     resolve_api_session,
     sanitize_api_task_result,
@@ -618,11 +619,47 @@ def image_generations():
     session_id = _resolve_media_session(payload)
     if not isinstance(session_id, str):
         return session_id
+
+    image_references: list[dict[str, str]] = []
+    refs = payload.get("image_references")
+    if refs is not None:
+        if not isinstance(refs, list) or any(not isinstance(r, dict) for r in refs):
+            return api_error(
+                400,
+                "invalid_request_error",
+                "invalid_request",
+                _("'image_references' must be a list of image_url objects"),
+            )
+        max_refs = current_app.config.get("MAX_CHAT_IMAGES", 4)
+        if len(refs) > max_refs:
+            return api_error(
+                400,
+                "invalid_request_error",
+                "invalid_request",
+                ApiImageRejectedError("max_images_reached", str(max_refs)).localized(_),
+            )
+        for ref in refs:
+            image_url = ref.get("image_url")
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
+            if not isinstance(url, str) or not url.startswith("data:"):
+                return api_error(
+                    400,
+                    "invalid_request_error",
+                    "invalid_request",
+                    _("Only data: URLs are supported for image content parts"),
+                )
+            try:
+                parsed_data, parsed_type, parsed_name = parse_data_url(url)
+            except ApiImageRejectedError as exc:
+                return api_error(400, "invalid_request_error", "invalid_request", exc.localized(_))
+            image_references.append({"file_data": parsed_data, "file_type": parsed_type, "file_name": parsed_name})
+
     task_id, _queue_info = enqueue_image_generation(
         g.api_user,
         session_id,
         prompt.strip(),
         g.api_user.get("response_style", "neutral"),
+        image_references=image_references or None,
     )
     register_api_task(g.api_user, task_id, session_id, "/v1/images/generations")
     response, status = _async_task_response(task_id, f"/v1/flai/tasks/{task_id}", output_format="url")
@@ -1352,6 +1389,8 @@ def api_rlm_analysis():
         return api_error(403, "invalid_request_error", "rlm_disabled", _("Deep analysis is disabled"))
 
     login = g.api_user["login"]
+    max_chat_images = current_app.config.get("MAX_CHAT_IMAGES", 4)
+    images: list[dict[str, str]] = []
     if request.content_type and "multipart/form-data" in request.content_type:
         session_id = request.form.get("session_id")
         try:
@@ -1360,12 +1399,23 @@ def api_rlm_analysis():
             doc_ids = []
         question = (request.form.get("question") or "").strip()
         file_data = file_type = file_name = None
-        if "file" in request.files:
+        # Up to MAX_CHAT_IMAGES images (web parity): the legacy single `file`
+        # keeps working, `files` carries the multi-queue.
+        uploads: list[Any] = []
+        for upload in request.files.getlist("files")[:max_chat_images]:
+            if upload and upload.filename:
+                uploads.append(upload)
+        if not uploads and "file" in request.files:
             upload = request.files["file"]
             if upload and upload.filename:
-                file_data = b64encode(upload.read()).decode("utf-8")
-                file_type = upload.content_type or "application/octet-stream"
-                file_name = upload.filename
+                uploads.append(upload)
+        for upload in uploads:
+            data = b64encode(upload.read()).decode("utf-8")
+            ftype = upload.content_type or "application/octet-stream"
+            if not file_data:
+                file_data, file_type, file_name = data, ftype, upload.filename
+            else:
+                images.append({"file_data": data, "file_type": ftype, "file_name": upload.filename})
     else:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict):
@@ -1377,6 +1427,27 @@ def api_rlm_analysis():
             return api_error(400, "invalid_request_error", "invalid_request", _("'question' must be a string"))
         question = (question or "").strip()
         file_data = file_type = file_name = None
+        # JSON callers pass OpenAI-style image_url parts with inline data: URLs.
+        for part in (payload.get("images") or [])[:max_chat_images]:
+            if not isinstance(part, dict):
+                continue
+            image_url = part.get("image_url")
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
+            if not isinstance(url, str) or not url.startswith("data:"):
+                return api_error(
+                    400,
+                    "invalid_request_error",
+                    "invalid_request",
+                    _("Only data: URLs are supported for image content parts"),
+                )
+            try:
+                parsed_data, parsed_type, parsed_name = parse_data_url(url)
+            except ApiImageRejectedError as exc:
+                return api_error(400, "invalid_request_error", "invalid_request", exc.localized(_))
+            if not file_data:
+                file_data, file_type, file_name = parsed_data, parsed_type, parsed_name
+            else:
+                images.append({"file_data": parsed_data, "file_type": parsed_type, "file_name": parsed_name})
 
     if not session_id or not isinstance(session_id, str) or not question:
         return api_error(
@@ -1404,6 +1475,7 @@ def api_rlm_analysis():
         return api_error(404, "invalid_request_error", "document_not_found", _("Document not found"))
 
     file_path = None
+    rlm_images: list[dict[str, Any]] = []
     if file_data:
         if file_size := len(b64decode(file_data)):
             quota_error = check_upload_quota(login, file_size)
@@ -1419,12 +1491,23 @@ def api_rlm_analysis():
             upload_folder=current_app.config["UPLOAD_FOLDER"],
             user_id=login,
         )
+        rlm_images.append({"data": file_data, "type": file_type, "name": file_name})
+    for part in images:
+        quota_error = check_upload_quota(login, len(b64decode(part["file_data"])))
+        if quota_error:
+            return api_error(413, "invalid_request_error", "upload_quota_exceeded", quota_error)
+        n_data, n_type, n_name, _r, _od, _nd = resize_image_if_needed(
+            part["file_data"], part["file_type"], part["file_name"], current_app.config.get("MAX_IMAGE_SIZE", 1536)
+        )
+        rlm_images.append({"data": n_data, "type": n_type, "name": n_name})
 
     user_content: list[dict[str, str]] = []
     if question:
         user_content.append({"type": "text", "text": question})
-    if file_data:
-        user_content.append({"type": "image", "file_data": file_data, "file_type": file_type, "file_name": file_name})
+    for img in rlm_images:
+        user_content.append(
+            {"type": "image", "file_data": img["data"], "file_type": img["type"], "file_name": img["name"]}
+        )
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = db.save_message(session_id, "user", user_content_json, file_data, file_type, file_name, file_path)
 
@@ -1446,6 +1529,7 @@ def api_rlm_analysis():
         image_data=file_data,
         image_type=file_type,
         image_name=file_name,
+        images=rlm_images,
     )
     register_api_task(g.api_user, task_id, session_id, "/v1/flai/rlm")
 

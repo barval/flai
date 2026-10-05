@@ -6,6 +6,7 @@ method; the returned task id is registered in the Phase 3 owner index so the
 standard `/v1/flai/tasks` polling flow works.
 """
 
+import base64
 import io
 import json
 from unittest.mock import Mock
@@ -192,6 +193,76 @@ def test_rlm_with_image_persists_and_queues(client, api_user, test_app, owned_se
     assert saved[0] == {"type": "text", "text": "Read the diagram"}
     assert saved[1]["type"] == "image"
     assert saved[1]["file_name"] == "scan.png"
+
+
+def test_rlm_accepts_multi_image_files_list(client, api_user, test_app, owned_session, enqueue_rlm):
+    """Multipart `files[]` carries up to MAX_CHAT_IMAGES images (web parity)."""
+    test_app.config["RLM_ENABLED"] = True
+    save_doc(test_app, "apiuser", "doc-mine")
+    data = {
+        "files": [
+            (io.BytesIO(png_bytes()), "a.png", "image/png"),
+            (io.BytesIO(png_bytes()), "b.png", "image/png"),
+        ],
+        "session_id": owned_session,
+        "doc_ids": '["doc-mine"]',
+        "question": "Compare the charts",
+    }
+    response = client.post(RLM, data=data, headers=bearer(api_user), content_type="multipart/form-data")
+    assert response.status_code == 202, response.get_json()
+
+    kwargs = enqueue_rlm.call_args.kwargs
+    assert kwargs["image_data"]  # first image keeps the legacy args
+    assert [img["name"] for img in kwargs["images"]] == ["a.png", "b.png"]
+    assert len(kwargs["images"]) == 2
+
+    with test_app.app_context():
+        messages = db.get_session_messages(owned_session, limit=5)
+    saved = json.loads(messages[0]["content"])
+    image_parts = [p for p in saved if p.get("type") == "image"]
+    assert [p["file_name"] for p in image_parts] == ["a.png", "b.png"]
+
+
+def test_rlm_json_images_array_builds_corpus_images(client, api_user, test_app, owned_session, enqueue_rlm):
+    """JSON callers pass OpenAI-style image_url parts with inline data: URLs."""
+    test_app.config["RLM_ENABLED"] = True
+    save_doc(test_app, "apiuser", "doc-mine")
+    png_b64 = base64.b64encode(png_bytes()).decode("ascii")
+    response = post_rlm(
+        client,
+        api_user,
+        session_id=owned_session,
+        doc_ids=["doc-mine"],
+        question="Read both",
+        images=[
+            {"image_url": {"url": f"data:image/png;base64,{png_b64}"}},
+            {"image_url": {"url": f"data:image/png;base64,{png_b64}"}},
+        ],
+    )
+    assert response.status_code == 202, response.get_json()
+    kwargs = enqueue_rlm.call_args.kwargs
+    assert len(kwargs["images"]) == 2
+    assert kwargs["image_data"]
+
+    with test_app.app_context():
+        messages = db.get_session_messages(owned_session, limit=5)
+    saved = json.loads(messages[0]["content"])
+    assert len([p for p in saved if p.get("type") == "image"]) == 2
+
+
+def test_rlm_json_rejects_remote_image_url(client, api_user, test_app, owned_session, enqueue_rlm):
+    test_app.config["RLM_ENABLED"] = True
+    save_doc(test_app, "apiuser", "doc-mine")
+    response = post_rlm(
+        client,
+        api_user,
+        session_id=owned_session,
+        doc_ids=["doc-mine"],
+        question="q",
+        images=[{"image_url": {"url": "https://example.com/cat.png"}}],
+    )
+    assert response.status_code == 400
+    enqueue_rlm.assert_not_called()
 
 
 def test_me_reports_rlm_capability(client, api_user, test_app):

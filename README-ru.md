@@ -12,16 +12,6 @@
 [English](README.md) | [Русский](README-ru.md)
 </div>
 
-### 🎬 Видеообзор
-
-<p align="center">
-  <a href="https://github.com/user-attachments/assets/4da0c4fe-d273-4715-87bc-0dd5d927f8d0">
-    <img src="docs/flai_russian.png" width="720" alt="Видеообзор FLAI">
-  </a>
-</p>
-
----
-
 ## ✨ Возможности
 
 ### 🤖 Основные возможности ИИ

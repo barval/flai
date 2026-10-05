@@ -12,16 +12,6 @@
 [English](README.md) | [Russian](README-ru.md)
 </div>
 
-### 🎬 Video Overview
-
-<p align="center">
-  <a href="https://github.com/user-attachments/assets/82458976-08af-4c74-a891-4c63f6818426">
-    <img src="docs/flai_english.png" width="720" alt="FLAI video overview">
-  </a>
-</p>
-
----
-
 ## ✨ Features
 
 ### 🤖 Core AI Capabilities

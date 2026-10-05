@@ -15,6 +15,7 @@
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script>
         window.DEBUG_JS = {% if config.get('DEBUG_JS') %}true{% else %}false{% endif %};
+        window.FLAI_VERSION = {{ config.APP_VERSION|tojson }};
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     </script>
@@ -55,6 +56,32 @@
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="{{ _('api_keys_revoke') }}"
                      data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
+                    <div class="tavily-section" id="tavily-section"
+                         data-add-label="{{ _('tavily_add_key') }}"
+                         data-delete-label="{{ _('tavily_delete_key') }}"
+                         data-invalid-label="{{ _('tavily_status_invalid') }}"
+                         data-exhausted-label="{{ _('tavily_status_exhausted') }}"
+                         data-unavailable-label="{{ _('tavily_status_unavailable') }}"
+                         data-quota-template="{{ _('tavily_quota') }}">
+                        <div class="tavily-title">{{ _('tavily_section_title') }}</div>
+                        <p class="tavily-hint">
+                            {{ _('tavily_hint') }}
+                            <a href="https://app.tavily.com/home" target="_blank" rel="noopener noreferrer">{{ _('tavily_get_key') }}</a>
+                        </p>
+                        <div class="tavily-create" id="tavily-create">
+                            <input type="text" id="tavily-key-input" maxlength="128" autocomplete="off"
+                                   placeholder="{{ _('tavily_key_placeholder') }}">
+                            <button id="tavily-key-add-btn">{{ _('tavily_add_key') }}</button>
+                        </div>
+                        <div class="tavily-saved" id="tavily-key-saved" hidden>
+                            <div class="tavily-saved-row" id="tavily-saved-row">
+                                <code id="tavily-key-masked"></code>
+                                <button id="tavily-key-del-btn">{{ _('tavily_delete_key') }}</button>
+                            </div>
+                            <span class="tavily-status" id="tavily-status" hidden></span>
+                            <p class="tavily-quota" id="tavily-quota" hidden></p>
+                        </div>
+                    </div>
                     <div class="api-keys-header">
                         <span>{{ _('api_keys_title') }}</span>
                         <button class="api-keys-close" id="api-keys-close" title="{{ _('api_keys_close') }}">✕</button>
@@ -111,17 +138,19 @@
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="{{ _('footer_about_hint') }}">
-            {{ _('footer_short') }}
+            {{ _('footer_short_name') }} v{{ config.APP_VERSION }}
         </button>
     </footer>
 
-    <!-- About dialog: full name, logo and copyright (click the footer brand) -->
+    <!-- About dialog: full name, version, project link and copyright (click the footer brand) -->
     <div id="footer-about-modal" class="about-modal" hidden>
         <div class="about-modal-backdrop" data-close-about></div>
         <div class="about-modal-content" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
             <button type="button" class="about-modal-close" data-close-about aria-label="{{ _('close_about') }}">&times;</button>
             <img src="{{ url_for('static', filename='logo-header.png') }}" alt="" class="about-logo">
             <h2 id="about-modal-title">{{ _('footer_text') }}</h2>
+            <p class="about-version">v{{ config.APP_VERSION }}</p>
+            <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">{{ _('footer_copyright') }}</p>
         </div>
     </div>
@@ -141,6 +170,7 @@
     <script src="{{ url_for('static', filename='js/header.js', v=config.STATIC_VERSION) }}"></script>
     {% if 'login' in session %}
     <script src="{{ url_for('static', filename='js/api-keys.js', v=config.STATIC_VERSION) }}"></script>
+    <script src="{{ url_for('static', filename='js/tavily-key.js', v=config.STATIC_VERSION) }}"></script>
     {% endif %}
     <!-- Guest theme switcher script -->
     <script src="{{ url_for('static', filename='js/guest-theme.js', v=config.STATIC_VERSION) }}"></script>

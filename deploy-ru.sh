@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.3 — Скрипт развёртывания на одном сервере
+# FLAI v12.4 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -84,6 +84,17 @@ enable_env_features() {
         if grep -q '^SEARXNG_URL=' .env 2>/dev/null; then
             info "Отключаю веб-поиск (SearXNG) в .env..."
             sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
+        fi
+    fi
+    if [[ "$WITH_CRAWLER" == "true" ]]; then
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Включаю глубокий обход веба (Crawl4AI) в .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=true|' .env
+        fi
+    else
+        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
+            info "Отключаю глубокий обход веба (Crawl4AI) в .env..."
+            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=false|' .env
         fi
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
@@ -566,6 +577,7 @@ resolve_stack() {
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
+    [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
     if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
@@ -686,7 +698,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.3 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v12.4 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -702,7 +714,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v12.3 — Скрипт развёртывания
+FLAI v12.4 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -751,6 +763,7 @@ WITH_IMAGE_GEN=false
 WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
+WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
@@ -765,6 +778,7 @@ for arg in "$@"; do
         --with-video)                    WITH_VIDEO=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
+        --with-crawler)                  WITH_CRAWLER=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
@@ -784,7 +798,7 @@ VOICE_BACKEND=""
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.3 — Скрипт развёртывания"
+    echo "  FLAI v12.4 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

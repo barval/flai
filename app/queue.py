@@ -13,9 +13,12 @@ import time
 import uuid
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import redis
 from flask_babel import force_locale
+
+from app import db
 
 from .db import (
     INDEX_STATUS_FAILED,
@@ -32,6 +35,7 @@ from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
     begin_usage_account,
+    check_document_quota,
     current_usage_account_id,
     estimate_tokens,
     finish_usage_account,
@@ -100,6 +104,67 @@ def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: 
         app.logger.warning(f"Background fact extraction failed: {e}")
 
 
+def _publish_document_index_event(app, user_id: str, doc_id: str, index_status: str) -> None:
+    """Publish a document_indexed event to the user's SSE stream (module-level)."""
+    publisher = get_events_publisher()
+    if publisher is None:
+        return
+    publisher.publish(
+        user_id,
+        "document_indexed",
+        {
+            "doc_id": doc_id,
+            "index_status": index_status,
+        },
+    )
+
+
+def _run_document_indexing(
+    app,
+    doc_id: str,
+    file_path: str,
+    user_id: str,
+    indexing_started_at: str | None,
+    publish: Callable[[str], None],
+) -> tuple[bool, str, str, bool]:
+    """Extract, chunk, embed and upsert one document; mark it INDEXED on success.
+
+    The indexing core shared by the index_document queue task and the crawl task
+    (which owns its own worker thread and indexes its freshly saved document
+    synchronously). The caller owns the INDEXING status — it decides whether
+    ``indexing_started_at`` is set or preserved — the FAILED status, the
+    scanned-PDF OCR requeue and the SSE publish, so none of them is touched here.
+    ``publish`` is called with a document index status once indexing succeeds.
+
+    Returns ``(success, message, embedding_model, raised)``. ``raised`` is True
+    when ``rag.index_document()`` threw, so a caller never mistakes an exception
+    text for a scanned-PDF extraction failure.
+    """
+    rag = app.modules.get("rag")
+    if not rag or not rag.available:
+        with force_locale("en"):
+            error_msg = app.modules["base"]._("RAG module unavailable")
+        return False, error_msg, "unknown", False
+    try:
+        success, message = rag.index_document(user_id, doc_id, file_path)
+    except Exception as e:
+        app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
+        return False, str(e), "unknown", True
+    if not success:
+        return False, message, "unknown", False
+    config = get_model_config("embedding")
+    embedding_model = config.get("model_name", "unknown") if config else "unknown"
+    update_document_index_status(
+        doc_id,
+        INDEX_STATUS_INDEXED,
+        indexed_at=get_current_time_for_db(),
+        indexing_started_at=indexing_started_at,
+        embedding_model=embedding_model,
+    )
+    publish(INDEX_STATUS_INDEXED)
+    return True, message, embedding_model, False
+
+
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -116,9 +181,11 @@ class RedisRequestQueue:
         self.queue_key = "request_queue"
         self.slow_queue_key = "slow_request_queue"
         self.background_queue_key = "background_queue"
+        self.crawl_queue_key = self.queue_key + ":crawl"
         self.processing_key = "processing_requests"
         self.slow_processing_key = "slow_processing_requests"
         self.background_processing_key = "background_processing"
+        self.crawl_processing_key = self.crawl_queue_key + ":processing"
         self.results_key = "request_results"
         self.user_requests_key = "user_requests"
         # HMAC key for signing serialized data (prevent tampering)
@@ -169,13 +236,13 @@ class RedisRequestQueue:
             return None
 
     def start_worker(self):
-        """Start worker threads for fast and slow task queues."""
+        """Start worker threads for the fast, slow and crawl task queues."""
         # Idempotence guard: two sets of worker threads would both blpop the
         # same queue and race for tasks (duplicate processing, missing logs).
         if getattr(self, "_workers_started", False):
             return
         self._workers_started = True
-        self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
+        self.app.logger.info("RedisRequestQueue: starting fast, slow and crawl workers")
 
         # NEW: Global GPU serialization locks
         if not hasattr(self, "_gpu_lock"):
@@ -190,7 +257,11 @@ class RedisRequestQueue:
         slow_thread = threading.Thread(target=self._worker_loop_slow, name="slow-worker", daemon=False)
         slow_thread.start()
         self._slow_worker_thread = slow_thread
-        self.app.logger.info("RedisRequestQueue: workers started (fast + slow)")
+        # Crawl worker — site crawling (CPU-only HTTP, no GPU lock)
+        crawl_thread = threading.Thread(target=self._worker_loop_crawl, name="crawl-worker", daemon=False)
+        crawl_thread.start()
+        self._crawl_worker_thread = crawl_thread
+        self.app.logger.info("RedisRequestQueue: workers started (fast + slow + crawl)")
 
     def stop_workers(self, timeout=30):
         """Signal workers to stop and wait for them to finish."""
@@ -202,12 +273,16 @@ class RedisRequestQueue:
             self._fast_worker_thread.join(timeout=timeout)
         if hasattr(self, "_slow_worker_thread"):
             self._slow_worker_thread.join(timeout=timeout)
+        if hasattr(self, "_crawl_worker_thread"):
+            self._crawl_worker_thread.join(timeout=timeout)
         self.app.logger.info("RedisRequestQueue: workers stopped")
 
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
         task_type = task.get("type", "")
+        if task_type == "crawl_task":
+            return "crawl"  # Dedicated crawl executor — CPU-only, no GPU lock
         if task_type == "api_image_edit":
             return "slow"
         if task_type in ("index_document", "reindex_all_embeddings"):
@@ -219,6 +294,8 @@ class RedisRequestQueue:
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
+        if req_type == "crawl_task":
+            return "crawl"  # Dedicated crawl executor — CPU-only, no GPU lock
         if req_type in ("index_document", "reindex_all_embeddings", "describe_document_image", "describe_document_pdf"):
             return "slow"  # Indexing can be slow
         request_data = task.get("data", {})
@@ -290,6 +367,8 @@ class RedisRequestQueue:
             queue_key = self.background_queue_key
         elif queue_type == "slow":
             queue_key = self.slow_queue_key
+        elif queue_type == "crawl":
+            queue_key = self.crawl_queue_key
         else:
             queue_key = self.queue_key
 
@@ -353,16 +432,19 @@ class RedisRequestQueue:
         """Estimate wait time in seconds based on queue type and position."""
         if queue_type == "slow":
             return position * 300
-        else:
-            return position * 3
+        if queue_type == "crawl":
+            return position * 60  # a site crawl takes minutes
+        return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> tuple[int, int]:
         """Get user's queue count and total queue+processing length."""
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
+        crawl_total = self.redis.llen(self.crawl_queue_key)
         fast_proc = self.redis.hlen(self.processing_key)
         slow_proc = self.redis.hlen(self.slow_processing_key)
-        total = fast_total + slow_total + fast_proc + slow_proc
+        crawl_proc = self.redis.hlen(self.crawl_processing_key)
+        total = fast_total + slow_total + crawl_total + fast_proc + slow_proc + crawl_proc
         if total == 0:
             # Reset user counter to prevent stale "1/1" display after all
             # tasks finish (race between blpop and hset to processing creates
@@ -397,6 +479,8 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if task_type == "crawl_task" or req_type == "crawl_task":
+            return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
         if task_type == "api_image_edit":
             return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
@@ -752,6 +836,35 @@ class RedisRequestQueue:
                 self.logger.error(f"Slow worker error: {e}")
                 time.sleep(1)
         self.app.logger.info("Slow worker stopped gracefully")
+
+    def _worker_loop_crawl(self):
+        """Worker for the crawl queue (site study — HTTP crawl without the GPU lock).
+
+        The crawl itself never takes ``_gpu_lock`` — it must not block or wait for
+        models; only the indexing phase inside _process_crawl_task does.
+        """
+        self.app.logger.info("Crawl worker started")
+        while not self._shutdown_event.is_set():
+            try:
+                result = self.redis.blpop(self.crawl_queue_key, timeout=5)
+                if not result:
+                    continue
+                _, task_data = result
+                task = self._deserialize(task_data)
+                if task is None:
+                    self.logger.error("Crawl worker: failed to deserialize task")
+                    continue
+                self.app.logger.info(
+                    f"Crawl worker: dequeued task {str(task.get('id'))[:12]} "
+                    f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
+                )
+                # The HTTP crawl must not hold the GPU lock; the task takes it
+                # itself for the embedding phase of indexing.
+                self._process_single_task(task, self.crawl_processing_key)
+            except Exception as e:
+                self.logger.error(f"Crawl worker error: {e}")
+                time.sleep(1)
+        self.app.logger.info("Crawl worker stopped gracefully")
 
     def _get_model_name(self, module_type: str) -> str | None:
         config = get_model_config(module_type)
@@ -1693,6 +1806,55 @@ class RedisRequestQueue:
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued reasoning task {new_request_id} for session {session_id} (position {position_info['position']})"
+        )
+        return {
+            "status": "queued",
+            "request_id": new_request_id,
+            "position": position_info["position"],
+            "estimated_wait": position_info["estimated_seconds"],
+        }
+
+    def _requeue_crawl_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        user_class: int = 2,
+        url: str = "",
+    ) -> dict[str, Any]:
+        """Re-queue a deep site study task on the dedicated crawl queue.
+
+        A crawl is multi-minute CPU-only HTTP work, so it must never run on
+        the fast worker (which would block all text chat) and never holds the
+        GPU lock while crawling — the task takes it only for the indexing phase.
+        The router's half-account is carried across the queue hop so
+        the reasoning continuation re-opened by _process_crawl_task bills the
+        router and the answer together.
+        """
+        request_data: dict[str, Any] = {
+            "type": "crawl_task",
+            "query": query,
+            "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Studying the site…", lang=lang),
+            "response_style": response_style,
+        }
+        if url:
+            request_data["url"] = url
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
+        new_request_id, position_info = self.add_request(
+            user_id, session_id, request_data, user_class, lang=lang, task_type="crawl_task"
+        )
+        self.app.logger.info(
+            f"Re-queued crawl task {new_request_id} for session {session_id} (position {position_info['position']})"
         )
         return {
             "status": "queued",
@@ -2895,9 +3057,12 @@ class RedisRequestQueue:
         self.app.logger.info(
             f"Process web search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
         )
+        from app.tavily_keys import get_tavily_key
+
         search = self.app.modules.get("search")
-        if not search or not search.available:
+        if not search:
             return _no_search(self.app.modules["base"]._("Web search is not available", lang), 0)
+        api_key = get_tavily_key(user_id) if user_id else None
 
         search_start = time.time()
         try:
@@ -2907,12 +3072,28 @@ class RedisRequestQueue:
             )
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
-            results = search.search(query, lang=lang)
+            results, provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             if task and results:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
-            # Degraded engines return few/noisy results with near-empty snippets.
-            # A second attempt often clears transient CAPTCHA/rate-limit failures.
+            # A thin Tavily answer leaves too little context for the reasoning
+            # model. SearXNG is free, so top it up from there instead of spending
+            # a second Tavily credit. The `provider` guard keeps the pre-v12.4
+            # path byte-for-byte identical: when SearXNG already answered, the
+            # simplified-query retry below is the only extra attempt.
+            thin = (
+                not results
+                or len(search_context) < 2000
+                or not any(len((r.get("content") or "").strip()) > 500 for r in results)
+            )
+            if thin and provider != "searxng" and search.available:
+                supplemented = search.search(query, lang=lang)
+                if supplemented:
+                    supplemented_ctx = search.format_results_context(
+                        supplemented, lang=lang, max_chars=search_max_chars
+                    )
+                    if len(supplemented_ctx) > len(search_context):
+                        results, search_context, provider = supplemented, supplemented_ctx, "searxng"
             if (
                 not results
                 or len(search_context) < 2000
@@ -2922,14 +3103,14 @@ class RedisRequestQueue:
 
                 retry_query = simplify_search_query(query)
                 self.app.logger.warning(
-                    f"SearXNG returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
+                    f"Web search returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
                 )
                 retried = search.search(retry_query, lang=lang)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
                     if len(retried_ctx) > len(search_context):
-                        results, search_context = retried, retried_ctx
+                        results, search_context, provider = retried, retried_ctx, "searxng"
             search_time = round(time.time() - search_start, 1)
             if not results:
                 self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
@@ -2940,7 +3121,7 @@ class RedisRequestQueue:
                     search_time,
                 )
             self.app.logger.info(
-                f"Web search: '{query[:60]}...' → {len(results)} results, "
+                f"Web search via {provider}: '{query[:60]}...' -> {len(results)} results, "
                 f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"
             )
         except Exception as e:
@@ -2956,6 +3137,314 @@ class RedisRequestQueue:
             response_style,
             rag_context=search_context,
             rag_source="web_search",
+        )
+
+    # ------------------------------------------------------------------
+    # Deep site study ([-CRAWL-]) — crawl → document → RAG → answer
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_first_url(text: str) -> str:
+        """Return the first http(s) URL found in free text, or an empty string."""
+        if not text:
+            return ""
+        match = re.search(r"https?://\S+", text)
+        return match.group(0).rstrip(".,;:!?»)]}") if match else ""
+
+    @staticmethod
+    def _crawl_domain(url: str) -> str:
+        """Document filename of a crawl URL: the hostname, lowercased, without www."""
+        return (urlsplit(url).hostname or "site").lower().removeprefix("www.")
+
+    def _crawl_msg(self, msgid: str, lang: str, **kwargs: Any) -> str:
+        """Localize a crawl-task message (the base module is the normal source)."""
+        base = self.app.modules.get("base")
+        if base:
+            return str(base._(msgid, lang, **kwargs))
+        from app.llamacpp_client import _tr
+
+        return str(_tr(msgid, lang=lang, **kwargs))
+
+    def _crawl_error(self, session_id: str, msgid: str, lang: str, elapsed: float = 0, **kwargs: Any) -> dict[str, Any]:
+        """Build a persisted error response for a crawl-task failure."""
+        return self._build_error_response(session_id, self._crawl_msg(msgid, lang, **kwargs), elapsed, lang)
+
+    def _domain_document_id(self, user_id: str, url: str) -> str | None:
+        """Return the id of the user's existing per-domain document, if any.
+
+        The crawl REPLACES that document instead of adding a new one, so its id is
+        excluded from the quota check that guards the crawl.
+        """
+        domain = self._crawl_domain(url)
+        try:
+            for doc in db.get_user_documents(user_id):
+                if doc.get("filename") == domain:
+                    return str(doc.get("id") or "") or None
+        except Exception as e:
+            self.logger.warning(f"Crawl: per-domain document lookup failed: {e}")
+        return None
+
+    def _crawl_with_progress(self, crawler, url: str, task: dict[str, Any]) -> list[dict]:
+        """Crawl a site, emitting crawl_start / crawl_page progress events.
+
+        Raises BlockedUrlError through to the caller (converted to a
+        localized error there); any other failure returns no pages.
+        Honours the task cancel flag between page progress updates.
+        """
+        self._publish_stream_event(task, "task_progress", {"stage": "crawl_start"})
+        pages: list[dict] = crawler.crawl_site(url)
+        total = len(pages)
+        for count in range(1, total + 1):
+            if count < total and task.get("id") and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                self.logger.info(f"Crawl task {task['id']} cancelled after {count} pages")
+                return []
+            self._publish_stream_event(task, "task_progress", {"stage": "crawl_page", "pages": count})
+        return pages
+
+    def _store_crawl_document(self, user_id: str, url: str, pages: list[dict], task: dict[str, Any]) -> str | None:
+        """Save crawled pages as the user's per-domain document and index it.
+
+        A same-named document (filename == registrable domain, leading "www."
+        stripped) is replaced: its indexed vectors, file and DB row are removed
+        before the new one is saved. Returns the new doc_id, or None when the file
+        could not be stored inside the user folder.
+        """
+        domain = self._crawl_domain(url)
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
+
+        # Replace the previous document for this domain (same user only).
+        try:
+            for doc in db.get_user_documents(user_id):
+                if doc.get("filename") != domain:
+                    continue
+                old_doc_id = doc.get("id")
+                rag = self.app.modules.get("rag")
+                if rag and rag.available and old_doc_id:
+                    try:
+                        rag.delete_document(old_doc_id, user_id)
+                    except Exception as e:
+                        self.logger.warning(f"Crawl replacement: failed to unindex old document: {e}")
+                old_path = os.path.join(documents_folder, doc.get("file_path", ""))
+                real_old_path = os.path.realpath(old_path)
+                real_documents_folder = os.path.realpath(documents_folder)
+                if (
+                    old_doc_id
+                    and (
+                        real_old_path.startswith(real_documents_folder + os.sep)
+                        or real_old_path == real_documents_folder
+                    )
+                    and os.path.exists(old_path)
+                ):
+                    try:
+                        os.remove(old_path)
+                    except Exception as e:
+                        self.logger.warning(f"Crawl replacement: failed to remove old file: {e}")
+                if old_doc_id:
+                    db.delete_document(old_doc_id, user_id)
+                break
+        except Exception as e:
+            self.logger.warning(f"Crawl replacement lookup failed: {e}")
+
+        user_folder = os.path.join(documents_folder, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        doc_id = str(uuid.uuid4())
+        file_path = os.path.join(user_folder, f"{doc_id}.txt")
+
+        # Double-check path does not escape the user folder
+        real_file_path = os.path.realpath(file_path)
+        real_user_folder = os.path.realpath(user_folder)
+        if not real_file_path.startswith(real_user_folder + os.sep):
+            self.logger.error(f"Crawl document path escaped the user folder: {file_path}")
+            return None
+
+        content = "".join(f"\n\n## {page.get('url', url)}\n\n{page.get('markdown', '')}" for page in pages)
+        file_size = len(content.encode("utf-8"))
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content.lstrip("\n"))
+
+        relative_path = os.path.join(user_id, f"{doc_id}.txt")
+        db.save_document(user_id, doc_id, domain, file_size, file_ext=".txt", file_path=relative_path)
+        update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+
+        indexing_started_at = get_current_time_for_db()
+        update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        _publish_document_index_event(self.app, user_id, doc_id, INDEX_STATUS_INDEXING)
+        self._publish_stream_event(task, "task_progress", {"stage": "crawl_indexing"})
+        self.logger.info(f"Crawl indexing: STARTING for doc {doc_id}")
+        # The crawl itself is CPU-only HTTP, but indexing embeds every chunk on
+        # the GPU (rag -> llama-swap /v1/embeddings). Serialize only that phase
+        # on the global GPU lock — exactly like index_document on the slow worker
+        # — and free VRAM afterwards: _get_model_for_task("crawl_task") is "none",
+        # so no other code path cleans up after this task type.
+        with self._gpu_lock:
+            success, message, _embedding_model, _raised = _run_document_indexing(
+                self.app,
+                doc_id,
+                file_path,
+                user_id,
+                indexing_started_at,
+                lambda status: _publish_document_index_event(self.app, user_id, doc_id, status),
+            )
+            self._cleanup_vram_after_task(task)
+        if not success:
+            self.logger.error(f"Crawl document {doc_id} indexing failed: {message}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            _publish_document_index_event(self.app, user_id, doc_id, INDEX_STATUS_FAILED)
+        return doc_id
+
+    def _crawl_context(self, pages: list[dict]) -> str:
+        """Join crawled pages into a reasoning context capped at the search limit.
+
+        Overflow keeps the first pages (deterministic prefix, no shuffling).
+        Every section is truncated to the remaining budget — a single oversized
+        page (per-page cap 50k chars) must not blow the whole prompt (the
+        first-page exception below existed for 2-8k pages and flooded the
+        reasoning prompt when pages hit the 50k cap; seen as 50035-char
+        contexts → "Prompt too large: 25802 tokens (max: 23347)").
+        """
+        base = self.app.modules.get("base")
+        limit = 10000
+        if base is not None and hasattr(base, "get_search_context_limit"):
+            try:
+                limit = int(base.get_search_context_limit())
+            except (TypeError, ValueError):
+                limit = 10000
+        parts: list[dict] = []
+        total = 0
+        for page in pages:
+            header = f"## {page.get('url', '')}\n\n"
+            remaining = limit - total - len(header)
+            if remaining <= 0 and parts:
+                break
+            section = f"{header}{(page.get('markdown') or '')[: max(remaining, 0)]}"
+            if not section.strip():
+                break
+            parts.append(section)
+            total += len(section) + 2
+        return "\n\n".join(parts)
+
+    def _process_crawl_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a deep site study ([-CRAWL-]) task on the crawl worker.
+
+        Crawls the site (CPU-only, the GPU lock is taken only for the indexing
+        phase), stores the pages as the user's per-domain document (replacing the
+        previous one), indexes it for RAG, and re-queues the reasoning model over
+        the collected context.
+        """
+        session_id = task.get("session_id", "")
+        user_id = task.get("user_id", "")
+        lang = task.get("lang", "ru")
+        start_time = time.time()
+
+        data = task.get("data", {})
+        query = data.get("query", "")
+        url = data.get("url") or self._extract_first_url(query)
+        if not url:
+            return self._crawl_error(session_id, "No link found in your message", lang)
+        crawler = self.app.modules.get("crawler")
+        if not crawler or not crawler.available:
+            return self._crawl_error(session_id, "Crawler service is unavailable", lang)
+
+        # The previous crawl of this domain is replaced, not added, so it must
+        # not count against the quota measured here.
+        existing_doc_id = self._domain_document_id(user_id, url)
+        quota_error = check_document_quota(user_id, excluded_doc_id=existing_doc_id, lang=lang)
+        if quota_error:
+            return self._build_error_response(session_id, quota_error, 0, lang)
+
+        crawl_start = time.time()
+        site_blocked = False
+        try:
+            pages = self._crawl_with_progress(crawler, url, task)
+        except Exception as e:
+            from app.crawler_guard import BlockedUrlError
+            from modules.crawler import SiteBlockedError
+
+            if isinstance(e, BlockedUrlError):
+                self.logger.warning(f"Crawl blocked: {url} — {e}")
+                return self._crawl_error(session_id, "This address is not available for reading", lang)
+            if isinstance(e, SiteBlockedError):
+                self.logger.warning(f"Crawl blocked by the site itself: {url} — {e}")
+                site_blocked = True
+                pages = []
+            else:
+                self.logger.error(f"Crawl failed for {url}: {e}")
+                pages = []
+        crawl_time = round(time.time() - crawl_start, 1)
+
+        if task.get("id") and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._crawl_error(session_id, "Task cancelled", lang, round(time.time() - start_time, 1))
+
+        if not pages:
+            if site_blocked:
+                # Second pass: the site itself refused automated access, so a
+                # plain web search is the only way to still answer the user.
+                # The reasoning model is told why the crawl failed, so the
+                # answer opens with the anti-bot note instead of silently
+                # pretending the search covers the site.
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
+                base = self.app.modules.get("base")
+                note = base._("The site blocked automated access (anti-bot protection)", lang) if base else ""
+                fallback_query = f"{query}\n\n({note})" if note else query
+                fallback = self._process_search_task(
+                    query,
+                    session_id,
+                    user_id,
+                    lang,
+                    data.get("response_style", "neutral"),
+                    task=task,
+                    reasoning_query=fallback_query,
+                )
+                if fallback.get("status") == "queued":
+                    self.logger.info(f"Crawl blocked by {url} — fell back to ordinary web search")
+                    return fallback
+                self.logger.warning(f"Crawl blocked by {url} and ordinary search failed too")
+                return self._build_error_response(
+                    session_id,
+                    note or self.app.modules["base"]._("Web search failed", lang),
+                    crawl_time,
+                    lang,
+                )
+            return self._crawl_error(
+                session_id,
+                "Could not read any pages from {domain}",
+                lang,
+                crawl_time,
+                domain=urlsplit(url).hostname or url,
+            )
+
+        # Re-check the quota after the (possibly minutes long) crawl, before
+        # anything is stored: the collected materials are discarded rather than
+        # saved over the limit.
+        quota_error_after = check_document_quota(user_id, excluded_doc_id=existing_doc_id, lang=lang)
+        if quota_error_after:
+            return self._crawl_error(
+                session_id, "Document quota reached — the collected materials were not saved", lang, crawl_time
+            )
+
+        self.app.logger.info(
+            f"Crawl task: {len(pages)} pages, {sum(len(p.get('markdown', '')) for p in pages)} chars "
+            f"from {url} in {crawl_time}s — storing document"
+        )
+        doc_id = self._store_crawl_document(user_id, url, pages, task)
+        if not doc_id:
+            return self._crawl_error(
+                session_id, "Failed to save the collected materials", lang, round(time.time() - start_time, 1)
+            )
+
+        process_time = round(time.time() - start_time, 1)
+        self.app.logger.info(f"Crawl task done in {process_time}s — requeueing reasoning over the corpus")
+        return self._requeue_reasoning_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            data.get("response_style", "neutral"),
+            user_class=task.get("user_class", 2),
+            rag_context=self._crawl_context(pages),
+            rag_source="crawler",
         )
 
     def _process_history_task(
@@ -3310,6 +3799,22 @@ class RedisRequestQueue:
         if action_type == "search":
             return self._process_search_task(
                 query, session_id, user_id, lang, response_style, task=task, reasoning_query=message_text
+            )
+        if action_type == "crawl":
+            # Deep site study: the crawl runs on the dedicated crawl executor
+            # (CPU-only HTTP; the GPU lock is taken only for the indexing phase),
+            # which stores the collected pages as a document and re-queues the
+            # reasoning model over them. The address comes from the user's own
+            # message, not from the router's rewritten query, which may drop it;
+            # `query` stays the reasoning handoff.
+            return self._requeue_crawl_task(
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                user_class=user_class,
+                url=self._extract_first_url(message_text),
             )
 
         if stream:
@@ -3877,7 +4382,9 @@ class RedisRequestQueue:
         # the fast worker's half-account (request_id/usage_accum/submitted_at)
         # so phases merge into the same bill. Indexing/merge tasks do not call
         # LLMs or _save_and_respond — their accounts are dropped by the
-        # _process_single_task finally clause.
+        # _process_single_task finally clause. The crawl task re-opens the
+        # router's carried account and _process_crawl_task closes it again in
+        # _requeue_reasoning_task, so router + answer bill together.
         if task_type not in (
             "index_document",
             "reindex_all_embeddings",
@@ -3896,6 +4403,8 @@ class RedisRequestQueue:
         if task_type == "index_document":
             self.app.logger.info(f"_process_request: calling _process_index_task for task {task.get('id')}")
             return self._process_index_task(task)
+        if task_type == "crawl_task":
+            return self._process_crawl_task(task)
         if task_type == "reindex_all_embeddings":
             return self._process_reindex_all_task(task)
         if task_type == "transcribe_audio":
@@ -4462,17 +4971,7 @@ class RedisRequestQueue:
 
     def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
         """Publish a document_indexed event to the user's SSE stream."""
-        publisher = get_events_publisher()
-        if publisher is None:
-            return
-        publisher.publish(
-            user_id,
-            "document_indexed",
-            {
-                "doc_id": doc_id,
-                "index_status": index_status,
-            },
-        )
+        _publish_document_index_event(self.app, user_id, doc_id, index_status)
 
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Index a document and store embeddings in Qdrant."""
@@ -4490,54 +4989,37 @@ class RedisRequestQueue:
             indexing_started_at = get_current_time_for_db()
             update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
         self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
-        rag = self.app.modules.get("rag")
-        if not rag or not rag.available:
-            with force_locale("en"):
-                error_msg = self.app.modules["base"]._("RAG module unavailable")
-            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-            return {"success": False, "error": error_msg, "doc_id": doc_id}
-        try:
-            success, message = rag.index_document(user_id, doc_id, file_path)
-            if success:
-                indexed_at = get_current_time_for_db()
-                embedding_model = self._get_model_name("embedding") or "unknown"
-                update_document_index_status(
-                    doc_id,
-                    INDEX_STATUS_INDEXED,
-                    indexed_at=indexed_at,
-                    indexing_started_at=indexing_started_at,
-                    embedding_model=embedding_model,
-                )
-                self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
-                self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
-                return {"success": True, "message": message, "doc_id": doc_id}
-            else:
-                if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
-                    self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
-                    update_document_index_status(doc_id, INDEX_STATUS_PENDING)
-                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
-                    self.app.request_queue.add_request(
-                        user_id=user_id,
-                        session_id="",
-                        request_data={
-                            "type": "describe_document_pdf",
-                            "doc_id": doc_id,
-                            "file_path": file_path,
-                            "preserve_indexing_started_at": True,
-                        },
-                        user_class=task.get("user_class", 100),
-                        lang=task.get("lang", "ru"),
-                    )
-                    return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
-                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-                return {"success": False, "error": message, "doc_id": doc_id}
-        except Exception as e:
-            self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
-            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-            return {"success": False, "error": str(e), "doc_id": doc_id}
+        success, message, embedding_model, raised = _run_document_indexing(
+            self.app,
+            doc_id,
+            file_path,
+            user_id,
+            indexing_started_at,
+            lambda status: self._publish_document_event(user_id, doc_id, status),
+        )
+        if success:
+            self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
+            return {"success": True, "message": message, "doc_id": doc_id}
+        if not raised and str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
+            self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
+            update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+            self.app.request_queue.add_request(
+                user_id=user_id,
+                session_id="",
+                request_data={
+                    "type": "describe_document_pdf",
+                    "doc_id": doc_id,
+                    "file_path": file_path,
+                    "preserve_indexing_started_at": True,
+                },
+                user_class=task.get("user_class", 100),
+                lang=task.get("lang", "ru"),
+            )
+            return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
+        update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+        return {"success": False, "error": message, "doc_id": doc_id}
 
     def _process_describe_document_image_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Describe an uploaded image using the multimodal model and save the result
@@ -4827,7 +5309,7 @@ class RedisRequestQueue:
 
         # Collect ALL processing tasks from both queues
         all_processing: list[dict] = []
-        for proc_key in [self.processing_key, self.slow_processing_key]:
+        for proc_key in [self.processing_key, self.slow_processing_key, self.crawl_processing_key]:
             processing_tasks = self.redis.hgetall(proc_key)
             for req_id, task_data in processing_tasks.items():
                 req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
@@ -4863,7 +5345,7 @@ class RedisRequestQueue:
 
         # Collect items actually waiting in queues
         position = 1
-        for q_key in [self.queue_key, self.slow_queue_key]:
+        for q_key in [self.queue_key, self.slow_queue_key, self.crawl_queue_key]:
             queue_length = self.redis.llen(q_key)
             queue_tasks = self.redis.lrange(q_key, 0, queue_length - 1) if queue_length > 0 else []
             for task_data in queue_tasks:
@@ -4889,6 +5371,7 @@ class RedisRequestQueue:
             "audio": "🎤",
             "index_document": "📄",
             "transcribe_audio": "🎤",
+            "crawl_task": "🌐",
         }
         request_info = {
             "id": task["id"],
@@ -5001,6 +5484,8 @@ class RedisRequestQueue:
         exists = self.redis.hexists(self.processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.slow_processing_key, task_id)
+        if not exists:
+            exists = self.redis.hexists(self.crawl_processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.results_key, task_id)
         if not exists:

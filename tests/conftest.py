@@ -232,6 +232,7 @@ class _MockDatabase:
                 user_sessions = [s for s in self._sessions.values() if s.get("user_id") == user_id]
                 session_ids = {s["id"] for s in user_sessions}
                 user_messages = [m for m in self._messages if m.get("session_id") in session_ids]
+                active_keys = sum(1 for t in self._api_tokens if t["login"] == user_id and t["revoked_at"] is None)
                 self._result(
                     {
                         "sessions": len(user_sessions),
@@ -240,6 +241,7 @@ class _MockDatabase:
                         "incoming_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
                         "documents_count": 0,
                         "files_count": len({m.get("file_path") for m in user_messages if m.get("file_path")}),
+                        "api_keys_count": active_keys,
                     },
                     rowcount=1,
                 )

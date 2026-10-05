@@ -1,4 +1,4 @@
-# Release Guide — FLAI v12.3
+# Release Guide — FLAI v12.4
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
 
@@ -62,11 +62,10 @@ When releasing a new version:
 
 ### 1. Update version number in:
   - `pyproject.toml`: `version = "X.Y.Z"`
-  - `app/__init__.py`: update `flai_web_info{version="X.Y"}` to match the new version
+- `app/config.py`: `APP_VERSION = "X.Y"` — the only place the version is defined (metrics, templates and `window.FLAI_VERSION` all read it)
   - `AGENTS.md`: version title `# AGENTS.md — FLAI vX.Y`
   - `README.md`: `### What's New in vX.Y`
-  - `README-ru.md`: Russian equivalent section header
-  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header and footer string (then `pybabel compile -d translations` and commit both `.po` and `.mo`)
+  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header only (then `pybabel compile -d translations` and commit both `.po` and `.mo`) — the footer strings no longer contain a version
   - `deploy.sh`, `deploy-ru.sh`: version string in headers, success messages, and usage text
   - `docs/*.md`: version in titles and change notes
 

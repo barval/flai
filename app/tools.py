@@ -184,6 +184,20 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "read_page",
+            "description": "Open and read a specific web page (URL) with a real browser and return its text content. Use when the user gives a link and asks what is on it or to analyze it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full page URL, starting with http(s)://"},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "rag_search",
             "description": "Search for information in the user's uploaded documents. Use when the user asks about their files, documents, people, biography, addresses, dates, or facts that might be stored in their documents.",
             "parameters": {
@@ -328,11 +342,30 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
-    """Return tool definitions in OpenAI format for llama.cpp."""
+    """Return tool definitions in OpenAI format for llama.cpp.
+
+    ``read_page`` is only offered to the model when the crawler module is
+    registered and available; otherwise the returned list excludes it.
+    """
+    if get_crawler_module() is None:
+        return [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
     return TOOL_DEFINITIONS
 
 
 # ── Tool executors ───────────────────────────────────────────────────
+
+
+def get_crawler_module() -> Any:
+    """Return the crawler module when it is enabled and reachable, else None."""
+    from flask import current_app, has_app_context
+
+    if not has_app_context():
+        return None
+    app = current_app._get_current_object()  # type: ignore[attr-defined]  # noqa: SLF001 — tools run inside app context
+    module = app.modules.get("crawler")  # type: ignore[attr-defined]
+    if module and module.available:
+        return module
+    return None
 
 
 def _exec_get_current_time(ctx: dict[str, Any]) -> str:
@@ -372,15 +405,19 @@ def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
 
 
 def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
-    """Search the web via SearXNG module."""
+    """Search the web via Tavily (when the user has a key) or SearXNG."""
+    from app.tavily_keys import get_tavily_key
+
     app = ctx.get("app")
     search_module = app.modules.get("search") if app else None
-    if not search_module or not search_module.available:
+    user_id = ctx.get("user_id")
+    api_key = get_tavily_key(user_id) if isinstance(user_id, str) and user_id else None
+    if not search_module or (not search_module.available and not api_key):
         with force_locale(lang):
             return str(_("Web search service unavailable"))
 
     max_results = app.config.get("SEARXNG_MAX_RESULTS", 7) if app else 7
-    results = search_module.search(query, lang=lang, max_results=max_results)
+    results, _provider = search_module.search_with_fallback(query, lang=lang, max_results=max_results, api_key=api_key)
     if not results:
         with force_locale(lang):
             return str(_("No results found for query: {query}").format(query=query))
@@ -389,6 +426,28 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
     search_max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 7000
     formatted = search_module.format_results_context(results, lang=lang, max_chars=search_max_chars)
     return formatted  # type: ignore[no-any-return]
+
+
+def _exec_read_page(ctx: dict[str, Any], url: str) -> str:
+    """Read one web page through the crawler container."""
+    from app.crawler_guard import BlockedUrlError, validate_url
+
+    lang = ctx.get("lang", "ru")
+    crawler = get_crawler_module()
+    if not crawler:
+        with force_locale(lang):
+            return str(_("Page reading service is unavailable"))
+    try:
+        validate_url(url)
+    except BlockedUrlError:
+        with force_locale(lang):
+            return str(_("This address is not available for reading"))
+    try:
+        return str(crawler.read_page(url))
+    except Exception:
+        logger.error(f"read_page tool failed for {url[:256]}")
+        with force_locale(lang):
+            return str(_("Failed to read the page"))
 
 
 def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
@@ -752,6 +811,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
     "web_search": lambda ctx, **kw: _exec_web_search(ctx, kw.get("query", ""), kw.get("lang", "ru")),
+    "read_page": lambda ctx, **kw: _exec_read_page(ctx, kw.get("url", "")),
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
     "history_search": lambda ctx, **kw: _exec_history_search(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),

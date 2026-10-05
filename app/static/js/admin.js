@@ -79,6 +79,7 @@ function loadUsers() {
         }
         const tbody = document.getElementById('users-tbody');
         tbody.innerHTML = '';
+        const tavilyCells = new Map();
         users.forEach(user => {
             const row = document.createElement('tr');
             row.dataset.login = user.login;
@@ -150,6 +151,15 @@ function loadUsers() {
             const slmCell = document.createElement('td');
             slmCell.textContent = user.slm_facts_count || 0;
             row.appendChild(slmCell);
+            // Column order must match admin.html: Tavily API, then FLAI API.
+            const tavilyCell = document.createElement('td');
+            tavilyCell.className = 'tavily-credits';
+            tavilyCell.textContent = '…';
+            row.appendChild(tavilyCell);
+            tavilyCells.set(user.login, tavilyCell);
+            const flaiApiCell = document.createElement('td');
+            flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
+            row.appendChild(flaiApiCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -178,6 +188,33 @@ function loadUsers() {
             row.appendChild(actionsCell);
             tbody.appendChild(row);
         });
+        if (tavilyCells.size) {
+            fetch('/admin/api/users/tavily-usage')
+                .then(response => response.json())
+                .then(usage => {
+                    tavilyCells.forEach((cell, login) => {
+                        const state = usage[login];
+                        if (!state) {
+                            cell.textContent = '-';
+                            return;
+                        }
+                        if (state.status === 'ok') {
+                            cell.textContent = state.remaining;
+                        } else if (state.status === 'exhausted') {
+                            cell.textContent = '0';
+                        } else if (state.status === 'no_key') {
+                            cell.textContent = '-';
+                        } else {
+                            cell.textContent = '?';
+                            cell.title = state.status === 'invalid' ? t('tavily_invalid_key') : t('tavily_unavailable');
+                        }
+                    });
+                })
+                .catch(err => {
+                    dlog('Tavily usage load failed:', err);
+                    tavilyCells.forEach((cell) => { cell.textContent = '-'; });
+                });
+        }
     })
     .catch(err => console.error('Error loading users:', err));
 }

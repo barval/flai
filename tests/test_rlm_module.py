@@ -532,8 +532,8 @@ def test_web_fetch_dedup_repeated_queries(test_app):
     queries = []
     search = MagicMock()
     search.available = True
-    search.search.side_effect = lambda query, lang="ru", max_results=3: (
-        queries.append(query) or [{"title": "t", "url": "u", "content": "page"}]
+    search.search_with_fallback.side_effect = lambda query, lang="ru", max_results=3, api_key=None: (
+        queries.append(query) or ([{"title": "t", "url": "u", "content": "page"}], "tavily")
     )
     module.app.modules["search"] = search
     broker = _RlmBroker(module, "en", 1024, 5)
@@ -566,7 +566,7 @@ def test_run_nudges_final_near_step_limit(test_app):
     module, llamacpp = _make_module(script)
     search = MagicMock()
     search.available = True
-    search.search.return_value = [{"title": "t", "url": "u", "content": "page"}]
+    search.search_with_fallback.return_value = ([{"title": "t", "url": "u", "content": "page"}], "tavily")
     module.app.modules["search"] = search
     with test_app.app_context():
         test_app.config["RLM_MAX_STEPS"] = 4
@@ -581,7 +581,7 @@ def test_run_nudges_final_near_step_limit(test_app):
             is_cancelled=lambda: False,
         )
     assert result.answer == "done"
-    assert search.search.call_count == 3
+    assert search.search_with_fallback.call_count == 3
     nudged = any(
         any(
             isinstance(m.get("content"), str) and "remain" in m["content"] and "final(answer)" in m["content"]

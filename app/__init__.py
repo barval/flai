@@ -241,6 +241,10 @@ def create_app():
 
     modules["rlm"] = RlmModule(app)
 
+    from modules.crawler import CrawlerModule
+
+    modules["crawler"] = CrawlerModule(app)
+
     if app.config.get("SD_WRAPPER_URL"):
         from modules.sd_cpp import SdCppModule
 
@@ -678,7 +682,8 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="12.3"} 1')
+        version = app.config["APP_VERSION"]
+        metrics_output.append(f'flai_web_info{{version="{version}"}} 1')
 
         # Queue metrics
         try:

@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.3
+# Architecture — FLAI v12.4
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -239,6 +239,82 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Engine roster** — `searxng/settings.yml` enables `google news`, `bing news`, `yahoo news`, `yahoo`, `bing`, `mojeek`, `marginalia`, `presearch`, `qwant`, `yandex`, and `swisscows news` in addition to the default `google cse` and `duckduckgo`, improving resilience when individual engines fail. Engine names/status are restored by the container image build; edits require `docker exec flai-searxng chown` first if the file is root-owned.
 - **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 - **Date normalization** — `enhance_query_with_date()` in `modules/search.py` resolves relative date words («позавчера/вчера/сегодня», English equivalents) to absolute dates in the user's timezone (`app.config["TIMEZONE"]`) before POSTing to SearXNG: «Какие ИТ новости были вчера?» → «Какие ИТ новости были вчера (14 сентября 2026)?». Engines otherwise return generic section landing pages instead of dated articles. Queries without relative date words are untouched — this is query normalization, not routing.
+
+### Tavily provider (v12.4)
+
+`SearchModule.search_with_fallback()` is the single entry point for all web
+search. When the requesting user has stored a Tavily key
+(`app/tavily_keys.py`) and `TAVILY_ENABLED` is true, `_search_tavily()` runs
+first (`POST {TAVILY_API_URL}/search`, `Authorization: Bearer`, `search_depth`
+from `TAVILY_SEARCH_DEPTH`, `include_raw_content=false`). Tavily results reuse
+the `{title, url, content}` contract; snippets shorter than 300 chars are filled
+from the page via trafilatura, exactly like the SearXNG path. Relative dates are
+not normalized for Tavily — it resolves them natively. Any failure (missing key,
+disabled provider, 401/403, 429, timeout, malformed body, zero results) falls
+back to `search()`, the unchanged SearXNG implementation. The caller receives
+`(results, provider)` so it can log which backend answered.
+
+## Web Crawler (Crawl4AI, v12.4)
+
+Optional sidecar container (`flai-crawler`, profile `with-crawler`) running the
+`unclecode/crawl4ai:0.9.4` image (Apache-2.0; includes Playwright + Chromium).
+The 0.9.4 server binds loopback unless `CRAWL4AI_API_TOKEN` is set — the token
+is wired through compose (crawler env + web `CRAWL_API_TOKEN`) and every client
+call carries `Authorization: Bearer`. It serves two capabilities that plain
+search does not provide:
+
+- **`read_page(url)`** — native chat tool (fast worker): renders one page in a
+  real browser via `POST /md` (fit filter) and returns markdown. Registered
+  only when the container is reachable; closes the gap where pasted URLs were
+  never fetched. The chat status label is localized («🕸️ Открываю страницу...»)
+  through `TOOL_META` + `tool_read_page`.
+- **`[-CRAWL-]`** — router category for explicit deep-study intents. Queue type
+  `crawl_task` runs on a dedicated single-thread worker (no fast/slow-worker
+  slot). **The sidecar deliberately rejects deep-crawl strategy objects on
+  untrusted requests**, so the BFS lives in the client (`crawl_site`): pages
+  are fetched one by one via `POST /md` (`f=raw` keeps links), same-domain
+  links are extracted from the markdown, and a start URL deeper than the
+  domain root is confined to its path prefix (a `/docs/` start never drifts
+  into the portal's global navigation). Caps: `CRAWL_MAX_PAGES` (50) /
+  `CRAWL_MAX_DEPTH` (3) / `CRAWL_TIMEOUT_S` (300 s wall clock) /
+  `CRAWL_MAX_PAGE_CHARS` (50k) / `CRAWL_MAX_TOTAL_CHARS` (1 MB). The result is
+  concatenated as `## <url>` sections **each truncated to the remaining
+  context budget** (`get_search_context_limit()` — the first-page exception
+  once produced 50035-char contexts and 25802-token prompts), REPLACES the
+  per-user document named after the registrable domain (existing deletion
+  chain), and the GPU phase (`_run_document_indexing` + VRAM cleanup) runs
+  **under `_gpu_lock`** (embeddings are real GPU inference) before re-queuing
+  reasoning with `rag_source="crawler"`. The resulting document is a regular
+  user document — ordinary RAG search and the Deep analysis (RLM) mode work
+  over it.
+
+### Router rules around URLs
+
+A message with ONE link asking about that page's content («что за проект
+<URL>») is neither `[-CRAWL-]` nor `[-SEARCH-]`: it is ordinary chat, and the
+`read_page` tool opens the link. Category 6 carries a TOP EXCLUSION with a
+literal example — without it the classifier routed such messages to web search
+in 2 of 4 runs (search cannot open addresses and answers from strangers'
+pages).
+
+### Degradation
+
+| Situation | Behavior |
+|---|---|
+| Container disabled or down | `read_page` unregistered; `[-CRAWL-]` fails with a localized message (never silently downgraded to light search) |
+| Anti-bot block (start page) | `SiteBlockedError` → localized «anti-bot protection — falling back to ordinary search» notice, then the plain web-search path (Tavily → SearXNG) runs with the reason appended to the reasoning query |
+| 0 usable pages | Localized soft error suggesting ordinary search |
+| Limits reached | Clean stop; collected prefix is indexed |
+| Document quota full | Localized quota error; content discarded |
+
+### SSRF posture
+
+`app/crawler_guard.py` validates every URL before it leaves the app: http(s)
+only, all resolved addresses must be globally routable, credentials rejected.
+Residual risk: the in-browser redirect chain inside the container is validated
+only by Crawl4AI's own mechanisms — documented for operators, who can
+additionally firewall Docker bridges. Trafilatura remains the first-step
+extractor; the crawler is the second step for pages that need a real browser.
 
 ## Router Classification & Session Context (v12.1)
 

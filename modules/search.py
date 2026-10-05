@@ -136,6 +136,11 @@ class SearchModule(TranslationMixin):
         self.timeout = 10
         self.max_results = 7
         self.available = False
+        self.tavily_enabled = True
+        self.tavily_api_url = "https://api.tavily.com"
+        self.tavily_timeout = 20
+        self.tavily_max_results = 7
+        self.tavily_search_depth = "basic"
 
         if app:
             self.init_app(app)
@@ -146,6 +151,11 @@ class SearchModule(TranslationMixin):
         self.searxng_url = self.searxng_url.rstrip("/")
         self.timeout = app.config.get("SEARXNG_TIMEOUT", 10)
         self.max_results = app.config.get("SEARXNG_MAX_RESULTS", 7)
+        self.tavily_enabled = bool(app.config.get("TAVILY_ENABLED", True))
+        self.tavily_api_url = (app.config.get("TAVILY_API_URL") or "https://api.tavily.com").rstrip("/")
+        self.tavily_timeout = app.config.get("TAVILY_TIMEOUT", 20)
+        self.tavily_max_results = app.config.get("TAVILY_MAX_RESULTS", self.max_results)
+        self.tavily_search_depth = app.config.get("TAVILY_SEARCH_DEPTH", "basic")
         self.check_availability()
 
     def check_availability(self) -> bool:
@@ -303,6 +313,114 @@ class SearchModule(TranslationMixin):
         except Exception as e:
             self.logger.error(f"SearXNG search failed: {e}")
             return []
+
+    def _search_tavily(self, query: str, lang: str, api_key: str, max_results: int) -> list[dict]:
+        """Search via the Tavily API with a user-supplied key.
+
+        Tavily is an LLM-oriented engine: it resolves relative dates itself and
+        returns extracted content, so no date normalization is applied here.
+        Any failure yields an empty list so the caller can fall back to SearXNG.
+        """
+        if not (self.tavily_enabled and api_key):
+            return []
+        payload = {
+            "query": query,
+            "max_results": max_results,
+            "search_depth": self.tavily_search_depth,
+            "topic": "general",
+            "include_answer": False,
+            "include_raw_content": False,
+        }
+        try:
+            resp = requests.post(
+                f"{self.tavily_api_url}/search",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=self.tavily_timeout,
+            )
+        except RequestsTimeout:
+            self.logger.warning(f"Tavily search timeout ({self.tavily_timeout}s): {query[:60]}...")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Tavily search failed: {e}")
+            return []
+        if resp.status_code != 200:
+            self.logger.warning(f"Tavily search returned HTTP {resp.status_code}: {query[:60]}...")
+            return []
+        try:
+            body = resp.json() or {}
+        except ValueError:
+            self.logger.warning("Tavily search returned a non-JSON body")
+            return []
+        if not isinstance(body, dict):
+            self.logger.warning(f"Tavily search returned an unexpected body type: {type(body).__name__}")
+            return []
+        raw_results = body.get("results") or []
+        if not isinstance(raw_results, list):
+            self.logger.warning(f"Tavily search returned an unexpected results type: {type(raw_results).__name__}")
+            return []
+
+        results: list[dict] = []
+        for r in raw_results:
+            if not isinstance(r, dict):
+                continue
+            url = (r.get("url") or "").strip()
+            if not url:
+                continue
+            results.append(
+                {
+                    "title": (r.get("title") or "").strip(),
+                    "url": url,
+                    "content": (r.get("content") or "").strip(),
+                }
+            )
+            if len(results) >= max_results:
+                break
+        if results:
+            self.logger.info(f"Tavily search: '{query[:80]}' -> {len(results)} results")
+            self._enrich_short_results(results)
+        return results
+
+    def _enrich_short_results(self, results: list[dict], min_chars: int = 300) -> None:
+        """Fill results whose snippet is too short with the page's readable text."""
+        targets = [
+            (i, r["url"]) for i, r in enumerate(results) if r.get("url") and len(r.get("content", "")) < min_chars
+        ]
+        if not targets:
+            return
+        self.logger.debug(f"Fetching page content for {len(targets)} thin results")
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_map = {executor.submit(self._fetch_page_content, url, 8): idx for idx, url in targets}
+            for future in as_completed(future_map):
+                fetched = future.result()
+                if fetched:
+                    results[future_map[future]]["content"] = fetched
+
+    def search_with_fallback(
+        self,
+        query: str,
+        lang: str = "ru",
+        max_results: int | None = None,
+        api_key: str | None = None,
+    ) -> tuple[list[dict], str]:
+        """Search the web, preferring Tavily when the user supplied a key.
+
+        Returns ``(results, provider)`` where provider is ``"tavily"`` when
+        Tavily served the query and ``"searxng"`` otherwise — including when
+        both backends came back empty, since the caller reacts to ``results``.
+        A Tavily failure of any kind (disabled, missing key, HTTP error, timeout,
+        unusable payload) degrades to the local SearXNG path.
+        """
+        limit = max_results or self.max_results
+        if self.tavily_enabled and api_key:
+            # TAVILY_MAX_RESULTS is a ceiling on the Tavily request only; an explicit
+            # caller limit below it still wins. SearXNG keeps `limit`.
+            tavily_limit = min(limit, self.tavily_max_results)
+            results = self._search_tavily(query, lang, api_key, tavily_limit)
+            if results:
+                return results, "tavily"
+            self.logger.debug(f"Tavily returned no results for '{query[:80]}' — falling back to SearXNG")
+        return self.search(query, lang=lang, max_results=limit), "searxng"
 
     def _fetch_page_content(self, url: str, timeout: int = 8) -> str:
         """Download a page and extract readable text via trafilatura.

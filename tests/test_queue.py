@@ -733,9 +733,13 @@ class TestSearchQueryNormalization:
         queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
         return queue
 
-    def test_retries_with_decimal_stripped_and_keeps_original_for_reasoning(self, mock_app, mock_redis):
+    def test_retries_with_decimal_stripped_and_keeps_original_for_reasoning(self, mock_app, mock_redis, monkeypatch):
+        monkeypatch.setattr("app.tavily_keys.get_tavily_key", lambda login: "tvly-key")
         search = Mock()
         search.available = True
+        search.search_with_fallback.side_effect = lambda q, lang="ru", **kw: (
+            ([], "searxng") if "3.31" in q else ([{"title": "t", "url": "u", "content": "x"}], "searxng")
+        )
         search.search.side_effect = lambda q, lang="ru", **kw: (
             [] if "3.31" in q else [{"title": "t", "url": "u", "content": "x"}]
         )
@@ -746,7 +750,10 @@ class TestSearchQueryNormalization:
 
         queue._process_search_task(original, "s1", "u1", "ru", "neutral", reasoning_query=question)
 
-        assert [c.args[0] for c in search.search.call_args_list] == [original, "перевести по текущему курсу в рубли"]
+        # First call goes through search_with_fallback (not search.search)
+        # search.search is only called for the simplified-query retry
+        assert search.search_with_fallback.call_args.args[0] == original
+        assert [c.args[0] for c in search.search.call_args_list] == ["перевести по текущему курсу в рубли"]
         assert queue._requeue_reasoning_task.call_args.args[0] == question
 
 

@@ -1,7 +1,7 @@
 // static/js/chat-export.js
 // Save chat as HTML function with embedded media files (base64)
 async function saveChatAsHTML() {
-    let footerText = t('footer_text');
+    let footerText = t('footer_text') + ' v' + (window.FLAI_VERSION || '');
 
     const userNameElement = document.querySelector('.logout-container .user-name');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');

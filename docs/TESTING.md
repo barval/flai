@@ -1,4 +1,4 @@
-# Testing — FLAI v12.3
+# Testing — FLAI v12.4
 
 This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
 
@@ -88,6 +88,8 @@ Fixed in v9.0:
 Contract guard enumerating all 23 expected `/v1` endpoints with their method sets; fails the build on a missing or unexpected route (documentation routes `/v1/docs`, `/v1/docs/oauth2-redirect.html`, `/v1/openapi.json` are allowlisted separately).
 
 Public `/v1` API test files (all added in v12.3): `test_api_v1_auth.py` (Bearer auth, 8 tests), `test_api_v1_chat.py` (chat sync/SSE/session continuity, 28 tests), `test_api_v1_embeddings.py` (12 tests), `test_api_v1_media.py` (image/video/audio generation, 77 tests), `test_api_v1_ratelimit.py` (9 tests), `test_api_chat_async.py` (async chat + poll, 16 tests), `test_api_tasks.py` (owner-scoped task list/status/cancel/content, 27 tests), `test_api_documents.py` (12 tests), `test_api_rlm.py` (8 tests), `test_api_sessions.py` (8 tests), `test_api_limits.py` (19 tests: wait-slot cap, CORS), `test_api_bridge.py` (68 tests: session resolution, enqueue, wait, stream, requeue ownership), `test_api_tokens.py` (API key management, 11 tests).
+
+**Web Crawler (Crawl4AI, v12.4) test files (all NEW in v12.4):** `test_crawler_guard.py` (8 tests: SSRF ranges, credentials, port), `test_crawler_config.py` (3 tests: allow-list defaults, env parsing), `test_crawler_module.py` (15 tests: availability, /md contract, client-side BFS scope, caps, deadline, anti-bot `SiteBlockedError`), `test_read_page_tool.py` (7 tests: tool schema, gating, localized errors), `test_router_crawl.py` (2 tests: `[-CRAWL-]` marker parsing, search marker untouched), `test_crawl_task.py` (42 tests: dedicated executor, no GPU coupling outside the indexing lock, domain replacement, quota, context budget, anti-bot fallback to web search), `test_crawl_ui.py` (15 tests: compose service placement + no published ports, `docker compose config`, stage labels in ru/en catalogs vs chat.html msgids, counter reads `data.pages`, deploy flag init).
 
 ### Known Test Issues
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture. Not blocking, but slow.

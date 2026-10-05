@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.3\n"
+"Project-Id-Version: FLAI 12.4\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-01 10:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -202,6 +202,34 @@ msgstr "Не удалось распознать речь"
 #: app/queue.py:2214 app/queue.py:2255 app/queue.py:2384 app/queue.py:2453
 msgid "Task cancelled"
 msgstr "Задача отменена"
+
+#. crawl task ([-CRAWL-] deep site study)
+msgid "Crawler service is unavailable"
+msgstr "⚠️ Сервис изучения сайтов недоступен. Проверьте, что запущен контейнер flai-crawler."
+
+#. crawl task: the user's message carried no address to study
+msgid "No link found in your message"
+msgstr "⚠️ В вашем сообщении нет ссылки. Отправьте адрес сайта, который нужно изучить."
+
+# stage label: the crawler is studying the site
+msgid "Studying the site…"
+msgstr "Изучаю сайт…"
+
+# stage label: the crawl results are being indexed for RAG
+msgid "Indexing the collected materials…"
+msgstr "Индексирую собранные материалы…"
+
+#, python-brace-format
+msgid "Could not read any pages from {domain}"
+msgstr "⚠️ Не удалось прочитать ни одной страницы с {domain}. Попробуйте обычный поиск."
+
+#. crawl task: post-crawl quota re-check (materials are discarded, not saved)
+msgid "Document quota reached — the collected materials were not saved"
+msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
+
+#. crawl task: the crawled pages could not be written to the document store
+msgid "Failed to save the collected materials"
+msgstr "⚠️ Не удалось сохранить собранные материалы."
 
 # GPU memory error messages
 #: app/queue.py:1278 app/queue.py:1451 app/queue.py:2190 app/queue.py:2361
@@ -1244,7 +1272,23 @@ msgstr "Документы"
 msgid "SLM Facts"
 msgstr "SLM факты"
 
-#: app/templates/admin.html:64 app/templates/admin.html:268
+#: app/templates/admin.html:63
+msgid "Tavily API"
+msgstr "Tavily API"
+
+#: app/templates/admin.html:64
+msgid "FLAI API"
+msgstr "ПЛИИ API"
+
+#: app/templates/admin.html:369
+msgid "Tavily API - unavailable"
+msgstr "Tavily API - недоступен"
+
+#: app/templates/admin.html:370
+msgid "Tavily API - invalid key"
+msgstr "Tavily API - неверный ключ"
+
+#: app/templates/admin.html:66 app/templates/admin.html:268
 #: app/templates/admin.html:330
 msgid "Camera access"
 msgstr "Доступ к камерам"
@@ -2078,7 +2122,7 @@ msgstr "Переключить тему"
 
 #: app/templates/base.html:50 app/templates/base.html:55
 msgid "api_keys_title"
-msgstr "API-ключи"
+msgstr "ПЛИИ API ключи"
 
 #: app/templates/base.html:52
 msgid "api_keys_revoke"
@@ -2136,11 +2180,9 @@ msgstr "Выйти"
 
 #: app/templates/base.html:109 app/templates/chat.html:174
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v12.3"
+msgstr "Полностью Локальный ИИ (ПЛИИ)"
 
 #: app/templates/base.html
-msgid "footer_short"
-msgstr "ПЛИИ v12.3"
 
 #: app/templates/base.html
 msgid "footer_copyright"
@@ -2496,6 +2538,14 @@ msgstr "Ищу в документах..."
 #: app/templates/chat.html:216
 msgid "tool_camera_snapshot"
 msgstr "Получаю снимок..."
+
+msgid "tool_read_page"
+msgstr "Открываю страницу..."
+
+msgid "The site blocked automated access (anti-bot protection)"
+msgstr "Сайт закрыт для автоматического доступа (антибот-защита). Пробую обычный поиск."
+
+
 
 #: app/templates/chat.html:217
 msgid "Preparing resources..."
@@ -3022,3 +3072,70 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Vision-модель (с mmproj), а не простая"
 #~ " чат-модель."
 
+#. Tavily Popup
+msgid "tavily_section_title"
+msgstr "Поиск в Интернет через Tavily"
+
+msgid "tavily_hint"
+msgstr "Бесплатный тариф — 1000 кредитов в месяц. Поисковые запросы отправляются на внешний сервис Tavily."
+
+msgid "tavily_get_key"
+msgstr "Получить ключ"
+
+msgid "tavily_key_placeholder"
+msgstr "tvly-…"
+
+msgid "tavily_add_key"
+msgstr "Добавить ключ"
+
+msgid "tavily_delete_key"
+msgstr "Удалить ключ"
+
+msgid "tavily_quota"
+msgstr "Лимит тарифа: {limit} кредитов/мес · Использовано: {used} · Осталось: {remaining}"
+
+msgid "tavily_status_unavailable"
+msgstr "Tavily API - недоступен"
+
+msgid "tavily_status_exhausted"
+msgstr "Tavily API - лимит исчерпан"
+
+msgid "tavily_status_invalid"
+msgstr "Tavily API - неверный ключ"
+
+#. Tavily
+msgid "Invalid Tavily API key format"
+msgstr "Неверный формат API-ключа Tavily"
+
+msgid "Tavily rejected the API key. Please check it and try again."
+msgstr "Tavily отклонил API-ключ. Проверьте ключ и попробуйте снова."
+
+msgid "footer_short_name"
+msgstr "ПЛИИ"
+
+msgid "You already have a Tavily key. Delete it before adding a new one."
+msgstr "У вас уже есть ключ Tavily. Удалите его, прежде чем добавлять новый."
+
+#. read_page tool (crawler)
+msgid "Page reading service is unavailable"
+msgstr "⚠️ Сервис чтения страниц недоступен"
+
+#. read_page tool (crawler)
+msgid "This address is not available for reading"
+msgstr "⚠️ Этот адрес недоступен для чтения"
+
+#. read_page tool (crawler)
+msgid "Failed to read the page"
+msgstr "⚠️ Не удалось прочитать страницу"
+
+#. crawler stage progress (chat.html)
+msgid "Starting web crawl..."
+msgstr "🕸️ Начинаю обход веб-страниц..."
+
+#. crawler stage progress (chat.html)
+msgid "Crawling page %s..."
+msgstr "🕸️ Обхожу страницу %s..."
+
+#. crawler stage progress (chat.html)
+msgid "Indexing crawled content..."
+msgstr "🕸️ Индексирую полученный контент..."

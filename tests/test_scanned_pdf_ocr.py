@@ -178,8 +178,10 @@ def test_queue_status_includes_queued_document_tasks_and_document_id():
     queue = RedisRequestQueue.__new__(RedisRequestQueue)
     queue.processing_key = "fast:processing"
     queue.slow_processing_key = "slow:processing"
+    queue.crawl_processing_key = "crawl:processing"
     queue.queue_key = "fast:queue"
     queue.slow_queue_key = "slow:queue"
+    queue.crawl_queue_key = "crawl:queue"
     queue.results_key = "results"
     queue.app = Mock()
     queue.app.modules = {"base": Mock()}
@@ -199,8 +201,8 @@ def test_queue_status_includes_queued_document_tasks_and_document_id():
         "data": {"type": "index_document", "doc_id": "queued-doc"},
     }
     queue.redis = Mock()
-    queue.redis.hgetall.side_effect = [{}, {b"active-doc-task": processing_task}]
-    queue.redis.llen.side_effect = [0, 1]
+    queue.redis.hgetall.side_effect = [{}, {b"active-doc-task": processing_task}, {}]
+    queue.redis.llen.side_effect = [0, 0, 1]
     queue.redis.lrange.return_value = [queued_task]
     queue._deserialize = lambda value: value
     queue._format_request_info = RedisRequestQueue._format_request_info.__get__(queue)

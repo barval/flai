@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: FLAI API
-  version: 12.3.0
+  version: 12.4.0
   description: |
     **FLAI is a capability router, not a model server.** A chat request is
     persisted and queued exactly like a web message, so the LLM router — not

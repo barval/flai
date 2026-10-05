@@ -3,1348 +3,360 @@
 
   # Fully Local AI (FLAI)
 
-  **FLAI — a multifunctional, fully local, privacy-first AI platform.**
+  **A multifunctional, fully local, privacy-first AI platform.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
-[English](README.md) | [Russian](README-ru.md)
+[English](README.md) | [Русский](README-ru.md)
 </div>
+
+## TL;DR
+
+- **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service in the path.
+- **One GPU queue, strictly serialized.** VRAM is cleaned unconditionally between GPU tasks; a model is loaded only after the previous one is gone.
+- **An LLM router decides what happens.** Every message is classified into one of eleven categories — there is no keyword routing anywhere in the code.
+- **Multimodal, multilingual, persistent.** Images and scanned PDFs are read by a vision model, the UI is English/Russian, and long-term memory survives across sessions.
+- **A public OpenAI-compatible API.** `/v1/chat/completions`, embeddings, media, audio, files and RLM, with per-user keys and an interactive reference at `/v1/docs`.
+- **GPU or CPU.** 8 GB of VRAM is enough for the whole stack; CPU-only mode runs the same features, slower, with automatic downscaling for media.
+- **One command to deploy.** `./deploy.sh --download-models --with-image-gen …` builds, downloads models and starts everything.
+
+## 📑 Contents
+
+<!-- TOC:BEGIN -->
+- [TL;DR](#tldr)
+- [📑 Contents](#-contents)
+- [🆕 What's New in v12.4](#-whats-new-in-v124)
+- [✨ Features](#-features)
+- [🏗️ Architecture Overview](#-architecture-overview)
+- [🧭 Types of Requests & Search Mechanisms](#-types-of-requests-search-mechanisms)
+- [📋 System Requirements](#-system-requirements)
+- [🚀 Quick Start](#-quick-start)
+- [🛠️ Contributing](#-contributing)
+- [🙏 Acknowledgments](#-acknowledgments)
+- [📄 License](#-license)
+<!-- TOC:END -->
+
+### 📚 Full documentation
+
+Every document exists in English and Russian (`X.md` / `X-ru.md`).
+
+| Topic | English | Русский |
+|-------|---------|---------|
+| Architecture, queue, GPU lock, data flow | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE-ru.md](docs/ARCHITECTURE-ru.md) |
+| VRAM accounting, context auto-fit, hardware | [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md) | [VRAM_MANAGEMENT-ru.md](docs/VRAM_MANAGEMENT-ru.md) |
+| Context window budget and allocation | [CONTEXT.md](docs/CONTEXT.md) | [CONTEXT-ru.md](docs/CONTEXT-ru.md) |
+| Measured model throughput | [BENCHMARKS.md](docs/BENCHMARKS.md) | [BENCHMARKS-ru.md](docs/BENCHMARKS-ru.md) |
+| Models, download commands, licenses | [MODELS.md](docs/MODELS.md) | [MODELS-ru.md](docs/MODELS-ru.md) |
+| Environment variables, compose profiles | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
+| Web search, Tavily keys, site crawler | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
+| Deep analysis (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
+| Image generation and editing | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
+| Video generation (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
+| Voice: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
+| Camera integration | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
+| Long-term memory (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
+| Documents, RAG, PDF OCR | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| Users, backups, Model Hub, branding | [ADMINISTRATION.md](docs/ADMINISTRATION.md) | [ADMINISTRATION-ru.md](docs/ADMINISTRATION-ru.md) |
+| Health endpoint, Prometheus metrics | [MONITORING.md](docs/MONITORING.md) | [MONITORING-ru.md](docs/MONITORING-ru.md) |
+| Public `/v1` API | [API.md](docs/API.md) | [API-ru.md](docs/API-ru.md) |
+| Code layout, tests, CLI tools | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | [DEVELOPMENT-ru.md](docs/DEVELOPMENT-ru.md) |
+| Localization and translations | [LOCALIZATION.md](docs/LOCALIZATION.md) | [LOCALIZATION-ru.md](docs/LOCALIZATION-ru.md) |
+| Troubleshooting | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | [TROUBLESHOOTING-ru.md](docs/TROUBLESHOOTING-ru.md) |
+| Frequently asked questions | [FAQ.md](docs/FAQ.md) | [FAQ-ru.md](docs/FAQ-ru.md) |
+| Roadmap | [ROADMAP.md](docs/ROADMAP.md) | [ROADMAP-ru.md](docs/ROADMAP-ru.md) |
+| Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
+| How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
+
+## 🆕 What's New in v12.4
+
+- **Tavily-first web search** — every user can attach a free personal Tavily key (1000 credits/month) in the profile popup. Search tries Tavily and degrades to the local SearXNG engine on any failure, so a spent quota or an invalid key never breaks search. → [SEARCH.md](docs/SEARCH.md)
+- **Web crawler (Crawl4AI)** — an optional sidecar reads a pasted URL in a real browser (`read_page`) and, for an explicit «study this site» request, crawls the domain (≤50 pages, depth ≤3, 5-minute budget), replaces the per-domain document, indexes it through the normal RAG pipeline and answers from it — including in Deep Analysis. → [SEARCH.md](docs/SEARCH.md)
+- **CPU timeouts scaled up** — CPU-only image generation gets 45 minutes and video 2 hours, so slow media generation finishes instead of dying at step 3/10. → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **A single version source** — the About dialog spells the project out and the version string comes from one constant. → [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md)
+
+Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## ✨ Features
 
-### 🤖 Core AI Capabilities
-- 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), history search, camera snapshots.
-- 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
-- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
-- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is executed locally as one coherent task with streamed progress and a collapsible step-by-step trace
-- 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
-- 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
-- ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
-- 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
-- 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
-- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper or Kokoro TTS (backend selectable at deploy time)
-- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Each user's profile is deleted together with their FLAI account
-- 🔢 **Per-request token usage** – each assistant response header shows the actual output and input token counts, accumulated across model calls in the request
-- 🕸️ **Web crawler (optional)** – open pasted URLs and deep-study whole sites via an optional Crawl4AI sidecar; results land in your Documents and are searchable with RAG and Deep analysis
+### 💬 Chat & reasoning
+- **Intelligent chat** — the router sends simple questions to a fast model and complex ones to a dedicated reasoning model.
+- **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress.
+- **Deep analysis (RLM)** — a reasoning model works through your selected documents and an attached image step by step, with a sandboxed Python executor, sub-model calls, live lookups and a collapsible trace. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
+- **Response styles** — neutral, academic, professional, friendly or funny, switchable in the chat header.
+- **Sessions and export** — multiple auto-titled conversations, exportable as HTML with embedded media.
 
-### 🔌 Programmatic Access
-- 🔑 **API Keys (OpenAI-compatible)** – create per-user API keys in the web UI to call FLAI programmatically via Bearer tokens
-- 🌐 **Public OpenAI-compatible API (/v1)** – REST endpoints for chat completions (sync + SSE), embeddings, TTS/transcription, async media (images/videos) with owner-checked downloads, files/documents, RLM deep analysis, sessions/history; owner-scoped task polling
-- 📑 **Interactive API Docs** – Swagger UI at `/v1/docs` and OpenAPI JSON at `/v1/openapi.json` (from `docs/openapi-v1.yaml`)
+### 🎨 Media
+- **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
+- **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
+- **Video generation** — LTX-Video 2B, 8-step distilled inference, text or image+text prompts. → [VIDEO.md](docs/VIDEO.md)
 
-### 📁 Document & Knowledge Management
-- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
-- 🖼️ **Scanned PDF OCR and document images** – scanned PDF pages and uploaded document images are processed by the multimodal model; recognized text is indexed for search
-- 🗂️ **Chat Sessions** – multiple independent conversations with auto-titling
-- 💾 **Export Chats** – save conversations as HTML files with embedded media
+### 🔎 Search & knowledge
+- **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
+- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
+- **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
-### 🏠 Home Integration (Optional)
-- 📹 **Camera Surveillance** – request snapshots from IP cameras and analyze them with multimodal models
-- 🔐 **Access Control** – granular camera permissions per user via admin panel
+### 🧠 Memory & context
+- **Long-term memory (SLM)** — rule-based, CPU-only fact extraction and merging with semantic deduplication; a profile per user, erased with the account. → [MEMORY.md](docs/MEMORY.md)
+- **Context budgeting** — real token costs, not guesses: SLM facts first, then search, then a rolling summary, then history. → [CONTEXT.md](docs/CONTEXT.md)
+- **Per-request token counts** — every answer header shows the real output and input tokens. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-### 🔒 Privacy & Security
-- 🏠 **100% Local** – all processing happens on your hardware; no data leaves your network
-- 🔐 **Session-based Auth** – secure user authentication with password hashing (Werkzeug)
-- 🛡️ **File Access Control** – uploaded files are served only to authorized users
-- 🧹 **Data Isolation** – each user's sessions, messages, and documents are strictly separated
-- 🔑 **CSRF Protection** – Cross-Site Request Forgery protection for all forms
-- 🚦 **Rate Limiting** – brute-force attack protection on login (5 attempts/minute)
-- 🔒 **Session Security** – HttpOnly and SameSite cookies, secure flag for HTTPS
-- 📝 **Audit Logging** – login attempts and admin actions are logged
-- 🔐 **HMAC-signed Queue** – Redis queue tasks are signed to prevent tampering
-- 🛡️ **Input Validation** - Strict validation of user inputs (logins, passwords, model parameters) to prevent injection attacks and malformed data.
+### 🗣️ Voice, camera & web UI
+- **Voice messages** — Whisper ASR transcription.
+- **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
+- **Camera snapshots** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
+- **Attachments** — images, audio and documents, plus clipboard paste (Ctrl+V / mobile «Paste»); an image takes priority over text.
+- **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
+- **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
 
-### 👥 User Experience
-- 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
-- 🌓 **Dark/Light Theme** – toggle between themes with persistent preference storage
-- 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
-- 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
-- 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
-- 📎 **File Attachments** – support for images, audio files, and documents in conversations; images can also be pasted directly from the clipboard (Ctrl+V / mobile "Paste"): text in the clipboard is pasted as text, an image is attached as a file, and if both are present the image takes priority
-- 🎤 **Combined Voice + Image** – record voice message while an image is attached; both sent together
-- 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
-- ⏹ **Task Cancellation** – cancel any in-progress streaming generation with a single click
-- 📊 **Progress Bars** – visual progress indicators for video, image, and reasoning generation
-- 📋 **Copy Messages** – one-click copy of full assistant message text
-- ▶ **Run HTML** – execute HTML code blocks directly from chat in a new browser tab
-- 🛡 **XSS Protection** – all markdown HTML sanitized via DOMPurify before rendering
+### 🔌 API & automation
+- **Per-user API keys** — created in the web UI, stored as SHA-256 digests, revocable.
+- **OpenAI-compatible `/v1`** — chat completions (sync + SSE), async chat, embeddings, image and video generation, audio speech and transcription, files and documents, RLM, sessions and owner-scoped task polling.
+- **Interactive reference** — Swagger UI at `/v1/docs`, OpenAPI document at `/v1/openapi.json`, served offline with bundled assets. → [API.md](docs/API.md)
 
 ### ⚙️ Administration
-- 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
-- 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
-- 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
-- 🧭 **Model Hub** – search Hugging Face for GGUF models with a GPU/RAM fit estimate before downloading, download with progress/resume, delete downloaded files, and keep working offline
-- 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
-- 🎨 **Personalization** – upload a custom header logo (PNG/JPEG/WebP, auto-scaled) and set the site name in Russian and English (both required, max 40 chars each); the name is shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens. A saved branding set is included in full backups and the custom logo is replaced by the built-in one as soon as it is deleted
-- 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
-- 📈 **System Monitoring** – view database sizes and system statistics
-- 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands
+- **Users** — create, edit, delete, service classes, camera permissions.
+- **Models** — select and tune GGUF models per module; a context window that would not fit the hardware is rejected.
+- **Model Hub** — search Hugging Face for GGUF models, see a VRAM/RAM fit estimate before downloading, download with progress and resume, delete what you no longer need.
+- **Backups** — full or per-user backup and restore from the admin panel.
+- **Personalization** — your own header logo and localized site names, included in full backups.
+- **Monitoring** — hardware overview, database sizes, system statistics. → [MONITORING.md](docs/MONITORING.md)
+- **CLI tools** — admin password, upload cleanup, message-format migration, SLM import and cleanup. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
----
+### 🔒 Privacy & security
+- 100% local processing; nothing leaves your network except the search services you configure.
+- Session auth with password hashing, HttpOnly/SameSite cookies, CSRF on every form, login rate limiting and audit logging.
+- Strict per-user isolation of sessions, messages, documents and camera access.
+- Redis queue tasks are HMAC-signed; file paths are validated for traversal; all markdown HTML is sanitized with DOMPurify.
+- Every URL that leaves the app passes an SSRF guard (no private, loopback, link-local or CGNAT addresses).
+
+## 🏗️ Architecture Overview
+
+```
+Browser / API client
+        │
+        ▼
+   Flask app (app/) ──► PostgreSQL   messages, sessions, users, documents
+        │              Redis        queue, events (SSE), rate limits, task registry
+        │              Qdrant       document vectors
+        ▼
+  Request queue (app/queue.py)
+        │
+        ├── fast worker (CPU) ──► routing, tools, RAG search, web search, STT, TTS, embeddings
+        └── slow worker (GPU) ──► multimodal · reasoning · image · video      ← one at a time
+                                  ▲
+                          _gpu_lock (single)
+                                  │
+   modules/ ── llama.cpp (multimodal, reasoning, embedding) · sd.cpp · LTX-Video
+          ── Whisper · Piper/Kokoro · SearXNG/Tavily/Crawl4AI · SuperLocalMemory
+```
+
+The rules that matter most:
+
+1. **GPU work is strictly serialized.** Every GPU task takes the single `_gpu_lock`; after each one, all llama.cpp models are unloaded, the video pipeline is released and the CUDA cache is flushed.
+2. **Degradation happens before loading.** `compute_llamacpp_config()` reduces `n_gpu_layers` until the model fits; if it does not fit even on CPU, the task fails with an error instead of an OOM crash.
+3. **Retrieval never generates.** The fast worker only retrieves. Answers are produced by the reasoning model on the slow worker.
+4. **Routing is always the LLM.** No keyword lists, no pattern matching, no hardcoded queries.
+
+Details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md).
 
 ## 🧭 Types of Requests & Search Mechanisms
 
-Every user message is classified by the router model into one of the categories below. The category determines which search mechanism (if any) runs before the answer is generated, and what context is injected into the prompt.
+Every message is classified by the router model into one of these categories. The category decides what runs before the answer and what context is injected into the prompt.
 
-| Category (marker) | Route | What runs | Context injected into the reasoning prompt |
+| Category (marker) | Route | What runs | Injected into the prompt |
 |---|---|---|---|
-| `[-RAG-]` | **Document search (RAG)** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
-| `[-SEARCH-]` | **Web search** | Tavily first (per-user key), then SearXNG metasearch (parallel fetch, trafilatura extract) | Web results (~30% of context budget) + SLM + summary + history |
-| `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions; broad overview uses stored summaries or representative messages | History fragments/overview + SLM + summary + current-session history |
-| `[-REASONING-]` | **Complex reasoning** | Reasoning model directly (no external search) | SLM facts + summary + history |
-| `[-REASONING-WEB-]` | **Reasoning + web** | Web search → reasoning over results | Web results + SLM + summary + history |
-| `[-CRAWL-]` | **Deep site study** | Crawl4AI sidecar crawls the site (client-side BFS, ≤50 pages, depth ≤3, 5-min budget; path-prefix scope for deep start URLs) → document replaced in your Documents panel → indexed → reasoning over the corpus | Crawled pages as `## <url>` sections (context-budget capped) + SLM + summary + history |
-| `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current camera frame; multimodal model analyzes it | Snapshot description + SLM + history |
-| `[-REMEMBER-]` | **Remember fact** | SLM fact extraction (background, CPU-only) | — (writes to long-term memory) |
-| `[-IMAGE-]` / `[-VIDEO-]` | **Image / video generation** | Stable Diffusion / LTX-Video (GPU containers) | — (no LLM context) |
-| `none` (no marker) | **Chat with tools** | Multimodal model + native tool calling | Tool results (calc, time, web_search, rag_search, history_search, read_page, camera) + SLM + history |
+| `[-RAG-]` | **Document search** | Vector search in Qdrant (embeddings + score filter) | RAG chunks + SLM facts + session summary + history |
+| `[-SEARCH-]` | **Web search** | Tavily first (per-user key), then SearXNG (parallel fetch, text extraction) | Web results (~30% of the budget) + SLM + summary + history |
+| `[-HISTORY-]` | **History search** | Ranked PostgreSQL full-text search across prior sessions | History fragments + SLM + summary + current session |
+| `[-REASONING-]` | **Complex reasoning** | The reasoning model directly, no external data | SLM facts + summary + history |
+| `[-REASONING-WEB-]` | **Reasoning with fresh data** | Web search → reasoning over the results | Web results + SLM + summary + history |
+| `[-CRAWL-]` | **Deep site study** | Crawl4AI crawls the site → replaces the domain document → indexes it → reasons over the corpus | Crawled pages as `## <url>` sections (budget-capped) + SLM + summary + history |
+| `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current frame; the vision model analyses it | Snapshot description + SLM + history |
+| `[-REMEMBER-]` | **Remember a fact** | Rule-based SLM extraction (background, CPU-only) | — (writes to long-term memory) |
+| `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp / LTX-Video in their own GPU containers | — (no LLM context) |
+| `none` | **Chat with tools** | Multimodal model + native tool calling | Tool results + SLM + history |
 
-**Notes:**
-- RAG, Web, and History are mutually exclusive per request — only one search mechanism runs.
-- A message with ONE link asking about that page's content («what is this project <URL>») is not routed to `[-SEARCH-]` or `[-CRAWL-]` — it is ordinary chat, and the `read_page` tool opens the link. Deep site study (`[-CRAWL-]`) is for explicit multi-page requests only; if the target site blocks automated access (anti-bot), the task falls back to ordinary web search.
-- `history_search` is also available as a native tool during ordinary chat; its public name matches `rag_search` and `web_search`.
-- History search is lexical in both Russian and English profiles; queries are not automatically translated between languages.
-- The router model classifies based on the user's intent; there is no hardcoded keyword routing.
-- SLM (SuperLocalMemory) long-term facts are always fetched first and measured for real token cost.
-- Session history is added last and trimmed to fit whatever budget remains.
-- A rolling session summary is injected when old messages are dropped due to budget limits.
-- Tool calls in `none` mode (calculator, current time, web search, RAG search, history search, camera) run on the fast worker and stream their progress live.
-- The router decides the **action time** first: requests about the **past** («we watched», «you showed earlier», «yesterday's snapshots») route to history search, while action categories (camera, image, video…) are only for requests to be performed now/in the future and never capture questions about the past.
-- Classification may use a tiny **session micro-context** — the last `ROUTER_CONTEXT_MESSAGES` messages plus up to `ROUTER_SLM_FACTS` long-term-memory facts — so a follow-up like «did we look at the camera images?» is answered from history instead of firing the camera again.
+**How it behaves in practice:**
 
-### 🌐 Tavily web search (per-user key)
+- RAG, web and history search are mutually exclusive — one search mechanism runs per request.
+- A message with **one** link asking about that page («what is this project <URL>») is ordinary chat: the `read_page` tool opens it. Deep site study is only for explicit whole-site requests.
+- The router decides the **action time** first: requests about the past («we watched», «you showed earlier») go to history search, while camera/image/video categories only cover actions to perform now.
+- Classification sees a small **session micro-context** — the last few real messages plus up to two long-term facts — so «did we look at the camera images?» is answered from history instead of triggering the camera again.
+- Tool calls in `none` mode run on the fast worker and stream their progress live.
+- There is no hardcoded keyword routing anywhere in the code.
 
-Web search has always gone through the self-hosted **SearXNG** metasearch engine, which is free but limited: its snippets are short, popular sites dominate the results and it is easy to hit engine rate limits. Starting with v12.4 every user can attach their own **Tavily** API key — a purpose-built AI search API whose free tier grants **1000 credits per month** (a basic search costs 1 credit), returns clean, content-rich snippets and answers niche queries (repositories, documentation, price lookups) noticeably better than a generic metasearch.
-
-**How to enable it:**
-
-1. Create a free account at [app.tavily.com](https://app.tavily.com/home) and copy the API key (`tvly-…`).
-2. In FLAI, click your **name in the header** → the profile popup opens.
-3. In the «Internet search via Tavily» section paste the key and click **Add key**. The key is verified against Tavily's `/usage` endpoint before it is stored — an invalid key is rejected and never saved.
-4. The popup then shows the key mask (`tvly-…xxxx`), the plan limit, the credits used this month and the credits left. A key can be deleted at any time with **Delete key**; only one key per user is allowed, so adding a second one requires deleting the first.
-
-**How it works afterwards:**
-
-- Every web search (router category `[-SEARCH-]`, the `web_search` tool during chat, deep analysis fetches and `/v1` chat) now queries **Tavily first** and falls back to the local SearXNG engine automatically whenever the key is missing, the provider is disabled, the key is rejected, the monthly quota is exhausted or the service is unavailable — search never breaks, it just uses the slower free path.
-- A thin Tavily answer is topped up from SearXNG for free instead of spending a second credit on the same query.
-- The key is stored server-side only and is never returned to the browser (only the `tvly-…xxxx` mask) and never written to logs.
-- Admins see each user's remaining Tavily credits and FLAI API key count in the admin Users tab (fetched lazily and cached for 5 minutes, so opening the page does not spend credits).
-- The instance stays fully functional without any Tavily key — this is an optional quality upgrade, not a requirement.
-
-### 🕸️ Site reading & deep study (Crawl4AI)
-
-For URLs you paste in chat and for whole-site deep-study requests, FLAI can use **Crawl4AI** sidecar (enabled with `--with-crawler` at deploy time, or by setting `CRAWL_ENABLED=true` in `.env`).
-
-**`read_page(url)` — one URL in a real browser**
-
-When you paste a link (e.g. a documentation page, a product listing, a GitHub issue) the `[-CRAWL-]` category is **not** triggered — instead the native `read_page` tool fires automatically (fast worker, no queue slot, no GPU). It fetches the page in a real browser (Playwright + Chromium inside the sidecar), extracts clean markdown via trafilatura, and returns it to the model. The tool is registered only when the crawler container is reachable; if the container is down, the request falls through to the normal flow and the URL is not read.
-
-**`[-CRAWL-]` — deep site study**
-
-When the user explicitly asks to "study this site", "analyze the whole documentation", "read everything on example.com" the router emits the `[-CRAWL-]` marker. FLAI then:
-
-1. Crawls the starting domain (up to `CRAWL_MAX_PAGES=50`, `CRAWL_MAX_DEPTH=3`, `CRAWL_TIMEOUT_S=300`), following only same-domain links.
-2. Concatenates pages as `## <url>` sections, bounded by `CRAWL_MAX_TOTAL_CHARS=1,000,000` (the per-page cap is `CRAWL_MAX_PAGE_CHARS=50,000`).
-3. **Replaces** any existing user document whose filename equals the registrable domain (e.g. `docs.example.com` → `docs.example.com.txt`). The replacement deletes the old RAG entry, the file, and the DB row before writing the new one.
-4. Runs the **shared document-indexing core** synchronously (the same pipeline as document uploads) — embeddings → Qdrant → RAG.
-5. **Requeues reasoning** with `rag_source="crawler"`; the `file_coverage` flag ensures the fresh document reaches the prompt.
-6. The resulting document appears in your **Documents panel** under the domain name, ready for ordinary RAG, web search top-up, or **Deep Analysis (RLM)**.
-
-**Degradation**
-
-| Situation | Behavior |
-|---|---|
-| Container disabled or down | `read_page` unregistered; `[-CRAWL-]` fails with a localized message (never silently falls back to light search) |
-| Site refuses automated access (anti-bot) | A notice is shown and FLAI **falls back to ordinary web search** (Tavily → SearXNG) so you still get an answer |
-| 0 usable pages | Localized soft error suggesting ordinary search |
-| Limits reached | Clean stop; collected prefix is indexed |
-| Document quota full | Localized quota error; content discarded |
-
-**SSRF posture**
-
-Every URL passes `app/crawler_guard.py:validate_url()` before it leaves the app: only http/https, all resolved addresses must be globally routable (no RFC 1918, loopback, link-local, 169.254.169.254, CGNAT, ULA, multicast), credentials in URLs rejected. A start URL deeper than the domain root (e.g. `https://site.com/docs/`) is confined to that path prefix — sibling sections of the portal are not crawled. Trafilatura remains the first-step extractor everywhere it runs; the crawler is the second step for pages that need a real browser. Some large shops (e.g. DNS-Shop) block datacenter IPs outright — for those FLAI automatically answers via ordinary search.
-
-**Progress stages**
-
-While a crawl runs you will see these streamed status labels in the chat:
-- `crawl_start` — «Starting web crawl...»
-- `crawl_page` (with page count) — «Crawling page N...»
-- `crawl_indexing` — «Indexing crawled content...»
-
----
-
-## 🔬 Deep Analysis Mode (RLM)
-
-**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a set of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 18 steps. The per-host budget follows the resource ladder in `modules/rlm.py:_resource_step_budget()`: 24 GB+ → 18, 16 GB → 12, 12 GB → 10, 8 GB → 8, CPU/<8 GB → 6. Smaller hosts get fewer steps and still finish. The model uses three tools along the way:
-
-| Tool | What it does |
-|------|--------------|
-| 🐍 `python` | executes code in an isolated sandbox — split texts, count words, extract paragraphs, search by pattern, analyze tables, solve calculations |
-| 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
-| 🌐 `web_fetch` | searches the web (SearXNG) for fresh facts when the answer needs them — the model is prompted to use at most 2 lookups (5 is the hard ceiling) |
-
-Everything runs **locally** as a single task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
-
-The answer always matches your language, and the actor must actually work through the selected files: a `final(answer)` call issued before any `python` corpus inspection is rejected with a corrective instruction (multi-file corpora), and the system prompt forbids answering before every corpus file has been examined — so an apartment question about two contracts won't silently report just the first one while missing the second.
-
-**How to use it:**
-1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
-2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
-3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
-4. *(Optional)* Attach an image as well: the multimodal model produces a detailed text description of it and that description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photo against clause 4 of the contract".
-5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
-
-Notes:
-- Without selected documents **and** without an image, or if the image has no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
-- The analysis works on the selected documents only (no full-text search over unrelated uploads).
-- To stop it: press **Cancel** — the task is checked for cancellation on every step.
-
-FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
-
-### What's New in v12.4
-
-| Feature | Notes |
-|---------|-------|
-| **Tavily web search** | Each user can add a free personal Tavily API key (1000 credits/month) in the profile popup next to the FLAI API keys. Web search then queries Tavily first and falls back to the local SearXNG engine whenever the key is missing, the service is unavailable or the monthly quota is exhausted. The popup shows the plan limit, the credits used and the credits left; the admin Users tab lists each user's remaining credits and FLAI API key count. See the «Tavily web search» section under *Types of Requests & Search Mechanisms* for the full how-to. |
-| **Web crawler (Crawl4AI)** | Deep-study whole sites: paste a URL to read it with `read_page`, or ask FLAI to "study this site" — it crawls up to 50 pages (depth 3, 5 min budget), replaces the per-domain document in your Documents panel, indexes it through the same RAG pipeline, and answers from it (also in Deep analysis mode). If a site refuses automated access (anti-bot), FLAI falls back to ordinary search so you still get an answer. Runs via optional `with-crawler` compose profile. Every URL passes an SSRF guard. Light search (Tavily → SearXNG) is unchanged. |
-| **Four-line About dialog, single version source** | The footer About dialog now shows exactly four lines — full name, version, project link and copyright — with the version coming from a single `APP_VERSION` constant in `app/config.py` (the Prometheus metric, the footer label, the browser and exported chats all read the same value; the release checklist shrinks to one line). |
-
-### Core Components
-
-| Component | Purpose | Technology | Default Port |
-|-----------|---------|------------|--------------|
-| **Flask Web** | Web interface, routing, API | Python | 5000 |
-| **Public API (/v1) + Swagger UI** | OpenAI-compatible REST API, Bearer auth, interactive docs at `/v1/docs` | Python (Flask + flasgger) | 5000 (same as Flask) |
-| **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
-| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
-| **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
-| **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
-| **Piper / Kokoro TTS** | Text-to-speech synthesis (backend selectable at deploy: Piper default, Kokoro higher quality) | ONNX + Piper / Kokoro-82M | 8888 |
-| **Qdrant** | Vector database for RAG | Rust | 6333 |
-| **SuperLocalMemory** | Long-term, cross-session memory per-user (daemon + HTTP proxy) | Python + SQLite | 8766 |
-| **Redis** | Request queue management | C | 6379 |
-| **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
-| **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
-| **Circuit Breaker** | Prevents cascading failures by blocking calls to failing services (llama.cpp, sd.cpp, Whisper) after repeated errors | Python |
-
-### Single-Server Architecture
-
-All services run on one machine with GPU sharing:
-
-```text
-┌───────────────────────────────────────────────────────────────┐
-│                       FLAI Web (Flask)                        │
-│           Redis Queue → Model Router → Response               │
-└──────┬──────────┬────────────┬──────────────┬─────────────────┘
-       │          │            │              │
-       ▼          ▼            ▼              ▼
-   llama-swap  sd.cpp      LTX-Video    Whisper/Piper/Qdrant
-   :8080       :7861       :7872        (separate containers)
-   (dynamic model routing via llama-swap)
-```
-
-**Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
-
-> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the pipeline is reset (`_pipeline = None`) for lazy reinit on the next request. The T5 text encoder stays on CPU to conserve VRAM.
-
----
+Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 📋 System Requirements
 
-### GPU Requirement
+### Two deployment modes
 
-FLAI ships with two deployment modes:
+- **GPU mode (NVIDIA, CUDA 12.2+)** — the recommended mode. The whole stack runs on CUDA builds with the NVIDIA Container Toolkit.
+- **CPU-only mode** — the same feature set with no GPU. Everything is slower, so image and video generation automatically downscale to stay inside their time budget.
 
-- **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp, stable-diffusion.cpp, LTX-Video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
-- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all. To keep generation times bounded, image and video generation automatically downscale the output resolution (details below).
+> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack** — the prebuilt images are CUDA-only. Run CPU-only mode for a guaranteed result.
 
-> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA versions of sd.cpp and LTX). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
+### Hardware tiers
 
-### Hardware Tiers
-
-| Component | Tier 1 (Minimal) | Tier 2 (Moderate) | Tier 3 (Full) | CPU-only |
-|-----------|-----------------|-------------------|---------------|----------|
-| **GPU VRAM** | 8 GB | 12 GB | 16+ GB | — (no GPU) |
+| Component | Minimal | Moderate | Full | CPU-only |
+|-----------|---------|----------|------|----------|
+| **GPU VRAM** | 8 GB | 12 GB | 16+ GB | — |
 | **RAM (minimum)** | 16 GB | 24 GB | 24 GB | 24 GB |
 | **RAM (recommended)** | 24 GB | 32 GB | 32 GB | 48 GB |
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
->
-> | Mode | RAM without video | RAM with video generation |
-> |------|-------------------|---------------------------|
-> | 8 GB GPU | 16–24 GB | 24–32 GB |
-> | 12 GB GPU | 24–32 GB | 32–40 GB |
-> | 16 GB GPU | 24–32 GB | 32–48 GB |
-> | CPU-only | 16–24 GB | 40 GB (64 GB for 240-frame clips) |
->
-> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, and on a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) — a 768×512×240 clip (~53 GB peak) needs a 64 GB host **and** would take hours on CPU, so it is auto-degraded to a size that finishes within the budget.
+Only one llama.cpp model is resident at a time, so the RAM budget is the OS plus PostgreSQL/Redis plus the web app, plus CPU-offloaded layers for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
 
-#### What works at each tier
+### What works at each tier
 
 | Feature | 8 GB | 12 GB | 16+ GB | CPU-only |
 |---------|------|-------|--------|----------|
-| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-4B (light, ~2.5 GB) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-4B (light) |
-| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ✅ gpt-oss-20b-mxfp4 (native MXFP4) |
-| Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution auto-halved on both sides |
-| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ resolution auto-halved on both sides |
-| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
+| Chat + vision (Qwen3VL) | ✅ 4B (light) | ✅ 8B | ✅ 8B | ✅ 4B (light) |
+| Reasoning | ⚠️ partial offload (~15–20 tok/s) | ✅ ~70–90 tok/s | ✅ ~107 tok/s | ✅ MXFP4 model, slow |
+| Image generation | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution halved |
+| Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
+| Video generation | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
-| RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
-| SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
+| Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
+| Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only images:** SD generation and editing halve both sides of the resolution on CPU (~4× fewer pixels ≈ ~4× faster), so diffusion finishes inside the generation timeout (it used to hit — Image generation timeout — around step 3/10); the edit path also downsizes the source image, and the user is notified of the reduced resolution. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
+Measured throughput for the default stack and every candidate model: [BENCHMARKS.md](docs/BENCHMARKS.md).
 
-### Model Benchmarks (RTX 5060 Ti 16 GB)
+### Software prerequisites
 
-All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603) on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s): Flash Attention on, q4_0 KV cache, all layers on GPU (`-ngl -1`). Two metrics are reported: **Prompt (pp512)** — throughput for processing a 512-token prompt — and **Generation (tg128)** — throughput for generating 128 tokens, averaged over 3 repetitions after a warmup run. File sizes are the GGUF file sizes. Real-world throughput differs: the FLAI system prompt and chat history enlarge the prompt, and llama-swap shares VRAM between loaded models.
+- Linux server, Docker Engine ≥ 20.10, Docker Compose ≥ 2.0
+- **GPU mode:** NVIDIA drivers + NVIDIA Container Toolkit, GPU with 8 GB+ VRAM
+- **CPU-only mode:** plain Docker, no NVIDIA tooling
+- Internet access once, for model downloads — after that FLAI works fully offline
 
-| Model | Type | Quant | File | Prompt (pp512) | Generation (tg128) | Notes |
-|-------|------|-------|------|----------------|--------------------|-------|
-| **Qwen3.6-35B-A3B** | Reasoning | UD Q2_K_XL (MoE) | 11.44 GiB | 1594 t/s | **107.5 t/s** | **Current reasoning model** — MoE 35B (3B active) |
-| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.27 GiB | 2052 t/s | 120.1 t/s | Fast but outdated — MoE 3B active |
-| gemma-4-26B-A4B-it | Reasoning | UD Q2_K_XL (MoE) | 9.81 GiB | 2749 t/s | 104.5 t/s | MoE 26B (4B active) |
-| Qwen3-4B-Instruct-2507 | Reasoning | Q4_K_M | 2.32 GiB | 5520 t/s | 119.0 t/s | Dense 4B — SD text encoder |
-| Ternary-Bonsai-27B | Reasoning | Q2_g64 | 7.05 GiB | 993 t/s | 43.3 t/s | Ternary 27B |
-| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.24 GiB | 2310 t/s | 48.3 t/s | Dense 12B |
-| Qwen3.8-27B | Reasoning | UD Q2_K_XL | 9.14 GiB | 763 t/s | 33.2 t/s | Dense 27B |
-| Muse-Glimmer-30B | Reasoning | UD Q2_K_XL | 11.58 GiB | 664 t/s | 26.1 t/s | Dense 30B |
-| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.68 GiB | 3343 t/s | **74.8 t/s** | **Current multimodal model** — fastest vision model |
-| bge-m3-Q8_0 | Embedding | Q8_0 | 0.60 GiB | 31500 t/s | 550 t/s | Embedding (RAG) only |
+### CUDA driver compatibility
 
-> **Current stack: CPU vs GPU (the three models FLAI uses by default).**
+`deploy.sh` reads the host driver and selects matching images. **Minimum supported driver: CUDA 12.2.**
 
-Splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
+| Host driver | Images | Notes |
+|-------------|--------|-------|
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard |
+| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard |
+| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Image requirements waived |
+| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Image requirements waived |
+| **12.2 – 12.3 (min)** | CUDA 12.2.2 (Ubuntu 22.04) | Image requirements waived for all GPU services |
 
-The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+llama-swap is pinned on purpose: upstream changed its config format in v243, and a floating tag then breaks fresh deployments. Below 12.2 the script refuses GPU mode and falls back to CPU-only.
 
-| Model | Role | File | CPU 12C (prev stack, measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
-|-------|------|------|--------------------|-----------|-----------|----------------------|
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
-| **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
-
-> **Context windows (auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
-
-> **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
-
-> **Why MoE models win as reasoning models:** Despite "20B+" parameters, these models use the Mixture-of-Experts (MoE) architecture with several experts — only a small number of parameters (~3B) is active per token. This gives the compute cost of a 3B model with the "knowledge" of a 20B+ model. MoE models are always faster than dense models of the same size.
-
-> **Qwen3.6-35B-A3B for reasoning:** MoE architecture (35B total, ~3B active) delivers **107.5 t/s** — only 10% slower than gpt-oss-20b. The best option when gpt-oss-20b quality is not enough.
-
-> **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. MTP accordingly provides no meaningful speedup over a plain Q4_K_M of the same size, so MTP variants are not used.
-
-> **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways.
-
----
-
-### 📊 Context Window Allocation (Illustrative)
-
-The table below shows how the effective context budget is distributed for the reasoning model at different context window sizes (values are approximate, measured in tokens). Budget formula: `available = ctx_len × 75% × 85% ≈ 64% of ctx_len`. Order of allocation: query → template (800 tokens) → search (RAG/web/history, ~30% of available) → SLM (up to 7 facts) → rolling summary → session history (the rest). Multimodal model uses its own simplified allocator: `available = ctx_len × 75%`, overhead 500 tokens, no search/SLM/summary — only session history.
-
-| Context window (ctx_len) | Available budget (64%) | Template overhead | Search budget (30% avail) | SLM facts (≤7) | Remaining for history + summary |
-|---|---|---|---|---|---|
-| 8 192 (CPU default) | ~5 220 | 800 | ~1 566 | ~200 | ~2 650 (50%) |
-| 16 384 (8–12 GB GPU) | ~10 445 | 800 | ~3 133 | ~200 | ~6 312 (60%) |
-| 24 576 (16 GB GPU reasoning) | ~15 667 | 800 | ~4 700 | ~200 | ~9 967 (64%) |
-| 32 768 (24 GB+ GPU multimodal) | ~20 889 | 800 | ~6 266 | ~200 | ~13 623 (64%) |
-
-> **Why the history share grows with context size:** Template (800) and SLM (~200) are nearly fixed, so their % shrinks as the window grows. The search budget scales at ~30% of available, leaving a larger absolute remainder for conversation history on larger windows. On small windows (CPU 8192) history gets ~50%, on 32K it reaches ~64%.
-
----
-
-### Software Prerequisites
-- Linux server
-- **GPU mode (NVIDIA):** NVIDIA drivers + **NVIDIA Container Toolkit** installed, plus an NVIDIA GPU with 8 GB+ VRAM
-- **CPU-only mode:** no NVIDIA tooling required — plain Docker is enough
-- Docker Engine ≥ 20.10
-- Docker Compose ≥ 2.0
-- Internet connection (only for initial model downloads)
-
-#### CUDA Driver Compatibility
-
-`deploy.sh` auto-detects the host CUDA driver (`nvidia-smi`) and selects matching build images — **minimum supported driver is CUDA 12.2**:
-
-| Host CUDA driver | Images used | Notes |
-|------------------|-------------|-------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard deployment |
-| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard deployment |
-| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
-| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
-| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for all GPU services |
-
-> ℹ️ **llama-swap is pinned** (`v255-cuda-b10991` / `v255-cuda13-b10991` / `v255-cpu-b10991`). Upstream changed the config format in v243 (`models` must be a map for the macro engine) — a floating `:cuda` tag then broke fresh deployments with `cannot unmarshal !!seq into map[string]config.modelMacroConfig`. Upgrade the pin deliberately.
-
-> ℹ️ **How it works:** Pre-built GPU images (llama-swap, PyTorch, CUDA toolkit) carry an `NVIDIA_REQUIRE_CUDA` label for their bundled toolkit version. When the host driver is older, the NVIDIA Container Toolkit rejects the container before it starts. The deploy script sets `NVIDIA_DISABLE_REQUIRE=1` to waive this label check. The actual binaries work because CUDA has minor-version compatibility within each major release — all 12.x runtimes load on any 12.x driver. Verified by users on RTX 3090 + CUDA 12.2 (full stack: chat, reasoning, image and video generation).
-
-> 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
-
----
+Deployment problems: [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) · auto-fit details: [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md).
 
 ## 🚀 Quick Start
 
-> 💡 **Note**: For GPU deployment, you must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.
+> 💡 GPU deployment requires the **NVIDIA drivers** and the **NVIDIA Container Toolkit**.
 
-### Option A: Automated Deployment (Recommended)
+### Option A — automated (recommended)
 
-A single deployment script handles everything: environment setup, model downloads, building, and launching.
+One script generates `.env` with secure secrets, downloads the models, builds the images and starts everything.
 
 ```bash
 git clone https://github.com/barval/flai.git
 cd flai
 
-# Core multimodal + llama.cpp only
+# Core: chat, vision, reasoning, tool calling
 ./deploy.sh --download-models
 
-# + Image generation/editing
+# + image generation and editing
 ./deploy.sh --download-models --with-image-gen
 
-# + Voice: Whisper ASR + TTS. Pick ONE backend:
-#   --with-voice-piper    Piper TTS (default choice, lightweight, ~0.2 GB models)
-#   --with-voice-kokoro   Kokoro TTS (higher quality, ~6 GB RAM)
-#   (--with-voice is an alias for Piper)
-./deploy.sh --download-models --with-image-gen --with-voice
+# + voice — pick ONE backend (Piper is the default, --with-voice is an alias)
+./deploy.sh --download-models --with-image-gen --with-voice-piper
+./deploy.sh --download-models --with-image-gen --with-voice-kokoro
 
-# + RAG (Qdrant)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+# + document search (Qdrant)
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag
 
-# + Video generation (LTX-Video)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+# + video generation (LTX-Video)
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
 
-# + Long-term memory (SuperLocalMemory)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+# + long-term memory, + web search, + site crawler
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \
+  --with-video --with-slm --with-search --with-crawler
 
-# + Web search (SearXNG)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
-
-# Full stack
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search --with-crawler
-
-# Run tests after deployment
+# Run the test suite after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
 
-> **CPU-only deployment (no NVIDIA GPU):** add the `--cpu` flag. Nominal `docker-compose.cpu.yml` is selected automatically when `nvidia-smi` is not found, but `--cpu` forces it.
->
-> ```bash
-> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search --with-crawler
-> ```
+No NVIDIA GPU? Add `--cpu`; `docker-compose.cpu.yml` is then selected automatically. Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
 
-> **Environment keys are generated automatically:** the script copies `.env.example` to `.env` and fills in `SECRET_KEY` and `QDRANT_API_KEY` with secure random values itself — you only need to edit `.env` manually to set your timezone, API URLs, or other preferences. If the first run is interrupted after `.env` was created, re-running the same command skips reconfiguration and continues with the downloads.
-
-### Option B: Manual Deployment
-
-If you prefer step-by-step control:
-
-### 1. Clone and Configure
+### Option B — manual
 
 ```bash
-# Clone the repository
 git clone https://github.com/barval/flai.git
 cd flai
 
-# Create directories and specify the owner
-sudo mkdir -p data \
-              data/uploads \
-              data/documents
+sudo mkdir -p data data/uploads data/documents
 sudo chown -R 1000:1000 data
-
-# Copy environment template
 cp .env.example .env
+```
 
-# Generate a secure secret key
+Generate the two secrets and set your timezone, URLs and preferences:
+
+```bash
 sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
-
-# Generate an API key for Qdrant
 sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
-
-# Edit .env with your settings (timezone, API URLs, etc.)
 nano .env
 ```
 
-### 2. Download GGUF Models
+Download the models into `services/*/models/`. The full list of files, sizes, licenses and `wget` commands is in [MODELS.md](docs/MODELS.md); the Model Hub in the admin panel can fetch them for you with progress and resume.
 
-#### LLM Models (multimodal, reasoning, embedding)
-
-```bash
-mkdir -p services/llamacpp/models
-
-# Multimodal model (chat/router/vision, always resident) — must be in subdirectory with mmproj
-mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
-wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
-  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
-wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
-  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-F16.gguf"
-
-# Reasoning model (complex tasks)
-wget -O services/llamacpp/models/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf \
-  "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
-
-# Embedding model (RAG)
-wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
-  "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
-```
-
-#### Image Generation Models (Z_image_turbo)
+Start the services — each profile is optional:
 
 ```bash
-mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
-
-# Diffusion model
-wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
-
-# VAE
-wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
-
-# LLM text encoder (for SD, separate copy with Q4_K_M quantization)
-wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-```
-
-#### Image Editing Models (Flux.2 Klein 4B)
-
-```bash
-# Diffusion model for editing
-wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
-  "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
-
-# VAE for editing
-wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
-  "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
-```
-
-> **Note**: Since v10.0 there is no standalone chat model. The only Qwen3-4B copy in the project is the SD text encoder (`Qwen3-4B-Instruct-2507-Q4_K_M.gguf` in `services/sd_cpp/models/text_encoders/`), required by stable-diffusion.cpp for image generation/editing.
-
-> ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
-
-#### Video Generation Models (LTX-Video 2B)
-
-```bash
-# Create models directory
-mkdir -p services/ltx_video/models
-
-# Diffusion transformer + VAE checkpoint
-wget -O services/ltx_video/models/ltxv-2b-0.9.8-distilled.safetensors \
-  "https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltxv-2b-0.9.8-distilled.safetensors"
-
-# T5 text encoder (run the download script)
-bash services/ltx_video/download-t5-encoder.sh
-```
-
-### 3. Build and Start Services
-
-```bash
-# Chat and reasoning only (no image generation)
+# Chat, vision, reasoning, tools (the base stack)
 docker compose -f docker-compose.gpu.yml up -d
 
-# With image generation
-docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
+# Add subsystems
+docker compose -f docker-compose.gpu.yml \
+  --profile with-image-gen --profile with-voice-piper --profile with-rag \
+  --profile with-video --profile with-slm --profile with-search --profile with-crawler up -d
 
-# With voice features — pick ONE backend:
-#   --profile with-voice-piper    Piper TTS (default)
-#   --profile with-voice-kokoro   Kokoro TTS (higher quality)
-#   (--profile with-voice is an alias for Piper)
-docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
-
-# With video generation
-docker compose -f docker-compose.gpu.yml --profile with-video up -d
-
-# With long-term memory (SuperLocalMemory)
-docker compose -f docker-compose.gpu.yml --profile with-slm up -d
-
-# With web search (SearXNG)
-docker compose -f docker-compose.gpu.yml --profile with-search up -d
-
-# Full stack: multimodal + images + voice + RAG + video + long-term memory + web search
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+# CPU-only hosts use the other compose file
+docker compose -f docker-compose.cpu.yml up -d
 ```
 
-> ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
+> ⏱️ The first build compiles stable-diffusion.cpp from source and takes a while; later builds use the cache.
 
-#### CPU-only mode (no GPU required)
-
-For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). Timeout values are already increased for CPU speed: image generation/editing gets 45 minutes (`SD_CPP_TIMEOUT=2700`), video generation gets 2 hours (`LTX_VIDEO_TIMEOUT=7200`), and the video planner's automatic time budget follows at 85% of that.
-
-> 🔄 **Switching between GPU and CPU is instant — no rebuild needed.** Image-generation and video images are tagged per backend and **coexist** in the local registry: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` and `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Re-running `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) simply switches compose files and reuses the already-built image of the matching tag — ideal for quick CPU sanity checks even on a GPU machine.
-
-> ⚠️ **AMD / Intel GPU owners:** the official images are CUDA-only, so use the CPU-only mode above. There is no supported ROCm/Vulkan path.
-
-### 4. Set Admin Password
+Set the admin password and open the instance:
 
 ```bash
 docker exec flai-web flask admin-password YourSecurePassword123
 ```
 
-### 5. Configure Models in Admin Panel
+Then log in as `admin` at `http://localhost:5000`:
 
-1. Open `http://localhost:5000` and log in as `admin`
-2. Go to **Admin Panel** → **Models** tab
-3. For each module (Multimodal, Reasoning, Embedding):
-   - Select the GGUF model from the dropdown
-   - Adjust parameters if needed (Context Length, Temperature, Top P, Repeat Penalty, Timeout)
-   - Click **Save** — a context window that would not fit the RAM/VRAM budget is rejected (checked even when only the context changes), then a background dry-load verifies the saved config and rolls it back automatically if loading fails
-4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
+1. **Admin Panel → Models** — confirm the multimodal, reasoning and embedding models; adjust parameters if needed. A context window that would not fit the RAM/VRAM budget is rejected on save, and a background dry-load rolls the configuration back if loading fails.
+2. **Admin Panel → Users** — create accounts and assign service classes and camera permissions.
+3. **Send your first message** — the router picks the subsystem. Attach a document, an image or a voice message to see the other paths.
 
-### 6. You're Ready!
+### Everything is configured with environment variables
 
-Now you can:
-- 💬 **Chat with AI** — smart routing for fast and complex responses
-- 🧠 **Advanced Reasoning** — complex calculations, code generation, creative writing
-- 🔍 **Analyze Images** — upload photos and ask questions (multimodal)
-- 🎨 **Generate Images** — create images from text descriptions
-- ✏️ **Edit Images** — upload and edit (change colors, remove objects, stylize)
-- 🎬 **Generate Videos** — create short videos from text or image+text prompts
-- 🎤 **Send Voice Messages** — speech-to-text via Whisper ASR
-- 🗣️ **Listen to Responses** — text-to-speech via Piper (default) or Kokoro TTS (male/female, EN/RU)
-- 📚 **Search Documents** — upload PDF/DOC/TXT and ask questions (RAG)
-- 🗂️ **Multiple Chat Sessions** — separate conversations with auto-titling
-- 💾 **Export Chats** — save conversations as HTML with embedded media
-- 📹 **View Cameras** — IP camera snapshots analyzed by AI
-- 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (adds relevant facts alongside history, enable with `--with-slm`)
-- 💾 **Backup & Restore** — full or user-only backups from the admin panel
-- 🎨 **Personalize the site** — upload your own header logo and set the site name (RU + EN) in the admin Personalization tab
-- 🔧 **CLI Tools** — admin password reset, upload cleanup, message migration, SLM import/cleanup/checkpoint reset
-- 🔑 **Create API Keys** — generate per-user Bearer tokens in the web UI for programmatic access
-- 🌐 **Call the `/v1` API** – chat completions (sync + SSE), embeddings, TTS/transcription, async image/video, files, RLM, sessions
-- 📑 **Browse Interactive API Docs** — open `/v1/docs` in your browser for the Swagger UI (spec from `docs/openapi-v1.yaml`)
+Every service has a profile, and everything else lives in `.env`: compose profiles, timeouts, VRAM and memory limits, model URLs, search keys, Tavily and crawler settings, API rate limits, branding. The complete reference with defaults is in [CONFIGURATION.md](docs/CONFIGURATION.md).
 
----
+### You're ready
 
-## 🔧 Configuration
-
-### Environment Variables (.env)
-
-**Required:**
-```bash
-SECRET_KEY=your_secret_key_here      # Flask session secret
-TIMEZONE=Europe/Moscow              # Your timezone
-DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL connection
-```
-
-**Backend Mode:**
-```bash
-LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
-LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
-```
-
-**Service URLs:**
-```bash
-SD_WRAPPER_URL=http://flai-sd:7861          # sd-wrapper HTTP API (sd-cli wrapper)
-WHISPER_API_URL=http://flai-whisper:9000/asr
-PIPER_URL=http://flai-piper:8888/tts
-QDRANT_URL=http://flai-qdrant:6333
-QDRANT_API_KEY=your_qdrant_api_key
-CAMERA_API_URL=http://flai-room-snapshot-api:5000
- LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
- SLM_URL=http://flai-slm:8766                      # SuperLocalMemory long-term memory
- ```
-
-**Image & Video Defaults:**
-```bash
-SD_CPP_DEFAULT_WIDTH=1024
-SD_CPP_DEFAULT_HEIGHT=1024
-SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
-SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
-SD_CPP_TIMEOUT=900              # 15 min for editing
-MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
-MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
-MAX_DOCUMENT_SIZE_MB=10         # Max upload size of a document
-MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
-LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
-```
-
-**Service Retry Settings:**
-```bash
-SERVICE_RETRY_ATTEMPTS=5
-SERVICE_RETRY_DELAY=2
-```
-
-**Session Security:**
-```bash
-# Set to true ONLY when deployed behind reverse proxy (nginx) with HTTPS enabled
-HTTPS_ENABLED=false
-# Session lifetime is fixed at 8 hours in code (app/config.py) — no env override.
-```
-
-**RLM Deep Analysis:**
-```bash
-RLM_ENABLED=true                # Enable the deep-analysis toggle
-RLM_ACTOR_MODEL=reasoning       # Model used for the actor loop
-RLM_MAX_STEPS=18                # Hard ceiling for the actor loop; per-host allowance is hardware-derived (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6)
-RLM_TASK_TIMEOUT=0              # Wall-clock deadline (seconds): 0 = auto from step budget (CPU ~3x), -1 disables
-RLM_CODE_TIMEOUT=15             # Per python-snippet timeout in the sandbox (seconds)
-RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to the model
-RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call
-RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analysis
-RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
-```
-
-**Router:**
-```bash
-ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
-ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
-ROUTER_SLM_FACTS=2           # Long-term-memory facts added to the router context
-```
-
-**Redis Queue:**
-```bash
-REDIS_RESULT_TTL=3600
-QUEUE_MAX_WAIT_TIME=300
-```
-
-**Debug:**
-```bash
-DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
-```
-
-**Public API (/v1):**
-```bash
-API_RATE_LIMIT=60 per minute;1000 per hour  # Per-key-owner request budget for chat, embeddings, audio, media, files, RLM, sessions, tasks
-API_MAX_CONCURRENT_WAITS=64                 # Max synchronous waiters before 429 with Retry-After
-API_CORS_ORIGINS=                           # Comma-separated exact origins allowed to call /v1 from browser (empty = closed)
-API_SYNC_MAX_WAIT=600                       # Seconds a sync/streaming request waits for its task (default 600)
-```
-
-**Model Hub:**
-```bash
-MODEL_HUB_MAX_FILE_GB=40              # Max single GGUF file size to allow (GB)
-MODEL_HUB_FREE_MARGIN_GB=4            # Required free disk margin for downloads (GB)
-MODEL_HUB_SEARCH_LIMIT=20             # Max results per Hugging Face search
-MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
-HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
-```
-
-### Domain Access and HTTPS (Reverse Proxy)
-
-By default the web interface is available at `http://<server-ip>:5000` — the web service publishes port `5000` (`"5000:5000"` in `docker-compose.gpu.yml` / `docker-compose.cpu.yml`) and Gunicorn listens on `0.0.0.0:5000`.
-
-To serve FLAI under your own domain, put a reverse proxy (nginx, Caddy, Traefik) in front of it. The app trusts proxy headers (`ProxyFix`: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`), so redirects and `url_for` automatically pick up your domain and the HTTPS scheme.
-
-**Step 1.** (optional) Close direct access to port 5000: in `docker-compose.gpu.yml` / `docker-compose.cpu.yml` change `"5000:5000"` to `"127.0.0.1:5000:5000"` and restart with `docker compose -f docker-compose.gpu.yml up -d flai-web`.
-
-**Step 2.** In `.env`:
-```bash
-# Set to 'true' ONLY behind an HTTPS reverse proxy (nginx) — enables the Secure flag for session cookies
-HTTPS_ENABLED=true
-```
-
-**Step 3.** Example nginx configuration (`/etc/nginx/sites-available/flai`):
-```nginx
-server {
-    listen 80;
-    server_name flai.example.com;
-
-    # Must be >= MAX_CONTENT_LENGTH_MB from .env (default 50 MB)
-    client_max_body_size 200m;
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;      # required for SSE response streaming
-        proxy_read_timeout 900s;  # >= gunicorn timeout (900s)
-    }
-}
-```
-```bash
-sudo ln -s /etc/nginx/sites-available/flai /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-# HTTPS:
-sudo certbot --nginx -d flai.example.com
-```
-
-**Step 4.** Alternatively, the same with **Caddy** (`Caddyfile`) — certificates are issued automatically:
-```
-flai.example.com {
-    reverse_proxy 127.0.0.1:5000
-}
-```
-
-You can now open `https://flai.example.com`.
-
-### Docker Configuration
-
-**Gunicorn Settings (gunicorn_config.py):**
-
-Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
-
-| Setting | Value | Reason |
-|---------|-------|--------|
-| workers | 1 | Single gunicorn worker — fixes `_gpu_lock` race condition (threading.Lock is per-process) |
-| worker_class | gevent | Async I/O-optimized worker for concurrent connections |
-| timeout | 900s | Accommodates long operations (image editing up to 15 min) |
-| graceful_timeout | 30s | Graceful worker shutdown |
-| keepalive | 5s | Connection reuse for health checks |
-
-### Docker Compose Profiles
-
-```bash
-# Start all services (multimodal + images + voice + RAG + video + long-term memory + web search)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
-
-# Chat + voice only (Piper backend; use with-voice-kokoro for Kokoro)
-docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
-
-# Video generation
-docker compose -f docker-compose.gpu.yml --profile with-video up -d
-
-# Long-term memory (SuperLocalMemory)
-docker compose -f docker-compose.gpu.yml --profile with-slm up -d
-
-# Chat only (no images, no voice, no video)
-docker compose -f docker-compose.gpu.yml up -d
-
-# Stop all services
-docker compose -f docker-compose.gpu.yml down --remove-orphans
-
-# View logs
-docker compose -f docker-compose.gpu.yml logs -f web
-```
-
----
-
-## 🤖 Model Setup
-
-### GGUF Model Structure
-
-llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models from a shared directory:
-
-```
-services/llamacpp/models/
-├── Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf             # Reasoning (all tiers)
-├── bge-m3-Q8_0.gguf                            # Embedding
-├── Qwen3VL-8B-Instruct-Q4_K_M/                 # Multimodal (subdirectory!) — chat/router/vision
-│   ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
-│   └── mmproj-F16.gguf                         # Vision projector
-```
-
-> ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
-
-### Configure Models in Admin Panel
-
-1. Log in as admin and go to `/admin` → **Models** tab
-2. For each module (Multimodal, Reasoning, Embedding):
-   - Select the GGUF model from the dropdown, set parameters, click **Save**
-
-> 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
-
-### Downloading, Deleting and Offline Model Files (Model Hub)
-
-- **Downloading:** the **Model Hub** tab (admin) searches Hugging Face, shows a GPU/RAM fit badge per file, and downloads with progress, resume and sha256 verification. Progress is in a persistent active-downloads area outside search results, survives changing searches and is restored after same-tab reloads. Displayed total size uses grouped whole MB rounded up. A successful download writes a `.hubmeta` marker that records the model's companion files (mmproj, MTP/draft head, text encoder).
-- **Model and service files:** each multi-part GGUF model displays the total size of all its shards. Shard tails, imatrix, MTP/draft heads and FastMTP sidecars are service files rather than independent model choices. For supported noMTP models with Q4_0 and Q8_0 draft heads, select one variant; Q8_0 is selected by default.
-- **Deleting:** downloaded models show a **✓ Downloaded** badge with a **Delete** button — in the Hub tab and in the **«Downloaded models»** panel on the Models tab. Deleting a Hub-downloaded model removes it **together with its companions**; a model currently selected as a module base is refused.
-- **Offline:** when Hugging Face is unreachable the Hub tab shows a warning and points to the manual path: drop `.gguf` files into `/models`, then press **«Update model list»** in the Models tab.
-- ⚠️ **Manually placed files:** a `.gguf` copied into `/models` by hand has **no** `.hubmeta` marker, so deleting it removes **only that file** — its companions (e.g. `mmproj-*.gguf`, MTP head, text encoder) are not tracked and must be removed manually.
-
-### Model Parameters
-
-| Parameter | Multimodal | Reasoning | Embedding |
-|-----------|------------|-----------|-----------|
-| Context Length | 32768 (auto-fit: 24576 on 16 GB, 16384 on 8 GB, 8192 CPU) | 32768 on 24+ GB, 24576 on 16 GB / 16384 on 8 GB / 8192 CPU (auto-fit) | 512 |
-| Temperature | 0.7 | 0.7 | – |
-| Top P | 0.9 | 0.9 | – |
-| Repeat Penalty | 1.1 | 1.15 | – |
-| Timeout (s) | 120 | 120 | 120 |
-
-> **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
-
-> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (server-side) than by raising this parameter.
-
-### Model Selection Guide
-
-| Component | Default | Recommended Alternative | Notes |
-|-----------|---------|------------------------|-------|
-| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-4B Q4_K_M (~2.5 GB, 8 GB GPU & CPU-only) | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
-| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
-| **Embedding** | bge-m3 Q8_0 (~0.6 GB) | — | Single model for all tiers |
-
-> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
-
----
-
-## 🎨 Image Generation & Editing
-
-### Generation Model
-
-The project uses **Z_image_turbo** as the only image generation model:
-
-| Model | Steps | CFG Scale | Resolution | Notes |
-|-------|-------|-----------|------------|-------|
-| **Z_image_turbo** | 10 | 1.0 | up to 1536×1536 | Fast, flow-matching |
-
-All uploaded images are automatically resized to **1536px** on the longest side (configurable via `MAX_IMAGE_SIZE` in `.env`) to prevent Qwen3VL context overflow and reduce disk usage.
-
-Configure via `SD_MODEL_TYPE` in `.env`:
-```bash
-SD_MODEL_TYPE=z_image_turbo
-```
-
-### Image Editing (Flux.2 Klein 4B)
-
-Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:
-1. **Multimodal model** (Qwen3VL) to analyze the image and generate an edit prompt
-2. **Flux.2 Klein 4B** model via stable-diffusion.cpp to perform the edit
-3. The original image is preserved except for the requested changes
-
-Source images for editing are automatically resized to **1024px** on the longest side to avoid OOM on 16GB GPUs. A system notice shows the original vs resized dimensions if downscaled.
-
-Editing uses separate model files and runs independently from generation — no conflict between the two.
-
-### stable-diffusion.cpp Build
-
-The `sd_cpp` service is **built from source** during first `docker compose up`:
-1. Clones `https://github.com/leejet/stable-diffusion.cpp`
-2. Initializes git submodules (`ggml`, `thirdparty/*`)
-3. Compiles with CUDA 13.0.1 (`cmake -DSD_CUDA=ON`) or without CUDA for CPU
-4. Produces `sd-server` and `sd-cli` binaries
-
-Each compose file builds **its own tagged image** via the `SD_BACKEND` build arg (see `Dockerfile.sd_cpp`):
-- `docker-compose.gpu.yml` → `flai-sd_cpp:cuda` (`SD_BACKEND=cuda`)
-- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`; optional `vulkan` variant supported)
-
-Because the tags differ, GPU and CPU images can live side by side — switching between the stacks (see «CPU-only mode» above) does not require rebuilding.
-
-> ⏱️ **First build**: ~5-10 minutes depending on CPU. Subsequent builds use Docker cache.
-
-### Configuration
-
-```bash
-# sd-wrapper HTTP API (port 7861)
-SD_WRAPPER_URL=http://flai-sd:7861
-SD_CPP_TIMEOUT=900                  # Timeout for gen/edit operations (seconds)
-SD_CPP_DEFAULT_WIDTH=1024
-SD_CPP_DEFAULT_HEIGHT=1024
-SD_CPP_DEFAULT_CFG_SCALE=1.0
-SD_CPP_DEFAULT_STEPS=10
-```
-
----
-
-## 🎬 Video Generation (LTX-Video 2B)
-
-The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
-
-| Model | Steps | Frame Rate | Resolution | Notes |
-|-------|-------|-----------|------------|-------|
-| **LTX-Video 2B distilled** | 8 | 24 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
-
-Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
-
-**Source image resize:** Images for video-from-image are resized to **768px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
-
-**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 768×512 landscape, tall images (w/h < 0.8) → 512×768 portrait.
-
-**Required models:**
-1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
-2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
-
-```bash
-# Download via deploy script
-./deploy.sh --download-models --with-video
-
-# Or manually:
-bash services/ltx_video/download-t5-encoder.sh
-```
-
-**Configuration:**
-```bash
-LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
-LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
-LTX_VIDEO_TIMEOUT=600
-```
-
----
-
-## 🎤 Voice Features Setup
-
-### Whisper ASR
-
-Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
-
-```bash
-# Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
-docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
-```
-
-### Piper TTS
-
-Uses ONNX Piper models for text-to-speech.
-
-```bash
-# Download voice models (see services/piper/download-voices.sh)
-mkdir -p services/piper/piper_models
-
-# English (male)
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
-
-# Russian (male)
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
-```
-
-### Kokoro TTS
-
-Higher-quality backend (ElevenLabs-level). Selected with `--with-voice-kokoro` / `--profile with-voice-kokoro`. Models are downloaded in one step by `services/kokoro/download-model.sh` (the deploy script runs it automatically):
-
-```bash
-bash services/kokoro/download-model.sh
-```
-
-### Choosing the backend: Piper vs Kokoro
-
-| Criterion | Piper (default) | Kokoro |
-|-----------|-----------------|--------|
-| Model size on disk | ~0.24 GB (4 medium voices) | ~0.95 GB (3 model files + voices + espeak-data) |
-| Service memory limit | 512 MB | 6 GB |
-| Idle RAM (no TTS activity) | ~200–300 MB | ~1.6 GB (light worker, RUAccent not loaded) |
-| RAM during active sessions | ~500 MB (all 4 voices cached) | ~3–5.5 GB (RUAccent + model in worker; peak during long phrases) |
-| Russian quality | Good (WER 4.38%) | Higher (WER 2.50%, studio actors) |
-| Russian voices | `dmitri` (male), `irina` (female) | `dima` (male), `sveta` (female) |
-| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, ё restoration, akanye, orthoepy |
-| First phrase (fresh container) | ~0.8 s | **~2 s** — a background warmup (one full ru synthesis) runs right after container start (`KOKORO_WARMUP_G2P=1`, default on) |
-| Subsequent phrases (same session) | ~0.7–0.8 s | RU ~1.1 s |
-| First RU phrase after idle | none — voices stay cached | Depends on `KOKORO_G2P_IDLE_TIMEOUT` (default 300 s): after it expires without a Russian request the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM, and the next Russian phrase reloads it (~10–11.5 s). Set `0` to never unload (always warm, +3.1 GB RAM permanently). EN is not affected. |
-
-> **Memory notes (measured):** Piper caches every used voice in memory — with all 4 voices loaded it reaches ~497 MiB (limit 1 GB). Kokoro holds ~4.5 GB after its startup warmup (model + RUAccent worker) and releases ~3.1 GB to the OS after `KOKORO_G2P_IDLE_TIMEOUT` seconds without Russian TTS (default 300 s) — a quiet period is followed by a single slower first Russian phrase (~10–11.5 s, then ~1.1 s).
-
-#### Kokoro tuning parameters (.env)
-
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `KOKORO_WARMUP_G2P` | `1` | Runs one full ru synthesis in the background right after container start. With it, the first Russian phrase after deployment takes ~2 s instead of ~55 s. The port is up immediately, so a user clicking during warmup simply takes the regular cold path. Disable (`0`) to keep idle RAM at ~1.6 GB. |
-| `KOKORO_G2P_IDLE_TIMEOUT` | `300` | Seconds without a Russian request before the RUAccent G2P worker (~3.1 GB) is terminated to free RAM. Trade-off: longer = always-warm Russian synthesis (no ~10 s reload penalty) at the price of permanently higher RAM; `0` = never unload. |
-| `KOKORO_TIMEOUT` | `60` | Web-app client timeout for one synthesis request (code default in `app/config.py`). Covers a cold RUAccent load (~10–20 s) plus model reload under host load; raise it (e.g. to `120`) if cold starts come close to the limit and cause client timeouts. |
-
----
-
-## 📚 RAG (Document Search) Setup
-
-### 1. Configure RAG in Admin Panel
-
-After starting the services, log in as admin and go to **Admin Panel → Models** tab. Scroll down to the **Chunks** section. Here you can fine-tune RAG behavior:
-
-- **Chunk Size (characters):** How documents are split into pieces for indexing.
-- **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
-- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
-- **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
-- **Threshold (documents):** Minimum similarity score for general document queries.
-- **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.
-
-Click **Save** to apply changes. If chunking parameters (size or strategy) are modified, a background reindex of all documents is triggered automatically.
-
-> **Note:** Environment variables like `RAG_CHUNK_SIZE` in `.env` are only used as initial defaults before the first configuration save. The primary configuration is stored in the database.
-
-### 2. Enable in Docker Compose
-```bash
-docker compose -f docker-compose.gpu.yml --profile with-rag up -d
-```
-
-### 3. Upload Documents
-1. Log in to web interface
-2. Click **Documents** tab in sidebar
-3. Click ➕ to upload PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, or EPUB files
-4. Wait for indexing to complete (status: ✅ Indexed)
-
-### 4. Search Your Documents in Chat
-
-Once documents are indexed, asking about them is automatic:
-
-1. Make sure the documents are in the **Documents** panel with status **✅ Indexed**.
-2. Ask any question in the chat. When the answer needs your documents, the assistant calls the 📚 `rag_search` tool and streams **«📚 Searching documents...»** live, then works the retrieved fragments into the answer (RAG retrieval runs on the fast worker; the grounded answer is produced by the reasoning model). Retrieval is **coverage-safe**: if one of your indexed documents is missing from the semantic top matches, its best fragment is still forwarded to the reasoning model — the answer won't silently lose whole contracts that simply scored low on the query.
-3. RAG is **per-user and per-query**: the search covers only the current user's documents, and the LLM router decides when a question actually needs them.
-
-For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).
-
----
-
-## 📹 Camera Integration (Optional)
-
-The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) and [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for deployment guides.
-
-### Camera Management (Admin Panel)
-The admin panel includes a **Cameras** tab with full CRUD operations:
-- **Sync** – import camera list from room-snapshot-api (`/rooms` endpoint)
-- **Enable/Disable** – toggle individual cameras on/off
-- **Thumbnail previews** – lazy-loaded camera snapshots with localStorage caching
-- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (nominative, accusative, prepositional cases) for each room name, so the AI recognizes phrases like "show me the living room", "what is in the living room", "in the kitchen" etc.
-
-Camera room data is stored in the `camera_rooms` database table (code, name_forms, enabled, sort_order).
-
-### Configuration
-```bash
-CAMERA_API_URL=http://flai-room-snapshot-api:5000
-CAMERA_ENABLED=true
-CAMERA_API_TIMEOUT=15
-CAMERA_CHECK_INTERVAL=30
-```
-
-### Camera Permissions
-In Admin Panel → Users tab, assign camera codes:
-`tam` (tambour/entry), `pri` (hallway), `kor` (corridor), `spa` (bedroom),
-`kab` (office/study), `det` (children's), `gos` (living room), `kuh` (kitchen), `bal` (balcony)
-
----
-
-## 👥 User Management
-
-### Admin Panel Features
-| Feature | Description |
-|---------|-------------|
-| 👤 User Operations | Create, edit, delete user accounts |
-| 🔑 Password Management | Reset passwords for any user |
-| 🔐 Camera Permissions | Grant/revoke camera access per user |
-| 🔢 Per-user token totals | View and sort prompt tokens sent and completion tokens received |
-| 🤖 Model Management | Configure GGUF models per module type |
-| 📊 System Stats | Monitor database and storage sizes |
-| 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
-
-### CLI Commands
-```bash
-# Set admin password
-docker exec flai-web flask admin-password NewPassword123
-
-# View help
-docker exec flai-web flask --help
-```
-
----
-
-### 💾 Backup & Restore
-
-FLAI includes a built-in backup system accessible from the Admin Panel → **Backups** tab.
-
-**Backup Types:**
-- **Users only:** Backs up the `users` table only (user accounts, permissions, settings); chat history and token totals are not included.
-- **Full:** Backs up all data: users, chat sessions, messages (including prompt and completion token counts), documents, uploaded files, and model configurations.
-
-**Operations:**
-- **Create:** Select the backup type and click «Create backup». The archive is saved to `data/db_backups/`.
-- **Restore:** Click «Restore» on a backup file to replace the current database and files with the backup content. *Warning: This overwrites existing data.*
-- **Download:** Download the backup archive to your local machine.
-- **Delete:** Remove old backup files.
-
-Backup files are stored as `.tar.gz` archives containing SQL dumps and file directories. Restoration requires confirmation and is logged for audit purposes.
-
----
-
-## 🔍 Monitoring & Health
-
-### Health Check Endpoint
-```bash
-curl http://localhost:5000/health
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-04-08T23:00:00.000000+00:00",
-  "services": {
-    "web": "ok",
-    "database": "ok",
-    "redis": "ok",
-    "llamacpp": "ok",
-    "qdrant": "ok",
-    "sd_wrapper": "ok",
-    "whisper": "ok",
-    "ltx_video": "ok"
-  }
-}
-```
-
-### Prometheus Metrics
-```bash
-curl http://localhost:5000/metrics
-```
-
----
-
-## 🗺️ Roadmap
-
-### 🔄 In Progress
-- **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver
-- **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
-  - CPU-only mode for the full stack
-  - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
-  - Unified Docker Compose with per-platform profiles and env-driven deploy scripts
-- Advanced RAG: metadata filtering, hybrid search
-- Mobile-responsive UI optimizations
-
-### 📅 Planned
-- Plugin architecture for custom modules
-- Multi-GPU support
-- Advanced queue prioritization
-- User activity analytics
-
----
-
-## 📦 Models, Licenses and Sizes
-
-### LLM Models (llama.cpp)
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf** | Reasoning (all tiers) | [Qwen License](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) | ~12 GB |
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal — chat/router/vision | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~1.1 GB |
-| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
-
-### Image Generation Models (stable-diffusion.cpp)
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Apache 2.0](https://huggingface.co/leejet/Z-Image-Turbo-GGUF) | ~6.5 GB |
-| **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Apache 2.0](https://huggingface.co/Comfy-Org/z_image_turbo) | ~0.3 GB |
-| **Qwen3-4B-Instruct-2507-Q4_K_M.gguf** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
-
-### Image Editing Models (stable-diffusion.cpp)
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Apache 2.0](https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF) | ~5 GB |
-| **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/Comfy-Org/flux2-dev) | ~0.3 GB |
-
-### Video Generation Models
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
-| **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
-
-### Long-term Memory Models
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **nomic-embed-text-v1.5** | Text embedding for SLM retrieval | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 MB |
-
-### Morphological Analysis
-
-| Package | Purpose | License |
-|---------|---------|---------|
-| **pymorphy3** | Russian morphological analysis for camera room name recognition (generates declension forms) | [MIT License](https://github.com/kmike/pymorphy3) |
-
-### Voice Models
-
-| Model | Purpose | License | Approx. Size |
-|-------|---------|---------|-------------|
-| **en_US-ryan-medium** | English TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
-| **en_US-ljspeech-medium** | English TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
-| **ru_RU-dmitri-medium** | Russian TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
-| **ru_RU-irina-medium** | Russian TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
-| **Whisper medium** | Speech recognition | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1.5 GB |
-
-### Total Download Sizes (Approximate)
-
-| Configuration | Approx. Download |
-|---------------|-----------------|
-| Minimal (Qwen3VL-4B + Qwen3.6-35B-A3B + bge-m3, 8 GB tier) | ~16 GB |
-| CPU-only (Qwen3VL-4B + gpt-oss-20b-mxfp4 + bge-m3) | ~15 GB |
-| Full LLM stack (Qwen3VL-8B + Qwen3.6-35B-A3B + bge-m3) | ~20 GB |
-| + Image generation | ~29 GB |
-| + Image editing | ~32 GB |
-| + Voice (TTS + Whisper) | ~35 GB |
-| + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
-| + Long-term memory (SLM embedding model) | ~59.5 GB *(SLM adds ~500 MB)* |
-
-> **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
-
----
-
-## 🧪 Testing
-
-FLAI includes comprehensive testing for all key components and load testing for the web interface.
-
-### Unit Tests
-
-```bash
-# Install test dependencies
-pip install -e ".[test]"
-
-# Run all tests
-pytest
-
-# Run with coverage report
-pytest --cov=app --cov=modules --cov-report=html
-
-# Run by marker
-pytest -m unit                           # unit tests only (no external deps)
-pytest -m "not slow"                     # skip slow tests
-pytest -m "not (requires_db or requires_redis)"  # skip DB/Redis tests
-
-# Run specific test file
-pytest tests/test_backups.py
-pytest tests/test_admin_routes.py
-pytest tests/test_sd_cpp_module.py
-pytest tests/test_queue.py
-pytest tests/test_security.py
-pytest tests/test_resource_manager.py
-pytest tests/test_resource_manager_ltx_unload.py
-pytest tests/test_vram_estimates.py
-pytest tests/test_classify_model_fit.py
-pytest tests/test_dry_load.py
-pytest tests/test_health_monitor.py
-pytest tests/test_llama_swap_config.py
-pytest tests/test_validators.py
-pytest tests/test_model_config.py
-pytest tests/test_morph.py
-```
-
-> **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.
-
-### Load Testing
-
-Load tests use [Locust](https://locust.io/) to simulate concurrent users.
-
-```bash
-# Install Locust (if not already installed)
-pip install locust
-
-# Web interface — open http://localhost:8089
-locust -f tests/load/locustfile.py --host http://localhost:5000
-
-# Headless mode — 10 users, spawn 2/sec, run 1 minute
-locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
-
-# Using the convenience script
-./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
-```
-
-See [tests/load/README.md](tests/load/README.md) for detailed load testing instructions.
-
----
+Chat and reasoning · image analysis · image generation and editing · video generation · voice messages and spoken answers · document search · web search and site reading · deep analysis · long-term memory · camera snapshots · chat export · backups · the `/v1` API.
 
 ## 🛠️ Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the code layout, the test commands and the project's hard rules. In short: fork, branch from the current version branch, keep changes surgical, and open a pull request.
 
 ## 🙏 Acknowledgments
 
-### Testing
-
 - [@Andrey-1](https://github.com/Andrey-1) — extensive testing and valuable feedback
-
----
+- The llama.cpp, stable-diffusion.cpp, LTX-Video, Qdrant, SearXNG, Tavily, Crawl4AI, Whisper, Piper, Kokoro and SuperLocalMemory projects, and everyone who contributes to them
 
 ## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE).
 
 ---
 

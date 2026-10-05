@@ -26,6 +26,7 @@ from .db import (
     INDEX_STATUS_INDEXING,
     INDEX_STATUS_PENDING,
     get_current_time_for_db,
+    save_document,
     save_message,
     update_document_index_status,
 )
@@ -298,6 +299,8 @@ class RedisRequestQueue:
             return "crawl"  # Dedicated crawl executor — CPU-only, no GPU lock
         if req_type in ("index_document", "reindex_all_embeddings", "describe_document_image", "describe_document_pdf"):
             return "slow"  # Indexing can be slow
+        if req_type == "doc_chat":
+            return "slow"  # Index the attached document first, then re-queue the question
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
         file_type = request_data.get("file_type", "")
@@ -514,6 +517,8 @@ class RedisRequestQueue:
             return "reasoning"
         if req_type == "reasoning_task":
             return "reasoning"
+        if req_type == "doc_chat":
+            return "none"  # indexing phase takes no llama.cpp model
 
         if req_type == "text":
             return "multimodal"
@@ -1532,8 +1537,14 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        images: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Handle image generation from text (router action_type='image')."""
+        """Handle image generation from text (router action_type='image').
+
+        ``images`` are attached example images («draw something similar»):
+        each one is described by the multimodal model and the descriptions are
+        prepended to the SD prompt as reference examples. SD itself still
+        receives text only."""
         if "image" not in self.app.modules:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
@@ -1571,8 +1582,27 @@ class RedisRequestQueue:
         mm_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "analyzing_prompt"})
+        # Attached example images: describe each one so the SD prompt can
+        # reference them ("draw something similar").
+        example_sections: list[str] = []
+        if images:
+            multimodal = self.app.modules.get("multimodal")
+            if multimodal and multimodal.available:
+                results = multimodal.describe_images_for_context(images, lang)
+                for idx, (_data, description, error) in enumerate(results, 1):
+                    if description and not error:
+                        example_sections.append(f"{idx}. {description}")
+            if example_sections:
+                self.app.logger.info(f"Image gen: {len(example_sections)} example descriptions collected")
+        generation_query = query
+        if example_sections:
+            from flask_babel import gettext as _
+
+            with force_locale(lang):
+                examples_header = _("Reference examples (draw something similar):")
+            generation_query = f"{query}\n\n{examples_header}\n" + "\n".join(example_sections)
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
-            query, lang=lang, response_style=response_style
+            generation_query, lang=lang, response_style=response_style
         )
         mm_time = round(time.time() - mm_start, 1)
         if error:
@@ -1730,16 +1760,21 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         user_class: int = 2,
+        images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Re-queue an image generation task to the slow queue.
         Prevents concurrent sd-wrapper requests which cause timeouts.
-        """
+        ``images`` carries attached example images ('draw something similar'):
+        the generation task describes them first and feeds the descriptions
+        into the SD prompt as reference examples."""
         request_data = {
             "type": "image_gen",
             "text": query,
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Image request", lang=lang),
             "response_style": response_style,
         }
+        if images:
+            request_data["images"] = images
         # Carry the router-phase usage into the re-queued task so the fast
         # worker's router tokens merge into the same bill (see _process_request).
         account_id = current_usage_account_id()
@@ -1874,12 +1909,15 @@ class RedisRequestQueue:
         image_data: str | None = None,
         image_type: str | None = None,
         image_name: str | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Enqueue an RLM deep-analysis task on the slow queue.
 
-        An attached image is passed as base64 in the task payload; the slow
-        worker describes it with the multimodal model and adds the description
-        to the analysis corpus as a document named 'Изображение (name)'.
+        Attached images are passed as base64 in the task payload (one entry per
+        image, ``images=[{data,type,name}, …]``; the legacy single-image
+        arguments are still accepted and prepended); the slow worker describes
+        each with the multimodal model and adds the descriptions to the
+        analysis corpus as documents named 'Изображение (name)'.
         """
         request_data: dict[str, Any] = {
             "type": "rlm_analysis",
@@ -1887,10 +1925,21 @@ class RedisRequestQueue:
             "doc_ids": doc_ids,
             "preview": (question[:50] + "...") if question else self.app.modules["base"]._("Deep analysis", lang=lang),
         }
+        parts: list[dict[str, Any]] = []
         if image_data:
-            request_data["file_data"] = image_data
-            request_data["file_type"] = image_type or "image/jpeg"
-            request_data["file_name"] = image_name or self.app.modules["base"]._("Image", lang=lang)
+            parts.append({"data": image_data, "type": image_type or "image/jpeg", "name": image_name})
+        for extra in images or []:
+            if extra.get("data"):
+                parts.append(extra)
+        if len(parts) == 1:
+            request_data["file_data"] = parts[0]["data"]
+            request_data["file_type"] = parts[0].get("type") or "image/jpeg"
+            request_data["file_name"] = parts[0].get("name")
+        elif parts:
+            request_data["images"] = parts
+            request_data["file_data"] = parts[0]["data"]
+            request_data["file_type"] = parts[0].get("type") or "image/jpeg"
+            request_data["file_name"] = parts[0].get("name")
         return self.add_request(user_id, session_id, request_data, user_class, lang=lang)
 
     def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1959,7 +2008,18 @@ class RedisRequestQueue:
 
         # Attached image: describe it with the multimodal model and treat the
         # description as a corpus document named 'Изображение (file)'.
-        if request_data.get("file_data"):
+        rlm_images: list[dict[str, Any]] = []
+        if request_data.get("images"):
+            rlm_images = [p for p in request_data["images"] if p.get("data")]
+        elif request_data.get("file_data"):
+            rlm_images = [
+                {
+                    "data": request_data["file_data"],
+                    "type": request_data.get("file_type") or "image/jpeg",
+                    "name": request_data.get("file_name"),
+                }
+            ]
+        if rlm_images:
             if not rm.ensure_vram_for("multimodal"):
                 return self._build_error_response(
                     session_id,
@@ -1977,14 +2037,16 @@ class RedisRequestQueue:
                     0,
                     lang,
                 )
-            description, describe_error = multimodal.describe_image_for_rlm(request_data["file_data"], lang)
-            if describe_error or not description:
-                message = describe_error or self.app.modules["base"]._(
-                    "Unable to recognize the image for deep analysis", lang
-                )
-                return self._build_error_response(session_id, message, 0, lang)
-            image_name = request_data.get("file_name") or self.app.modules["base"]._("Image", lang=lang)
-            corpus[f"Изображение ({image_name})"] = description
+            # Describe each image one by one (one GPU session, sequential calls).
+            for img_part in rlm_images:
+                description, describe_error = multimodal.describe_image_for_rlm(img_part["data"], lang)
+                if describe_error or not description:
+                    message = describe_error or self.app.modules["base"]._(
+                        "Unable to recognize the image for deep analysis", lang
+                    )
+                    return self._build_error_response(session_id, message, 0, lang)
+                image_name = img_part.get("name") or self.app.modules["base"]._("Image", lang=lang)
+                corpus[f"Изображение ({image_name})"] = description
 
         if not corpus:
             return self._build_error_response(
@@ -2087,7 +2149,9 @@ class RedisRequestQueue:
         user_id = task["user_id"]
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
-        return self._process_image_gen_task(query, session_id, user_id, lang, response_style, task=task)
+        return self._process_image_gen_task(
+            query, session_id, user_id, lang, response_style, task=task, images=request_data.get("images")
+        )
 
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
@@ -3772,7 +3836,10 @@ class RedisRequestQueue:
                 query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
             )
         if action_type == "image":
-            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
+            task_images = (task or effective_task).get("data", {}).get("images")
+            return self._requeue_image_task(
+                query, session_id, user_id, lang, response_style, user_class=user_class, images=task_images
+            )
         if action_type == "video":
             return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         if action_type == "camera":
@@ -4417,6 +4484,8 @@ class RedisRequestQueue:
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":
             return self._process_rlm_task(task)
+        if task_type == "doc_chat":
+            return self._process_doc_chat_task(task)
         if task_type in ("describe_document_image", "describe_document_pdf"):
             return self._process_describe_document_image_task(task)
         if task_type == "fact_extraction_task":
@@ -4480,10 +4549,11 @@ class RedisRequestQueue:
         # Image + text chat (question about image or edit request)
         # The actual decision between analysis and editing is now made by the multimodal model
         if request_type == "image" and file_data:
+            images: list[str] = request_data.get("images") or [file_data]
             if request_data.get("stream", False):
                 return self._process_image_chat_task_stream(
                     task,
-                    file_data,
+                    images,
                     file_type or "",
                     file_name or "",
                     message_text,
@@ -4494,7 +4564,7 @@ class RedisRequestQueue:
                     response_style,
                 )
             return self._process_image_chat_task(
-                file_data,
+                images,
                 file_type or "",
                 file_name or "",
                 message_text,
@@ -4512,9 +4582,39 @@ class RedisRequestQueue:
         )
 
     # Modified: added handling of [-IMAGE-EDIT-] marker, and user_id parameter
+    def _describe_images_fallback(
+        self,
+        images: list[str],
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        session_id: str,
+        response_style: str,
+    ) -> tuple[str | None, str | None]:
+        """Multi-image fallback: when the joint call fails (VRAM/context), describe
+        each image one by one and answer over the collected descriptions."""
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal:
+            return None, None
+        results = multimodal.describe_images_for_context(images, lang)
+        sections: list[str] = []
+        for idx, (_data, description, error) in enumerate(results, 1):
+            if error or not description:
+                return None, error
+            sections.append(f"{idx}. {description}")
+        corpus = "\n\n".join(sections)
+        return multimodal.process_image_with_text(
+            "",  # no image: answer from text descriptions only
+            f"{message_text}\n\n{corpus}",
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+        )
+
     def _process_image_chat_task(
         self,
-        file_data: str,
+        file_data: str | list[str],
         file_type: str,
         file_name: str,
         message_text: str,
@@ -4525,28 +4625,48 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_class: int = 2,
     ) -> dict[str, Any]:
-        """Handle image + text chat (user uploads image and asks question or requests edit).
-        The multimodal model decides: analysis answer or edit marker."""
+        """Handle image + text chat (user uploads one or several images and asks
+        a question or requests an edit). The multimodal model decides: analysis
+        answer or edit marker. Several images go out in ONE multimodal call;
+        on VRAM/context failure the batch falls back to per-image descriptions."""
         process_start = time.time()
         is_error = False
+        images = [file_data] if isinstance(file_data, str) else list(file_data)
+        first_image = images[0] if images else ""
 
         if "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
             bot_reply = "⚠️ " + self.app.modules["base"]._("Multimodal model unavailable", lang)
             process_time = round(time.time() - process_start, 1)
             is_error = True
         else:
-            file_size = int((len(file_data) * 3) / 4) if file_data else 0
-            is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
+            file_size = int((len(first_image) * 3) / 4) if first_image else 0
+            is_valid, error = self.app.modules["multimodal"].validate_image(
+                first_image, file_type, file_name, file_size
+            )
             if is_valid:
                 # Multimodal model is always resident — no VRAM unload/wait needed.
-                bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
-                    file_data,
-                    message_text,
-                    current_time_str,
-                    lang=lang,
-                    session_id=session_id,
-                    response_style=response_style,
-                )
+                if len(images) > 1:
+                    bot_reply, error = self.app.modules["multimodal"].process_images_with_text(
+                        images,
+                        message_text,
+                        current_time_str,
+                        lang=lang,
+                        session_id=session_id,
+                        response_style=response_style,
+                    )
+                    if error and self._is_llm_error_string(error or ""):
+                        bot_reply, error = self._describe_images_fallback(
+                            images, message_text, current_time_str, lang, session_id, response_style
+                        )
+                else:
+                    bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
+                        first_image,
+                        message_text,
+                        current_time_str,
+                        lang=lang,
+                        session_id=session_id,
+                        response_style=response_style,
+                    )
                 process_time = round(time.time() - process_start, 1)
                 if error:
                     bot_reply = f"⚠️ {error}"
@@ -4558,7 +4678,7 @@ class RedisRequestQueue:
                         if edit_query:
                             # Redirect to image editing task
                             return self._process_image_edit_task(
-                                edit_query, file_data, file_type, session_id, user_id, lang, response_style
+                                edit_query, first_image, file_type, session_id, user_id, lang, response_style
                             )
                         else:
                             # Marker present but no query, treat as error
@@ -4574,7 +4694,7 @@ class RedisRequestQueue:
                                 user_id,
                                 lang,
                                 response_style,
-                                file_data=file_data,
+                                file_data=first_image,
                                 file_type=file_type,
                                 file_name=file_name,
                                 user_class=user_class,
@@ -4613,7 +4733,7 @@ class RedisRequestQueue:
     def _process_image_chat_task_stream(
         self,
         task: dict[str, Any],
-        file_data: str,
+        file_data: str | list[str],
         file_type: str,
         file_name: str,
         message_text: str,
@@ -4627,6 +4747,8 @@ class RedisRequestQueue:
         edit_marker = "[-IMAGE-EDIT-]"
         video_marker = "[-VIDEO-]"
         process_start = time.time()
+        images = [file_data] if isinstance(file_data, str) else list(file_data)
+        first_image = images[0] if images else ""
 
         # Status until the first stream_token arrives (auto-removed by the
         # frontend) — image analysis is especially slow on CPU.
@@ -4645,8 +4767,8 @@ class RedisRequestQueue:
                 response_style=response_style,
             )
 
-        file_size = int((len(file_data) * 3) / 4) if file_data else 0
-        is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
+        file_size = int((len(first_image) * 3) / 4) if first_image else 0
+        is_valid, error = self.app.modules["multimodal"].validate_image(first_image, file_type, file_name, file_size)
         if not is_valid:
             bot_reply = "⚠️ " + (error or self.app.modules["base"]._("Invalid image", lang))
             process_time = round(time.time() - process_start, 1)
@@ -4661,14 +4783,26 @@ class RedisRequestQueue:
             )
 
         # Multimodal model is always resident — no VRAM unload/wait needed.
-        stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
-            file_data,
-            message_text,
-            current_time_str,
-            lang=lang,
-            session_id=session_id,
-            response_style=response_style,
-        )
+        # Several images go out in ONE call; per-image fallback needs the whole
+        # answer, so it is only used by the non-streaming handler.
+        if len(images) > 1:
+            stream_gen = self.app.modules["multimodal"].process_images_with_text_stream(
+                images,
+                message_text,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+            )
+        else:
+            stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
+                first_image,
+                message_text,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+            )
 
         full_response = ""
         cancelled = False
@@ -4719,7 +4853,7 @@ class RedisRequestQueue:
                     if edit_query:
                         return self._process_image_edit_task(
                             edit_query,
-                            file_data,
+                            first_image,
                             file_type,
                             session_id,
                             user_id,
@@ -4749,7 +4883,7 @@ class RedisRequestQueue:
                             user_id,
                             lang,
                             response_style,
-                            file_data=file_data,
+                            file_data=first_image,
                             file_type=file_type,
                             file_name=file_name,
                             user_class=task.get("user_class", 2),
@@ -4973,6 +5107,98 @@ class RedisRequestQueue:
         """Publish a document_indexed event to the user's SSE stream."""
         _publish_document_index_event(self.app, user_id, doc_id, index_status)
 
+    def _process_doc_chat_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a chat message with an attached document: save it as a full
+        user document, run the shared indexing pipeline (text extraction or
+        page OCR), then re-queue the question as a normal text request with
+        doc_ids so the router serves it through RAG."""
+        task_id = task.get("id", "unknown")
+        data = task.get("data", {})
+        user_id = task["user_id"]
+        session_id = task["session_id"]
+        lang = task.get("lang", "ru")
+        message_text = data.get("text", "")
+        doc_b64 = data.get("doc_file_data") or ""
+        doc_name = data.get("doc_file_name") or "document"
+
+        self.app.logger.info(f"_process_doc_chat_task: STARTING for task {task_id}")
+
+        if not doc_b64:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No file provided"),
+                0,
+                lang,
+            )
+
+        import base64
+
+        try:
+            doc_bytes = base64.b64decode(doc_b64)
+        except Exception:
+            doc_bytes = b""
+
+        # Save as a full user document (same layout as Documents uploads).
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
+        user_folder = os.path.join(documents_folder, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        doc_id = uuid.uuid4().hex
+        safe_ext = os.path.splitext(doc_name)[1].lower() or ".bin"
+        safe_filename = f"{doc_id}{safe_ext}"
+        file_path = os.path.join(user_folder, safe_filename)
+        with open(file_path, "wb") as f:
+            f.write(doc_bytes)
+
+        save_document(user_id, doc_id, doc_name, len(doc_bytes), safe_ext, os.path.join(user_id, safe_filename))
+        update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+
+        success, _message, _embedding_model, _published = _run_document_indexing(
+            self.app,
+            doc_id,
+            file_path,
+            user_id,
+            indexing_started_at=None,
+            publish=lambda status: self._publish_document_event(user_id, doc_id, status),
+        )
+        if not success:
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            from flask_babel import gettext as _
+
+            with force_locale(lang):
+                error_text = _(
+                    "Could not index the attached document. It was saved to your Documents; try again later."
+                )
+            return self._build_error_response(session_id, error_text, 0, lang)
+
+        # Re-queue the question as a normal text task carrying the new doc_ids
+        # (+ images for the visual context, if any were attached).
+        requeue_data: dict[str, Any] = {
+            "type": "text",
+            "text": message_text,
+            "doc_ids": [doc_id],
+            "current_message_id": data.get("current_message_id"),
+            "preview": data.get("preview"),
+            "response_style": data.get("response_style", "neutral"),
+            "stream": data.get("stream", True),
+        }
+        images = data.get("images")
+        if images:
+            requeue_data["images"] = images
+        self.last_request_data = requeue_data
+        request_id, position_info = self.add_request(
+            user_id, session_id, requeue_data, task.get("user_class", 2), lang=lang
+        )
+        self.app.logger.info(f"_process_doc_chat_task: doc {doc_id} indexed; requeued request_id={request_id}")
+        return {
+            "status": "requeued",
+            "request_id": request_id,
+            "session_id": session_id,
+            "doc_id": doc_id,
+            "position": position_info.get("position", 0),
+        }
+
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Index a document and store embeddings in Qdrant."""
         task_id = task.get("id", "unknown")
@@ -5085,8 +5311,20 @@ class RedisRequestQueue:
                     detail = page_count_result.stderr.strip() or "unable to determine page count"
                     raise RuntimeError(f"Failed to read PDF page count: {detail}")
                 page_count = int(page_count_match.group(1))
+                # Time budget: a 25 MB scan may hold hundreds of pages; after
+                # the budget the collected pages are indexed and the user is
+                # notified how far recognition got.
+                ocr_budget_s = int(self.app.config.get("OCR_TIME_BUDGET_S", 1800))
+                ocr_deadline = time.monotonic() + ocr_budget_s if ocr_budget_s > 0 else None
+                ocr_partial = False
                 with tempfile.TemporaryDirectory(prefix="flai-pdf-ocr-") as temp_dir:
                     for page_number in range(1, page_count + 1):
+                        if ocr_deadline is not None and page_number > 1 and time.monotonic() > ocr_deadline:
+                            ocr_partial = True
+                            self.app.logger.warning(
+                                f"OCR time budget expired for doc {doc_id} after page {page_number - 1}/{page_count}"
+                            )
+                            break
                         prefix = os.path.join(temp_dir, "page")
                         render_result = subprocess.run(
                             [
@@ -5185,6 +5423,24 @@ class RedisRequestQueue:
 
             self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
             self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+            if ocr_partial:
+                # The budget expired mid-document: tell the user how far the
+                # recognition went; the collected pages are already queued.
+                from flask_babel import force_locale
+                from flask_babel import gettext as _
+
+                with force_locale(lang):
+                    partial_notice = _(
+                        "OCR time budget reached: recognized the first {pages} of {total} pages. "
+                        "They are being indexed now."
+                    ).format(pages=len(descriptions), total=page_count)
+                save_message(
+                    session_id=task.get("session_id") or "",
+                    role="assistant",
+                    content=partial_notice,
+                    model_name="system",
+                    response_time="0",
+                )
             message = (
                 "PDF pages described and indexing queued"
                 if full_path.lower().endswith(".pdf")

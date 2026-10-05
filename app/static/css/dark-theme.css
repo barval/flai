@@ -115,6 +115,16 @@
 .dark-theme #file-preview-name {
     color: #ecf0f1;
 }
+.dark-theme .attachment-chip {
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .attachment-chip-name {
+    color: #ecf0f1;
+}
+.dark-theme .attachment-chip-size {
+    color: #aaa;
+}
 .dark-theme .message-input input[type="text"] {
     background-color: #3a3a3a;
     color: #ecf0f1;

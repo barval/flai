@@ -3,6 +3,126 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// ===== Multi-attachment helpers =====
+// attachedFiles[] carries every attachment except the legacy single-slot pair
+// (one image + optional voice blob). Images may also be many; documents,
+// audio and voice stay single per message.
+const MAX_CHAT_IMAGES = window.FLAI_MAX_CHAT_IMAGES || 4;
+
+function isImageFile(f) {
+    return !!f && !!f.type && f.type.startsWith('image/');
+}
+
+function isAudioTypeFile(f) {
+    return !!f && !!f.type && f.type.startsWith('audio/');
+}
+
+function isDocumentFile(f) {
+    return !!f && !isImageFile(f) && !isAudioTypeFile(f);
+}
+
+function docEmoji(f) {
+    if (!f) return '📄';
+    if (isAudioTypeFile(f)) return '🎵';
+    if (isDocumentFile(f)) return '📄';
+    return '📄';
+}
+
+function renderAttachmentChips() {
+    const container = document.getElementById('file-preview-container');
+    if (!container) return;
+    container.innerHTML = '';
+    const total = attachedFiles.length + (attachedFile ? 1 : 0);
+    if (total === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+
+    const makeChip = (f, isLegacy) => {
+        const chip = document.createElement('div');
+        chip.className = 'attachment-chip' + (isImageFile(f) ? ' attachment-chip-image' : '');
+        if (isImageFile(f)) {
+            const img = document.createElement('img');
+            img.className = 'attachment-chip-thumb';
+            img.alt = f.name || 'image';
+            if (f._thumbDataUrl) {
+                img.src = f._thumbDataUrl;
+            } else {
+                img.src = URL.createObjectURL(f);
+                img.onload = function () {
+                    // Downscale the preview to the chip height to keep memory sane
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const scale = 40 / Math.max(this.naturalHeight || 1, 1);
+                        canvas.width = Math.max(1, Math.round((this.naturalWidth || 1) * scale));
+                        canvas.height = 40;
+                        canvas.getContext('2d').drawImage(this, 0, 0, canvas.width, canvas.height);
+                        f._thumbDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                        img.src = f._thumbDataUrl;
+                    } catch (e) { /* keep object URL */ }
+                };
+            }
+            chip.appendChild(img);
+        } else {
+            const icon = document.createElement('span');
+            icon.className = 'attachment-chip-icon';
+            icon.textContent = docEmoji(f);
+            chip.appendChild(icon);
+        }
+        const name = document.createElement('span');
+        name.className = 'attachment-chip-name';
+        name.textContent = f.name || t('image');
+        chip.appendChild(name);
+        const size = document.createElement('span');
+        size.className = 'attachment-chip-size';
+        size.textContent = formatFileSize(f.size || 0);
+        chip.appendChild(size);
+        const remove = document.createElement('button');
+        remove.className = 'attachment-chip-remove';
+        remove.textContent = '✕';
+        remove.title = t('remove_file');
+        remove.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (isLegacy) {
+                attachedFile = null;
+                document.getElementById('file-input').value = '';
+            } else {
+                const idx = attachedFiles.indexOf(f);
+                if (idx >= 0) attachedFiles.splice(idx, 1);
+            }
+            renderAttachmentChips();
+        });
+        chip.appendChild(remove);
+        return chip;
+    };
+
+    if (attachedFile) container.appendChild(makeChip(attachedFile, true));
+    attachedFiles.forEach((f) => container.appendChild(makeChip(f, false)));
+}
+
+function addAttachedFile(file) {
+    if (!file) return;
+    if (attachedFiles.length >= MAX_CHAT_IMAGES) {
+        if (typeof showToast === 'function') {
+            showToast(t('max_images_reached').replace('{max}', String(MAX_CHAT_IMAGES)));
+        } else {
+            alert(t('max_images_reached').replace('{max}', String(MAX_CHAT_IMAGES)));
+        }
+        return;
+    }
+    attachedFiles.push(file);
+    renderAttachmentChips();
+}
+
+function clearAllAttachments() {
+    attachedFiles = [];
+    attachedFile = null;
+    const input = document.getElementById('file-input');
+    if (input) input.value = '';
+    renderAttachmentChips();
+}
+
 // RLM deep-analysis submit: branches off the normal send flow when the
 // "Deep analysis" toggle is checked. Question text comes from the shared
 // message input; documents are picked from the #rlm-docs multi-select
@@ -19,11 +139,18 @@ async function sendRlmAnalysis(questionOverride) {
         : input.value.trim();
     const docsSelect = document.getElementById('rlm-docs');
     const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
-    const attachedImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) ? attachedFile : null;
-    // A voice request with an attached image cleared attachedFile during the
+    // Multi-image deep analysis: every attached image goes into the corpus.
+    // The legacy single slot (voice+image combo) is included too.
+    const rlmImages = [...attachedFiles.filter(isImageFile)];
+    if (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) {
+        rlmImages.push(attachedFile);
+    }
+    // A voice request with an attached image cleared the attachment during the
     // normal voice send flow; the image captured when the voice was queued
     // lives in rlmAwaitingVoiceImage until the transcription triggers RLM.
-    const imageFile = attachedImage || (window.rlmAwaitingVoiceImage || null);
+    if (window.rlmAwaitingVoiceImage && !rlmImages.includes(window.rlmAwaitingVoiceImage)) {
+        rlmImages.push(window.rlmAwaitingVoiceImage);
+    }
 
     const unlockSendButton = () => {
         if (sendButton) {
@@ -35,10 +162,8 @@ async function sendRlmAnalysis(questionOverride) {
 
     const clearPreparedMessage = () => {
         input.value = '';
-        attachedFile = null;
+        clearAllAttachments();
         window.rlmAwaitingVoiceImage = null;
-        document.getElementById('file-preview-container').classList.add('hidden');
-        document.getElementById('file-input').value = '';
     };
 
     if (isSending) return;
@@ -49,29 +174,32 @@ async function sendRlmAnalysis(questionOverride) {
     const timestamp = new Date().toISOString();
 
     try {
-        let fileData = null, fileType = null, fileName = null;
-        if (imageFile) {
-            fileData = await new Promise((resolve, reject) => {
+        // Read every attached image as base64 for the optimistic render and
+        // the files[] upload.
+        const imagePayloads = [];
+        for (const img of rlmImages) {
+            const fileData = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result.split(',')[1] || '');
                 reader.onerror = reject;
-                reader.readAsDataURL(imageFile);
+                reader.readAsDataURL(img);
             });
-            fileType = imageFile.type;
-            fileName = imageFile.name;
+            imagePayloads.push({ data: fileData, type: img.type, name: img.name });
         }
+        const first = imagePayloads[0] || null;
 
-        // Render the question (+ attached image) immediately, before the
+        // Render the question (+ attached images) immediately, before the
         // upload round trip. Progress events (e.g. "Deep analysis: phase 1")
         // can arrive while the request is still in flight; if the user message
         // were appended afterwards the status would end up above the image.
         // This mirrors the normal send flow, which renders optimistically too.
         const userContent = [{ type: 'text', text: question }];
-        if (fileData) {
-            userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
+        for (const p of imagePayloads) {
+            userContent.push({ type: 'image', file_data: p.data, file_type: p.type, file_name: p.name });
         }
         const optimisticMessage = originalDisplayMessage(
-            'user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp
+            'user', JSON.stringify(userContent),
+            first ? first.data : null, first ? first.type : null, first ? first.name : null, null, timestamp
         );
         if (optimisticMessage) {
             optimisticMessage.dataset.tempId = `temp-${timestamp}`;
@@ -92,7 +220,11 @@ async function sendRlmAnalysis(questionOverride) {
         formData.append('session_id', currentSessionId);
         formData.append('doc_ids', JSON.stringify(docIds));
         formData.append('text', question);
-        if (imageFile) formData.append('file', imageFile, imageFile.name);
+        for (const p of imagePayloads) {
+            formData.append('files', new Blob(
+                [Uint8Array.from(atob(p.data), (c) => c.charCodeAt(0))], { type: p.type }
+            ), p.name || 'image');
+        }
 
         const response = await fetchWithCSRF('/api/rlm/analyze', {
             method: 'POST',
@@ -176,8 +308,10 @@ async function sendMessage() {
         const hasVoice = !!(attachedVoiceBlob || isVoiceRecorded
             || (attachedFile && attachedFile.type && attachedFile.type.startsWith('audio/')));
         const hasQuestion = hasText || hasVoice;
-        const hasImage = !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
-        if ((docIds.length > 0 || hasImage) && hasQuestion) {
+        const hasImage = attachedFiles.some(isImageFile)
+            || !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
+        const hasDocs = attachedFiles.some(isDocumentFile);
+        if ((docIds.length > 0 || hasImage || hasDocs) && hasQuestion) {
             if (hasText) {
                 sendRlmAnalysis();
                 return;
@@ -187,7 +321,8 @@ async function sendMessage() {
             // started by handleTranscriptionResult() once the flag is set, so
             // fall through to the normal voice send flow without un-checking.
             window.rlmAwaitingVoice = true;
-            window.rlmAwaitingVoiceImage = hasImage ? attachedFile : null;
+            window.rlmAwaitingVoiceImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'))
+                ? attachedFile : null;
         } else if (!hasVoice) {
             // Deep analysis cannot start here: no documents & no image, and no
             // voice query either (no question will ever arrive). Un-check the
@@ -204,7 +339,7 @@ async function sendMessage() {
     const text = input.value.trim();
     const sendButton = document.getElementById('send-button');
     
-    if (!text && !attachedFile) {
+    if (!text && !attachedFile && attachedFiles.length === 0) {
         isSending = false;
         alert(t('enter_message_or_file'));
         return;
@@ -242,6 +377,9 @@ async function sendMessage() {
         if (!newTitle && attachedFile) {
             newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
         }
+        if (!newTitle && attachedFiles.length > 0 && attachedFiles[0].name) {
+            newTitle = attachedFiles[0].name.slice(0, 40) + (attachedFiles[0].name.length > 40 ? '...' : '');
+        }
         if (newTitle) {
             updateSessionTitle(currentSessionId, newTitle);
             fetchWithCSRF('/api/sessions/' + currentSessionId + '/update-title', {
@@ -261,9 +399,12 @@ async function sendMessage() {
     let fileData = null, fileType = null, fileName = null, filePath = null;
     const tempAttachedFile = attachedFile;
     const tempText = text;
+    // Multi-attachment snapshot: everything except the legacy single slot.
+    const tempFiles = attachedFiles.slice();
     // FIX: Determine if audio file early to control button unlock behavior
-    const isAudioFile = tempAttachedFile && tempAttachedFile.type && tempAttachedFile.type.startsWith('audio/');
-    
+    const isAudioFile = (tempAttachedFile && tempAttachedFile.type && tempAttachedFile.type.startsWith('audio/'))
+        || tempFiles.some(isAudioTypeFile);
+
     const displayUserMessage = (fileData, fileType, fileName, filePath) => {
         if (window.IS_RELOADING) return;
 
@@ -288,9 +429,7 @@ async function sendMessage() {
         }
 
         input.value = '';
-        attachedFile = null;
-        document.getElementById('file-preview-container').classList.add('hidden');
-        document.getElementById('file-input').value = '';
+        clearAllAttachments();
     };
     
     const unlockSendButton = () => {
@@ -311,11 +450,15 @@ async function sendMessage() {
         (async () => {
             try {
                 let response;
-                
-                if (tempAttachedFile) {
+
+                if (tempAttachedFile || tempFiles.length > 0) {
                     const formData = new FormData();
                     formData.append('message', tempText);
-                    formData.append('file', tempAttachedFile);
+                    // All attachments: the legacy single slot first (keeps the
+                    // "first image fills file_data columns" contract), then the
+                    // multi-queue.
+                    if (tempAttachedFile) formData.append('file', tempAttachedFile);
+                    for (const f of tempFiles) formData.append('file', f);
                     formData.append('session_id', currentSessionId);
 
                     if (isVoiceRecorded && attachedVoiceBlob) {
@@ -711,32 +854,30 @@ document.addEventListener('DOMContentLoaded', function() {
         const pad = n => String(n).padStart(2, '0');
         const name = 'pasted_' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate())
             + '_' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + '.' + ext;
-        attachedFile = new File([blob], name, { type: imageItem.type });
-        document.getElementById('file-preview-name').textContent = name;
-        const sizeSpan = document.getElementById('file-preview-size');
-        if (sizeSpan) sizeSpan.textContent = ' (' + formatFileSize(attachedFile.size) + ')';
-        document.getElementById('file-preview-container').classList.remove('hidden');
+        addAttachedFile(new File([blob], name, { type: imageItem.type }));
     });
 
     document.getElementById('file-input').addEventListener('change', function(e) {
-        if (e.target.files.length > 0) {
-            attachedFile = e.target.files[0];
-            const preview = document.getElementById('file-preview-container');
-            document.getElementById('file-preview-name').textContent = attachedFile.name;
-            const fileSize = formatFileSize(attachedFile.size);
-            const sizeSpan = document.getElementById('file-preview-size');
-            if (sizeSpan) sizeSpan.textContent = ' (' + fileSize + ')';
-            // FIX: Remove 'hidden' class instead of setting display (CSS has !important)
-            preview.classList.remove('hidden');
+        for (const f of e.target.files) {
+            if (attachedFile === null && !isImageFile(f) && attachedFiles.length === 0) {
+                // Non-image file keeps the legacy single slot (audio/voice combo
+                // semantics, document intake) until something multi arrives.
+                attachedFile = f;
+            } else {
+                addAttachedFile(f);
+            }
         }
+        renderAttachmentChips();
+        e.target.value = '';
     });
-    
+
     document.getElementById('remove-file-button').addEventListener('click', function() {
         attachedFile = null;
         attachedVoiceBlob = null;
         document.getElementById('file-input').value = '';
         // FIX: Add 'hidden' class back instead of setting display
         document.getElementById('file-preview-container').classList.add('hidden');
+        renderAttachmentChips();
     });
     
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);

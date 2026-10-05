@@ -93,6 +93,10 @@ A single link with a question about that page is ordinary chat by design — the
 
 A reasoning mode for serious work across multiple documents: comparing contracts, extracting every exception from a policy, building a report over a set of texts. The model works through the material in a loop rather than answering from a single retrieval pass. See [DEEP_ANALYSIS.md](DEEP_ANALYSIS.md).
 
+### How many files can I attach to one chat message?
+
+Up to **4 images** plus one document, or one audio file, or one voice recording (voice + one image is also allowed). Images attach as thumbnails (no taller than the Send button), documents/audio/voice as emoji chips. A chat-attached document is saved to your Documents and indexed through the normal RAG pipeline, so the model answers questions about it; scanned PDFs are OCR-recognized with a 30-minute budget per document (`OCR_TIME_BUDGET_S`). Limits: image 5 MB, document 25 MB, request body 75 MB.
+
 ### Can I stop a running task?
 
 Yes — press **Cancel**. Cancellation is supported for image generation and editing, video generation (which also restarts the video container), and streaming chat tasks.

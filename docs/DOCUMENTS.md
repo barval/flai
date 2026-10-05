@@ -1,5 +1,15 @@
 # Documents and RAG
 
+## Upload limits
+
+| What | Limit | Variable |
+|------|-------|----------|
+| One document | 25 MB | `MAX_DOCUMENT_SIZE_MB` |
+| Documents per user | 50 | `MAX_DOCUMENTS_PER_USER` |
+| Documents storage per user | 250 MB | `MAX_DOCUMENTS_STORAGE_MB` |
+| Scanned-PDF OCR budget | 30 min per document | `OCR_TIME_BUDGET_S` (0 = unlimited) |
+
+When the OCR budget expires, the pages recognized so far are indexed and the user is notified how far the recognition went.
 
 ## 1. Configure RAG in Admin Panel
 
@@ -38,3 +48,7 @@ Once documents are indexed, asking about them is automatic:
 For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).
 
 ---
+
+## 5. Documents attached in chat
+
+A document can be attached directly to a chat message (the same 📎 button, PDF/DOC/DOCX/TXT/ODT/RTF/CSV/JSON/EPUB up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.

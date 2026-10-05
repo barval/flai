@@ -16,10 +16,10 @@ The answer always matches your language, and the actor must actually work throug
 1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
 2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
 3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
-4. *(Optional)* Attach an image as well: the multimodal model produces a detailed text description of it and that description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photo against clause 4 of the contract".
+4. *(Optional)* Attach up to 4 images as well: the multimodal model produces a detailed text description of each and every description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photos against clause 4 of the contract". Chat-attached documents join the corpus too, so the Documents-panel selection is optional when you attach files directly in the message.
 5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
 
 ## Notes
-- Without selected documents **and** without an image, or if the image has no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
+- Without selected documents **and** without attachments (images or a chat-attached document), or if there is no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
 - The analysis works on the selected documents only (no full-text search over unrelated uploads).
 - To stop it: press **Cancel** — the task is checked for cancellation on every step.

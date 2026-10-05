@@ -53,7 +53,7 @@ def test_analyze_happy_path(authenticated_client, test_app):
     assert data["task_id"] == "task-1"
     assert data["position"] == 2
     mock_queue.add_rlm_task.assert_called_once_with(
-        "rlmtest", "s1", ["d1"], "q", lang="ru", image_data=None, image_type=None, image_name=None
+        "rlmtest", "s1", ["d1"], "q", lang="ru", image_data=None, image_type=None, image_name=None, images=None
     )
 
 
@@ -139,3 +139,44 @@ def test_analyze_rejects_foreign_document(authenticated_client, test_app):
     assert response.status_code == 403
     assert response.get_json()["error"].startswith("⚠️ ")
     mock_queue.add_rlm_task.assert_not_called()
+
+
+@pytest.mark.unit
+def test_analyze_accepts_multiple_images(authenticated_client, test_app):
+    """files[] (multipart) carries several images into one RLM task."""
+    mock_queue = MagicMock()
+    mock_queue.add_rlm_task.return_value = ("task-3", {"position": 1})
+    test_app.request_queue = mock_queue
+
+    from io import BytesIO
+
+    img1 = (BytesIO(b"\x89PNG fake1"), "a.png")
+    img2 = (BytesIO(b"\x89PNG fake2"), "b.png")
+
+    with (
+        patch("app.routes.rlm.validate_session_ownership", return_value=True),
+        patch("app.routes.rlm.get_user_documents", return_value=[]),
+        patch("app.routes.rlm.resize_image_if_needed") as mock_resize,
+        patch("app.routes.rlm.save_uploaded_file") as mock_save_file,
+        patch("app.routes.rlm.check_upload_quota", return_value=None),
+        patch("app.routes.rlm.save_message") as mock_save_msg,
+    ):
+        mock_resize.side_effect = lambda data, t, n, m: (data, t, n, False, None, None)
+        mock_save_file.side_effect = lambda file_data, filename, session_id, upload_folder, user_id: f"p-{filename}"
+        mock_save_msg.return_value = 1
+        response = authenticated_client.post(
+            "/api/rlm/analyze",
+            data={
+                "session_id": "s1",
+                "doc_ids": "[]",
+                "text": "compare these",
+                "files": [img1, img2],
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 202, response.get_json()
+    kwargs = mock_queue.add_rlm_task.call_args.kwargs
+    assert kwargs["images"] is not None
+    assert len(kwargs["images"]) == 2
+    assert kwargs["image_data"] == kwargs["images"][0]["data"]

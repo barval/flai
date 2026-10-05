@@ -584,9 +584,11 @@ curl http://localhost:5000/v1/flai/rlm \
 - `session_id` must be an owned session (`404 session_not_found` otherwise)
   and every `doc_ids` entry must be owned (`404 document_not_found`); at least
   one document or an uploaded image is required (`400`).
-- A multipart variant accepts `file` (image), `session_id`, `doc_ids` (JSON
-  array string) and `question` form fields; the image passes the same quota and
-  resize cap as chat uploads and is persisted with the question.
+- A multipart variant accepts `files` (up to `MAX_CHAT_IMAGES` images; the
+  legacy single `file` field still works), `session_id`, `doc_ids` (JSON array
+  string) and `question` form fields; every image passes the same quota and
+  resize cap as chat uploads (with the multi-image `MAX_IMAGE_SIZE_MULTI` cap
+  when several are attached) and is persisted with the question.
 - The user turn is saved into the API session history, and the response is
   `202 Accepted` with `task_id`, `position` and `user_message_id`.
 - Poll the returned `task_id` through `/v1/flai/tasks/{task_id}` — the task is

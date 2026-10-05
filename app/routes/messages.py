@@ -115,24 +115,61 @@ def send_message():
     voice_file_data = None
     voice_file_type = None
     voice_file_name = None
+    # Multi-attachment: every "file" part in order (frontend sends the legacy
+    # single slot first, then the multi-queue).
+    extra_images: list[dict[str, str | None]] = []
+    doc_part: dict[str, str | None] | None = None
 
     if request.content_type and "multipart/form-data" in request.content_type:
         message_text = request.form.get("message", "")
-        if "file" in request.files:
-            file = request.files["file"]
-            if file and file.filename:
-                file_bytes = file.read()
-                file_size_bytes = len(file_bytes)
-                file_data = base64.b64encode(file_bytes).decode("utf-8")
-                file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
-                file_name = file.filename
+        uploads = [f for f in request.files.getlist("file") if f and f.filename]
+        max_chat_images = current_app.config.get("MAX_CHAT_IMAGES", 4)
+        for upload in uploads:
+            file_bytes = upload.read()
+            part_size = len(file_bytes)
+            part_data = base64.b64encode(file_bytes).decode("utf-8")
+            part_type = upload.content_type or mimetypes.guess_type(upload.filename)[0] or "application/octet-stream"
+            part_name = upload.filename
 
-                # Check upload quota
-                from app.utils import check_upload_quota
+            from app.utils import check_upload_quota
 
-                quota_error = check_upload_quota(user_id, file_size_bytes)
-                if quota_error:
-                    return jsonify({"error": quota_error}), 413
+            quota_error = check_upload_quota(user_id, part_size)
+            if quota_error:
+                return jsonify({"error": quota_error}), 413
+
+            if part_type.startswith("image/"):
+                if len(extra_images) >= max_chat_images:
+                    lang_hdr = session.get("language", "ru")
+                    with force_locale(lang_hdr):
+                        error_text = _("max_images_reached").format(max=max_chat_images)
+                    return jsonify({"error": error_text}), 400
+                extra_images.append({"data": part_data, "type": part_type, "name": part_name, "size": part_size})
+            elif current_app.modules["audio"].is_audio_file(part_type, part_name):
+                # audio keeps the legacy single-slot semantics
+                if file_data is None:
+                    file_data = part_data
+                    file_type = part_type
+                    file_name = part_name
+                    file_size_bytes = part_size
+            else:
+                # document (PDF/DOCX/...) — one per message
+                if doc_part is not None:
+                    lang_hdr = session.get("language", "ru")
+                    with force_locale(lang_hdr):
+                        error_text = _("Multiple documents are not supported in one message")
+                    return jsonify({"error": error_text}), 400
+                doc_part = {"data": part_data, "type": part_type, "name": part_name, "size": part_size}
+
+        # Legacy single slot: first image becomes file_data (keeps display,
+        # download and the combined voice+image path working), the rest of the
+        # images travel in extra_images.
+        if extra_images and file_data is None:
+            first = extra_images.pop(0)
+            file_data = first["data"]
+            file_type = first["type"]
+            file_name = first["name"]
+            file_size_bytes = first["size"]
+
         voice_record = request.form.get("voice_record") == "true"
 
         # Read voice file when both image + voice are sent together
@@ -155,13 +192,17 @@ def send_message():
             # Fallback to form data if JSON parsing fails
             message_text = request.form.get("message", "")
 
-    if not message_text and not file_data:
+    if not message_text and not file_data and doc_part is None:
         return jsonify({"error": _("Empty message")}), 400
 
     response_style = session.get("response_style", "neutral")
 
     request_type = "text"
-    if file_data and file_type:
+    if doc_part is not None:
+        # Document attached in chat: index it into RAG first, then answer the
+        # question over it (images, if any, provide the visual context).
+        request_type = "doc_chat"
+    elif file_data and file_type:
         if file_type.startswith("image/"):
             request_type = "audio" if voice_file_data else "image"
         elif current_app.modules["audio"].is_audio_file(file_type, file_name):
@@ -175,6 +216,9 @@ def send_message():
     file_path = None
     if request_type == "image":
         max_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
+        if len(extra_images) > 0:
+            # several images: keep the context budget, downscale harder
+            max_size = current_app.config.get("MAX_IMAGE_SIZE_MULTI", 1024)
         new_file_data, new_file_type, new_file_name, resized, orig_dims, new_dims = resize_image_if_needed(
             file_data, file_type, file_name, max_size
         )
@@ -192,6 +236,15 @@ def send_message():
             file_data = new_file_data
             file_type = new_file_type
             file_name = new_file_name
+
+        # Downscale every extra image with the same cap.
+        resized_extra: list[dict[str, str | None]] = []
+        for part in extra_images:
+            n_data, n_type, n_name, _r, _od, _nd = resize_image_if_needed(
+                part["data"], part["type"], part["name"], max_size
+            )
+            resized_extra.append({"data": n_data, "type": n_type, "name": n_name})
+        extra_images = resized_extra
 
         file_path = save_uploaded_file(
             file_data=file_data,
@@ -220,6 +273,19 @@ def send_message():
             content_type = "file"
         user_content.append(
             {"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name}
+        )
+    for part in extra_images:
+        user_content.append(
+            {"type": "image", "file_data": part["data"], "file_type": part["type"], "file_name": part["name"]}
+        )
+    if doc_part is not None:
+        user_content.append(
+            {
+                "type": "file",
+                "file_data": doc_part["data"],
+                "file_type": doc_part["type"],
+                "file_name": doc_part["name"],
+            }
         )
 
     user_content_json = json.dumps(user_content, ensure_ascii=False)
@@ -294,6 +360,26 @@ def send_message():
             "response_style": response_style,
             "stream": True,
         }
+        if extra_images:
+            request_data["images"] = [file_data] + [p["data"] for p in extra_images]
+    elif request_type == "doc_chat":
+        # The document must be visible to the model: index it first (the same
+        # pipeline as Documents uploads), then re-queue the question.
+        request_data = {
+            "type": "doc_chat",
+            "text": message_text,
+            "doc_file_data": doc_part["data"],
+            "doc_file_type": doc_part["type"],
+            "doc_file_name": doc_part["name"],
+            "preview": (message_text[:50] + "...") if message_text else (doc_part["name"] or _("Text request")),
+            "response_style": response_style,
+            "stream": True,
+            "current_message_id": user_message_id,
+        }
+        if extra_images:
+            request_data["images"] = (
+                [file_data] + [p["data"] for p in extra_images] if file_data else [p["data"] for p in extra_images]
+            )
     else:
         request_data = {
             "type": "text",

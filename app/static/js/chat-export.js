@@ -1,12 +1,13 @@
 // static/js/chat-export.js
 // Save chat as HTML function with embedded media files (base64)
+
+function siteTitleFallback() {
+    return document.querySelector('header h1')?.textContent?.trim() || 'FLAI';
+}
+
 async function saveChatAsHTML() {
-    let footerText = t('footer_text') + ' v' + (window.FLAI_VERSION || '');
-
     const userNameElement = document.querySelector('.logout-container .user-name');
-    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
-
-    const activeSession = document.querySelector('.session-item.active');
+    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');    const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
         return;
@@ -55,13 +56,18 @@ async function saveChatAsHTML() {
             logoBase64 = logoSrc;
         }
     }
-    const headerLogoHtml = logoBase64 ? '<img src="' + logoBase64 + '" alt="FLAI Logo" class="header-logo">' : '';
+    const headerLogoHtml = logoBase64 ? '<img src="' + logoBase64 + '" alt="' + escapeHtml(logoImg?.alt || siteTitleFallback()) + '" class="header-logo">' : '';
 
     const now = new Date();
     const timestamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
 
-    let footerLine1 = footerText;
     const footerCopyright = t('footer_copyright') || '';
+    // Footer mirrors the live site: one short brand label (clickable) that
+    // opens the same About dialog (full name, version, GitHub, copyright).
+    const footerBrandLabel = t('footer_short_name') + ' v' + (window.FLAI_VERSION || '');
+    const footerModalLogo = logoBase64
+        ? '<img src="' + logoBase64 + '" alt="" class="about-logo">'
+        : '';
 
     // Collect all message elements and their media
     const messageElements = [];
@@ -378,11 +384,47 @@ ${fileHtml}
         '</div>\n' +
         '</main>\n' +
         '<footer>\n' +
-        '<div class="footer-content">\n' +
-        '<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' +
-        (footerCopyright ? '<div class="footer-line2">' + escapeHtml(footerCopyright) + '</div>' : '') + '\n' +
-        '</div>\n' +
+        '<button type="button" class="footer-brand" id="export-about-btn"' +
+        ' title="' + escapeHtml(t('footer_about_hint')) + '">' + escapeHtml(footerBrandLabel) + '</button>\n' +
         '</footer>\n' +
+        '<div id="export-about-modal" class="about-modal" hidden>\n' +
+        '<div class="about-modal-backdrop" data-close-about></div>\n' +
+        '<div class="about-modal-content" role="dialog" aria-modal="true">\n' +
+        '<button type="button" class="about-modal-close" data-close-about aria-label="' + escapeHtml(t('close_about')) + '">&times;</button>\n' +
+        footerModalLogo + '\n' +
+        '<h2>' + escapeHtml(t('footer_text')) + '</h2>\n' +
+        '<p class="about-version">v' + (window.FLAI_VERSION || '') + '</p>\n' +
+        '<p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>\n' +
+        (footerCopyright ? '<p class="about-copyright">' + escapeHtml(footerCopyright) + '</p>' : '') + '\n' +
+        '</div>\n' +
+        '</div>\n' +
+        '<script>\n' +
+        '(function () {\n' +
+        '    var modal = document.getElementById("export-about-modal");\n' +
+        '    var btn = document.getElementById("export-about-btn");\n' +
+        '    if (!modal || !btn) return;\n' +
+        '    var lastFocus = null;\n' +
+        '    function openModal() {\n' +
+        '        lastFocus = document.activeElement;\n' +
+        '        modal.hidden = false;\n' +
+        '        var closeBtn = modal.querySelector(".about-modal-close");\n' +
+        '        if (closeBtn) closeBtn.focus();\n' +
+        '        document.addEventListener("keydown", onKey);\n' +
+        '    }\n' +
+        '    function closeModal() {\n' +
+        '        modal.hidden = true;\n' +
+        '        document.removeEventListener("keydown", onKey);\n' +
+        '        if (lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();\n' +
+        '    }\n' +
+        '    function onKey(e) {\n' +
+        '        if (e.key === "Escape") closeModal();\n' +
+        '    }\n' +
+        '    btn.addEventListener("click", openModal);\n' +
+        '    modal.querySelectorAll("[data-close-about]").forEach(function (el) {\n' +
+        '        el.addEventListener("click", closeModal);\n' +
+        '    });\n' +
+        '})();\n' +
+        '<' + '/script>\n' +
         '</body>\n' +
         '</html>';
 

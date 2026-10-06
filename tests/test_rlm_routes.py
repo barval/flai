@@ -2,6 +2,7 @@
 """Tests for RLM deep-analysis routes."""
 
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -180,3 +181,46 @@ def test_analyze_accepts_multiple_images(authenticated_client, test_app):
     assert kwargs["images"] is not None
     assert len(kwargs["images"]) == 2
     assert kwargs["image_data"] == kwargs["images"][0]["data"]
+
+
+@pytest.mark.unit
+def test_analyze_persists_file_path_for_every_image_part(authenticated_client, test_app):
+    """Every image content part (including the FIRST one) must carry a disk
+    file_path so history opens without shipping base64 megabytes."""
+    mock_queue = MagicMock()
+    mock_queue.add_rlm_task.return_value = ("task-4", {"position": 0})
+    test_app.request_queue = mock_queue
+
+    with test_app.app_context():
+        from app.db import create_session, get_session_messages
+
+        session_id = create_session("rlmtest", title="rlms paths")
+
+    from io import BytesIO
+
+    img1 = (BytesIO(b"\x89PNG fake1"), "a.png", "image/png")
+    img2 = (BytesIO(b"\x89PNG fake2"), "b.png", "image/png")
+
+    with patch("app.routes.rlm.resize_image_if_needed") as mock_resize:
+        mock_resize.side_effect = lambda data, t, n, m: (data, t, n, False, None, None)
+        response = authenticated_client.post(
+            "/api/rlm/analyze",
+            data={
+                "session_id": session_id,
+                "doc_ids": "[]",
+                "text": "compare these",
+                "files": [img1, img2],
+            },
+            content_type="multipart/form-data",
+        )
+
+    assert response.status_code == 202, response.get_json()
+    with test_app.app_context():
+        msgs = get_session_messages(session_id)
+    saved = json.loads(msgs[0]["content"])
+    image_parts = [p for p in saved if p.get("type") == "image"]
+    assert len(image_parts) == 2
+    for p in image_parts:
+        assert p.get("file_path"), "every RLM image part must carry a disk path"
+        assert "file_data" not in p, "RLM image base64 must not reach history"
+        assert os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))

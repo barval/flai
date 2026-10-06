@@ -2,6 +2,7 @@
 multimodal multi-image helpers with the per-image fallback path."""
 
 import base64
+import io
 import json as _json
 import logging
 import os
@@ -297,6 +298,99 @@ class TestMultiAttachmentPersistence:
             assert images[0]["file_data"] is None, "part with file_path must be stripped"
             assert images[0]["file_path"] == "sess/a.png"
             assert images[1]["file_data"] == "BBBB", "part without file_path keeps base64"
+
+    def test_history_falls_back_to_row_path_for_first_pathless_part(self, test_app):
+        """Legacy rows store the first image in BOTH the row file_path and the
+        content part (without a part-level path). The reader must substitute
+        the row path for that first action part so its base64 is stripped."""
+        with test_app.app_context():
+            from app.db import create_session, get_session_messages, save_message
+
+            username = "multiatt-legacy"
+            session_id = create_session(username, title="legacy strip test")
+            content = _json.dumps(
+                [
+                    {"type": "text", "text": "q"},
+                    {
+                        "type": "image",
+                        "file_data": "AAAA",
+                        "file_type": "image/png",
+                        "file_name": "a.png",
+                    },
+                    {
+                        "type": "image",
+                        "file_data": "BBBB",
+                        "file_type": "image/png",
+                        "file_name": "b.png",
+                    },
+                ]
+            )
+            save_message(session_id, "user", content, file_path="sess/a.png")
+            msgs = get_session_messages(session_id)
+            parts = _json.loads(msgs[0]["content"])
+            images = [p for p in parts if p.get("type") == "image"]
+            assert images[0]["file_path"] == "sess/a.png", "first pathless part must reuse the row path"
+            assert images[0]["file_data"] is None
+            assert images[1]["file_data"] == "BBBB", "non-first parts keep base64 (no path on disk yet)"
+
+    def test_send_message_audio_part_gets_disk_path(self, client, test_app):
+        """An uploaded audio file must be saved like images: part file_path on
+        disk, no base64 left in the content JSON."""
+        self._login(client)
+        wav = (
+            b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
+            + b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        response = client.post(
+            "/api/send_message",
+            data={
+                "message": "transcribe this",
+                "file": (io.BytesIO(wav), "note.wav", "audio/wav"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200, response.get_json()
+        with test_app.app_context():
+            from app import db as dbmod
+
+            msgs = dbmod.get_session_messages(self._session_id)
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        assert user_msgs
+        parts = _json.loads(user_msgs[-1]["content"])
+        audio_parts = [p for p in parts if p.get("type") == "audio"]
+        assert len(audio_parts) == 1
+        assert audio_parts[0].get("file_path"), "audio part must carry a disk path"
+        assert "file_data" not in audio_parts[0], "audio base64 must not reach history"
+        full = os.path.join(test_app.config["UPLOAD_FOLDER"], audio_parts[0]["file_path"])
+        assert os.path.exists(full)
+
+    def test_send_message_document_part_gets_disk_path(self, client, test_app):
+        """A chat-attached document must be saved: part file_path on disk, no
+        base64 left in the content JSON."""
+        self._login(client)
+        pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n%%EOF\n"
+        response = client.post(
+            "/api/send_message",
+            data={
+                "message": "summarize it",
+                "file": (io.BytesIO(pdf), "report.pdf", "application/pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200, response.get_json()
+        with test_app.app_context():
+            from app import db as dbmod
+
+            msgs = dbmod.get_session_messages(self._session_id)
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        assert user_msgs
+        parts = _json.loads(user_msgs[-1]["content"])
+        file_parts = [p for p in parts if p.get("type") == "file"]
+        assert len(file_parts) == 1
+        assert file_parts[0].get("file_path"), "document part must carry a disk path"
+        assert "file_data" not in file_parts[0], "document base64 must not reach history"
+        full = os.path.join(test_app.config["UPLOAD_FOLDER"], file_parts[0]["file_path"])
+        assert os.path.exists(full)
 
 
 class TestDocChatTask:

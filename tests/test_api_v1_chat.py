@@ -1,5 +1,6 @@
 """Contract tests for the OpenAI-compatible chat and embeddings endpoints."""
 
+import base64
 from unittest.mock import Mock
 
 import pytest
@@ -414,3 +415,50 @@ class TestChatCompletionsStreaming:
 
         assert response.status_code == 401
         assert stream_stub["calls"] == []
+
+
+@pytest.mark.unit
+class TestEnqueueChatPersistence:
+    """app/api_bridge.py: enqueue_chat must save every image to disk and write
+    plain file_path parts, so API chat history opens without base64 blobs."""
+
+    def _png(self):
+        return {
+            "file_data": base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40).decode("ascii"),
+            "file_type": "image/png",
+            "file_name": "a.png",
+        }
+
+    def test_enqueue_chat_saves_images_and_writes_path_parts(self, api_token, test_app):
+        import json as _json
+        import os as _os
+
+        from app import db
+        from app.api_bridge import enqueue_chat
+
+        with test_app.app_context():
+            session_id = db.create_session("apiowner", title="bridge persistence")
+            images = [self._png(), {**self._png(), "file_name": "b.png"}]
+            task_id, _info = enqueue_chat(
+                {
+                    "login": "apiowner",
+                    "language": "en",
+                    "response_style": "neutral",
+                    "service_class": "standard",
+                },
+                session_id,
+                "compare",
+                images,
+            )
+            assert task_id
+
+            messages = db.get_session_messages(session_id)
+        user_msgs = [m for m in messages if m["role"] == "user"]
+        assert user_msgs
+        parts = _json.loads(user_msgs[-1]["content"])
+        image_parts = [p for p in parts if p.get("type") == "image"]
+        assert [p["file_name"] for p in image_parts] == ["a.png", "b.png"]
+        for p in image_parts:
+            assert p.get("file_path"), "every API chat image part must carry a disk path"
+            assert "file_data" not in p, "API chat image base64 must not reach history"
+            assert _os.path.exists(_os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))

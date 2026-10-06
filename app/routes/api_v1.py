@@ -1476,6 +1476,7 @@ def api_rlm_analysis():
 
     file_path = None
     rlm_images: list[dict[str, Any]] = []
+    image_paths: list[str] = []
     if file_data:
         if file_size := len(b64decode(file_data)):
             quota_error = check_upload_quota(login, file_size)
@@ -1492,6 +1493,7 @@ def api_rlm_analysis():
             user_id=login,
         )
         rlm_images.append({"data": file_data, "type": file_type, "name": file_name})
+        image_paths.append(file_path or "")
     for part in images:
         quota_error = check_upload_quota(login, len(b64decode(part["file_data"])))
         if quota_error:
@@ -1499,15 +1501,26 @@ def api_rlm_analysis():
         n_data, n_type, n_name, _r, _od, _nd = resize_image_if_needed(
             part["file_data"], part["file_type"], part["file_name"], current_app.config.get("MAX_IMAGE_SIZE", 1536)
         )
+        n_path = save_uploaded_file(
+            file_data=n_data,
+            filename=n_name,
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=login,
+        )
         rlm_images.append({"data": n_data, "type": n_type, "name": n_name})
+        image_paths.append(n_path or "")
 
     user_content: list[dict[str, str]] = []
     if question:
         user_content.append({"type": "text", "text": question})
-    for img in rlm_images:
-        user_content.append(
-            {"type": "image", "file_data": img["data"], "file_type": img["type"], "file_name": img["name"]}
-        )
+    for img, path in zip(rlm_images, image_paths, strict=True):
+        # Every image — extras included — keeps a disk file_path so history
+        # reloads never carry the base64 payloads in the content JSON.
+        entry: dict[str, str] = {"type": "image", "file_type": img["type"], "file_name": img["name"]}
+        if path:
+            entry["file_path"] = path
+        user_content.append(entry)
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = db.save_message(session_id, "user", user_content_json, file_data, file_type, file_name, file_path)
 

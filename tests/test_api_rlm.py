@@ -9,6 +9,7 @@ standard `/v1/flai/tasks` polling flow works.
 import base64
 import io
 import json
+import os
 from unittest.mock import Mock
 
 import pytest
@@ -193,6 +194,8 @@ def test_rlm_with_image_persists_and_queues(client, api_user, test_app, owned_se
     assert saved[0] == {"type": "text", "text": "Read the diagram"}
     assert saved[1]["type"] == "image"
     assert saved[1]["file_name"] == "scan.png"
+    assert saved[1].get("file_path"), "RLM image part must carry a disk path"
+    assert "file_data" not in saved[1], "RLM image base64 must not reach history"
 
 
 def test_rlm_accepts_multi_image_files_list(client, api_user, test_app, owned_session, enqueue_rlm):
@@ -221,6 +224,10 @@ def test_rlm_accepts_multi_image_files_list(client, api_user, test_app, owned_se
     saved = json.loads(messages[0]["content"])
     image_parts = [p for p in saved if p.get("type") == "image"]
     assert [p["file_name"] for p in image_parts] == ["a.png", "b.png"]
+    for p in image_parts:
+        assert p.get("file_path"), "EVERY RLM image part (incl. extras) must carry a disk path"
+        assert "file_data" not in p, "RLM image base64 must not reach history"
+        assert os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))
 
 
 def test_rlm_json_images_array_builds_corpus_images(client, api_user, test_app, owned_session, enqueue_rlm):

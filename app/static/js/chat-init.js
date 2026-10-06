@@ -713,7 +713,10 @@ async function sendMessage() {
                     setTimeout(() => updateSessionsListFromData(), 100);
                 }
                 
-                displayUserMessage(fileData, fileType, fileName, null);
+                // The legacy slot carries only this file; queued images still
+                // belong in the optimistic content, otherwise they stay
+                // invisible until F5 (the tempId relabel never re-renders).
+                displayUserMessage(fileData, fileType, fileName, null, await readExtraAsBase64(tempFiles));
                 sendToServer();
                 
                 // Note: unlockSendButton is now handled in finally block of sendToServer

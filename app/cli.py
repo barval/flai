@@ -321,3 +321,116 @@ def reset_slm_checkpoint(user_id):
             c.execute("DELETE FROM slm_import_progress")
             click.echo("Reset checkpoints for all users")
         conn.commit()
+
+
+@click.command("backfill-attachment-paths")
+@click.option("--dry-run", is_flag=True, help="Only report what would change, do not update")
+@with_appcontext
+def backfill_attachment_paths(dry_run):
+    """Save base64 attachment payloads from old messages to disk and keep paths.
+
+    Legacy chat rows stored attachment payloads (images, audio, documents)
+    directly inside the content JSON without a part-level file_path, so opening
+    such a session shipped megabytes of base64. This command saves every such
+    part to UPLOAD_FOLDER via save_uploaded_file, replaces the payload with the
+    saved relative file_path, and clears the now-redundant column base64.
+    Idempotent: re-running it changes nothing. Run a database backup first.
+    """
+    import json
+
+    from app.database import get_db
+    from app.utils import save_uploaded_file
+
+    upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
+
+    updated = 0
+    skipped = 0
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, session_id, content, file_path, file_data FROM messages WHERE content LIKE '%file_data%'")
+
+        for row in c.fetchall():
+            try:
+                parsed = json.loads(row["content"])
+            except (TypeError, ValueError):
+                parsed = None
+            if not isinstance(parsed, list):
+                skipped += 1
+                continue
+
+            new_file_path = row["file_path"]
+            needs_update = False
+            first_part = True
+            for item in parsed:
+                if not isinstance(item, dict) or "file_data" not in item:
+                    continue
+                is_primary = first_part
+                first_part = False
+                if is_primary and not item.get("file_path") and row["file_path"]:
+                    # The primary attachment already has a saved file at the row
+                    # level: point the part at it and drop the payload.
+                    item["file_path"] = row["file_path"]
+                    del item["file_data"]
+                    needs_update = True
+                    continue
+                if item.get("file_path"):
+                    # Part already references a saved file: drop the payload.
+                    del item["file_data"]
+                    needs_update = True
+                    continue
+                if item.get("file_data") is None:
+                    del item["file_data"]
+                    needs_update = True
+                    continue
+                try:
+                    saved_path = save_uploaded_file(
+                        file_data=item["file_data"],
+                        filename=item.get("file_name") or "attachment.bin",
+                        session_id=row["session_id"],
+                        upload_folder=upload_folder,
+                    )
+                except Exception as exc:
+                    logger.warning(f"backfill: message {row['id']}: failed to save attachment: {exc}")
+                    saved_path = None
+                if not saved_path:
+                    skipped += 1
+                    continue
+                item["file_path"] = saved_path
+                del item["file_data"]
+                needs_update = True
+                if is_primary and not new_file_path:
+                    new_file_path = saved_path
+
+            if not needs_update:
+                skipped += 1
+                continue
+
+            new_content = json.dumps(parsed, ensure_ascii=False)
+            click.echo(f"  BACKFILL id={row['id']}")
+            if dry_run:
+                continue
+            if new_content != row["content"]:
+                c.execute(
+                    "UPDATE messages SET content = %s, file_path = %s,"
+                    " file_data = CASE WHEN %s IS NULL THEN file_data ELSE NULL END"
+                    " WHERE id = %s",
+                    (new_content, new_file_path, new_file_path, row["id"]),
+                )
+            else:
+                c.execute(
+                    "UPDATE messages SET file_path = %s,"
+                    " file_data = CASE WHEN %s IS NULL THEN file_data ELSE NULL END"
+                    " WHERE id = %s",
+                    (new_file_path, new_file_path, row["id"]),
+                )
+            conn.commit()
+            updated += 1
+
+        # Clear any remaining column base64 for rows that already have a file.
+        c.execute("UPDATE messages SET file_data = NULL WHERE file_path IS NOT NULL AND file_data IS NOT NULL")
+        conn.commit()
+
+    click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
+    if dry_run:
+        click.echo("(dry-run, no changes made)")

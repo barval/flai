@@ -322,6 +322,10 @@ class _MockDatabase:
 
         # FROM messages
         if "FROM MESSAGES" in sql_u:
+            if "LIKE" in sql_u:
+                # Column-wide scans (e.g. the backfill migration) return all rows
+                self._result(list(self._messages), rowcount=len(self._messages))
+                return
             session_id = params[0]
             msgs = [dict(m) for m in self._messages if m.get("session_id") == session_id]
             # Only filter by file_path when it's a WHERE clause, not a CASE WHEN expression
@@ -661,6 +665,30 @@ class _MockDatabase:
                 if i < len(params):
                     self._branding[field] = params[i]
             self._result(None, rowcount=1)
+            return
+
+        # UPDATE messages (per-row and column-scan bulk updates)
+        if "UPDATE" in sql_u and "MESSAGES" in sql_u:
+            set_clause = sql[sql.index("SET") + 3 :]
+            if "WHERE" in set_clause.upper():
+                set_clause = set_clause[: set_clause.upper().index("WHERE")]
+            fields = re.findall(r"(\w+)\s*=\s*%s", set_clause, re.IGNORECASE)
+            if params:
+                targets = [m for m in self._messages if m.get("id") == params[-1]]
+                for m in targets:
+                    for i, field in enumerate(fields):
+                        if i < len(params) - 1:
+                            m[field] = params[i]
+                self._result(None, rowcount=len(targets))
+                return
+            # Bulk without bind values (e.g. "SET file_data = NULL WHERE ...")
+            if "FILE_DATA = NULL" in sql_u:
+                for m in self._messages:
+                    if m.get("file_path"):
+                        m["file_data"] = None
+                self._result(None, rowcount=1)
+                return
+            self._result(None, rowcount=0)
             return
 
         self._result(None, rowcount=0)

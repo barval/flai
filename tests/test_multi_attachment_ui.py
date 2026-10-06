@@ -78,6 +78,19 @@ class TestAttachmentChips:
         )
         assert "contentAttachments.slice(1)" in block
 
+    def test_legacy_slot_send_renders_queued_images_too(self):
+        # voice/doc + images: the legacy branch called displayUserMessage
+        # WITHOUT extraParts, so the queued images never entered the optimistic
+        # content JSON. They were uploaded and shown after F5, but the tempId
+        # relabel (and the user SSE echo guard) never re-renders from server
+        # content, so the images stayed invisible for the whole session.
+        start = CHAT_INIT.index("reader.onload = async function")
+        block = CHAT_INIT[start : CHAT_INIT.index("sendToServer();", start)]
+        assert "await readExtraAsBase64(tempFiles)" in block, (
+            "the legacy-slot send must read the queued images and pass them "
+            "as extraParts, otherwise they never reach the optimistic render"
+        )
+
 
 class TestExportAllAttachments:
     def test_export_collects_every_media_element(self):

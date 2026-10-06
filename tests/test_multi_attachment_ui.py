@@ -62,6 +62,22 @@ class TestAttachmentChips:
         assert "readExtraAsBase64" in CHAT_INIT
         assert "displayUserMessage(null, null, null, null, extraParts)" in CHAT_INIT
 
+    def test_first_content_attachment_skipped_only_when_legacy_renders_it(self):
+        # displayMessage splits content attachments into the legacy first one
+        # (rendered from the fileData/filePath parameters) and the inline extras.
+        # Skipping index 0 is only correct while those parameters are present:
+        # queued images never occupy the legacy slot (chat-init.js file-input
+        # handler keeps non-image files there), so an unconditional slice(1)
+        # lost image #1 from every optimistic multi-image render — 4 attached,
+        # 3 shown — and the HTML export mirrors the live DOM, so it dropped it too.
+        start = CHAT_MESSAGES.index("const contentAttachments = []")
+        block = CHAT_MESSAGES[start : start + 1600]
+        assert "fileData || filePath" in block, (
+            "extras must be gated on the legacy render: without the "
+            "fileData/filePath parameters nothing renders the first attachment"
+        )
+        assert "contentAttachments.slice(1)" in block
+
 
 class TestExportAllAttachments:
     def test_export_collects_every_media_element(self):

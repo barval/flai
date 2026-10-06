@@ -214,7 +214,12 @@ def send_message():
     resize_notice = None
     resize_notice_id = None
     file_path = None
-    if request_type == "image":
+
+    # A primary attachment image when the legacy single slot holds image bytes
+    # (image-only and voice+image both land here); audio and documents keep
+    # their own save logic below.
+    is_image = bool(file_data and file_type and file_type.startswith("image/"))
+    if is_image:
         max_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
         if len(extra_images) > 0:
             # several images: keep the context budget, downscale harder
@@ -237,15 +242,19 @@ def send_message():
             file_type = new_file_type
             file_name = new_file_name
 
-        # Downscale every extra image with the same cap.
-        resized_extra: list[dict[str, str | None]] = []
-        for part in extra_images:
-            n_data, n_type, n_name, _r, _od, _nd = resize_image_if_needed(
-                part["data"], part["type"], part["name"], max_size
-            )
-            resized_extra.append({"data": n_data, "type": n_type, "name": n_name})
-        extra_images = resized_extra
+    # Downscale every extra image with the same cap.
+    resized_extra: list[dict[str, str | None]] = []
+    max_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
+    if len(extra_images) > 0:
+        max_size = current_app.config.get("MAX_IMAGE_SIZE_MULTI", 1024)
+    for part in extra_images:
+        n_data, n_type, n_name, _r, _od, _nd = resize_image_if_needed(
+            part["data"], part["type"], part["name"], max_size
+        )
+        resized_extra.append({"data": n_data, "type": n_type, "name": n_name})
+    extra_images = resized_extra
 
+    if is_image:
         file_path = save_uploaded_file(
             file_data=file_data,
             filename=file_name,
@@ -254,18 +263,45 @@ def send_message():
             user_id=user_id,
         )
 
-        # Persist EVERY extra image to disk too. Without this, images 2..N
-        # existed only as base64 inside the content JSON, and the history
-        # loader strips file_data for messages that have a file_path — so the
-        # extra thumbnails were unrenderable after a page reload.
-        for part in extra_images:
-            part["path"] = save_uploaded_file(
-                file_data=part["data"],
-                filename=part["name"],
-                session_id=session_id,
-                upload_folder=current_app.config["UPLOAD_FOLDER"],
-                user_id=user_id,
-            )
+    # Persist EVERY extra image to disk too. Without this, images 2..N
+    # existed only as base64 inside the content JSON, and the history
+    # loader strips file_data for messages that have a file_path — so the
+    # extra thumbnails were unrenderable after a page reload.
+    for part in extra_images:
+        part["path"] = save_uploaded_file(
+            file_data=part["data"],
+            filename=part["name"],
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=user_id,
+        )
+
+    # An uploaded audio file is saved like an image so a session with audio
+    # attachments opens without shipping its base64 payload; the saved file
+    # becomes the row-level primary attachment.
+    if file_data and file_type and current_app.modules["audio"].is_audio_file(file_type, file_name):
+        file_path = save_uploaded_file(
+            file_data=file_data,
+            filename=file_name,
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=user_id,
+        )
+
+    # The chat-attached document is fully indexed into RAG by the doc_chat
+    # worker; the saved copy gives history a plain file_path too. A
+    # document-only message makes the document the row-level attachment;
+    # with a primary image the document lives only in the content JSON.
+    if doc_part is not None:
+        doc_part["path"] = save_uploaded_file(
+            file_data=doc_part["data"],
+            filename=doc_part["name"],
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=user_id,
+        )
+        if not file_path:
+            file_path = doc_part["path"]
 
     if request_type == "audio":
         limit_mb = current_app.config["MAX_VOICE_SIZE_MB"] if voice_record else current_app.config["MAX_AUDIO_SIZE_MB"]
@@ -284,22 +320,20 @@ def send_message():
             content_type = "audio"
         else:
             content_type = "file"
-        # The first image part carries file_path too (its file was saved
+        # The first attachment part carries file_path too (its file was saved
         # above) so the history loader can strip its base64 payload.
         user_content.append(
             {
                 "type": content_type,
-                "file_data": file_data,
                 "file_type": file_type,
                 "file_name": file_name,
-                "file_path": file_path if content_type == "image" else None,
+                "file_path": file_path if content_type in ("image", "audio") else None,
             }
         )
     for part in extra_images:
         user_content.append(
             {
                 "type": "image",
-                "file_data": part["data"],
                 "file_type": part["type"],
                 "file_name": part["name"],
                 "file_path": part["path"],
@@ -309,9 +343,9 @@ def send_message():
         user_content.append(
             {
                 "type": "file",
-                "file_data": doc_part["data"],
                 "file_type": doc_part["type"],
                 "file_name": doc_part["name"],
+                "file_path": doc_part.get("path"),
             }
         )
 

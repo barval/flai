@@ -154,18 +154,17 @@ def analyze():
     user_content = []
     if question:
         user_content.append({"type": "text", "text": question})
-    for idx, part in enumerate(saved_parts):
-        entry = {
-            "type": "image",
-            "file_data": part["data"],
-            "file_type": part["type"],
-            "file_name": part["name"],
-        }
-        if idx > 0:
-            # extra images travel only in the content JSON; their files are on
-            # disk already (saved above)
-            entry["file_path"] = part.get("path")
-        user_content.append(entry)
+    for part in saved_parts:
+        # Every image — including the FIRST one — carries its disk file_path
+        # so history never ships the base64 payloads.
+        user_content.append(
+            {
+                "type": "image",
+                "file_type": part["type"],
+                "file_name": part["name"],
+                "file_path": part.get("path"),
+            }
+        )
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = save_message(session_id, "user", user_content_json, file_data, file_type, file_name, file_path)
 

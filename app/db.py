@@ -99,6 +99,36 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
         return sessions
 
 
+def _strip_content_attachment_payload(content: str | None, row_file_path: str | None) -> str | None:
+    """Remove base64 payloads from the attachment parts of a message content JSON.
+
+    A part with its own ``file_path`` (saved to disk) is stripped in place. A
+    pathless part reuses the row-level ``file_path`` when it is the *first*
+    attachment part — legacy rows stored the primary attachment both in the row
+    columns and inside the content JSON without a part-level path. Parts that
+    end up without any path keep their base64 (they are the only source).
+    """
+    if not content or not row_file_path:
+        return content
+    try:
+        parsed = json.loads(content)
+    except (TypeError, ValueError):
+        return content
+    if not isinstance(parsed, list):
+        return content
+    first_attachment_seen = False
+    for item in parsed:
+        if not isinstance(item, dict) or "file_data" not in item:
+            continue
+        if not first_attachment_seen:
+            first_attachment_seen = True
+            if not item.get("file_path"):
+                item["file_path"] = row_file_path
+        if item.get("file_path"):
+            item["file_data"] = None
+    return json.dumps(parsed, ensure_ascii=False)
+
+
 def get_session_messages(
     session_id: str, since: str | None = None, limit: int = 100, offset: int = 0
 ) -> list[dict[str, Any]]:
@@ -151,20 +181,10 @@ def get_session_messages(
                     if current_app.config.get("TIMEZONE") and dt.tzinfo is None:
                         dt = current_app.config["TIMEZONE"].localize(dt)
                     msg_dict["timestamp"] = dt.isoformat()
-            # Strip base64 file_data from content JSON only for parts that
-            # have their own file_path on disk (extra chat images are saved
-            # individually; their file_data may still be the only source for
-            # older rows or parts without a stored file).
-            if msg_dict.get("file_path") and msg_dict.get("content"):
-                try:
-                    parsed = json.loads(msg_dict["content"])
-                    if isinstance(parsed, list):
-                        for item in parsed:
-                            if isinstance(item, dict) and "file_data" in item and item.get("file_path"):
-                                item["file_data"] = None
-                        msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
-                except Exception as e:
-                    current_app.logger.debug(f"Failed to parse content JSON for message {msg_dict.get('id')}: {e}")
+            # Strip base64 file_data from content JSON, substituting the row
+            # file_path for legacy first attachment parts that lack a path of
+            # their own (old chat images). See _strip_content_attachment_payload.
+            msg_dict["content"] = _strip_content_attachment_payload(msg_dict.get("content"), msg_dict.get("file_path"))
             messages.append(msg_dict)
 
         # Read file sizes from disk for messages with file_path
@@ -281,15 +301,9 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     if msg_data.get("response_time"):
                         with contextlib.suppress(Exception):
                             msg_data["response_time"] = json.loads(msg_data["response_time"])
-                    # Strip base64 from content JSON when file_path exists
-                    if msg_data.get("file_path") and msg_data.get("content"):
-                        with contextlib.suppress(Exception):
-                            parsed = json.loads(msg_data["content"])
-                            if isinstance(parsed, list):
-                                for item in parsed:
-                                    if isinstance(item, dict) and "file_data" in item:
-                                        item["file_data"] = None
-                            msg_data["content"] = json.dumps(parsed, ensure_ascii=False)
+                    msg_data["content"] = _strip_content_attachment_payload(
+                        msg_data.get("content"), msg_data.get("file_path")
+                    )
 
             publisher.publish(
                 user_id,

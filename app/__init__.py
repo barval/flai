@@ -427,6 +427,7 @@ def create_app():
     app.cli.add_command(cli.import_history_to_slm)
     app.cli.add_command(cli.cleanup_slm)
     app.cli.add_command(cli.reset_slm_checkpoint)
+    app.cli.add_command(cli.backfill_attachment_paths)
 
     # Additional camera routes
     if "cam" in modules:

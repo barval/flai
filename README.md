@@ -71,7 +71,8 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 ## 🆕 What's New in v12.4
 
-- **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. Every image is stored on disk, all attached images show up in the message right after sending and stay visible after a page reload; deleting a session frees the space of all its attached images. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Attachments live on disk, sessions open instantly** — every attached file (images, audio, documents) is saved to disk from the very first write, and `flask backfill-attachment-paths` migrates older chats the same way, so a history reload no longer ships megabytes of base64 that once made heavy sessions slow to open (one picture-heavy message dropped from ~3.9 MB to a few KB). Built for old rows too: pre-migration messages keep rendering untouched. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - **Deep analysis with attachments** — the 🔬 toggle accepts up to 4 images (each becomes a corpus «document») and chat-attached documents, so the Documents-panel selection is optional. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
 - **«Draw something similar» with examples** — attach example images to an image-generation request; each example is described and the descriptions steer the SD prompt. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Higher limits** — documents 25 MB, per-user document storage 250 MB, request body 75 MB; scanned-PDF OCR gets a 30-minute budget per document with a partial-indexing notice. → [CONFIGURATION.md](docs/CONFIGURATION.md)
@@ -356,7 +357,9 @@ Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the wor
 ## 🙏 Acknowledgments
 
 - [@Andrey-1](https://github.com/Andrey-1) — extensive testing and valuable feedback
-- The llama.cpp, stable-diffusion.cpp, LTX-Video, Qdrant, SearXNG, Tavily, Crawl4AI, Whisper, Piper, Kokoro and SuperLocalMemory projects, and everyone who contributes to them
+- The llama.cpp, llama-swap, stable-diffusion.cpp, LTX-Video, Qdrant, SearXNG, Tavily, Crawl4AI, Whisper, Piper, Kokoro and SuperLocalMemory projects, and everyone who contributes to them
+- Key libraries: Flask, Flask-Babel, Flask-Limiter, Flask-WTF, gunicorn, gevent, requests, python-dotenv, PostgreSQL (psycopg2), Redis, qdrant-client, Pillow, trafilatura, pymorphy3, pendulum, pdfplumber, python-docx, ebooklib, odfpy, striprtf, python-magic, gguf, flasgger (Swagger UI), marked and DOMPurify
+- The Qwen, bge-m3, Flux.2 Klein, Z-Image-Turbo, gpt-oss and ruAccent models, hosted on Hugging Face
 
 ## 📄 License
 

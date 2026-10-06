@@ -237,10 +237,21 @@ def enqueue_image_generation(
     similar»): each is described by the multimodal model and the descriptions
     steer the SD prompt, mirroring the web `[-IMAGE-]` path.
     """
+    saved_refs: list[dict[str, Any]] = []
+    for ref in image_references or []:
+        path = save_uploaded_file(
+            file_data=ref["file_data"],
+            filename=ref["file_name"],
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=api_user["login"],
+        )
+        ref["file_path"] = path
+        saved_refs.append(ref)
     message_id = save_message(
         session_id,
         "user",
-        _build_user_content(prompt, image_references or []),
+        _build_user_content(prompt, saved_refs),
         user_id=api_user["login"],
         response_style=response_style,
     )
@@ -287,7 +298,7 @@ def enqueue_image_edit(
         "user",
         _build_user_content(
             prompt,
-            [{"type": "image", "file_data": file_data, "file_type": file_type, "file_name": file_name}],
+            [{"type": "image", "file_type": file_type, "file_name": file_name, "file_path": file_path}],
         ),
         file_data,
         file_type,
@@ -489,12 +500,24 @@ def normalize_chat_messages(messages: Any) -> tuple[str, list[dict[str, str]]]:
     return text, images
 
 
-def _build_user_content(text: str, images: list[dict[str, str]]) -> str:
-    """Serialize a user turn the way the web route stores it."""
-    content: list[dict[str, str]] = []
+def _build_user_content(text: str, images: list[dict[str, Any]] | None) -> str:
+    """Serialize a user turn the way the web route stores it.
+
+    Attachment parts carry their disk ``file_path`` (never the raw base64), so
+    a history reload — web or API — ships only plain paths. Callers that still
+    pass base64 without a stored file keep it as a fallback source.
+    """
+    content: list[dict[str, Any]] = []
     if text:
         content.append({"type": "text", "text": text})
-    content.extend(images)
+    for img in images or []:
+        part: dict[str, Any] = {"type": "image"}
+        for key in ("file_type", "file_name", "file_path"):
+            if img.get(key):
+                part[key] = img[key]
+        if not part.get("file_path") and img.get("file_data"):
+            part["file_data"] = img["file_data"]
+        content.append(part)
     return json.dumps(content, ensure_ascii=False)
 
 
@@ -552,19 +575,36 @@ def enqueue_chat(
     response_style = api_user.get("response_style", DEFAULT_RESPONSE_STYLE)
     service_class = api_user.get("service_class", DEFAULT_SERVICE_CLASS)
 
-    file_data = file_type = file_name = None
+    # Save every image to disk so the persisted content JSON carries plain
+    # file_path parts (same storage layout as the web multi-attachment chat).
+    uploaded: list[dict[str, Any]] = []
+    for img in images:
+        path = save_uploaded_file(
+            file_data=img["file_data"],
+            filename=img["file_name"],
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=login,
+        )
+        if path:
+            img["file_path"] = path
+        uploaded.append(img)
+
+    file_data = file_type = file_name = file_path = None
     if images:
         file_data = images[0]["file_data"]
         file_type = images[0]["file_type"]
         file_name = images[0]["file_name"]
+        file_path = images[0].get("file_path")
 
     message_id = save_message(
         session_id,
         "user",
-        _build_user_content(text, images),
+        _build_user_content(text, uploaded),
         file_data,
         file_type,
         file_name,
+        file_path,
         user_id=login,
         response_style=response_style,
     )

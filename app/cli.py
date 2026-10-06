@@ -383,6 +383,11 @@ def backfill_attachment_paths(dry_run):
                     del item["file_data"]
                     needs_update = True
                     continue
+                if dry_run:
+                    # Report-only: the payload stays in place and no file is
+                    # written.
+                    needs_update = True
+                    continue
                 try:
                     saved_path = save_uploaded_file(
                         file_data=item["file_data"],
@@ -407,9 +412,11 @@ def backfill_attachment_paths(dry_run):
                 continue
 
             new_content = json.dumps(parsed, ensure_ascii=False)
-            click.echo(f"  BACKFILL id={row['id']}")
             if dry_run:
+                click.echo(f"  WOULD BACKFILL id={row['id']}")
+                updated += 1
                 continue
+            click.echo(f"  BACKFILL id={row['id']}")
             if new_content != row["content"]:
                 c.execute(
                     "UPDATE messages SET content = %s, file_path = %s,"
@@ -427,10 +434,14 @@ def backfill_attachment_paths(dry_run):
             conn.commit()
             updated += 1
 
-        # Clear any remaining column base64 for rows that already have a file.
-        c.execute("UPDATE messages SET file_data = NULL WHERE file_path IS NOT NULL AND file_data IS NOT NULL")
-        conn.commit()
+        if not dry_run:
+            # Clear any remaining column base64 for rows that already have a file.
+            c.execute("UPDATE messages SET file_data = NULL WHERE file_path IS NOT NULL AND file_data IS NOT NULL")
+            conn.commit()
+
+    if dry_run:
+        click.echo(f"\nWould update: {updated}, Skipped: {skipped}")
+        click.echo("(dry-run, no changes made)")
+        return
 
     click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
-    if dry_run:
-        click.echo("(dry-run, no changes made)")

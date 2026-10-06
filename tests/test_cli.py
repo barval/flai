@@ -89,7 +89,13 @@ class TestBackfillAttachmentPaths:
                 {"type": "image", "file_data": payload, "file_type": "image/png", "file_name": "a.png"},
             ]
         )
-        session_id, _msg_id = self._msg(test_app, content, file_data=payload)
+        session_id, _msg_id = self._msg(test_app, content, file_data=None)
+        from app import db as _db
+
+        with test_app.app_context():
+            raw = _db.get_session_messages(session_id)
+        parts = _json.loads(raw[0]["content"])
+        assert "file_data" in parts[1], "sanity: pre-migration part keeps its payload"
 
         result = runner.invoke(args=["backfill-attachment-paths", "--dry-run"])
         assert result.exit_code == 0
@@ -101,3 +107,10 @@ class TestBackfillAttachmentPaths:
         images = [p for p in parts if p.get("type") == "image"]
         assert len(images) == 1
         assert "file_data" in images[0], "dry-run must leave the payload in place"
+        # Dry-run is report-only: no file may be written to disk.
+        saved = [
+            p
+            for p in images
+            if p.get("file_path") and os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))
+        ]
+        assert not saved, "dry-run must not write any attachment file"

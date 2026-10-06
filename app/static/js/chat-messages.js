@@ -576,11 +576,18 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                     const escapedText = escapeHtml(textContent.trim());
                     contentHTML += marked.parse(escapedText);
                 }
-                // Extra attachments beyond the legacy first one: render inline.
-                // The first entry stays on the legacy path so the existing
-                // rendering (click-to-enlarge, download links) is unchanged.
-                if (contentAttachments.length > 1 && role === 'user') {
-                    window.__extraAttachments = contentAttachments.slice(1);
+                // Extra attachments: render inline. The legacy first one is
+                // rendered from the fileData/filePath parameters below, so it
+                // must be skipped here — but ONLY while those parameters are
+                // present. Images queued in attachedFiles[] never occupy the
+                // legacy slot, and the optimistic multi-image send passes no
+                // parameters, so an unconditional slice(1) dropped image #1
+                // (4 attached, 3 shown; the HTML export mirrors the DOM).
+                const legacyRendersFirst = Boolean(fileData || filePath);
+                if (contentAttachments.length > 0 && role === 'user') {
+                    window.__extraAttachments = legacyRendersFirst
+                        ? contentAttachments.slice(1)
+                        : contentAttachments;
                 } else {
                     window.__extraAttachments = null;
                 }

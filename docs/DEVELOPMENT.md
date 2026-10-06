@@ -165,8 +165,11 @@ When adding or changing environment variables in `app/config.py`, both `.env` an
 docker exec flai-web flask admin-password <password>
 docker exec flai-web flask cleanup-uploads
 docker exec flai-web flask migrate-messages-format [--dry-run]
+docker exec flai-web flask backfill-attachment-paths [--dry-run]
 docker exec flai-web flask import-history-to-slm [--force] [user_id]
 ```
+
+`backfill-attachment-paths` migrates legacy chat messages whose attachment payloads still live as base64 inside the content JSON: it saves each part to disk via `save_uploaded_file` (the primary part reuses the row-level `file_path`), replaces the payload with the saved relative path and clears the column `file_data` only where a `file_path` exists. It commits per row, is idempotent (a re-run updates 0 messages) and `--dry-run` reports without writing anything; take a database backup first.
 
 Long-term memory maintenance talks to the SLM container directly:
 

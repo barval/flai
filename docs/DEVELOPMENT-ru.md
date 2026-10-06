@@ -165,8 +165,11 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 docker exec flai-web flask admin-password <password>
 docker exec flai-web flask cleanup-uploads
 docker exec flai-web flask migrate-messages-format [--dry-run]
+docker exec flai-web flask backfill-attachment-paths [--dry-run]
 docker exec flai-web flask import-history-to-slm [--force] [user_id]
 ```
+
+`backfill-attachment-paths` переносит на диск вложения старых сообщений чата, которые всё ещё лежат base64 внутри JSON-контента: каждая часть сохраняется через `save_uploaded_file` (первичная переиспользует `file_path` строки), полезная нагрузка заменяется сохранённым относительным путём, а колонка `file_data` очищается только там, где есть `file_path`. Коммит по строкам, идемпотентность (повторный запуск обновляет 0 строк), `--dry-run` только отчитывается без записи; сначала — резервная копия БД.
 
 Обслуживание долговременной памяти обращается к контейнеру SLM напрямую:
 

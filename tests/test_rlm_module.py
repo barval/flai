@@ -595,8 +595,9 @@ def test_run_nudges_final_near_step_limit(test_app):
 @pytest.mark.unit
 def test_run_last_step_has_no_tools_and_plain_text_becomes_answer(test_app):
     """On the final step the model must not be able to burn the step on
-    another tool call: tools are withheld and a plain text response is the
-    final answer (instead of 'step limit reached')."""
+    another tool call: only the final tool is offered (the tool-aware
+    template stays, so the model calls final(answer) structurally), and a
+    plain text response is still the final answer."""
     script = [
         {"content": "", "tool_calls": [{"id": "1", "function": {"name": "python", "arguments": "{}"}}]},
         {"content": "The rubai numbering is 1378-1390, the central symbol is wine."},
@@ -616,7 +617,9 @@ def test_run_last_step_has_no_tools_and_plain_text_becomes_answer(test_app):
         )
     assert result.answer == "The rubai numbering is 1378-1390, the central symbol is wine."
     assert result.error == ""
-    assert llamacpp.calls[-1]["tools"] is None
+    last_tools = llamacpp.calls[-1]["tools"]
+    assert last_tools is not None
+    assert [t["function"]["name"] for t in last_tools] == ["final"]
 
 
 @pytest.mark.unit
@@ -766,3 +769,114 @@ def test_run_single_file_final_allowed_immediately(test_app):
             is_cancelled=lambda: False,
         )
     assert result.answer == "ok"
+
+
+# --- fix/v12.5-rlm-leaked-toolcall: final-only last step + leaked tool-call parse ---
+
+
+@pytest.mark.unit
+def test_run_last_step_offers_only_final_tool(test_app):
+    """The final step must keep a tool-aware template but offer ONLY the
+    final tool, so the model calls final(answer) structurally instead of
+    printing the call as plain text."""
+    script = [
+        {"content": "", "tool_calls": [{"id": "1", "function": {"name": "python", "arguments": "{}"}}]},
+        {"content": "Plain text answer."},
+    ]
+    module, llamacpp = _make_module(script)
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 2
+        module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    last_tools = llamacpp.calls[-1]["tools"]
+    assert last_tools is not None
+    assert [t["function"]["name"] for t in last_tools] == ["final"]
+
+
+@pytest.mark.unit
+def test_run_last_step_leaked_final_call_is_parsed(test_app):
+    """A model that prints the final call as text (tool-call leak) on the
+    last step must yield the answer, not the raw dialogue."""
+    leaked = "<function=final>\n<parameter=answer>The answer is 42.</parameter>\n</function>"
+    script = [
+        {"content": "", "tool_calls": [{"id": "1", "function": {"name": "python", "arguments": "{}"}}]},
+        {"content": leaked},
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 2
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "The answer is 42."
+    assert result.error == ""
+
+
+@pytest.mark.unit
+def test_run_mid_run_leaked_python_call_is_executed(test_app):
+    """A leaked <function=python> block mid-run must be parsed back into a
+    structured tool call and executed, not returned as the answer."""
+    leaked = "<function=python>\n<parameter=code>print(len(context['a.txt']))</parameter>\n</function>"
+    script = [
+        {"content": leaked},
+        {"content": "Answer: length is 5."},
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"a.txt": "abcde"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "Answer: length is 5."
+    assert any(t.tool == "python" for t in result.trace)
+
+
+@pytest.mark.unit
+def test_run_plain_text_without_leak_is_untouched(test_app):
+    """Normal text that merely mentions function-like words must not be
+    mangled by the leak parser."""
+    script = [{"content": "The corpus defines context and final(answer) semantics."}]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "The corpus defines context and final(answer) semantics."
+
+
+@pytest.mark.unit
+def test_rlm_prompt_documents_available_helpers(test_app):
+    with test_app.app_context():
+        module = RlmModule.__new__(RlmModule)
+        ru = module.build_system_prompt("ru")
+        en = module.build_system_prompt("en")
+        assert "re" in ru and "math" in ru and "lambda" in ru
+        assert "re" in en and "math" in en and "lambda" in en

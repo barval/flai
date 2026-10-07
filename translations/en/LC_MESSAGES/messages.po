@@ -454,6 +454,21 @@ msgstr "Unknown request type"
 msgid "Image editing request was empty"
 msgstr "Image editing request was empty"
 
+msgid "Image generation request was empty"
+msgstr "Image generation request was empty"
+
+msgid "horizontal"
+msgstr "horizontal"
+
+msgid "vertical"
+msgstr "vertical"
+
+msgid "square"
+msgstr "square"
+
+msgid "Aspect ratio: {width}×{height} ({orientation})"
+msgstr "Aspect ratio: {width}×{height} ({orientation})"
+
 #: app/queue.py:4074 app/queue.py:4248
 msgid "Video request was empty"
 msgstr "Video request was empty"

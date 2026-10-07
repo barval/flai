@@ -90,7 +90,6 @@ class TestFolderFrontendLogic:
             "folder_new",
             "folder_rename",
             "folder_delete",
-            "folder_move_selected",
             "folder_clear_selection",
             "folder_move_to_root",
             "documents_selected_count",
@@ -98,6 +97,27 @@ class TestFolderFrontendLogic:
             "folder_delete_cascade_confirm",
         ):
             assert key in CHAT_HTML
+
+
+class TestBulkBar:
+    def test_bulk_buttons_have_ids(self):
+        assert 'id="bulk-move-button"' in CHAT_DOCS
+        assert 'id="bulk-clear-button"' in CHAT_DOCS
+
+    def test_bulk_move_icon(self):
+        # arrow + folder icons replace the «Move to…» text; tooltip stays
+        assert "title=\"${t('folder_move')}\">➤ 📂</button>" in CHAT_DOCS
+
+    def test_bulk_clear_icon(self):
+        # lone ✖ replaces the «Clear selection» text; tooltip stays
+        assert "title=\"${t('folder_clear_selection')}\">✖</button>" in CHAT_DOCS
+
+    def test_text_labels_removed_from_bulk_buttons(self):
+        assert "folder_move_selected" not in CHAT_DOCS
+
+    def test_move_document_button_arrow(self):
+        # per-document move button gets the same arrow + folder icons
+        assert 'move-document-button" title="${t(\'folder_move\')}">➤ 📂</button>' in CHAT_DOCS
 
 
 class TestFolderDialog:

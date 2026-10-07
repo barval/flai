@@ -2242,10 +2242,6 @@ msgid "Move to folder"
 msgstr "Move to folder"
 
 #: app/templates/chat.html
-msgid "Move to…"
-msgstr "Move to…"
-
-#: app/templates/chat.html
 msgid "Clear selection"
 msgstr "Clear selection"
 

@@ -235,7 +235,7 @@ function renderDocItem(doc) {
                 ${descriptionLine}
             </div>
             <div class="document-actions">
-                <button class="move-document-button" title="${t('folder_move')}">📂</button>
+                <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>
         </div>
@@ -308,8 +308,8 @@ function updateDocumentsList(documents, folders = []) {
     let html = `
     <div class="bulk-documents-bar hidden" id="bulk-documents-bar">
         <span id="bulk-selected-count" class="bulk-label"></span>
-        <button class="bulk-move-button" title="${t('folder_move')}">📂 ${t('folder_move_selected')}</button>
-        <button class="bulk-clear-button" title="${t('folder_clear_selection')}">✖ ${t('folder_clear_selection')}</button>
+        <button id="bulk-move-button" class="bulk-move-button" title="${t('folder_move')}">➤ 📂</button>
+        <button id="bulk-clear-button" class="bulk-clear-button" title="${t('folder_clear_selection')}">✖</button>
     </div>
     `;
     html += folderDocs;

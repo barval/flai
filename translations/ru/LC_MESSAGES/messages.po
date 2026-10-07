@@ -2264,10 +2264,6 @@ msgid "Move to folder"
 msgstr "Переместить в папку"
 
 #: app/templates/chat.html
-msgid "Move to…"
-msgstr "Переместить в…"
-
-#: app/templates/chat.html
 msgid "Clear selection"
 msgstr "Снять выделение"
 

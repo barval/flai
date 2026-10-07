@@ -176,6 +176,9 @@ def delete_user(login):
 
         c.execute("DELETE FROM documents WHERE user_id = %s", (user_id,))
 
+        # Document folders (GDPR: folders are per-user metadata only)
+        c.execute("DELETE FROM document_folders WHERE user_id = %s", (user_id,))
+
         # 3. Delete user's documents folder
         user_docs_dir = os.path.join(documents_folder, user_id)
         if os.path.exists(user_docs_dir):

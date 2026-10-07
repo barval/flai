@@ -43,6 +43,7 @@ from .utils import (
     format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
+    get_image_dimensions,
     save_uploaded_file,
 )
 
@@ -1583,17 +1584,11 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "analyzing_prompt"})
         # Attached example images: describe each one so the SD prompt can
-        # reference them ("draw something similar").
-        example_sections: list[str] = []
-        if images:
-            multimodal = self.app.modules.get("multimodal")
-            if multimodal and multimodal.available:
-                results = multimodal.describe_images_for_context(images, lang)
-                for idx, (_data, description, error) in enumerate(results, 1):
-                    if description and not error:
-                        example_sections.append(f"{idx}. {description}")
-            if example_sections:
-                self.app.logger.info(f"Image gen: {len(example_sections)} example descriptions collected")
+        # reference them ("draw something similar"). Real aspect ratio of each
+        # example is appended so the SD format matches the reference.
+        example_sections = self._collect_reference_examples(images, lang)
+        if example_sections:
+            self.app.logger.info(f"Image gen: {len(example_sections)} example descriptions collected")
         generation_query = query
         if example_sections:
             from flask_babel import gettext as _
@@ -2152,6 +2147,48 @@ class RedisRequestQueue:
         return self._process_image_gen_task(
             query, session_id, user_id, lang, response_style, task=task, images=request_data.get("images")
         )
+
+    def _collect_reference_examples(self, images: list[str], lang: str) -> list[str]:
+        """Describe each attached reference image («draw something similar») and
+        append its real aspect ratio so the SD prompt can match the example format."""
+        sections: list[str] = []
+        if not images:
+            return sections
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal or not multimodal.available:
+            return sections
+        results = multimodal.describe_images_for_context(images, lang)
+        for idx, (data, description, error) in enumerate(results, 1):
+            if not description or error:
+                continue
+            section = f"{idx}. {description}"
+            aspect = self._image_aspect_line(data, lang)
+            if aspect:
+                section += f"\n{aspect}"
+            sections.append(section)
+        return sections
+
+    def _image_aspect_line(self, image_data: str, lang: str) -> str:
+        """Localized real-size line for a reference image, e.g.
+        «Формат: 768×1024 (вертикальный)». Empty string when the size is unknown."""
+        dimensions = get_image_dimensions(image_data)
+        if not dimensions:
+            return ""
+        width, height = dimensions
+        try:
+            with force_locale(lang):
+                from flask_babel import gettext as _
+
+                if width > height:
+                    orientation = _("horizontal")
+                elif width < height:
+                    orientation = _("vertical")
+                else:
+                    orientation = _("square")
+                pattern = _("Aspect ratio: {width}×{height} ({orientation})")
+            return pattern.format(width=width, height=height, orientation=orientation)
+        except RuntimeError:
+            return f"{width}×{height}"
 
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
@@ -4702,6 +4739,22 @@ class RedisRequestQueue:
                         else:
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
                             is_error = True
+                    # Check if the response indicates a NEW-image generation request
+                    # ("draw something similar" — the attached images are examples)
+                    elif isinstance(bot_reply, str) and bot_reply.strip().startswith("[-IMAGE-]"):
+                        image_query = bot_reply.strip()[len("[-IMAGE-]") :].strip()
+                        if image_query:
+                            return self._process_image_gen_task(
+                                image_query,
+                                session_id,
+                                user_id,
+                                lang,
+                                response_style,
+                                images=images,
+                            )
+                        else:
+                            bot_reply = "⚠️ " + self.app.modules["base"]._("Image generation request was empty", lang)
+                            is_error = True
                     # Safety net: if model returned edit-like content without the required marker,
                     # treat as a model error, NOT an edit request.
                     elif isinstance(bot_reply, str) and "edit_prompt" in bot_reply:
@@ -4743,9 +4796,10 @@ class RedisRequestQueue:
         user_id: str,
         response_style: str = "neutral",
     ) -> dict[str, Any]:
-        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-] or [-VIDEO-] marker."""
+        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-], [-VIDEO-] or [-IMAGE-] marker."""
         edit_marker = "[-IMAGE-EDIT-]"
         video_marker = "[-VIDEO-]"
+        image_marker = "[-IMAGE-]"
         process_start = time.time()
         images = [file_data] if isinstance(file_data, str) else list(file_data)
         first_image = images[0] if images else ""
@@ -4889,6 +4943,31 @@ class RedisRequestQueue:
                             user_class=task.get("user_class", 2),
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
+                    process_time = round(time.time() - process_start, 1)
+                    return self._save_and_respond(
+                        session_id,
+                        bot_reply,
+                        "unknown",
+                        process_time,
+                        is_error=True,
+                        extra={"model_type": "system"},
+                        response_style=response_style,
+                    )
+                if image_marker in buffer:
+                    for token in stream_gen:
+                        full_response += token
+                    image_query = full_response.split(image_marker, 1)[1].strip()
+                    if image_query:
+                        return self._process_image_gen_task(
+                            image_query,
+                            session_id,
+                            user_id,
+                            lang,
+                            response_style,
+                            task=task,
+                            images=images,
+                        )
+                    bot_reply = "⚠️ " + self.app.modules["base"]._("Image generation request was empty", lang)
                     process_time = round(time.time() - process_start, 1)
                     return self._save_and_respond(
                         session_id,

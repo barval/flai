@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.4\n"
+"Project-Id-Version: FLAI 12.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-01 10:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -457,6 +457,21 @@ msgstr "Неизвестный тип запроса"
 #: app/queue.py:4056 app/queue.py:4221
 msgid "Image editing request was empty"
 msgstr "Запрос на редактирование изображения пуст"
+
+msgid "Image generation request was empty"
+msgstr "Запрос на создание изображения был пуст"
+
+msgid "horizontal"
+msgstr "горизонтальный"
+
+msgid "vertical"
+msgstr "вертикальный"
+
+msgid "square"
+msgstr "квадратный"
+
+msgid "Aspect ratio: {width}×{height} ({orientation})"
+msgstr "Формат: {width}×{height} ({orientation})"
 
 #: app/queue.py:4074 app/queue.py:4248
 msgid "Video request was empty"
@@ -2199,6 +2214,98 @@ msgstr "Закрыть"
 #: app/templates/chat.html:14 app/templates/chat.html:186
 msgid "New document"
 msgstr "Новый документ"
+
+#: app/routes/documents.py
+msgid "Folder name is required"
+msgstr "Введите название папки"
+
+#: app/routes/documents.py
+msgid "Folder name is too long"
+msgstr "Название папки слишком длинное"
+
+#: app/routes/documents.py
+msgid "A folder with this name already exists"
+msgstr "Папка с таким названием уже существует"
+
+#: app/routes/documents.py
+msgid "Folder not found"
+msgstr "Папка не найдена"
+
+#: app/routes/documents.py
+msgid "Missing folder_id"
+msgstr "Не указана папка"
+
+#: app/routes/documents.py
+msgid "No documents selected"
+msgstr "Не выбраны документы"
+
+#: app/templates/chat.html
+msgid "New folder"
+msgstr "Новая папка"
+
+#: app/templates/chat.html
+msgid "Rename folder"
+msgstr "Переименовать папку"
+
+#: app/templates/chat.html
+msgid "Create folder"
+msgstr "Создание папки"
+
+#: app/templates/chat.html
+msgid "Enter folder name"
+msgstr "Введите название папки"
+
+#: app/templates/chat.html
+msgid "Delete folder"
+msgstr "Удалить папку"
+
+#: app/templates/chat.html
+msgid "Move to folder"
+msgstr "Переместить в папку"
+
+#: app/templates/chat.html
+msgid "Clear selection"
+msgstr "Снять выделение"
+
+#: app/templates/chat.html
+msgid "Move to root"
+msgstr "Переместить в корень"
+
+#: app/templates/chat.html
+msgid "Selected documents: {count} ({size})"
+msgstr "Выделено документов: {count} ({size})"
+
+#: app/templates/chat.html
+msgid "Select all documents in folder"
+msgstr "Выбрать все документы в папке"
+
+#: app/templates/chat.html
+msgid "Select for moving"
+msgstr "Отметить для перемещения"
+
+#: app/templates/chat.html
+msgid "Select for deep analysis"
+msgstr "Отметить для глубокого анализа"
+
+#: app/templates/chat.html
+msgid "Delete selected documents"
+msgstr "Удалить выбранные документы"
+
+#: app/templates/chat.html
+msgid "Delete {count} selected documents ({size})?"
+msgstr "Вы хотите удалить {count} выбранных документов на {size}?"
+
+#: app/templates/chat.html
+msgid "Failed to delete some documents"
+msgstr "Не удалось удалить часть документов"
+
+#: app/templates/chat.html
+msgid "Delete folder \"{name}\"?"
+msgstr "Удалить папку «{name}»?"
+
+#: app/templates/chat.html
+msgid "This will also delete {count} documents ({size}) inside the folder. Continue?"
+msgstr "Вместе с папкой будет удалено {count} документов ({size}). Продолжить?"
 
 #: app/templates/chat.html:33 app/templates/chat.html:130
 msgid "Delete session"

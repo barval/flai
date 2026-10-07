@@ -102,6 +102,7 @@ class _MockDatabase:
         self._messages: list[dict] = []
         self._model_configs: list[dict] = []
         self._documents: list[dict] = []
+        self._document_folders: list[dict] = []
         self._storage: dict[str, dict] = {}
         self._visits: dict[tuple, dict] = {}
         self._user_sessions: dict[str, dict] = {}
@@ -344,11 +345,28 @@ class _MockDatabase:
             self._result(msgs, rowcount=len(msgs))
             return
 
+        # FROM document_folders
+        if "FROM DOCUMENT_FOLDERS" in sql_u:
+            if len(params) > 1:
+                fid = params[0]
+                uid = params[-1]
+                folders = [dict(f) for f in self._document_folders if f.get("id") == fid and f.get("user_id") == uid]
+                self._result(folders[0] if folders else None, rowcount=len(folders))
+                return
+            uid = params[0] if params else None
+            folders = [dict(f) for f in self._document_folders if f.get("user_id") == uid]
+            folders.sort(key=lambda f: (str(f.get("created_at", "")), str(f.get("name", ""))))
+            self._result(folders, rowcount=len(folders))
+            return
+
         # FROM documents
         if "FROM DOCUMENTS" in sql_u:
             if "WHERE USER_ID" in sql_u or "WHERE user_id" in sql:
                 user_id = params[0]
                 docs = [dict(d) for d in self._documents if d.get("user_id") == user_id]
+                if "FOLDER_ID" in sql_u and len(params) > 1:
+                    folder_id = params[1]
+                    docs = [d for d in docs if d.get("folder_id") == folder_id]
                 docs.sort(key=lambda d: str(d.get("uploaded_at", "")), reverse=True)
                 self._result(docs, rowcount=len(docs))
                 return
@@ -552,8 +570,22 @@ class _MockDatabase:
                 "indexing_started_at": None,
                 "embedding_model": None,
                 "description_model": None,
+                "folder_id": params[7] if len(params) > 7 else None,
             }
             self._documents.append(doc)
+            self._result(None, rowcount=1)
+            return
+
+        # INTO document_folders
+        if "INTO DOCUMENT_FOLDERS" in sql_u:
+            self._document_folders.append(
+                {
+                    "id": params[0],
+                    "user_id": params[1],
+                    "name": params[2],
+                    "created_at": params[3],
+                }
+            )
             self._result(None, rowcount=1)
             return
 
@@ -636,6 +668,37 @@ class _MockDatabase:
                         if i < len(params) - 1:
                             session[field] = params[i]
             self._result(None, rowcount=1 if session else 0)
+            return
+
+        # UPDATE document_folders
+        if "DOCUMENT_FOLDERS" in sql_u:
+            fid = params[-2] if len(params) >= 2 else None
+            uid = params[-1]
+            folder = next(
+                (f for f in self._document_folders if f.get("id") == fid and f.get("user_id") == uid),
+                None,
+            )
+            if folder:
+                set_clause = sql[sql.index("SET") + 3 :]
+                if "WHERE" in set_clause.upper():
+                    set_clause = set_clause[: set_clause.upper().index("WHERE")]
+                fields = re.findall(r"(\w+)\s*=\s*%s", set_clause, re.IGNORECASE)
+                for i, field in enumerate(fields):
+                    if i < len(params) - 2:
+                        folder[field] = params[i]
+            self._result(None, rowcount=1 if folder else 0)
+            return
+
+        # UPDATE documents (folder)
+        if "SET FOLDER_ID" in sql_u:
+            folder_id, doc_id, uid = params[-3], params[-2], params[-1]
+            doc = next(
+                (d for d in self._documents if d.get("id") == doc_id and d.get("user_id") == uid),
+                None,
+            )
+            if doc:
+                doc["folder_id"] = folder_id
+            self._result(None, rowcount=1 if doc else 0)
             return
 
         # UPDATE documents
@@ -722,6 +785,22 @@ class _MockDatabase:
         if "FROM USERS" in sql_u:
             login = params[0]
             self._users.pop(login, None)
+            self._result(None, rowcount=1)
+            return
+
+        # DELETE FROM document_folders
+        if "FROM DOCUMENT_FOLDERS" in sql_u:
+            if "AND" in sql_u:
+                fid = params[0]
+                uid = params[1] if len(params) > 1 else None
+                prev = len(self._document_folders)
+                self._document_folders = [
+                    f for f in self._document_folders if not (f.get("id") == fid and f.get("user_id") == uid)
+                ]
+                self._result(None, rowcount=0 if len(self._document_folders) == prev else 1)
+                return
+            uid = params[0]
+            self._document_folders = [f for f in self._document_folders if f.get("user_id") != uid]
             self._result(None, rowcount=1)
             return
 

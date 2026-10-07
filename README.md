@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.4](#-whats-new-in-v124)
+- [🆕 What's New in v12.5](#-whats-new-in-v125)
 - [✨ Features](#-features)
 - [🏗️ Architecture Overview](#-architecture-overview)
 - [🧭 Types of Requests & Search Mechanisms](#-types-of-requests-search-mechanisms)
@@ -69,12 +69,12 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.4
+## 🆕 What's New in v12.5
 
 - **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Attachments live on disk, sessions open instantly** — every attached file (images, audio, documents) is saved to disk from the very first write, and `flask backfill-attachment-paths` migrates older chats the same way, so a history reload no longer ships megabytes of base64 that once made heavy sessions slow to open (one picture-heavy message dropped from ~3.9 MB to a few KB). Built for old rows too: pre-migration messages keep rendering untouched. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - **Deep analysis with attachments** — the 🔬 toggle accepts up to 4 images (each becomes a corpus «document») and chat-attached documents, so the Documents-panel selection is optional. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
-- **«Draw something similar» with examples** — attach example images to an image-generation request; each example is described and the descriptions steer the SD prompt. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
+- **«Draw something similar» with examples** — attach example images to an image-generation request; each example is described and the descriptions steer the SD prompt. An image-attached chat request («нарисуй что-то похожее») is routed to generation too, and the real width×height of the reference is respected. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Higher limits** — documents 25 MB, per-user document storage 250 MB, request body 75 MB; scanned-PDF OCR gets a 30-minute budget per document with a partial-indexing notice. → [CONFIGURATION.md](docs/CONFIGURATION.md)
 - **Tavily-first web search** — every user can attach a free personal Tavily key (1000 credits/month) in the profile popup. Search tries Tavily and degrades to the local SearXNG engine on any failure, so a spent quota or an invalid key never breaks search. → [SEARCH.md](docs/SEARCH.md)
 - **Web crawler (Crawl4AI)** — an optional sidecar reads a pasted URL in a real browser (`read_page`) and, for an explicit «study this site» request, crawls the domain (≤50 pages, depth ≤3, 5-minute budget), replaces the per-domain document, indexes it through the normal RAG pipeline and answers from it — including in Deep Analysis. → [SEARCH.md](docs/SEARCH.md)
@@ -100,6 +100,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
 - **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document folders** — single-level folders in the Documents panel: create/rename/delete (with cascade), move documents by button or drag-and-drop, bulk selection with move and delete (the bar shows the total size), and upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 

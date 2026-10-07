@@ -52,7 +52,18 @@ header {
     justify-content: space-between;
     font-weight: 600;
 }
-.api-keys-close { color: inherit; background: none; border: 0; font-size: 1rem; cursor: pointer; }
+.api-keys-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    padding: 2px 4px;
+    color: inherit;
+    background: none;
+    border: 0;
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+}
 .api-keys-hint { margin: 4px 0; font-size: 12px; opacity: 0.75; text-align: left; }
 .api-keys-create { display: flex; gap: 8px; margin: 8px 0; }
 .api-keys-create input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }

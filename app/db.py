@@ -562,7 +562,8 @@ def get_user_documents(user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at, embedding_model, description_model
+               index_status, indexed_at, indexing_started_at, embedding_model, description_model,
+               folder_id
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC
@@ -628,17 +629,17 @@ def get_user_documents(user_id):
         return documents
 
 
-def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
+def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None):
     """Save document metadata to database."""
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """
-        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
-            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time),
+            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time, folder_id),
         )
 
 
@@ -703,6 +704,111 @@ def get_document(doc_id, user_id):
         )
         row = c.fetchone()
         return dict(row) if row else None
+
+
+def save_folder(user_id, folder_id, name):
+    """Insert a new document folder (single-level, owned by the user)."""
+    current_time = get_current_time_for_db()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        INSERT INTO document_folders (id, user_id, name, created_at)
+        VALUES (%s, %s, %s, %s)
+        """,
+            (folder_id, user_id, name, current_time),
+        )
+
+
+def get_user_folders(user_id):
+    """List the user's folders (oldest first)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, name, created_at
+        FROM document_folders
+        WHERE user_id = %s
+        ORDER BY created_at ASC, name ASC
+        """,
+            (user_id,),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def get_folder(folder_id, user_id):
+    """Get a folder that belongs to the user, or None."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, name
+        FROM document_folders
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, user_id),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def rename_folder(folder_id, user_id, name):
+    """Rename a folder owned by the user. Returns True when renamed."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        UPDATE document_folders
+        SET name = %s
+        WHERE id = %s AND user_id = %s
+        """,
+            (name, folder_id, user_id),
+        )
+        return c.rowcount > 0
+
+
+def delete_folder(folder_id, user_id):
+    """Delete a folder row (documents are removed by the caller). Returns True when deleted."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        DELETE FROM document_folders
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, user_id),
+        )
+        return c.rowcount > 0
+
+
+def get_folder_documents(user_id, folder_id):
+    """List the documents inside a folder (metadata only)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, filename, file_size, file_path
+        FROM documents
+        WHERE user_id = %s AND folder_id = %s
+        """,
+            (user_id, folder_id),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def set_document_folder(doc_id, user_id, folder_id):
+    """Move a document into a folder (None moves it to the root). Returns True when moved."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        UPDATE documents
+        SET folder_id = %s
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, doc_id, user_id),
+        )
+        return c.rowcount > 0
 
 
 def delete_document(doc_id, user_id):

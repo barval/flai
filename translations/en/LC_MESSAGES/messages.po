@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.4\n"
+"Project-Id-Version: FLAI 12.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-01 10:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -453,6 +453,21 @@ msgstr "Unknown request type"
 #: app/queue.py:4056 app/queue.py:4221
 msgid "Image editing request was empty"
 msgstr "Image editing request was empty"
+
+msgid "Image generation request was empty"
+msgstr "Image generation request was empty"
+
+msgid "horizontal"
+msgstr "horizontal"
+
+msgid "vertical"
+msgstr "vertical"
+
+msgid "square"
+msgstr "square"
+
+msgid "Aspect ratio: {width}×{height} ({orientation})"
+msgstr "Aspect ratio: {width}×{height} ({orientation})"
 
 #: app/queue.py:4074 app/queue.py:4248
 msgid "Video request was empty"
@@ -2177,6 +2192,98 @@ msgstr "Close"
 #: app/templates/chat.html:14 app/templates/chat.html:186
 msgid "New document"
 msgstr "New document"
+
+#: app/routes/documents.py
+msgid "Folder name is required"
+msgstr "Folder name is required"
+
+#: app/routes/documents.py
+msgid "Folder name is too long"
+msgstr "Folder name is too long"
+
+#: app/routes/documents.py
+msgid "A folder with this name already exists"
+msgstr "A folder with this name already exists"
+
+#: app/routes/documents.py
+msgid "Folder not found"
+msgstr "Folder not found"
+
+#: app/routes/documents.py
+msgid "Missing folder_id"
+msgstr "Missing folder_id"
+
+#: app/routes/documents.py
+msgid "No documents selected"
+msgstr "No documents selected"
+
+#: app/templates/chat.html
+msgid "New folder"
+msgstr "New folder"
+
+#: app/templates/chat.html
+msgid "Rename folder"
+msgstr "Rename folder"
+
+#: app/templates/chat.html
+msgid "Create folder"
+msgstr "Create folder"
+
+#: app/templates/chat.html
+msgid "Enter folder name"
+msgstr "Enter folder name"
+
+#: app/templates/chat.html
+msgid "Delete folder"
+msgstr "Delete folder"
+
+#: app/templates/chat.html
+msgid "Move to folder"
+msgstr "Move to folder"
+
+#: app/templates/chat.html
+msgid "Clear selection"
+msgstr "Clear selection"
+
+#: app/templates/chat.html
+msgid "Move to root"
+msgstr "Move to root"
+
+#: app/templates/chat.html
+msgid "Selected documents: {count} ({size})"
+msgstr "Selected documents: {count} ({size})"
+
+#: app/templates/chat.html
+msgid "Select all documents in folder"
+msgstr "Select all documents in folder"
+
+#: app/templates/chat.html
+msgid "Select for moving"
+msgstr "Select for moving"
+
+#: app/templates/chat.html
+msgid "Select for deep analysis"
+msgstr "Select for deep analysis"
+
+#: app/templates/chat.html
+msgid "Delete selected documents"
+msgstr "Delete selected documents"
+
+#: app/templates/chat.html
+msgid "Delete {count} selected documents ({size})?"
+msgstr "Delete {count} selected documents ({size})?"
+
+#: app/templates/chat.html
+msgid "Failed to delete some documents"
+msgstr "Failed to delete some documents"
+
+#: app/templates/chat.html
+msgid "Delete folder \"{name}\"?"
+msgstr "Delete folder \"{name}\"?"
+
+#: app/templates/chat.html
+msgid "This will also delete {count} documents ({size}) inside the folder. Continue?"
+msgstr "This will also delete {count} documents ({size}) inside the folder. Continue?"
 
 #: app/templates/chat.html:33 app/templates/chat.html:130
 msgid "Delete session"

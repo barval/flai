@@ -216,11 +216,11 @@ function renderDocItem(doc) {
         descriptionLine = `<div class="document-description-model"><span class="document-status-icon">🖼️</span> ${escapeHtml(doc.description_model)}</div>`;
     }
 
-    const isRlmSelected = rlmSelectedDocs.has(doc.id);
+    const showRlm = isRlmMode() && rlmSelectedDocs.has(doc.id);
     const docChecked = selectedDocIds.has(doc.id);
 
     return `
-    <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="true">
+    <div class="document-item${showRlm ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="true">
         <div class="document-content">
             <label class="document-checkbox" title="${isRlmMode() ? t('documents_select_for_analysis') : t('documents_select_for_move')}">
                 <input type="checkbox" class="doc-check" data-document-id="${doc.id}"${docChecked ? ' checked' : ''}>
@@ -228,7 +228,7 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${isRlmSelected ? ' ✓' : ''}</span>
+                    📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                 ${embeddingLine}
@@ -360,10 +360,11 @@ function syncRlmDocsSelect() {
 }
 
 // Show the count of documents selected for the RLM toggle, e.g. "Deep analysis (2)".
+// The count is visible only while the toggle is on.
 function updateRlmToggleCount() {
     const countEl = document.getElementById('rlm-count');
     if (!countEl) return;
-    const n = rlmSelectedDocs.size;
+    const n = isRlmMode() ? rlmSelectedDocs.size : 0;
     countEl.textContent = n > 0 ? ` (${n})` : '';
 }
 
@@ -496,13 +497,12 @@ function updateBulkBar() {
 
 function clearDocumentSelection() {
     selectedDocIds = new Set();
-    // In RLM mode the analysis selection is driven by the same checkboxes.
-    if (isRlmMode()) {
-        rlmSelectedDocs = new Set();
-        applyRlmMarkers();
-        updateRlmToggleCount();
-        syncRlmDocsSelect();
-    }
+    // The analysis set mirrors the checkboxes in every mode, so it is cleared
+    // unconditionally here; the marker pass hides any leftover tint.
+    rlmSelectedDocs = new Set();
+    applyRlmMarkers();
+    updateRlmToggleCount();
+    syncRlmDocsSelect();
     document.querySelectorAll('.doc-check').forEach(cb => {
         cb.checked = false;
     });
@@ -810,34 +810,33 @@ function isRlmMode() {
 }
 
 // Mark/unmark every rendered document according to the RLM selection set.
+// The highlight is shown only while the "Deep analysis" toggle is on, so a
+// cleared selection or an off toggle can never leave a stale green tint.
 function applyRlmMarkers() {
     document.querySelectorAll('.document-item').forEach(item => {
         const id = item.dataset.documentId;
         const selected = rlmSelectedDocs.has(id);
-        item.classList.toggle('rlm-selected', selected);
+        const show = isRlmMode() && selected;
+        item.classList.toggle('rlm-selected', show);
         const marker = item.querySelector('.rlm-marker');
-        if (marker) marker.textContent = selected ? ' ✓' : '';
+        if (marker) marker.textContent = show ? ' ✓' : '';
     });
 }
 
-// Pick a document with the single checkbox set. In RLM mode the pick is
-// mirrored into the deep-analysis selection; otherwise it feeds the move bar.
+// Pick a document with the single checkbox set. The pick is mirrored into the
+// deep-analysis set in EVERY mode, so the analysis corpus always equals the
+// visible checkbox selection and cannot drift apart from it.
 function setDocChecked(docId, checked) {
     if (checked) {
         selectedDocIds.add(docId);
+        rlmSelectedDocs.add(docId);
     } else {
         selectedDocIds.delete(docId);
+        rlmSelectedDocs.delete(docId);
     }
-    if (isRlmMode()) {
-        if (checked) {
-            rlmSelectedDocs.add(docId);
-        } else {
-            rlmSelectedDocs.delete(docId);
-        }
-        applyRlmMarkers();
-        updateRlmToggleCount();
-        syncRlmDocsSelect();
-    }
+    applyRlmMarkers();
+    updateRlmToggleCount();
+    syncRlmDocsSelect();
 }
 
 // When the toggle is switched on, the current checkbox selection becomes the
@@ -1000,14 +999,18 @@ function initDocumentsView() {
     }
 
     // "Deep analysis" toggle: switching it on turns the current checkbox
-    // selection into the RLM corpus; switching it off returns the checkboxes
-    // to move selection without dropping the analysis selection.
+    // selection into the RLM corpus; switching it off immediately clears the
+    // green highlight and the count (the corpus is re-derived on re-enable).
     const rlmToggleEl = document.getElementById('rlm-toggle');
     if (rlmToggleEl) {
         rlmToggleEl.addEventListener('change', function() {
             if (rlmToggleEl.checked) {
                 syncRlmFromSelection();
             } else {
+                rlmSelectedDocs = new Set();
+                applyRlmMarkers();
+                updateRlmToggleCount();
+                syncRlmDocsSelect();
                 updateBulkBar();
             }
         });

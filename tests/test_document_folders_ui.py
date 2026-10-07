@@ -174,6 +174,27 @@ class TestSelectionMode:
     def test_checkbox_title_follows_mode(self):
         assert "documents_select_for_analysis" in CHAT_DOCS
 
+    def test_rlm_markers_only_in_analysis_mode(self):
+        # green highlight/count render only while the analysis toggle is on
+        assert "const show = isRlmMode() && selected" in CHAT_DOCS
+        assert "const showRlm = isRlmMode() && rlmSelectedDocs.has(doc.id)" in CHAT_DOCS
+        assert (
+            "count: isRlmMode() ? rlmSelectedDocs.size : 0" in CHAT_DOCS
+            or "const n = isRlmMode() ? rlmSelectedDocs.size : 0" in CHAT_DOCS
+        )
+
+    def test_checkboxes_always_mirror_rlm_selection(self):
+        # unchecking a doc/folder clears it from the analysis set in ANY mode,
+        # so a stale green highlight can never survive a cleared selection
+        assert "rlmSelectedDocs.add(docId);" in CHAT_DOCS
+        assert "rlmSelectedDocs.delete(docId);" in CHAT_DOCS
+        assert "rlmSelectedDocs = new Set();" in CHAT_DOCS
+
+    def test_toggle_off_resets_green_highlight(self):
+        # un-checking the analysis toggle drops the corpus immediately
+        assert "rlmSelectedDocs = new Set();" in CHAT_DOCS
+        assert "applyRlmMarkers();" in CHAT_DOCS
+
     def test_select_all_none_buttons_removed(self):
         # bulk select-all shortcuts were dropped as redundant (v12.5)
         assert 'id="doc-select-all-button"' not in CHAT_HTML

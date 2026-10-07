@@ -517,6 +517,24 @@ def resize_image_if_needed(
         return file_data, file_type, file_name, False, None, None
 
 
+def get_image_dimensions(file_data: str) -> tuple[int, int] | None:
+    """Return (width, height) of a base64 or data-URL image, or None on failure.
+
+    Used to append the real aspect ratio of attached reference images to the
+    SD prompt («draw something similar» keeps the reference format)."""
+    try:
+        raw = file_data
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        image_bytes = base64.b64decode(raw)
+        img = Image.open(BytesIO(image_bytes))
+        return img.size  # type: ignore[return-value]
+    except Exception as e:
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.debug(f"get_image_dimensions failed: {e}")
+        return None
+
+
 # Formats that llama.cpp (stb_image) can decode natively.
 # Pillow supports many more (HEIC, AVIF, JPEG XL, etc.) but llama.cpp returns
 # "Failed to load image or audio file" (HTTP 400) for those.

@@ -112,6 +112,25 @@ class TestDocumentFoldersAPI:
         assert alice.post("/api/document-folders", json={"name": "Contracts"}).status_code == 200
         assert alice.post("/api/document-folders", json={"name": "Contracts"}).status_code == 409
 
+    def test_folder_count_limit_follows_documents_limit(self, alice, test_app):
+        # The folder cap equals MAX_DOCUMENTS_PER_USER (250 by default)
+        with test_app.app_context():
+            from app import db
+            from app.userdb import get_user_by_login
+
+            login = get_user_by_login("alice")["login"]
+            for i in range(250):
+                db.save_folder(login, f"f{i}", f"F{i}")
+        assert alice.post("/api/document-folders", json={"name": "One more"}).status_code == 409
+        # Deleting one frees a slot
+        with test_app.app_context():
+            from app import db
+            from app.userdb import get_user_by_login
+
+            login = get_user_by_login("alice")["login"]
+            db.delete_folder("f0", login)
+        assert alice.post("/api/document-folders", json={"name": "One more"}).status_code == 200
+
     def test_rename_folder(self, alice):
         fid = alice.post("/api/document-folders", json={"name": "Old"}).get_json()["id"]
         r = alice.patch(f"/api/document-folders/{fid}", json={"name": "New"})

@@ -144,6 +144,9 @@ def api_create_folder():
         return jsonify({"error": error}), 400
     if _is_duplicate_folder(login, name):
         return jsonify({"error": _("A folder with this name already exists")}), 409
+    max_folders = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
+    if len(db.get_user_folders(login)) >= max_folders:
+        return jsonify({"error": _("Folder limit reached ({n})").format(n=max_folders)}), 409
     folder_id = str(uuid.uuid4())
     db.save_folder(login, folder_id, name)
     return jsonify({"status": "ok", "id": folder_id})

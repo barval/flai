@@ -1,6 +1,7 @@
 # tests/test_crawl_task.py
 """The crawl→document→RAG→answer pipeline with a mocked container."""
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -480,7 +481,8 @@ class TestCrawlErrorMessages:
             content = po.read()
         assert f'msgid "{msgid}"' in content
         entry = content.split(f'msgid "{msgid}"', 1)[1].split("\n\n", 1)[0]
-        msgstr = entry.split('msgstr "', 1)[1].rsplit('"', 1)[0]
+        # The msgstr may be line-wrapped into several quoted chunks — join them.
+        msgstr = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', entry.split("msgstr", 1)[1]))
         assert msgstr.startswith("⚠️ ")
         assert msgstr.count("⚠️") == 1
 

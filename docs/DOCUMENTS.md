@@ -5,8 +5,9 @@
 | What | Limit | Variable |
 |------|-------|----------|
 | One document | 25 MB | `MAX_DOCUMENT_SIZE_MB` |
-| Documents per user | 50 | `MAX_DOCUMENTS_PER_USER` |
+| Documents per user | 250 | `MAX_DOCUMENTS_PER_USER` |
 | Documents storage per user | 250 MB | `MAX_DOCUMENTS_STORAGE_MB` |
+| Folders per user | 250 (same as the documents limit) | `MAX_DOCUMENTS_PER_USER` |
 | Scanned-PDF OCR budget | 30 min per document | `OCR_TIME_BUDGET_S` (0 = unlimited) |
 
 When the OCR budget expires, the pages recognized so far are indexed and the user is notified how far the recognition went.

@@ -13,8 +13,6 @@
                     <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
                     <button id="add-folder-button" class="new-tab-button" title="{{ _('New folder') }}">📁</button>
-                    <button id="doc-select-all-button" class="new-tab-button" title="{{ _('Select all documents') }}">☑️</button>
-                    <button id="doc-select-none-button" class="new-tab-button" title="{{ _('Clear all document selection') }}">✖️</button>
                 </div>
                 <!-- Sessions tab -->
                 <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
@@ -221,12 +219,13 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'folder_move': {{ _('Move to folder')|tojson }},
     'folder_clear_selection': {{ _('Clear selection')|tojson }},
     'folder_move_to_root': {{ _('Move to root')|tojson }},
+    'delete_selected': {{ _('Delete selected documents')|tojson }},
+    'delete_selected_confirm': {{ _('Delete {count} selected documents ({size})?')|tojson }},
+    'delete_selected_failure': {{ _('Failed to delete some documents')|tojson }},
     'documents_selected_count': {{ _('Selected documents: {count} ({size})')|tojson }},
     'documents_select_folder': {{ _('Select all documents in folder')|tojson }},
     'documents_select_for_move': {{ _('Select for moving')|tojson }},
     'documents_select_for_analysis': {{ _('Select for deep analysis')|tojson }},
-    'doc_select_all': {{ _('Select all documents')|tojson }},
-    'doc_select_none': {{ _('Clear all document selection')|tojson }},
     'folder_delete_confirm': {{ _('Delete folder "{name}"?')|tojson }},
     'folder_delete_cascade_confirm': {{ _('This will also delete {count} documents ({size}) inside the folder. Continue?')|tojson }},
     'supported_formats': {{ _('Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB')|tojson }},

@@ -467,13 +467,18 @@
     color: #ecf0f1;
 }
 .dark-theme .bulk-move-button,
-.dark-theme .bulk-clear-button {
+.dark-theme .bulk-clear-button,
+.dark-theme .bulk-delete-button {
     border-color: #666;
     color: #ecf0f1;
 }
 .dark-theme .bulk-move-button:hover,
-.dark-theme .bulk-clear-button:hover {
+.dark-theme .bulk-clear-button:hover,
+.dark-theme .bulk-delete-button:hover {
     background-color: #4a4a4a;
+}
+.dark-theme .bulk-delete-button:hover {
+    color: #e74c3c;
 }
 .dark-theme .folder-picker-menu {
     background-color: #2d2d2d;

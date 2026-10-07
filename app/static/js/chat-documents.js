@@ -310,6 +310,7 @@ function updateDocumentsList(documents, folders = []) {
         <span id="bulk-selected-count" class="bulk-label"></span>
         <button id="bulk-move-button" class="bulk-move-button" title="${t('folder_move')}">➤ 📂</button>
         <button id="bulk-clear-button" class="bulk-clear-button" title="${t('folder_clear_selection')}">✖</button>
+        <button id="bulk-delete-button" class="bulk-delete-button" title="${t('delete_selected')}">🗑️</button>
     </div>
     `;
     html += folderDocs;
@@ -426,6 +427,13 @@ function attachDocumentEventHandlers() {
         bulkClearBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             clearDocumentSelection();
+        });
+    }
+    const bulkDeleteBtn = document.getElementById('bulk-delete-button');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteSelectedDocuments();
         });
     }
     // Folders: collapse toggle, rename, delete.
@@ -841,6 +849,41 @@ function syncRlmFromSelection() {
     syncRlmDocsSelect();
 }
 
+// Delete every selected document. Confirms with the count and total size,
+// then issues one DELETE per id and reloads the list once all settle.
+function deleteSelectedDocuments() {
+    const ids = Array.from(selectedDocIds);
+    if (ids.length === 0) return;
+    let totalSize = 0;
+    ids.forEach(id => {
+        const doc = documentsData[id];
+        if (doc && doc.file_size) totalSize += doc.file_size;
+    });
+    const confirmMessage = formatString(t('delete_selected_confirm'), { count: ids.length, size: formatFileSize(totalSize) });
+    if (!confirm(confirmMessage)) return;
+
+    let failures = 0;
+    let done = 0;
+    ids.forEach(id => {
+        fetchWithCSRF(`/api/documents/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'ok') failures++;
+            })
+            .catch(() => failures++)
+            .finally(() => {
+                done++;
+                if (done === ids.length) {
+                    clearDocumentSelection();
+                    loadDocuments(false);
+                    if (failures > 0) {
+                        alert(t('error') + ': ' + t('delete_selected_failure'));
+                    }
+                }
+            });
+    });
+}
+
 function deleteDocument(docId, docName) {
     const confirmMessage = formatString(t('delete_document_confirm'), {
         filename: docName
@@ -967,30 +1010,6 @@ function initDocumentsView() {
             } else {
                 updateBulkBar();
             }
-        });
-    }
-
-    // Select / clear every document with the semantics of the current mode.
-    const selectAllBtn = document.getElementById('doc-select-all-button');
-    if (selectAllBtn) {
-        selectAllBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const allIds = Object.keys(documentsData);
-            allIds.forEach(id => selectedDocIds.add(id));
-            if (isRlmMode()) syncRlmFromSelection();
-            updateDocumentsList(Object.values(documentsData), Object.values(foldersData));
-        });
-    }
-    const selectNoneBtn = document.getElementById('doc-select-none-button');
-    if (selectNoneBtn) {
-        selectNoneBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            selectedDocIds = new Set();
-            if (isRlmMode()) {
-                rlmSelectedDocs = new Set();
-                updateRlmToggleCount();
-            }
-            updateDocumentsList(Object.values(documentsData), Object.values(foldersData));
         });
     }
 

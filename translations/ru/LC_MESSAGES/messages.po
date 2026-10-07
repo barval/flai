@@ -2288,12 +2288,16 @@ msgid "Select for deep analysis"
 msgstr "Отметить для глубокого анализа"
 
 #: app/templates/chat.html
-msgid "Select all documents"
-msgstr "Выбрать все документы"
+msgid "Delete selected documents"
+msgstr "Удалить выбранные документы"
 
 #: app/templates/chat.html
-msgid "Clear all document selection"
-msgstr "Снять выделение всех документов"
+msgid "Delete {count} selected documents ({size})?"
+msgstr "Вы хотите удалить {count} выбранных документов на {size}?"
+
+#: app/templates/chat.html
+msgid "Failed to delete some documents"
+msgstr "Не удалось удалить часть документов"
 
 #: app/templates/chat.html
 msgid "Delete folder \"{name}\"?"

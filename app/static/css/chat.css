@@ -353,7 +353,8 @@
     color: #2c3e50;
 }
 .bulk-move-button,
-.bulk-clear-button {
+.bulk-clear-button,
+.bulk-delete-button {
     background: none;
     border: 1px solid #b8cfe8;
     border-radius: 4px;
@@ -363,8 +364,15 @@
     padding: 0.2rem 0.5rem;
 }
 .bulk-move-button:hover,
-.bulk-clear-button:hover {
+.bulk-clear-button:hover,
+.bulk-delete-button:hover {
     background-color: #d6e9fb;
+}
+.bulk-delete-button {
+    margin-left: 4px;
+}
+.bulk-delete-button:hover {
+    color: #e74c3c;
 }
 
 /* Folder picker popup for moving documents / choosing an upload target */

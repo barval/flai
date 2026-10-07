@@ -95,8 +95,6 @@ class TestFolderFrontendLogic:
             "documents_selected_count",
             "folder_delete_confirm",
             "folder_delete_cascade_confirm",
-            "doc_select_all",
-            "doc_select_none",
         ):
             assert key in CHAT_HTML
 
@@ -135,6 +133,23 @@ class TestBulkBar:
         assert "white-space: nowrap" in CHAT_CSS
         assert "min-width: 34px" in CHAT_CSS
 
+    def test_bulk_delete_button_markup(self):
+        assert 'id="bulk-delete-button"' in CHAT_DOCS
+        assert "title=\"${t('delete_selected')}\">🗑️</button>" in CHAT_DOCS
+
+    def test_bulk_delete_confirm_with_count_and_size(self):
+        assert "function deleteSelectedDocuments" in CHAT_DOCS
+        assert "delete_selected_confirm" in CHAT_DOCS
+        assert "{ count: ids.length, size: formatFileSize(totalSize) }" in CHAT_DOCS
+
+    def test_bulk_delete_css(self):
+        assert ".bulk-delete-button" in CHAT_CSS
+        assert ".bulk-delete-button:hover" in CHAT_CSS
+
+    def test_bulk_delete_css_dark(self):
+        assert ".dark-theme .bulk-delete-button" in DARK_CSS
+        assert ".dark-theme .bulk-delete-button:hover" in DARK_CSS
+
 
 class TestSelectionMode:
     """Single checkbox set driven by the Deep analysis toggle (v12.5)."""
@@ -159,18 +174,18 @@ class TestSelectionMode:
     def test_checkbox_title_follows_mode(self):
         assert "documents_select_for_analysis" in CHAT_DOCS
 
-    def test_select_all_none_buttons_markup(self):
-        assert 'id="doc-select-all-button"' in CHAT_HTML
-        assert 'id="doc-select-none-button"' in CHAT_HTML
+    def test_select_all_none_buttons_removed(self):
+        # bulk select-all shortcuts were dropped as redundant (v12.5)
+        assert 'id="doc-select-all-button"' not in CHAT_HTML
+        assert 'id="doc-select-none-button"' not in CHAT_HTML
 
-    def test_select_buttons_stop_tab_switch(self):
-        assert "e.stopPropagation()" in CHAT_DOCS
-        assert "doc-select-all-button" in CHAT_DOCS
-        assert "doc-select-none-button" in CHAT_DOCS
+    def test_select_all_none_js_removed(self):
+        assert "doc-select-all-button" not in CHAT_DOCS
+        assert "doc-select-none-button" not in CHAT_DOCS
 
-    def test_selection_mode_translation_keys_shipped(self):
-        for key in ("doc_select_all", "doc_select_none"):
-            assert key in CHAT_HTML
+    def test_select_all_none_translation_keys_removed(self):
+        assert "doc_select_all" not in CHAT_HTML
+        assert "doc_select_none" not in CHAT_HTML
 
 
 class TestFolderDialog:

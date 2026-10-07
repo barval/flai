@@ -54,7 +54,7 @@ def load_config(app):
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
     app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 250))
-    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 50))
+    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 250))
 
     # Image validation settings (shared)
     app.config["MAX_IMAGE_WIDTH"] = int(os.getenv("MAX_IMAGE_WIDTH", 3840))

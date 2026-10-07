@@ -1155,7 +1155,7 @@ def check_document_quota(user_id: str, excluded_doc_id: str | None = None, lang:
                 return str(gettext(msgid).format(**params))
         return str(gettext(msgid).format(**params))
 
-    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 50)
+    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
     max_mb = current_app.config.get("MAX_DOCUMENTS_STORAGE_MB", 50)
 
     try:

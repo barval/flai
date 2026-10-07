@@ -337,6 +337,23 @@ def _init_postgresql():
         $migrate$
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS document_folders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'documents' AND column_name = 'folder_id') THEN
+                ALTER TABLE documents ADD COLUMN folder_id TEXT;
+            END IF;
+        END
+        $migrate$
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS session_visits (
             user_id TEXT,
             session_id TEXT,

@@ -2193,6 +2193,82 @@ msgstr "Close"
 msgid "New document"
 msgstr "New document"
 
+#: app/routes/documents.py
+msgid "Folder name"
+msgstr "Folder name"
+
+#: app/routes/documents.py
+msgid "Folder name is required"
+msgstr "Folder name is required"
+
+#: app/routes/documents.py
+msgid "Folder name is too long"
+msgstr "Folder name is too long"
+
+#: app/routes/documents.py
+msgid "A folder with this name already exists"
+msgstr "A folder with this name already exists"
+
+#: app/routes/documents.py
+msgid "Folder not found"
+msgstr "Folder not found"
+
+#: app/routes/documents.py
+msgid "Missing folder_id"
+msgstr "Missing folder_id"
+
+#: app/routes/documents.py
+msgid "No documents selected"
+msgstr "No documents selected"
+
+#: app/templates/chat.html
+msgid "New folder"
+msgstr "New folder"
+
+#: app/templates/chat.html
+msgid "Rename folder"
+msgstr "Rename folder"
+
+#: app/templates/chat.html
+msgid "Delete folder"
+msgstr "Delete folder"
+
+#: app/templates/chat.html
+msgid "Move to folder"
+msgstr "Move to folder"
+
+#: app/templates/chat.html
+msgid "Move to…"
+msgstr "Move to…"
+
+#: app/templates/chat.html
+msgid "Clear selection"
+msgstr "Clear selection"
+
+#: app/templates/chat.html
+msgid "Move to root"
+msgstr "Move to root"
+
+#: app/templates/chat.html
+msgid "Selected documents: {count}"
+msgstr "Selected documents: {count}"
+
+#: app/templates/chat.html
+msgid "Select all documents in folder"
+msgstr "Select all documents in folder"
+
+#: app/templates/chat.html
+msgid "Select for moving"
+msgstr "Select for moving"
+
+#: app/templates/chat.html
+msgid "Delete folder \"{name}\"?"
+msgstr "Delete folder \"{name}\"?"
+
+#: app/templates/chat.html
+msgid "This will also delete {count} documents ({size}) inside the folder. Continue?"
+msgstr "This will also delete {count} documents ({size}) inside the folder. Continue?"
+
 #: app/templates/chat.html:33 app/templates/chat.html:130
 msgid "Delete session"
 msgstr "Delete session"

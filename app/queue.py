@@ -5138,7 +5138,9 @@ class RedisRequestQueue:
             image_name = request_data.get("image_name")
 
             if image_data:
-                # Image + voice: requeue as image task (multimodal processing)
+                # Image + voice: requeue as image task (multimodal processing).
+                # Multi-attachment: extra images beyond the primary one travel
+                # in "images" and reach the joint vision call.
                 requeue_request_data = {
                     "type": "image",
                     "text": transcribed_text,
@@ -5151,6 +5153,9 @@ class RedisRequestQueue:
                     "response_style": response_style,
                     "stream": True,
                 }
+                extra_images = [img for img in request_data.get("images", []) if img != image_data]
+                if extra_images:
+                    requeue_request_data["images"] = [image_data] + extra_images
             else:
                 # Voice only: requeue as text task (router processing)
                 requeue_request_data = {

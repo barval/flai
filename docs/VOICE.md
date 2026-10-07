@@ -5,6 +5,8 @@
 
 Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
+A voice message may be recorded on top of attached images: the transcript task carries the images, so the answer is re-queued as an image-chat task and the model sees both what you said and what you attached (voice in the legacy attachment slot and in the multi-attachment layout both pair correctly).
+
 ```bash
 # Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d

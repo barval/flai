@@ -99,14 +99,6 @@ header {
     .api-keys-table { min-width: 480px; }
 }
 
-/* Increase header height on mobile devices and keep it in flow */
-@media (max-width: 768px) {
-    header {
-        height: 75px;
-        padding: 0.75rem 1rem;
-    }
-}
-
 .header-logo {
     height: 40px;
     width: auto;
@@ -142,6 +134,39 @@ footer {
     align-items: center;
     justify-content: center;
     margin-top: auto;
+    position: relative; /* anchor for the mobile voice/theme buttons */
+}
+
+/* On mobile the voice-gender (left) and theme (right) buttons are relocated
+   into the footer bar by header.js. Desktop keeps them in the header row. */
+@media (max-width: 768px) {
+    footer .voice-gender-switcher {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 0;
+    }
+    footer .theme-switcher {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 0;
+    }
+    footer .voice-gender-button,
+    footer .theme-toggle-button {
+        width: 26px;
+        height: 26px;
+        font-size: 1.1rem;
+    }
+    footer #voice-gender-icon {
+        font-size: 1rem;
+    }
+    /* Keep the brand label clear of both corner buttons */
+    footer .footer-brand {
+        padding: 0.15rem 2.2rem;
+    }
 }
 
 /* The clickable brand label — the only click target in the bar */
@@ -238,22 +263,10 @@ footer {
     gap: 15px;
     margin-left: auto;
 }
-
 .header-row {
     display: flex;
     align-items: center;
     gap: 15px;
-}
-
-@media (max-width: 768px) {
-    .logout-container {
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 5px;
-    }
-    .header-row {
-        gap: 8px;
-    }
 }
 
 .logout-container span {
@@ -271,6 +284,11 @@ footer {
     transition: background-color 0.3s;
 }
 
+/* Desktop keeps the text-only button; mobile shows the icon only */
+.logout-button .logout-icon {
+    display: none;
+}
+
 .logout-button:hover {
     background-color: #c0392b;
 }
@@ -283,6 +301,61 @@ footer {
     background-color: white;
     color: #333;
     cursor: pointer;
+}
+
+/* Mobile custom dropdown: closed toggle «Ру ▾», menu lists full names */
+.lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    color: #333;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.lang-menu {
+    position: absolute;
+    top: 100%;
+    right: 0; /* open leftwards: the switcher hugs the right screen edge */
+    z-index: 1200;
+    min-width: 120px;
+    padding: 4px;
+    background-color: white;
+    color: #333;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.lang-option {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.6rem;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: #333;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.lang-option:hover {
+    background-color: #e6f2ff;
+}
+
+.lang-option[data-selected] {
+    background-color: #d0e8ff;
+    font-weight: 600;
+}
+
+.language-switcher {
+    position: relative;
 }
 
 /* ===== VOICE GENDER TOGGLE ===== */
@@ -367,4 +440,104 @@ footer {
 .dark-theme .theme-toggle-button {
     background-color: #34495e;
     color: #f1c40f;
+}
+
+/* ===== DARK THEME: CUSTOM LANGUAGE DROPDOWN ===== */
+.dark-theme .lang-toggle {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #ecf0f1;
+}
+
+.dark-theme .lang-menu {
+    background-color: #2d2d2d;
+    border-color: #555;
+    color: #ecf0f1;
+}
+
+.dark-theme .lang-option {
+    color: #e0e0e0;
+}
+
+.dark-theme .lang-option:hover {
+    background-color: #3a4a5a;
+}
+
+.dark-theme .lang-option[data-selected] {
+    background-color: #34495e;
+    color: #ecf0f1;
+}
+
+/* Author display rules beat the UA [hidden] style — re-assert it for the
+   custom dropdown parts so the desktop never shows the mobile toggle/menu
+   and the menu starts closed. */
+.lang-toggle[hidden],
+.lang-menu[hidden] {
+    display: none;
+}
+
+/* ===== MOBILE SLIM HEADER (must come after the base rules above so the
+   cascade wins: same specificity, later source order) ===== */
+@media (max-width: 768px) {
+    header {
+        height: 38px;
+        padding: 0.15rem 0.5rem;
+        gap: 6px;
+        text-align: left;
+    }
+    .header-logo {
+        height: 26px;
+        margin-right: 6px;
+    }
+    header h1 {
+        font-size: 1rem;
+        margin-right: 0; /* header gap: 6px distributes spacing evenly */
+    }
+    .logout-container {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+    }
+    .header-row {
+        gap: 6px;
+    }
+    .user-name {
+        max-width: 26vw;
+        font-size: 0.8rem;
+        padding: 0.1rem 0.3rem;
+    }
+    /* Language: the custom dropdown only — the native select stays hidden */
+    .language-switcher select {
+        display: none;
+    }
+    .lang-toggle {
+        padding: 0.1rem 0.3rem;
+        font-size: 0.85rem;
+    }
+    /* Logout: small square icon button (icon shown, text hidden) */
+    .logout-button {
+        padding: 0;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
+        line-height: 1;
+    }
+    .logout-button .logout-icon {
+        display: inline;
+    }
+    .logout-button .logout-text {
+        display: none;
+    }
+    /* The switchers live in the footer (moved by header.js); if the JS has
+       not run yet, keep them out of the slim header */
+    header .voice-gender-switcher,
+    header .theme-switcher {
+        display: none;
+    }
 }

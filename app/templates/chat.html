@@ -4,10 +4,6 @@
     <div class="sessions-sidebar">
         <div class="sessions-header">
             <div class="header-tabs">
-                <!-- Mobile collapse toggle (visible only on mobile) -->
-                <div class="collapse-toggle-mobile" id="collapse-toggle-mobile" title="Toggle collapse">
-                    <span class="collapse-icon" id="collapse-icon">➡️</span>
-                </div>
                 <!-- Documents tab -->
                 <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
                     <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>

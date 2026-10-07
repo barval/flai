@@ -412,7 +412,7 @@ SSE-события `tool_call` и `tool_result` в `events.js`. `TOOL_LABELS` с
 
 `app/static/js/chat-recording.js`: если изображение уже прикреплено в момент записи голоса, голос сохраняется как `attachedVoiceBlob` вместо замены `attachedFile`. Превью показывает `"image.jpg + 🎤 voice.webm"`.
 
-Сервер: `_process_transcribe_task()` создаёт задачу `type: "image"`, когда присутствуют одновременно `image_data` и `voice_record`.
+Сервер: `_process_transcribe_task()` создаёт задачу `type: "image"`, когда присутствуют одновременно `image_data` и `voice_record`. Сопоставление работает в обеих раскладках вложений: голос в отдельном поле `voice` пары́ется с картинкой из `file_data`; голос в старом слоте `file` (флоу мультивложений v12.4) — с первой картинкой из extra-частей, а полный список изображений передаётся в `request_data["images"]`, чтобы модель зрения получила каждое приложенное изображение. Тесты: `tests/test_voice_image_pairing.py`.
 
 ## Вставка изображений из буфера обмена
 

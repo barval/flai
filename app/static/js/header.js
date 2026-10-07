@@ -33,6 +33,107 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Mobile layout: the language dropdown shows only «Ру»/«En» and the voice
+// gender / theme buttons live in the footer row (left / right corner).
+function isMobileLayout() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+// Mobile: hide the native select, show the custom dropdown (toggle «Ру ▾» +
+// a menu listing the full names). Desktop: the select alone. The menu always
+// starts closed; [hidden] is honoured via CSS rules, not UA defaults.
+function applyCompactLangOptions(compact) {
+    document.querySelectorAll('.language-switcher').forEach(box => {
+        const toggle = box.querySelector('.lang-toggle');
+        const menu = box.querySelector('.lang-menu');
+        const select = box.querySelector('select');
+        if (toggle) toggle.hidden = !compact;
+        if (menu) menu.hidden = true; // never open on layout switch
+        if (select) select.hidden = compact;
+    });
+}
+
+// Short label for the closed toggle: «Ру ▾» / «En ▾» from the select's
+// data-short attributes (authoritative, matches the option language).
+function langShortLabel(box) {
+    const select = box.querySelector('select');
+    if (!select) return 'Ру';
+    const selected = select.querySelector('option:checked') || select.querySelector('option');
+    return (selected && selected.dataset.short) || 'Ру';
+}
+
+// Wire the custom mobile language dropdown: the toggle shows the short label,
+// the menu lists the full names («Русский»/«English»).
+function initLangDropdown() {
+    document.querySelectorAll('.language-switcher').forEach(box => {
+        const toggle = box.querySelector('.lang-toggle');
+        const menu = box.querySelector('.lang-menu');
+        if (!toggle || !menu || toggle.dataset.bound) return;
+        toggle.dataset.bound = '1';
+
+        const syncToggleLabel = () => {
+            toggle.textContent = langShortLabel(box) + ' ▾';
+        };
+        syncToggleLabel();
+        // Re-sync after the session language changes (full page reload) and
+        // whenever the select value changes while the dropdown is hidden.
+        box.querySelector('select').addEventListener('change', syncToggleLabel);
+
+        toggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            menu.hidden = !menu.hidden;
+        });
+        menu.querySelectorAll('.lang-option').forEach(btn => {
+            btn.addEventListener('click', function() {
+                menu.hidden = true;
+                switchLanguage(this.dataset.lang);
+            });
+        });
+        // Close on outside click
+        document.addEventListener('click', function(e) {
+            if (!menu.hidden && !box.contains(e.target)) menu.hidden = true;
+        });
+    });
+}
+
+// Move the voice-gender and theme switchers between the header rows and the
+// footer bar. The elements keep their event handlers — only the parent node
+// changes. Mobile: voice goes to the footer left corner, theme to the right.
+// Desktop: both sit in row1 BEFORE the user name, so the logout form stays
+// the rightmost control. The guest (login) page has no voice switcher and no
+// rows — the theme switcher returns directly into <header>.
+function relocateHeaderControls() {
+    const theme = document.querySelector('.theme-switcher');
+    if (!theme) return;
+    const voice = document.querySelector('.voice-gender-switcher');
+    if (isMobileLayout()) {
+        const footer = document.querySelector('footer');
+        if (!footer || theme.dataset.location === 'footer') return;
+        theme.dataset.location = 'footer';
+        if (voice) {
+            voice.dataset.location = 'footer';
+            footer.insertBefore(voice, footer.firstChild); // left corner
+        }
+        footer.appendChild(theme); // right corner
+    } else {
+        if (theme.dataset.location !== 'footer') return;
+        delete theme.dataset.location;
+        if (voice) delete voice.dataset.location;
+        const anchor = document.getElementById('api-keys-btn');
+        const row1 = document.querySelector('.header-row.row1');
+        if (row1 && anchor) {
+            // Voice, then theme, then the user name — logout stays rightmost.
+            if (voice) row1.insertBefore(voice, anchor);
+            row1.insertBefore(theme, voice ? voice : anchor);
+        } else {
+            const header = document.querySelector('header');
+            if (!header) return;
+            if (voice) header.appendChild(voice);
+            header.appendChild(theme);
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Language switcher
     const langSelect = document.getElementById('language-select');
@@ -41,6 +142,15 @@ document.addEventListener('DOMContentLoaded', function() {
             switchLanguage(this.value);
         });
     }
+
+    // Compact language options + footer relocation on mobile
+    applyCompactLangOptions(isMobileLayout());
+    initLangDropdown();
+    relocateHeaderControls();
+    window.addEventListener('resize', function() {
+        applyCompactLangOptions(isMobileLayout());
+        relocateHeaderControls();
+    });
 
     // Voice gender toggle
     const voiceBtn = document.getElementById('voice-gender-toggle');

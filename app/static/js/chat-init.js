@@ -321,8 +321,13 @@ async function sendMessage() {
             // started by handleTranscriptionResult() once the flag is set, so
             // fall through to the normal voice send flow without un-checking.
             window.rlmAwaitingVoice = true;
-            window.rlmAwaitingVoiceImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'))
+            // The image may sit in the legacy single slot (voice in multi is
+            // impossible: voice never enters the multi queue) OR the image is
+            // in the multi queue while the voice holds the legacy slot.
+            const firstMultiImage = attachedFiles.find(isImageFile) || null;
+            const legacyImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'))
                 ? attachedFile : null;
+            window.rlmAwaitingVoiceImage = legacyImage || firstMultiImage;
         } else if (!hasVoice) {
             // Deep analysis cannot start here: no documents & no image, and no
             // voice query either (no question will ever arrive). Un-check the
@@ -797,6 +802,12 @@ function addCopyButtonsToAllCodeBlocks() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Mobile layout: move the chat controls to the "Deep analysis" row
+    relocateChatControls(window.innerWidth <= 768);
+    window.addEventListener('resize', function() {
+        relocateChatControls(window.innerWidth <= 768);
+    });
+
     // Validate currentSessionId before proceeding
     if (!window.initialSessionId) {
         console.error('No initial session ID! Creating new session...');
@@ -843,6 +854,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('new-session-button').addEventListener('click', function(e) {
         e.stopPropagation();
         createNewSession();
+        closeMobilePanel();
     });
     
     document.getElementById('send-button').addEventListener('click', sendMessage);
@@ -950,9 +962,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Initialize collapsible sessions sidebar
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof initCollapsibleSessions === 'function') {
-        initCollapsibleSessions();
+// Mobile full-screen panel: initialized declaratively via CSS (.panel-open),
+// tab toggling lives in chat-documents.js switchView(), session clicks and
+// the new-session button call closeMobilePanel() (chat-sessions.js).
+
+// Mobile chat input layout: 🎤/📎/Send join the "Deep analysis" row and the
+// message input takes the full width below. The buttons keep their handlers
+// (all bound via getElementById) — only the parent node changes. Desktop
+// restores the original order inside .message-input.
+function relocateChatControls(mobile) {
+    const voice = document.getElementById('voice-record-button');
+    const attach = document.getElementById('attach-file-button');
+    const send = document.getElementById('send-button');
+    const rlmRow = document.querySelector('.rlm-controls');
+    const inputRow = document.querySelector('.message-input');
+    if (!voice || !attach || !send || !rlmRow || !inputRow) return;
+
+    if (mobile) {
+        if (voice.dataset.location === 'rlm') return;
+        voice.dataset.location = 'rlm';
+        attach.dataset.location = 'rlm';
+        send.dataset.location = 'rlm';
+        rlmRow.appendChild(voice);
+        rlmRow.appendChild(attach);
+        rlmRow.appendChild(send);
+    } else {
+        if (voice.dataset.location !== 'rlm') return;
+        delete voice.dataset.location;
+        delete attach.dataset.location;
+        delete send.dataset.location;
+        // Original template order: input, voice, (hidden file-input), attach, send
+        inputRow.appendChild(voice);
+        inputRow.appendChild(attach);
+        inputRow.appendChild(send);
     }
-});
+}
+
+window.relocateChatControls = relocateChatControls;

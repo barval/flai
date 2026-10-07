@@ -606,10 +606,10 @@ body.dark-theme .model-card .model-desc {
 /* ===== MOBILE ADAPTATIONS ===== */
 @media (max-width: 768px) {
     .admin-container {
-        /* 75px header + 30px footer + ~20px mobile-viewport error (100vh vs dvh).
+        /* 38px header + 30px footer + ~20px mobile-viewport error (100vh vs dvh).
            dvh tracks the visible viewport; the px fallback covers old browsers. */
-        height: calc(100vh - 125px);
-        height: calc(100dvh - 105px);
+        height: calc(100vh - 88px);
+        height: calc(100dvh - 68px);
         padding: 15px;
     }
 

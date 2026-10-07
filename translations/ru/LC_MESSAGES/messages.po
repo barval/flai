@@ -2215,6 +2215,82 @@ msgstr "Закрыть"
 msgid "New document"
 msgstr "Новый документ"
 
+#: app/routes/documents.py
+msgid "Folder name"
+msgstr "Название папки"
+
+#: app/routes/documents.py
+msgid "Folder name is required"
+msgstr "Введите название папки"
+
+#: app/routes/documents.py
+msgid "Folder name is too long"
+msgstr "Название папки слишком длинное"
+
+#: app/routes/documents.py
+msgid "A folder with this name already exists"
+msgstr "Папка с таким названием уже существует"
+
+#: app/routes/documents.py
+msgid "Folder not found"
+msgstr "Папка не найдена"
+
+#: app/routes/documents.py
+msgid "Missing folder_id"
+msgstr "Не указана папка"
+
+#: app/routes/documents.py
+msgid "No documents selected"
+msgstr "Не выбраны документы"
+
+#: app/templates/chat.html
+msgid "New folder"
+msgstr "Новая папка"
+
+#: app/templates/chat.html
+msgid "Rename folder"
+msgstr "Переименовать папку"
+
+#: app/templates/chat.html
+msgid "Delete folder"
+msgstr "Удалить папку"
+
+#: app/templates/chat.html
+msgid "Move to folder"
+msgstr "Переместить в папку"
+
+#: app/templates/chat.html
+msgid "Move to…"
+msgstr "Переместить в…"
+
+#: app/templates/chat.html
+msgid "Clear selection"
+msgstr "Снять выделение"
+
+#: app/templates/chat.html
+msgid "Move to root"
+msgstr "Переместить в корень"
+
+#: app/templates/chat.html
+msgid "Selected documents: {count}"
+msgstr "Выделено документов: {count}"
+
+#: app/templates/chat.html
+msgid "Select all documents in folder"
+msgstr "Выбрать все документы в папке"
+
+#: app/templates/chat.html
+msgid "Select for moving"
+msgstr "Отметить для перемещения"
+
+#: app/templates/chat.html
+msgid "Delete folder \"{name}\"?"
+msgstr "Удалить папку «{name}»?"
+
+#: app/templates/chat.html
+msgid "This will also delete {count} documents ({size}) inside the folder. Continue?"
+msgstr "Вместе с папкой будет удалено {count} документов ({size}). Продолжить?"
+
 #: app/templates/chat.html:33 app/templates/chat.html:130
 msgid "Delete session"
 msgstr "Удалить сеанс"

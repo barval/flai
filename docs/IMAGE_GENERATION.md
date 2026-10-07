@@ -16,6 +16,10 @@ Configure via `SD_MODEL_TYPE` in `.env`:
 SD_MODEL_TYPE=z_image_turbo
 ```
 
+**«Draw something similar» with references** — attach example images to a generation request (in chat, or via `image_references` on `POST /v1/images/generations`). Each example is described by the multimodal model, the descriptions are prepended to the SD prompt as reference examples («Reference examples (draw something similar):»), and the real width×height of the reference is appended — the generation template gives the example's aspect ratio priority over the subject-based format rule. SD itself receives text only.
+
+An image-attached chat message such as *«нарисуй что-то похожее»* is classified by the multimodal model into a dedicated `[-IMAGE-]` option (create a NEW similar image, distinct from `[-IMAGE-EDIT-]`), and the two image-chat handlers route it straight to generation with the attached examples.
+
 ## Image Editing (Flux.2 Klein 4B)
 
 Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:

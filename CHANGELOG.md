@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.5] — Unreleased
 
+### Fixed
+
+- **A chat «draw something similar» request with attached images now reaches SD generation** — before, an image-attached request like that was answered in text, because the image-chat routing only knew the `[-IMAGE-EDIT-]` and `[-VIDEO-]` markers and had no branch for creating a NEW similar image. The multimodal divider now has a fourth option (`[-IMAGE-] <original request>`) clearly separated from edit, both image-chat handlers (streaming and sync) buffer that marker and call `_process_image_gen_task` with the attached examples, each example is described by the vision model, its real width×height is appended to the description, and the generation template gives the example's aspect ratio priority over the subject-based format rule. Tests: `tests/test_image_draw_similar.py`.
+
+- **The profile popup close button sits in the panel corner again** — the ✕ lived inside the «FLAI API keys» header row, so it rendered opposite that label instead of in the top-right corner of the popup. The button is now absolutely positioned against the panel (already `position: absolute`), matching the About dialog close pattern. No HTML or JS change; `color: inherit` keeps it themed, dark mode included.
+
 ## [v12.4] — 2026-10-07
 
 ### Added

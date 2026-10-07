@@ -395,6 +395,104 @@
     background-color: #e6f2ff;
 }
 
+/* Folder name dialog (create/rename) */
+.folder-name-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.folder-name-modal[hidden] { display: none; }
+.folder-name-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+.folder-name-content {
+    position: relative;
+    width: min(360px, calc(100vw - 48px));
+    padding: 24px 26px 20px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.folder-name-content h3 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    color: #2c3e50;
+}
+.folder-name-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    margin-bottom: 6px;
+}
+.folder-name-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #b8cfe8;
+    border-radius: 5px;
+    font-size: 0.95rem;
+    color: #2c3e50;
+    background: #fff;
+}
+.folder-name-input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+.folder-name-error {
+    color: #e74c3c;
+    font-size: 0.82rem;
+    margin-top: 6px;
+}
+.folder-name-error[hidden] { display: none; }
+.folder-name-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+.folder-name-actions button {
+    border-radius: 5px;
+    padding: 0.4rem 1rem;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+.folder-name-cancel {
+    background: none;
+    border: 1px solid #b8cfe8;
+    color: #2c3e50;
+}
+.folder-name-cancel:hover {
+    background-color: #eef4fb;
+}
+.folder-name-submit {
+    background-color: #3498db;
+    border: 1px solid #3498db;
+    color: #fff;
+}
+.folder-name-submit:hover {
+    background-color: #2980b9;
+}
+.folder-name-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+}
+.folder-name-close:hover {
+    color: #2c3e50;
+}
+
 /* ===== SESSION STATUS ICONS - FIX FOR BLINK ANIMATION ===== */
 .session-status-icon {
     display: inline-block !important;

@@ -8,6 +8,7 @@ import pathlib
 CHAT_DOCS = pathlib.Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
 CHAT_HTML = pathlib.Path("app/templates/chat.html").read_text(encoding="utf-8")
 CHAT_CSS = pathlib.Path("app/static/css/chat.css").read_text(encoding="utf-8")
+DARK_CSS = pathlib.Path("app/static/css/dark-theme.css").read_text(encoding="utf-8")
 
 
 class TestFolderMarkup:
@@ -87,7 +88,6 @@ class TestFolderFrontendLogic:
     def test_js_translation_keys_shipped(self):
         for key in (
             "folder_new",
-            "folder_name_prompt",
             "folder_rename",
             "folder_delete",
             "folder_move_selected",
@@ -98,3 +98,54 @@ class TestFolderFrontendLogic:
             "folder_delete_cascade_confirm",
         ):
             assert key in CHAT_HTML
+
+
+class TestFolderDialog:
+    def test_dialog_markup_present(self):
+        assert 'id="folder-name-modal"' in CHAT_HTML
+        assert 'id="folder-name-input"' in CHAT_HTML
+        assert 'id="folder-name-error"' in CHAT_HTML
+        assert 'id="folder-name-cancel"' in CHAT_HTML
+        assert 'id="folder-name-submit"' in CHAT_HTML
+
+    def test_open_close_functions(self):
+        assert "function openFolderNameDialog" in CHAT_DOCS
+        assert "function closeFolderNameDialog" in CHAT_DOCS
+
+    def test_no_native_prompt(self):
+        assert "prompt(" not in CHAT_DOCS
+
+    def test_inline_error_setter(self):
+        assert "folder-name-error" in CHAT_DOCS
+        assert "showFolderNameError" in CHAT_DOCS
+
+    def test_dialog_translation_keys_shipped(self):
+        for key in ("folder_create_title", "folder_rename_title", "folder_name_label"):
+            assert key in CHAT_HTML
+
+    def test_dialog_css_rules(self):
+        assert ".folder-name-modal" in CHAT_CSS
+        assert ".folder-name-input" in CHAT_CSS
+        assert ".folder-name-error" in CHAT_CSS
+
+
+class TestFolderDarkTheme:
+    REQUIRED_DARK_RULES = (
+        ".dark-theme .document-folder",
+        ".dark-theme .document-folder-header",
+        ".dark-theme .document-folder-header.drag-over",
+        ".dark-theme .folder-meta",
+        ".dark-theme .bulk-documents-bar",
+        ".dark-theme .bulk-label",
+        ".dark-theme .bulk-move-button",
+        ".dark-theme .folder-picker-menu",
+        ".dark-theme .folder-picker-item",
+    )
+
+    def test_folder_styles_covered_in_dark_theme(self):
+        for rule in self.REQUIRED_DARK_RULES:
+            assert rule in DARK_CSS, rule
+
+    def test_folder_name_dialog_covered_in_dark_theme(self):
+        assert ".dark-theme .folder-name-content" in DARK_CSS
+        assert ".dark-theme .folder-name-input" in DARK_CSS

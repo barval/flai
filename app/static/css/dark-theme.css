@@ -436,6 +436,92 @@
 .dark-theme .documents-list {
     background-color: #2d2d2d;
 }
+/* ===== DOCUMENT FOLDERS DARK THEME ===== */
+.dark-theme .document-folder {
+    background-color: #333;
+    border-color: #555;
+}
+.dark-theme .document-folder-header {
+    color: #ecf0f1;
+}
+.dark-theme .document-folder-header:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .document-folder-header.drag-over {
+    background-color: #1e2b38;
+    border-color: #3498db;
+}
+.dark-theme .folder-meta {
+    color: #b0b0b0;
+}
+.dark-theme .move-document-button,
+.dark-theme .rename-folder-button,
+.dark-theme .delete-folder-button {
+    color: #b0b0b0;
+}
+.dark-theme .bulk-documents-bar {
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .bulk-label {
+    color: #ecf0f1;
+}
+.dark-theme .bulk-move-button,
+.dark-theme .bulk-clear-button {
+    border-color: #666;
+    color: #ecf0f1;
+}
+.dark-theme .bulk-move-button:hover,
+.dark-theme .bulk-clear-button:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .folder-picker-menu {
+    background-color: #2d2d2d;
+    border-color: #444;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.dark-theme .folder-picker-item {
+    color: #ecf0f1;
+}
+.dark-theme .folder-picker-item:hover {
+    background-color: #3a3a3a;
+}
+/* ===== FOLDER NAME DIALOG DARK THEME ===== */
+.dark-theme .folder-name-content {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .folder-name-content h3 {
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-label {
+    color: #aaa;
+}
+.dark-theme .folder-name-input {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-input:focus {
+    border-color: #3498db;
+}
+.dark-theme .folder-name-cancel {
+    border-color: #666;
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-cancel:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .folder-name-input::placeholder {
+    color: #999;
+}
+.dark-theme .folder-name-close {
+    color: #aaa;
+}
+.dark-theme .folder-name-close:hover {
+    color: #fff;
+}
 .dark-theme .header-tab {
     background-color: #3a3a3a;
 }

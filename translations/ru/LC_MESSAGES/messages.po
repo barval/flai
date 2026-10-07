@@ -2216,10 +2216,6 @@ msgid "New document"
 msgstr "Новый документ"
 
 #: app/routes/documents.py
-msgid "Folder name"
-msgstr "Название папки"
-
-#: app/routes/documents.py
 msgid "Folder name is required"
 msgstr "Введите название папки"
 
@@ -2250,6 +2246,14 @@ msgstr "Новая папка"
 #: app/templates/chat.html
 msgid "Rename folder"
 msgstr "Переименовать папку"
+
+#: app/templates/chat.html
+msgid "Create folder"
+msgstr "Создание папки"
+
+#: app/templates/chat.html
+msgid "Enter folder name"
+msgstr "Введите название папки"
 
 #: app/templates/chat.html
 msgid "Delete folder"

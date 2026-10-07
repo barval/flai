@@ -511,9 +511,83 @@ function toggleFolderCollapse(folderId) {
     setFolderCollapsed(folderId, collapsed);
 }
 
-function createFolder() {
-    const name = prompt(t('folder_name_prompt'));
-    if (!name) return;
+let folderNameDialogTarget = null; // null → create; folder_id → rename
+
+function showFolderNameError(message) {
+    const err = document.getElementById('folder-name-error');
+    if (!err) return;
+    if (message) {
+        err.textContent = message;
+        err.hidden = false;
+    } else {
+        err.hidden = true;
+        err.textContent = '';
+    }
+}
+
+function openFolderNameDialog(mode, folderId) {
+    const modal = document.getElementById('folder-name-modal');
+    if (!modal) return;
+    folderNameDialogTarget = mode === 'rename' ? folderId : null;
+    const title = document.getElementById('folder-name-title');
+    const submit = document.getElementById('folder-name-submit');
+    const input = document.getElementById('folder-name-input');
+    if (!title || !submit || !input) return;
+    if (mode === 'rename') {
+        const folder = foldersData[folderId];
+        if (!folder) return;
+        title.textContent = t('folder_rename_title');
+        submit.textContent = t('save');
+        input.value = folder.name;
+    } else {
+        title.textContent = t('folder_create_title');
+        submit.textContent = t('create');
+        input.value = '';
+    }
+    showFolderNameError(null);
+    modal.hidden = false;
+    input.focus();
+    input.select();
+    document.addEventListener('keydown', onFolderNameDialogKeydown);
+}
+
+function closeFolderNameDialog() {
+    const modal = document.getElementById('folder-name-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    folderNameDialogTarget = null;
+    document.removeEventListener('keydown', onFolderNameDialogKeydown);
+}
+
+function onFolderNameDialogKeydown(e) {
+    if (e.key === 'Escape') {
+        closeFolderNameDialog();
+    } else if (e.key === 'Enter') {
+        submitFolderNameDialog();
+    }
+}
+
+function submitFolderNameDialog() {
+    const input = document.getElementById('folder-name-input');
+    if (!input) return;
+    const name = (input.value || '').trim();
+    if (!name) {
+        showFolderNameError(t('folder_name_label'));
+        return;
+    }
+    if (folderNameDialogTarget === null) {
+        createFolderWithName(name);
+    } else {
+        const folder = foldersData[folderNameDialogTarget];
+        if (folder && name === folder.name) {
+            closeFolderNameDialog();
+            return;
+        }
+        renameFolderWithName(folderNameDialogTarget, name);
+    }
+}
+
+function createFolderWithName(name) {
     fetchWithCSRF('/api/document-folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -522,19 +596,16 @@ function createFolder() {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
+                closeFolderNameDialog();
                 loadDocuments();
             } else {
-                alert(t('error') + ': ' + (data.error || t('unknown_error')));
+                showFolderNameError(data.error || t('unknown_error'));
             }
         })
-        .catch(err => alert(t('error') + ': ' + err.message));
+        .catch(err => showFolderNameError(err.message));
 }
 
-function renameFolder(folderId) {
-    const folder = foldersData[folderId];
-    if (!folder) return;
-    const name = prompt(t('folder_name_prompt'), folder.name);
-    if (!name || name === folder.name) return;
+function renameFolderWithName(folderId, name) {
     fetchWithCSRF(`/api/document-folders/${folderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -543,12 +614,21 @@ function renameFolder(folderId) {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
+                closeFolderNameDialog();
                 loadDocuments();
             } else {
-                alert(t('error') + ': ' + (data.error || t('unknown_error')));
+                showFolderNameError(data.error || t('unknown_error'));
             }
         })
-        .catch(err => alert(t('error') + ': ' + err.message));
+        .catch(err => showFolderNameError(err.message));
+}
+
+function createFolder() {
+    openFolderNameDialog('create');
+}
+
+function renameFolder(folderId) {
+    openFolderNameDialog('rename', folderId);
 }
 
 function deleteFolder(folderId) {
@@ -828,6 +908,23 @@ function initDocumentsView() {
             e.stopPropagation();
             createFolder();
         });
+    }
+
+    // Folder name dialog wiring (create/rename)
+    const folderNameModal = document.getElementById('folder-name-modal');
+    if (folderNameModal) {
+        folderNameModal.querySelectorAll('[data-folder-name-close]').forEach(el => {
+            el.addEventListener('click', closeFolderNameDialog);
+        });
+        const cancelBtn = document.getElementById('folder-name-cancel');
+        if (cancelBtn) {
+            cancelBtn.textContent = t('cancel');
+            cancelBtn.addEventListener('click', closeFolderNameDialog);
+        }
+        const submitBtn = document.getElementById('folder-name-submit');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', submitFolderNameDialog);
+        }
     }
 
     // Apply the initial view (synchronizes UI with currentView)

@@ -79,6 +79,22 @@
             <div id="modal-caption"></div>
         </div>
 
+        <!-- Folder name dialog (create/rename) -->
+        <div id="folder-name-modal" class="folder-name-modal" hidden>
+            <div class="folder-name-backdrop" data-folder-name-close></div>
+            <div class="folder-name-content" role="dialog" aria-modal="true" aria-labelledby="folder-name-title">
+                <button type="button" class="folder-name-close" data-folder-name-close aria-label="{{ _('close_about') }}">&times;</button>
+                <h3 id="folder-name-title"></h3>
+                <div class="folder-name-label">{{ _('Enter folder name') }}</div>
+                <input type="text" id="folder-name-input" class="folder-name-input" maxlength="64">
+                <div id="folder-name-error" class="folder-name-error" hidden></div>
+                <div class="folder-name-actions">
+                    <button type="button" id="folder-name-cancel" class="folder-name-cancel"></button>
+                    <button type="button" id="folder-name-submit" class="folder-name-submit"></button>
+                </div>
+            </div>
+        </div>
+
         <!-- Message input area -->
         <div class="rlm-controls">
             <label title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
@@ -192,7 +208,12 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'document_uploaded': {{ _('Document uploaded')|tojson }},
     'document_upload_failed': {{ _('Document upload failed')|tojson }},
     'folder_new': {{ _('New folder')|tojson }},
-    'folder_name_prompt': {{ _('Folder name')|tojson }},
+    'folder_name_label': {{ _('Enter folder name')|tojson }},
+    'folder_create_title': {{ _('Create folder')|tojson }},
+    'folder_rename_title': {{ _('Rename folder')|tojson }},
+    'cancel': {{ _('Cancel')|tojson }},
+    'create': {{ _('Create')|tojson }},
+    'save': {{ _('Save')|tojson }},
     'folder_rename': {{ _('Rename folder')|tojson }},
     'folder_delete': {{ _('Delete folder')|tojson }},
     'folder_move': {{ _('Move to folder')|tojson }},

@@ -2272,8 +2272,8 @@ msgid "Move to root"
 msgstr "Переместить в корень"
 
 #: app/templates/chat.html
-msgid "Selected documents: {count}"
-msgstr "Выделено документов: {count}"
+msgid "Selected documents: {count} ({size})"
+msgstr "Выделено документов: {count} ({size})"
 
 #: app/templates/chat.html
 msgid "Select all documents in folder"
@@ -2282,6 +2282,18 @@ msgstr "Выбрать все документы в папке"
 #: app/templates/chat.html
 msgid "Select for moving"
 msgstr "Отметить для перемещения"
+
+#: app/templates/chat.html
+msgid "Select for deep analysis"
+msgstr "Отметить для глубокого анализа"
+
+#: app/templates/chat.html
+msgid "Select all documents"
+msgstr "Выбрать все документы"
+
+#: app/templates/chat.html
+msgid "Clear all document selection"
+msgstr "Снять выделение всех документов"
 
 #: app/templates/chat.html
 msgid "Delete folder \"{name}\"?"

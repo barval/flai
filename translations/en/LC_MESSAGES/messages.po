@@ -2250,8 +2250,8 @@ msgid "Move to root"
 msgstr "Move to root"
 
 #: app/templates/chat.html
-msgid "Selected documents: {count}"
-msgstr "Selected documents: {count}"
+msgid "Selected documents: {count} ({size})"
+msgstr "Selected documents: {count} ({size})"
 
 #: app/templates/chat.html
 msgid "Select all documents in folder"
@@ -2260,6 +2260,18 @@ msgstr "Select all documents in folder"
 #: app/templates/chat.html
 msgid "Select for moving"
 msgstr "Select for moving"
+
+#: app/templates/chat.html
+msgid "Select for deep analysis"
+msgstr "Select for deep analysis"
+
+#: app/templates/chat.html
+msgid "Select all documents"
+msgstr "Select all documents"
+
+#: app/templates/chat.html
+msgid "Clear all document selection"
+msgstr "Clear all document selection"
 
 #: app/templates/chat.html
 msgid "Delete folder \"{name}\"?"

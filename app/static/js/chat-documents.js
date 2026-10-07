@@ -222,7 +222,7 @@ function renderDocItem(doc) {
     return `
     <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="true">
         <div class="document-content">
-            <label class="document-checkbox" title="${t('documents_select_for_move')}">
+            <label class="document-checkbox" title="${isRlmMode() ? t('documents_select_for_analysis') : t('documents_select_for_move')}">
                 <input type="checkbox" class="doc-check" data-document-id="${doc.id}"${docChecked ? ' checked' : ''}>
             </label>
             <div class="document-info">
@@ -385,27 +385,23 @@ function attachDocumentEventHandlers() {
             });
         });
     });
-    // Bulk selection checkboxes on documents.
+    // Checkboxes are the single document picker. With the "Deep analysis"
+    // toggle on they drive the RLM selection (setDocChecked mirrors it).
     document.querySelectorAll('.doc-check').forEach(cb => {
         cb.addEventListener('change', function(e) {
             e.stopPropagation();
-            const docId = this.dataset.documentId;
-            if (this.checked) {
-                selectedDocIds.add(docId);
-            } else {
-                selectedDocIds.delete(docId);
-            }
+            setDocChecked(this.dataset.documentId, this.checked);
             updateBulkBar();
             updateFolderCheckboxes();
         });
     });
-    // Bulk selection checkboxes on folders (tristate).
+    // Checkboxes on folders pick every document in the folder (tristate).
     document.querySelectorAll('.folder-check').forEach(cb => {
         cb.addEventListener('change', function(e) {
             e.stopPropagation();
             const folderId = this.dataset.folderId;
             const ids = folderDocIds(folderId);
-            ids.forEach(id => (this.checked ? selectedDocIds.add(id) : selectedDocIds.delete(id)));
+            ids.forEach(id => setDocChecked(id, this.checked));
             document.querySelectorAll(`.doc-check[data-document-id]`).forEach(docCb => {
                 if (ids.includes(docCb.dataset.documentId)) {
                     docCb.checked = this.checked;
@@ -432,13 +428,6 @@ function attachDocumentEventHandlers() {
             clearDocumentSelection();
         });
     }
-    // Clicking a document toggles its selection for "Deep analysis" (RLM).
-    document.querySelectorAll('.document-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            if (e.target.closest('button, .document-checkbox, .doc-check')) return;
-            toggleRlmDocSelection(this);
-        });
-    });
     // Folders: collapse toggle, rename, delete.
     document.querySelectorAll('.document-folder-header').forEach(header => {
         header.addEventListener('click', function(e) {
@@ -481,14 +470,31 @@ function updateBulkBar() {
     if (!bar) return;
     const n = selectedDocIds.size;
     bar.classList.toggle('hidden', n === 0);
+    // Hiding the bar also drops the stale checkbox refs below, so always
+    // recompute the total size from the live selection.
+    let totalSize = 0;
+    selectedDocIds.forEach(id => {
+        const doc = documentsData[id];
+        if (doc && doc.file_size) totalSize += doc.file_size;
+    });
     const label = document.getElementById('bulk-selected-count');
     if (label) {
-        label.textContent = formatString(t('documents_selected_count'), { count: n });
+        label.textContent = formatString(t('documents_selected_count'), { count: n, size: formatFileSize(totalSize) });
     }
+    // Moving makes no sense while the checkboxes drive the analysis selection.
+    const moveBtn = document.getElementById('bulk-move-button');
+    if (moveBtn) moveBtn.classList.toggle('hidden', isRlmMode());
 }
 
 function clearDocumentSelection() {
     selectedDocIds = new Set();
+    // In RLM mode the analysis selection is driven by the same checkboxes.
+    if (isRlmMode()) {
+        rlmSelectedDocs = new Set();
+        applyRlmMarkers();
+        updateRlmToggleCount();
+        syncRlmDocsSelect();
+    }
     document.querySelectorAll('.doc-check').forEach(cb => {
         cb.checked = false;
     });
@@ -788,28 +794,51 @@ function onDocumentDrop(e) {
     }
 }
 
-// Toggle a document in/out of the RLM "Deep analysis" selection.
-function toggleRlmDocSelection(item) {
-    const docId = item.dataset.documentId;
-    if (!docId) return;
-    if (rlmSelectedDocs.has(docId)) {
-        rlmSelectedDocs.delete(docId);
+// True while the "Deep analysis" toggle is on: checkboxes then drive the
+// RLM selection instead of the document-move selection.
+function isRlmMode() {
+    const toggle = document.getElementById('rlm-toggle');
+    return !!(toggle && toggle.checked);
+}
+
+// Mark/unmark every rendered document according to the RLM selection set.
+function applyRlmMarkers() {
+    document.querySelectorAll('.document-item').forEach(item => {
+        const id = item.dataset.documentId;
+        const selected = rlmSelectedDocs.has(id);
+        item.classList.toggle('rlm-selected', selected);
+        const marker = item.querySelector('.rlm-marker');
+        if (marker) marker.textContent = selected ? ' ✓' : '';
+    });
+}
+
+// Pick a document with the single checkbox set. In RLM mode the pick is
+// mirrored into the deep-analysis selection; otherwise it feeds the move bar.
+function setDocChecked(docId, checked) {
+    if (checked) {
+        selectedDocIds.add(docId);
     } else {
-        rlmSelectedDocs.add(docId);
+        selectedDocIds.delete(docId);
     }
-    const selected = rlmSelectedDocs.has(docId);
-    item.classList.toggle('rlm-selected', selected);
-    const marker = item.querySelector('.rlm-marker');
-    if (marker) marker.textContent = selected ? ' ✓' : '';
-    // Mirror into the hidden #rlm-docs multi-select (source of truth for
-    // sendRlmAnalysis which reads selectedOptions).
-    const rlmDocs = document.getElementById('rlm-docs');
-    if (rlmDocs) {
-        for (const opt of rlmDocs.options) {
-            if (opt.value === docId) opt.selected = selected;
+    if (isRlmMode()) {
+        if (checked) {
+            rlmSelectedDocs.add(docId);
+        } else {
+            rlmSelectedDocs.delete(docId);
         }
+        applyRlmMarkers();
+        updateRlmToggleCount();
+        syncRlmDocsSelect();
     }
+}
+
+// When the toggle is switched on, the current checkbox selection becomes the
+// deep-analysis corpus (previously-selected RLM docs are not dropped).
+function syncRlmFromSelection() {
+    rlmSelectedDocs = new Set(selectedDocIds);
+    applyRlmMarkers();
     updateRlmToggleCount();
+    syncRlmDocsSelect();
 }
 
 function deleteDocument(docId, docName) {
@@ -925,6 +954,44 @@ function initDocumentsView() {
         if (submitBtn) {
             submitBtn.addEventListener('click', submitFolderNameDialog);
         }
+    }
+
+    // "Deep analysis" toggle: switching it on turns the current checkbox
+    // selection into the RLM corpus; switching it off returns the checkboxes
+    // to move selection without dropping the analysis selection.
+    const rlmToggleEl = document.getElementById('rlm-toggle');
+    if (rlmToggleEl) {
+        rlmToggleEl.addEventListener('change', function() {
+            if (rlmToggleEl.checked) {
+                syncRlmFromSelection();
+            } else {
+                updateBulkBar();
+            }
+        });
+    }
+
+    // Select / clear every document with the semantics of the current mode.
+    const selectAllBtn = document.getElementById('doc-select-all-button');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const allIds = Object.keys(documentsData);
+            allIds.forEach(id => selectedDocIds.add(id));
+            if (isRlmMode()) syncRlmFromSelection();
+            updateDocumentsList(Object.values(documentsData), Object.values(foldersData));
+        });
+    }
+    const selectNoneBtn = document.getElementById('doc-select-none-button');
+    if (selectNoneBtn) {
+        selectNoneBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            selectedDocIds = new Set();
+            if (isRlmMode()) {
+                rlmSelectedDocs = new Set();
+                updateRlmToggleCount();
+            }
+            updateDocumentsList(Object.values(documentsData), Object.values(foldersData));
+        });
     }
 
     // Apply the initial view (synchronizes UI with currentView)

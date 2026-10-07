@@ -281,6 +281,11 @@
 .delete-folder-button:hover {
     color: #e74c3c;
 }
+.move-document-button {
+    width: auto;
+    min-width: 34px;
+    white-space: nowrap;
+}
 
 .document-folder {
     margin-bottom: 0.5rem;

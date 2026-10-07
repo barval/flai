@@ -95,6 +95,8 @@ class TestFolderFrontendLogic:
             "documents_selected_count",
             "folder_delete_confirm",
             "folder_delete_cascade_confirm",
+            "doc_select_all",
+            "doc_select_none",
         ):
             assert key in CHAT_HTML
 
@@ -118,6 +120,57 @@ class TestBulkBar:
     def test_move_document_button_arrow(self):
         # per-document move button gets the same arrow + folder icons
         assert 'move-document-button" title="${t(\'folder_move\')}">➤ 📂</button>' in CHAT_DOCS
+
+    def test_bulk_label_includes_size(self):
+        # bulk bar shows the summed size of the selected documents, like folders
+        assert "{ count: n, size: formatFileSize(totalSize) }" in CHAT_DOCS
+        assert "doc.file_size" in CHAT_DOCS
+
+    def test_bulk_size_format_in_translation(self):
+        assert "Selected documents: {count} ({size})" in CHAT_HTML
+
+    def test_move_button_icons_fit_one_line(self):
+        # two glyphs must not wrap inside the narrow per-document button
+        assert ".move-document-button" in CHAT_CSS
+        assert "white-space: nowrap" in CHAT_CSS
+        assert "min-width: 34px" in CHAT_CSS
+
+
+class TestSelectionMode:
+    """Single checkbox set driven by the Deep analysis toggle (v12.5)."""
+
+    def test_rlm_mode_helper(self):
+        assert "function isRlmMode" in CHAT_DOCS
+        assert "getElementById('rlm-toggle')" in CHAT_DOCS
+
+    def test_shared_selection_helpers(self):
+        assert "function setDocChecked" in CHAT_DOCS
+        assert "function syncRlmFromSelection" in CHAT_DOCS
+        assert "new Set(selectedDocIds)" in CHAT_DOCS
+        assert "function applyRlmMarkers" in CHAT_DOCS
+
+    def test_document_click_no_longer_selects_rlm(self):
+        # the click-on-name RLM toggle is gone: checkboxes are the single picker
+        assert "toggleRlmDocSelection" not in CHAT_DOCS
+
+    def test_bulk_move_hidden_in_rlm_mode(self):
+        assert "classList.toggle('hidden', isRlmMode())" in CHAT_DOCS
+
+    def test_checkbox_title_follows_mode(self):
+        assert "documents_select_for_analysis" in CHAT_DOCS
+
+    def test_select_all_none_buttons_markup(self):
+        assert 'id="doc-select-all-button"' in CHAT_HTML
+        assert 'id="doc-select-none-button"' in CHAT_HTML
+
+    def test_select_buttons_stop_tab_switch(self):
+        assert "e.stopPropagation()" in CHAT_DOCS
+        assert "doc-select-all-button" in CHAT_DOCS
+        assert "doc-select-none-button" in CHAT_DOCS
+
+    def test_selection_mode_translation_keys_shipped(self):
+        for key in ("doc_select_all", "doc_select_none"):
+            assert key in CHAT_HTML
 
 
 class TestFolderDialog:

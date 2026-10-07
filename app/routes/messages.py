@@ -367,13 +367,31 @@ def send_message():
     if request_type == "audio":
         current_app.logger.info("send_message: audio detected, queueing transcription task")
 
-        # Determine which file is audio and which is image
+        # Determine which file is audio and which is image. Two attachment
+        # layouts exist: the image in the legacy single slot (file_data) with
+        # the voice in "voice", or — the v12.4 multi-attachment flow — the
+        # voice in the legacy slot (file_data) with the image in the multi
+        # "file" parts (extra_images). Pair them whichever way they came.
         audio_file_data = voice_file_data or file_data
         audio_file_type = voice_file_type or file_type
         audio_file_name = voice_file_name or file_name
-        img_data = file_data if voice_file_data else None
-        img_type = file_type if voice_file_data else None
-        img_name = file_name if voice_file_data else None
+        img_data = None
+        img_type = None
+        img_name = None
+        extra_img_parts: list[dict[str, str | None]] = []
+        if voice_file_data:
+            # Voice in "voice", image (if any) in the legacy slot
+            img_data = file_data
+            img_type = file_type
+            img_name = file_name
+        elif file_data and file_type and file_type.startswith("audio/"):
+            # Voice in the legacy slot: the image came from the multi queue
+            if extra_images:
+                first_img = extra_images[0]
+                img_data = first_img["data"]
+                img_type = first_img["type"]
+                img_name = first_img["name"]
+                extra_img_parts = extra_images[1:]
 
         request_data = {
             "type": "transcribe_audio",
@@ -389,6 +407,9 @@ def send_message():
             request_data["image_data"] = img_data
             request_data["image_type"] = img_type
             request_data["image_name"] = img_name
+            all_images = [img_data] + [p["data"] for p in extra_img_parts]
+            if len(all_images) > 1:
+                request_data["images"] = all_images
         request_id, position_info = current_app.request_queue.add_request(
             user_id, session_id, request_data, user_class, lang=session.get("language", "ru")
         )

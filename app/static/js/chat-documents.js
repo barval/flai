@@ -44,18 +44,23 @@ function applyCurrentView() {
 }
 
 function switchView(view) {
-    if (view === currentView) {
-        // On mobile, toggle collapse when clicking active tab
-        if (window.innerWidth <= 768) {
-            const sidebar = document.querySelector('.sessions-sidebar');
-            if (sidebar) {
-                sidebar.classList.toggle('collapsed');
-                const login = window.CURRENT_USER_LOGIN;
-                if (login) {
-                    localStorage.setItem(`sidebar_collapsed_${login}`, sidebar.classList.contains('collapsed'));
-                }
-            }
+    if (window.isMobileViewport && window.isMobileViewport()) {
+        // Mobile: clicking a tab opens its list as a full-screen panel;
+        // clicking the tab of the already-open panel returns to the chat.
+        const sidebar = document.querySelector('.sessions-sidebar');
+        const panelOpen = sidebar && sidebar.classList.contains('panel-open');
+        const currentTabActive = document.querySelector(`.header-tab[data-view="${view}"]`);
+        const isTabActive = currentTabActive && currentTabActive.classList.contains('active');
+        if (panelOpen && isTabActive) {
+            sidebar.classList.remove('panel-open');
+            return;
         }
+        if (sidebar) {
+            sidebar.classList.add('panel-open');
+        }
+    }
+    if (view === currentView) {
+        // Desktop: clicking the active tab keeps the view unchanged.
         return;
     }
 

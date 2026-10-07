@@ -5,6 +5,8 @@
 
 Использует `onerahmet/openai-whisper-asr-webservice` (движок faster_whisper).
 
+Голосовое сообщение можно записать поверх приложенных изображений: задача транскрипции несёт изображения с собой, поэтому ответ переотправляется как задача чата с картинками — модель видит и то, что вы сказали, и то, что приложили (сопоставление работает и когда голос лежит в старом слоте вложений, и в мультивложениях).
+
 ```bash
 # Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d

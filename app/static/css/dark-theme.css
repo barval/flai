@@ -550,18 +550,6 @@
 .dark-theme .new-tab-button:hover {
     background-color: #2980b9;
 }
-/* ===== COLLAPSE TOGGLE DARK THEME ===== */
-.dark-theme .collapse-toggle-mobile {
-    background-color: #3a3a3a;
-    border-right-color: #555;
-}
-.dark-theme .collapse-toggle-mobile:hover {
-    background-color: #4a4a4a;
-}
-.dark-theme .collapse-icon {
-    color: #ecf0f1;
-}
-
 /* ===== ADMIN MODELS DARK THEME ===== */
 .dark-theme .model-card {
     background-color: #2d2d2d;

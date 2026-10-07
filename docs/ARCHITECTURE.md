@@ -419,7 +419,7 @@ Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm
 
 `app/static/js/chat-recording.js`: if image already attached when voice is recorded, voice stored as `attachedVoiceBlob` instead of replacing `attachedFile`. Preview shows `"image.jpg + 🎤 voice.webm"`.
 
-Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present.
+Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present. The pairing works in BOTH attachment layouts: voice in the dedicated `voice` field pairs with the image from `file_data`; voice in the legacy `file` slot (v12.4 multi-attachment flow) pairs with the first image among the extra parts, and the full image list travels in `request_data["images"]` so the vision model receives every attached picture. Tests: `tests/test_voice_image_pairing.py`.
 
 ## Clipboard Image Paste
 

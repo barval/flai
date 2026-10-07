@@ -31,16 +31,6 @@
         {% if 'login' in session %}
         <div class="logout-container">
             <div class="header-row row1">
-                <button type="button" class="user-name" id="api-keys-btn"
-                        title="{{ _('api_keys_title') }}" aria-haspopup="dialog" aria-controls="api-keys-panel">{{ session['name'] if not session.get('is_admin') else _('Administrator') }} ▾</button>
-                <div class="language-switcher">
-                    <select id="language-select" onchange="switchLanguage(this.value)">
-                        <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
-                        <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
-                    </select>
-                </div>
-            </div>
-            <div class="header-row row2">
                 <div class="voice-gender-switcher">
                     <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
                         <span id="voice-gender-icon">
@@ -53,6 +43,27 @@
                         {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                     </button>
                 </div>
+                <button type="button" class="user-name" id="api-keys-btn"
+                        title="{{ _('api_keys_title') }}" aria-haspopup="dialog" aria-controls="api-keys-panel">{{ session['name'] if not session.get('is_admin') else _('Administrator') }} ▾</button>
+                <div class="language-switcher">
+                    <select id="language-select" onchange="switchLanguage(this.value)">
+                        <option value="ru" data-short="Ру" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
+                        <option value="en" data-short="En" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
+                    </select>
+                    <button type="button" class="lang-toggle" id="lang-toggle" hidden>Ру ▾</button>
+                    <div class="lang-menu" id="lang-menu" hidden>
+                        <button type="button" class="lang-option" data-lang="ru" {% if session.get('language') == 'ru' %}data-selected="1"{% endif %}>Русский</button>
+                        <button type="button" class="lang-option" data-lang="en" {% if session.get('language') == 'en' %}data-selected="1"{% endif %}>English</button>
+                    </div>
+                </div>
+                <form action="{{ url_for('auth.logout') }}" method="post" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="logout-button" title="{{ _('Logout') }}">
+                        <span class="logout-icon">⇥</span><span class="logout-text">{{ _('Logout') }}</span>
+                    </button>
+                </form>
+            </div>
+            <div class="header-row row2">
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="{{ _('api_keys_revoke') }}"
                      data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
@@ -109,18 +120,19 @@
                         <tbody id="api-keys-body"></tbody>
                     </table>
                 </div>
-                <form action="{{ url_for('auth.logout') }}" method="post" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="logout-button">{{ _('Logout') }}</button>
-                </form>
             </div>
         </div>
         {% else %}
         <div class="language-switcher ml-auto">
             <select id="language-select" onchange="switchLanguage(this.value)">
-                <option value="ru" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
-                <option value="en" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
+                <option value="ru" data-short="Ру" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
+                <option value="en" data-short="En" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
             </select>
+            <button type="button" class="lang-toggle" id="lang-toggle-guest" hidden>Ру ▾</button>
+            <div class="lang-menu" id="lang-menu-guest" hidden>
+                <button type="button" class="lang-option" data-lang="ru" {% if session.get('language', 'ru') == 'ru' %}data-selected="1"{% endif %}>Русский</button>
+                <button type="button" class="lang-option" data-lang="en" {% if session.get('language', 'ru') == 'en' %}data-selected="1"{% endif %}>English</button>
+            </div>
         </div>
         <!-- Theme toggle for unauthenticated users -->
         <div class="theme-switcher ml-10px">

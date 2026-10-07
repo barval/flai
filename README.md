@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.4](#-whats-new-in-v124)
+- [🆕 What's New in v12.5](#-whats-new-in-v125)
 - [✨ Features](#-features)
 - [🏗️ Architecture Overview](#-architecture-overview)
 - [🧭 Types of Requests & Search Mechanisms](#-types-of-requests-search-mechanisms)
@@ -69,7 +69,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.4
+## 🆕 What's New in v12.5
 
 - **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Attachments live on disk, sessions open instantly** — every attached file (images, audio, documents) is saved to disk from the very first write, and `flask backfill-attachment-paths` migrates older chats the same way, so a history reload no longer ships megabytes of base64 that once made heavy sessions slow to open (one picture-heavy message dropped from ~3.9 MB to a few KB). Built for old rows too: pre-migration messages keep rendering untouched. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)

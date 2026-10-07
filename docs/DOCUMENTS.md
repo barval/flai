@@ -54,3 +54,15 @@ For deep, multi-step work across a document set — comparisons, totals, structu
 A document can be attached directly to a chat message (the same 📎 button, PDF/DOC/DOCX/TXT/ODT/RTF/CSV/JSON/EPUB up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.
 
 Chat attachments (images, and the attached document) are stored on disk under the session's upload folder; their paths live in the message record, so every image stays visible after a page reload. Deleting a session unlinks all files referenced by its messages — including every attached image, not just the first one — and subtracts their sizes from the user's storage quota. The `flask cleanup-uploads` command collects references from the same two sources, so it never deletes files of live sessions.
+
+## 6. Organize documents in folders
+
+Single-level folders (no nesting) keep the Documents panel tidy.
+
+- **Create** — the 📁 button above the list, then the folder name (≤ 64 chars, duplicates rejected). **Rename** — ✏️ on the folder (the prompt is pre-filled). **Delete** — 🗑️ asks twice: a plain confirm first, then a second one stating «this will also delete N documents (SIZE) inside the folder» — the cascade removes RAG entries, files on disk and DB rows, and frees quota exactly like deleting the documents one by one.
+- **Collapse/expand** — click the folder header (📂 expanded / 📁 collapsed); the state is remembered per user in `localStorage`.
+- **Move** — the 📂 button on a document opens a picker (root + every folder) and works on mobile; on desktop you can also drag a document onto a folder header.
+- **Upload into a folder** — when folders exist, ➕ shows a target menu (root or a folder); otherwise it uploads into the root as before.
+- **Bulk actions** — every document has a checkbox; folder checkboxes follow the all/partial/none tristate. The «Selected N · Move to… · Clear selection» bar appears once something is checked; «Move to…» opens the same picker.
+
+API: `GET /api/documents` now returns `{folders, documents}`, where each folder carries `id`, `name`, `created_at`, `count` and `size`; `POST /api/document-folders` (create), `PATCH /api/document-folders/<id>` (rename), `DELETE /api/document-folders/<id>` (cascade, returns `deleted_documents`/`deleted_size`), `PATCH /api/documents/<doc_id>/folder` (move one; `folder_id: null` moves to the root) and `POST /api/documents/move` (`{doc_ids, folder_id}`) for bulk moves. Document uploads accept an optional `folder_id` form field, validated against ownership.

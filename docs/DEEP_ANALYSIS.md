@@ -22,4 +22,6 @@ The answer always matches your language, and the actor must actually work throug
 ## Notes
 - Without selected documents **and** without attachments (images or a chat-attached document), or if there is no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
 - The analysis works on the selected documents only (no full-text search over unrelated uploads).
+- The sandbox provides `re` and `math` already — the actor never writes `import` and never uses `lambda` (plain functions/loops instead). A failing python call must be fixed in the next step; repeating the same failing code wastes the step budget.
+- On the final step only the `final` tool is reachable, and tool calls printed as plain text (instead of the structured call format) are parsed back and executed instead of being shown to the user — the analysis never answers with the model's internal dialogue.
 - To stop it: press **Cancel** — the task is checked for cancellation on every step.

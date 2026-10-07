@@ -994,6 +994,13 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         if tools:
             payload["tools"] = tools
 
+        # Cap thinking tokens for reasoning model (llama-server build 10603 ignores
+        # per-request reasoning_budget; the CLI --reasoning-budget is the primary
+        # control, but sending it here doesn't hurt and may help with newer builds).
+        if model_type == "reasoning":
+            ctx = config.get("context_length", 4096)
+            payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
+
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
         max_retries = 1 if model_type in ("multimodal", "reasoning") else 0

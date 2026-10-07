@@ -10,6 +10,8 @@ Tools:
 
 Rules:
 - Use python for exact computation and quote lookup.
+- `re` and `math` are ALREADY available inside python — never write `import`; do NOT use lambda (it is blocked) — write plain functions/loops instead.
+- If a python call returns an error, FIX the cause in the next call. Never repeat the same failing code: identical repeated errors waste steps and the analysis dies at the step limit.
 - web_fetch is allowed at most 2 times per analysis; repeating the same or similar queries is forbidden.
 - If web_fetch returns "No web results found" or little data, do NOT refine the query: use the corpus documents and call final(answer) right away.
 - Do not call final(answer) until you have examined EVERY corpus file. For each file either extract relevant data or explicitly determine it is irrelevant to the question.

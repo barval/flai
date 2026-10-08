@@ -214,6 +214,110 @@ class TestImageTextStreamErrorRouting:
         assert not mock_save.called
 
 
+class TestMultiImageStreamFallback:
+    """Multi-image streaming must fall back to per-image descriptions when the
+    joint call is rejected (context too long / VRAM), mirroring the
+    non-streaming _process_image_chat_task. Regression: on an 8192-context
+    CPU multimodal model, 2 images = 8192 estimated tokens exceed the 95%
+    hard limit, so the joint stream emits only 'Request too long'.
+    """
+
+    @pytest.fixture
+    def mock_multimodal_context_error(self):
+        """Multimodal that emits ONLY the 'Request too long' LLM error token."""
+        m = MagicMock()
+        m.available = True
+        m.validate_image.return_value = (True, None)
+
+        def fake_stream(*args, **kwargs):
+            yield "Request too long, please simplify your request"
+
+        m.process_images_with_text_stream = fake_stream
+        return m
+
+    def _run(self, test_app, mock_multimodal, message_text: str, *, fallback_return):
+        """Drive _process_image_chat_task_stream with two images."""
+        from app.queue import RedisRequestQueue
+
+        test_app.modules["multimodal"] = mock_multimodal
+        with (
+            patch("redis.from_url", return_value=MagicMock()),
+            patch.object(RedisRequestQueue, "__init__", lambda self, app: None),
+        ):
+            q = RedisRequestQueue(test_app)
+            q.app = test_app
+            q.logger = test_app.logger
+
+            with (
+                patch.object(q, "_publish_stream_token") as mock_pub,
+                patch.object(q, "_save_and_respond", return_value={"session_id": "s1"}) as mock_save,
+                patch.object(q, "_build_error_response", return_value={"error": "err", "is_error": True}) as mock_err,
+                patch.object(q, "_get_model_name", return_value="Qwen3VL-8B"),
+                patch.object(q, "_describe_images_fallback", return_value=fallback_return) as mock_fallback,
+                patch.object(q, "_is_task_cancelled", return_value=False),
+            ):
+                task = {"id": "t1", "data": {}}
+                q._process_image_chat_task_stream(
+                    task,
+                    [_b64(b"fake-jpg"), _b64(b"fake-jpg")],
+                    "image/jpeg",
+                    "t.jpg",
+                    message_text,
+                    "s1",
+                    "2026-06-04 12:00:00",
+                    "en",
+                    "u1",
+                    "neutral",
+                )
+
+        return mock_pub, mock_save, mock_err, mock_fallback
+
+    def test_multi_image_context_error_falls_back_for_text(self, test_app, mock_multimodal_context_error):
+        """Image+text: a context-too-long stream must be answered via the
+        per-image fallback (saved answer), NOT surfaced as an error."""
+        mock_pub, mock_save, mock_err, mock_fallback = self._run(
+            test_app,
+            mock_multimodal_context_error,
+            "What do these images have in common?",
+            fallback_return=("Both pictures show the same building", None),
+        )
+
+        mock_fallback.assert_called_once()
+        assert mock_save.called
+        assert not mock_err.called
+        # The raw error string must not leak to the client as a stream token.
+        assert not mock_pub.called
+
+    def test_multi_image_context_error_falls_back_without_text(self, test_app, mock_multimodal_context_error):
+        """Image-only: the same context-too-long stream must use the fallback."""
+        mock_pub, mock_save, mock_err, mock_fallback = self._run(
+            test_app,
+            mock_multimodal_context_error,
+            "",
+            fallback_return=("Both pictures show the same building", None),
+        )
+
+        mock_fallback.assert_called_once()
+        assert mock_save.called
+        assert not mock_err.called
+        assert not mock_pub.called
+
+    def test_multi_image_fallback_failure_still_errors(self, test_app, mock_multimodal_context_error):
+        """When the per-image fallback itself fails, the original context
+        error must be returned (⚠️ prefix via _build_error_response)."""
+        mock_pub, mock_save, mock_err, mock_fallback = self._run(
+            test_app,
+            mock_multimodal_context_error,
+            "What do these images have in common?",
+            fallback_return=(None, "GPU memory unavailable"),
+        )
+
+        mock_fallback.assert_called_once()
+        assert not mock_save.called
+        assert mock_err.called
+        assert not mock_pub.called
+
+
 class TestImageStreamErrorModelName:
     """All error paths in _process_image_chat_task_stream must save with
     model_name='system' (not 'unknown') for consistent header display."""

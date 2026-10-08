@@ -4837,8 +4837,9 @@ class RedisRequestQueue:
             )
 
         # Multimodal model is always resident — no VRAM unload/wait needed.
-        # Several images go out in ONE call; per-image fallback needs the whole
-        # answer, so it is only used by the non-streaming handler.
+        # Several images go out in ONE call; per-image fallback describes each
+        # image separately and answers over the corpus (streaming path too —
+        # the fallback answer is saved whole, no stream tokens are published).
         if len(images) > 1:
             stream_gen = self.app.modules["multimodal"].process_images_with_text_stream(
                 images,
@@ -4883,6 +4884,12 @@ class RedisRequestQueue:
                 self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
                 self._publish_stream_event(task, "stream_cancelled")
             if error_detected or self._is_llm_error_string(full_response):
+                if len(images) > 1 and not cancelled:
+                    fallback = self._stream_multi_image_fallback(
+                        task, images, message_text, current_time_str, lang, session_id, response_style, process_time
+                    )
+                    if fallback is not None:
+                        return fallback
                 return self._build_error_response(session_id, full_response, process_time, lang)
             return self._save_and_respond(
                 session_id,
@@ -4989,7 +4996,8 @@ class RedisRequestQueue:
                 cancelled = True
                 break
 
-        if buffer:
+        is_stream_error = self._is_llm_error_string(full_response)
+        if buffer and not (is_stream_error and len(images) > 1):
             self._publish_stream_token(task, buffer)
 
         process_time = round(time.time() - process_start, 1)
@@ -4997,11 +5005,48 @@ class RedisRequestQueue:
         if cancelled:
             self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
             self._publish_stream_event(task, "stream_cancelled")
-        if self._is_llm_error_string(full_response):
+        if is_stream_error:
+            if len(images) > 1 and not cancelled:
+                fallback = self._stream_multi_image_fallback(
+                    task, images, message_text, current_time_str, lang, session_id, response_style, process_time
+                )
+                if fallback is not None:
+                    return fallback
             return self._build_error_response(session_id, full_response, process_time, lang)
         return self._save_and_respond(
             session_id,
             full_response,
+            mm_model,
+            process_time,
+            extra={"model_type": "multimodal"},
+            response_style=response_style,
+        )
+
+    def _stream_multi_image_fallback(
+        self,
+        task: dict[str, Any],
+        images: list[str],
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        session_id: str,
+        response_style: str,
+        process_time: float,
+    ) -> dict[str, Any] | None:
+        """When the joint multi-image streaming call errors (context too long /
+        VRAM), describe each image separately and answer over the descriptions.
+        Returns the fallback response dict, or None when the fallback failed
+        (the caller then surfaces the original error)."""
+        bot_reply, error = self._describe_images_fallback(
+            images, message_text, current_time_str, lang, session_id, response_style
+        )
+        if error or not bot_reply:
+            self.logger.warning(f"Multi-image stream fallback failed: {error}")
+            return None
+        mm_model = self._get_model_name("multimodal") or "unknown"
+        return self._save_and_respond(
+            session_id,
+            bot_reply,
             mm_model,
             process_time,
             extra={"model_type": "multimodal"},

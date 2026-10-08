@@ -99,6 +99,36 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
         return sessions
 
 
+def _strip_content_attachment_payload(content: str | None, row_file_path: str | None) -> str | None:
+    """Remove base64 payloads from the attachment parts of a message content JSON.
+
+    A part with its own ``file_path`` (saved to disk) is stripped in place. A
+    pathless part reuses the row-level ``file_path`` when it is the *first*
+    attachment part — legacy rows stored the primary attachment both in the row
+    columns and inside the content JSON without a part-level path. Parts that
+    end up without any path keep their base64 (they are the only source).
+    """
+    if not content or not row_file_path:
+        return content
+    try:
+        parsed = json.loads(content)
+    except (TypeError, ValueError):
+        return content
+    if not isinstance(parsed, list):
+        return content
+    first_attachment_seen = False
+    for item in parsed:
+        if not isinstance(item, dict) or "file_data" not in item:
+            continue
+        if not first_attachment_seen:
+            first_attachment_seen = True
+            if not item.get("file_path"):
+                item["file_path"] = row_file_path
+        if item.get("file_path"):
+            item["file_data"] = None
+    return json.dumps(parsed, ensure_ascii=False)
+
+
 def get_session_messages(
     session_id: str, since: str | None = None, limit: int = 100, offset: int = 0
 ) -> list[dict[str, Any]]:
@@ -151,17 +181,10 @@ def get_session_messages(
                     if current_app.config.get("TIMEZONE") and dt.tzinfo is None:
                         dt = current_app.config["TIMEZONE"].localize(dt)
                     msg_dict["timestamp"] = dt.isoformat()
-            # Strip base64 file_data from content JSON when file is on disk
-            if msg_dict.get("file_path") and msg_dict.get("content"):
-                try:
-                    parsed = json.loads(msg_dict["content"])
-                    if isinstance(parsed, list):
-                        for item in parsed:
-                            if isinstance(item, dict) and "file_data" in item:
-                                item["file_data"] = None
-                        msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
-                except Exception as e:
-                    current_app.logger.debug(f"Failed to parse content JSON for message {msg_dict.get('id')}: {e}")
+            # Strip base64 file_data from content JSON, substituting the row
+            # file_path for legacy first attachment parts that lack a path of
+            # their own (old chat images). See _strip_content_attachment_payload.
+            msg_dict["content"] = _strip_content_attachment_payload(msg_dict.get("content"), msg_dict.get("file_path"))
             messages.append(msg_dict)
 
         # Read file sizes from disk for messages with file_path
@@ -278,15 +301,9 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     if msg_data.get("response_time"):
                         with contextlib.suppress(Exception):
                             msg_data["response_time"] = json.loads(msg_data["response_time"])
-                    # Strip base64 from content JSON when file_path exists
-                    if msg_data.get("file_path") and msg_data.get("content"):
-                        with contextlib.suppress(Exception):
-                            parsed = json.loads(msg_data["content"])
-                            if isinstance(parsed, list):
-                                for item in parsed:
-                                    if isinstance(item, dict) and "file_data" in item:
-                                        item["file_data"] = None
-                            msg_data["content"] = json.dumps(parsed, ensure_ascii=False)
+                    msg_data["content"] = _strip_content_attachment_payload(
+                        msg_data.get("content"), msg_data.get("file_path")
+                    )
 
             publisher.publish(
                 user_id,
@@ -414,8 +431,28 @@ def set_last_session(user_id, session_id):
 def delete_session_and_messages(session_id, user_id, upload_folder=None):
     """Delete a session, its messages, and associated files from disk.
     Also updates user_storage quota by subtracting file sizes.
+
+    File sources are both the messages.file_path column AND file_path fields
+    inside the content JSON (extra multi-attachment chat images are stored
+    there — the column only holds the first image).
     """
     total_deleted_bytes = 0
+    deleted_rel_paths: set[str] = set()
+
+    def _remove_file(rel_path: str) -> None:
+        nonlocal total_deleted_bytes
+        if not rel_path or rel_path in deleted_rel_paths:
+            return
+        deleted_rel_paths.add(rel_path)
+        full_path = os.path.join(upload_folder, rel_path) if upload_folder and not os.path.isabs(rel_path) else rel_path
+        if os.path.exists(full_path):
+            try:
+                total_deleted_bytes += os.path.getsize(full_path)
+                os.remove(full_path)
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
 
     with get_db() as conn:
         c = conn.cursor()
@@ -423,23 +460,22 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
         row = c.fetchone()
         if not row or row["user_id"] != user_id:
             return False
-        c.execute("SELECT file_path FROM messages WHERE session_id = %s AND file_path IS NOT NULL", (session_id,))
+        c.execute("SELECT file_path, content FROM messages WHERE session_id = %s", (session_id,))
         rows = c.fetchall()
         for row in rows:
-            file_path = row["file_path"]
-            if file_path:
-                if upload_folder and not os.path.isabs(file_path):
-                    full_path = os.path.join(upload_folder, file_path)
-                else:
-                    full_path = file_path
-                if os.path.exists(full_path):
-                    try:
-                        total_deleted_bytes += os.path.getsize(full_path)
-                        os.remove(full_path)
-                    except Exception as e:
-                        import logging
-
-                        logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
+            _remove_file(row["file_path"])
+            content = row["content"]
+            if not content:
+                continue
+            try:
+                parsed = json.loads(content)
+            except Exception:
+                continue
+            if not isinstance(parsed, list):
+                continue
+            for item in parsed:
+                if isinstance(item, dict) and item.get("file_path"):
+                    _remove_file(item["file_path"])
 
         c.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
         c.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))
@@ -526,7 +562,8 @@ def get_user_documents(user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at, embedding_model, description_model
+               index_status, indexed_at, indexing_started_at, embedding_model, description_model,
+               folder_id
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC
@@ -542,21 +579,21 @@ def get_user_documents(user_id):
             uploaded_dt = None
             if doc.get("uploaded_at"):
                 dt = doc["uploaded_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     uploaded_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):
                         uploaded_dt = datetime.strptime(str(doc["uploaded_at"])[:19], "%Y-%m-%d %H:%M:%S")
             if doc.get("indexed_at"):
                 dt = doc["indexed_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     indexed_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):
                         indexed_dt = datetime.strptime(str(doc["indexed_at"])[:19], "%Y-%m-%d %H:%M:%S")
             if doc.get("indexing_started_at"):
                 dt = doc["indexing_started_at"]
-                if hasattr(dt, "replace"):
+                if isinstance(dt, datetime):
                     indexing_started_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 else:
                     with contextlib.suppress(Exception):
@@ -592,17 +629,17 @@ def get_user_documents(user_id):
         return documents
 
 
-def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
+def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None):
     """Save document metadata to database."""
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """
-        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
-            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time),
+            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time, folder_id),
         )
 
 
@@ -667,6 +704,111 @@ def get_document(doc_id, user_id):
         )
         row = c.fetchone()
         return dict(row) if row else None
+
+
+def save_folder(user_id, folder_id, name):
+    """Insert a new document folder (single-level, owned by the user)."""
+    current_time = get_current_time_for_db()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        INSERT INTO document_folders (id, user_id, name, created_at)
+        VALUES (%s, %s, %s, %s)
+        """,
+            (folder_id, user_id, name, current_time),
+        )
+
+
+def get_user_folders(user_id):
+    """List the user's folders (oldest first)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, name, created_at
+        FROM document_folders
+        WHERE user_id = %s
+        ORDER BY created_at ASC, name ASC
+        """,
+            (user_id,),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def get_folder(folder_id, user_id):
+    """Get a folder that belongs to the user, or None."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, name
+        FROM document_folders
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, user_id),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def rename_folder(folder_id, user_id, name):
+    """Rename a folder owned by the user. Returns True when renamed."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        UPDATE document_folders
+        SET name = %s
+        WHERE id = %s AND user_id = %s
+        """,
+            (name, folder_id, user_id),
+        )
+        return c.rowcount > 0
+
+
+def delete_folder(folder_id, user_id):
+    """Delete a folder row (documents are removed by the caller). Returns True when deleted."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        DELETE FROM document_folders
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, user_id),
+        )
+        return c.rowcount > 0
+
+
+def get_folder_documents(user_id, folder_id):
+    """List the documents inside a folder (metadata only)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT id, filename, file_size, file_path
+        FROM documents
+        WHERE user_id = %s AND folder_id = %s
+        """,
+            (user_id, folder_id),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def set_document_folder(doc_id, user_id, folder_id):
+    """Move a document into a folder (None moves it to the root). Returns True when moved."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        UPDATE documents
+        SET folder_id = %s
+        WHERE id = %s AND user_id = %s
+        """,
+            (folder_id, doc_id, user_id),
+        )
+        return c.rowcount > 0
 
 
 def delete_document(doc_id, user_id):
@@ -835,4 +977,63 @@ def update_session_summary(session_id, summary, summary_upto_id):
             WHERE id = %s
             """,
             (summary, summary_upto_id, get_current_time_for_db(), session_id),
+        )
+
+
+# ── Branding settings (admin "Personalization" tab) ─────────────
+
+
+def _branding_now() -> str:
+    """Current DB timestamp; falls back to naive now() outside an app context."""
+    try:
+        from app.utils import get_current_time_in_timezone_for_db
+
+        return get_current_time_in_timezone_for_db()
+    except RuntimeError:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_branding_settings() -> dict:
+    """Return the singleton branding row (always exists after init_db)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT logo_path, logo_updated_at, site_name_ru, site_name_en, updated_at FROM branding_settings WHERE id = 1"
+        )
+        row = c.fetchone()
+        if not row:
+            return {
+                "logo_path": None,
+                "logo_updated_at": None,
+                "site_name_ru": "",
+                "site_name_en": "",
+                "updated_at": None,
+            }
+        return {
+            "logo_path": row["logo_path"],
+            "logo_updated_at": row["logo_updated_at"],
+            "site_name_ru": row["site_name_ru"] or "",
+            "site_name_en": row["site_name_en"] or "",
+            "updated_at": row["updated_at"],
+        }
+
+
+def set_branding_logo(file_path: str | None) -> None:
+    """Store (or clear with None) the custom logo path; updates the timestamp."""
+    now = _branding_now()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE branding_settings SET logo_path = %s, logo_updated_at = %s, updated_at = %s WHERE id = 1",
+            (file_path, now if file_path else None, now),
+        )
+
+
+def set_branding_site_names(site_name_ru: str, site_name_en: str) -> None:
+    """Store both localized site names; empty values mean 'use the default brand name'."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE branding_settings SET site_name_ru = %s, site_name_en = %s, updated_at = %s WHERE id = 1",
+            (site_name_ru, site_name_en, _branding_now()),
         )

@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.1
+# Architecture — FLAI v12.5
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -11,11 +11,20 @@ For critical rules and commands, see the root `AGENTS.md`.
 ## Entrypoint & Structure
 
 - **`app/__init__.py:create_app()`** — Flask application factory.
-- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`.
+- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`, `api_v1` (public OpenAI-compatible API).
 - **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`, `rlm`.
 - **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save; auto-rollback covers both model swaps — restores the fallback model — and context-only changes — restores `context_length`), `health_monitor.py` (crash-loop watchdog).
 - **Templates** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Static**: `app/static/css/` (all CSS), `app/static/js/` (all JS). No inline styles, no CDN.
+
+## Public OpenAI-compatible API (v12.3)
+
+- **Bearer identity is request-local.** `app/routes/api_v1.py:api_token_required` verifies a per-user API key (SHA-256 digest stored by the web API-key panel) and fills `flask.g.api_user` (login, service class, language, style…). The `/v1` blueprint never reads or writes Flask `session`, sets no cookies and is CSRF-exempt.
+- **A capability router, not a model server.** Chat is persisted and enqueued exactly like a web message, so the LLM router decides which subsystem answers (RAG/search/history/reasoning/image/video). `model`, `tools`, `response_format` and sampling parameters are accepted and ignored where documented.
+- **`app/api_bridge.py`** owns session resolution (`api_conv:<login>:<sha1(user)>` pointers, `metadata.session_id` pinning), enqueue, synchronous/SSE waiting, and the Redis task-owner registry (`api:task:<id>` hash + capped 500-ID per-owner sorted set, `REDIS_RESULT_TTL`); requeued children are followed only with an exact ownership metadata match.
+- **Everything heavy goes through the existing queue.** Embeddings/transcriptions run as dedicated `api_*` task types on the fast worker; images, videos, edits and RLM enqueue on the slow worker with the standard GPU lock — no model generation ever runs inside an HTTP request. Media results are served owner-checked via `GET /v1/flai/tasks/{task_id}/content` with realpath containment under `UPLOAD_FOLDER`.
+- **Limits and errors.** `API_RATE_LIMIT` is enforced per key owner (OpenAI 429 before enqueue), `API_MAX_CONCURRENT_WAITS` caps synchronous waiters, `API_CORS_ORIGINS` allowlists exact browser origins, and every failure uses the localized OpenAI error envelope starting with `⚠️ `. Full contract: `docs/API.md`; tests: `tests/test_api_v1_*.py`, `tests/test_api_tasks.py`, `tests/test_api_documents.py`, `tests/test_api_rlm.py`, `tests/test_api_sessions.py`, `tests/test_api_inventory.py`.
+- **Interactive reference.** flasgger (`flasgger==0.9.7.1`, bundled Swagger UI assets, no CDN) serves the hand-written OpenAPI 3.0.3 spec `docs/openapi-v1.yaml` (24 paths / 29 operations) at `/v1/docs` (UI) and `/v1/openapi.json` (document); both are public — a spec is not data — and are registered in `create_app()` right after the `/v1` blueprint with `rule_filter` disabled so view docstrings are never scanned. `API_V1_SPEC_PATH` is absolute on purpose (a relative `template_file` resolves against `app.root_path`, not the project root), `app/templates/flasgger/head.html` overrides the upstream template that links Google Fonts, and `tests/test_api_docs.py` fails the build on any `/v1` route missing from the spec (and vice versa). The old `docs/openapi.yaml` (internal web/admin API, pre-`/v1`) stays as is and is not served.
 
 ## LLM Client
 
@@ -89,8 +98,6 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 
 ## Model Lifecycle on a Single Consumer GPU
 
-## Model Lifecycle on a Single Consumer GPU
-
 All llama.cpp models share a single group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time.
 
 **TTLs**:
@@ -126,6 +133,16 @@ On a CPU-only deployment (`app/queue.py:_plan_cpu_video` → `modules/video.py:p
 - **Time** — `LTX_VIDEO_CPU_TIME_BUDGET_S` (default 85% of `LTX_VIDEO_TIMEOUT`) so the generation reliably finishes before the client request times out. `estimate_cpu_generation_time_s()` predicts wall-clock from a linear per-voxel CPU throughput calibration (`CPU_VOXELS_PER_STEP_S=24_000`, ~495 s/step observed for 384×256×120 on a 12-core host), a per-frame VAE decode/assembly cost (`CPU_VAE_SECONDS_PER_FRAME=45`, calibrated from a 256×192×57 run whose VAE decode alone took ~43 min), and a fixed `CPU_TIME_OVERHEAD_S=300` (T5 encode + upscaler + I/O).
 
 The largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps satisfying BOTH constraints wins; the user is notified of the exact chosen format (or a clear "too slow / not enough memory" error when nothing fits).
+
+### CPU-only mode: Image Parameters
+
+SD generation and editing on CPU (`modules/sd_cpp.py`) halve **both sides** of the resolution before the request is sent to sd-wrapper: 1024×1024 → 512×512 (~4× fewer pixels, ≈~4× faster) so the diffusion run finishes inside `SD_CPP_TIMEOUT` (previously it timed out around step 3/10). Editing also downsizes the source image itself and the target output to the same halved size. A localised notice (`resize_notice` channel, stored as a `system` assistant message) tells the user about the reduced resolution.
+
+### Model Hub downloads and companion files
+
+`app/model_hub.py` displays a multi-part GGUF model as one entry whose size sums every shard. Non-first shards, imatrix files, MTP/draft heads and FastMTP sidecars are auxiliary files, not standalone model choices. `_companion_files()` associates compatible sidecars with the primary file; supported `noMTP` models can select one Q4_0/Q8_0 draft head (Q8_0 default). Selected companions are validated against the repository listing and included in disk-space checks and `.hubmeta`.
+
+Download state is published in Redis hashes (`model_hub:job:<id>`); the `parts` array is JSON-serialized because Redis hashes accept scalar values. `get_job()` falls back to Redis when polling reaches a web process without the local job object. The browser renders active jobs in a dedicated area outside replaceable search results, persists job IDs in `sessionStorage`, and resumes polling after same-tab reloads. Progress totals are grouped whole MB rounded up. On narrow screens, Model Hub controls and tables, and the Models tab's Downloaded models list, scroll horizontally.
 
 
 ## SLM (SuperLocalMemory)
@@ -221,6 +238,82 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 - **Date normalization** — `enhance_query_with_date()` in `modules/search.py` resolves relative date words («позавчера/вчера/сегодня», English equivalents) to absolute dates in the user's timezone (`app.config["TIMEZONE"]`) before POSTing to SearXNG: «Какие ИТ новости были вчера?» → «Какие ИТ новости были вчера (14 сентября 2026)?». Engines otherwise return generic section landing pages instead of dated articles. Queries without relative date words are untouched — this is query normalization, not routing.
 
+### Tavily provider (v12.4)
+
+`SearchModule.search_with_fallback()` is the single entry point for all web
+search. When the requesting user has stored a Tavily key
+(`app/tavily_keys.py`) and `TAVILY_ENABLED` is true, `_search_tavily()` runs
+first (`POST {TAVILY_API_URL}/search`, `Authorization: Bearer`, `search_depth`
+from `TAVILY_SEARCH_DEPTH`, `include_raw_content=false`). Tavily results reuse
+the `{title, url, content}` contract; snippets shorter than 300 chars are filled
+from the page via trafilatura, exactly like the SearXNG path. Relative dates are
+not normalized for Tavily — it resolves them natively. Any failure (missing key,
+disabled provider, 401/403, 429, timeout, malformed body, zero results) falls
+back to `search()`, the unchanged SearXNG implementation. The caller receives
+`(results, provider)` so it can log which backend answered.
+
+## Web Crawler (Crawl4AI, v12.4)
+
+Optional sidecar container (`flai-crawler`, profile `with-crawler`) running the
+`unclecode/crawl4ai:0.9.4` image (Apache-2.0; includes Playwright + Chromium).
+The 0.9.4 server binds loopback unless `CRAWL4AI_API_TOKEN` is set — the token
+is wired through compose (crawler env + web `CRAWL_API_TOKEN`) and every client
+call carries `Authorization: Bearer`. It serves two capabilities that plain
+search does not provide:
+
+- **`read_page(url)`** — native chat tool (fast worker): renders one page in a
+  real browser via `POST /md` (fit filter) and returns markdown. Registered
+  only when the container is reachable; closes the gap where pasted URLs were
+  never fetched. The chat status label is localized («🕸️ Открываю страницу...»)
+  through `TOOL_META` + `tool_read_page`.
+- **`[-CRAWL-]`** — router category for explicit deep-study intents. Queue type
+  `crawl_task` runs on a dedicated single-thread worker (no fast/slow-worker
+  slot). **The sidecar deliberately rejects deep-crawl strategy objects on
+  untrusted requests**, so the BFS lives in the client (`crawl_site`): pages
+  are fetched one by one via `POST /md` (`f=raw` keeps links), same-domain
+  links are extracted from the markdown, and a start URL deeper than the
+  domain root is confined to its path prefix (a `/docs/` start never drifts
+  into the portal's global navigation). Caps: `CRAWL_MAX_PAGES` (50) /
+  `CRAWL_MAX_DEPTH` (3) / `CRAWL_TIMEOUT_S` (300 s wall clock) /
+  `CRAWL_MAX_PAGE_CHARS` (50k) / `CRAWL_MAX_TOTAL_CHARS` (1 MB). The result is
+  concatenated as `## <url>` sections **each truncated to the remaining
+  context budget** (`get_search_context_limit()` — the first-page exception
+  once produced 50035-char contexts and 25802-token prompts), REPLACES the
+  per-user document named after the registrable domain (existing deletion
+  chain), and the GPU phase (`_run_document_indexing` + VRAM cleanup) runs
+  **under `_gpu_lock`** (embeddings are real GPU inference) before re-queuing
+  reasoning with `rag_source="crawler"`. The resulting document is a regular
+  user document — ordinary RAG search and the Deep analysis (RLM) mode work
+  over it.
+
+### Router rules around URLs
+
+A message with ONE link asking about that page's content («что за проект
+<URL>») is neither `[-CRAWL-]` nor `[-SEARCH-]`: it is ordinary chat, and the
+`read_page` tool opens the link. Category 6 carries a TOP EXCLUSION with a
+literal example — without it the classifier routed such messages to web search
+in 2 of 4 runs (search cannot open addresses and answers from strangers'
+pages).
+
+### Degradation
+
+| Situation | Behavior |
+|---|---|
+| Container disabled or down | `read_page` unregistered; `[-CRAWL-]` fails with a localized message (never silently downgraded to light search) |
+| Anti-bot block (start page) | `SiteBlockedError` → localized «anti-bot protection — falling back to ordinary search» notice, then the plain web-search path (Tavily → SearXNG) runs with the reason appended to the reasoning query |
+| 0 usable pages | Localized soft error suggesting ordinary search |
+| Limits reached | Clean stop; collected prefix is indexed |
+| Document quota full | Localized quota error; content discarded |
+
+### SSRF posture
+
+`app/crawler_guard.py` validates every URL before it leaves the app: http(s)
+only, all resolved addresses must be globally routable, credentials rejected.
+Residual risk: the in-browser redirect chain inside the container is validated
+only by Crawl4AI's own mechanisms — documented for operators, who can
+additionally firewall Docker bridges. Trafilatura remains the first-step
+extractor; the crawler is the second step for pages that need a real browser.
+
 ## Router Classification & Session Context (v12.1)
 
 The classifier lives in `modules/base.py:process_message()` (`temperature=0.1`) and reads the category prompt from `prompts/{ru,en}/base_text.template`.
@@ -263,7 +356,7 @@ An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`
 1. requests `ensure_vram_for_reasoning()`, then marks the GPU busy for the whole analysis (`ResourceManager.mark_rlm_busy()` / `mark_rlm_idle()`; `_rlm_busy` extends `is_gpu_busy()`, so the v11.5 watchdog-skip guard covers RLM too) and publishes the `loading_reasoning_model` stage;
 2. builds the corpus from the **selected documents only** (text extracted via `extract_text_from_file()`) — not RAG;
 3. if the request carries an attached image (`file_data` in the task payload), requests `ensure_vram_for("multimodal")` and describes it through `MultimodalModule.describe_image_for_rlm()` (new `prompts/{ru,en}/rlm_image.template`), adding the detailed text description to the corpus as a `«Изображение (file_name)»` document; a failed or empty description returns the localised «Unable to recognize the image for deep analysis» error; after the image phase `ensure_vram_for_reasoning()` is re-checked (the multimodal model gets unloaded);
-4. rejects the corpus before any GPU work when its total size exceeds the `RLM_MAX_CORPUS_CHARS` (default 50 000 000 chars) OOM cap — the localized error tells the user to select fewer/smaller documents and the model is never loaded; then runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 18). The per-host step allowance comes from the resource ladder `_resource_step_budget()` (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6); the context window never cuts steps — `_obs_trunc_for_context()` compresses per-step observations instead (down to an 800-char floor) so the trajectory fits 95% of the reasoning `context_length` minus a 1000-token reserve, and a window too small even for a minimal one-observation-per-step trajectory still degrades to 1 step instead of dying with «Request too long». Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. The **final step is called with no tools at all** — the model physically cannot burn it on another tool call and must produce a text answer (the previous soft nudge was ignorable and runs died at «step limit reached»). `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step. The answer **language** is pinned via `{response_language}` in `prompts/{ru,en}/rlm.template` plus localized `build_user_prompt()` and `broker_llm()`, and an anti-premature-`final` guard rejects a `final()` call for a multi-file corpus before any `python` inspection has run — the run continues with a corrective tool message instead of closing early.
+4. rejects the corpus before any GPU work when its total size exceeds the `RLM_MAX_CORPUS_CHARS` (default 50 000 000 chars) OOM cap — the localized error tells the user to select fewer/smaller documents and the model is never loaded; then runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 18). The per-host step allowance comes from the resource ladder `_resource_step_budget()` (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6); the context window never cuts steps — `_obs_trunc_for_context()` compresses per-step observations instead (down to an 800-char floor) so the trajectory fits 95% of the reasoning `context_length` minus a 1000-token reserve, and a window too small even for a minimal one-observation-per-step trajectory still degrades to 1 step instead of dying with «Request too long». Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. **The final step offers only the `final` tool** — the template stays tool-aware (withholding ALL tools made some models, e.g. Qwen3.6, print the call as plain text that leaked to the user as «internal dialogue»), but `python`/`llm`/`web_fetch` are unreachable; a `parse_leaked_tool_calls()` guard parses printed `<function=…><parameter=…>` blocks back into structured calls (a leaked `final` yields the answer, a leaked `python` runs and the analysis continues), and a non-final tool executed on the last step grants ONE bounded final-only finalize call so the gathered observation reaches the answer instead of dying at «step limit reached». `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step. The answer **language** is pinned via `{response_language}` in `prompts/{ru,en}/rlm.template` plus localized `build_user_prompt()` and `broker_llm()`, and an anti-premature-`final` guard rejects a `final()` call for a multi-file corpus before any `python` inspection has run — the run continues with a corrective tool message instead of closing early. The templates also tell the actor that `re`/`math` are already available in the sandbox (no `import`, no `lambda`) and that a failing python call must be fixed, not repeated.
 
 The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once and kept resident across the actor's turns (its `ttl=1s` reload cost is accepted). On completion the per-step trace (step/tool/args/observation) is stored to the Redis key `rlm_trace:<task_id>` (TTL 3600) and the answer is saved via `_save_and_respond()` with `extra` metadata `model_type="rlm"` / `rlm_trace_task_id` / `rlm_steps`. The DB message carries `model_type="rlm"` (its own 🔬🧠 header emoji), and the trace also persists (as a diagnosable key) when the run ends in an error.
 
@@ -326,7 +419,7 @@ Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm
 
 `app/static/js/chat-recording.js`: if image already attached when voice is recorded, voice stored as `attachedVoiceBlob` instead of replacing `attachedFile`. Preview shows `"image.jpg + 🎤 voice.webm"`.
 
-Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present.
+Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present. The pairing works in BOTH attachment layouts: voice in the dedicated `voice` field pairs with the image from `file_data`; voice in the legacy `file` slot (v12.4 multi-attachment flow) pairs with the first image among the extra parts, and the full image list travels in `request_data["images"]` so the vision model receives every attached picture. Tests: `tests/test_voice_image_pairing.py`.
 
 ## Clipboard Image Paste
 

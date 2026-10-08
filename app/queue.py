@@ -13,9 +13,12 @@ import time
 import uuid
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import redis
 from flask_babel import force_locale
+
+from app import db
 
 from .db import (
     INDEX_STATUS_FAILED,
@@ -23,6 +26,7 @@ from .db import (
     INDEX_STATUS_INDEXING,
     INDEX_STATUS_PENDING,
     get_current_time_for_db,
+    save_document,
     save_message,
     update_document_index_status,
 )
@@ -32,12 +36,14 @@ from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
     begin_usage_account,
+    check_document_quota,
     current_usage_account_id,
     estimate_tokens,
     finish_usage_account,
     format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
+    get_image_dimensions,
     save_uploaded_file,
 )
 
@@ -100,6 +106,67 @@ def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: 
         app.logger.warning(f"Background fact extraction failed: {e}")
 
 
+def _publish_document_index_event(app, user_id: str, doc_id: str, index_status: str) -> None:
+    """Publish a document_indexed event to the user's SSE stream (module-level)."""
+    publisher = get_events_publisher()
+    if publisher is None:
+        return
+    publisher.publish(
+        user_id,
+        "document_indexed",
+        {
+            "doc_id": doc_id,
+            "index_status": index_status,
+        },
+    )
+
+
+def _run_document_indexing(
+    app,
+    doc_id: str,
+    file_path: str,
+    user_id: str,
+    indexing_started_at: str | None,
+    publish: Callable[[str], None],
+) -> tuple[bool, str, str, bool]:
+    """Extract, chunk, embed and upsert one document; mark it INDEXED on success.
+
+    The indexing core shared by the index_document queue task and the crawl task
+    (which owns its own worker thread and indexes its freshly saved document
+    synchronously). The caller owns the INDEXING status — it decides whether
+    ``indexing_started_at`` is set or preserved — the FAILED status, the
+    scanned-PDF OCR requeue and the SSE publish, so none of them is touched here.
+    ``publish`` is called with a document index status once indexing succeeds.
+
+    Returns ``(success, message, embedding_model, raised)``. ``raised`` is True
+    when ``rag.index_document()`` threw, so a caller never mistakes an exception
+    text for a scanned-PDF extraction failure.
+    """
+    rag = app.modules.get("rag")
+    if not rag or not rag.available:
+        with force_locale("en"):
+            error_msg = app.modules["base"]._("RAG module unavailable")
+        return False, error_msg, "unknown", False
+    try:
+        success, message = rag.index_document(user_id, doc_id, file_path)
+    except Exception as e:
+        app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
+        return False, str(e), "unknown", True
+    if not success:
+        return False, message, "unknown", False
+    config = get_model_config("embedding")
+    embedding_model = config.get("model_name", "unknown") if config else "unknown"
+    update_document_index_status(
+        doc_id,
+        INDEX_STATUS_INDEXED,
+        indexed_at=get_current_time_for_db(),
+        indexing_started_at=indexing_started_at,
+        embedding_model=embedding_model,
+    )
+    publish(INDEX_STATUS_INDEXED)
+    return True, message, embedding_model, False
+
+
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -116,9 +183,11 @@ class RedisRequestQueue:
         self.queue_key = "request_queue"
         self.slow_queue_key = "slow_request_queue"
         self.background_queue_key = "background_queue"
+        self.crawl_queue_key = self.queue_key + ":crawl"
         self.processing_key = "processing_requests"
         self.slow_processing_key = "slow_processing_requests"
         self.background_processing_key = "background_processing"
+        self.crawl_processing_key = self.crawl_queue_key + ":processing"
         self.results_key = "request_results"
         self.user_requests_key = "user_requests"
         # HMAC key for signing serialized data (prevent tampering)
@@ -169,13 +238,13 @@ class RedisRequestQueue:
             return None
 
     def start_worker(self):
-        """Start worker threads for fast and slow task queues."""
+        """Start worker threads for the fast, slow and crawl task queues."""
         # Idempotence guard: two sets of worker threads would both blpop the
         # same queue and race for tasks (duplicate processing, missing logs).
         if getattr(self, "_workers_started", False):
             return
         self._workers_started = True
-        self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
+        self.app.logger.info("RedisRequestQueue: starting fast, slow and crawl workers")
 
         # NEW: Global GPU serialization locks
         if not hasattr(self, "_gpu_lock"):
@@ -190,7 +259,11 @@ class RedisRequestQueue:
         slow_thread = threading.Thread(target=self._worker_loop_slow, name="slow-worker", daemon=False)
         slow_thread.start()
         self._slow_worker_thread = slow_thread
-        self.app.logger.info("RedisRequestQueue: workers started (fast + slow)")
+        # Crawl worker — site crawling (CPU-only HTTP, no GPU lock)
+        crawl_thread = threading.Thread(target=self._worker_loop_crawl, name="crawl-worker", daemon=False)
+        crawl_thread.start()
+        self._crawl_worker_thread = crawl_thread
+        self.app.logger.info("RedisRequestQueue: workers started (fast + slow + crawl)")
 
     def stop_workers(self, timeout=30):
         """Signal workers to stop and wait for them to finish."""
@@ -202,12 +275,18 @@ class RedisRequestQueue:
             self._fast_worker_thread.join(timeout=timeout)
         if hasattr(self, "_slow_worker_thread"):
             self._slow_worker_thread.join(timeout=timeout)
+        if hasattr(self, "_crawl_worker_thread"):
+            self._crawl_worker_thread.join(timeout=timeout)
         self.app.logger.info("RedisRequestQueue: workers stopped")
 
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
         task_type = task.get("type", "")
+        if task_type == "crawl_task":
+            return "crawl"  # Dedicated crawl executor — CPU-only, no GPU lock
+        if task_type == "api_image_edit":
+            return "slow"
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
         if task_type == "fact_merge_task":
@@ -217,8 +296,12 @@ class RedisRequestQueue:
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
+        if req_type == "crawl_task":
+            return "crawl"  # Dedicated crawl executor — CPU-only, no GPU lock
         if req_type in ("index_document", "reindex_all_embeddings", "describe_document_image", "describe_document_pdf"):
             return "slow"  # Indexing can be slow
+        if req_type == "doc_chat":
+            return "slow"  # Index the attached document first, then re-queue the question
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
         file_type = request_data.get("file_type", "")
@@ -234,7 +317,7 @@ class RedisRequestQueue:
                 return "slow"
             return "fast"
         # Image generation (re-queued from router) is slow
-        if req_type == "image_gen":
+        if req_type in ("image_gen", "api_image_edit") or task_type == "api_image_edit":
             return "slow"
         if req_type == "rlm_analysis":
             return "slow"
@@ -243,17 +326,30 @@ class RedisRequestQueue:
         # Text tasks are fast
         if req_type == "text":
             return "fast"
+        # Embeddings are short GPU calls — keep them off the slow worker that
+        # serves user-facing video/image generation.
+        if req_type == "api_embedding":
+            return "fast"
         # Video tasks are slow
         if req_type == "video":
             return "slow"
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
             return "fast"
+        # The API variant is the same Whisper call without a chat session.
+        if req_type == "api_transcribe":
+            return "fast"
         # Default to slow for safety
         return "slow"
 
     def add_request(
-        self, user_id: str, session_id: str, request_data: dict[str, Any], user_class: int, lang: str = "ru"
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+        task_type: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Add a request to the appropriate queue (fast or slow)."""
         task_id = str(uuid.uuid4())
@@ -266,6 +362,8 @@ class RedisRequestQueue:
             "lang": lang,
             "timestamp": time.time(),
         }
+        if task_type:
+            task["type"] = task_type
 
         # Classify and route to appropriate queue
         queue_type = self._classify_task(task)
@@ -273,6 +371,8 @@ class RedisRequestQueue:
             queue_key = self.background_queue_key
         elif queue_type == "slow":
             queue_key = self.slow_queue_key
+        elif queue_type == "crawl":
+            queue_key = self.crawl_queue_key
         else:
             queue_key = self.queue_key
 
@@ -296,6 +396,24 @@ class RedisRequestQueue:
             "queue_type": queue_type,
         }
 
+    def add_api_image_edit(
+        self,
+        user_id: str,
+        session_id: str,
+        request_data: dict[str, Any],
+        user_class: int,
+        lang: str = "ru",
+    ) -> tuple[str, dict[str, Any]]:
+        """Queue an explicit API image edit as a slow worker task."""
+        return self.add_request(
+            user_id,
+            session_id,
+            request_data,
+            user_class,
+            lang=lang,
+            task_type="api_image_edit",
+        )
+
     def add_reindex_all_task(self, lang: str = "ru") -> str:
         """Add a reindex-all task to the slow queue."""
         task_id = str(uuid.uuid4())
@@ -318,16 +436,19 @@ class RedisRequestQueue:
         """Estimate wait time in seconds based on queue type and position."""
         if queue_type == "slow":
             return position * 300
-        else:
-            return position * 3
+        if queue_type == "crawl":
+            return position * 60  # a site crawl takes minutes
+        return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> tuple[int, int]:
         """Get user's queue count and total queue+processing length."""
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
+        crawl_total = self.redis.llen(self.crawl_queue_key)
         fast_proc = self.redis.hlen(self.processing_key)
         slow_proc = self.redis.hlen(self.slow_processing_key)
-        total = fast_total + slow_total + fast_proc + slow_proc
+        crawl_proc = self.redis.hlen(self.crawl_processing_key)
+        total = fast_total + slow_total + crawl_total + fast_proc + slow_proc + crawl_proc
         if total == 0:
             # Reset user counter to prevent stale "1/1" display after all
             # tasks finish (race between blpop and hset to processing creates
@@ -362,9 +483,17 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if task_type == "crawl_task" or req_type == "crawl_task":
+            return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
+        if task_type == "api_image_edit":
+            return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
             return "multimodal"
+        if req_type == "api_image_edit" or task_type == "api_image_edit":
+            return "multimodal"
         if task_type == "transcribe_audio":
+            return "none"
+        if req_type == "api_transcribe":
             return "none"
 
         if action_type == "rag":
@@ -389,9 +518,14 @@ class RedisRequestQueue:
             return "reasoning"
         if req_type == "reasoning_task":
             return "reasoning"
+        if req_type == "doc_chat":
+            return "none"  # indexing phase takes no llama.cpp model
 
         if req_type == "text":
             return "multimodal"
+
+        if req_type == "api_embedding":
+            return "embedding"
 
         return "multimodal"
 
@@ -526,6 +660,7 @@ class RedisRequestQueue:
         task_id = task.get("id")
         if not task_id:
             return
+        publish_result = task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe")
 
         processing_ttl = max(
             self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 60,
@@ -570,7 +705,8 @@ class RedisRequestQueue:
                 pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
                 pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
             pipe.execute()
-            self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
+            if publish_result:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
         final_result = None
@@ -587,23 +723,31 @@ class RedisRequestQueue:
                 )
                 self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
                 self.app.logger.info(f"Task {task_id} completed successfully for session {task.get('session_id')}")
-                self._publish_result_event(task, "completed", result_data)
+                if publish_result:
+                    self._publish_result_event(task, "completed", result_data)
         except Exception as e:
             self.app.logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
+            is_api_transcribe = task.get("data", {}).get("type") == "api_transcribe"
+            if is_api_transcribe:
+                lang = task.get("lang", "ru")
+                error_text = "⚠️ " + self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            else:
+                error_text = str(e)
             self.redis.hset(
                 self.results_key,
                 task_id,
                 self._serialize(
                     {
                         "status": "error",
-                        "error": str(e),
-                        "result": {"session_id": task.get("session_id")},
+                        "error": error_text,
+                        "result": {"error": error_text, "session_id": task.get("session_id")},
                         "timestamp": time.time(),
                     }
                 ),
             )
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
-            self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
+            if publish_result and not is_api_transcribe:
+                self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
         finally:
             # Drop any leftover usage account (early error return, requeue that
             # did not consume it). The thread-local must not leak into the next
@@ -698,6 +842,35 @@ class RedisRequestQueue:
                 self.logger.error(f"Slow worker error: {e}")
                 time.sleep(1)
         self.app.logger.info("Slow worker stopped gracefully")
+
+    def _worker_loop_crawl(self):
+        """Worker for the crawl queue (site study — HTTP crawl without the GPU lock).
+
+        The crawl itself never takes ``_gpu_lock`` — it must not block or wait for
+        models; only the indexing phase inside _process_crawl_task does.
+        """
+        self.app.logger.info("Crawl worker started")
+        while not self._shutdown_event.is_set():
+            try:
+                result = self.redis.blpop(self.crawl_queue_key, timeout=5)
+                if not result:
+                    continue
+                _, task_data = result
+                task = self._deserialize(task_data)
+                if task is None:
+                    self.logger.error("Crawl worker: failed to deserialize task")
+                    continue
+                self.app.logger.info(
+                    f"Crawl worker: dequeued task {str(task.get('id'))[:12]} "
+                    f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
+                )
+                # The HTTP crawl must not hold the GPU lock; the task takes it
+                # itself for the embedding phase of indexing.
+                self._process_single_task(task, self.crawl_processing_key)
+            except Exception as e:
+                self.logger.error(f"Crawl worker error: {e}")
+                time.sleep(1)
+        self.app.logger.info("Crawl worker stopped gracefully")
 
     def _get_model_name(self, module_type: str) -> str | None:
         config = get_model_config(module_type)
@@ -1110,7 +1283,8 @@ class RedisRequestQueue:
         """On CPU-only hosts, downgrade video params when RAM is insufficient.
 
         Called AFTER the multimodal model was unloaded, so available RAM reflects
-        real headroom. Publishes a chat notice and returns None when generation
+        real headroom. Persists the notice via save_message() (rendered to the
+        chat through the message_new SSE event) and returns None when generation
         is impossible even at the fallback resolution.
         """
         video_module = self.app.modules.get("video")
@@ -1125,8 +1299,11 @@ class RedisRequestQueue:
             prompt_data = {**prompt_data, **override}
 
         if notice:
-            if task:
-                self._publish_stream_event(task, "notice", {"message": notice})
+            # Persist via save_message() only: it publishes a message_new SSE
+            # event carrying the REAL DB id, so the client dedups (displayedMessageIds)
+            # and a later loadMessages() skips the row. Publishing a separate
+            # "notice" SSE event with a synthetic id here used to render a second
+            # copy of the same notice (observed on CPU video degrade).
             try:
                 save_message(session_id, "assistant", notice, model_name="system", response_time="0")
             except Exception:
@@ -1261,10 +1438,28 @@ class RedisRequestQueue:
                 lang,
             )
 
-        # Show resize notice if image was downscaled for editing
+        # Show a notice when the image was downscaled — either the large-source
+        # 1024px cap or the CPU-mode halving (which additionally shrinks output).
         resize_notice = None
         resize_notice_id = None
-        if image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                resize_text = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            resize_notice_id = save_message(
+                session_id, "assistant", resize_text, model_name="system", response_time="0"
+            )
+            resize_notice = resize_text
+        elif image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
             orig_w, orig_h = image_result["original_size"]
             new_w, new_h = image_result["new_size"]
             lang_for_msg = lang
@@ -1304,6 +1499,7 @@ class RedisRequestQueue:
             self.app.logger.warning("Edit: no image_data in result")
 
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -1342,8 +1538,14 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        images: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Handle image generation from text (router action_type='image')."""
+        """Handle image generation from text (router action_type='image').
+
+        ``images`` are attached example images («draw something similar»):
+        each one is described by the multimodal model and the descriptions are
+        prepended to the SD prompt as reference examples. SD itself still
+        receives text only."""
         if "image" not in self.app.modules:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
@@ -1381,8 +1583,21 @@ class RedisRequestQueue:
         mm_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "analyzing_prompt"})
+        # Attached example images: describe each one so the SD prompt can
+        # reference them ("draw something similar"). Real aspect ratio of each
+        # example is appended so the SD format matches the reference.
+        example_sections = self._collect_reference_examples(images, lang)
+        if example_sections:
+            self.app.logger.info(f"Image gen: {len(example_sections)} example descriptions collected")
+        generation_query = query
+        if example_sections:
+            from flask_babel import gettext as _
+
+            with force_locale(lang):
+                examples_header = _("Reference examples (draw something similar):")
+            generation_query = f"{query}\n\n{examples_header}\n" + "\n".join(example_sections)
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
-            query, lang=lang, response_style=response_style
+            generation_query, lang=lang, response_style=response_style
         )
         mm_time = round(time.time() - mm_start, 1)
         if error:
@@ -1416,6 +1631,24 @@ class RedisRequestQueue:
             self._preload_multimodal_sync()
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
+        # CPU mode halves the generation size: surface the reduced resolution.
+        cpu_notice_id = None
+        cpu_notice = None
+        cpu_dg = image_result.get("cpu_degrade") or {}
+        if cpu_dg.get("degraded"):
+            orig_w, orig_h = cpu_dg["original_size"]
+            new_w, new_h = cpu_dg["new_size"]
+            with force_locale(lang):
+                cpu_notice = (
+                    self.app.modules["base"]
+                    ._(
+                        "CPU mode: reduced resolution {new_w}×{new_h} (requested {orig_w}×{orig_h}).",
+                        lang=lang,
+                    )
+                    .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
+                )
+            cpu_notice_id = save_message(session_id, "assistant", cpu_notice, model_name="system", response_time="0")
+
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
 
@@ -1438,6 +1671,7 @@ class RedisRequestQueue:
 
         mm_model = self._get_model_name("multimodal") or "unknown"
         extra = {
+            "task_id": task.get("id") if task else None,
             "file_path": file_path,
             "file_name": image_result["file_name"],
             "file_size": image_result["file_size"],
@@ -1447,6 +1681,8 @@ class RedisRequestQueue:
             "mm_model": mm_model,
             "gen_model": sd_model,
             "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": sd_model},
+            "resize_notice": cpu_notice,
+            "resize_notice_id": cpu_notice_id,
         }
         return self._save_and_respond(
             session_id,
@@ -1519,16 +1755,21 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         user_class: int = 2,
+        images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Re-queue an image generation task to the slow queue.
         Prevents concurrent sd-wrapper requests which cause timeouts.
-        """
+        ``images`` carries attached example images ('draw something similar'):
+        the generation task describes them first and feeds the descriptions
+        into the SD prompt as reference examples."""
         request_data = {
             "type": "image_gen",
             "text": query,
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Image request", lang=lang),
             "response_style": response_style,
         }
+        if images:
+            request_data["images"] = images
         # Carry the router-phase usage into the re-queued task so the fast
         # worker's router tokens merge into the same bill (see _process_request).
         account_id = current_usage_account_id()
@@ -1603,6 +1844,55 @@ class RedisRequestQueue:
             "estimated_wait": position_info["estimated_seconds"],
         }
 
+    def _requeue_crawl_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        user_class: int = 2,
+        url: str = "",
+    ) -> dict[str, Any]:
+        """Re-queue a deep site study task on the dedicated crawl queue.
+
+        A crawl is multi-minute CPU-only HTTP work, so it must never run on
+        the fast worker (which would block all text chat) and never holds the
+        GPU lock while crawling — the task takes it only for the indexing phase.
+        The router's half-account is carried across the queue hop so
+        the reasoning continuation re-opened by _process_crawl_task bills the
+        router and the answer together.
+        """
+        request_data: dict[str, Any] = {
+            "type": "crawl_task",
+            "query": query,
+            "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Studying the site…", lang=lang),
+            "response_style": response_style,
+        }
+        if url:
+            request_data["url"] = url
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
+        new_request_id, position_info = self.add_request(
+            user_id, session_id, request_data, user_class, lang=lang, task_type="crawl_task"
+        )
+        self.app.logger.info(
+            f"Re-queued crawl task {new_request_id} for session {session_id} (position {position_info['position']})"
+        )
+        return {
+            "status": "queued",
+            "request_id": new_request_id,
+            "position": position_info["position"],
+            "estimated_wait": position_info["estimated_seconds"],
+        }
+
     def add_rlm_task(
         self,
         user_id: str,
@@ -1614,12 +1904,15 @@ class RedisRequestQueue:
         image_data: str | None = None,
         image_type: str | None = None,
         image_name: str | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Enqueue an RLM deep-analysis task on the slow queue.
 
-        An attached image is passed as base64 in the task payload; the slow
-        worker describes it with the multimodal model and adds the description
-        to the analysis corpus as a document named 'Изображение (name)'.
+        Attached images are passed as base64 in the task payload (one entry per
+        image, ``images=[{data,type,name}, …]``; the legacy single-image
+        arguments are still accepted and prepended); the slow worker describes
+        each with the multimodal model and adds the descriptions to the
+        analysis corpus as documents named 'Изображение (name)'.
         """
         request_data: dict[str, Any] = {
             "type": "rlm_analysis",
@@ -1627,10 +1920,21 @@ class RedisRequestQueue:
             "doc_ids": doc_ids,
             "preview": (question[:50] + "...") if question else self.app.modules["base"]._("Deep analysis", lang=lang),
         }
+        parts: list[dict[str, Any]] = []
         if image_data:
-            request_data["file_data"] = image_data
-            request_data["file_type"] = image_type or "image/jpeg"
-            request_data["file_name"] = image_name or self.app.modules["base"]._("Image", lang=lang)
+            parts.append({"data": image_data, "type": image_type or "image/jpeg", "name": image_name})
+        for extra in images or []:
+            if extra.get("data"):
+                parts.append(extra)
+        if len(parts) == 1:
+            request_data["file_data"] = parts[0]["data"]
+            request_data["file_type"] = parts[0].get("type") or "image/jpeg"
+            request_data["file_name"] = parts[0].get("name")
+        elif parts:
+            request_data["images"] = parts
+            request_data["file_data"] = parts[0]["data"]
+            request_data["file_type"] = parts[0].get("type") or "image/jpeg"
+            request_data["file_name"] = parts[0].get("name")
         return self.add_request(user_id, session_id, request_data, user_class, lang=lang)
 
     def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1699,7 +2003,18 @@ class RedisRequestQueue:
 
         # Attached image: describe it with the multimodal model and treat the
         # description as a corpus document named 'Изображение (file)'.
-        if request_data.get("file_data"):
+        rlm_images: list[dict[str, Any]] = []
+        if request_data.get("images"):
+            rlm_images = [p for p in request_data["images"] if p.get("data")]
+        elif request_data.get("file_data"):
+            rlm_images = [
+                {
+                    "data": request_data["file_data"],
+                    "type": request_data.get("file_type") or "image/jpeg",
+                    "name": request_data.get("file_name"),
+                }
+            ]
+        if rlm_images:
             if not rm.ensure_vram_for("multimodal"):
                 return self._build_error_response(
                     session_id,
@@ -1717,14 +2032,16 @@ class RedisRequestQueue:
                     0,
                     lang,
                 )
-            description, describe_error = multimodal.describe_image_for_rlm(request_data["file_data"], lang)
-            if describe_error or not description:
-                message = describe_error or self.app.modules["base"]._(
-                    "Unable to recognize the image for deep analysis", lang
-                )
-                return self._build_error_response(session_id, message, 0, lang)
-            image_name = request_data.get("file_name") or self.app.modules["base"]._("Image", lang=lang)
-            corpus[f"Изображение ({image_name})"] = description
+            # Describe each image one by one (one GPU session, sequential calls).
+            for img_part in rlm_images:
+                description, describe_error = multimodal.describe_image_for_rlm(img_part["data"], lang)
+                if describe_error or not description:
+                    message = describe_error or self.app.modules["base"]._(
+                        "Unable to recognize the image for deep analysis", lang
+                    )
+                    return self._build_error_response(session_id, message, 0, lang)
+                image_name = img_part.get("name") or self.app.modules["base"]._("Image", lang=lang)
+                corpus[f"Изображение ({image_name})"] = description
 
         if not corpus:
             return self._build_error_response(
@@ -1827,7 +2144,51 @@ class RedisRequestQueue:
         user_id = task["user_id"]
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
-        return self._process_image_gen_task(query, session_id, user_id, lang, response_style, task=task)
+        return self._process_image_gen_task(
+            query, session_id, user_id, lang, response_style, task=task, images=request_data.get("images")
+        )
+
+    def _collect_reference_examples(self, images: list[str], lang: str) -> list[str]:
+        """Describe each attached reference image («draw something similar») and
+        append its real aspect ratio so the SD prompt can match the example format."""
+        sections: list[str] = []
+        if not images:
+            return sections
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal or not multimodal.available:
+            return sections
+        results = multimodal.describe_images_for_context(images, lang)
+        for idx, (data, description, error) in enumerate(results, 1):
+            if not description or error:
+                continue
+            section = f"{idx}. {description}"
+            aspect = self._image_aspect_line(data, lang)
+            if aspect:
+                section += f"\n{aspect}"
+            sections.append(section)
+        return sections
+
+    def _image_aspect_line(self, image_data: str, lang: str) -> str:
+        """Localized real-size line for a reference image, e.g.
+        «Формат: 768×1024 (вертикальный)». Empty string when the size is unknown."""
+        dimensions = get_image_dimensions(image_data)
+        if not dimensions:
+            return ""
+        width, height = dimensions
+        try:
+            with force_locale(lang):
+                from flask_babel import gettext as _
+
+                if width > height:
+                    orientation = _("horizontal")
+                elif width < height:
+                    orientation = _("vertical")
+                else:
+                    orientation = _("square")
+                pattern = _("Aspect ratio: {width}×{height} ({orientation})")
+            return pattern.format(width=width, height=height, orientation=orientation)
+        except RuntimeError:
+            return f"{width}×{height}"
 
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
@@ -2053,7 +2414,15 @@ class RedisRequestQueue:
             return self._process_video_gen_task_from_image(
                 query, file_data, session_id, user_id, lang, response_style, task=task
             )
-        return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
+        return self._process_video_gen_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            task=task,
+            generation_options=request_data,
+        )
 
     def _process_video_gen_task(
         self,
@@ -2063,6 +2432,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        generation_options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
@@ -2097,6 +2467,9 @@ class RedisRequestQueue:
             mm_time = round(time.time() - mm_start, 1)
             if error:
                 return self._build_error_response(session_id, error, mm_time, lang)
+            for option in ("width", "height", "num_frames", "frame_rate", "seed"):
+                if generation_options and option in generation_options:
+                    prompt_data[option] = generation_options[option]
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
@@ -2185,6 +2558,7 @@ class RedisRequestQueue:
 
             mm_model = self._get_model_name("multimodal") or "unknown"
             extra = {
+                "task_id": task.get("id") if task else None,
                 "file_path": file_path,
                 "file_name": video_result["file_name"],
                 "file_size": video_result["file_size"],
@@ -2784,9 +3158,12 @@ class RedisRequestQueue:
         self.app.logger.info(
             f"Process web search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
         )
+        from app.tavily_keys import get_tavily_key
+
         search = self.app.modules.get("search")
-        if not search or not search.available:
+        if not search:
             return _no_search(self.app.modules["base"]._("Web search is not available", lang), 0)
+        api_key = get_tavily_key(user_id) if user_id else None
 
         search_start = time.time()
         try:
@@ -2796,12 +3173,28 @@ class RedisRequestQueue:
             )
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
-            results = search.search(query, lang=lang)
+            results, provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             if task and results:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
-            # Degraded engines return few/noisy results with near-empty snippets.
-            # A second attempt often clears transient CAPTCHA/rate-limit failures.
+            # A thin Tavily answer leaves too little context for the reasoning
+            # model. SearXNG is free, so top it up from there instead of spending
+            # a second Tavily credit. The `provider` guard keeps the pre-v12.4
+            # path byte-for-byte identical: when SearXNG already answered, the
+            # simplified-query retry below is the only extra attempt.
+            thin = (
+                not results
+                or len(search_context) < 2000
+                or not any(len((r.get("content") or "").strip()) > 500 for r in results)
+            )
+            if thin and provider != "searxng" and search.available:
+                supplemented = search.search(query, lang=lang)
+                if supplemented:
+                    supplemented_ctx = search.format_results_context(
+                        supplemented, lang=lang, max_chars=search_max_chars
+                    )
+                    if len(supplemented_ctx) > len(search_context):
+                        results, search_context, provider = supplemented, supplemented_ctx, "searxng"
             if (
                 not results
                 or len(search_context) < 2000
@@ -2811,14 +3204,14 @@ class RedisRequestQueue:
 
                 retry_query = simplify_search_query(query)
                 self.app.logger.warning(
-                    f"SearXNG returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
+                    f"Web search returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
                 )
                 retried = search.search(retry_query, lang=lang)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
                     if len(retried_ctx) > len(search_context):
-                        results, search_context = retried, retried_ctx
+                        results, search_context, provider = retried, retried_ctx, "searxng"
             search_time = round(time.time() - search_start, 1)
             if not results:
                 self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
@@ -2829,7 +3222,7 @@ class RedisRequestQueue:
                     search_time,
                 )
             self.app.logger.info(
-                f"Web search: '{query[:60]}...' → {len(results)} results, "
+                f"Web search via {provider}: '{query[:60]}...' -> {len(results)} results, "
                 f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"
             )
         except Exception as e:
@@ -2845,6 +3238,314 @@ class RedisRequestQueue:
             response_style,
             rag_context=search_context,
             rag_source="web_search",
+        )
+
+    # ------------------------------------------------------------------
+    # Deep site study ([-CRAWL-]) — crawl → document → RAG → answer
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_first_url(text: str) -> str:
+        """Return the first http(s) URL found in free text, or an empty string."""
+        if not text:
+            return ""
+        match = re.search(r"https?://\S+", text)
+        return match.group(0).rstrip(".,;:!?»)]}") if match else ""
+
+    @staticmethod
+    def _crawl_domain(url: str) -> str:
+        """Document filename of a crawl URL: the hostname, lowercased, without www."""
+        return (urlsplit(url).hostname or "site").lower().removeprefix("www.")
+
+    def _crawl_msg(self, msgid: str, lang: str, **kwargs: Any) -> str:
+        """Localize a crawl-task message (the base module is the normal source)."""
+        base = self.app.modules.get("base")
+        if base:
+            return str(base._(msgid, lang, **kwargs))
+        from app.llamacpp_client import _tr
+
+        return str(_tr(msgid, lang=lang, **kwargs))
+
+    def _crawl_error(self, session_id: str, msgid: str, lang: str, elapsed: float = 0, **kwargs: Any) -> dict[str, Any]:
+        """Build a persisted error response for a crawl-task failure."""
+        return self._build_error_response(session_id, self._crawl_msg(msgid, lang, **kwargs), elapsed, lang)
+
+    def _domain_document_id(self, user_id: str, url: str) -> str | None:
+        """Return the id of the user's existing per-domain document, if any.
+
+        The crawl REPLACES that document instead of adding a new one, so its id is
+        excluded from the quota check that guards the crawl.
+        """
+        domain = self._crawl_domain(url)
+        try:
+            for doc in db.get_user_documents(user_id):
+                if doc.get("filename") == domain:
+                    return str(doc.get("id") or "") or None
+        except Exception as e:
+            self.logger.warning(f"Crawl: per-domain document lookup failed: {e}")
+        return None
+
+    def _crawl_with_progress(self, crawler, url: str, task: dict[str, Any]) -> list[dict]:
+        """Crawl a site, emitting crawl_start / crawl_page progress events.
+
+        Raises BlockedUrlError through to the caller (converted to a
+        localized error there); any other failure returns no pages.
+        Honours the task cancel flag between page progress updates.
+        """
+        self._publish_stream_event(task, "task_progress", {"stage": "crawl_start"})
+        pages: list[dict] = crawler.crawl_site(url)
+        total = len(pages)
+        for count in range(1, total + 1):
+            if count < total and task.get("id") and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                self.logger.info(f"Crawl task {task['id']} cancelled after {count} pages")
+                return []
+            self._publish_stream_event(task, "task_progress", {"stage": "crawl_page", "pages": count})
+        return pages
+
+    def _store_crawl_document(self, user_id: str, url: str, pages: list[dict], task: dict[str, Any]) -> str | None:
+        """Save crawled pages as the user's per-domain document and index it.
+
+        A same-named document (filename == registrable domain, leading "www."
+        stripped) is replaced: its indexed vectors, file and DB row are removed
+        before the new one is saved. Returns the new doc_id, or None when the file
+        could not be stored inside the user folder.
+        """
+        domain = self._crawl_domain(url)
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
+
+        # Replace the previous document for this domain (same user only).
+        try:
+            for doc in db.get_user_documents(user_id):
+                if doc.get("filename") != domain:
+                    continue
+                old_doc_id = doc.get("id")
+                rag = self.app.modules.get("rag")
+                if rag and rag.available and old_doc_id:
+                    try:
+                        rag.delete_document(old_doc_id, user_id)
+                    except Exception as e:
+                        self.logger.warning(f"Crawl replacement: failed to unindex old document: {e}")
+                old_path = os.path.join(documents_folder, doc.get("file_path", ""))
+                real_old_path = os.path.realpath(old_path)
+                real_documents_folder = os.path.realpath(documents_folder)
+                if (
+                    old_doc_id
+                    and (
+                        real_old_path.startswith(real_documents_folder + os.sep)
+                        or real_old_path == real_documents_folder
+                    )
+                    and os.path.exists(old_path)
+                ):
+                    try:
+                        os.remove(old_path)
+                    except Exception as e:
+                        self.logger.warning(f"Crawl replacement: failed to remove old file: {e}")
+                if old_doc_id:
+                    db.delete_document(old_doc_id, user_id)
+                break
+        except Exception as e:
+            self.logger.warning(f"Crawl replacement lookup failed: {e}")
+
+        user_folder = os.path.join(documents_folder, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        doc_id = str(uuid.uuid4())
+        file_path = os.path.join(user_folder, f"{doc_id}.txt")
+
+        # Double-check path does not escape the user folder
+        real_file_path = os.path.realpath(file_path)
+        real_user_folder = os.path.realpath(user_folder)
+        if not real_file_path.startswith(real_user_folder + os.sep):
+            self.logger.error(f"Crawl document path escaped the user folder: {file_path}")
+            return None
+
+        content = "".join(f"\n\n## {page.get('url', url)}\n\n{page.get('markdown', '')}" for page in pages)
+        file_size = len(content.encode("utf-8"))
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content.lstrip("\n"))
+
+        relative_path = os.path.join(user_id, f"{doc_id}.txt")
+        db.save_document(user_id, doc_id, domain, file_size, file_ext=".txt", file_path=relative_path)
+        update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+
+        indexing_started_at = get_current_time_for_db()
+        update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+        _publish_document_index_event(self.app, user_id, doc_id, INDEX_STATUS_INDEXING)
+        self._publish_stream_event(task, "task_progress", {"stage": "crawl_indexing"})
+        self.logger.info(f"Crawl indexing: STARTING for doc {doc_id}")
+        # The crawl itself is CPU-only HTTP, but indexing embeds every chunk on
+        # the GPU (rag -> llama-swap /v1/embeddings). Serialize only that phase
+        # on the global GPU lock — exactly like index_document on the slow worker
+        # — and free VRAM afterwards: _get_model_for_task("crawl_task") is "none",
+        # so no other code path cleans up after this task type.
+        with self._gpu_lock:
+            success, message, _embedding_model, _raised = _run_document_indexing(
+                self.app,
+                doc_id,
+                file_path,
+                user_id,
+                indexing_started_at,
+                lambda status: _publish_document_index_event(self.app, user_id, doc_id, status),
+            )
+            self._cleanup_vram_after_task(task)
+        if not success:
+            self.logger.error(f"Crawl document {doc_id} indexing failed: {message}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            _publish_document_index_event(self.app, user_id, doc_id, INDEX_STATUS_FAILED)
+        return doc_id
+
+    def _crawl_context(self, pages: list[dict]) -> str:
+        """Join crawled pages into a reasoning context capped at the search limit.
+
+        Overflow keeps the first pages (deterministic prefix, no shuffling).
+        Every section is truncated to the remaining budget — a single oversized
+        page (per-page cap 50k chars) must not blow the whole prompt (the
+        first-page exception below existed for 2-8k pages and flooded the
+        reasoning prompt when pages hit the 50k cap; seen as 50035-char
+        contexts → "Prompt too large: 25802 tokens (max: 23347)").
+        """
+        base = self.app.modules.get("base")
+        limit = 10000
+        if base is not None and hasattr(base, "get_search_context_limit"):
+            try:
+                limit = int(base.get_search_context_limit())
+            except (TypeError, ValueError):
+                limit = 10000
+        parts: list[dict] = []
+        total = 0
+        for page in pages:
+            header = f"## {page.get('url', '')}\n\n"
+            remaining = limit - total - len(header)
+            if remaining <= 0 and parts:
+                break
+            section = f"{header}{(page.get('markdown') or '')[: max(remaining, 0)]}"
+            if not section.strip():
+                break
+            parts.append(section)
+            total += len(section) + 2
+        return "\n\n".join(parts)
+
+    def _process_crawl_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a deep site study ([-CRAWL-]) task on the crawl worker.
+
+        Crawls the site (CPU-only, the GPU lock is taken only for the indexing
+        phase), stores the pages as the user's per-domain document (replacing the
+        previous one), indexes it for RAG, and re-queues the reasoning model over
+        the collected context.
+        """
+        session_id = task.get("session_id", "")
+        user_id = task.get("user_id", "")
+        lang = task.get("lang", "ru")
+        start_time = time.time()
+
+        data = task.get("data", {})
+        query = data.get("query", "")
+        url = data.get("url") or self._extract_first_url(query)
+        if not url:
+            return self._crawl_error(session_id, "No link found in your message", lang)
+        crawler = self.app.modules.get("crawler")
+        if not crawler or not crawler.available:
+            return self._crawl_error(session_id, "Crawler service is unavailable", lang)
+
+        # The previous crawl of this domain is replaced, not added, so it must
+        # not count against the quota measured here.
+        existing_doc_id = self._domain_document_id(user_id, url)
+        quota_error = check_document_quota(user_id, excluded_doc_id=existing_doc_id, lang=lang)
+        if quota_error:
+            return self._build_error_response(session_id, quota_error, 0, lang)
+
+        crawl_start = time.time()
+        site_blocked = False
+        try:
+            pages = self._crawl_with_progress(crawler, url, task)
+        except Exception as e:
+            from app.crawler_guard import BlockedUrlError
+            from modules.crawler import SiteBlockedError
+
+            if isinstance(e, BlockedUrlError):
+                self.logger.warning(f"Crawl blocked: {url} — {e}")
+                return self._crawl_error(session_id, "This address is not available for reading", lang)
+            if isinstance(e, SiteBlockedError):
+                self.logger.warning(f"Crawl blocked by the site itself: {url} — {e}")
+                site_blocked = True
+                pages = []
+            else:
+                self.logger.error(f"Crawl failed for {url}: {e}")
+                pages = []
+        crawl_time = round(time.time() - crawl_start, 1)
+
+        if task.get("id") and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._crawl_error(session_id, "Task cancelled", lang, round(time.time() - start_time, 1))
+
+        if not pages:
+            if site_blocked:
+                # Second pass: the site itself refused automated access, so a
+                # plain web search is the only way to still answer the user.
+                # The reasoning model is told why the crawl failed, so the
+                # answer opens with the anti-bot note instead of silently
+                # pretending the search covers the site.
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
+                base = self.app.modules.get("base")
+                note = base._("The site blocked automated access (anti-bot protection)", lang) if base else ""
+                fallback_query = f"{query}\n\n({note})" if note else query
+                fallback = self._process_search_task(
+                    query,
+                    session_id,
+                    user_id,
+                    lang,
+                    data.get("response_style", "neutral"),
+                    task=task,
+                    reasoning_query=fallback_query,
+                )
+                if fallback.get("status") == "queued":
+                    self.logger.info(f"Crawl blocked by {url} — fell back to ordinary web search")
+                    return fallback
+                self.logger.warning(f"Crawl blocked by {url} and ordinary search failed too")
+                return self._build_error_response(
+                    session_id,
+                    note or self.app.modules["base"]._("Web search failed", lang),
+                    crawl_time,
+                    lang,
+                )
+            return self._crawl_error(
+                session_id,
+                "Could not read any pages from {domain}",
+                lang,
+                crawl_time,
+                domain=urlsplit(url).hostname or url,
+            )
+
+        # Re-check the quota after the (possibly minutes long) crawl, before
+        # anything is stored: the collected materials are discarded rather than
+        # saved over the limit.
+        quota_error_after = check_document_quota(user_id, excluded_doc_id=existing_doc_id, lang=lang)
+        if quota_error_after:
+            return self._crawl_error(
+                session_id, "Document quota reached — the collected materials were not saved", lang, crawl_time
+            )
+
+        self.app.logger.info(
+            f"Crawl task: {len(pages)} pages, {sum(len(p.get('markdown', '')) for p in pages)} chars "
+            f"from {url} in {crawl_time}s — storing document"
+        )
+        doc_id = self._store_crawl_document(user_id, url, pages, task)
+        if not doc_id:
+            return self._crawl_error(
+                session_id, "Failed to save the collected materials", lang, round(time.time() - start_time, 1)
+            )
+
+        process_time = round(time.time() - start_time, 1)
+        self.app.logger.info(f"Crawl task done in {process_time}s — requeueing reasoning over the corpus")
+        return self._requeue_reasoning_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            data.get("response_style", "neutral"),
+            user_class=task.get("user_class", 2),
+            rag_context=self._crawl_context(pages),
+            rag_source="crawler",
         )
 
     def _process_history_task(
@@ -3172,7 +3873,10 @@ class RedisRequestQueue:
                 query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
             )
         if action_type == "image":
-            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
+            task_images = (task or effective_task).get("data", {}).get("images")
+            return self._requeue_image_task(
+                query, session_id, user_id, lang, response_style, user_class=user_class, images=task_images
+            )
         if action_type == "video":
             return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         if action_type == "camera":
@@ -3199,6 +3903,22 @@ class RedisRequestQueue:
         if action_type == "search":
             return self._process_search_task(
                 query, session_id, user_id, lang, response_style, task=task, reasoning_query=message_text
+            )
+        if action_type == "crawl":
+            # Deep site study: the crawl runs on the dedicated crawl executor
+            # (CPU-only HTTP; the GPU lock is taken only for the indexing phase),
+            # which stores the collected pages as a document and re-queues the
+            # reasoning model over them. The address comes from the user's own
+            # message, not from the router's rewritten query, which may drop it;
+            # `query` stays the reasoning handoff.
+            return self._requeue_crawl_task(
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                user_class=user_class,
+                url=self._extract_first_url(message_text),
             )
 
         if stream:
@@ -3683,6 +4403,74 @@ class RedisRequestQueue:
             self.app.logger.warning(f"Fact merge failed: {e}")
             return {"status": "ok"}
 
+    def _process_api_embedding_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Compute embeddings for the public API through the RAG module.
+
+        Runs on the fast worker under `_gpu_lock` because `_get_model_for_task`
+        classifies the task as "embedding". No chat message is persisted: an
+        embedding request has no session, no history and no assistant turn.
+        """
+        lang = task.get("lang", "ru")
+        texts = task.get("data", {}).get("input")
+
+        if not isinstance(texts, list) or not texts or not all(isinstance(text, str) and text for text in texts):
+            error = self.app.modules["base"]._("Invalid embedding input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        rag = self.app.modules.get("rag")
+        if rag is None or not getattr(rag, "available", False):
+            error = self.app.modules["base"]._("Embeddings are temporarily unavailable", lang=lang)
+            self.app.logger.warning("API embeddings unavailable: rag module not ready")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            vectors = rag._get_batch_embeddings(texts)
+        except Exception as e:
+            self.app.logger.error(f"API embeddings failed: {e}", exc_info=True)
+            vectors = None
+
+        if not vectors or any(vector is None for vector in vectors):
+            error = self.app.modules["base"]._("Failed to compute embeddings", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "embeddings": vectors, "model": "embedding"}
+
+    def _process_api_transcribe_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Transcribe an uploaded audio file for the public API.
+
+        Same Whisper call as the web transcription task, but without a chat
+        session: nothing is written to the conversation and no usage account is
+        opened, because `POST /v1/audio/transcriptions` is a stateless call
+        that returns text to the caller only.
+        """
+        lang = task.get("lang", "ru")
+        data = task.get("data", {})
+        file_data = data.get("file_data")
+        file_type = data.get("file_type")
+        file_name = data.get("file_name")
+
+        if not file_data:
+            error = self.app.modules["base"]._("Invalid audio input", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        audio_module = self.app.modules.get("audio")
+        if audio_module is None:
+            error = self.app.modules["base"]._("Audio service unavailable", lang=lang)
+            self.app.logger.warning("API transcription unavailable: audio module missing")
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        try:
+            text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        except Exception:
+            self.app.logger.exception("API transcription failed")
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+        if not text:
+            error = self.app.modules["base"]._("Failed to recognize speech", lang=lang)
+            return {"error": f"⚠️ {error}", "is_error": True}
+
+        return {"status": "completed", "text": text}
+
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Main entry point — delegates to specialized task handlers."""
@@ -3698,8 +4486,17 @@ class RedisRequestQueue:
         # the fast worker's half-account (request_id/usage_accum/submitted_at)
         # so phases merge into the same bill. Indexing/merge tasks do not call
         # LLMs or _save_and_respond — their accounts are dropped by the
-        # _process_single_task finally clause.
-        if task_type not in ("index_document", "reindex_all_embeddings", "fact_extraction_task", "fact_merge_task"):
+        # _process_single_task finally clause. The crawl task re-opens the
+        # router's carried account and _process_crawl_task closes it again in
+        # _requeue_reasoning_task, so router + answer bill together.
+        if task_type not in (
+            "index_document",
+            "reindex_all_embeddings",
+            "fact_extraction_task",
+            "fact_merge_task",
+            "api_embedding",
+            "api_transcribe",
+        ):
             _requeue_meta = task.get("data", {})
             begin_usage_account(
                 _requeue_meta.get("request_id") or task.get("id") or uuid.uuid4().hex,
@@ -3710,6 +4507,8 @@ class RedisRequestQueue:
         if task_type == "index_document":
             self.app.logger.info(f"_process_request: calling _process_index_task for task {task.get('id')}")
             return self._process_index_task(task)
+        if task_type == "crawl_task":
+            return self._process_crawl_task(task)
         if task_type == "reindex_all_embeddings":
             return self._process_reindex_all_task(task)
         if task_type == "transcribe_audio":
@@ -3722,12 +4521,42 @@ class RedisRequestQueue:
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":
             return self._process_rlm_task(task)
+        if task_type == "doc_chat":
+            return self._process_doc_chat_task(task)
         if task_type in ("describe_document_image", "describe_document_pdf"):
             return self._process_describe_document_image_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
             return self._process_fact_merge(task)
+        if task_type == "api_embedding":
+            return self._process_api_embedding_task(task)
+        if task_type == "api_transcribe":
+            return self._process_api_transcribe_task(task)
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
+        if task_type == "api_image_edit":
+            request_data = task.get("data", {})
+            return self._process_image_edit_task(
+                request_data.get("text", ""),
+                request_data.get("file_data", ""),
+                request_data.get("file_type", ""),
+                task.get("session_id", ""),
+                task.get("user_id", ""),
+                task.get("lang", "ru"),
+                request_data.get("response_style", "neutral"),
+                task=task,
+            )
 
         user_id = task["user_id"]
         session_id = task["session_id"]
@@ -3757,10 +4586,11 @@ class RedisRequestQueue:
         # Image + text chat (question about image or edit request)
         # The actual decision between analysis and editing is now made by the multimodal model
         if request_type == "image" and file_data:
+            images: list[str] = request_data.get("images") or [file_data]
             if request_data.get("stream", False):
                 return self._process_image_chat_task_stream(
                     task,
-                    file_data,
+                    images,
                     file_type or "",
                     file_name or "",
                     message_text,
@@ -3771,7 +4601,7 @@ class RedisRequestQueue:
                     response_style,
                 )
             return self._process_image_chat_task(
-                file_data,
+                images,
                 file_type or "",
                 file_name or "",
                 message_text,
@@ -3789,9 +4619,39 @@ class RedisRequestQueue:
         )
 
     # Modified: added handling of [-IMAGE-EDIT-] marker, and user_id parameter
+    def _describe_images_fallback(
+        self,
+        images: list[str],
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        session_id: str,
+        response_style: str,
+    ) -> tuple[str | None, str | None]:
+        """Multi-image fallback: when the joint call fails (VRAM/context), describe
+        each image one by one and answer over the collected descriptions."""
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal:
+            return None, None
+        results = multimodal.describe_images_for_context(images, lang)
+        sections: list[str] = []
+        for idx, (_data, description, error) in enumerate(results, 1):
+            if error or not description:
+                return None, error
+            sections.append(f"{idx}. {description}")
+        corpus = "\n\n".join(sections)
+        return multimodal.process_image_with_text(
+            "",  # no image: answer from text descriptions only
+            f"{message_text}\n\n{corpus}",
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+        )
+
     def _process_image_chat_task(
         self,
-        file_data: str,
+        file_data: str | list[str],
         file_type: str,
         file_name: str,
         message_text: str,
@@ -3802,28 +4662,48 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_class: int = 2,
     ) -> dict[str, Any]:
-        """Handle image + text chat (user uploads image and asks question or requests edit).
-        The multimodal model decides: analysis answer or edit marker."""
+        """Handle image + text chat (user uploads one or several images and asks
+        a question or requests an edit). The multimodal model decides: analysis
+        answer or edit marker. Several images go out in ONE multimodal call;
+        on VRAM/context failure the batch falls back to per-image descriptions."""
         process_start = time.time()
         is_error = False
+        images = [file_data] if isinstance(file_data, str) else list(file_data)
+        first_image = images[0] if images else ""
 
         if "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
             bot_reply = "⚠️ " + self.app.modules["base"]._("Multimodal model unavailable", lang)
             process_time = round(time.time() - process_start, 1)
             is_error = True
         else:
-            file_size = int((len(file_data) * 3) / 4) if file_data else 0
-            is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
+            file_size = int((len(first_image) * 3) / 4) if first_image else 0
+            is_valid, error = self.app.modules["multimodal"].validate_image(
+                first_image, file_type, file_name, file_size
+            )
             if is_valid:
                 # Multimodal model is always resident — no VRAM unload/wait needed.
-                bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
-                    file_data,
-                    message_text,
-                    current_time_str,
-                    lang=lang,
-                    session_id=session_id,
-                    response_style=response_style,
-                )
+                if len(images) > 1:
+                    bot_reply, error = self.app.modules["multimodal"].process_images_with_text(
+                        images,
+                        message_text,
+                        current_time_str,
+                        lang=lang,
+                        session_id=session_id,
+                        response_style=response_style,
+                    )
+                    if error and self._is_llm_error_string(error or ""):
+                        bot_reply, error = self._describe_images_fallback(
+                            images, message_text, current_time_str, lang, session_id, response_style
+                        )
+                else:
+                    bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
+                        first_image,
+                        message_text,
+                        current_time_str,
+                        lang=lang,
+                        session_id=session_id,
+                        response_style=response_style,
+                    )
                 process_time = round(time.time() - process_start, 1)
                 if error:
                     bot_reply = f"⚠️ {error}"
@@ -3835,7 +4715,7 @@ class RedisRequestQueue:
                         if edit_query:
                             # Redirect to image editing task
                             return self._process_image_edit_task(
-                                edit_query, file_data, file_type, session_id, user_id, lang, response_style
+                                edit_query, first_image, file_type, session_id, user_id, lang, response_style
                             )
                         else:
                             # Marker present but no query, treat as error
@@ -3851,13 +4731,29 @@ class RedisRequestQueue:
                                 user_id,
                                 lang,
                                 response_style,
-                                file_data=file_data,
+                                file_data=first_image,
                                 file_type=file_type,
                                 file_name=file_name,
                                 user_class=user_class,
                             )
                         else:
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
+                            is_error = True
+                    # Check if the response indicates a NEW-image generation request
+                    # ("draw something similar" — the attached images are examples)
+                    elif isinstance(bot_reply, str) and bot_reply.strip().startswith("[-IMAGE-]"):
+                        image_query = bot_reply.strip()[len("[-IMAGE-]") :].strip()
+                        if image_query:
+                            return self._process_image_gen_task(
+                                image_query,
+                                session_id,
+                                user_id,
+                                lang,
+                                response_style,
+                                images=images,
+                            )
+                        else:
+                            bot_reply = "⚠️ " + self.app.modules["base"]._("Image generation request was empty", lang)
                             is_error = True
                     # Safety net: if model returned edit-like content without the required marker,
                     # treat as a model error, NOT an edit request.
@@ -3890,7 +4786,7 @@ class RedisRequestQueue:
     def _process_image_chat_task_stream(
         self,
         task: dict[str, Any],
-        file_data: str,
+        file_data: str | list[str],
         file_type: str,
         file_name: str,
         message_text: str,
@@ -3900,10 +4796,13 @@ class RedisRequestQueue:
         user_id: str,
         response_style: str = "neutral",
     ) -> dict[str, Any]:
-        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-] or [-VIDEO-] marker."""
+        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-], [-VIDEO-] or [-IMAGE-] marker."""
         edit_marker = "[-IMAGE-EDIT-]"
         video_marker = "[-VIDEO-]"
+        image_marker = "[-IMAGE-]"
         process_start = time.time()
+        images = [file_data] if isinstance(file_data, str) else list(file_data)
+        first_image = images[0] if images else ""
 
         # Status until the first stream_token arrives (auto-removed by the
         # frontend) — image analysis is especially slow on CPU.
@@ -3922,8 +4821,8 @@ class RedisRequestQueue:
                 response_style=response_style,
             )
 
-        file_size = int((len(file_data) * 3) / 4) if file_data else 0
-        is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
+        file_size = int((len(first_image) * 3) / 4) if first_image else 0
+        is_valid, error = self.app.modules["multimodal"].validate_image(first_image, file_type, file_name, file_size)
         if not is_valid:
             bot_reply = "⚠️ " + (error or self.app.modules["base"]._("Invalid image", lang))
             process_time = round(time.time() - process_start, 1)
@@ -3938,14 +4837,26 @@ class RedisRequestQueue:
             )
 
         # Multimodal model is always resident — no VRAM unload/wait needed.
-        stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
-            file_data,
-            message_text,
-            current_time_str,
-            lang=lang,
-            session_id=session_id,
-            response_style=response_style,
-        )
+        # Several images go out in ONE call; per-image fallback needs the whole
+        # answer, so it is only used by the non-streaming handler.
+        if len(images) > 1:
+            stream_gen = self.app.modules["multimodal"].process_images_with_text_stream(
+                images,
+                message_text,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+            )
+        else:
+            stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
+                first_image,
+                message_text,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+            )
 
         full_response = ""
         cancelled = False
@@ -3996,7 +4907,7 @@ class RedisRequestQueue:
                     if edit_query:
                         return self._process_image_edit_task(
                             edit_query,
-                            file_data,
+                            first_image,
                             file_type,
                             session_id,
                             user_id,
@@ -4026,12 +4937,37 @@ class RedisRequestQueue:
                             user_id,
                             lang,
                             response_style,
-                            file_data=file_data,
+                            file_data=first_image,
                             file_type=file_type,
                             file_name=file_name,
                             user_class=task.get("user_class", 2),
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
+                    process_time = round(time.time() - process_start, 1)
+                    return self._save_and_respond(
+                        session_id,
+                        bot_reply,
+                        "unknown",
+                        process_time,
+                        is_error=True,
+                        extra={"model_type": "system"},
+                        response_style=response_style,
+                    )
+                if image_marker in buffer:
+                    for token in stream_gen:
+                        full_response += token
+                    image_query = full_response.split(image_marker, 1)[1].strip()
+                    if image_query:
+                        return self._process_image_gen_task(
+                            image_query,
+                            session_id,
+                            user_id,
+                            lang,
+                            response_style,
+                            task=task,
+                            images=images,
+                        )
+                    bot_reply = "⚠️ " + self.app.modules["base"]._("Image generation request was empty", lang)
                     process_time = round(time.time() - process_start, 1)
                     return self._save_and_respond(
                         session_id,
@@ -4202,7 +5138,9 @@ class RedisRequestQueue:
             image_name = request_data.get("image_name")
 
             if image_data:
-                # Image + voice: requeue as image task (multimodal processing)
+                # Image + voice: requeue as image task (multimodal processing).
+                # Multi-attachment: extra images beyond the primary one travel
+                # in "images" and reach the joint vision call.
                 requeue_request_data = {
                     "type": "image",
                     "text": transcribed_text,
@@ -4215,6 +5153,9 @@ class RedisRequestQueue:
                     "response_style": response_style,
                     "stream": True,
                 }
+                extra_images = [img for img in request_data.get("images", []) if img != image_data]
+                if extra_images:
+                    requeue_request_data["images"] = [image_data] + extra_images
             else:
                 # Voice only: requeue as text task (router processing)
                 requeue_request_data = {
@@ -4248,17 +5189,99 @@ class RedisRequestQueue:
 
     def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
         """Publish a document_indexed event to the user's SSE stream."""
-        publisher = get_events_publisher()
-        if publisher is None:
-            return
-        publisher.publish(
+        _publish_document_index_event(self.app, user_id, doc_id, index_status)
+
+    def _process_doc_chat_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a chat message with an attached document: save it as a full
+        user document, run the shared indexing pipeline (text extraction or
+        page OCR), then re-queue the question as a normal text request with
+        doc_ids so the router serves it through RAG."""
+        task_id = task.get("id", "unknown")
+        data = task.get("data", {})
+        user_id = task["user_id"]
+        session_id = task["session_id"]
+        lang = task.get("lang", "ru")
+        message_text = data.get("text", "")
+        doc_b64 = data.get("doc_file_data") or ""
+        doc_name = data.get("doc_file_name") or "document"
+
+        self.app.logger.info(f"_process_doc_chat_task: STARTING for task {task_id}")
+
+        if not doc_b64:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No file provided"),
+                0,
+                lang,
+            )
+
+        import base64
+
+        try:
+            doc_bytes = base64.b64decode(doc_b64)
+        except Exception:
+            doc_bytes = b""
+
+        # Save as a full user document (same layout as Documents uploads).
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
+        user_folder = os.path.join(documents_folder, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        doc_id = uuid.uuid4().hex
+        safe_ext = os.path.splitext(doc_name)[1].lower() or ".bin"
+        safe_filename = f"{doc_id}{safe_ext}"
+        file_path = os.path.join(user_folder, safe_filename)
+        with open(file_path, "wb") as f:
+            f.write(doc_bytes)
+
+        save_document(user_id, doc_id, doc_name, len(doc_bytes), safe_ext, os.path.join(user_id, safe_filename))
+        update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+
+        success, _message, _embedding_model, _published = _run_document_indexing(
+            self.app,
+            doc_id,
+            file_path,
             user_id,
-            "document_indexed",
-            {
-                "doc_id": doc_id,
-                "index_status": index_status,
-            },
+            indexing_started_at=None,
+            publish=lambda status: self._publish_document_event(user_id, doc_id, status),
         )
+        if not success:
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            from flask_babel import gettext as _
+
+            with force_locale(lang):
+                error_text = _(
+                    "Could not index the attached document. It was saved to your Documents; try again later."
+                )
+            return self._build_error_response(session_id, error_text, 0, lang)
+
+        # Re-queue the question as a normal text task carrying the new doc_ids
+        # (+ images for the visual context, if any were attached).
+        requeue_data: dict[str, Any] = {
+            "type": "text",
+            "text": message_text,
+            "doc_ids": [doc_id],
+            "current_message_id": data.get("current_message_id"),
+            "preview": data.get("preview"),
+            "response_style": data.get("response_style", "neutral"),
+            "stream": data.get("stream", True),
+        }
+        images = data.get("images")
+        if images:
+            requeue_data["images"] = images
+        self.last_request_data = requeue_data
+        request_id, position_info = self.add_request(
+            user_id, session_id, requeue_data, task.get("user_class", 2), lang=lang
+        )
+        self.app.logger.info(f"_process_doc_chat_task: doc {doc_id} indexed; requeued request_id={request_id}")
+        return {
+            "status": "requeued",
+            "request_id": request_id,
+            "session_id": session_id,
+            "doc_id": doc_id,
+            "position": position_info.get("position", 0),
+        }
 
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Index a document and store embeddings in Qdrant."""
@@ -4276,54 +5299,37 @@ class RedisRequestQueue:
             indexing_started_at = get_current_time_for_db()
             update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
         self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
-        rag = self.app.modules.get("rag")
-        if not rag or not rag.available:
-            with force_locale("en"):
-                error_msg = self.app.modules["base"]._("RAG module unavailable")
-            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-            return {"success": False, "error": error_msg, "doc_id": doc_id}
-        try:
-            success, message = rag.index_document(user_id, doc_id, file_path)
-            if success:
-                indexed_at = get_current_time_for_db()
-                embedding_model = self._get_model_name("embedding") or "unknown"
-                update_document_index_status(
-                    doc_id,
-                    INDEX_STATUS_INDEXED,
-                    indexed_at=indexed_at,
-                    indexing_started_at=indexing_started_at,
-                    embedding_model=embedding_model,
-                )
-                self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
-                self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
-                return {"success": True, "message": message, "doc_id": doc_id}
-            else:
-                if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
-                    self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
-                    update_document_index_status(doc_id, INDEX_STATUS_PENDING)
-                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
-                    self.app.request_queue.add_request(
-                        user_id=user_id,
-                        session_id="",
-                        request_data={
-                            "type": "describe_document_pdf",
-                            "doc_id": doc_id,
-                            "file_path": file_path,
-                            "preserve_indexing_started_at": True,
-                        },
-                        user_class=task.get("user_class", 100),
-                        lang=task.get("lang", "ru"),
-                    )
-                    return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
-                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-                return {"success": False, "error": message, "doc_id": doc_id}
-        except Exception as e:
-            self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
-            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
-            return {"success": False, "error": str(e), "doc_id": doc_id}
+        success, message, embedding_model, raised = _run_document_indexing(
+            self.app,
+            doc_id,
+            file_path,
+            user_id,
+            indexing_started_at,
+            lambda status: self._publish_document_event(user_id, doc_id, status),
+        )
+        if success:
+            self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
+            return {"success": True, "message": message, "doc_id": doc_id}
+        if not raised and str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
+            self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
+            update_document_index_status(doc_id, INDEX_STATUS_PENDING)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+            self.app.request_queue.add_request(
+                user_id=user_id,
+                session_id="",
+                request_data={
+                    "type": "describe_document_pdf",
+                    "doc_id": doc_id,
+                    "file_path": file_path,
+                    "preserve_indexing_started_at": True,
+                },
+                user_class=task.get("user_class", 100),
+                lang=task.get("lang", "ru"),
+            )
+            return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
+        update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+        self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+        return {"success": False, "error": message, "doc_id": doc_id}
 
     def _process_describe_document_image_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Describe an uploaded image using the multimodal model and save the result
@@ -4389,8 +5395,20 @@ class RedisRequestQueue:
                     detail = page_count_result.stderr.strip() or "unable to determine page count"
                     raise RuntimeError(f"Failed to read PDF page count: {detail}")
                 page_count = int(page_count_match.group(1))
+                # Time budget: a 25 MB scan may hold hundreds of pages; after
+                # the budget the collected pages are indexed and the user is
+                # notified how far recognition got.
+                ocr_budget_s = int(self.app.config.get("OCR_TIME_BUDGET_S", 1800))
+                ocr_deadline = time.monotonic() + ocr_budget_s if ocr_budget_s > 0 else None
+                ocr_partial = False
                 with tempfile.TemporaryDirectory(prefix="flai-pdf-ocr-") as temp_dir:
                     for page_number in range(1, page_count + 1):
+                        if ocr_deadline is not None and page_number > 1 and time.monotonic() > ocr_deadline:
+                            ocr_partial = True
+                            self.app.logger.warning(
+                                f"OCR time budget expired for doc {doc_id} after page {page_number - 1}/{page_count}"
+                            )
+                            break
                         prefix = os.path.join(temp_dir, "page")
                         render_result = subprocess.run(
                             [
@@ -4489,6 +5507,24 @@ class RedisRequestQueue:
 
             self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
             self._publish_document_event(user_id, doc_id, INDEX_STATUS_PENDING)
+            if ocr_partial:
+                # The budget expired mid-document: tell the user how far the
+                # recognition went; the collected pages are already queued.
+                from flask_babel import force_locale
+                from flask_babel import gettext as _
+
+                with force_locale(lang):
+                    partial_notice = _(
+                        "OCR time budget reached: recognized the first {pages} of {total} pages. "
+                        "They are being indexed now."
+                    ).format(pages=len(descriptions), total=page_count)
+                save_message(
+                    session_id=task.get("session_id") or "",
+                    role="assistant",
+                    content=partial_notice,
+                    model_name="system",
+                    response_time="0",
+                )
             message = (
                 "PDF pages described and indexing queued"
                 if full_path.lower().endswith(".pdf")
@@ -4613,7 +5649,7 @@ class RedisRequestQueue:
 
         # Collect ALL processing tasks from both queues
         all_processing: list[dict] = []
-        for proc_key in [self.processing_key, self.slow_processing_key]:
+        for proc_key in [self.processing_key, self.slow_processing_key, self.crawl_processing_key]:
             processing_tasks = self.redis.hgetall(proc_key)
             for req_id, task_data in processing_tasks.items():
                 req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
@@ -4649,7 +5685,7 @@ class RedisRequestQueue:
 
         # Collect items actually waiting in queues
         position = 1
-        for q_key in [self.queue_key, self.slow_queue_key]:
+        for q_key in [self.queue_key, self.slow_queue_key, self.crawl_queue_key]:
             queue_length = self.redis.llen(q_key)
             queue_tasks = self.redis.lrange(q_key, 0, queue_length - 1) if queue_length > 0 else []
             for task_data in queue_tasks:
@@ -4675,6 +5711,7 @@ class RedisRequestQueue:
             "audio": "🎤",
             "index_document": "📄",
             "transcribe_audio": "🎤",
+            "crawl_task": "🌐",
         }
         request_info = {
             "id": task["id"],
@@ -4787,6 +5824,8 @@ class RedisRequestQueue:
         exists = self.redis.hexists(self.processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.slow_processing_key, task_id)
+        if not exists:
+            exists = self.redis.hexists(self.crawl_processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.results_key, task_id)
         if not exists:

@@ -3,7 +3,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: calc(100vh - 100px);
+    min-height: calc(100vh - 80px); /* 50px header + 30px footer */
     padding: 20px;
 }
 

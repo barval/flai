@@ -1,4 +1,5 @@
 # app/routes/documents.py
+import contextlib
 import mimetypes
 import os
 import uuid
@@ -91,7 +92,146 @@ def validate_file(file_stream, filename):
 def api_get_documents():
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
-    return jsonify(db.get_user_documents(session["login"]))
+    login = session["login"]
+    documents = db.get_user_documents(login)
+    folders = db.get_user_folders(login)
+    counts = {f["id"]: 0 for f in folders}
+    sizes = {f["id"]: 0 for f in folders}
+    for doc in documents:
+        fid = doc.get("folder_id")
+        if fid and fid in counts:
+            counts[fid] += 1
+            sizes[fid] += doc.get("file_size") or 0
+    payload_folders = [
+        {
+            "id": f["id"],
+            "name": f["name"],
+            "created_at": f["created_at"],
+            "count": counts[f["id"]],
+            "size": sizes[f["id"]],
+        }
+        for f in folders
+    ]
+    return jsonify({"folders": payload_folders, "documents": documents})
+
+
+def _validate_folder_name(name):
+    """Return (normalized_name, error_message) for a folder name."""
+    name = (name or "").strip()
+    if not name:
+        return None, _("Folder name is required")
+    if len(name) > 64:
+        return None, _("Folder name is too long")
+    return name, None
+
+
+def _is_duplicate_folder(login, name, exclude_id=None):
+    for f in db.get_user_folders(login):
+        if f["id"] == exclude_id:
+            continue
+        if f["name"].casefold() == name.casefold():
+            return True
+    return False
+
+
+@bp.route("/document-folders", methods=["POST"])
+def api_create_folder():
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    name, error = _validate_folder_name((request.json or {}).get("name"))
+    if error:
+        return jsonify({"error": error}), 400
+    if _is_duplicate_folder(login, name):
+        return jsonify({"error": _("A folder with this name already exists")}), 409
+    max_folders = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
+    if len(db.get_user_folders(login)) >= max_folders:
+        return jsonify({"error": _("Folder limit reached ({n})").format(n=max_folders)}), 409
+    folder_id = str(uuid.uuid4())
+    db.save_folder(login, folder_id, name)
+    return jsonify({"status": "ok", "id": folder_id})
+
+
+@bp.route("/document-folders/<folder_id>", methods=["PATCH"])
+def api_rename_folder(folder_id):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    if not db.get_folder(folder_id, login):
+        return jsonify({"error": _("Folder not found")}), 404
+    name, error = _validate_folder_name((request.json or {}).get("name"))
+    if error:
+        return jsonify({"error": error}), 400
+    if _is_duplicate_folder(login, name, exclude_id=folder_id):
+        return jsonify({"error": _("A folder with this name already exists")}), 409
+    db.rename_folder(folder_id, login, name)
+    return jsonify({"status": "ok"})
+
+
+def _delete_document_resources(doc, login):
+    """Delete one document: RAG entry, file on disk and DB row."""
+    rag = current_app.modules.get("rag")
+    if rag and rag.available:
+        try:
+            rag.delete_document(doc["id"], login)
+        except Exception as e:
+            current_app.logger.error(f"Failed to delete document from index: {e}")
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    file_path = os.path.join(documents_folder, doc.get("file_path") or "")
+    real_file_path = os.path.realpath(file_path)
+    real_documents_folder = os.path.realpath(documents_folder)
+    if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
+        with contextlib.suppress(Exception):
+            os.remove(file_path)
+    db.delete_document(doc["id"], login)
+
+
+@bp.route("/document-folders/<folder_id>", methods=["DELETE"])
+def api_delete_folder(folder_id):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    if not db.get_folder(folder_id, login):
+        return jsonify({"error": _("Folder not found")}), 404
+    docs = db.get_folder_documents(login, folder_id)
+    deleted_size = sum(doc.get("file_size") or 0 for doc in docs)
+    for doc in docs:
+        _delete_document_resources(doc, login)
+    db.delete_folder(folder_id, login)
+    return jsonify({"status": "ok", "deleted_documents": len(docs), "deleted_size": deleted_size})
+
+
+@bp.route("/documents/<doc_id>/folder", methods=["PATCH"])
+def api_set_document_folder(doc_id):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    if not db.get_document(doc_id, login):
+        return jsonify({"error": _("Document not found")}), 404
+    data = request.json or {}
+    if "folder_id" not in data:
+        return jsonify({"error": _("Missing folder_id")}), 400
+    folder_id = data["folder_id"]
+    if folder_id is not None and not db.get_folder(folder_id, login):
+        return jsonify({"error": _("Folder not found")}), 404
+    db.set_document_folder(doc_id, login, folder_id)
+    return jsonify({"status": "ok"})
+
+
+@bp.route("/documents/move", methods=["POST"])
+def api_move_documents():
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    data = request.json or {}
+    doc_ids = data.get("doc_ids")
+    if not isinstance(doc_ids, list) or not doc_ids:
+        return jsonify({"error": _("No documents selected")}), 400
+    folder_id = data.get("folder_id")
+    if folder_id is not None and not db.get_folder(folder_id, login):
+        return jsonify({"error": _("Folder not found")}), 404
+    moved = sum(1 for did in doc_ids if db.set_document_folder(did, login, folder_id))
+    return jsonify({"status": "ok", "moved": moved})
 
 
 @bp.route("/documents/upload", methods=["POST"])
@@ -175,6 +315,9 @@ def api_upload_document():
         f.write(file_content)
 
     relative_path = os.path.join(session["login"], safe_filename)
+    folder_id = request.form.get("folder_id") or None
+    if folder_id is not None and not db.get_folder(folder_id, session["login"]):
+        return jsonify({"error": _("Folder not found")}), 400
     db.save_document(
         session["login"],
         doc_id,
@@ -182,6 +325,7 @@ def api_upload_document():
         file_size,
         file_ext=os.path.splitext(filename)[1].lower(),
         file_path=relative_path,
+        folder_id=folder_id,
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)

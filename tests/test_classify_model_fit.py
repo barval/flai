@@ -74,12 +74,14 @@ class TestClassifyModelFit:
 
     @patch("app.utils.get_gguf_models_cached")
     def test_huge_model_tier_impossible(self, mock_cache):
-        """15 GB model on 16 GB RAM system: doesn't fit anywhere → impossible."""
+        """25 GB model with 16 GB total and 11 GB free RAM: impossible."""
         mock_cache.return_value = HUGE_MODEL
-        # 15 GB > 85% of 16 GB VRAM (13.6 GB) AND > 70% of 16 GB RAM - 2 GB (9.2 GB)
+        # 25 GB exceeds the 13.6 GB VRAM budget and available RAM budget is 9 GB.
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
         ):
             result = _classify_model_fit(
                 model_name="VeryLargeModel.gguf",
@@ -92,9 +94,8 @@ class TestClassifyModelFit:
 
     @patch("app.utils.get_gguf_models_cached")
     def test_very_huge_model_always_impossible(self, mock_cache):
-        """Model that exceeds both VRAM and (VRAM + RAM): impossible."""
-        # 30 GB model: 13 GB on GPU + 17 GB in RAM. 70%×16 - 2 = 9.2 GB RAM budget
-        # → 17 GB > 9.2 GB → impossible
+        """Model that exceeds both VRAM and the remaining RAM budget."""
+        # 30 GB model: after the VRAM allocation, remaining weights exceed free RAM.
         very_huge = {
             "Llama-3.1-70B-Q4_K_M": {
                 "context_length": 131072,
@@ -105,8 +106,10 @@ class TestClassifyModelFit:
         }
         mock_cache.return_value = very_huge
         with (
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
         ):
             result = _classify_model_fit(
                 model_name="Llama-3.1-70B-Q4_K_M.gguf",
@@ -154,8 +157,8 @@ class TestClassifyModelFit:
         mock_cache.return_value = MEDIUM_MODEL
         # Force RAM to be huge so model can fit with CPU offload
         with (
-            patch("app.routes.admin._get_total_ram_mb", return_value=64000),
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=64000),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
         ):
             result = _classify_model_fit(
                 model_name="Qwen3.5-9B-Q8_0.gguf",
@@ -230,8 +233,8 @@ class TestClassifyMmproj:
         mock_cache.return_value = self._BIG_VL
         mock_mmproj.return_value = 1105
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
         ):
             # 12.5 GB + ~0.4 GB KV @ 4K ctx + 1.1 GB mmproj ≈ 14 GB > 13.86 GB (85%)
             result = _classify_model_fit(
@@ -250,8 +253,8 @@ class TestClassifyMmproj:
         mock_cache.return_value = MEDIUM_MODEL
         mock_mmproj.return_value = 1105
         with (
-            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
-            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
         ):
             result = _classify_model_fit(
                 model_name="Qwen3.5-9B-Q8_0.gguf",

@@ -18,7 +18,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
-      - ./services/llamacpp/models:/models:ro
+      - ./services/llamacpp/models:/models:rw
       - ./llama-swap-config:/config
       - /var/run/docker.sock:/var/run/docker.sock
       - slm_data:/app/data/slm-readonly:ro
@@ -35,6 +35,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - PYTHONDONTWRITEBYTECODE=1
+      - CRAWL_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
     networks:
       - flai_network
     restart: unless-stopped
@@ -484,6 +485,30 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
+  # ============================================================
+  # CRAWLER (Optional - Crawl4AI for deep page reading)
+  # ============================================================
+  crawler:
+    image: unclecode/crawl4ai:0.9.4
+    container_name: flai-crawler
+    profiles: ["with-crawler"]
+    networks: [flai_network]
+    mem_limit: 2g
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   flai_network:

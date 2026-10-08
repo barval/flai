@@ -7,6 +7,25 @@
 .dark-theme header {
     background-color: #1a2632;
 }
+.dark-theme .api-keys-panel {
+    color: #e0e0e0;
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .api-keys-table th,
+.dark-theme .api-keys-table td { border-bottom-color: #444; }
+.dark-theme .api-keys-create input {
+    color: #e0e0e0;
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .api-keys-revoke { color: #e74c3c; border-color: #e74c3c; }
+.dark-theme .tavily-section { border-bottom-color: #444; }
+.dark-theme .tavily-hint a { color: #3498db; }
+.dark-theme .tavily-create input { background: #2a2a2a; color: #eee; border-color: #555; }
+.dark-theme .tavily-create button { background: #4a4a4a; border-color: #666; color: #eee; }
+.dark-theme .tavily-create button.tavily-delete { background: none; color: #e74c3c; border-color: #e74c3c; }
+.dark-theme .tavily-status { color: #f0b429; }
 .dark-theme .sessions-sidebar {
     background-color: #2d2d2d;
     border-right-color: #444;
@@ -95,6 +114,16 @@
 }
 .dark-theme #file-preview-name {
     color: #ecf0f1;
+}
+.dark-theme .attachment-chip {
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .attachment-chip-name {
+    color: #ecf0f1;
+}
+.dark-theme .attachment-chip-size {
+    color: #aaa;
 }
 .dark-theme .message-input input[type="text"] {
     background-color: #3a3a3a;
@@ -407,6 +436,97 @@
 .dark-theme .documents-list {
     background-color: #2d2d2d;
 }
+/* ===== DOCUMENT FOLDERS DARK THEME ===== */
+.dark-theme .document-folder {
+    background-color: #333;
+    border-color: #555;
+}
+.dark-theme .document-folder-header {
+    color: #ecf0f1;
+}
+.dark-theme .document-folder-header:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .document-folder-header.drag-over {
+    background-color: #1e2b38;
+    border-color: #3498db;
+}
+.dark-theme .folder-meta {
+    color: #b0b0b0;
+}
+.dark-theme .move-document-button,
+.dark-theme .rename-folder-button,
+.dark-theme .delete-folder-button {
+    color: #b0b0b0;
+}
+.dark-theme .bulk-documents-bar {
+    background-color: #3a3a3a;
+    border-color: #555;
+}
+.dark-theme .bulk-label {
+    color: #ecf0f1;
+}
+.dark-theme .bulk-move-button,
+.dark-theme .bulk-clear-button,
+.dark-theme .bulk-delete-button {
+    border-color: #666;
+    color: #ecf0f1;
+}
+.dark-theme .bulk-move-button:hover,
+.dark-theme .bulk-clear-button:hover,
+.dark-theme .bulk-delete-button:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .bulk-delete-button:hover {
+    color: #e74c3c;
+}
+.dark-theme .folder-picker-menu {
+    background-color: #2d2d2d;
+    border-color: #444;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.dark-theme .folder-picker-item {
+    color: #ecf0f1;
+}
+.dark-theme .folder-picker-item:hover {
+    background-color: #3a3a3a;
+}
+/* ===== FOLDER NAME DIALOG DARK THEME ===== */
+.dark-theme .folder-name-content {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .folder-name-content h3 {
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-label {
+    color: #aaa;
+}
+.dark-theme .folder-name-input {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-input:focus {
+    border-color: #3498db;
+}
+.dark-theme .folder-name-cancel {
+    border-color: #666;
+    color: #ecf0f1;
+}
+.dark-theme .folder-name-cancel:hover {
+    background-color: #4a4a4a;
+}
+.dark-theme .folder-name-input::placeholder {
+    color: #999;
+}
+.dark-theme .folder-name-close {
+    color: #aaa;
+}
+.dark-theme .folder-name-close:hover {
+    color: #fff;
+}
 .dark-theme .header-tab {
     background-color: #3a3a3a;
 }
@@ -430,18 +550,6 @@
 .dark-theme .new-tab-button:hover {
     background-color: #2980b9;
 }
-/* ===== COLLAPSE TOGGLE DARK THEME ===== */
-.dark-theme .collapse-toggle-mobile {
-    background-color: #3a3a3a;
-    border-right-color: #555;
-}
-.dark-theme .collapse-toggle-mobile:hover {
-    background-color: #4a4a4a;
-}
-.dark-theme .collapse-icon {
-    color: #ecf0f1;
-}
-
 /* ===== ADMIN MODELS DARK THEME ===== */
 .dark-theme .model-card {
     background-color: #2d2d2d;
@@ -516,4 +624,42 @@
     background-color: #333;
     border-color: #555;
     color: #ecf0f1;
+}
+
+/* ===== FOOTER ABOUT DIALOG (dark theme) ===== */
+.dark-theme .about-modal-content {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #444;
+}
+.dark-theme .about-modal-content h2 {
+    color: #ecf0f1;
+}
+.dark-theme .about-github a {
+    color: #ecf0f1;
+}
+.dark-theme .about-modal-close {
+    color: #aaa;
+}
+.dark-theme .about-modal-close:hover {
+    color: #fff;
+}
+.dark-theme .about-modal-close:focus-visible {
+    outline-color: #ecf0f1;
+}
+
+/* ===== ADMIN PERSONALIZATION TAB (dark theme) ===== */
+.dark-theme .branding-section {
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+.dark-theme .branding-section h3 {
+    color: #ecf0f1;
+}
+.dark-theme .branding-hint {
+    color: #aaa;
+}
+.dark-theme .branding-logo-preview {
+    background: #3a3a3a;
+    border-color: #555;
 }

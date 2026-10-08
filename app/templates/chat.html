@@ -4,14 +4,11 @@
     <div class="sessions-sidebar">
         <div class="sessions-header">
             <div class="header-tabs">
-                <!-- Mobile collapse toggle (visible only on mobile) -->
-                <div class="collapse-toggle-mobile" id="collapse-toggle-mobile" title="Toggle collapse">
-                    <span class="collapse-icon" id="collapse-icon">➡️</span>
-                </div>
                 <!-- Documents tab -->
                 <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
                     <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
+                    <button id="add-folder-button" class="new-tab-button" title="{{ _('New folder') }}">📁</button>
                 </div>
                 <!-- Sessions tab -->
                 <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
@@ -68,20 +65,30 @@
         <!-- Chat messages area -->
         <div class="chat-messages" id="chat-messages"></div>
 
-        <!-- File preview container (shown when a file is attached) -->
-        <div id="file-preview-container" class="hidden">
-            <div>
-                <span id="file-preview-name"></span>
-                <span id="file-preview-size"></span>
-                <button id="remove-file-button">✕</button>
-            </div>
-        </div>
+        <!-- File preview container (shown when files are attached) -->
+        <div id="file-preview-container" class="hidden"></div>
 
         <!-- Image modal for enlarging images -->
         <div id="image-modal" class="image-modal" onclick="closeImageModal()">
             <span class="image-modal-close">&times;</span>
             <img class="image-modal-content" id="modal-image">
             <div id="modal-caption"></div>
+        </div>
+
+        <!-- Folder name dialog (create/rename) -->
+        <div id="folder-name-modal" class="folder-name-modal" hidden>
+            <div class="folder-name-backdrop" data-folder-name-close></div>
+            <div class="folder-name-content" role="dialog" aria-modal="true" aria-labelledby="folder-name-title">
+                <button type="button" class="folder-name-close" data-folder-name-close aria-label="{{ _('close_about') }}">&times;</button>
+                <h3 id="folder-name-title"></h3>
+                <div class="folder-name-label">{{ _('Enter folder name') }}</div>
+                <input type="text" id="folder-name-input" class="folder-name-input" maxlength="64">
+                <div id="folder-name-error" class="folder-name-error" hidden></div>
+                <div class="folder-name-actions">
+                    <button type="button" id="folder-name-cancel" class="folder-name-cancel"></button>
+                    <button type="button" id="folder-name-submit" class="folder-name-submit"></button>
+                </div>
+            </div>
         </div>
 
         <!-- Message input area -->
@@ -92,7 +99,7 @@
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
-            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" class="hidden">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" multiple class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
         </div>
@@ -108,6 +115,7 @@
 <script>
 window.initialSessionId = {{ current_session|tojson }};
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
+window.FLAI_MAX_CHAT_IMAGES = {{ config.MAX_CHAT_IMAGES|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
@@ -154,6 +162,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'click_to_enlarge': {{ _("click_to_enlarge")|tojson }},
     'image': {{ _("image")|tojson }},
     'enter_message_or_file': {{ _("enter_message_or_file")|tojson }},
+    'max_images_reached': {{ _("max_images_reached")|tojson }},
+    'remove_file': {{ _("remove_file")|tojson }},
     'request_timeout': {{ _("request_timeout")|tojson }},
     'unknown_error': {{ _("unknown_error")|tojson }},
     'copied': {{ _("copied")|tojson }},
@@ -172,6 +182,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'saved_chat': {{ _("saved_chat")|tojson }},
     'no_messages_to_save': {{ _("no_messages_to_save")|tojson }},
     'footer_text': {{ _("footer_text")|tojson }},
+    'footer_copyright': {{ _("footer_copyright")|tojson }},
+    'footer_short_name': {{ _("footer_short_name")|tojson }},
+    'footer_about_hint': {{ _("footer_about_hint")|tojson }},
+    'close_about': {{ _("close_about")|tojson }},
     'footer_not_configured': {{ _("footer_not_configured")|tojson }},
     'footer_load_error': {{ _("footer_load_error")|tojson }},
     'text_request': {{ _("Text request")|tojson }},
@@ -189,6 +203,27 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'upload_document': {{ _('Upload document')|tojson }},
     'document_uploaded': {{ _('Document uploaded')|tojson }},
     'document_upload_failed': {{ _('Document upload failed')|tojson }},
+    'folder_new': {{ _('New folder')|tojson }},
+    'folder_name_label': {{ _('Enter folder name')|tojson }},
+    'folder_create_title': {{ _('Create folder')|tojson }},
+    'folder_rename_title': {{ _('Rename folder')|tojson }},
+    'cancel': {{ _('Cancel')|tojson }},
+    'create': {{ _('Create')|tojson }},
+    'save': {{ _('Save')|tojson }},
+    'folder_rename': {{ _('Rename folder')|tojson }},
+    'folder_delete': {{ _('Delete folder')|tojson }},
+    'folder_move': {{ _('Move to folder')|tojson }},
+    'folder_clear_selection': {{ _('Clear selection')|tojson }},
+    'folder_move_to_root': {{ _('Move to root')|tojson }},
+    'delete_selected': {{ _('Delete selected documents')|tojson }},
+    'delete_selected_confirm': {{ _('Delete {count} selected documents ({size})?')|tojson }},
+    'delete_selected_failure': {{ _('Failed to delete some documents')|tojson }},
+    'documents_selected_count': {{ _('Selected documents: {count} ({size})')|tojson }},
+    'documents_select_folder': {{ _('Select all documents in folder')|tojson }},
+    'documents_select_for_move': {{ _('Select for moving')|tojson }},
+    'documents_select_for_analysis': {{ _('Select for deep analysis')|tojson }},
+    'folder_delete_confirm': {{ _('Delete folder "{name}"?')|tojson }},
+    'folder_delete_cascade_confirm': {{ _('This will also delete {count} documents ({size}) inside the folder. Continue?')|tojson }},
     'supported_formats': {{ _('Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB')|tojson }},
     'minutes_abbr': {{ _('minutes_abbr')|tojson }},
     'status_pending': {{ _('status_pending')|tojson }},
@@ -214,6 +249,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'tool_web_search': {{ _('tool_web_search')|tojson }},
     'tool_rag_search': {{ _('tool_rag_search')|tojson }},
     'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }},
+    'tool_read_page': {{ _('tool_read_page')|tojson }},
     'stage_preparing_gpu': {{ _('Preparing resources...')|tojson }},
     'stage_routing': {{ _('Analyzing request...')|tojson }},
     'stage_analyzing': {{ _('Analyzing request...')|tojson }},
@@ -238,6 +274,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_rlm_searching_web': {{ _('Deep analysis: searching the web')|tojson }},
     'stage_rlm_submodel': {{ _('Deep analysis: calling sub-model')|tojson }},
     'stage_rlm_finalizing': {{ _('Deep analysis: composing the answer')|tojson }},
+    'stage_crawl_start': {{ _('Starting web crawl...')|tojson }},
+    'stage_crawl_page': {{ _('Crawling page %s...')|tojson }},
+    'stage_crawl_indexing': {{ _('Indexing crawled content...')|tojson }},
     'rlm_trace_summary': {{ _('Deep analysis (%s steps)')|tojson }},
     'stage_elapsed_s': {{ _('s')|tojson }},
     'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},

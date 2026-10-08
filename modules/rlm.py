@@ -4,13 +4,59 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
 from app.utils import format_prompt
 from modules.base import response_language_name
+
+# Matches a tool call the model leaked as plain text instead of emitting a
+# structured tool_call (observed with Qwen3.6 on the tool-free final step):
+# <function=NAME>
+# <parameter=KEY>VALUE</parameter>
+# ...
+# </function>
+_LEAKED_TOOL_CALL_RE = re.compile(
+    r"<function=(?P<name>\w+)\s*>\s*(?P<params>[\s\S]*?)</function>",
+)
+
+_LEAKED_PARAM_RE = re.compile(r"<parameter=(?P<key>\w+)\s*>(?P<value>[\s\S]*?)</parameter>")
+
+
+def parse_leaked_tool_calls(text: str) -> tuple[list[dict[str, Any]], str]:
+    """Extract tool calls the model printed as text (Claude-style XML blocks).
+
+    Returns (tool_calls, remaining_text) where tool_calls follow the
+    OpenAI structure (id, function.name, JSON-serialized arguments dict)
+    and remaining_text is the input with the leaked blocks removed.
+    Calls with no <parameter> blocks (e.g. final(answer) inline form)
+    are parsed as {"answer": ...} from the block body.
+    """
+    calls: list[dict[str, Any]] = []
+    for idx, match in enumerate(_LEAKED_TOOL_CALL_RE.finditer(text)):
+        name = match.group("name")
+        params_raw = match.group("params")
+        args: dict[str, Any] = {}
+        for pm in _LEAKED_PARAM_RE.finditer(params_raw):
+            args[pm.group("key")] = pm.group("value")
+        if not args:
+            body = params_raw.strip()
+            if body:
+                args = {"answer": body} if name == "final" else {"code": body}
+        if args:
+            calls.append(
+                {
+                    "id": f"leaked_{idx}",
+                    "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+                }
+            )
+    remaining = _LEAKED_TOOL_CALL_RE.sub("", text)
+    return calls, remaining
+
 
 RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -169,13 +215,21 @@ def _obs_trunc_for_context(steps: int, configured_trunc: int, boot_tokens: int) 
 class _RlmBroker:
     """Serves sandbox callbacks and direct tool calls."""
 
-    def __init__(self, module: RlmModule, lang: str, sub_max_tokens: int, web_max_fetches: int) -> None:
+    def __init__(
+        self,
+        module: RlmModule,
+        lang: str,
+        sub_max_tokens: int,
+        web_max_fetches: int,
+        user_id: str = "",
+    ) -> None:
         self.module = module
         self.lang = lang
         self.sub_max_tokens = sub_max_tokens
         self.web_max_fetches = web_max_fetches
         self.web_fetches = 0
         self.seen_queries: set[str] = set()
+        self.user_id = user_id
 
     def llm(self, prompt: str, text: str = "") -> str:
         return self.module.broker_llm(prompt, text)
@@ -283,8 +337,9 @@ class RlmModule:
             messages, model_type="reasoning", lang=self.lang, validate=False, temperature=0.2
         )
         if isinstance(result, str):
-            return result
+            return _strip_thinking_tags(_strip_generic_reasoning(result))
         content = result.get("content", "") or ""
+        content = _strip_thinking_tags(_strip_generic_reasoning(content))
         return content[: max_tokens * 4]
 
     def broker_web_fetch(self, query: str, broker: _RlmBroker) -> str:
@@ -294,10 +349,14 @@ class RlmModule:
             return "That query was already searched earlier. Do not repeat lookups — use the gathered information and call final(answer)."
         broker.seen_queries.add(query)
         broker.web_fetches += 1
+        from app.tavily_keys import get_tavily_key
+
         search = self.app.modules.get("search")
-        if not search or not getattr(search, "available", False):
+        api_key = get_tavily_key(broker.user_id) if broker.user_id else None
+        if not search or (not getattr(search, "available", False) and not api_key):
             return "Web search is unavailable."
-        results = search.search(query, lang=broker.lang, max_results=3) or []
+        results, _provider = search.search_with_fallback(query, lang=broker.lang, max_results=3, api_key=api_key)
+        results = results or []
         if not results:
             return "No web results found."
         parts = []
@@ -367,7 +426,7 @@ class RlmModule:
             {"role": "system", "content": self.build_system_prompt(lang, max_steps=max_steps)},
             {"role": "user", "content": user_prompt},
         ]
-        broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches)
+        broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches, user_id=user_id)
         sandbox = RlmSandbox(corpus, broker, code_timeout=code_timeout)
         self.lang = lang
         sandbox.start()
@@ -380,12 +439,13 @@ class RlmModule:
                     return RlmResult("", trace, step, error="task timeout")
                 # The nudge alone is ignorable — a model may spend its last
                 # step on yet another tool call and the run dies at the limit.
-                # On the final step tools are withheld entirely: the model
-                # physically cannot call python/llm/web_fetch and must produce
-                # a text answer, which is returned as the result.
+                # On the final step only the `final` tool is offered: the
+                # template stays tool-aware (removing tools entirely makes
+                # some models print the call as plain text — observed with
+                # Qwen3.6), but python/llm/web_fetch are unreachable.
                 step_tools: list[dict[str, Any]] | None = tools
                 if step >= max_steps:
-                    step_tools = None
+                    step_tools = [t for t in tools if t["function"]["name"] == "final"]
                 elif step >= max_steps - 1:
                     messages.append(
                         {
@@ -405,7 +465,21 @@ class RlmModule:
                         return RlmResult("", trace, step, error=response)
                     response = {"content": response, "tool_calls": []}
                 content = response.get("content", "") or ""
+                # Safety-net: strip any reasoning/thinking that leaked into content.
+                # This catches cases where the model outputs chain-of-thought as plain
+                # text without tool calls, which would otherwise be returned as the answer.
+                content = _strip_thinking_tags(content)
+                content = _strip_generic_reasoning(content)
                 tool_calls = response.get("tool_calls") or []
+                if not tool_calls and content:
+                    # Leak guard: a model may print the tool call as text
+                    # (Claude-style <function=...> blocks). Parse those back
+                    # into structured calls so the run continues instead of
+                    # showing raw internal dialogue to the user.
+                    leaked, remaining = parse_leaked_tool_calls(content)
+                    if leaked:
+                        tool_calls = leaked
+                        content = remaining.strip()
                 if not tool_calls:
                     if content.strip():
                         return RlmResult(content.strip(), trace, step)
@@ -413,6 +487,7 @@ class RlmModule:
                     messages.append({"role": "user", "content": "Call final(answer) with your answer."})
                     continue
                 messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
+                executed_non_final = False
                 for tc in tool_calls:
                     if is_cancelled():
                         return RlmResult("", trace, step, error="cancelled")
@@ -452,6 +527,8 @@ class RlmModule:
                         on_stage("rlm_searching_web", None)
                     elif name == "llm":
                         on_stage("rlm_submodel", None)
+                    if name != "final":
+                        executed_non_final = True
                     observation, final_answer = self._execute_tool(name, args, sandbox, broker)
                     if final_answer is not None:
                         if not final_answer.strip():
@@ -460,6 +537,44 @@ class RlmModule:
                     observation = observation[:obs_trunc]
                     trace.append(RlmTraceStep(step, name, json.dumps(args)[:500], observation))
                     messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": observation})
+                # A non-final tool executed on the last step (or a leaked
+                # python call there): the loop would end now with «step limit
+                # reached» and the work would be lost. Grant one bounded
+                # finalize call — final-only, so the gathered observation
+                # reaches the answer.
+                if executed_non_final and step >= max_steps:
+                    on_stage("rlm_step", {"step": step + 1})
+                    response = llamacpp.chat(
+                        messages,
+                        model_type="reasoning",
+                        lang=lang,
+                        tools=[t for t in tools if t["function"]["name"] == "final"],
+                        temperature=0.2,
+                    )
+                    if isinstance(response, str):
+                        if RedisRequestQueue._is_llm_error_string(response):
+                            return RlmResult("", trace, step, error=response)
+                        response = {"content": response, "tool_calls": []}
+                    content = _strip_generic_reasoning(_strip_thinking_tags(response.get("content", "") or ""))
+                    finalize_calls = response.get("tool_calls") or []
+                    if not finalize_calls and content:
+                        finalize_calls, remaining = parse_leaked_tool_calls(content)
+                        content = remaining.strip()
+                    if finalize_calls:
+                        for tc in finalize_calls:
+                            func = tc.get("function", {})
+                            if func.get("name") != "final":
+                                continue
+                            try:
+                                args = json.loads(func.get("arguments", "{}"))
+                            except json.JSONDecodeError:
+                                args = {}
+                            answer = str(args.get("answer", "")).strip()
+                            if answer:
+                                return RlmResult(answer, trace, step)
+                    if content.strip():
+                        return RlmResult(content.strip(), trace, step)
+                    return RlmResult("", trace, step, error="step limit reached")
         finally:
             sandbox.close()
         return RlmResult("", trace, max_steps, error="step limit reached")

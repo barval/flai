@@ -994,6 +994,13 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         if tools:
             payload["tools"] = tools
 
+        # Cap thinking tokens for reasoning model (llama-server build 10603 ignores
+        # per-request reasoning_budget; the CLI --reasoning-budget is the primary
+        # control, but sending it here doesn't hurt and may help with newer builds).
+        if model_type == "reasoning":
+            ctx = config.get("context_length", 4096)
+            payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
+
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
         max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
@@ -1646,19 +1653,36 @@ class LlamaCppClient:
         ]
         return self.chat(messages, model_type=model_type, lang=lang)  # type: ignore[return-value]
 
+    @staticmethod
+    def _image_url_parts(images: list[str]) -> list[dict[str, Any]]:
+        """Build one image_url content part per image, adding the data-URL
+        prefix where missing. llama-server (build b10991) accepts several
+        image_url parts in one message — mtmd renders each of them."""
+        parts: list[dict[str, Any]] = []
+        for image in images:
+            url = image if image.startswith("data:") else f"data:image/jpeg;base64,{image}"
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+        return parts
+
+    def chat_with_images(self, text: str, images: list[str], model_type: str = "multimodal", lang: str = "ru") -> str:
+        """Send text together with several images in ONE user message."""
+        content: list[dict[str, Any]] = [{"type": "text", "text": text}, *self._image_url_parts(images)]
+        messages = [{"role": "user", "content": content}]
+        return self.chat(messages, model_type=model_type, lang=lang)  # type: ignore[return-value]
+
+    def chat_with_images_stream(
+        self, text: str, images: list[str], model_type: str = "multimodal", lang: str = "ru"
+    ) -> Generator[str, None, None]:
+        """Streaming variant of chat_with_images."""
+        content: list[dict[str, Any]] = [{"type": "text", "text": text}, *self._image_url_parts(images)]
+        messages = [{"role": "user", "content": content}]
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang, ensure_vram=False)  # type: ignore[misc]
+
     def chat_with_image_stream(
         self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru"
     ) -> Generator[str, None, None]:
         """Streaming variant of chat_with_image."""
-        image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
-
-        messages = [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
-            }
-        ]
-        yield from self.chat_stream(messages, model_type=model_type, lang=lang, ensure_vram=False)  # type: ignore[misc]
+        yield from self.chat_with_images_stream(text, [image_base64], model_type=model_type, lang=lang)
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"

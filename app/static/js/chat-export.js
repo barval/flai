@@ -1,12 +1,13 @@
 // static/js/chat-export.js
 // Save chat as HTML function with embedded media files (base64)
+
+function siteTitleFallback() {
+    return document.querySelector('header h1')?.textContent?.trim() || 'FLAI';
+}
+
 async function saveChatAsHTML() {
-    let footerText = t('footer_text');
-
     const userNameElement = document.querySelector('.logout-container .user-name');
-    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
-
-    const activeSession = document.querySelector('.session-item.active');
+    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');    const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
         return;
@@ -55,19 +56,18 @@ async function saveChatAsHTML() {
             logoBase64 = logoSrc;
         }
     }
-    const headerLogoHtml = logoBase64 ? '<img src="' + logoBase64 + '" alt="FLAI Logo" class="header-logo">' : '';
+    const headerLogoHtml = logoBase64 ? '<img src="' + logoBase64 + '" alt="' + escapeHtml(logoImg?.alt || siteTitleFallback()) + '" class="header-logo">' : '';
 
     const now = new Date();
     const timestamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
 
-    let footerLine1 = footerText, footerLine2 = '';
-    if (footerText.includes('(c)')) {
-        const parts = footerText.split('(c)');
-        footerLine1 = parts[0].trim();
-        footerLine2 = '(c)' + (parts[1] || '').trim();
-    } else {
-        footerLine1 = footerText;
-    }
+    const footerCopyright = t('footer_copyright') || '';
+    // Footer mirrors the live site: one short brand label (clickable) that
+    // opens the same About dialog (full name, version, GitHub, copyright).
+    const footerBrandLabel = t('footer_short_name') + ' v' + (window.FLAI_VERSION || '');
+    const footerModalLogo = logoBase64
+        ? '<img src="' + logoBase64 + '" alt="" class="about-logo">'
+        : '';
 
     // Collect all message elements and their media
     const messageElements = [];
@@ -90,38 +90,37 @@ async function saveChatAsHTML() {
         const contentEl = msgEl.querySelector('.message-content');
         const contentHtml = contentEl ? contentEl.innerHTML : '';
 
-        // Find all media elements
-        const imageEl = msgEl.querySelector('.attached-image');
-        const audioEl = msgEl.querySelector('audio');
-        const videoEl = msgEl.querySelector('video');
+        // Find all media elements (multi-attachment messages carry several
+        // images: the legacy first one plus the .extra-attachments row).
+        const imageEls = msgEl.querySelectorAll('.attached-image');
+        const audioEls = msgEl.querySelectorAll('audio');
+        const videoEls = msgEl.querySelectorAll('video');
         const fileEl = msgEl.querySelector('.attached-file');
 
         // DEBUG: Log media elements for each message
         dlog('Message', index, '-', role, ':', {
-            hasImage: !!imageEl,
-            imageSrc: imageEl ? imageEl.src.substring(0, 80) : null,
-            hasAudio: !!audioEl,
-            audioSrc: audioEl ? audioEl.src.substring(0, 80) : null,
-            hasVideo: !!videoEl,
-            videoSrc: videoEl ? videoEl.src.substring(0, 80) : null,
+            imageCount: imageEls.length,
+            audioCount: audioEls.length,
+            videoCount: videoEls.length,
             hasFile: !!fileEl
         });
 
         const mediaInfo = {
-            image: null,
-            audio: null,
-            video: null,
+            images: [],
+            audios: [],
+            videos: [],
             file: null
         };
 
-        // Collect image - FIX: Check if src CONTAINS /api/files/ not just starts with
-        if (imageEl && imageEl.src) {
+        // Collect images - FIX: Check if src CONTAINS /api/files/ not just starts with
+        for (const imageEl of imageEls) {
+            if (!imageEl.src) continue;
             if (imageEl.src.includes('/api/files/')) {
-                mediaInfo.image = {
+                mediaInfo.images.push({
                     url: imageEl.src,
                     alt: imageEl.alt || t('image'),
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: imageEl.src,
                     type: 'image',
@@ -129,22 +128,22 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added image to fetch:', imageEl.src);
             } else if (imageEl.src.startsWith('data:')) {
-                mediaInfo.image = {
+                mediaInfo.images.push({
                     src: imageEl.src,
                     alt: imageEl.alt || t('image')
-                };
+                });
                 dlog('Image already base64, skipping fetch');
             }
         }
 
         // Collect audio - FIX: Check if src CONTAINS /api/files/ not just starts with
-        // FIX: Removed !imageEl condition - audio should be collected regardless
-        if (audioEl && audioEl.src) {
+        for (const audioEl of audioEls) {
+            if (!audioEl.src) continue;
             if (audioEl.src.includes('/api/files/')) {
-                mediaInfo.audio = {
+                mediaInfo.audios.push({
                     url: audioEl.src,
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: audioEl.src,
                     type: 'audio',
@@ -152,20 +151,21 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added audio to fetch:', audioEl.src);
             } else if (audioEl.src.startsWith('data:')) {
-                mediaInfo.audio = {
+                mediaInfo.audios.push({
                     src: audioEl.src
-                };
+                });
                 dlog('Audio already base64, skipping fetch');
             }
         }
 
         // Collect video
-        if (videoEl && videoEl.src) {
+        for (const videoEl of videoEls) {
+            if (!videoEl.src) continue;
             if (videoEl.src.includes('/api/files/')) {
-                mediaInfo.video = {
+                mediaInfo.videos.push({
                     url: videoEl.src,
                     index: mediaToFetch.length
-                };
+                });
                 mediaToFetch.push({
                     url: videoEl.src,
                     type: 'video',
@@ -173,9 +173,9 @@ async function saveChatAsHTML() {
                 });
                 dlog('Added video to fetch:', videoEl.src);
             } else if (videoEl.src.startsWith('data:')) {
-                mediaInfo.video = {
+                mediaInfo.videos.push({
                     src: videoEl.src
-                };
+                });
                 dlog('Video already base64, skipping fetch');
             }
         }
@@ -260,46 +260,46 @@ async function saveChatAsHTML() {
     const messagesHtml = messageElements.map((msg, msgIdx) => {
         let fileHtml = '';
         
-        // Add image with base64
-        if (msg.media.image) {
-            let imgSrc = msg.media.image.src;
-            if (!imgSrc && msg.media.image.index !== undefined) {
-                imgSrc = mediaBase64Results[msg.media.image.index];
+        // Add images with base64 (multi-attachment messages carry several)
+        for (const image of msg.media.images) {
+            let imgSrc = image.src;
+            if (!imgSrc && image.index !== undefined) {
+                imgSrc = mediaBase64Results[image.index];
             }
             if (imgSrc) {
-                fileHtml += '<div class="image-container"><img src="' + imgSrc + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
+                fileHtml += '<div class="image-container"><img src="' + imgSrc + '" class="attached-image" alt="' + escapeHtml(image.alt) + '"></div>';
             } else {
                 // Fallback to original URL if base64 conversion failed
-                dwarn('Image missing base64, using original URL:', msg.media.image.url);
-                fileHtml += '<div class="image-container"><img src="' + msg.media.image.url + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
+                dwarn('Image missing base64, using original URL:', image.url);
+                fileHtml += '<div class="image-container"><img src="' + image.url + '" class="attached-image" alt="' + escapeHtml(image.alt) + '"></div>';
             }
         }
 
         // Add audio with base64
-        if (msg.media.audio) {
-            let audioSrc = msg.media.audio.src;
-            if (!audioSrc && msg.media.audio.index !== undefined) {
-                audioSrc = mediaBase64Results[msg.media.audio.index];
+        for (const audio of msg.media.audios) {
+            let audioSrc = audio.src;
+            if (!audioSrc && audio.index !== undefined) {
+                audioSrc = mediaBase64Results[audio.index];
             }
             if (audioSrc) {
                 fileHtml += '<div class="audio-container"><audio controls src="' + audioSrc + '"></audio></div>';
             } else {
-                dwarn('Audio missing base64, using original URL:', msg.media.audio.url);
-                fileHtml += '<div class="audio-container"><audio controls src="' + msg.media.audio.url + '"></audio></div>';
+                dwarn('Audio missing base64, using original URL:', audio.url);
+                fileHtml += '<div class="audio-container"><audio controls src="' + audio.url + '"></audio></div>';
             }
         }
 
         // Add video with base64
-        if (msg.media.video) {
-            let videoSrc = msg.media.video.src;
-            if (!videoSrc && msg.media.video.index !== undefined) {
-                videoSrc = mediaBase64Results[msg.media.video.index];
+        for (const video of msg.media.videos) {
+            let videoSrc = video.src;
+            if (!videoSrc && video.index !== undefined) {
+                videoSrc = mediaBase64Results[video.index];
             }
             if (videoSrc) {
                 fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + videoSrc + '"></video></div>';
             } else {
-                dwarn('Video missing base64, using original URL:', msg.media.video.url);
-                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + msg.media.video.url + '"></video></div>';
+                dwarn('Video missing base64, using original URL:', video.url);
+                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + video.url + '"></video></div>';
             }
         }
 
@@ -384,11 +384,47 @@ ${fileHtml}
         '</div>\n' +
         '</main>\n' +
         '<footer>\n' +
-        '<div class="footer-content">\n' +
-        '<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' +
-        (footerLine2 ? '<div class="footer-line2">' + escapeHtml(footerLine2) + '</div>' : '') + '\n' +
-        '</div>\n' +
+        '<button type="button" class="footer-brand" id="export-about-btn"' +
+        ' title="' + escapeHtml(t('footer_about_hint')) + '">' + escapeHtml(footerBrandLabel) + '</button>\n' +
         '</footer>\n' +
+        '<div id="export-about-modal" class="about-modal" hidden>\n' +
+        '<div class="about-modal-backdrop" data-close-about></div>\n' +
+        '<div class="about-modal-content" role="dialog" aria-modal="true">\n' +
+        '<button type="button" class="about-modal-close" data-close-about aria-label="' + escapeHtml(t('close_about')) + '">&times;</button>\n' +
+        footerModalLogo + '\n' +
+        '<h2>' + escapeHtml(t('footer_text')) + '</h2>\n' +
+        '<p class="about-version">v' + (window.FLAI_VERSION || '') + '</p>\n' +
+        '<p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>\n' +
+        (footerCopyright ? '<p class="about-copyright">' + escapeHtml(footerCopyright) + '</p>' : '') + '\n' +
+        '</div>\n' +
+        '</div>\n' +
+        '<script>\n' +
+        '(function () {\n' +
+        '    var modal = document.getElementById("export-about-modal");\n' +
+        '    var btn = document.getElementById("export-about-btn");\n' +
+        '    if (!modal || !btn) return;\n' +
+        '    var lastFocus = null;\n' +
+        '    function openModal() {\n' +
+        '        lastFocus = document.activeElement;\n' +
+        '        modal.hidden = false;\n' +
+        '        var closeBtn = modal.querySelector(".about-modal-close");\n' +
+        '        if (closeBtn) closeBtn.focus();\n' +
+        '        document.addEventListener("keydown", onKey);\n' +
+        '    }\n' +
+        '    function closeModal() {\n' +
+        '        modal.hidden = true;\n' +
+        '        document.removeEventListener("keydown", onKey);\n' +
+        '        if (lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();\n' +
+        '    }\n' +
+        '    function onKey(e) {\n' +
+        '        if (e.key === "Escape") closeModal();\n' +
+        '    }\n' +
+        '    btn.addEventListener("click", openModal);\n' +
+        '    modal.querySelectorAll("[data-close-about]").forEach(function (el) {\n' +
+        '        el.addEventListener("click", closeModal);\n' +
+        '    });\n' +
+        '})();\n' +
+        '<' + '/script>\n' +
         '</body>\n' +
         '</html>';
 

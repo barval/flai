@@ -337,6 +337,23 @@ def _init_postgresql():
         $migrate$
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS document_folders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'documents' AND column_name = 'folder_id') THEN
+                ALTER TABLE documents ADD COLUMN folder_id TEXT;
+            END IF;
+        END
+        $migrate$
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS session_visits (
             user_id TEXT,
             session_id TEXT,
@@ -630,6 +647,21 @@ def _init_postgresql():
     # Drop any stray 'chat' row (including from restored pre-v10.0 backups) so
     # the codebase can never fall back to a chat-only configuration.
     c.execute("DELETE FROM model_configs WHERE module = 'chat'")
+
+    # Branding settings — admin-configurable site identity (singleton row).
+    # site_name_* are empty by default: an empty pair renders the built-in
+    # brand name; a custom logo path is only set by an upload.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS branding_settings (
+            id            INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            logo_path     TEXT,
+            logo_updated_at TIMESTAMP,
+            site_name_ru  TEXT NOT NULL DEFAULT '',
+            site_name_en  TEXT NOT NULL DEFAULT '',
+            updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
 
     # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
     # so the lightweight models don't burn RAM with oversized KV cache.

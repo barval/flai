@@ -10,12 +10,93 @@ header {
     align-items: center;
 }
 
-/* Increase header height on mobile devices and keep it in flow */
-@media (max-width: 768px) {
-    header {
-        height: 75px;
-        padding: 0.75rem 1rem;
-    }
+.user-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 40vw;
+    padding: 0.15rem 0.4rem;
+    overflow: hidden;
+    color: #ecf0f1;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.user-name:hover { background: rgba(255, 255, 255, 0.15); }
+.user-name:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.api-keys-panel {
+    position: absolute;
+    top: 52px;
+    right: 16px;
+    z-index: 1000;
+    width: 520px;
+    max-width: calc(100vw - 32px);
+    padding: 12px;
+    color: #2c3e50;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    /* The panel is absolutely positioned inside <header>, which centers text —
+       every line of the popup must hug the left edge instead. */
+    text-align: left;
+}
+.api-keys-panel[hidden] { display: none; }
+.api-keys-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+}
+.api-keys-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    padding: 2px 4px;
+    color: inherit;
+    background: none;
+    border: 0;
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.api-keys-hint { margin: 4px 0; font-size: 12px; opacity: 0.75; text-align: left; }
+.api-keys-create { display: flex; gap: 8px; margin: 8px 0; }
+.api-keys-create input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+.api-keys-once { padding: 8px; margin: 8px 0; border: 1px solid #d19a00; border-radius: 6px; }
+.api-keys-once code { overflow-wrap: anywhere; }
+.api-keys-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.api-keys-table th,
+.api-keys-table td { padding: 4px 6px; text-align: left; border-bottom: 1px solid #eee; }
+.api-keys-table tr.revoked { opacity: 0.5; text-decoration: line-through; }
+.api-keys-revoke { padding: 2px 8px; color: #c0392b; background: none; border: 1px solid #c0392b; border-radius: 4px; cursor: pointer; }
+.tavily-section { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid #eee; text-align: left; }
+.tavily-title { font-weight: 600; margin-bottom: 4px; }
+.tavily-hint { margin: 4px 0; font-size: 12px; opacity: 0.75; }
+.tavily-hint a { color: #2c3e50; text-decoration: underline; }
+.tavily-create { display: flex; gap: 8px; margin: 8px 0; }
+/* Author display rules beat the UA [hidden] style, so re-assert it explicitly. */
+.tavily-create[hidden],
+.tavily-saved[hidden],
+.tavily-status[hidden] { display: none; }
+.tavily-create input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+.tavily-create button { padding: 4px 10px; cursor: pointer; border: 1px solid #2c3e50; border-radius: 4px; background: #2c3e50; color: #fff; }
+.tavily-create button.tavily-delete { border-color: #c0392b; background: none; color: #c0392b; }
+.tavily-saved { margin-top: 4px; }
+.tavily-saved-row { display: flex; align-items: center; gap: 8px; }
+.tavily-saved-row code { overflow-wrap: anywhere; flex: 1; }
+.tavily-saved-row button { padding: 2px 10px; cursor: pointer; border: 1px solid #c0392b; background: none; color: #c0392b; border-radius: 4px; white-space: nowrap; }
+.tavily-quota { margin: 4px 0 0; font-size: 12px; }
+.tavily-status { display: block; margin-top: 4px; font-size: 12px; color: #b9770e; }
+.tavily-status.is-visible { display: block; }
+.api-keys-header span { color: #2c3e50; }
+@media (max-width: 600px) {
+    .api-keys-panel { left: 16px; overflow-x: auto; }
+    .api-keys-table { min-width: 480px; }
 }
 
 .header-logo {
@@ -30,38 +111,150 @@ header h1 {
     margin: 0;
     margin-right: auto;
     color: white;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Personalized site names can be long — shrink to fit instead of pushing
+   the right-side controls off-screen (mobile gets the tightest clamp). */
+header h1.brand-name {
+    font-size: clamp(0.85rem, 3.2vw, 1.3rem);
+    max-width: 60vw;
 }
 
 /* ===== FOOTER ===== */
 footer {
     background-color: #2c3e50;
     color: white;
-    padding: 0.5rem 1rem;
+    padding: 0.35rem 1rem;
     text-align: center;
-    height: 50px;
+    min-height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-top: auto;
+    position: relative; /* anchor for the mobile voice/theme buttons */
 }
 
-.footer-content {
+/* On mobile the voice-gender (left) and theme (right) buttons are relocated
+   into the footer bar by header.js. Desktop keeps them in the header row. */
+@media (max-width: 768px) {
+    footer .voice-gender-switcher {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 0;
+    }
+    footer .theme-switcher {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 0;
+    }
+    footer .voice-gender-button,
+    footer .theme-toggle-button {
+        width: 26px;
+        height: 26px;
+        font-size: 1.1rem;
+    }
+    footer #voice-gender-icon {
+        font-size: 1rem;
+    }
+    /* Keep the brand label clear of both corner buttons */
+    footer .footer-brand {
+        padding: 0.15rem 2.2rem;
+    }
+}
+
+/* The clickable brand label — the only click target in the bar */
+.footer-brand {
+    color: white;
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    cursor: pointer;
+}
+.footer-brand:hover { background: rgba(255, 255, 255, 0.15); }
+.footer-brand:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* ===== ABOUT MODAL (footer brand) ===== */
+.about-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    line-height: 1.2;
 }
-
-.footer-line1,
-.footer-line2 {
-    font-size: 0.9rem;
-    color: white;
+.about-modal[hidden] { display: none; }
+.about-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
 }
-
-.footer-line2 {
-    opacity: 0.9;
+.about-modal-content {
+    position: relative;
+    max-width: calc(100vw - 48px);
+    max-width: min(420px, calc(100vw - 48px));
+    padding: 28px 32px 22px;
+    text-align: center;
+    color: #2c3e50;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
 }
+.about-logo {
+    display: block;
+    height: 72px;
+    width: auto;
+    object-fit: contain;
+    margin: 0 auto 14px;
+}
+.about-modal-content h2 {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.about-version {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    opacity: 0.8;
+}
+.about-github {
+    margin: 0 0 10px;
+    font-size: 0.88rem;
+    word-break: break-all;
+}
+.about-github a {
+    color: #2c3e50;
+    text-decoration: none;
+}
+.about-github a:hover { text-decoration: underline; }
+.about-copyright {
+    margin: 0;
+    font-size: 0.92rem;
+    opacity: 0.85;
+}
+.about-modal-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    color: #7f8c8d;
+    background: none;
+    border: 0;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.about-modal-close:hover { color: #e74c3c; }
+.about-modal-close:focus-visible { outline: 2px solid #2c3e50; outline-offset: 1px; }
 
 /* ===== LOGOUT CONTAINER ===== */
 .logout-container {
@@ -70,22 +263,10 @@ footer {
     gap: 15px;
     margin-left: auto;
 }
-
 .header-row {
     display: flex;
     align-items: center;
     gap: 15px;
-}
-
-@media (max-width: 768px) {
-    .logout-container {
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 5px;
-    }
-    .header-row {
-        gap: 8px;
-    }
 }
 
 .logout-container span {
@@ -103,6 +284,11 @@ footer {
     transition: background-color 0.3s;
 }
 
+/* Desktop keeps the text-only button; mobile shows the icon only */
+.logout-button .logout-icon {
+    display: none;
+}
+
 .logout-button:hover {
     background-color: #c0392b;
 }
@@ -115,6 +301,61 @@ footer {
     background-color: white;
     color: #333;
     cursor: pointer;
+}
+
+/* Mobile custom dropdown: closed toggle «Ру ▾», menu lists full names */
+.lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    color: #333;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.lang-menu {
+    position: absolute;
+    top: 100%;
+    right: 0; /* open leftwards: the switcher hugs the right screen edge */
+    z-index: 1200;
+    min-width: 120px;
+    padding: 4px;
+    background-color: white;
+    color: #333;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.lang-option {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.6rem;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: #333;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.lang-option:hover {
+    background-color: #e6f2ff;
+}
+
+.lang-option[data-selected] {
+    background-color: #d0e8ff;
+    font-weight: 600;
+}
+
+.language-switcher {
+    position: relative;
 }
 
 /* ===== VOICE GENDER TOGGLE ===== */
@@ -199,4 +440,104 @@ footer {
 .dark-theme .theme-toggle-button {
     background-color: #34495e;
     color: #f1c40f;
+}
+
+/* ===== DARK THEME: CUSTOM LANGUAGE DROPDOWN ===== */
+.dark-theme .lang-toggle {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #ecf0f1;
+}
+
+.dark-theme .lang-menu {
+    background-color: #2d2d2d;
+    border-color: #555;
+    color: #ecf0f1;
+}
+
+.dark-theme .lang-option {
+    color: #e0e0e0;
+}
+
+.dark-theme .lang-option:hover {
+    background-color: #3a4a5a;
+}
+
+.dark-theme .lang-option[data-selected] {
+    background-color: #34495e;
+    color: #ecf0f1;
+}
+
+/* Author display rules beat the UA [hidden] style — re-assert it for the
+   custom dropdown parts so the desktop never shows the mobile toggle/menu
+   and the menu starts closed. */
+.lang-toggle[hidden],
+.lang-menu[hidden] {
+    display: none;
+}
+
+/* ===== MOBILE SLIM HEADER (must come after the base rules above so the
+   cascade wins: same specificity, later source order) ===== */
+@media (max-width: 768px) {
+    header {
+        height: 38px;
+        padding: 0.15rem 0.5rem;
+        gap: 6px;
+        text-align: left;
+    }
+    .header-logo {
+        height: 26px;
+        margin-right: 6px;
+    }
+    header h1 {
+        font-size: 1rem;
+        margin-right: 0; /* header gap: 6px distributes spacing evenly */
+    }
+    .logout-container {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+    }
+    .header-row {
+        gap: 6px;
+    }
+    .user-name {
+        max-width: 26vw;
+        font-size: 0.8rem;
+        padding: 0.1rem 0.3rem;
+    }
+    /* Language: the custom dropdown only — the native select stays hidden */
+    .language-switcher select {
+        display: none;
+    }
+    .lang-toggle {
+        padding: 0.1rem 0.3rem;
+        font-size: 0.85rem;
+    }
+    /* Logout: small square icon button (icon shown, text hidden) */
+    .logout-button {
+        padding: 0;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
+        line-height: 1;
+    }
+    .logout-button .logout-icon {
+        display: inline;
+    }
+    .logout-button .logout-text {
+        display: none;
+    }
+    /* The switchers live in the footer (moved by header.js); if the JS has
+       not run yet, keep them out of the slim header */
+    header .voice-gender-switcher,
+    header .theme-switcher {
+        display: none;
+    }
 }

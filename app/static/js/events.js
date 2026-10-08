@@ -161,13 +161,6 @@ function handleEvent(event) {
         case 'result_completed':
             onResultCompleted(event.data);
             break;
-        case 'notice':
-            if (event.data && event.data.message && typeof originalDisplayMessage === 'function') {
-                originalDisplayMessage('assistant', event.data.message, null, null, null, null,
-                    new Date().toISOString(), 0, 'system', null, null, null, null,
-                    'notice-' + (event.data.task_id || Date.now()));
-            }
-            break;
         case 'stream_token':
             onStreamToken(event.data);
             break;
@@ -234,6 +227,7 @@ const TOOL_META = {
     web_search: ['🌐', 'tool_web_search'],
     rag_search: ['📚', 'tool_rag_search'],
     camera_snapshot: ['📹', 'tool_camera_snapshot'],
+    read_page: ['🕸️', 'tool_read_page'],
 };
 
 function getToolLabel(toolName) {
@@ -279,6 +273,9 @@ const STAGE_LABEL_KEYS = {
     rlm_searching_web: 'stage_rlm_searching_web',
     rlm_submodel: 'stage_rlm_submodel',
     rlm_finalizing: 'stage_rlm_finalizing',
+    crawl_start: 'stage_crawl_start',
+    crawl_page: 'stage_crawl_page',
+    crawl_indexing: 'stage_crawl_indexing',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
@@ -287,6 +284,7 @@ const STAGE_COUNTER_KEYS = {
     searching_web: 'stage_web_results',
     searching_history: 'stage_history_found',
     rlm_step: 'stage_rlm_step',
+    crawl_page: 'stage_crawl_page',
 };
 
 function getStageLabel(stage, count) {
@@ -304,7 +302,7 @@ function onTaskProgress(data) {
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count));
+    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages));
     _showHeaderCancelButton(data.task_id);
 }
 

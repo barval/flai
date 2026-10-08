@@ -218,6 +218,20 @@ function updateSessionsList(sessions) {
     attachSessionEventHandlers();
 }
 
+// ===== Mobile full-screen panel for sessions =====
+function isMobileViewport() {
+    return window.innerWidth <= 768;
+}
+
+// Close the mobile full-screen panel and return to the chat view
+function closeMobilePanel() {
+    if (!isMobileViewport()) return;
+    const sidebar = document.querySelector('.sessions-sidebar');
+    if (sidebar && sidebar.classList.contains('panel-open')) {
+        sidebar.classList.remove('panel-open');
+    }
+}
+
 function attachSessionEventHandlers() {
     document.querySelectorAll('.session-item').forEach(el => {
         el.addEventListener('click', function(e) {
@@ -226,12 +240,14 @@ function attachSessionEventHandlers() {
             if (sessionId === currentSessionId) {
                 dlog('Session already active, reloading messages');
                 loadMessages(sessionId);
+                closeMobilePanel();
                 return;
             }
             setNewMessageIndicator(sessionId, false);
             document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
             this.classList.add('active');
             switchSession(sessionId);
+            closeMobilePanel();
         });
     });
     
@@ -431,67 +447,8 @@ function updateLastVisit(sessionId) {
         .catch(() => {});
 }
 
-// ===== Collapsible sidebar for mobile =====
-function initCollapsibleSessions() {
-    const sidebar = document.querySelector('.sessions-sidebar');
-    const collapseToggle = document.getElementById('collapse-toggle-mobile');
-    if (!sidebar || !collapseToggle) return;
-    
-    // Remove old click handler if exists
-    collapseToggle.removeEventListener('click', toggleSessions);
-    
-    // Add click handler to collapse toggle
-    collapseToggle.addEventListener('click', toggleSessions);
-    
-    // Restore state from localStorage
-    const login = window.CURRENT_USER_LOGIN;
-    if (login) {
-        const collapsed = localStorage.getItem(`sidebar_collapsed_${login}`);
-        if (collapsed === 'true') {
-            sidebar.classList.add('collapsed');
-        } else {
-            sidebar.classList.remove('collapsed');
-        }
-    }
-    
-    // On mobile, start with sidebar collapsed by default
-    if (window.innerWidth <= 768 && login) {
-        const collapsed = localStorage.getItem(`sidebar_collapsed_${login}`);
-        if (collapsed !== 'false') {
-            sidebar.classList.add('collapsed');
-        }
-    }
-    
-    // Update collapse icon
-    updateCollapseIcon();
-}
-
-function toggleSessions(e) {
-    e.stopPropagation();
-    const sidebar = document.querySelector('.sessions-sidebar');
-    if (!sidebar) return;
-    sidebar.classList.toggle('collapsed');
-    const login = window.CURRENT_USER_LOGIN;
-    if (login) {
-        localStorage.setItem(`sidebar_collapsed_${login}`, sidebar.classList.contains('collapsed'));
-    }
-    // Update collapse icon
-    updateCollapseIcon();
-}
-
-// Update collapse icon based on sidebar state
-function updateCollapseIcon() {
-    const sidebar = document.querySelector('.sessions-sidebar');
-    const collapseIcon = document.getElementById('collapse-icon');
-    if (sidebar && collapseIcon) {
-        if (sidebar.classList.contains('collapsed')) {
-            collapseIcon.textContent = '➡️';
-        } else {
-            collapseIcon.textContent = '⬇️';
-        }
-    }
-}
-
 // Make functions globally accessible for cross-client sync
 window.loadSessionsFromServer = loadSessionsFromServer;
 window.switchSession = switchSession;
+window.closeMobilePanel = closeMobilePanel;
+window.isMobileViewport = isMobileViewport;

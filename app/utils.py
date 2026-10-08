@@ -14,7 +14,7 @@ from typing import Any
 import pytz
 from docx import Document
 from flask import current_app
-from flask_babel import gettext
+from flask_babel import force_locale, gettext
 from PIL import Image
 
 PROMPTS_DIR = "prompts"
@@ -515,6 +515,24 @@ def resize_image_if_needed(
     except Exception as e:
         current_app.logger.error(f"Error resizing image: {str(e)}")
         return file_data, file_type, file_name, False, None, None
+
+
+def get_image_dimensions(file_data: str) -> tuple[int, int] | None:
+    """Return (width, height) of a base64 or data-URL image, or None on failure.
+
+    Used to append the real aspect ratio of attached reference images to the
+    SD prompt («draw something similar» keeps the reference format)."""
+    try:
+        raw = file_data
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        image_bytes = base64.b64decode(raw)
+        img = Image.open(BytesIO(image_bytes))
+        return img.size  # type: ignore[return-value]
+    except Exception as e:
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.debug(f"get_image_dimensions failed: {e}")
+        return None
 
 
 # Formats that llama.cpp (stb_image) can decode natively.
@@ -1112,36 +1130,62 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
     return None
 
 
-def check_document_quota(user_id: str) -> str | None:
+def check_document_quota(user_id: str, excluded_doc_id: str | None = None, lang: str | None = None) -> str | None:
     """Check if user has exceeded document quota.
 
     Args:
         user_id: User login
+        excluded_doc_id: Optional document id left out of both the count and the
+            size sum. Callers that REPLACE a document (the crawl task
+            re-crawling a saved domain) pass its id, so replacing it is not
+            mistaken for uploading one more document.
+        lang: Optional user language. Web callers inherit it from the request;
+            queue workers (the crawl task) have no request context, so they pass
+            the task language — without it gettext() raises and the broad
+            exception handler below would silently disable the quota.
 
     Returns:
         Error message if quota exceeded, None if OK
     """
     from .database import get_db
 
-    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 50)
+    def _text(msgid: str, **params: Any) -> str:
+        if lang:
+            with force_locale(lang):
+                return str(gettext(msgid).format(**params))
+        return str(gettext(msgid).format(**params))
+
+    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
     max_mb = current_app.config.get("MAX_DOCUMENTS_STORAGE_MB", 50)
 
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s", (user_id,))
+            if excluded_doc_id:
+                c.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s AND id <> %s",
+                    (user_id, excluded_doc_id),
+                )
+            else:
+                c.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s",
+                    (user_id,),
+                )
             row = c.fetchone()
             count, total_bytes = row["count"], row["coalesce"]
 
             if count >= max_docs:
-                return gettext(  # type: ignore[no-any-return]
-                    "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
-                ).format(count=count, max_docs=max_docs)
+                return _text(
+                    "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more.",
+                    count=count,
+                    max_docs=max_docs,
+                )
             if total_bytes + 1 > max_mb * 1024 * 1024:
-                used_mb = total_bytes / (1024 * 1024)
-                return gettext(  # type: ignore[no-any-return]
-                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
-                ).format(used_mb=used_mb, max_mb=max_mb)
+                return _text(
+                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used.",
+                    used_mb=total_bytes / (1024 * 1024),
+                    max_mb=max_mb,
+                )
     except Exception:
         pass  # Don't block upload on DB errors
 
@@ -1463,6 +1507,32 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                         break
 
     return cached
+
+
+def remove_gguf_cache_entries(model_names) -> None:
+    """Drop deleted model files from the gguf_models_cache, both in-memory and
+    in the database table. Known no-ops are tolerated (files already gone)."""
+    names = [str(n) for n in model_names if str(n)]
+    if not names:
+        return
+    global _gguf_models_cache
+    if _gguf_models_cache:
+        seen_deleted = False
+        for n in names:
+            if _gguf_models_cache.pop(n, None) is not None:
+                seen_deleted = True
+        if seen_deleted and not _gguf_models_cache:
+            _gguf_models_cache = None
+    try:
+        from .database import get_db
+
+        placeholders = ", ".join(["%s"] * len(names))
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(f"DELETE FROM gguf_models_cache WHERE model_name IN ({placeholders})", names)
+            conn.commit()
+    except Exception:
+        pass
 
 
 def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:

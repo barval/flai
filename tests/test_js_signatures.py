@@ -225,3 +225,388 @@ def test_documents_panel_shows_queue_position_from_server_status():
     assert "position_info?.position" in docs_src
     assert "document-status-icon queued" in docs_src
     assert ".document-status-icon.queued" in queue_css
+
+
+def test_hub_context_length_is_editable_input():
+    """Model Hub 'Context length' value must be a manually editable input, not
+    a read-only span next to the slider."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert re.search(r'<input[^>]*id="hub-context-value"', admin_template), (
+        "hub-context-value must be an <input> (typing a context length by hand)"
+    )
+    assert not re.search(r'<span[^>]*id="hub-context-value"', admin_template), (
+        "hub-context-value must no longer be a <span>"
+    )
+
+
+def test_hub_context_input_filters_and_clamps():
+    """The ctxValue input must (a) strip non-digit characters while typing,
+    (b) clamp the committed value into the slider range [1024, 262144], and
+    (c) keep the slider + value display in sync and re-run the fit recalc."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    assert "CTX_MIN = 1024" in hub_src
+    assert "CTX_MAX = 262144" in hub_src
+    # Digit-only whitelist filter while typing.
+    assert re.search(r"replace\(\s*/\D", hub_src), "ctxValue input must strip non-digit characters"
+    # Commit path (Enter/blur) clamps into the slider range.
+    assert re.search(r"Math\.max\s*\([^)]*CTX_MIN", hub_src)
+    assert re.search(r"Math\.min\s*\([^)]*CTX_MAX", hub_src)
+    # Committed value must be written back to the slider and re-render fits.
+    assert "ctxSlider.value = ctx" in hub_src
+    assert "ctxValue.value = String(ctx)" in hub_src
+    assert "ctxValue.addEventListener('change'" in hub_src
+    # Slider drag still syncs the input display.
+    assert "ctxValue.value = ctxSlider.value" in hub_src
+
+
+def test_hub_status_messages_blink_smoothly():
+    """Model Hub status lines must pulse smoothly (as the chat task-progress
+    indicators do), not jump between opacity steps."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    # The animation must live on the shared .hub-scan-status class (both the
+    # search line and the recalc line blink), easing smoothly.
+    assert re.search(r"\.hub-scan-status\s*\{[^}]*animation:\s*hub-status-pulse 2s ease-in-out", admin_css)
+    # Smooth pulse, not a step: opacity eases between 0.65 and 1 over the cycle.
+    keyframes = admin_css[admin_css.index("@keyframes hub-status-pulse") :]
+    assert re.search(r"0%,\s*100%\s*\{[^}]*opacity:\s*0\.6", keyframes)
+    assert re.search(r"50%\s*\{[^}]*opacity:\s*1", keyframes)
+    assert "49%" not in keyframes
+    # The old hard step blink must be gone.
+    assert "hub-status-blink" not in admin_css
+
+
+def test_hub_fit_calc_status_shown_on_first_render():
+    """The fit-calculation status must be shown (with the 'Computing fit…'
+    label) while the colored fit tiers are fetched after the first render."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    # First render starts the calc-status + a shared recalc helper.
+    assert "recalcFits('hub_calculating')" in hub_src
+    assert "function recalcFits" in hub_src
+    # The helper shows the status, runs collectFits, hides on completion.
+    recalc_body = hub_src[hub_src.index("function recalcFits") :]
+    assert "showStatus(recalcStatus, true)" in recalc_body
+    assert "collectFits(() => {" in recalc_body
+    assert "showStatus(recalcStatus, false)" in recalc_body
+    # Repeated recalculation (slider) reuses the same helper with the old label.
+    assert "recalcFits('hub_recalculating')" in hub_src
+    # The new label must be wired in the admin TRANSLATIONS block.
+    assert "'hub_calculating': {{ _('Computing fit…')|tojson }}" in admin_template
+
+
+def test_hub_fit_batched_per_repo():
+    """Fit tiers must be fetched with one /fit-all request per repo, not one
+    /fit request per file: a 50-repo search used to queue hundreds of
+    sequential requests on the single-process server."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    collect_body = hub_src[hub_src.index("function collectFits") :]
+    assert "/admin/api/hub/fit-all?repo=" in collect_body
+    assert re.search(r"\(groups\[repo\]\s*=\s*groups\[repo\]\s*\|\|\s*\[\]\)\.push", collect_body)
+    assert "byFile[row.dataset.file]" in collect_body
+    # The old per-file endpoint must not be used by the batched path.
+    assert "/admin/api/hub/fit?repo=" not in collect_body
+
+
+def test_hub_search_renders_fits_directly():
+    """A search with a context arg comes back with ready fit tiers: renderResults
+    paints them immediately and skips the sequential fit-all recalc phase."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # The search request always carries the current context slider value.
+    assert "&context=${currentContext()}" in hub_src
+    # renderResults reads the server-provided flag and renders fit inline.
+    assert "data.fits_computed" in hub_src
+    assert "fitTierClass(f.fit)" in hub_src
+    assert "fitTierLabel(f.fit)" in hub_src
+    # The recalc phase runs only when the search did not compute fits.
+    assert "if (!hasFits) recalcFits('hub_calculating')" in hub_src
+    # Shared tier helpers (also used by the slider recalc path) exist.
+    assert "function fitTierClass" in hub_src
+    assert "function fitTierLabel" in hub_src
+    assert "if (fit.error) return '✗'" in hub_src
+    assert "if (fit.error) return 'hub-fit-impossible'" in hub_src
+
+
+def test_hub_recalc_status_ticks_elapsed_seconds():
+    """The fit-calculation status must tick elapsed seconds ('(N сек)') while
+    shown — mirroring the chat phase timers — and stop when the calc finishes."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # A dedicated per-run interval + stop helper live in the hub module.
+    assert re.search(r"let recalcTimer\s*=\s*null", hub_src)
+    assert re.search(r"function _stopRecalcTimer\b", hub_src)
+    assert re.search(r"clearInterval\s*\(\s*recalcTimer\s*\)", hub_src)
+    # The recalc path starts a 1-second interval that rewrites the status text
+    # with a seconds suffix ('(5 сек)'), localized via the existing hub_seconds key.
+    recalc_body = hub_src[hub_src.index("function recalcFits") :]
+    assert "setInterval(" in recalc_body
+    assert re.search(r"recalcStatus\.textContent\s*=\s*[^;]*\([^;]*secs[^;]*suffix", recalc_body)
+    assert "t('hub_seconds')" in recalc_body
+    # Completion stops the timer before hiding the status.
+    assert "_stopRecalcTimer()" in recalc_body[: recalc_body.index("showStatus(recalcStatus, false)")]
+
+
+def test_hub_columns_synced_right_aligned():
+    """Every model's row table must share one fixed column layout (size /
+    name / fit / action), and the size column must be right-aligned."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert re.search(r"table\.hub-files\s*\{[^}]*table-layout:\s*fixed", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(1\)\s*\{[^}]*width:\s*10%", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(2\)\s*\{[^}]*padding-left:\s*1\.5rem", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*width:\s*14%", admin_css)
+    assert re.search(r"\.hub-file-row td:nth-child\(4\)\s*\{[^}]*width:\s*20%;[^}]*text-align:\s*center", admin_css)
+    assert re.search(r"\.hub-size\s*\{[^}]*text-align:\s*right", admin_css), "size column must be right aligned"
+    assert ".hub-aux-note" in admin_css, "aux-file notice under the model name must be styled"
+
+
+def test_hub_numbers_locale_formatting_and_ceil():
+    """Download/like counters and file sizes must use thousand separators,
+    and file sizes must round up to a whole MB."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+
+    # A shared formatter uses the locale-aware separators (like the chat token
+    # counters), so the raw numbers never leak into the DOM.
+    assert "toLocaleString" in hub_src
+    assert "fmtNum" in hub_src
+    # The size column renders an upward-rounded whole number with separators.
+    assert re.search(r"Math\.ceil\s*\(\s*f\.size_mb[^)]*\)", hub_src), "size must round up (ceil)"
+    # Downloads/likes flow through the same separators-aware formatter.
+    assert re.search(r"fmtNum\(\s*it\.downloads", hub_src)
+    assert re.search(r"fmtNum\(\s*it\.likes", hub_src)
+    assert re.search(r"replace\('\{total\}',\s*fmtNum\(Math\.ceil\(job\.total_mb\)\)\)", hub_src), (
+        "download progress total size must be rounded up and formatted with separators"
+    )
+
+
+def test_hub_column_header_and_sticky_layout():
+    """The column header (Размер/Наименование/Оценка/Загрузка) must sit above
+    the results, and everything above the list must stay fixed while only
+    #hub-results scrolls."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert 'id="hub-columns"' in admin_template
+    assert "hub-col-size" in admin_template
+    # The tab becomes a flex column without its own vertical scroll.
+    assert re.search(r"#hub-tab\.active\s*\{[^}]*overflow:\s*hidden", admin_css)
+    # Header and file tables share ONE scroll container (the wrapper), so the
+    # header grid and the tables keep identical widths/centers even while the
+    # scrollbar gutter is reserved.
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*flex:\s*1", admin_css)
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-y:\s*auto", admin_css)
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*min-height:\s*0", admin_css)
+    # The sticky header stays visible while the list scrolls beneath it.
+    assert re.search(r"\.hub-columns\s*\{[^}]*position:\s*sticky", admin_css)
+    assert re.search(r"\.hub-columns\s*\{[^}]*top:\s*0", admin_css)
+    # Column headers align with the right-aligned size column and are centered.
+    assert "grid-template-columns: 10% 1fr 14% 20%" in admin_css
+    assert re.search(r"\.hub-columns\s*\{[^}]*text-align:\s*center", admin_css)
+    assert re.search(r"\.hub-columns\s*\{[^}]*padding:\s*[^;]*0\.75rem", admin_css), (
+        "header inset must match .hub-repo padding"
+    )
+    assert re.search(r"\.hub-col-name\s*\{[^}]*padding-left:\s*1\.5rem", admin_css)
+    assert "padding-right: 0.4rem" not in admin_css
+    # The scrollbar gutter must be stable so the tables and the shared header
+    # keep identical column centers once the list starts scrolling.
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*scrollbar-gutter:\s*stable", admin_css)
+
+
+def test_hub_model_name_label_before_search():
+    """The search row must carry an 'Model name:' label like 'Context length:'."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+
+    assert "{{ _('Model name') }}:" in admin_template
+
+
+def test_hub_type_labels_collapse_on_mobile():
+    """On mobile the model-type checkboxes must show only the box + icon, with
+    the long text label moved into a hover tooltip; the admin panel gets a
+    horizontal scroll instead of clipping."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+
+    assert 'class="hub-type-label"' in admin_template
+    assert re.search(r'<label class="hub-check"[^>]*title="', admin_template), "labels need a tooltip title"
+    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    assert ".hub-type-label { display: none; }" in media
+    assert re.search(r"\.admin-tab-content\.active\s*\{[^}]*overflow-x:\s*auto", admin_css), "horizontal scroll"
+
+
+def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    media_start = admin_css.rindex("@media (max-width: 768px)")
+    media = admin_css[media_start:]
+    assert media_start > admin_css.index(".hub-filter-row { display: flex"), "mobile overrides must follow base styles"
+    assert media_start > admin_css.index(".hub-header { display: flex"), "mobile overrides must follow base styles"
+    assert ".hub-filters {" in media
+    assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
+    assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.hub-columns\s*\{[^}]*min-width:\s*", media)
+    assert re.search(r"table\.hub-files\s*\{[^}]*min-width:\s*", media)
+
+
+def test_mobile_downloaded_models_panel_scrolls_horizontally():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
+    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*auto", media)
+    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*", media)
+    assert re.search(r"\.installed-file\s*\{[^}]*flex-wrap:\s*nowrap", media)
+
+
+def test_hub_calculating_msgid_in_both_catalogs():
+    """The new 'Computing fit…' message must exist in both .po catalogs."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        assert 'msgid "Computing fit…"' in po, f"msgid missing in {lang_dir}"
+        assert "msgstr" in po[po.index('msgid "Computing fit…"') : po.index('msgid "Computing fit…"') + 200]
+
+
+def test_hub_service_files_msgid_in_both_catalogs():
+    """The auxiliary-files notice must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        needle = 'msgid "Service files totalling {n} MB will be downloaded with the model"'
+        assert needle in po, f"msgid missing in {lang_dir}"
+        block = po[po.index(needle) : po.index(needle) + 300]
+        assert "{n}" in block
+        assert block.endswith('"\n') is False or 'msgstr "' in block
+        assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
+
+
+def test_admin_tabs_scroll_horizontally_on_narrow_screens():
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    tabs = re.search(r"\.admin-tabs\s*\{([^}]*)\}", admin_css)
+    assert tabs and re.search(r"overflow-x:\s*auto", tabs.group(1))
+    button = re.search(r"\.admin-tab\s*\{([^}]*)\}", admin_css)
+    assert button and re.search(r"flex:\s*0\s+0\s+auto", button.group(1))
+    assert button and re.search(r"white-space:\s*nowrap", button.group(1))
+
+
+def test_model_hub_persists_and_restores_active_download_progress():
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    assert "sessionStorage.setItem(ACTIVE_DOWNLOADS_KEY" in hub_src
+    assert "sessionStorage.getItem(ACTIVE_DOWNLOADS_KEY" in hub_src
+    assert "resumeActiveDownloads()" in hub_src
+    assert 'id="hub-active-downloads"' in admin_template
+    assert "activeDownloads.appendChild(row)" in hub_src
+    assert "function ensureJobsHost" not in hub_src
+
+
+def test_successful_hub_download_refreshes_models_tab_and_dropdowns():
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    done_branch = hub_src[hub_src.index("} else if (job.state === 'done')") :]
+    assert "refreshModelsAfterHubDownload()" in done_branch
+    refresh = models_src[models_src.index("function refreshModelsAfterHubDownload") :]
+    assert "modelDetails = {}" in refresh
+    assert "modelListCache = {}" in refresh
+    assert "loadModelConfigs()" in refresh
+    assert "loadInstalledFiles()" in refresh
+
+
+def test_admin_active_tab_survives_language_switch_reload():
+    """Admin tab position must persist across the language-change full reload:
+    initAdminTabs saves the active data-tab on click and restores it on load."""
+    src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+
+    tabs_src = src[: src.index("function loadModelConfigs")]
+    assert "localStorage.setItem('admin_active_tab'" in tabs_src
+    assert "localStorage.getItem('admin_active_tab'" in tabs_src
+    # Restore must verify the saved tab still exists (Cameras is conditional).
+    assert "document.querySelector('.admin-tab[data-tab=\"' + saved" in tabs_src
+
+
+def test_hub_installed_badge_and_delete_button():
+    """Search results must mark already-downloaded basenames and offer an
+    in-place Delete button instead of Download."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    assert "data.installed" in hub_src
+    assert "installedList" in hub_src
+    assert "hub-installed" in hub_src, "installed files need a visual badge class"
+    assert "hub-del" in hub_src, "installed files must get a Delete button class"
+    assert "hub/delete" in hub_src, "delete call must hit /admin/api/hub/delete"
+    search_block = hub_src[hub_src.index("async function doSearch") : hub_src.index("function stopSearchTimer")]
+    assert "installedList = " in search_block, "search must refresh the installed set"
+
+
+def test_hub_offline_banner_on_reachability():
+    """UT-остров: an unreachable HF must show a banner pointing to the manual
+    .gguf upload path instead of a generic error."""
+    hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "/admin/api/hub/installed" in models_src and "reachability" in hub_src
+    assert "hub-offline-banner" in hub_src
+    assert "checkHubReachability" in hub_src
+    assert "hub_manual_upload" in hub_src, "banner must mention the manual upload route"
+    reach_block = hub_src[
+        hub_src.index("function checkHubReachability") : hub_src.index("function checkHubReachability") + 600
+    ]
+    assert "reachable" in reach_block
+
+
+def test_models_tab_files_panel():
+    """Models tab must list disk models with a Delete button (non-Hub case)."""
+    admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "models-files" in admin_template, "Models tab needs a files panel container"
+    assert "models-files" in models_src, "admin-models.js must render the files panel"
+    assert "/admin/api/hub/installed" in models_src
+    assert "hub/delete" in models_src, "panel delete uses the same guarded endpoint"
+    assert "hub-del add-user-button" in models_src, "panel delete buttons need a class"
+    assert "Downloaded models" in admin_template, "panel header uses the Downloaded models label"
+    for emoji in ("🧠", "🖼️", "📐"):
+        assert emoji in models_src, f"panel must tag each file with its type emoji {emoji}"
+    assert "Math.ceil" in models_src, "panel size rounds up"
+    assert ".toLocaleString()" in models_src, "panel size is formatted with thousands separators"
+    assert "hub_installed_via_hub" in models_src, "panel uses a dedicated 'Installed via Model Hub' label"
+
+
+def test_hub_installed_via_hub_msgid_in_both_catalogs():
+    """The panel second label must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        msgid = "Installed via Model Hub"
+        assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
+        block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
+        assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
+
+
+def test_hub_downloaded_models_msgid_in_both_catalogs():
+    """The panel header msgid must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        msgid = "Downloaded models"
+        assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
+        block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
+        assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
+
+
+def test_hub_offline_and_manual_upload_msgids_in_both_catalogs():
+    """Offline-banner strings must exist in both .po catalogs with a
+    non-empty translation."""
+    for lang_dir in ("en", "ru"):
+        po = (JS_DIR.parent.parent.parent / "translations" / lang_dir / "LC_MESSAGES" / "messages.po").read_text(
+            encoding="utf-8"
+        )
+        for msgid in ("No access to Hugging Face — downloads from the Model Hub are unavailable",):
+            assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
+            block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
+            assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"

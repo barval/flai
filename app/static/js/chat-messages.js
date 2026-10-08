@@ -562,12 +562,34 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             try {
                 const parts = JSON.parse(content);
                 let textContent = '';
+                const contentAttachments = [];
                 parts.forEach(part => {
                     if (part.type === 'text') textContent += part.text + '\n';
+                    else if ((part.type === 'image' || part.type === 'audio' || part.type === 'file')
+                        && (part.file_data || part.file_path)) {
+                        // Render the legacy first attachment via the fileData
+                        // parameters (below); the rest become inline chips.
+                        contentAttachments.push(part);
+                    }
                 });
                 if (textContent) {
                     const escapedText = escapeHtml(textContent.trim());
                     contentHTML += marked.parse(escapedText);
+                }
+                // Extra attachments: render inline. The legacy first one is
+                // rendered from the fileData/filePath parameters below, so it
+                // must be skipped here — but ONLY while those parameters are
+                // present. Images queued in attachedFiles[] never occupy the
+                // legacy slot, and the optimistic multi-image send passes no
+                // parameters, so an unconditional slice(1) dropped image #1
+                // (4 attached, 3 shown; the HTML export mirrors the DOM).
+                const legacyRendersFirst = Boolean(fileData || filePath);
+                if (contentAttachments.length > 0 && role === 'user') {
+                    window.__extraAttachments = legacyRendersFirst
+                        ? contentAttachments.slice(1)
+                        : contentAttachments;
+                } else {
+                    window.__extraAttachments = null;
                 }
             } catch (e) {
                 const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
@@ -646,6 +668,58 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 msgDiv.appendChild(fileDiv);
             }
         }
+    }
+
+    // Extra attachments (beyond the legacy first one) from the content JSON:
+    // thumbnails for images, audio players, emoji file chips.
+    const extraAttachments = window.__extraAttachments;
+    window.__extraAttachments = null;
+    if (extraAttachments && extraAttachments.length > 0) {
+        const extraRow = document.createElement('div');
+        extraRow.className = 'extra-attachments';
+        for (const part of extraAttachments) {
+            // A part needs either a server path or inline base64. History
+            // reloads strip file_data for parts that have a file_path, and
+            // legacy rows may have neither — building a data: URL from null
+            // produced a broken image, so such parts are skipped.
+            const hasSource = part.file_path || part.file_data;
+            if (!hasSource) continue;
+            const partUrl = part.file_path ? '/api/files/' + part.file_path
+                : 'data:' + part.file_type + ';base64,' + part.file_data;
+            if (part.type === 'image' || (part.file_type && part.file_type.startsWith('image/'))) {
+                const imgWrap = document.createElement('div');
+                imgWrap.className = 'image-container';
+                const img = document.createElement('img');
+                img.src = partUrl;
+                img.loading = 'lazy';
+                img.className = 'attached-image';
+                img.alt = part.file_name || 'attached image';
+                img.title = t('click_to_enlarge');
+                img.onclick = function () { openImageModal(this.src, part.file_name || t('image')); };
+                imgWrap.appendChild(img);
+                extraRow.appendChild(imgWrap);
+            } else if (part.type === 'audio' || (part.file_type && part.file_type.startsWith('audio/'))) {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = partUrl;
+                audio.preload = 'metadata';
+                extraRow.appendChild(audio);
+            } else {
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'attached-file';
+                const icon = document.createElement('span');
+                icon.className = 'file-icon';
+                icon.textContent = '📄';
+                const link = document.createElement('a');
+                link.href = partUrl;
+                link.download = part.file_name || 'file';
+                link.textContent = part.file_name || 'file';
+                fileDiv.appendChild(icon);
+                fileDiv.appendChild(link);
+                extraRow.appendChild(fileDiv);
+            }
+        }
+        msgDiv.appendChild(extraRow);
     }
 
     container.appendChild(msgDiv);

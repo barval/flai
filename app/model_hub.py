@@ -1,0 +1,1189 @@
+"""Model Hub: Hugging Face catalog search, VRAM fit estimation and downloads.
+
+Used by the admin "Model Hub" tab. Talks to the public HF REST API through
+`requests` only (no huggingface_hub dependency). All HTTP calls are bounded
+by a read timeout; downloads are capped by MODEL_HUB_MAX_FILE_GB.
+
+Two layers live here: the catalog client (search, repo file listing, arch
+read, fit estimation) and the downloader (one job at a time, resumable
+``.part`` files, progress published to Redis, cancel flag, sha256 verify).
+"""
+
+import contextlib
+import hashlib
+import json
+import logging
+import os
+import re
+import shutil
+import struct
+import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+
+import redis
+import requests
+
+from app.vram_estimate import _classify_model_fit
+
+logger = logging.getLogger(__name__)
+
+HF_API = "https://huggingface.co/api/models"
+HF_DL = "https://huggingface.co"
+
+_NC_MARKERS = ("nc", "non-commercial", "noncommercial", "cc-by-nc", "personal")
+
+MODEL_TYPES = ("reasoning", "multimodal", "embedding")
+
+_MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
+_EMBEDDING_ARCH = ("bert", "bge", "nomic", "gte", "embedding", "withlintransformerpooler", "lora")
+_MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "mmproj", "ollama")
+_EMBEDDING_NAME = ("embed", "bge", "mxbai", "gte", "nomic", "e5-", "instructor", "arctic-embed")
+
+# Repos are processed in parallel during search; each one does a few sequential
+# round-trips to huggingface.co (config.json tree, GGUF header Range GET).
+_HUB_WORKERS = 10
+
+
+def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
+    """Classify a model as reasoning / multimodal / embedding.
+
+    Prioritizes the repo's architecture names (config.json), then falls back to
+    the repo/file name heuristics. Unknown cases default to ``reasoning``.
+    """
+    for arch in archs or []:
+        low = arch.lower()
+        if any(m in low for m in _MULTIMODAL_ARCH):
+            return "multimodal"
+    for arch in archs or []:
+        low = arch.lower()
+        if any(m in low for m in _EMBEDDING_ARCH):
+            return "embedding"
+    low_repo = repo.lower()
+    if any(m in low_repo for m in _MULTIMODAL_NAME):
+        return "multimodal"
+    if any(m in low_repo for m in _EMBEDDING_NAME):
+        return "embedding"
+    return "reasoning"
+
+
+def _module_for_type(mtype: str) -> str:
+    """Module key used by fit estimation, matching the client's type->module map."""
+    return {"reasoning": "reasoning", "multimodal": "multimodal", "embedding": "embedding"}.get(mtype, "reasoning")
+
+
+class HubError(RuntimeError):
+    """Low-level HF API/HTTP failure."""
+
+
+class DownloadBlocked(ValueError):  # noqa: N818 - public contract name, not a naming slip
+    """A download was rejected before starting; ``reason`` is a machine code
+    the blueprint maps to a localized message."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class DownloadCancelled(Exception):  # noqa: N818 - public contract name, not a naming slip
+    pass
+
+
+class DownloadFailed(RuntimeError):  # noqa: N818 - public contract name, not a naming slip
+    pass
+
+
+# Module-level caches (in-memory; lost on restart, that is fine for v1)
+_arch_cache: dict[str, dict | None] = {}
+_gguf_arch_cache: dict[tuple[str, str | None], dict | None] = {}
+_files_cache: dict[str, list[dict]] = {}
+_cache_lock = threading.Lock()
+_gguf_arch_cache_lock = threading.Lock()
+
+_arch_cache_disk_path: str | None = None
+
+
+def _hub_arch_cache_path() -> str | None:
+    """Disk cache file for the arch metadata, lazy-resolved once.
+
+    Active only when the models directory exists (the mounted volume in the
+    container); on bare dev hosts and in tests there is no write target, so
+    persistence is skipped silently.
+    """
+    global _arch_cache_disk_path
+    if _arch_cache_disk_path is None:
+        models_dir = os.getenv("MODELS_DIR", "/models")
+        if os.path.isdir(models_dir):
+            _arch_cache_disk_path = os.path.join(models_dir, "hub_arch_cache.json")
+    return _arch_cache_disk_path
+
+
+def _load_arch_cache_from_disk() -> None:
+    """Restore the arch metadata caches of the previous session."""
+    path = _hub_arch_cache_path()
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        logger.warning(f"model_hub arch cache load failed: {exc}")
+        return
+    with _cache_lock:
+        for repo, value in (data.get("arch") or {}).items():
+            _arch_cache[repo] = value
+    with _gguf_arch_cache_lock:
+        for key, value in (data.get("gguf") or {}).items():
+            repo, _, path_part = key.partition("\x00")
+            _gguf_arch_cache[(repo, path_part or None)] = value
+
+
+def _persist_arch_cache() -> None:
+    """Write both arch caches to disk after a mutation (atomic replace)."""
+    path = _hub_arch_cache_path()
+    if not path:
+        return
+    data = {"arch": {}, "gguf": {}}
+    with _cache_lock:
+        data["arch"] = dict(_arch_cache)
+    with _gguf_arch_cache_lock:
+        for (repo, path_part), value in _gguf_arch_cache.items():
+            data["gguf"][f"{repo}\x00{path_part or ''}"] = value
+    try:
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, sort_keys=True)
+        os.replace(tmp, path)
+    except OSError as exc:
+        logger.warning(f"model_hub arch cache persist failed: {exc}")
+
+
+# GGUF headers are read with a growing prefix: most answer inside 4 MB, but
+# repos with a large tokenizer.merges block (e.g. HauhauCS Qwen3.8-27B) place
+# the <arch>.block_count sizing keys past the 4 MB mark.
+_GGUF_HEADS = (4 * 1024 * 1024, 16 * 1024 * 1024, 64 * 1024 * 1024)
+
+_headers: dict[str, str] = {}
+
+# Restore yesterday's arch metadata so repeated searches stay fast after a
+# container restart (the per-session caches live below).
+_load_arch_cache_from_disk()
+
+
+def _hf_headers() -> dict[str, str] | None:
+    if "Authorization" not in _headers:
+        token = os.getenv("HUGGINGFACE_TOKEN", "").strip()
+        if token:
+            _headers["Authorization"] = f"Bearer {token}"
+    return _headers if _headers else None
+
+
+def _timeout() -> int:
+    try:
+        return int(os.getenv("MODEL_HUB_TIMEOUT_S", "3600"))
+    except ValueError:
+        return 3600
+
+
+def _check(resp: requests.Response) -> None:
+    # 206 is the answer of a ranged GET, which the resumable downloader sends
+    # when it continues a partial .part file.
+    if resp.status_code not in (200, 206):
+        raise HubError(f"HF API {resp.status_code}: {resp.url}")
+
+
+def _hf_get(
+    url: str, params=None, stream: bool = False, extra_headers: dict | None = None, timeout: float = 30.0
+) -> requests.Response:
+    resp = requests.get(
+        url, params=params, headers={**(_hf_headers() or {}), **(extra_headers or {})}, stream=stream, timeout=timeout
+    )
+    _check(resp)
+    return resp
+
+
+def _hf_head(url: str, timeout: float = 30.0):
+    resp = requests.head(url, headers=_hf_headers(), allow_redirects=True, timeout=timeout)
+    _check(resp)
+    return resp.headers
+
+
+_rcli: redis.Redis | None = None
+
+
+def _redis() -> redis.Redis:
+    # Memoized: the downloader polls progress/cancel once per 1 MB chunk, and
+    # redis.from_url() builds a new connection pool (plus a TCP connect) on
+    # every call.
+    global _rcli
+    if _rcli is None:
+        _rcli = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+    return _rcli
+
+
+# GGUF files smaller than this are not real checkpoints (tokenizer trunks,
+# tiny demos, float32 metadata stubs) and are hidden from the model list.
+_MIN_MODEL_MB = 5.0
+
+
+def _repo_files(repo: str, limit: int | None = 50) -> list[dict]:
+    """GGUF files of a repo: [{path, size_mb, sha256}], cached per repo."""
+    with _cache_lock:
+        if repo in _files_cache:
+            files = list(_files_cache[repo])
+            return files if limit is None else files[:limit]
+    resp = _hf_get(f"{HF_API}/{repo}", params={"full": "true", "blobs": "true"}, timeout=30)
+    data = resp.json()
+    files = []
+    for sib in data.get("siblings", []):
+        path = sib.get("rfilename", "")
+        if not path.endswith(".gguf") or "mmproj" in path.lower():
+            continue
+        size = sib.get("size") or 0
+        if size < _MIN_MODEL_MB * 1024 * 1024:
+            continue
+        oid = (sib.get("lfs") or {}).get("oid", "")
+        files.append(
+            {
+                "path": path,
+                "size_mb": round(size / (1024 * 1024), 1),
+                "sha256": (oid or "").lower(),
+            }
+        )
+    with _cache_lock:
+        _files_cache[repo] = files
+    return files if limit is None else list(files[:limit])
+
+
+# Multi-part GGUF shard naming, e.g. BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf.
+# Only the first part is a self-contained model; the rest are companions.
+_MULTIPART_RE = re.compile(r"^(?P<prefix>.*)-(?P<num>\d{4,5})-of-(?P<total>\d{4,5})\.gguf$")
+
+
+def is_aux_file(path: str) -> bool:
+    """True for auxiliary files that are not standalone models."""
+    base = os.path.basename(path)
+    low = base.lower()
+    if "imatrix" in low:
+        return True
+    if low.startswith("mtp-") or "/mtp/" in low:
+        return True
+    if re.search(r"-draft-(?:q\d+(?:_[a-z0-9]+)*|iq\d+(?:_[a-z0-9]+)*)\.gguf$", low) or "-fastmtp-" in low:
+        return True
+    if low == "tokenizer.gguf":
+        return True
+    if "/generated/" in path or path.startswith("generated/"):
+        return True
+    m = _MULTIPART_RE.match(base)
+    return bool(m and int(m.group("num")) > 1)
+
+
+def _mtp_head(repo: str, model_path: str) -> dict | None:
+    """The single MTP head matching ``model_path``'s quantization, or None.
+
+    Only an exact name match (``mtp-<model-base>.gguf``) is a companion: the
+    runtime does not load MTP head files at all (draft-mtp runs from the main
+    model's own nextn layers), so grabbing "all family heads" would download
+    gigabytes that are never used. For a multi-part model the part suffix is
+    stripped so the head follows the base quantization (e.g. mtp-...-BF16.gguf)."""
+    main_base = os.path.basename(model_path)
+    head_name = "mtp-" + os.path.splitext(main_base)[0]
+    head_name = re.sub(r"-\d{4,5}-of-\d{4,5}$", "", head_name) + ".gguf"
+    for fi in _repo_files(repo, limit=None):
+        if os.path.basename(fi["path"]) == head_name:
+            return dict(fi)
+    return None
+
+
+def _companion_files(repo: str, model_path: str) -> list[dict]:
+    """Files fetched with ``model_path`` and stored next to it: later multi-part
+    shards, matching MTP heads, and any model-specific draft sidecars."""
+    files = _repo_files(repo, limit=None)
+    out: list[dict] = []
+    main_base = os.path.basename(model_path)
+    m = _MULTIPART_RE.match(main_base)
+    if m and int(m.group("num")) == 1:
+        prefix, total = m.group("prefix"), int(m.group("total"))
+        for fi in files:
+            fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
+            if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total and int(fm.group("num")) > 1:
+                out.append(dict(fi))
+    main_stem = os.path.splitext(main_base)[0]
+    no_mtp = re.match(r"^(?P<base>.+)-noMTP-[^-]+\.gguf$", main_base, re.IGNORECASE)
+    if no_mtp:
+        draft_prefix = no_mtp.group("base") + "-draft-"
+        draft_options = []
+        for fi in files:
+            name = os.path.basename(fi["path"])
+            if name.startswith(draft_prefix) and name.lower().endswith(("-q4_0.gguf", "-q8_0.gguf")):
+                draft = dict(fi)
+                draft["choice_group"] = "draft"
+                draft_options.append(draft)
+        preferred = next(
+            (f for f in draft_options if f["path"].lower().endswith("-q8_0.gguf")),
+            next((f for f in draft_options if f["path"].lower().endswith("-q4_0.gguf")), None),
+        )
+        if preferred:
+            for draft in draft_options:
+                draft["default"] = draft is preferred
+                out.append(draft)
+    else:
+        main_prefix = re.sub(r"-(?:Q\d+_[A-Z](?:_[A-Z]+)?|IQ\d+_[A-Z0-9_]+)$", "", main_stem, flags=re.IGNORECASE)
+        for fi in files:
+            name = os.path.basename(fi["path"])
+            if name.startswith(main_prefix + "-FastMTP-"):
+                out.append(dict(fi))
+    head = _mtp_head(repo, model_path)
+    if head:
+        out.append(head)
+    return out
+
+
+def _runtime_size_mb(repo: str, file_path: str) -> float:
+    """Actual VRAM/RAM footprint when the model loads.
+
+    Every shard of a multi-part set is read together, so the target's size must
+    be summed with its later parts. MTP head files are NOT part of the runtime
+    footprint (draft-mtp uses the main model's own layers), so they are omitted."""
+    target = None
+    for fi in _repo_files(repo, limit=None):
+        if fi["path"] == file_path:
+            target = fi
+            break
+    if target is None:
+        return 0.0
+    total = 0.0
+    m = _MULTIPART_RE.match(os.path.basename(file_path))
+    if not m or int(m.group("num")) != 1:
+        return float(target["size_mb"])
+    prefix, total_parts = m.group("prefix"), int(m.group("total"))
+    for fi in _repo_files(repo, limit=None):
+        fm = _MULTIPART_RE.match(os.path.basename(fi["path"]))
+        if fm and fm.group("prefix") == prefix and int(fm.group("total")) == total_parts:
+            total += float(fi["size_mb"])
+    return total
+
+
+def _select_companion_files(companions: list[dict], selected_paths: list[str] | None) -> list[dict]:
+    """Resolve optional companion choices, defaulting each group to its marked option."""
+    selected_paths = selected_paths or []
+    choice_groups: dict[str, list[dict]] = {}
+    required = []
+    for companion in companions:
+        group = companion.get("choice_group")
+        if group:
+            choice_groups.setdefault(group, []).append(companion)
+        else:
+            required.append(companion)
+
+    selected = []
+    allowed_paths = {c["path"] for choices in choice_groups.values() for c in choices}
+    if any(path not in allowed_paths for path in selected_paths):
+        raise DownloadBlocked("bad_path")
+    if len(selected_paths) != len(set(selected_paths)):
+        raise DownloadBlocked("bad_path")
+
+    for choices in choice_groups.values():
+        requested = [c for c in choices if c["path"] in selected_paths]
+        if len(requested) > 1:
+            raise DownloadBlocked("bad_path")
+        selected.extend(requested or [c for c in choices if c.get("default")][:1])
+    return required + selected
+
+
+def _search_repo(r: dict, context_length: int | None = None) -> dict | None:
+    """Build one search result entry for a repo dict from the HF /api/models list."""
+    repo_id = r.get("id", "")
+    model_files = [f for f in _repo_files(repo_id) if not is_aux_file(f["path"])]
+    if not model_files:
+        return None
+    model_files = []
+    for f in (ff for ff in _repo_files(repo_id) if not is_aux_file(ff["path"])):
+        # A multi-part model is shipped as many small shards; the first shard
+        # alone (00001-of-N) is typically a few MB, so display the summed
+        # runtime size of the whole set, and drop the "+ companions" note for
+        # its own later parts (they are already inside that size).
+        companions = _companion_files(repo_id, f["path"])
+        m = _MULTIPART_RE.match(os.path.basename(f["path"]))
+        if m and int(m.group("num")) == 1:
+            companions = [c for c in companions if not _MULTIPART_RE.match(os.path.basename(c["path"]))]
+        required_companions = [c for c in companions if not c.get("choice_group")]
+        choice_groups: dict[str, list[dict]] = {}
+        for companion in companions:
+            if companion.get("choice_group"):
+                choice_groups.setdefault(companion["choice_group"], []).append(companion)
+        companion_choices = [
+            {
+                "group": group,
+                "options": [
+                    {"path": c["path"], "size_mb": c["size_mb"], "default": c.get("default", False)} for c in choices
+                ],
+            }
+            for group, choices in choice_groups.items()
+        ]
+        default_companions = [c for choices in choice_groups.values() for c in choices if c.get("default")]
+        model_files.append(
+            {
+                **f,
+                "size_mb": round(_runtime_size_mb(repo_id, f["path"]), 1),
+                "companion_mb": round(sum(c["size_mb"] for c in required_companions + default_companions), 1),
+                "companion_required_mb": round(sum(c["size_mb"] for c in required_companions), 1),
+                "companion_choices": companion_choices,
+            }
+        )
+    arch = get_repo_arch(repo_id) or {}
+    mtype = classify_model_type(repo_id, arch.get("arch") or [])
+    if context_length:
+        # Fit is computed here (parallel across repos) so the client renders
+        # ready-made ratings and never spends minutes on sequential /fit calls.
+        module = _module_for_type(mtype)
+        model_files = [{**f, "fit": _file_fit(repo_id, f["path"], module, context_length)} for f in model_files]
+    return {
+        "repo": repo_id,
+        "downloads": r.get("downloads", 0),
+        "likes": r.get("likes", 0),
+        "gated": bool(r.get("gated")),
+        "license": r.get("license") or (r.get("cardData") or {}).get("license"),
+        "type": mtype,
+        "arch_max_ctx": int(arch.get("arch_max_ctx") or 0),
+        "files": model_files,
+    }
+
+
+def search_hf(query: str = "", limit: int = 20, context_length: int | None = None) -> list[dict]:
+    """Top GGUF downloads matching ``query``, each with its GGUF files.
+
+    When ``context_length`` is given, every model file carries a ready ``fit``
+    estimation; the GGUF header reads run concurrently across repos.
+    """
+    resp = _hf_get(
+        HF_API,
+        params={
+            "search": query,
+            "filter": "gguf",
+            "sort": "downloads",
+            "direction": "-1",
+            "limit": min(int(limit), 50),
+        },
+        timeout=30,
+    )
+    repos = [r for r in resp.json() if not r.get("private")]
+    if not repos:
+        return []
+    with ThreadPoolExecutor(max_workers=_HUB_WORKERS) as executor:
+        items = list(executor.map(lambda r: _search_repo(r, context_length), repos))
+    return [item for item in items if item]
+
+
+def get_repo_arch(repo: str) -> dict | None:
+    """Read block_count / expert_count / architectures from the repo's config.json."""
+    with _cache_lock:
+        if repo in _arch_cache:
+            cached = _arch_cache[repo]
+            return dict(cached) if cached else None
+    result: dict | None = None
+    try:
+        resp = _hf_get(f"{HF_API}/{repo}/tree/main", params={"path": "config.json"}, timeout=30)
+        entries = resp.json()
+        cfg = None
+        for entry in entries:
+            path = entry.get("path", "")
+            if path.endswith("config.json"):
+                cfg = _hf_get(f"{HF_DL}/{repo}/resolve/main/{path}", timeout=30).json()
+                break
+        if cfg:
+            result = {
+                "block_count": int(cfg.get("num_hidden_layers") or 0) or None,
+                "expert_count": int(cfg.get("num_local_experts") or 0),
+                "arch": cfg.get("architectures") or [],
+            }
+            max_ctx = int(cfg.get("max_position_embeddings") or 0) or 0
+            rope = (cfg.get("rope_scaling") or {}).get("factor") or 1.0
+            try:
+                result["arch_max_ctx"] = int(max_ctx * float(rope))
+            except (TypeError, ValueError):
+                result["arch_max_ctx"] = int(max_ctx)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"get_repo_arch({repo}) failed: {exc}")
+        result = None
+    with _cache_lock:
+        _arch_cache[repo] = result
+    _persist_arch_cache()
+    return dict(result) if result else None
+
+
+def _parse_gguf_arch(data: bytes) -> dict | None:
+    """Extract architecture sizing metadata from a GGUF header prefix."""
+    if len(data) < 24 or data[:4] != b"GGUF":
+        return None
+
+    kv_count = struct.unpack_from("<Q", data, 16)[0]
+    offset = 24
+    architecture = None
+    result: dict = {}
+
+    def read_string(position: int) -> tuple[str, int]:
+        length = struct.unpack_from("<Q", data, position)[0]
+        position += 8
+        end = position + length
+        if end > len(data):
+            raise struct.error("GGUF string exceeds range data")
+        return data[position:end].decode("utf-8", "replace"), end
+
+    def skip_value(position: int, value_type: int) -> int:
+        fixed_sizes = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+        if value_type in fixed_sizes:
+            return position + fixed_sizes[value_type]
+        if value_type == 8:
+            length = struct.unpack_from("<Q", data, position)[0]
+            return position + 8 + length
+        if value_type == 9:
+            element_type = struct.unpack_from("<I", data, position)[0]
+            count = struct.unpack_from("<Q", data, position + 4)[0]
+            position += 12
+            if element_type == 8:
+                for _ in range(count):
+                    length = struct.unpack_from("<Q", data, position)[0]
+                    position += 8 + length
+                return position
+            if element_type not in fixed_sizes:
+                raise struct.error("Unsupported GGUF array element type")
+            return position + fixed_sizes[element_type] * count
+        raise struct.error("Unsupported GGUF metadata type")
+
+    for _ in range(kv_count):
+        try:
+            key, offset = read_string(offset)
+            value_type = struct.unpack_from("<I", data, offset)[0]
+            offset += 4
+
+            if key == "general.architecture" and value_type == 8:
+                architecture, offset = read_string(offset)
+                result["arch"] = [architecture]
+                continue
+
+            wanted = {
+                f"{architecture}.block_count": "block_count",
+                f"{architecture}.context_length": "arch_max_ctx",
+                f"{architecture}.expert_count": "expert_count",
+            }
+            if architecture and key in wanted and value_type in (4, 10):
+                if value_type == 4:
+                    value = struct.unpack_from("<I", data, offset)[0]
+                    offset += 4
+                else:
+                    value = struct.unpack_from("<Q", data, offset)[0]
+                    offset += 8
+                result[wanted[key]] = int(value)
+            elif architecture and key.startswith("tokenizer.") and result.get("block_count"):
+                break
+            else:
+                offset = skip_value(offset, value_type)
+
+            if result.get("block_count") and result.get("arch_max_ctx") and result.get("expert_count"):
+                break
+        except (struct.error, UnicodeDecodeError, OverflowError):
+            break
+
+    if not result.get("block_count"):
+        return None
+    result.setdefault("expert_count", 0)
+    result.setdefault("arch_max_ctx", 0)
+    return result
+
+
+_MISS = object()
+
+# A repo whose first GGUF header reads came back without block_count gets up
+# to this many further HTTP attempts (one per model file) before sibling files
+# stop re-downloading headers; a real repo rarely needs more than 2 hits.
+_GGUF_NEG_TRIES_LIMIT = 3
+_gguf_arch_neg_attempts: dict[str, int] = {}
+
+
+def _gguf_arch_cached(repo: str, file_path: str) -> dict | None | object:
+    """Short lookups under the cache lock (never performs I/O) — distingishes
+    an explicit negative (-) from a cache miss, so a failed first header read
+    is not repeated as a blind bulk over every sibling file."""
+    key = (repo, file_path)
+    with _gguf_arch_cache_lock:
+        if key in _gguf_arch_cache:
+            value = _gguf_arch_cache[key]
+            return dict(value) if value else None
+        repo_wide = _gguf_arch_cache.get((repo, None))
+        return dict(repo_wide) if repo_wide else _MISS
+
+
+def _gguf_arch(repo: str, file_path: str) -> dict | None:
+    """Read GGUF sizing metadata via HTTP Range.
+
+    Cached per file so an auxiliary file without ``block_count`` (an imatrix,
+    an MTP head, a split shard) never poisons the whole repository. A positive
+    result is stored repo-wide so sibling files reuse it. The first file of an
+    unknown repo gets the full probe heads; siblings are probed with a single
+    small Range (a 4 MB header carries token/block_count for virtually every
+    GGUF), and after ``_GGUF_NEG_TRIES_LIMIT`` consecutive misses no more
+    network reads happen for the repo. The HTTP reads run outside the cache
+    lock (double-checked), so concurrent fit computations across repos are
+    genuinely parallel.
+    """
+    cached = _gguf_arch_cached(repo, file_path)
+    if cached is not _MISS:
+        return cached
+
+    with _gguf_arch_cache_lock:
+        if _gguf_arch_neg_attempts.get(repo, 0) >= _GGUF_NEG_TRIES_LIMIT:
+            return None
+        key = (repo, file_path)
+        full_heads = (repo, None) not in _gguf_arch_cache
+    heads = _GGUF_HEADS if full_heads else _GGUF_HEADS[:1]
+
+    result = None
+    try:
+        for head in heads:
+            resp = _hf_get(
+                f"{HF_DL}/{repo}/resolve/main/{file_path}",
+                stream=True,
+                extra_headers={"Range": f"bytes=0-{head - 1}"},
+                timeout=30,
+            )
+            if resp.status_code == 206:
+                prefix = bytearray()
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    prefix.extend(chunk)
+                    if len(prefix) >= head:
+                        break
+                result = _parse_gguf_arch(bytes(prefix[:head]))
+            if result:
+                break
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"GGUF metadata read failed for {repo}/{file_path}: {exc}")
+
+    with _gguf_arch_cache_lock:
+        if key in _gguf_arch_cache:
+            return dict(_gguf_arch_cache[key]) if _gguf_arch_cache[key] else None
+        _gguf_arch_cache[key] = result
+        if result:
+            _gguf_arch_cache[(repo, None)] = result
+            _gguf_arch_neg_attempts.pop(repo, None)
+        elif (repo, None) not in _gguf_arch_cache:
+            _gguf_arch_cache[(repo, None)] = None
+            _gguf_arch_neg_attempts[repo] = _gguf_arch_neg_attempts.get(repo, 0) + 1
+    _persist_arch_cache()
+    return dict(result) if result else None
+
+
+def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_length: int = 8192) -> dict:
+    """Classify fit of ``file_path`` in ``repo`` for ``module`` without the file present."""
+    target = None
+    for fi in _repo_files(repo, limit=None):
+        if fi["path"] == file_path:
+            target = fi
+            break
+    if target is None:
+        raise DownloadBlocked("not_found")
+    arch = get_repo_arch(repo)
+    if not arch or not arch.get("block_count"):
+        arch = _gguf_arch(repo, target["path"])
+    if not arch or not arch.get("block_count"):
+        raise DownloadBlocked("unknown_arch")
+    model_name = os.path.basename(file_path)
+    fit = _classify_model_fit(
+        model_name,
+        context_length,
+        file_size_mb=_runtime_size_mb(repo, file_path),
+        block_count=int(arch["block_count"]),
+        module=module,
+    )
+    fit["expert_count"] = int(arch["expert_count"] or 0)
+    fit["block_count"] = int(arch["block_count"])
+    fit["arch"] = ",".join(arch["arch"] or [])
+    fit["sha256"] = target["sha256"]
+    fit["context_length"] = int(context_length)
+    fit["arch_max_ctx"] = int(arch.get("arch_max_ctx") or fit.get("arch_max_ctx") or 0)
+    return fit
+
+
+def _file_fit(repo: str, file_path: str, module: str, context_length: int) -> dict:
+    """Per-file fit for the search result; never raises (error entries render as ✗)."""
+    try:
+        return estimate_fit(repo, file_path, module=module, context_length=context_length)
+    except DownloadBlocked as exc:
+        return {"error": exc.reason}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"fit failed for {repo}/{file_path}: {exc}")
+        return {"error": "hub_failed"}
+
+
+def estimate_fits(repo: str, module: str = "multimodal", context_length: int = 8192) -> dict:
+    """Fit classification for every model file of ``repo`` at once.
+
+    Backs the batched /fit-all endpoint: the client sends one request per repo
+    instead of one per file. Caches (arch, GGUF header, file list) are warm
+    after a search, so the per-file work here is mostly arithmetic.
+    """
+    out: dict[str, dict] = {}
+    for fi in _repo_files(repo, limit=None):
+        if is_aux_file(fi["path"]):
+            continue
+        try:
+            out[fi["path"]] = estimate_fit(repo, fi["path"], module=module, context_length=context_length)
+        except DownloadBlocked as exc:
+            out[fi["path"]] = {"error": exc.reason}
+    return out
+
+
+def license_hint(license_name) -> str:
+    if not license_name:
+        return "ok"
+    low = str(license_name).lower()
+    return "nc" if any(m in low for m in _NC_MARKERS) else "ok"
+
+
+# ---- downloader ----------------------------------------------------------
+
+_NC_DONE = 86400  # job TTL (seconds)
+
+
+class _Job:
+    def __init__(self, job_id: str, repo: str, file_path: str, model_name: str, models_dir: str):
+        self.job_id = job_id
+        self.repo = repo
+        self.path = file_path
+        self.filename = model_name
+        self.models_dir = models_dir
+        self.parts: list[dict] = []
+        self.total_mb = 0.0
+        self.received_mb = 0.0
+        self.speed_mb_s = 0.0
+        self.sha256 = ""
+        self.state = "starting"
+        self.error = ""
+        self.shutdown = threading.Event()
+        self.thread: threading.Thread | None = None
+
+
+_JOBS: dict[str, _Job] = {}
+_jobs_lock = threading.Lock()
+
+
+def _job_to_dict(job: _Job) -> dict:
+    return {
+        "job_id": job.job_id,
+        "repo": job.repo,
+        "path": job.path,
+        "filename": job.filename,
+        "total_mb": job.total_mb,
+        "received_mb": round(job.received_mb, 1),
+        "speed_mb_s": round(job.speed_mb_s, 1),
+        "state": job.state,
+        "error": job.error,
+        "models_dir": job.models_dir,
+        "parts": list(job.parts),
+        "part_count": len(job.parts),
+        "companions_mb": round(sum(p.get("size_mb", 0) for p in job.parts[1:]), 1),
+    }
+
+
+def _post_download_scan(models_dir: str) -> None:
+    """Re-scan GGUF metadata cache after a successful download so the Models
+    tab sees the new file without a manual 'Refresh models'."""
+
+    from app.utils import sync_gguf_models_cache
+
+    sync_gguf_models_cache(models_dir)
+
+
+def _write_progress(job: _Job) -> None:
+    try:
+        r = _redis()
+        progress = _job_to_dict(job)
+        progress["parts"] = json.dumps(progress["parts"])
+        r.hset(f"model_hub:job:{job.job_id}", mapping=progress)
+        r.expire(f"model_hub:job:{job.job_id}", _NC_DONE)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"model_hub progress write failed: {exc}")
+
+
+def _is_cancelled(job: _Job) -> bool:
+    if job.shutdown.is_set():
+        return True
+    with contextlib.suppress(Exception):
+        if _redis().get(f"model_hub:cancel:{job.job_id}"):
+            job.shutdown.set()
+            return True
+    return False
+
+
+def start_download(
+    repo: str,
+    file_path: str,
+    models_dir: str | None = None,
+    companion_paths: list[str] | None = None,
+) -> str:
+    """Validate + enqueue a download; returns a job id. Raises DownloadBlocked."""
+    if ".." in file_path.split("/") or file_path.startswith("/"):
+        raise DownloadBlocked("bad_path")
+    model_name = os.path.basename(file_path)
+    if models_dir is None:
+        models_dir = os.getenv("MODELS_DIR", "/models")
+
+    # The active-job check and the registration happen under one lock hold, and
+    # the registration precedes every network/disk call below. Checking first
+    # and registering last would leave a window (repo listing + disk_usage,
+    # ~100-500 ms) in which two near-simultaneous calls both pass the check and
+    # both workers open the same <name>.part in "wb" — truncating and
+    # interleaving each other's bytes.
+    job = _Job(uuid.uuid4().hex[:12], repo, file_path, model_name, models_dir)
+    with _jobs_lock:
+        if any(j.state in ("starting", "downloading", "verifying") for j in _JOBS.values()):
+            raise DownloadBlocked("already_downloading")
+        _JOBS[job.job_id] = job
+
+    try:
+        target = None
+        for fi in _repo_files(repo, limit=None):
+            if fi["path"] == file_path:
+                target = fi
+                break
+        if target is None:
+            raise DownloadBlocked("not_found")
+
+        max_file_mb = int(os.getenv("MODEL_HUB_MAX_FILE_GB", "40")) * 1024
+        if target["size_mb"] > max_file_mb:
+            raise DownloadBlocked("file_too_large")
+
+        # gating: the downloader itself does not know gated status (files exist even
+        # for gated repos on the API). The /download route checks the search item.
+        # Here we re-check using the repo detail endpoint.
+        try:
+            info = _hf_get(f"{HF_API}/{repo}", timeout=30).json()
+            if info.get("gated") or info.get("private"):
+                raise DownloadBlocked("gated")
+        except HubError as exc:
+            raise DownloadBlocked("not_found") from exc
+
+        os.makedirs(models_dir, exist_ok=True)
+        # Companion parts travel along: later multi-part shards and the MTP head.
+        # A companion already on disk is skipped, so free-space check and the
+        # download both account only for what will actually be fetched.
+        companions = []
+        chosen_companions = _select_companion_files(_companion_files(repo, file_path), companion_paths)
+        for c in chosen_companions:
+            if not os.path.exists(os.path.join(models_dir, os.path.basename(c["path"]))):
+                companions.append(c)
+        companion_mb = sum(c["size_mb"] for c in companions)
+        try:
+            free_mb = shutil.disk_usage(models_dir).free // (1024 * 1024)
+        except OSError:
+            free_mb = 0
+        if free_mb < target["size_mb"] + companion_mb + int(os.getenv("MODEL_HUB_FREE_MARGIN_GB", "4")) * 1024:
+            raise DownloadBlocked("no_disk_space")
+
+        dest = os.path.join(models_dir, model_name)
+        if os.path.exists(dest):
+            raise DownloadBlocked("already_present")
+
+        job.parts = [{"path": file_path, "size_mb": target["size_mb"], "sha256": target["sha256"]}, *companions]
+        job.total_mb = float(target["size_mb"]) + companion_mb
+        job.sha256 = target["sha256"]
+    except BaseException:
+        # A start that never reaches the worker must release its reservation,
+        # otherwise a rejected (or errored) attempt would leave a zombie
+        # "starting" job blocking every later download.
+        with _jobs_lock:
+            _JOBS.pop(job.job_id, None)
+        raise
+
+    _write_progress(job)
+    job.thread = threading.Thread(target=_download_thread, args=(job,), daemon=True)
+    job.thread.start()
+    return job.job_id
+
+
+def _hubmeta_path(models_dir: str, main_filename: str) -> str:
+    """Marker file next to a model recording its Hub origin and companions."""
+    return os.path.join(models_dir, os.path.splitext(main_filename)[0] + ".hubmeta")
+
+
+def _write_hubmeta(job: _Job) -> None:
+    """Persist ``<main>.hubmeta`` after a successful download so the Models
+    tab can delete the model together with its companions later."""
+    names = [os.path.basename(p["path"]) for p in (job.parts or [{"path": job.path}])]
+    meta = {
+        "repo": job.repo,
+        "file": job.path,
+        "names": names,
+        "installed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    try:
+        with open(_hubmeta_path(job.models_dir, names[0]), "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+    except OSError as exc:
+        logger.warning(f"model_hub could not write hubmeta marker: {exc}")
+
+
+def _remove_job_files(job: _Job) -> None:
+    """Delete everything a job may have written: finished model/companion
+    files, the current .part stream and its sidecar. Leaves no model-related
+    file behind after a cancellation."""
+    for p in job.parts or [{"path": job.path}]:
+        dest = os.path.join(job.models_dir, os.path.basename(p["path"]))
+        for path in (dest, dest + ".part", dest + ".part.meta"):
+            with contextlib.suppress(OSError):
+                os.remove(path)
+
+
+def _download_thread(job: _Job) -> None:
+    try:
+        parts = job.parts or [{"path": job.path, "size_mb": 0, "sha256": job.sha256}]
+        total = 0
+        for p in parts:
+            url = f"{HF_DL}/{job.repo}/resolve/main/{p['path']}"
+            head = _hf_head(url)
+            total += int(head.get("Content-Length") or 0)
+        job.total_mb = round(total / (1024 * 1024), 1)
+        for p in parts:
+            _download_part(job, p)
+        job.state = "done"
+        _write_hubmeta(job)
+        try:
+            _post_download_scan(job.models_dir)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"post-download GGUF cache rescan failed: {exc}")
+    except DownloadCancelled:
+        _remove_job_files(job)
+        job.state = "cancelled"
+    except DownloadFailed as exc:
+        job.state = "failed"
+        job.error = str(exc)
+        # .part kept for future resume
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(f"model_hub download failed: {exc}")
+        job.state = "failed"
+        job.error = str(exc)[:500]
+    finally:
+        _write_progress(job)
+
+
+def _download_part(job: _Job, part: dict) -> None:
+    model_name = os.path.basename(part["path"])
+    dest = os.path.join(job.models_dir, model_name)
+    part_path = dest + ".part"
+    meta_path = dest + ".part.meta"
+    url = f"{HF_DL}/{job.repo}/resolve/main/{part['path']}"
+    head = _hf_head(url)
+    total = int(head.get("Content-Length") or 0)
+    etag = head.get("X-Linked-Etag") or head.get("ETag") or ""
+
+    # The sidecar records which upstream file the partial .part is a prefix
+    # of. It is written as soon as HEAD resolves — not after the download
+    # finishes — so an interrupted download leaves a resumable pair behind,
+    # and it is removed again once the finished file replaces the .part.
+    prev_meta = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                prev_meta = json.load(f)
+        except Exception:  # noqa: BLE001 - unreadable sidecar: restart the .part
+            prev_meta = {}
+    resumable = os.path.exists(part_path) and prev_meta.get("size") == total and prev_meta.get("etag") == etag
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump({"size": total, "etag": etag, "sha": part.get("sha256", "")}, f)
+
+    start = 0
+    sha = hashlib.sha256()
+    mode = "wb"
+    if resumable:
+        with open(part_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                sha.update(chunk)
+        start = os.path.getsize(part_path)
+        mode = "ab"
+
+    job.state = "downloading"
+    _write_progress(job)
+    extra = {"Range": f"bytes={start}-"} if start else None
+    resp = _hf_get(url, stream=True, extra_headers=extra, timeout=_timeout())
+
+    last_time = time.monotonic()
+    last_received = 0.0
+    with open(part_path, mode) as f:
+        for chunk in resp.iter_content(1 << 20):
+            if not chunk:
+                continue
+            if _is_cancelled(job):
+                raise DownloadCancelled(job.job_id)
+            f.write(chunk)
+            sha.update(chunk)
+            job.received_mb += len(chunk) / (1024 * 1024)
+            now = time.monotonic()
+            if now - last_time >= 1.0:
+                job.speed_mb_s = (job.received_mb - last_received) / (now - last_time)
+                last_received, last_time = job.received_mb, now
+                _write_progress(job)
+
+    job.state = "verifying"
+    _write_progress(job)
+    if part.get("sha256"):
+        got = sha.hexdigest()
+        if got != part["sha256"]:
+            raise DownloadFailed(f"sha256 mismatch: {got[:12]}… vs {part['sha256'][:12]}…")
+
+    os.replace(part_path, dest)
+    with contextlib.suppress(OSError):
+        os.remove(meta_path)
+
+
+def get_job(job_id: str) -> dict | None:
+    with _jobs_lock:
+        job = _JOBS.get(job_id)
+    if job is not None:
+        return _job_to_dict(job)
+    try:
+        data = _redis().hgetall(f"model_hub:job:{job_id}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"model_hub progress read failed: {exc}")
+        return None
+    if not data:
+        return None
+    try:
+        job_data = {key: value.decode() if isinstance(value, bytes) else value for key, value in data.items()}
+        for key in ("total_mb", "received_mb", "speed_mb_s", "companions_mb"):
+            job_data[key] = float(job_data.get(key) or 0)
+        job_data["part_count"] = int(job_data.get("part_count") or 0)
+        job_data["parts"] = json.loads(job_data.get("parts") or "[]")
+        return job_data
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning(f"model_hub progress data invalid for {job_id}: {exc}")
+        return None
+
+
+def cancel_job(job_id: str) -> bool:
+    with _jobs_lock:
+        job = _JOBS.get(job_id)
+    if job is None or job.state not in ("starting", "downloading", "verifying"):
+        return False
+    job.shutdown.set()
+    with contextlib.suppress(Exception):
+        _redis().set(f"model_hub:cancel:{job.job_id}", "1", ex=_NC_DONE)
+    return True
+
+
+def _models_dir(models_dir: str | None) -> str:
+    return models_dir or os.getenv("MODELS_DIR", "/models")
+
+
+def installed_basenames(models_dir: str | None = None) -> list[str]:
+    """Basenames of every ``.gguf`` file currently in the models directory.
+
+    Flat listing: the downloader stores files directly in the models dir, and
+    sub-directories hold config/extra assets that never need a Hub badge."""
+    models_dir = _models_dir(models_dir)
+    if not os.path.isdir(models_dir):
+        return []
+    return sorted(n for n in os.listdir(models_dir) if n.endswith(".gguf"))
+
+
+_TYPE_ORDER = {"reasoning": 0, "multimodal": 1, "embedding": 2}
+
+
+def list_installed(models_dir: str | None = None) -> list[dict]:
+    """Every GGUF on disk (recursively — multimodal models live in their own
+    subdirectory together with mmproj) with size and whether it came from the Hub.
+
+    Sorted by model type (reasoning, then multimodal, then embedding) and by
+    file size ascending within each type."""
+    models_dir = _models_dir(models_dir)
+    out: list[dict] = []
+    if not os.path.isdir(models_dir):
+        return []
+    for root, _, files in os.walk(models_dir):
+        folder = os.path.relpath(root, models_dir)
+        for name in sorted(f for f in files if f.endswith(".gguf")):
+            path = os.path.join(root, name)
+            try:
+                size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
+            except OSError:
+                size_mb = 0
+            out.append(
+                {
+                    "name": name,
+                    "path": "" if folder == "." else folder,
+                    "size_mb": size_mb,
+                    "from_hub": os.path.exists(_hubmeta_path(root, name)),
+                    "type": classify_model_type(name),
+                }
+            )
+    return sorted(out, key=lambda f: (_TYPE_ORDER.get(f["type"], 99), f["size_mb"]))
+
+
+def delete_installed(filename: str, models_dir: str | None = None) -> dict:
+    """Delete a model file from the models directory together with any marker
+    companions recorded by `.hubmeta`. Nested files (a multimodal model and its
+    mmproj living in their own subdirectory) are located by basename. Returns
+    the removed basenames."""
+    if filename != os.path.basename(filename) or not filename.endswith(".gguf"):
+        raise DownloadBlocked("bad_path")
+    models_dir = _models_dir(models_dir)
+    base = os.path.realpath(models_dir)
+
+    def find_file(name: str) -> str | None:
+        """Directory (absolute) of the first file named ``name`` under models_dir."""
+        if os.path.isfile(os.path.join(models_dir, name)):
+            return models_dir
+        if os.path.isdir(models_dir):
+            for root, _, files in os.walk(models_dir):
+                if name in files:
+                    return root
+        return None
+
+    def safe_names(candidates: list[str], folder: str) -> list[str]:
+        ok = []
+        for n in candidates:
+            if n != os.path.basename(n) or not n.endswith(".gguf"):
+                continue
+            p = os.path.realpath(os.path.join(folder, n))
+            if p.startswith(base + os.sep):
+                ok.append(n)
+        return ok
+
+    folder = find_file(filename)
+    if folder is None:
+        return {"removed": [], "from_hub": False}
+
+    names = [filename]
+    marker = _hubmeta_path(folder, filename)
+    from_hub = os.path.exists(marker)
+    if from_hub:
+        try:
+            with open(marker, encoding="utf-8") as f:
+                meta = json.load(f)
+            names.extend(n for n in meta.get("names", []) if n != filename)
+        except (OSError, ValueError) as exc:
+            logger.warning(f"model_hub could not read hubmeta marker: {exc}")
+
+    removed: list[str] = []
+    for n in safe_names(names, folder):
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(folder, n))
+            removed.append(n)
+    with contextlib.suppress(OSError):
+        os.remove(marker)
+    cache_names = [os.path.splitext(n)[0] for n in removed]
+    if cache_names:
+        from app.utils import remove_gguf_cache_entries
+
+        remove_gguf_cache_entries(cache_names)
+    return {"removed": removed, "from_hub": from_hub}
+
+
+def check_reachability(timeout: float = 5.0) -> dict:
+    """Cheap HF reachability probe for the offline-deployment banner."""
+    start = time.monotonic()
+    try:
+        _hf_get(HF_API, params={"limit": 1, "sort": "downloads", "direction": "-1"}, timeout=timeout)
+    except (HubError, requests.RequestException):
+        return {"reachable": False}
+    return {"reachable": True, "latency_ms": int((time.monotonic() - start) * 1000)}

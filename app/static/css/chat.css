@@ -2,7 +2,7 @@
 /* ===== CHAT CONTAINER ===== */
 .chat-container {
     display: flex;
-    height: calc(100vh - 100px);
+    height: calc(100vh - 80px); /* 50px header + 30px footer */
     width: 100%;
     max-width: 100%;
     margin: 0;
@@ -32,28 +32,6 @@
 .header-tabs {
     display: flex;
     width: 100%;
-}
-
-/* Mobile collapse toggle - inside header-tabs */
-.collapse-toggle-mobile {
-    display: none;
-    padding: 0.6rem 0.3rem;
-    background-color: #e8eaed;
-    cursor: pointer;
-    text-align: center;
-    border-right: 1px solid #ddd;
-    flex-shrink: 0;
-    min-width: 40px;
-}
-
-.collapse-toggle-mobile:hover {
-    background-color: #d0d0d0;
-}
-
-.collapse-icon {
-    font-size: 1.2rem;
-    display: inline-block;
-    transition: transform 0.3s ease;
 }
 
 .header-tab {
@@ -235,6 +213,275 @@
 .delete-session-button:hover,
 .delete-document-button:hover {
     color: #e74c3c;
+}
+
+/* ===== DOCUMENT FOLDERS ===== */
+.document-checkbox {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.document-checkbox input {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: #3498db;
+}
+
+.document-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+.move-document-button,
+.rename-folder-button,
+.delete-folder-button {
+    background: none;
+    border: none;
+    color: #7f8c8d;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.2rem;
+    margin-left: 2px;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.move-document-button:hover,
+.rename-folder-button:hover,
+.delete-folder-button:hover {
+    color: #3498db;
+}
+.delete-folder-button:hover {
+    color: #e74c3c;
+}
+.move-document-button {
+    width: auto;
+    min-width: 34px;
+    white-space: nowrap;
+}
+
+.document-folder {
+    margin-bottom: 0.5rem;
+    border: 1px solid #e3e8ee;
+    border-radius: 6px;
+    background-color: #f8fafc;
+}
+.document-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.5rem 0.6rem;
+    cursor: pointer;
+    font-weight: 500;
+    color: #2c3e50;
+    user-select: none;
+}
+.document-folder-header:hover {
+    background-color: #eef4fb;
+}
+.document-folder-header.drag-over {
+    background-color: #d6e9fb;
+    border: 1px dashed #3498db;
+    border-radius: 6px;
+}
+.folder-chevron {
+    flex-shrink: 0;
+}
+.folder-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.folder-meta {
+    font-size: 0.72rem;
+    color: #7f8c8d;
+    flex-shrink: 0;
+}
+.document-folder-docs {
+    padding: 0 0.4rem 0.4rem;
+}
+.document-folder-docs.folder-root {
+    padding: 0;
+}
+
+/* Bulk operations bar */
+.bulk-documents-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: #eef4fb;
+    border: 1px solid #d6e9fb;
+    border-radius: 6px;
+    padding: 0.45rem 0.6rem;
+    margin-bottom: 0.6rem;
+    flex-wrap: wrap;
+}
+.bulk-documents-bar.hidden {
+    display: none;
+}
+.bulk-label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+.bulk-move-button,
+.bulk-clear-button,
+.bulk-delete-button {
+    background: none;
+    border: 1px solid #b8cfe8;
+    border-radius: 4px;
+    color: #2c3e50;
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+}
+.bulk-move-button:hover,
+.bulk-clear-button:hover,
+.bulk-delete-button:hover {
+    background-color: #d6e9fb;
+}
+.bulk-delete-button {
+    margin-left: 4px;
+}
+.bulk-delete-button:hover {
+    color: #e74c3c;
+}
+
+/* Folder picker popup for moving documents / choosing an upload target */
+.folder-picker-menu {
+    position: fixed;
+    z-index: 10000;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 0.3rem;
+    min-width: 180px;
+    max-width: 260px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+.folder-picker-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+    cursor: pointer;
+    color: #2c3e50;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.folder-picker-item:hover {
+    background-color: #e6f2ff;
+}
+
+/* Folder name dialog (create/rename) */
+.folder-name-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.folder-name-modal[hidden] { display: none; }
+.folder-name-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+.folder-name-content {
+    position: relative;
+    width: min(360px, calc(100vw - 48px));
+    padding: 24px 26px 20px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.folder-name-content h3 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    color: #2c3e50;
+}
+.folder-name-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    margin-bottom: 6px;
+}
+.folder-name-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #b8cfe8;
+    border-radius: 5px;
+    font-size: 0.95rem;
+    color: #2c3e50;
+    background: #fff;
+}
+.folder-name-input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+.folder-name-error {
+    color: #e74c3c;
+    font-size: 0.82rem;
+    margin-top: 6px;
+}
+.folder-name-error[hidden] { display: none; }
+.folder-name-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+.folder-name-actions button {
+    border-radius: 5px;
+    padding: 0.4rem 1rem;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+.folder-name-cancel {
+    background: none;
+    border: 1px solid #b8cfe8;
+    color: #2c3e50;
+}
+.folder-name-cancel:hover {
+    background-color: #eef4fb;
+}
+.folder-name-submit {
+    background-color: #3498db;
+    border: 1px solid #3498db;
+    color: #fff;
+}
+.folder-name-submit:hover {
+    background-color: #2980b9;
+}
+.folder-name-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+}
+.folder-name-close:hover {
+    color: #2c3e50;
 }
 
 /* ===== SESSION STATUS ICONS - FIX FOR BLINK ANIMATION ===== */
@@ -690,6 +937,80 @@ video {
     background-color: #c0392b;
 }
 
+/* ===== ATTACHMENT CHIPS (multi-attachment input) ===== */
+#file-preview-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 19px;
+    padding: 4px 10px;
+    max-width: 260px;
+    height: 38px;
+    box-sizing: border-box;
+}
+
+.attachment-chip-thumb {
+    height: 30px;
+    max-width: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.attachment-chip-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.attachment-chip-name {
+    font-size: 0.85rem;
+    color: #2c3e50;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.attachment-chip-size {
+    font-size: 0.72rem;
+    color: #888;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.attachment-chip-remove {
+    background: transparent;
+    color: #e74c3c;
+    border: none;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+.attachment-chip-remove:hover {
+    color: #c0392b;
+}
+
+.extra-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.extra-attachments .image-container {
+    margin: 0;
+}
+
 .message-input {
     display: flex;
     gap: 0.5rem;
@@ -903,38 +1224,46 @@ video {
         display: flex;
         width: 100%;
     }
-    
-    .collapse-toggle-mobile {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
+
     .header-tab {
         flex: 1;
         padding: 0.6rem 0.3rem;
     }
-    
+
     .header-tab span.tab-text {
         font-size: 0.85rem;
     }
-    
+
     .new-tab-button {
         width: 20px;
         height: 20px;
         font-size: 0.9rem;
     }
-    
+
+    /* Full-screen panel: while open the active list takes the whole area
+       below the tabs and the chat column is hidden. Closed (default) the
+       lists are hidden entirely — the chat fills everything below the tabs
+       down to the footer. */
     .sessions-list,
     .documents-list {
-        overflow-y: auto;
-        flex: 1;
-        max-height: 150px;
-    }
-    
-    .sessions-sidebar.collapsed .sessions-list,
-    .sessions-sidebar.collapsed .documents-list {
         display: none !important;
+    }
+
+    .sessions-sidebar.panel-open {
+        max-height: none;
+        height: 100%;
+    }
+
+    .sessions-sidebar.panel-open .sessions-list.active,
+    .sessions-sidebar.panel-open .documents-list.active {
+        display: block !important;
+        overflow-y: auto;
+        max-height: none;
+        flex: 1;
+    }
+
+    .sessions-sidebar.panel-open ~ .chat-main {
+        display: none;
     }
     
     .chat-main {
@@ -985,11 +1314,35 @@ video {
     .message-input {
         flex-wrap: wrap;
     }
-    
+
     .message-input input[type="text"] {
         width: 100%;
     }
-    
+
+    /* Chat controls: 🎤/📎/Send are relocated into the "Deep analysis" row
+       by chat-init.js relocateChatControls() — compact buttons there; the
+       message input takes the full width below. Only the FIRST relocated
+       button carries margin-left: auto (equal gaps between all three). */
+    .rlm-controls {
+        width: 100%;
+    }
+
+    .rlm-controls #voice-record-button {
+        margin-left: auto;
+    }
+
+    .rlm-controls #voice-record-button,
+    .rlm-controls #attach-file-button,
+    .rlm-controls #send-button {
+        padding: 0.4rem 0.5rem;
+        min-width: 40px;
+        flex-shrink: 0;
+    }
+
+    #send-button {
+        min-width: 0;
+    }
+
     .copy-code-button {
         width: 28px;
         height: 28px;
@@ -1005,64 +1358,64 @@ video {
         top: 4px;
         right: 46px;
     }
-    
+
     .session-status-icon {
         font-size: 1rem;
         width: 1.1em;
     }
-    
+
     #file-preview-container div {
         flex-wrap: wrap;
         gap: 8px;
     }
-    
+
+    .attachment-chip {
+        max-width: 100%;
+    }
+
     #file-preview-name {
         width: 100%;
         margin-right: 0;
     }
-    
+
     #file-preview-size {
         margin-left: 0;
     }
-    
+
     .attached-file {
         flex-wrap: wrap;
     }
-    
+
     .user-message,
     .assistant-message,
     .bot-message {
         padding: 0.6rem 0.8rem;
         margin-bottom: 0.6rem;
     }
-    
+
     .chat-header h2 {
         font-size: 1rem;
     }
-    
+
     .response-style-btn {
         font-size: 0.85rem;
         padding: 1px 4px;
     }
-    
+
     .response-style-menu {
         min-width: 180px;
         right: 0;
         left: auto;
     }
-    
+
     .context-info {
         font-size: 0.8rem;
         padding: 0.2rem 0.4rem;
     }
-    
+
     .message-input button {
         padding: 0.6rem;
         min-width: 50px;
-    }
-    
-    #send-button {
-        min-width: 80px;
     }
     
     /* CRITICAL FIX: Ensure transcribing icon is ALWAYS visible on mobile */
@@ -1080,8 +1433,8 @@ video {
         justify-content: center;
     }
 
-    /* Ensure transcribing icon is visible even in collapsed sidebar */
-    .sessions-sidebar.collapsed .session-status-icon.transcribing {
+    /* Ensure transcribing icon is visible in the sessions list */
+    .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
     }

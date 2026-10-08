@@ -1,4 +1,4 @@
-# Release Guide — FLAI v12.1
+# Release Guide — FLAI v12.5
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
 
@@ -62,11 +62,10 @@ When releasing a new version:
 
 ### 1. Update version number in:
   - `pyproject.toml`: `version = "X.Y.Z"`
-  - `app/__init__.py`: update `flai_web_info{version="X.Y"}` to match the new version
+- `app/config.py`: `APP_VERSION = "X.Y"` — the only place the version is defined (metrics, templates and `window.FLAI_VERSION` all read it)
   - `AGENTS.md`: version title `# AGENTS.md — FLAI vX.Y`
   - `README.md`: `### What's New in vX.Y`
-  - `README-ru.md`: Russian equivalent section header
-  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header and footer string (then `pybabel compile -d translations` and commit both `.po` and `.mo`)
+  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header only (then `pybabel compile -d translations` and commit both `.po` and `.mo`) — the footer strings no longer contain a version
   - `deploy.sh`, `deploy-ru.sh`: version string in headers, success messages, and usage text
   - `docs/*.md`: version in titles and change notes
 
@@ -185,12 +184,8 @@ All notable changes to FLAI are documented in this file.
 ```
 
 ### Documentation Philosophy
-  - **AGENTS.md** — Constitution: commands, critical rules, hard constraints. Always read by AI agents.
-  - **docs/ARCHITECTURE.md** — Deep technical architecture. Read when modifying core logic.
-  - **docs/VRAM_MANAGEMENT.md** — VRAM rules, GPU queue, model protection. Read when touching GPU-related code.
-  - **docs/LOCALIZATION.md** — i18n rules, Flask-Babel, README translations. Read when adding user-facing strings.
-  - **docs/TESTING.md** — Testing infrastructure, fixtures, mocking. Read when writing tests.
-  - **docs/RELEASE_GUIDE.md** — Release process, version bumps. Read when preparing a new version.
-  - **CHANGELOG.md** — Historical changes, bug fixes, migration notes. Read when debugging or understanding why something works this way.
-
-Keep each file focused on its topic. Avoid duplication. Cross-reference between files when needed.
+  - **AGENTS.md** — Constitution: commands, critical rules, hard constraints. Always read by AI agents. Its Documentation Map is the index of every `docs/` file.
+  - **README.md** — Short overview plus quick start. Every topic has a dedicated `docs/` file linked from the section that mentions it.
+  - **One topic per file** — a reader with a specific question must land directly on the answer. Do not grow the README back into a manual.
+  - **No duplication** — a fact lives in exactly one file; other files link to it. When moving material, delete the original.
+  - **Translation parity** — every user- or admin-facing `docs/X.md` has a `docs/X-ru.md` twin with the same section structure, updated in the same commit.

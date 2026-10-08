@@ -49,7 +49,9 @@ class TestDocumentsCRUD:
         response = authenticated_client.get("/api/documents")
         assert response.status_code == 200
         data = response.get_json()
-        assert isinstance(data, list)
+        assert set(data.keys()) == {"folders", "documents"}
+        assert data["documents"] == []
+        assert data["folders"] == []
 
     @pytest.mark.integration
     @patch("app.routes.documents.magic.from_buffer")

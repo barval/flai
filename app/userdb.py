@@ -176,6 +176,9 @@ def delete_user(login):
 
         c.execute("DELETE FROM documents WHERE user_id = %s", (user_id,))
 
+        # Document folders (GDPR: folders are per-user metadata only)
+        c.execute("DELETE FROM document_folders WHERE user_id = %s", (user_id,))
+
         # 3. Delete user's documents folder
         user_docs_dir = os.path.join(documents_folder, user_id)
         if os.path.exists(user_docs_dir):
@@ -269,11 +272,28 @@ def init_user_db() -> None:
                 voice_gender TEXT DEFAULT 'male',
                 theme TEXT DEFAULT 'light',
                 response_style TEXT DEFAULT 'neutral',
+                tavily_api_key TEXT,
+                tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS response_style TEXT DEFAULT 'neutral'")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_api_key TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id SERIAL PRIMARY KEY,
+                login TEXT NOT NULL REFERENCES users(login) ON DELETE CASCADE,
+                name TEXT NOT NULL DEFAULT 'api',
+                token_hash TEXT NOT NULL UNIQUE,
+                token_prefix TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP,
+                revoked_at TIMESTAMP
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_api_tokens_login ON api_tokens (login)")
     _ensure_admin_exists()
 
 

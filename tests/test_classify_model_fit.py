@@ -45,10 +45,16 @@ class TestClassifyModelFit:
     def test_small_model_fits_vram_tier_good(self, mock_cache):
         """2 GB model on 16 GB GPU: tier=good, can_save=True, full ngl."""
         mock_cache.return_value = SMALL_MODEL
-        result = _classify_model_fit(
-            model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-            context_length=8192,
-        )
+        with (
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
+        ):
+            result = _classify_model_fit(
+                model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                context_length=8192,
+            )
         assert result["tier"] == "good"
         assert result["can_save"] is True
         assert result["ngl_recommended"] == 36
@@ -60,10 +66,16 @@ class TestClassifyModelFit:
         """9 GB model on 16 GB GPU at small ctx: might still fit.
         Use larger ctx to push into cpu_offload tier."""
         mock_cache.return_value = MEDIUM_MODEL
-        result = _classify_model_fit(
-            model_name="Qwen3.5-9B-Q8_0.gguf",
-            context_length=65536,  # big ctx → bigger KV cache
-        )
+        with (
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
+        ):
+            result = _classify_model_fit(
+                model_name="Qwen3.5-9B-Q8_0.gguf",
+                context_length=65536,  # big ctx → bigger KV cache
+            )
         # 9 GB weights + ~5 GB KV @ 65K = 14 GB → fits at 85% of 16 GB
         # But might be in cpu_offload if model weights + KV exceed 85% of 16GB
         assert result["tier"] in ("good", "cpu_offload")
@@ -145,10 +157,16 @@ class TestClassifyModelFit:
     def test_model_name_strips_gguf_extension(self, mock_cache):
         """model_name with .gguf should look up the right cache key."""
         mock_cache.return_value = SMALL_MODEL
-        result = _classify_model_fit(
-            model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-            context_length=8192,
-        )
+        with (
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
+        ):
+            result = _classify_model_fit(
+                model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                context_length=8192,
+            )
         assert result["tier"] == "good"
 
     @patch("app.utils.get_gguf_models_cached")
@@ -179,10 +197,16 @@ class TestClassifyEdgeCases:
     def test_minimum_ctx(self, mock_cache):
         """Minimum context (512) should still classify correctly."""
         mock_cache.return_value = SMALL_MODEL
-        result = _classify_model_fit(
-            model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-            context_length=512,
-        )
+        with (
+            patch("app.vram_estimate._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.vram_estimate._get_total_ram_mb", return_value=16384),
+            patch("app.vram_estimate._get_free_ram_mb", return_value=11264),
+            patch("app.vram_estimate._get_llama_swap_running_ram_mb", return_value=0),
+        ):
+            result = _classify_model_fit(
+                model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+                context_length=512,
+            )
         assert result["can_save"] is True
         assert result["tier"] == "good"
 

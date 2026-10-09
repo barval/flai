@@ -1469,6 +1469,10 @@ function onMessageNew(data) {
                     accumulateSessionTokens(data.session_id, msg.prompt_tokens, msg.completion_tokens);
                 }
             }
+            // The message arrived in the current session — mark it visited so the
+            // server-side unread count drops immediately (matches the behavior
+            // of finalizeStreamedMessage/handleCompletedResult).
+            if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
         }
         return;
     }
@@ -1502,6 +1506,7 @@ function onMessageNew(data) {
                             accumulateSessionTokens(data.session_id, msg.prompt_tokens, msg.completion_tokens);
                         }
                     }
+                    if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
                     return;
                 }
             }

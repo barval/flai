@@ -129,7 +129,10 @@ def api_new_session():
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
     lang = session.get("language", "ru")
+    prev_session = session.get("current_session")
     session_id = db.create_session(session["login"], lang=lang)
+    if prev_session and prev_session != session_id:
+        db.update_session_visit(session["login"], prev_session)
     session["current_session"] = session_id
     db.set_last_session(session["login"], session_id)
     with get_db() as conn:

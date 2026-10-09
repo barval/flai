@@ -95,3 +95,49 @@ class TestChatRoutes:
         assert response.status_code == 200
         data = response.get_json()
         assert "request_id" in data or "status" in data
+
+
+@pytest.mark.integration
+class TestNewSessionMarksPreviousVisited:
+    """Regression: creating a new session must mark the PREVIOUS session as
+    visited, exactly like switching sessions does. Without this the leaving
+    session keeps its server-side unread_count after the last reply, so the
+    envelope reappears on a session that was already read."""
+
+    def test_new_session_marks_previous_visited(self, client, test_app, monkeypatch):
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login
+
+            if not get_user_by_login("newsess"):
+                create_user("newsess", "pass123", "New Session")
+
+        client.post("/login", data={"login": "newsess", "password": "pass123"})
+
+        # Create the first session — this sets current_session in the browser session.
+        response = client.post("/api/sessions/new")
+        assert response.status_code == 200
+        first_id = response.get_json()["id"]
+
+        # Spy on update_session_visit: keep the real implementation running.
+        import app.db as app_db
+
+        calls: list[tuple] = []
+
+        orig = app_db.update_session_visit
+
+        def spy(user_id, session_id):
+            calls.append((user_id, session_id))
+            return orig(user_id, session_id)
+
+        monkeypatch.setattr(app_db, "update_session_visit", spy)
+
+        # Create a second session — the previous one must be marked visited.
+        response = client.post("/api/sessions/new")
+        assert response.status_code == 200
+        second_id = response.get_json()["id"]
+        assert second_id != first_id
+
+        assert ("newsess", first_id) in calls, (
+            "api_new_session did not mark the previous session as visited — "
+            "regression: unread envelope reappears on a read session"
+        )

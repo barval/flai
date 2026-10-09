@@ -227,10 +227,18 @@ class MultimodalModule(TranslationMixin):
         if not prompt:
             return None, self._("Error loading prompt template", lang)
 
-        converted_data, _ = self._ensure_llamacpp_compatible(image_data)
-        response = self.llamacpp.chat_with_image(
-            text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
-        )
+        if not image_data or not image_data.strip():
+            # No image to attach (multi-image fallback final step): answer from
+            # the collected text descriptions only. A data-URL built from an
+            # empty payload would make llama-server reject the request with
+            # HTTP 400 "Failed to load image or audio file".
+            messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            response = self._call_multimodal(messages, lang)
+        else:
+            converted_data, _ = self._ensure_llamacpp_compatible(image_data)
+            response = self.llamacpp.chat_with_image(
+                text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
+            )
         if self._is_vram_error(response):
             self.logger.warning(f"Multimodal returned VRAM error: {response[:100] if response else 'None'}")
             return None, self._("GPU memory unavailable. Please try again.", lang)

@@ -124,6 +124,10 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
         return _tr("Model crashed during startup. Check model file compatibility and GPU memory.", lang)
     if "no slot available" in lower:
         return _tr("Server is busy. All slots are occupied. Please try again shortly.", lang)
+    if "failed to load image or audio file" in lower:
+        return _tr("Failed to load image or audio file. Check the image and try again.", lang)
+    if "can't load image" in lower or "cannot load image" in lower:
+        return _tr("Failed to load image or audio file. Check the image and try again.", lang)
     return msg
 
 

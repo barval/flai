@@ -490,6 +490,10 @@ msgstr "Запрос на создание изображения был пус�
 msgid "Failed to process image request. Please try again."
 msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
 
+#: app/llamacpp_client.py
+msgid "Failed to load image or audio file. Check the image and try again."
+msgstr "Не удалось загрузить изображение или аудиофайл. Проверьте файл изображения и попробуйте снова."
+
 #: app/queue.py:4770 app/queue.py:4827
 msgid "Invalid image"
 msgstr "Неверное изображение"

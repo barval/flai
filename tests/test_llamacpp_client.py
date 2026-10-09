@@ -154,6 +154,19 @@ class TestFormatUserError:
         # Russian generic fallback contains "HTTP" and the status code
         assert "502" in out
 
+    def test_failed_to_load_image_is_translated(self, test_app):
+        """The llama-server 'Failed to load image or audio file' error must be
+        mapped to a localized message, not passed through raw in Russian (the
+        multi-image fallback final step sends an empty image → HTTP 400)."""
+        from app.llamacpp_client import _translate_llama_swap_error
+
+        raw = "Failed to load image or audio file"
+        with test_app.app_context():
+            out = _translate_llama_swap_error(raw, "ru")
+        assert out != raw
+        # Must not contain the raw English phrase; ru output should carry Cyrillic.
+        assert "Failed to load image or audio file" not in out
+
 
 class TestChatStreamYieldsWarningPrefix:
     """Integration: LlamaSwapBackend.chat_stream yields ⚠️-prefixed error on HTTP 400."""

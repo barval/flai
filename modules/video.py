@@ -79,6 +79,9 @@ class VideoModule(TranslationMixin):
     CPU_FALLBACK_PARAMS: list[dict[str, int]] = [
         {"width": 384, "height": 256, "num_frames": 120, "frame_rate": 12},
         {"width": 256, "height": 192, "num_frames": 57, "frame_rate": 6},
+        # Last resort: ~4 s of video; finishes even when the host is heavily
+        # loaded and the VAE decode degrades several-fold (24 frames).
+        {"width": 256, "height": 192, "num_frames": 24, "frame_rate": 6},
     ]
 
     # Denoising steps in ltvx-2b-0.9.8-distilled.yaml (default pipeline).
@@ -88,10 +91,12 @@ class VideoModule(TranslationMixin):
     CPU_VOXELS_PER_STEP_S = 24_000
     # Fixed per-generation overhead: T5 text encode + upscaler + I/O.
     CPU_TIME_OVERHEAD_S = 300
-    # Calibrated CPU video decode/assembly: a 256×192×57 run on the 12-core
-    # host took ~43 min of VAE decode + mp4 encode (≈45 s per frame), far
-    # exceeding the fixed overhead — model it per frame.
-    CPU_VAE_SECONDS_PER_FRAME = 45
+    # Calibrated CPU video decode/assembly: a 256×192×57 run on the idle
+    # 12-core host took ~43 min of VAE decode + mp4 encode (≈45 s per frame).
+    # Under concurrent host load the causal VAE decode runs single-threaded
+    # (measured ~120 s/frame on 2026-10-09) — the constant carries a ~1.3×
+    # margin over the idle measurement so the planner stays honest.
+    CPU_VAE_SECONDS_PER_FRAME = 60
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)

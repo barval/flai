@@ -26,16 +26,20 @@ class TestDryLoad:
             dry_load.schedule_dry_load(MagicMock(), "multimodal", "")
             mock_thread_cls.assert_not_called()
 
-    def test_fallback_models_dict_has_all_modules(self):
-        """FALLBACK_MODELS has fallback for every module type."""
-        from app.tasks.dry_load import get_fallback_models
+    def test_schedule_dry_load_forwards_rollback_model(self):
+        """schedule_dry_load passes rollback_model (previous admin model)."""
+        from app.tasks import dry_load
 
-        models = get_fallback_models()
-        assert "multimodal" in models
-        assert "reasoning" in models
-        assert "embedding" in models
-        for module, fallback in models.items():
-            assert fallback, f"Empty fallback for {module}"
+        with patch.object(dry_load.threading, "Thread") as mock_thread_cls:
+            mock_thread = MagicMock()
+            mock_thread_cls.return_value = mock_thread
+            dry_load.schedule_dry_load(
+                MagicMock(), "multimodal", "New.gguf", rollback_ctx=None, rollback_model="Old.gguf"
+            )
+            args = mock_thread_cls.call_args.kwargs["args"]
+            assert args[1] == "multimodal"
+            assert args[2] == "New.gguf"
+            assert args[4] == "Old.gguf"
 
 
 class TestTriggerLoad:
@@ -138,8 +142,8 @@ class TestRollbackCtx:
         assert "MODEL_NAME" not in sql.upper()
         assert params == (8192, "multimodal")
 
-    def test_rollback_without_rollback_ctx_updates_model(self, test_app):
-        """No rollback_ctx → existing fallback-model behavior is preserved."""
+    def test_rollback_without_rollback_ctx_updates_rollback_model(self, test_app):
+        """No rollback_ctx → UPDATE sets model_name to the previous admin model."""
         from app.tasks import dry_load
 
         conn = MagicMock()
@@ -152,12 +156,32 @@ class TestRollbackCtx:
             patch("app.llama_swap_config.generate_and_write", return_value=True),
             patch("app.llama_swap_config.LlamaSwapConfigGenerator"),
         ):
-            result = dry_load._rollback(test_app, "multimodal", "BrokenModel")
+            result = dry_load._rollback(
+                test_app, "multimodal", "BrokenModel", rollback_model="Qwen3VL-4B-Instruct-Q4_K_M"
+            )
 
         assert result is True
         sql, params = cursor.execute.call_args_list[0].args
         assert "MODEL_NAME" in sql.upper()
-        assert params == ("Qwen3VL-8B-Instruct-Q4_K_M", "multimodal")
+        assert params == ("Qwen3VL-4B-Instruct-Q4_K_M", "multimodal")
+
+    def test_rollback_without_rollback_model_returns_false(self, test_app):
+        """No rollback_ctx and no rollback_model → nothing is restored and
+        the DB is left untouched (never switch to a model that may not exist)."""
+        from app.tasks import dry_load
+
+        conn = MagicMock()
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = conn
+
+        with (
+            patch("app.database.get_db", return_value=mock_cm),
+            patch("app.llama_swap_config.generate_and_write", return_value=True),
+        ):
+            result = dry_load._rollback(test_app, "multimodal", "BrokenModel")
+
+        assert result is False
+        conn.cursor.return_value.execute.assert_not_called()
 
     def test_worker_forwards_rollback_ctx(self, test_app):
         """The worker passes rollback_ctx through to _rollback."""
@@ -170,8 +194,11 @@ class TestRollbackCtx:
             patch.object(dry_load, "_check_running", return_value=False),
             patch.object(dry_load, "_rollback") as mock_rb,
         ):
-            dry_load._dry_load_worker(test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M", rollback_ctx=24576)
+            dry_load._dry_load_worker(
+                test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M", rollback_ctx=24576, rollback_model="Old.gguf"
+            )
 
         mock_rb.assert_called_once()
         assert mock_rb.call_args.args[:3] == (test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M")
         assert mock_rb.call_args.args[3] == 24576
+        assert mock_rb.call_args.args[4] == "Old.gguf"

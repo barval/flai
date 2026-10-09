@@ -1553,6 +1553,11 @@ def update_model_config(module):
         old_config = get_model_config("embedding")
         old_model = old_config.get("model_name") if old_config else None
         current_app.logger.info(f"Embedding old_model from config: '{old_model}'")
+    elif new_model_name is not None:
+        # Previous admin-chosen model — the rollback target if the new model
+        # fails its dry-load. READS BEFORE the UPDATE below.
+        old_model = existing_cfg.get("model_name")
+        current_app.logger.info(f"{module} old_model from config: '{old_model}'")
 
     with get_db() as conn:
         c = conn.cursor()
@@ -1620,7 +1625,7 @@ def update_model_config(module):
         except Exception as e:
             current_app.logger.warning(f"Error updating llama-swap config: {e}")
 
-    # ── Schedule background dry-load + auto-rollback on failure ──
+    # ── Schedule background dry-load + admin-model rollback on failure ──
     # A ctx-only change dry-loads the current model at the new context and
     # rolls back the context (not the model) if it can't load.
     if module != "embedding" and (new_model_name or new_ctx):
@@ -1634,6 +1639,7 @@ def update_model_config(module):
                     module,
                     model_to_load,
                     rollback_ctx=old_ctx if (new_ctx is not None and new_model_name is None) else None,
+                    rollback_model=old_model if new_model_name is not None else None,
                 )
                 result["dry_load_scheduled"] = True
             except Exception as e:

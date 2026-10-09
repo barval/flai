@@ -13,7 +13,7 @@
 - **`app/__init__.py:create_app()`** — фабрика приложения Flask.
 - **Блюпринты** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`, `api_v1` (публичный OpenAI-совместимый API).
 - **Модули** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`, `rlm`.
-- **Фоновые задачи** (`app/tasks/`): `dry_load.py` (пробная загрузка модели после сохранения в админке; автооткат покрывает и смену моделей — восстановление резервной модели — и изменения только контекста — восстановление `context_length`), `health_monitor.py` (сторож аварийных циклов перезапуска).
+- **Фоновые задачи** (`app/tasks/`): `dry_load.py` (пробная загрузка модели после сохранения в админке; автооткат возвращает выбранную админом модель — никогда не захардкоженную резервную — а при изменении только контекста восстанавливает `context_length`), `health_monitor.py` (сторож аварийных циклов перезапуска, помечает модули нездоровыми вместо смены модели).
 - **Шаблоны** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Статика**: `app/static/css/` (весь CSS), `app/static/js/` (весь JS). Без встроенных стилей, без CDN.
 

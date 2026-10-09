@@ -265,6 +265,20 @@ class RedisRequestQueue:
         self._crawl_worker_thread = crawl_thread
         self.app.logger.info("RedisRequestQueue: workers started (fast + slow + crawl)")
 
+    def is_gpu_task_active(self) -> bool:
+        """True while a worker holds the global GPU lock.
+
+        The watchdog uses this to skip health checks during long in-flight
+        model calls (a multimodal chat spans minutes), which would otherwise
+        time out against the busy model and be miscounted as crash-loop
+        failures. Plain calls take ``_gpu_lock`` but never set the
+        ResourceManager busy flags.
+        """
+        try:
+            return bool(self._gpu_lock and self._gpu_lock.locked())
+        except Exception:
+            return False
+
     def stop_workers(self, timeout=30):
         """Signal workers to stop and wait for them to finish."""
         if not getattr(self, "_workers_started", False):

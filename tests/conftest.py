@@ -1013,8 +1013,10 @@ def test_app():
                 with get_db() as conn:
                     c = conn.cursor()
                     c.execute(
-                        "TRUNCATE TABLE users, user_sessions, chat_sessions, "
-                        "messages, session_visits, model_configs, user_storage "
+                        "TRUNCATE TABLE api_tokens, branding_settings, camera_rooms, "
+                        "chat_sessions, document_folders, documents, gguf_models_cache, "
+                        "messages, model_configs, model_vram_estimates, session_visits, "
+                        "slm_import_progress, user_sessions, user_storage, users "
                         "RESTART IDENTITY CASCADE"
                     )
             except Exception:

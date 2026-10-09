@@ -332,8 +332,12 @@ class TestEnqueueChat:
         assert bridge_deps["queue"].added[0][3] == 1
         assert bridge_deps["queue"].added[0][4] == "ru"
 
-    def test_image_turn_uses_the_image_task_type_and_saves_file_fields(self, bridge_deps):
-        enqueue_chat(api_user(), "s1", "What is this?", [PARSED_IMAGE])
+    def test_image_turn_uses_the_image_task_type_and_saves_file_fields(self, bridge_deps, monkeypatch):
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: "s1/input.png")
+        app = Flask(__name__)
+        app.config["UPLOAD_FOLDER"] = "/tmp/flai-tests"
+        with app.app_context():
+            enqueue_chat(api_user(), "s1", "What is this?", [dict(PARSED_IMAGE)])
 
         args, kwargs = bridge_deps["saved"][0]
         assert args[3:6] == ("AAAA", "image/png", "image.png")
@@ -345,14 +349,22 @@ class TestEnqueueChat:
         assert request_data["stream"] is True
         assert "current_message_id" not in request_data
 
-    def test_image_only_turn_uses_the_image_task_type(self, bridge_deps):
-        enqueue_chat(api_user(), "s1", "", [PARSED_IMAGE])
+    def test_image_only_turn_uses_the_image_task_type(self, bridge_deps, monkeypatch):
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: None)
+        app = Flask(__name__)
+        app.config["UPLOAD_FOLDER"] = "/tmp/flai-tests"
+        with app.app_context():
+            enqueue_chat(api_user(), "s1", "", [dict(PARSED_IMAGE)])
 
         assert bridge_deps["queue"].added[0][2]["type"] == "image"
 
-    def test_multi_image_turn_carries_the_full_list(self, bridge_deps):
+    def test_multi_image_turn_carries_the_full_list(self, bridge_deps, monkeypatch):
         second = {"file_data": "BBBB", "file_type": "image/png", "file_name": "image-b.png"}
-        enqueue_chat(api_user(), "s1", "compare", [PARSED_IMAGE, second])
+        monkeypatch.setattr("app.api_bridge.save_uploaded_file", lambda **kwargs: f"s1/{kwargs['filename']}")
+        app = Flask(__name__)
+        app.config["UPLOAD_FOLDER"] = "/tmp/flai-tests"
+        with app.app_context():
+            enqueue_chat(api_user(), "s1", "compare", [dict(PARSED_IMAGE), second])
 
         request_data = bridge_deps["queue"].added[0][2]
         assert request_data["type"] == "image"
@@ -360,11 +372,21 @@ class TestEnqueueChat:
         assert request_data["file_data"] == "AAAA"
         # and the whole list travels in `images` (web parity)
         assert request_data["images"] == ["AAAA", "BBBB"]
-        # the user turn persists both parts
+        # the user turn persists both parts with their saved disk paths
         assert json.loads(bridge_deps["saved"][0][0][2]) == [
             {"type": "text", "text": "compare"},
-            PARSED_IMAGE,
-            second,
+            {
+                "type": "image",
+                "file_type": "image/png",
+                "file_name": "image.png",
+                "file_path": "s1/image.png",
+            },
+            {
+                "type": "image",
+                "file_type": "image/png",
+                "file_name": "image-b.png",
+                "file_path": "s1/image-b.png",
+            },
         ]
 
     def test_queue_submission_is_attempted_even_when_persisting_fails(self, bridge_deps, monkeypatch):
@@ -1110,7 +1132,7 @@ class TestEmbeddingsBridge:
         assert kwargs["file_path"] == "s1/input.png"
         assert json.loads(args[2]) == [
             {"type": "text", "text": "make it blue"},
-            {"type": "image", "file_data": "QUJD", "file_type": "image/png", "file_name": "input.png"},
+            {"type": "image", "file_type": "image/png", "file_name": "input.png", "file_path": "s1/input.png"},
         ]
         assert kwargs["user_id"] == "alice"
         queued = bridge_deps["queue"].added[0][2]

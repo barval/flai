@@ -151,6 +151,7 @@ def test_get_llama_swap_running_ram_mb_handles_no_models(monkeypatch):
 def test_swap_running_models_parses_dict_cmd(monkeypatch):
     import app.vram_estimate as ve
 
+    monkeypatch.setenv("LLAMACP_BACKEND", "llama-swap")
     fake_resp = {"running": [{"name": "multimodal", "cmd": "llama-server -m /models/X/Y.gguf --ctx 4096"}]}
     monkeypatch.setattr(ve, "requests", _FakeRequests(fake_resp))
     assert ve._swap_running_models() == ["Y.gguf"]
@@ -159,6 +160,7 @@ def test_swap_running_models_parses_dict_cmd(monkeypatch):
 def test_swap_running_models_parses_str_list(monkeypatch):
     import app.vram_estimate as ve
 
+    monkeypatch.setenv("LLAMACP_BACKEND", "llama-swap")
     fake_resp = {"running": ["A.gguf", "B.gguf"]}
     monkeypatch.setattr(ve, "requests", _FakeRequests(fake_resp))
     assert ve._swap_running_models() == ["A.gguf", "B.gguf"]

@@ -475,7 +475,9 @@ class TestVideoModuleMemoryPlanning:
     def test_plan_low_ram_impossible(self, cpu_rm):
         from modules.video import VideoModule
 
-        cpu_rm._detect_available_ram_mb.return_value = 19000
+        # RAM is so tight that even the smallest fallback (256×192×24, peak
+        # ≈ 17.8 GB + 1 GB margin) does not fit → refuse with a memory error.
+        cpu_rm._detect_available_ram_mb.return_value = 18000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
             patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
@@ -492,10 +494,10 @@ class TestVideoModuleMemoryPlanning:
     def test_plan_error_reports_binding_ram_constraint(self, cpu_rm):
         from modules.video import VideoModule
 
-        # Smallest fallback fits the time budget (1233 s ≤ 3060 s) but not RAM
-        # (18408 + 1024 > 19000) — the deployed lenovo-book scenario. The error
-        # must name the BINDING constraint (memory), not the passing one.
-        cpu_rm._detect_available_ram_mb.return_value = 19000
+        # The smallest fallback (256×192×24) fits the time budget (2133 s ≤ 3060 s)
+        # but not RAM (17832 + 1024 > 18000) — a lenovo-book-like scenario. The
+        # error must name the BINDING constraint (memory), not the passing one.
+        cpu_rm._detect_available_ram_mb.return_value = 18000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
             patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "3060"}),
@@ -528,10 +530,10 @@ class TestVideoModuleMemoryPlanning:
     def test_plan_time_budget_degrades_even_with_ram_spare(self, cpu_rm):
         from modules.video import VideoModule
 
-        # RAM is plentiful, but 768×512×240 would take ~12 h on CPU. The time
-        # budget (5000 s — between the calibrated 3798 s estimate of the last
-        # fallback and the 9632 s of 384×256×120) must force a downsize all
-        # the way to the smallest format.
+        # RAM is plentiful, but 768×512×240 would take ~13 h on CPU. The time
+        # budget (5000 s — between the calibrated 4653 s estimate of the last
+        # 57-frame fallback and the 11432 s of 384×256×120) must force a downsize
+        # all the way to the smallest 57-frame format.
         cpu_rm._detect_available_ram_mb.return_value = 56000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
@@ -553,10 +555,33 @@ class TestVideoModuleMemoryPlanning:
     def test_plan_time_budget_refuses_when_smallest_exceeds(self, cpu_rm):
         from modules.video import VideoModule
 
-        # Calibrated estimate: 256×192×57 ≈ 3798 s (denoise ~16 min + VAE
-        # decode ~43 min). With the real default budget (0.85 × timeout = 3060 s)
-        # even the smallest fallback cannot finish in time → refuse with a time
-        # error instead of timing out mid-generation (the pre-calibration bug).
+        # Calibrated estimate: 256×192×24 ≈ 2133 s (denoise ~4.6 min + VAE
+        # decode ~24 min). With a 2000 s budget even the smallest fallback
+        # cannot finish in time → refuse with a time error instead of timing
+        # out mid-generation (the pre-calibration bug).
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict(
+                "os.environ",
+                {"LTX_VIDEO_CPU_TIME_BUDGET_S": "2000", "LTX_VIDEO_RAM_LIMIT_MB": "65536"},
+            ),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override is None
+        assert notice is None
+        assert error is not None
+        assert "exceeds" in error
+
+    def test_plan_time_budget_picks_third_fallback(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # Budget 3060 s (0.85 × the pre-bump 3600 timeout): the second fallback
+        # (256×192×57 ≈ 4653 s) no longer fits, but the third (256×192×24 ≈
+        # 2133 s) does — the planner must degrade to it, not refuse.
         cpu_rm._detect_available_ram_mb.return_value = 56000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
@@ -569,10 +594,10 @@ class TestVideoModuleMemoryPlanning:
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
             override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
 
-        assert override is None
-        assert notice is None
-        assert error is not None
-        assert "exceeds" in error
+        assert error is None
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[2]
+        assert notice is not None
+        assert "256×192×24" in notice
 
     def test_plan_time_budget_impossible(self, cpu_rm):
         from modules.video import VideoModule
@@ -600,7 +625,7 @@ class TestVideoModuleMemoryPlanning:
         from modules.video import VideoModule
 
         # Requesting the small 256×192×57 format with a generous budget
-        # (5000 s > calibrated estimate 3798 s) → proceed untouched.
+        # (5000 s > calibrated estimate 4653 s) → proceed untouched.
         cpu_rm._detect_available_ram_mb.return_value = 56000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
@@ -638,9 +663,10 @@ class TestVideoModuleMemoryPlanning:
     def test_estimate_cpu_generation_time_s(self):
         from modules.video import VideoModule
 
-        # Denoise ~3932 s at 24 000 voxels/s + VAE decode ~45 s/frame for 120
-        # frames + 300 s fixed overhead (calibrated on a 12-core CPU host).
-        expected = int(8 * 384 * 256 * 120 / 24_000) + 120 * 45 + 300
+        # Denoise ~4132 s at 24 000 voxels/s + VAE decode ~60 s/frame for 120
+        # frames + 300 s fixed overhead (calibrated on a 12-core CPU host,
+        # VAE constant carries a margin for concurrent host load).
+        expected = int(8 * 384 * 256 * 120 / 24_000) + 120 * 60 + 300
         assert VideoModule.estimate_cpu_generation_time_s(384, 256, 120) == expected
         assert VideoModule.estimate_cpu_generation_time_s(256, 192, 57) < expected
 

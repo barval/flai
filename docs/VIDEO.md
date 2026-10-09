@@ -29,7 +29,9 @@ bash services/ltx_video/download-t5-encoder.sh
 ```bash
 LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
 LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
-LTX_VIDEO_TIMEOUT=600
+LTX_VIDEO_TIMEOUT=10800
 ```
+
+**CPU-only hosts:** the planner (`plan_cpu_generation`) picks the largest format that fits BOTH available RAM and the wall-clock budget (85% of `LTX_VIDEO_TIMEOUT` unless `LTX_VIDEO_CPU_TIME_BUDGET_S` is set). Fallback chain: 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps → 256×192×24 @ 6 fps. Estimates are calibrated against measured CPU throughput (24 000 voxels/s per denoising step; VAE decode + mp4 assembly ~60 s per frame with a margin for concurrent host load). If no format fits, the request is refused up front with a localized error instead of timing out mid-generation.
 
 ---

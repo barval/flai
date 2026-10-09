@@ -610,3 +610,27 @@ def test_hub_offline_and_manual_upload_msgids_in_both_catalogs():
             assert f'msgid "{msgid}"' in po, f"msgid missing in {lang_dir}"
             block = po[po.index(f'msgid "{msgid}"') : po.index(f'msgid "{msgid}"') + 300]
             assert 'msgstr "' in block and 'msgstr ""' not in block, f"empty msgstr in {lang_dir}"
+
+
+def test_on_message_new_marks_active_session_visited():
+    """onMessageNew (events.js) must mark the CURRENT session as visited while
+    displaying a message that arrived for it, so the server-side unread_count
+    drops immediately — otherwise the envelope reappears on an already-read
+    session after creating a new one.
+
+    Regression 2026-10-09 (lenovo-book): a read multimodal reply left
+    last_visit at the send moment, so /api/sessions reported has_unread=true.
+    finalizeStreamedMessage / handleCompletedResult / handleCameraResult all
+    call updateLastVisit; onMessageNew deliberately did the same.
+    """
+    events_src = (JS_DIR / "events.js").read_text(encoding="utf-8")
+
+    body = events_src[re.search(r"function\s+onMessageNew\s*\(", events_src).start() :]
+
+    assert re.search(
+        r"if\s*\(\s*typeof\s+updateLastVisit\s*===\s*['\"]function['\"]\s*\)\s*updateLastVisit\s*\(\s*currentSessionId\s*\)",
+        body,
+    ), (
+        "onMessageNew does not call updateLastVisit(currentSessionId) — "
+        "read replies stay unread on the server and the envelope reappears"
+    )

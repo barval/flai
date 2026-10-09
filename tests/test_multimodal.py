@@ -476,3 +476,26 @@ class TestImageAutoConvert:
             assert module.llamacpp.chat_with_image.called
             kwargs = module.llamacpp.chat_with_image.call_args.kwargs
             assert "converted_data" in kwargs["image_base64"]
+
+    def test_process_image_with_text_empty_image_is_text_only(self, module):
+        """process_image_with_text with empty image_data (the multi-image
+        fallback final step) must NOT build a broken empty data:image/jpeg
+        data-URL — llama-server rejects it with HTTP 400 'Failed to load
+        image or audio file'. It must answer from the text descriptions
+        only via a text-only chat call."""
+        module.llamacpp.chat = MagicMock(return_value="ok")
+        module.llamacpp.chat_with_image = MagicMock(return_value="ok")
+
+        response, error = module.process_image_with_text(
+            "", "What do these images have in common?", "2026-06-04 12:00:00", "en"
+        )
+
+        assert error is None
+        assert response == "ok"
+        assert not module.llamacpp.chat_with_image.called
+        assert module.llamacpp.chat.called
+        args, kwargs = module.llamacpp.chat.call_args
+        messages = args[0]
+        content = messages[0]["content"]
+        assert len(content) == 1
+        assert content[0]["type"] == "text"

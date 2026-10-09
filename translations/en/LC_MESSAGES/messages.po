@@ -486,6 +486,10 @@ msgstr "Image generation request was empty"
 msgid "Failed to process image request. Please try again."
 msgstr "Failed to process image request. Please try again."
 
+#: app/llamacpp_client.py
+msgid "Failed to load image or audio file. Check the image and try again."
+msgstr "Failed to load image or audio file. Check the image and try again."
+
 #: app/queue.py:4770 app/queue.py:4827
 msgid "Invalid image"
 msgstr "Invalid image"

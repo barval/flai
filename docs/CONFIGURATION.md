@@ -40,7 +40,7 @@ MAX_CHAT_IMAGES=4               # Max images per chat message (also for deep ana
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
 MAX_DOCUMENT_SIZE_MB=25         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
-LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
+LTX_VIDEO_TIMEOUT=10800         # Max video generation time (seconds)
 OCR_TIME_BUDGET_S=1800          # Scanned-PDF OCR budget per document task (0 = unlimited)
 ```
 

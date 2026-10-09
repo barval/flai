@@ -13,8 +13,10 @@ from app.tasks import health_monitor as hm
 def reset_failure_tracking():
     """Reset global failure tracking between tests."""
     hm._failures.clear()
+    hm._unhealthy.clear()
     yield
     hm._failures.clear()
+    hm._unhealthy.clear()
 
 
 class TestRecordFailure:
@@ -189,6 +191,7 @@ class TestWatchdogGpuBusyGuard:
         with (
             patch.object(hm, "_stop_event_for", return_value=FakeStop()),
             patch.object(hm, "is_gpu_busy", return_value=True),
+            patch.object(hm, "_queue_gpu_busy", return_value=False),
             patch.object(hm, "_get_running") as get_running,
             pytest.raises(KeyboardInterrupt),
         ):
@@ -196,3 +199,160 @@ class TestWatchdogGpuBusyGuard:
 
         assert waits == [30, hm.WATCHDOG_INTERVAL_S]
         get_running.assert_not_called()
+
+
+class TestQueueGpuBusy:
+    """The watchdog must also skip ticks while a worker holds _gpu_lock (a
+    plain multimodal/reasoning call keeps it for minutes; health checks fired
+    into the busy model time out and were counted as crash-loop failures)."""
+
+    def test_true_when_queue_holds_gpu_lock(self):
+        app = MagicMock()
+        app.request_queue.is_gpu_task_active.return_value = True
+        assert hm._queue_gpu_busy(app) is True
+
+    def test_false_when_queue_idle(self):
+        app = MagicMock()
+        app.request_queue.is_gpu_task_active.return_value = False
+        assert hm._queue_gpu_busy(app) is False
+
+    def test_false_without_queue(self):
+        """An app without a request_queue must not be treated as busy."""
+        assert hm._queue_gpu_busy(object()) is False
+
+    def test_false_on_exception(self):
+        app = MagicMock()
+        app.request_queue.is_gpu_task_active.side_effect = RuntimeError("boom")
+        assert hm._queue_gpu_busy(app) is False
+
+    def test_watchdog_loop_skips_tick_when_queue_busy(self):
+        waits = []
+
+        class FakeStop:
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                waits.append(seconds)
+                if len(waits) >= 2:
+                    raise KeyboardInterrupt
+                return False
+
+        with (
+            patch.object(hm, "_stop_event_for", return_value=FakeStop()),
+            patch.object(hm, "is_gpu_busy", return_value=False),
+            patch.object(hm, "_queue_gpu_busy", return_value=True),
+            patch.object(hm, "_get_running") as get_running,
+            pytest.raises(KeyboardInterrupt),
+        ):
+            hm._watchdog_loop(MagicMock())
+
+        assert waits == [30, hm.WATCHDOG_INTERVAL_S]
+        get_running.assert_not_called()
+
+
+class TestUnhealthyMarking:
+    """The watchdog marks a module unhealthy on a crash loop but NEVER swaps
+    the model — model choice is the admin's, and a hardcoded fallback that is
+    missing on disk silently broke multimodal on a deployment."""
+
+    def test_mark_adds_module_and_getter_returns_it(self):
+        hm._mark_unhealthy("multimodal")
+        assert hm._is_unhealthy("multimodal") is True
+        assert hm.get_unhealthy_modules() == ["multimodal"]
+
+    def test_clear_removes_module(self):
+        hm._mark_unhealthy("multimodal")
+        hm._clear_unhealthy("multimodal")
+        assert hm.get_unhealthy_modules() == []
+
+    def test_in_cooldown_right_after_mark(self):
+        hm._mark_unhealthy("multimodal")
+        assert hm._in_unhealthy_cooldown("multimodal") is True
+
+    def test_cooldown_expires(self):
+        hm._mark_unhealthy("multimodal")
+        hm._unhealthy["multimodal"] = time.time() - hm.WATCHDOG_UNHEALTHY_COOLDOWN_S - 1
+        assert hm._in_unhealthy_cooldown("multimodal") is False
+
+    def test_loop_marks_unhealthy_without_swapping_model(self):
+        waits = []
+        # Never swap: the watchdog must not touch dry_load/_rollback.
+        with patch("app.tasks.dry_load._rollback") as mock_rollback:
+
+            class FakeStop:
+                def is_set(self):
+                    return False
+
+                def wait(self, seconds):
+                    waits.append(seconds)
+                    if len(waits) >= 2:
+                        raise KeyboardInterrupt
+                    return False
+
+            with (
+                patch.object(hm, "_stop_event_for", return_value=FakeStop()),
+                patch.object(hm, "is_gpu_busy", return_value=False),
+                patch.object(hm, "_queue_gpu_busy", return_value=False),
+                patch.object(hm, "_get_running", return_value=[{"name": "multimodal", "model_id": "Qwen3"}]),
+                patch.object(hm, "_try_health_check", return_value=False),
+                patch.object(hm, "WATCHDOG_FAILURE_THRESHOLD", 1),
+                pytest.raises(KeyboardInterrupt),
+            ):
+                hm._watchdog_loop(MagicMock())
+
+        assert "multimodal" in hm._unhealthy
+        mock_rollback.assert_not_called()
+
+    def test_healthy_check_clears_unhealthy_mark(self):
+        waits = []
+
+        class FakeStop:
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                waits.append(seconds)
+                if len(waits) >= 2:
+                    raise KeyboardInterrupt
+                return False
+
+        hm._mark_unhealthy("multimodal")
+        hm._unhealthy["multimodal"] = time.time() - hm.WATCHDOG_UNHEALTHY_COOLDOWN_S - 1
+        with (
+            patch.object(hm, "_stop_event_for", return_value=FakeStop()),
+            patch.object(hm, "is_gpu_busy", return_value=False),
+            patch.object(hm, "_queue_gpu_busy", return_value=False),
+            patch.object(hm, "_get_running", return_value=[{"name": "multimodal", "model_id": "Qwen3"}]),
+            patch.object(hm, "_try_health_check", return_value=True),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            hm._watchdog_loop(MagicMock())
+
+        assert hm.get_unhealthy_modules() == []
+
+    def test_health_check_skipped_during_unhealthy_cooldown(self):
+        waits = []
+
+        class FakeStop:
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                waits.append(seconds)
+                if len(waits) >= 2:
+                    raise KeyboardInterrupt
+                return False
+
+        hm._mark_unhealthy("multimodal")
+        with (
+            patch.object(hm, "_stop_event_for", return_value=FakeStop()),
+            patch.object(hm, "is_gpu_busy", return_value=False),
+            patch.object(hm, "_queue_gpu_busy", return_value=False),
+            patch.object(hm, "_get_running", return_value=[{"name": "multimodal", "model_id": "Qwen3"}]),
+            patch.object(hm, "_try_health_check") as try_check,
+            pytest.raises(KeyboardInterrupt),
+        ):
+            hm._watchdog_loop(MagicMock())
+
+        try_check.assert_not_called()

@@ -109,16 +109,18 @@ Verified against tier/hardware combinations in `tests/test_autofit_context.py` (
 ## 5-Layer Protection
   1. **UI hint** (`app/static/js/admin-models.js:updateMemoryEstimation`): on model/ctx change, fetches `/admin/api/model-estimate` and displays colored tier indicator. Save button is **disabled** when `can_save=false`.
   2. **Server validation** (`app/routes/admin.py:update_model_config`): before saving, calls `_classify_model_fit()`. If `tier=impossible` or `tier=unknown` → returns 400 with `tier_message`. Defense in depth (UI is bypassable).
-  3. **Dry-load + auto-rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
+  3. **Dry-load + admin-model rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
     + Sends tiny completion to llama-swap to trigger model load
     + Polls `/running` for 30s waiting for model
     + On success: unloads test instance (next user request reloads)
-    + On failure: calls `_rollback()` to restore `FALLBACK_MODELS[module]`
+    + On failure: calls `_rollback()` to restore the **previous admin-chosen model** (`rollback_model`) or the previous `context_length` (`rollback_ctx`). A hardcoded fallback model is never used — a fallback not present on disk silently broke multimodal on a deployment (incident 2026-10-09, `Qwen3VL-8B`). With no `rollback_model` and no `rollback_ctx` the rollback refuses (returns `False`) and leaves the config untouched.
   4. **Crash loop watchdog** (app/tasks/health_monitor.py): 60s polling loop:
     + Reads llama-swap `/running` for active models
     + Sends tiny health check to each
     + Records failures in 5-min sliding window
-    + On 3 failures in window → auto-rollback to fallback
+    + On 3 failures in window → **marks the module unhealthy** (skips further checks for 10 min), it never swaps the model — model choice stays with the admin
+    + Skips its whole tick while the GPU is busy (`is_gpu_busy()` or a worker holding `_gpu_lock`) so a long multimodal chat is not mistaken for a crash loop
+    + A successful check after the cooldown clears the unhealthy mark
   5. **File size + context validation:**
     + `file_size_mb` cached on model scan
     + `arch_max_ctx` from GGUF `context_length` field
@@ -137,19 +139,6 @@ Verified against tier/hardware combinations in `tests/test_autofit_context.py` (
   "arch_max_ctx": 262144
 }
 ```
-
-### Fallback Models
-Used by dry_load + watchdog (`app/tasks/dry_load.py:_FALLBACK_MODELS`):
-
-```python
-_FALLBACK_MODELS = {
-    "reasoning": "Qwen3.6-35B-A3B-UD-Q2_K_XL",
-    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
-    "embedding": "bge-m3-Q8_0",
-}
-```
-
-On an 8 GB GPU tier and CPU-only mode the seeded multimodal model is the lighter Qwen3VL-4B; on CPU-only mode the reasoning model is gpt-oss-20b-mxfp4.
 
 ### GGUF Fallback Reading
 `_classify_model_fit()` and `model_vram_estimate()` in `app/routes/admin.py`: if model not in `gguf_models_cache`, reads `block_count` and `expert_count` directly from GGUF file via `gguf.GGUFReader`. Detects MTP via `{arch}.nextn_predict_layers`.

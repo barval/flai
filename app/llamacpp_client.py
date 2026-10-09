@@ -128,6 +128,11 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
         return _tr("Failed to load image or audio file. Check the image and try again.", lang)
     if "can't load image" in lower or "cannot load image" in lower:
         return _tr("Failed to load image or audio file. Check the image and try again.", lang)
+    if "no router for requested model" in lower:
+        return _tr(
+            "Requested model is not available on the model server. Check the selected model in the admin panel.",
+            lang,
+        )
     return msg
 
 

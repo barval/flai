@@ -5,8 +5,14 @@ After admin saves a new model config, this module:
 1. Schedules a background thread
 2. Tries to load the new model via llama-swap
 3. Verifies /v1/models endpoint returns the new model
-4. On failure: rolls back to fallback model
+4. On failure: rolls back to the previous admin-chosen model
+   (or reverts the context window for a ctx-only change)
 5. On success: unloads the test model (it'll be loaded on next user request)
+
+There is NO hardcoded fallback: rolling back to a model that does not exist
+on disk silently drops the module from llama-swap (incident 2026-10-09).
+The rollback target is always the model the admin had selected before the
+change.
 """
 
 import contextlib
@@ -19,17 +25,6 @@ logger = logging.getLogger(__name__)
 
 DRY_LOAD_TIMEOUT_S = 30
 DRY_LOAD_POLL_INTERVAL_S = 1
-
-_FALLBACK_MODELS: dict[str, str] = {
-    "reasoning": "Qwen3.6-35B-A3B-UD-Q2_K_XL",
-    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
-    "embedding": "bge-m3-Q8_0",
-}
-
-
-def get_fallback_models() -> dict[str, str]:
-    """Return the fallback models dict used for rollback after a failed dry-load."""
-    return _FALLBACK_MODELS
 
 
 def _trigger_load(swap_url: str, module: str) -> bool:
@@ -79,11 +74,21 @@ def _check_running(swap_url: str, expected: str) -> bool:
         return False
 
 
-def _rollback(app: Any, module: str, failed_model: str, rollback_ctx: int | None = None) -> bool:
+def _rollback(
+    app: Any,
+    module: str,
+    failed_model: str,
+    rollback_ctx: int | None = None,
+    rollback_model: str | None = None,
+) -> bool:
     """Roll back after a dry-load failure.
 
-    Model changes revert to the fallback model; context-only changes
-    (``rollback_ctx`` set) revert the context window and keep the model.
+    Model changes revert to ``rollback_model`` (the model the admin had
+    selected before the change); context-only changes (``rollback_ctx`` set)
+    revert the context window and keep the model. With neither given there
+    is nothing safe to restore to — the DB is left untouched and False is
+    returned, so a missing rollback target can never switch the module to a
+    model that does not exist on disk.
     """
     app_obj = app._get_current_object() if hasattr(app, "_get_current_object") else app  # type: ignore[attr-defined]
 
@@ -106,9 +111,10 @@ def _rollback(app: Any, module: str, failed_model: str, rollback_ctx: int | None
             invalidate_model_config_cache(module)
             logger.warning(f"Auto-rollback: {module} context reverted to {rollback_ctx} (load failed)")
         else:
-            fallback = get_fallback_models().get(module)
-            if not fallback:
-                logger.error(f"No fallback model for module={module}")
+            if not rollback_model:
+                logger.error(
+                    f"No rollback model for module={module} (load of '{failed_model}' failed) — model left unchanged"
+                )
                 return False
 
             with get_db() as conn:
@@ -119,11 +125,11 @@ def _rollback(app: Any, module: str, failed_model: str, rollback_ctx: int | None
                     SET model_name = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE module = %s
                 """,
-                    (fallback, module),
+                    (rollback_model, module),
                 )
                 conn.commit()
             invalidate_model_config_cache(module)
-            logger.warning(f"Auto-rollback: {module} reverted to {fallback} (was {failed_model})")
+            logger.warning(f"Auto-rollback: {module} reverted to {rollback_model} (was {failed_model})")
 
         # Regenerate llama-swap config
         from app.llama_swap_config import generate_and_write
@@ -140,7 +146,13 @@ def _rollback(app: Any, module: str, failed_model: str, rollback_ctx: int | None
         return False
 
 
-def _dry_load_worker(app: Any, module: str, new_model: str, rollback_ctx: int | None = None) -> None:
+def _dry_load_worker(
+    app: Any,
+    module: str,
+    new_model: str,
+    rollback_ctx: int | None = None,
+    rollback_model: str | None = None,
+) -> None:
     """Background thread: try loading the new model, rollback on failure."""
     import os
 
@@ -178,10 +190,16 @@ def _dry_load_worker(app: Any, module: str, new_model: str, rollback_ctx: int | 
             logger.warning(f"dry_load: {module}/{new_model} failed to load — rolling back")
         else:
             logger.warning(f"dry_load: {module}/{new_model} didn't reach 'running' state — rolling back")
-        _rollback(app, module, new_model, rollback_ctx)
+        _rollback(app, module, new_model, rollback_ctx, rollback_model)
 
 
-def schedule_dry_load(app: Any, module: str, new_model: str, rollback_ctx: int | None = None) -> None:
+def schedule_dry_load(
+    app: Any,
+    module: str,
+    new_model: str,
+    rollback_ctx: int | None = None,
+    rollback_model: str | None = None,
+) -> None:
     """Schedule a background dry-load test for the new model.
 
     Safe to call from request handlers.  The thread is daemon, so
@@ -192,7 +210,7 @@ def schedule_dry_load(app: Any, module: str, new_model: str, rollback_ctx: int |
 
     thread = threading.Thread(
         target=_dry_load_worker,
-        args=(app, module, new_model, rollback_ctx),
+        args=(app, module, new_model, rollback_ctx, rollback_model),
         daemon=True,
         name=f"dry-load-{module}",
     )

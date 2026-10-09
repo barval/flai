@@ -334,7 +334,7 @@ def create_app():
     app._last_task_time = 0  # Allow merge on first idle check after startup
     _start_slm_merge_watcher(app)
 
-    # Watchdog: detect llama-swap crash loops and auto-rollback
+    # Watchdog: detect llama-swap crash loops and mark modules unhealthy
     if app.config.get("LLAMACP_BACKEND") == "llama-swap":
         try:
             from app.tasks.health_monitor import start_watchdog

@@ -494,6 +494,14 @@ msgstr "Не удалось обработать запрос изображен
 msgid "Failed to load image or audio file. Check the image and try again."
 msgstr "Не удалось загрузить изображение или аудиофайл. Проверьте файл изображения и попробуйте снова."
 
+#: app/llamacpp_client.py
+msgid ""
+"Requested model is not available on the model server. Check the selected "
+"model in the admin panel."
+msgstr ""
+"Запрошенная модель недоступна на сервере моделей. Проверьте выбранную "
+"модель в панели администратора."
+
 #: app/queue.py:4770 app/queue.py:4827
 msgid "Invalid image"
 msgstr "Неверное изображение"

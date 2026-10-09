@@ -167,6 +167,21 @@ class TestFormatUserError:
         # Must not contain the raw English phrase; ru output should carry Cyrillic.
         assert "Failed to load image or audio file" not in out
 
+    def test_no_router_for_requested_model_is_translated(self, test_app):
+        """The llama-swap 'no router for requested model' error must be mapped
+        to a localized message — after a watchdog run dropped multimodal from
+        the generated config, the raw English error reached the user in a
+        Russian profile (incident 2026-10-09)."""
+        from app.llamacpp_client import _translate_llama_swap_error
+
+        raw = "no router for requested model"
+        with test_app.app_context():
+            out = _translate_llama_swap_error(raw, "ru")
+        assert out != raw
+        assert "no router for requested model" not in out
+        # Russian output should carry Cyrillic.
+        assert sum(1 for ch in out if ord(ch) > 127) > 0
+
 
 class TestChatStreamYieldsWarningPrefix:
     """Integration: LlamaSwapBackend.chat_stream yields ⚠️-prefixed error on HTTP 400."""

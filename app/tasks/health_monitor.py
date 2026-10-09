@@ -1,9 +1,12 @@
 # app/tasks/health_monitor.py
-"""Watchdog: detect llama-swap crash loops and auto-rollback to fallback model.
+"""Watchdog: detect llama-swap crash loops and mark modules unhealthy.
 
 Runs in a daemon thread, polling llama-swap /running every 60 seconds.
-If a model is crashing repeatedly (3 failures within 5 minutes),
-automatically rolls back to the fallback model.
+If a model is crashing repeatedly (3 failures within 5 minutes), the
+module is marked UNHEALTHY — the watchdog NEVER swaps the model by itself
+(model choice is the admin's, and a hardcoded fallback that does not exist
+on disk silently broke multimodal on a deployment). Health checks resume
+after a cooldown; a successful check clears the unhealthy marker.
 """
 
 import logging
@@ -17,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 WATCHDOG_INTERVAL_S = 60
 WATCHDOG_FAILURE_WINDOW_S = 300  # 5 minutes
-WATCHDOG_FAILURE_THRESHOLD = 3  # 3 failures in window triggers rollback
+WATCHDOG_FAILURE_THRESHOLD = 3  # 3 failures in window triggers unhealthy mark
+WATCHDOG_UNHEALTHY_COOLDOWN_S = 600  # pause health checks for 10 min after marking
 LTX_OOM_WINDOW_S = 3600  # 1 hour sliding window for OOM metric
 
 
@@ -36,8 +40,25 @@ def is_gpu_busy() -> bool:
         return False
 
 
+def _queue_gpu_busy(app: Any) -> bool:
+    """True while a worker holds the queue's GPU lock.
+
+    Covers plain model tasks that do NOT set the ResourceManager busy flags
+    (multimodal chat, reasoning, image chat): a long CPU multimodal call keeps
+    ``_gpu_lock`` held for minutes, and a health check fired into the busy
+    model times out — previously counted as a crash-loop failure.
+    """
+    queue = getattr(app, "request_queue", None)
+    try:
+        return bool(queue and queue.is_gpu_task_active())
+    except Exception:
+        return False
+
+
 # Track recent failures per module: {module: deque[timestamp]}
 _failures: dict[str, deque[float]] = {}
+# Modules marked unhealthy by the watchdog: {module: timestamp}
+_unhealthy: dict[str, float] = {}
 # Track recent ltx-video OOM events: deque[timestamp]
 _ltx_video_oom_events: deque[float] = deque()
 _lock = threading.Lock()
@@ -126,18 +147,42 @@ def get_ltx_video_oom_count() -> int:
         return sum(1 for t in _ltx_video_oom_events if t >= cutoff)
 
 
-def _auto_rollback(app: Any, module: str) -> bool:
-    """Roll back to the fallback model.  Returns True on success."""
-    from app.tasks.dry_load import _rollback, get_fallback_models
+def _mark_unhealthy(module: str) -> None:
+    """Mark a module unhealthy (no model swap — admin model choice is kept)."""
+    now = time.time()
+    with _lock:
+        _unhealthy[module] = now
+    logger.error(
+        f"watchdog: {module} marked UNHEALTHY ({WATCHDOG_FAILURE_THRESHOLD} "
+        f"failures in {WATCHDOG_FAILURE_WINDOW_S}s window). Model left unchanged — "
+        "check its health manually"
+    )
 
-    fallback = get_fallback_models().get(module)
-    if not fallback:
-        logger.error(f"watchdog: no fallback for module={module}")
-        return False
-    logger.warning(f"watchdog: auto-rolling back {module} to {fallback} due to crash loop")
-    # Pass sentinel — not the actual fallback model — so _rollback() doesn't
-    # refuse with "fallback == failed_model" (which is a dry_load dedup guard).
-    return _rollback(app, module, f"watchdog-rollback-{module}")
+
+def _is_unhealthy(module: str) -> bool:
+    with _lock:
+        return module in _unhealthy
+
+
+def _clear_unhealthy(module: str) -> None:
+    with _lock:
+        _unhealthy.pop(module, None)
+
+
+def _in_unhealthy_cooldown(module: str) -> bool:
+    """True while an unhealthy module is in its check-pause cooldown."""
+    now = time.time()
+    with _lock:
+        marked = _unhealthy.get(module)
+        if marked is None:
+            return False
+        return now - marked < WATCHDOG_UNHEALTHY_COOLDOWN_S
+
+
+def get_unhealthy_modules() -> list[str]:
+    """Return modules the watchdog has marked unhealthy (thread-safe)."""
+    with _lock:
+        return sorted(_unhealthy)
 
 
 def _stop_event_for(app: Any) -> threading.Event:
@@ -164,9 +209,11 @@ def _watchdog_loop(app: Any) -> None:
 
     while not stop.is_set():
         try:
-            if is_gpu_busy():
-                # GPU transaction in progress — skip the whole tick. Touching
-                # llama-swap now would respawn the model being unloaded.
+            if is_gpu_busy() or _queue_gpu_busy(app):
+                # GPU transaction or a worker model call in progress — skip the
+                # whole tick. Touching llama-swap now would respawn the model
+                # being unloaded, and health checks against a busy model time
+                # out and inflate the crash-loop counters.
                 if stop.wait(WATCHDOG_INTERVAL_S):
                     return
                 continue
@@ -184,9 +231,19 @@ def _watchdog_loop(app: Any) -> None:
                     if not module or module not in ("reasoning", "multimodal", "embedding"):
                         continue
 
+                    # An unhealthy module pauses health checks until the
+                    # cooldown expires. The model was NOT touched — the admin
+                    # decides what to do (nothing hides the crash better than
+                    # a watchdog that "fixes" it by swapping the model).
+                    if _in_unhealthy_cooldown(module):
+                        continue
+
                     # Try a health check
                     if _try_health_check(swap_url, module):
                         _clear_failures(module)
+                        if _is_unhealthy(module):
+                            _clear_unhealthy(module)
+                            logger.warning(f"watchdog: {module} recovered — cleared UNHEALTHY mark")
                     else:
                         failures = _record_failure(module)
                         logger.warning(
@@ -194,7 +251,7 @@ def _watchdog_loop(app: Any) -> None:
                             f"({failures}/{WATCHDOG_FAILURE_THRESHOLD} in window)"
                         )
                         if failures >= WATCHDOG_FAILURE_THRESHOLD:
-                            _auto_rollback(app, module)
+                            _mark_unhealthy(module)
                             _clear_failures(module)
         except Exception as e:
             logger.exception(f"watchdog loop error: {e}")

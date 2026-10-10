@@ -3,7 +3,7 @@
 
 .admin-container {
     padding: 20px;
-    max-width: 1400px;
+    max-width: 100%;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -79,6 +79,12 @@
     padding-bottom: 16px;
 }
 
+/* Users tab: the table wrapper is the single horizontal scroll container, so
+   the table header and body scroll together instead of the whole tab. */
+#users-tab.active {
+    overflow-x: hidden;
+}
+
 .hub-companion-choice {
     display: flex;
     flex-wrap: wrap;
@@ -100,12 +106,12 @@
 #users-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: 13px;
     background-color: #fff;
 }
 #users-table th,
 #users-table td {
-    padding: 12px 8px;
+    padding: 8px 6px;
     text-align: center;
     vertical-align: middle;
     border-bottom: 1px solid #eee;
@@ -154,7 +160,7 @@
     flex-direction: column;
     gap: 4px;
     text-align: left;
-    padding-left: 20px;
+    padding-left: 8px;
 }
 
 /* ===== CAMERAS TAB ===== */
@@ -677,6 +683,7 @@ body.admin-page .voice-gender-switcher {
 .users-table-wrapper {
     position: relative;
     overflow-y: auto;
+    overflow-x: auto;
     max-height: calc(100vh - 320px); /* header(50) + title(30) + tabs(50) + tab-header(60) + padding(40) + footer(30) + margins(60) */
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -687,7 +694,7 @@ body.admin-page .voice-gender-switcher {
 #users-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: 13px;
     background-color: #fff;
 }
 
@@ -702,10 +709,10 @@ body.admin-page .voice-gender-switcher {
     background-color: #2c3e50;
     color: white;
     font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.5px;
+    font-size: 12px;
+    letter-spacing: 0;
     border-bottom: 2px solid #2980b9;
-    padding: 12px 8px;
+    padding: 8px 6px;
     text-align: center;
     vertical-align: middle;
 }

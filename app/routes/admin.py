@@ -276,7 +276,7 @@ def get_users_tavily_usage():
     small thread pool. Key material is never included in the response.
     """
     from app.api_bridge import get_redis_client
-    from app.tavily_keys import STATUS_NO_KEY, fetch_tavily_usage
+    from app.tavily_keys import STATUS_EXHAUSTED, STATUS_NO_KEY, STATUS_OK, fetch_tavily_usage
 
     users = list_users(exclude_admin=True)
     api_url = current_app.config.get("TAVILY_API_URL", "https://api.tavily.com")
@@ -328,7 +328,9 @@ def get_users_tavily_usage():
         with ThreadPoolExecutor(max_workers=4) as executor:
             for login, usage in executor.map(_fetch, pending):
                 result[login].update(usage)
-                if redis_client is not None:
+                # Only successful lookups are cached. A transient WAF block or
+                # network failure must not freeze the cell on a stale status.
+                if usage.get("status") in (STATUS_OK, STATUS_EXHAUSTED) and redis_client is not None:
                     try:
                         redis_client.set(f"admin:tavily_usage:{login}", json.dumps(usage), ex=ttl)
                     except Exception as e:

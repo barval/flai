@@ -138,6 +138,10 @@ class TestTavilyEnabledFlag:
 
 @pytest.mark.unit
 class TestFetchTavilyUsage:
+    @pytest.fixture(autouse=True)
+    def _no_retry_sleep(self, monkeypatch):
+        monkeypatch.setattr("app.tavily_keys.time.sleep", lambda *_: None)
+
     @staticmethod
     def _response(status_code=200, payload=None):
         class _Resp:
@@ -192,14 +196,42 @@ class TestFetchTavilyUsage:
 
         assert (usage["limit"], usage["used"], usage["remaining"]) == (1000, 10, 990)
 
-    @pytest.mark.parametrize("status_code", [401, 403])
-    def test_rejected_key_is_invalid(self, test_app, status_code):
+    def test_missing_authorization_is_invalid(self, test_app):
         with patch("app.tavily_keys.requests") as mock_requests:
-            mock_requests.get.return_value = self._response(status_code)
+            mock_requests.get.return_value = self._response(401)
 
             usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
 
         assert usage["status"] == "invalid"
+
+    def test_waf_403_is_unavailable_and_retried(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(403)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "unavailable"
+        assert mock_requests.get.call_count == tavily_keys.USAGE_MAX_ATTEMPTS
+
+    def test_403_then_200_recovers(self, test_app):
+        payload = {"key": {"usage": 12, "limit": 1000}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.side_effect = [self._response(403), self._response(200, payload)]
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "ok"
+        assert usage["remaining"] == 988
+
+    def test_request_sends_a_browser_user_agent(self, test_app):
+        payload = {"key": {"usage": 1, "limit": 10}}
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(200, payload)
+
+            tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        headers = mock_requests.get.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == tavily_keys.REQUEST_USER_AGENT
 
     def test_transport_error_is_unavailable(self, test_app):
         with patch("app.tavily_keys.requests") as mock_requests:
@@ -209,14 +241,23 @@ class TestFetchTavilyUsage:
 
         assert usage["status"] == "unavailable"
 
-    @pytest.mark.parametrize("status_code", [429, 503])
-    def test_failed_request_is_unavailable(self, test_app, status_code):
+    def test_rate_limited_429_is_retried_then_unavailable(self, test_app):
         with patch("app.tavily_keys.requests") as mock_requests:
-            mock_requests.get.return_value = self._response(status_code)
+            mock_requests.get.return_value = self._response(429)
 
             usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
 
         assert usage["status"] == "unavailable"
+        assert mock_requests.get.call_count == tavily_keys.USAGE_MAX_ATTEMPTS
+
+    def test_server_error_503_is_not_retried(self, test_app):
+        with patch("app.tavily_keys.requests") as mock_requests:
+            mock_requests.get.return_value = self._response(503)
+
+            usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+        assert usage["status"] == "unavailable"
+        assert mock_requests.get.call_count == 1
 
     def test_trailing_slash_in_api_url_is_normalized(self, test_app):
         payload = {"key": {"usage": 1, "limit": 10}}

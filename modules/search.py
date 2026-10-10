@@ -13,6 +13,7 @@ import trafilatura
 from requests.exceptions import Timeout as RequestsTimeout
 
 from app.mixins import TranslationMixin
+from app.tavily_keys import REQUEST_USER_AGENT
 
 _RU_MONTHS_GENITIVE = {
     1: "января",
@@ -331,20 +332,31 @@ class SearchModule(TranslationMixin):
             "include_answer": False,
             "include_raw_content": False,
         }
-        try:
-            resp = requests.post(
-                f"{self.tavily_api_url}/search",
-                json=payload,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                timeout=self.tavily_timeout,
-            )
-        except RequestsTimeout:
-            self.logger.warning(f"Tavily search timeout ({self.tavily_timeout}s): {query[:60]}...")
-            return []
-        except Exception as e:
-            self.logger.warning(f"Tavily search failed: {e}")
-            return []
-        if resp.status_code != 200:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": REQUEST_USER_AGENT,
+        }
+        resp = None
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    f"{self.tavily_api_url}/search",
+                    json=payload,
+                    headers=headers,
+                    timeout=self.tavily_timeout,
+                )
+            except RequestsTimeout:
+                self.logger.warning(f"Tavily search timeout ({self.tavily_timeout}s): {query[:60]}...")
+                return []
+            except Exception as e:
+                self.logger.warning(f"Tavily search failed: {e}")
+                return []
+            if resp.status_code == 200:
+                break
+            # The WAF/rate limiter answers bot-like requests with a 403 or 429; retry once.
+            if resp.status_code in (403, 429) and attempt == 0:
+                continue
             self.logger.warning(f"Tavily search returned HTTP {resp.status_code}: {query[:60]}...")
             return []
         try:

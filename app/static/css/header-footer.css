@@ -481,13 +481,13 @@ footer {
 @media (max-width: 768px) {
     header {
         height: 38px;
-        padding: 0.15rem 0.5rem;
+        padding: 0.15rem 0.25rem;
         gap: 6px;
         text-align: left;
     }
     .header-logo {
         height: 26px;
-        margin-right: 6px;
+        margin-right: 0.25rem;
     }
     header h1 {
         font-size: 1rem;
@@ -503,7 +503,8 @@ footer {
         gap: 6px;
     }
     .user-name {
-        max-width: 26vw;
+        max-width: 40vw;
+        min-width: 0;
         font-size: 0.8rem;
         padding: 0.1rem 0.3rem;
     }

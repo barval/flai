@@ -43,8 +43,12 @@
                         {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                     </button>
                 </div>
+                {% if session.get('is_admin') %}
+                <span class="user-name user-label" id="api-keys-btn" role="status">{{ _('Administrator') }}</span>
+                {% else %}
                 <button type="button" class="user-name" id="api-keys-btn"
-                        title="{{ _('api_keys_title') }}" aria-haspopup="dialog" aria-controls="api-keys-panel">{{ session['name'] if not session.get('is_admin') else _('Administrator') }} ▾</button>
+                        title="{{ _('api_keys_title') }}" aria-haspopup="dialog" aria-controls="api-keys-panel">{{ session['name'] }} ▾</button>
+                {% endif %}
                 <div class="language-switcher">
                     <select id="language-select" onchange="switchLanguage(this.value)">
                         <option value="ru" data-short="Ру" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
@@ -64,6 +68,7 @@
                 </form>
             </div>
             <div class="header-row row2">
+                {% if not session.get('is_admin') %}
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="{{ _('api_keys_revoke') }}"
                      data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
@@ -120,6 +125,7 @@
                         <tbody id="api-keys-body"></tbody>
                     </table>
                 </div>
+                {% endif %}
             </div>
         </div>
         {% else %}

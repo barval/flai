@@ -2054,17 +2054,13 @@ msgstr "VRAM"
 msgid "RAM"
 msgstr "RAM"
 
-#: app/templates/admin.html:513
-msgid "total"
-msgstr "total"
-
-#: app/templates/admin.html:514
-msgid "available"
-msgstr "available"
-
 #: app/templates/admin.html:515
 msgid "GB"
 msgstr "GB"
+
+#: app/templates/admin.html:514 app/static/js/admin.js:409 app/static/js/admin.js:415
+msgid "of"
+msgstr "of"
 
 #: app/templates/admin.html:518
 msgid "Searching…"

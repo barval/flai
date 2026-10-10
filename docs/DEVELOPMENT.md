@@ -47,6 +47,8 @@ pytest --cov=app --cov=modules --cov-report=html
 pytest tests/test_queue.py       # a specific file
 ```
 
+Each test module builds its own Flask apps (`create_app()` → worker threads, Redis, Qdrant), so state can leak between modules. The CI runs the whole suite as `pytest --forked` (`pytest-forked` in the dev extras): every module runs in its own subprocess, which isolates that state and surfaces single-module flakes instead of cross-module order effects. On a single development host the same isolation applies at a coarser level — run only the suites you touched (see AGENTS.md for the memory budget) — and the Docker image build is gated on the suite passing.
+
 FLAI includes comprehensive testing for all key components and load testing for the web interface.
 
 ### Load testing

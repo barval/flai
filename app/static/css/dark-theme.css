@@ -15,10 +15,11 @@
 .dark-theme .api-keys-table th,
 .dark-theme .api-keys-table td { border-bottom-color: #444; }
 .dark-theme .api-keys-create input {
-    color: #e0e0e0;
-    background-color: #3a3a3a;
+    color: #eee;
+    background-color: #2a2a2a;
     border-color: #555;
 }
+.dark-theme .api-keys-create button { background: #4a4a4a; border-color: #666; color: #eee; }
 .dark-theme .api-keys-revoke { color: #e74c3c; border-color: #e74c3c; }
 .dark-theme .tavily-section { border-bottom-color: #444; }
 .dark-theme .tavily-hint a { color: #3498db; }

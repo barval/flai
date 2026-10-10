@@ -1175,14 +1175,18 @@ body.dark-theme .hardware-table .hw-value {
     color: #e0e0e0;
 }
 
-/* Mobile-only compact Hardware table: halved label/column indents and
-   wrapping value cells so long values never overflow the right edge. */
+/* Mobile-only compact Hardware table: the label column's left inset, the gap
+   to the value column and the right edge of the values all share one ~5 px
+   offset (half of the 10 px desktop padding); long values wrap instead of
+   overflowing past the right edge. */
 @media (max-width: 768px) {
     .hardware-table td {
         padding: 8px 5px;
     }
+    .hardware-table td.hw-value {
+        padding-left: 0;
+    }
     .hardware-table .hw-value {
-        padding-left: 5px;
         white-space: normal;
         overflow-wrap: anywhere;
     }

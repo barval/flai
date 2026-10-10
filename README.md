@@ -128,7 +128,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - Redis queue tasks are HMAC-signed; file paths are validated for traversal; all markdown HTML is sanitized with DOMPurify.
 - Every URL that leaves the app passes an SSRF guard (no private, loopback, link-local or CGNAT addresses).
 
-## 🏗️ Architecture Overview
+## 🏗 Architecture Overview
 
 ```
 Browser / API client
@@ -341,7 +341,7 @@ Every service has a profile, and most settings live in `.env`: compose profiles,
 
 Chat and reasoning · image analysis · image generation and editing · video generation · voice messages and spoken answers · document search · web search and site reading · deep analysis · long-term memory · camera snapshots · chat export · backups · the `/v1` API.
 
-## 🛠️ Contributing
+## 🛠 Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the code layout, the test commands and the project's hard rules. In short: fork, branch from the current version branch, keep changes surgical, and open a pull request.
 

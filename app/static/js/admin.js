@@ -406,13 +406,13 @@ function loadHardware() {
         const rows = [
             [t('Platform'), platformLabels[platform] || platform],
             [t('GPU'), noGpu ? '—' : data.gpu_name],
-            [t('VRAM'), noGpu ? '—' : formatMemMb(data.total_vram_mb) + '/' + formatMemMb(data.available_vram_mb) + ' ' + t('GB') + ' (' + t('total') + '/' + t('available') + ')']
+            [t('VRAM'), noGpu ? '—' : formatMemMb(data.available_vram_mb) + ' ' + t('GB') + ' ' + t('of') + ' ' + formatMemMb(data.total_vram_mb) + ' ' + t('GB')]
         ];
         if (!data.cpu_count) {
             data.cpu_count = 0;
         }
         rows.push([t('CPU cores'), data.cpu_count]);
-        rows.push([t('RAM'), formatMemMb(data.total_ram_mb) + '/' + formatMemMb(data.available_ram_mb) + ' ' + t('GB') + ' (' + t('total') + '/' + t('available') + ')']);
+        rows.push([t('RAM'), formatMemMb(data.available_ram_mb) + ' ' + t('GB') + ' ' + t('of') + ' ' + formatMemMb(data.total_ram_mb) + ' ' + t('GB')]);
         rows.push([t('CPU'), (data.cpu_name || '—') + (data.cpu_count ? ' · ' + data.cpu_count + ' ' + t('CPU cores') : ''), true]);
 
         tbody.innerHTML = rows.map(function(row) {

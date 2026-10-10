@@ -28,6 +28,8 @@ header {
 }
 .user-name:hover { background: rgba(255, 255, 255, 0.15); }
 .user-name:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.user-name.is-label { cursor: default; }
+.user-name.is-label:hover { background: none; }
 .api-keys-panel {
     position: absolute;
     top: 52px;
@@ -84,7 +86,8 @@ header {
 .tavily-saved[hidden],
 .tavily-status[hidden] { display: none; }
 .tavily-create input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
-.tavily-create button { padding: 4px 10px; cursor: pointer; border: 1px solid #2c3e50; border-radius: 4px; background: #2c3e50; color: #fff; }
+.tavily-create button,
+.api-keys-create button { min-width: 124px; padding: 4px 10px; cursor: pointer; border: 1px solid #2c3e50; border-radius: 4px; background: #2c3e50; color: #fff; }
 .tavily-create button.tavily-delete { border-color: #c0392b; background: none; color: #c0392b; }
 .tavily-saved { margin-top: 4px; }
 .tavily-saved-row { display: flex; align-items: center; gap: 8px; }

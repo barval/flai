@@ -6,6 +6,7 @@ mask. Deleting the user removes the key with the row.
 """
 
 import logging
+import time
 
 import requests
 from requests.exceptions import RequestException
@@ -17,6 +18,19 @@ logger = logging.getLogger(__name__)
 KEY_PREFIX = "tvly-"
 KEY_MAX_LENGTH = 128
 MASK_TAIL_CHARS = 4
+
+# Tavily's ``/usage`` endpoint sits behind a WAF that throttles per client:
+# valid keys get an HTML 403 (and occasionally an explicit 429) when requests
+# come too fast. A browser-like UA plus a few backed-off retries makes the
+# lookup reliable for the low-frequency callers (admin page, profile popup); a
+# throttling 403/429 is never treated as proof of an invalid key (only a 401
+# JSON is).
+REQUEST_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+USAGE_MAX_ATTEMPTS = 4
+USAGE_RETRY_DELAY = 0.5  # seconds between retries
+USAGE_TOTAL_TIMEOUT = 20  # wall-clock cap on the retry loop, in seconds
 
 STATUS_NO_KEY = "no_key"
 STATUS_OK = "ok"
@@ -110,20 +124,35 @@ def fetch_tavily_usage(api_key: str, api_url: str, timeout: int) -> dict:
         result["status"] = STATUS_NO_KEY
         return result
 
-    try:
-        response = requests.get(
-            f"{api_url.rstrip('/')}{USAGE_PATH}",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=timeout,
-        )
-    except RequestException as e:
-        logger.warning(f"Tavily usage request failed: {e}")
-        return result
+    url = f"{api_url.rstrip('/')}{USAGE_PATH}"
+    headers = {"Authorization": f"Bearer {api_key}", "User-Agent": REQUEST_USER_AGENT}
 
-    if response.status_code in (401, 403):
+    deadline = time.monotonic() + USAGE_TOTAL_TIMEOUT
+    response = None
+    for attempt in range(USAGE_MAX_ATTEMPTS):
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout)
+        except RequestException as e:
+            logger.warning(f"Tavily usage request failed: {e}")
+            response = None
+        else:
+            if response.status_code == 200 or response.status_code not in (401, 403, 429):
+                break
+        # 403/429 are the WAF/rate limiter, not a key verdict. Back off and
+        # retry (bounded by attempts and wall-clock). 401 is retried too because
+        # the WAF can mask it; only the final response decides.
+        if attempt + 1 >= USAGE_MAX_ATTEMPTS or time.monotonic() >= deadline:
+            break
+        time.sleep(USAGE_RETRY_DELAY)
+
+    if response is None:
+        return result
+    if response.status_code == 401:
         result["status"] = STATUS_INVALID
         return result
     if response.status_code != 200:
+        # Transient throttling or server error: report as unavailable, never
+        # as an invalid key, so a valid key is not mislabeled.
         logger.warning(f"Tavily usage returned HTTP {response.status_code}")
         return result
 

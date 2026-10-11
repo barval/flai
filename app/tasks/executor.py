@@ -13,6 +13,12 @@ tests can patch them at a single seam (see tests/test_tasks_executor.py);
 the SQL helpers the store module does not expose yet live here as public
 functions.
 
+The executor does NOT hold ``_gpu_lock`` for whole steps ("chat never waits"):
+VRAM is handled by the llama.cpp client's internal ``ensure_vram_for`` path
+(same as queue.py workers), and chat/step GPU contention is resolved by the
+mid-step abort mechanism (chat activity raises ``task:step_cancel`` flags;
+see ``_mark_chat_activity`` in ``app/queue.py``).
+
 Mid-step abort (chat preemption): while a direct step runs, the executor
 publishes ``task:running_step:<task_id>`` = step_id and adds the task id to
 the Redis SET ``task:active_running_steps``; both are cleared when the step

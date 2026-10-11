@@ -411,3 +411,45 @@ class TestSubtaskPolling:
         assert step["status"] == "subtask_running", "still running — nothing expired"
         t = store.get_task(task_id)
         assert t["status"] == "active" and t["next_step_index"] == 0, "index held for the next cycle"
+
+    def test_subtask_alive_sees_queued_list(self, poll_env, monkeypatch):
+        """A subtask still waiting in the slow queue list is ALIVE, not expired."""
+        test_app, calls, store = poll_env
+        task_id, row_id = self._seed_subtask(store)
+        test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
+        test_app.config["TASK_SUBTASK_POLL_CYCLES"] = 1
+
+        class _FakeRedis:
+            @staticmethod
+            def hexists(key, member):  # noqa: ARG002
+                return False  # nobody is processing it yet
+
+            @staticmethod
+            def lrange(key, start, end):  # noqa: ARG002
+                return ["sub-1"] if key == "slow_request_queue" else []
+
+        class _Q:
+            processing_key = "processing_requests"
+            slow_processing_key = "slow_processing_requests"
+            background_processing_key = "background_processing"
+            crawl_processing_key = "request_queue:crawl:processing"
+            queue_key = "request_queue"
+            slow_queue_key = "slow_request_queue"
+            background_queue_key = "background_queue"
+            crawl_queue_key = "request_queue:crawl"
+            redis = _FakeRedis()
+
+            @staticmethod
+            def requeue_deferred_subtasks():
+                return 0
+
+        # The real liveness method (NOT patched): hexists all miss, the id sits
+        # in the slow queue list ⇒ alive ⇒ the step is held, not failed.
+        monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+        executor = ex.TaskExecutor(app=test_app)
+        monkeypatch.setattr(executor, "_peek_subtask_result", lambda queue_id: None)
+        executor._process_one_cycle(gate_open=True)
+
+        step = store.get_step(row_id)
+        assert step["status"] == "subtask_running", "queued subtask held — not declared expired"
+        assert store.get_task(task_id)["next_step_index"] == 0, "index held for the next cycle"

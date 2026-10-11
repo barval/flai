@@ -1051,15 +1051,33 @@ class TaskExecutor:
             return None
 
     def _subtask_alive(self, queue_id: str) -> bool:
-        """Is the subtask still pending somewhere in the queue machinery?
+        """Is the subtask still pending in the queue machinery?
 
-        Used to tell "the worker is still on it" from "the result expired".
+        Two states count as alive: the worker holds it in a processing hash, or
+        the id still WAITS in a queue list (slow/deferred — the guard parks
+        tagged work there, and a subtask behind other queue work has not been
+        picked up yet). Checking only the processing hashes would wrongly
+        declare a merely-queued subtask expired once the poll budget runs out.
         Fail-closed (False) so a broken queue never freezes a task forever.
         """
         try:
             queue = _get_request_queue()
-            for key in (queue.processing_key, queue.slow_processing_key, queue.crawl_processing_key):
+            for key in (
+                queue.processing_key,
+                queue.slow_processing_key,
+                queue.background_processing_key,
+                queue.crawl_processing_key,
+            ):
                 if queue.redis.hexists(key, queue_id):
+                    return True
+            for key in (
+                queue.slow_queue_key,
+                queue.queue_key,
+                queue.background_queue_key,
+                queue.crawl_queue_key,
+                DEFERRED_SUBTASKS_KEY,
+            ):
+                if queue_id in (queue.redis.lrange(key, 0, -1) or []):
                     return True
             return False
         except Exception as e:

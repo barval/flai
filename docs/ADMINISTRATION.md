@@ -27,6 +27,7 @@
 | 🤖 Model Management | Configure GGUF models per module type |
 | 📊 System Stats | Monitor database and storage sizes |
 | 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
+| 📋 Tasks count | The Users table shows each user's background-task count (the «Задачи» column, after Sessions); background task classes (3/4/5) are internal and never offered to admins — service classes stay 0/1/2 |
 
 ## CLI Commands
 ```bash

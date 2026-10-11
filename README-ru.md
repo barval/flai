@@ -52,6 +52,7 @@
 | Переменные окружения, профили compose | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
 | Веб-поиск, ключи Tavily, краулер сайтов | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
 | Глубокий анализ (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
+| Фоновые задачи (Задачи) | [TASKS.md](docs/TASKS.md) | [TASKS-ru.md](docs/TASKS-ru.md) |
 | Генерация и редактирование изображений | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
 | Генерация видео (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
 | Голос: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
@@ -70,6 +71,8 @@
 | Как участвовать в проекте | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
 ## 🆕 Что нового в v12.6
+
+- **Фоновые задачи (Задачи)** — новый раздел (вкладка в левой колонке между «Документами» и «Сессиями»): долгоиграющие работы, раскладываемые на шаги с контрольными точками и выполняемые с более низким приоритетом, чем чат; вытесняются любым запросом в чат — чат никогда не ждёт задачу. Задача отображается как переписка (план → результаты шагов → уточняющие вопросы → финальный ответ) с живыми статусами в общем SSE-потоке. Активна одна задача глобально; бюджет 24 ч чистого исполнения по исчерпании завершает задачу финальной сводкой; всё переживает перезапуск (`tasks` + `task_steps` в PostgreSQL). Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`. Подробно → [docs/TASKS-ru.md](docs/TASKS-ru.md) / [docs/TASKS.md](docs/TASKS.md).
 
 Полная история: [CHANGELOG.md](CHANGELOG.md).
 

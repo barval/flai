@@ -70,6 +70,16 @@ RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analy
 RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
 ```
 
+**Фоновые задачи:**
+```bash
+TASKS_ENABLED=1                 # Executor kill switch (0 stops picking up new tasks; running steps finish or abort on cancel flags)
+TASK_QUIET_PERIOD_S=60          # Sliding quiet window: a task step is preempted when any chat request arrives after this many quiet seconds
+TASK_TOTAL_BUDGET_S=86400       # Pure execution budget per task (seconds); on expiry the task finishes with a final summary
+TASK_STEP_MAX_ATTEMPTS=3        # Step attempts including corrective checkpoint retries, then the step is failed
+TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
+TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check
+```
+
 **Роутер:**
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification

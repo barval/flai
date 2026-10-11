@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.6] — Unreleased
 
+### Added
+
+- **Background Tasks (Задачи)** — a new first-class section (the left-column tab between Documents and Sessions, visually identical to Sessions): long-running jobs decomposed into checkpointed steps by a planning call and executed one by one at lower priority than chat. Each task renders as a chat-like conversation — the request, «Plan of N steps:», per-step outputs prefixed «Шаг N из M:», clarifying-question exchanges (the input becomes the answer box «Ответьте на уточнение…») and a final answer. Live statuses per list item (⏳ queued / ▶ Running (step n of m) / ⏸ Frozen / ⏳ Awaiting answer / ✔ Completed / ✖ Failed / ✖ Cancelled / ⏰ Expired) arrive on the shared per-user SSE stream (`task_update`), no polling.
+- **Chat always wins (preemption):** task priority classes are internal (`0→3, 1→4, 2→5`, hidden from the admin panel); **one task runs globally** (class asc, then FIFO; awaiting user input or being frozen releases the slot). The gate before every step = chat queues empty + GPU free + no chat request within `TASK_QUIET_PERIOD_S` (60 s sliding window). Any new chat request **aborts the in-flight step** (partial output discarded, step re-executes on resume) — chat never waits for a task. Media sub-tasks (image/video/RLM) run in the existing queue behind a slow-worker gate guard with a deferred list.
+- **24 h pure-execution budget** (`TASK_TOTAL_BUDGET_S`): every step attempt's real runtime counts (aborted/checkpoint/retry attempts included; waits never), on expiry the task finishes with a final summary. Checkpoints verify each step against its criteria; failure triggers corrective retries (≤ `TASK_STEP_MAX_ATTEMPTS` = 3), then the step is failed and the task continues.
+- **Full persistence and restart recovery:** `tasks` + `task_steps` PostgreSQL tables (included in full backups); the executor resumes interrupted work after a restart. Internal owner-scoped API `/api/tasks*` (list / create / messages / answer / stop / delete with FK cascade). The capabilities registry (`app/tasks/tools.py`) is the seam for a future skills engine. Details → `docs/TASKS.md`. Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`.
+- **Admin Users «Задачи» column** — the Users table shows each user's task count (after Sessions, sortable); background task classes are never offered in the admin class editor.
+
 ## [v12.5] — 2026-10-11
 
 ### Added

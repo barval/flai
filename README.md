@@ -52,6 +52,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Environment variables, compose profiles | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
 | Web search, Tavily keys, site crawler | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
 | Deep analysis (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
+| Background tasks (Tasks) | [TASKS.md](docs/TASKS.md) | [TASKS-ru.md](docs/TASKS-ru.md) |
 | Image generation and editing | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
 | Video generation (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
 | Voice: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
@@ -70,6 +71,8 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
 ## 🆕 What's New in v12.6
+
+- **Background Tasks (Tasks)** — a new section (the left-column tab between Documents and Sessions): long-running jobs decomposed into checkpointed steps and executed at lower priority than chat, preempted by any chat request; chat never waits for a task. The task renders as a chat-like conversation (plan → per-step results → clarifying questions → final answer) with live statuses on the shared SSE stream. One task runs globally; a 24 h pure-execution budget produces a final summary on expiry; everything survives restarts (`tasks` + `task_steps` in PostgreSQL). Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`. Details → [docs/TASKS.md](docs/TASKS.md) / [docs/TASKS-ru.md](docs/TASKS-ru.md).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 

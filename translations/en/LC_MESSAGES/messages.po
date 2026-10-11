@@ -240,6 +240,9 @@ msgstr "Answer is empty"
 msgid "Task is not awaiting an answer"
 msgstr "Task is not awaiting an answer"
 
+msgid "Task is not a draft"
+msgstr "Task is not a draft"
+
 msgid "Plan of {n} steps:"
 msgstr "Plan of {n} steps:"
 
@@ -297,6 +300,15 @@ msgstr "Expired"
 
 msgid "Answer the clarifying question…"
 msgstr "Answer the clarifying question…"
+
+msgid "Draft — describe the task…"
+msgstr "Draft — describe the task…"
+
+msgid "Draft"
+msgstr "Draft"
+
+msgid "No task selected — use «+» to create one"
+msgstr "No task selected — use «+» to create one"
 
 msgid "No tasks yet"
 msgstr "No tasks yet"

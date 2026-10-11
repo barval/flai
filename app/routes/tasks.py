@@ -85,8 +85,9 @@ def _step_message(row: dict, total: int) -> dict:
     if kind in ("direct", "subtask"):
         content = f"{header}\n{body}" if body else header
     elif kind == "question":
-        marker = f"⏳ {_('Awaiting answer')}"
-        content = f"{header}\n{marker}: {body}" if body else f"{header}\n{marker}"
+        # The goal IS the verbatim question (prompt rule) — show it as a plain
+        # assistant message; the waiting state lives in the banner/live status.
+        content = body
     else:  # user_input / final / plan — no step header
         content = body
     return {
@@ -109,20 +110,24 @@ def _render_messages(task: dict) -> list[dict]:
     """The full task conversation from ``task_steps`` + the plan payload."""
     plan_steps = _plan_steps(task)
     total = len(plan_steps)
-    messages: list[dict] = [
-        {
-            "id": f"{task['id']}:request",
-            "role": "user",
-            "kind": "request",
-            "content": _task_request(task),
-            "seq": 0,
-            "total_steps": total,
-            "status": None,
-            "tool": "",
-            "extra": {},
-            "created_at": _iso(task.get("created_at")),
-        }
-    ]
+    messages: list[dict] = []
+    request_text = _task_request(task)
+    if request_text:
+        # A draft task has no request yet — the conversation starts empty.
+        messages.append(
+            {
+                "id": f"{task['id']}:request",
+                "role": "user",
+                "kind": "request",
+                "content": request_text,
+                "seq": 0,
+                "total_steps": total,
+                "status": None,
+                "tool": "",
+                "extra": {},
+                "created_at": _iso(task.get("created_at")),
+            }
+        )
     if total:
         lines = [f"{i + 1}. {s.get('goal', '')}" for i, s in enumerate(plan_steps)]
         messages.append(
@@ -163,9 +168,11 @@ def create_task_route():
 
     data = request.get_json(silent=True) or {}
     user_request = str(data.get("request") or "").strip()
-    if not user_request:
-        return jsonify({"error": "⚠️ " + _("Task request is empty")}), 400
 
+    # A draft ("+" flow, like a new chat session): no request yet — the user
+    # types it into the task view's input, PATCH submits it. The executor
+    # never selects a draft task. A request in the body keeps the
+    # non-draft creation for API compatibility.
     service_class = session.get("service_class", 2)
     task_class = _SERVICE_TO_TASK_CLASS.get(service_class, 5)
     task_id = create_task(
@@ -175,6 +182,30 @@ def create_task_route():
         lang=session.get("language", "ru"),
         response_style=session.get("response_style", "neutral"),
     )
+    if not user_request:
+        update_task(task_id, status="draft")
+    task = get_task(task_id)
+    publish_task_update(current_app._get_current_object(), task)
+    return jsonify({"task": _task_summary(task)}), 202
+
+
+@bp.route("/<task_id>/request", methods=["POST"])
+def task_request_route(task_id):
+    """Submit the draft's request text: draft → queued (the planner picks it up)."""
+    if "login" not in session:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    task = _owned_task(task_id)
+    if task is None:
+        return jsonify({"error": "⚠️ " + _("Task not found")}), 404
+    if task.get("status") != "draft":
+        return jsonify({"error": "⚠️ " + _("Task is not a draft")}), 409
+
+    data = request.get_json(silent=True) or {}
+    user_request = str(data.get("request") or "").strip()
+    if not user_request:
+        return jsonify({"error": "⚠️ " + _("Task request is empty")}), 400
+
+    update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
     task = get_task(task_id)
     publish_task_update(current_app._get_current_object(), task)
     return jsonify({"task": _task_summary(task)}), 202

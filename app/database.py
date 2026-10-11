@@ -671,6 +671,9 @@ def _init_postgresql():
             task_class SMALLINT NOT NULL DEFAULT 5,
             title TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'queued',
+            -- status 'draft' = created via "+" before the first message; the
+            -- executor never selects it (its queries cover queued/active/
+            -- frozen/awaiting_user only).
             step_plan JSONB NOT NULL DEFAULT '{}'::jsonb,
             next_step_index INT NOT NULL DEFAULT 0,
             accumulated_exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,

@@ -102,21 +102,9 @@
             </div>
         </div>
 
-        <!-- New task dialog -->
-        <div id="new-task-modal" class="folder-name-modal" hidden>
-            <div class="folder-name-backdrop" data-new-task-close></div>
-            <div class="folder-name-content" role="dialog" aria-modal="true" aria-labelledby="new-task-title">
-                <button type="button" class="folder-name-close" data-new-task-close aria-label="{{ _('close_about') }}">&times;</button>
-                <h3 id="new-task-title">{{ _('New task') }}</h3>
-                <div class="folder-name-label">{{ _('Task request') }}</div>
-                <textarea id="new-task-request" class="new-task-request" rows="4" maxlength="2000"></textarea>
-                <div id="new-task-error" class="folder-name-error" hidden></div>
-                <div class="folder-name-actions">
-                    <button type="button" id="new-task-cancel" class="folder-name-cancel">{{ _('Cancel') }}</button>
-                    <button type="button" id="new-task-submit" class="folder-name-submit">{{ _('Create task') }}</button>
-                </div>
-            </div>
-        </div>
+        <!-- The new-task dialog was removed (v12.6 review): «+» creates a draft
+     task directly (like a new chat session); the request text goes into the
+     ordinary message input. -->
 
         <!-- Message input area -->
         <div class="rlm-controls">
@@ -189,6 +177,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'task_awaiting_answer': {{ _("Awaiting answer")|tojson }},
     'task_answer_placeholder': {{ _("Answer the clarifying question…")|tojson }},
     'task_no_tasks': {{ _("No tasks yet")|tojson }},
+    'task_status_draft': {{ _("Draft")|tojson }},
+    'task_draft_placeholder': {{ _("Draft — describe the task…")|tojson }},
+    'task_empty_state': {{ _("No task selected — use «+» to create one")|tojson }},
     'task_export_unavailable': {{ _("Export is unavailable while viewing a task")|tojson }},
     'messages': {{ _("Messages")|tojson }},
     'your_requests': {{ _("Your requests in queue / Total in queue")|tojson }},

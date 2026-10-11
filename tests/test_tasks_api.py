@@ -102,12 +102,58 @@ class TestTasksApi:
         ids = [t["id"] for t in listed.get_json()["tasks"]]
         assert task["id"] in ids
 
-    def test_create_requires_request(self, tasks_env, client):
+    def test_create_without_request_makes_draft(self, tasks_env, client):
+        """«+» flow: no request → draft (executor never selects it)."""
         _login(client)
-        response = client.post("/api/tasks", json={"request": "   "})
+        response = client.post("/api/tasks", json={})
+
+        assert response.status_code == 202
+        task = response.get_json()["task"]
+        assert task["status"] == "draft"
+        assert task["title"] == ""
+
+    def test_draft_request_submits_and_queues(self, tasks_env, client, monkeypatch):
+        published = []
+        monkeypatch.setattr("app.routes.tasks.publish_task_update", lambda app, task: published.append(task))
+        _login(client)
+
+        draft = client.post("/api/tasks", json={}).get_json()["task"]
+        assert draft["status"] == "draft"
+
+        submitted = client.post(f"/api/tasks/{draft['id']}/request", json={"request": "Summarize the report"})
+        assert submitted.status_code == 202
+        task = submitted.get_json()["task"]
+        assert task["status"] == "queued"
+        assert task["title"] == "Summarize the report"
+        assert published[-1]["id"] == draft["id"]
+
+    def test_draft_request_empty_rejected(self, tasks_env, client):
+        _login(client)
+        draft = client.post("/api/tasks", json={}).get_json()["task"]
+        response = client.post(f"/api/tasks/{draft['id']}/request", json={"request": "   "})
 
         assert response.status_code == 400
         assert response.get_json()["error"].startswith("⚠️ ")
+
+    def test_request_on_non_draft_conflicts(self, tasks_env, client):
+        _login(client)
+        task = client.post("/api/tasks", json={"request": "real request"}).get_json()["task"]
+        assert task["status"] == "queued"
+        response = client.post(f"/api/tasks/{task['id']}/request", json={"request": "again"})
+
+        assert response.status_code == 409
+
+    def test_draft_not_visible_to_executor_queries(self, tasks_env, client, test_app, monkeypatch):
+        """A draft task holds no slot: the executor's selection never returns it."""
+        from app.tasks.executor import get_in_progress_tasks, get_queued_task
+
+        _login(client)
+        draft = client.post("/api/tasks", json={}).get_json()["task"]
+
+        assert draft["status"] == "draft"
+        with test_app.app_context():
+            assert get_queued_task() is None, "draft is not queued"
+            assert all(t["id"] != draft["id"] for t in get_in_progress_tasks())
 
     def test_create_rejected_when_disabled(self, tasks_env, client, test_app):
         test_app.config["TASKS_ENABLED"] = False
@@ -147,7 +193,9 @@ class TestTasksApi:
         assert step_msg["content"].startswith("Шаг 1 из 2:")
         assert "Found three sources" in step_msg["content"]
         question_msg = next(m for m in messages if m["kind"] == "question")
-        assert "Шаг 2 из 2:" in question_msg["content"] and "Ожидает ответа" in question_msg["content"]
+        # The question shows as a plain assistant message (no step header, no
+        # «Awaiting answer» marker — the waiting state lives in the live status).
+        assert question_msg["content"] == "Which format?"
 
     def test_messages_carry_created_at_for_timestamps(self, tasks_env, client):
         from app.tasks.store import add_step, update_step
@@ -308,9 +356,13 @@ class TestTasksApiI18n:
             "Task request is empty",
             "Answer is empty",
             "Task is not awaiting an answer",
+            "Task is not a draft",
             "Plan of {n} steps:",
             "Step {n} of {m}:",
             "Awaiting answer",
+            "Draft",
+            "Draft — describe the task…",
+            "No task selected — use «+» to create one",
         ]
         for catalog in ("translations/en/LC_MESSAGES/messages.po", "translations/ru/LC_MESSAGES/messages.po"):
             with open(catalog, encoding="utf-8") as fh:

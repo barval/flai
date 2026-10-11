@@ -19,6 +19,16 @@ let rlmSelectedDocs = new Set();
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
     const view = currentView;
+    // The Tasks tab owns the main window too: the empty task state when no
+    // task is selected (chat-tasks.js), the task conversation otherwise.
+    // Leaving the tab restores the chat conversation.
+    if (typeof enterTasksEmptyState === 'function' && typeof leaveTasksView === 'function') {
+        if (view === 'tasks') {
+            if (!window.currentTaskId) enterTasksEmptyState();
+        } else if (typeof isTasksTabActive === 'function' && isTasksTabActive()) {
+            leaveTasksView();
+        }
+    }
     // Update tab styling
     document.querySelectorAll('.header-tab').forEach(tab => {
         tab.classList.remove('active');

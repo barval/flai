@@ -298,8 +298,8 @@ async function sendMessage() {
     // Task view: the message input answers the open task's clarifying
     // question (chat-tasks.js owns the flow from there).
     if (window.currentTaskId) {
-        if (typeof window.sendTaskAnswer === 'function') {
-            window.sendTaskAnswer();
+        if (typeof window.sendTaskInput === 'function') {
+            window.sendTaskInput();
         }
         return;
     }

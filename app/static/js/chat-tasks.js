@@ -26,12 +26,31 @@ const TASK_TERMINAL_STATUSES = new Set(['completed', 'failed', 'expired', 'cance
 let taskReloadTimer = null;
 let taskOrigPlaceholder = null;
 
+// True when the Tasks tab is open in the main window but no task is selected:
+// the empty task state (title «Задача», no input) instead of the chat.
+let tasksViewEmpty = false;
+
+// Last rendered conversation payload (JSON string) — a re-delivered identical
+// payload (e.g. a redundant SSE reload) must not rebuild the DOM (flicker).
+let lastTaskPayloadJson = '';
+
+// The awaiting-answer live status (chat-style pulsing element + elapsed
+// seconds) — one per task view, started on entering awaiting_user.
+let taskAwaitTimer = null;
+let taskAwaitStartedAt = null;
+
 // True while a task conversation is open in the main window. The chat SSE
 // render paths (events.js) consult this to keep session streams from
 // interleaving into the task conversation — #chat-messages is a single
 // container and the task view is its second "mode" (like IS_RELOADING).
 function isTaskViewActive() {
     return Boolean(window.currentTaskId);
+}
+
+// True when the Tasks tab owns the main window (a task OR the empty state).
+// Same guard purpose as isTaskViewActive, but covers the empty state too.
+function isTasksTabActive() {
+    return Boolean(window.currentTaskId) || tasksViewEmpty;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,11 +98,12 @@ function renderTasksList() {
         const isActive = task.id === window.currentTaskId ? 'active' : '';
         const dateStr = task.created_at ? formatFullDateTime(task.created_at) : '';
         const steps = task.total_steps ? ' [' + task.total_steps + ']' : '';
+        const title = task.title || t('task_status_draft');
         html += `
 <div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}">
     <div class="session-content">
         <div class="session-info">
-            <div class="session-title">📝 ${escapeHtml(task.title || '')}</div>
+            <div class="session-title">📝 ${escapeHtml(title)}</div>
             <div class="session-date">📅 ${dateStr}${steps}</div>
             <div class="task-status-line">${escapeHtml(taskStatusLine(task))}</div>
         </div>
@@ -126,6 +146,7 @@ function attachTaskEventHandlers() {
 function taskStatusLine(task) {
     const status = task.status;
     const total = Number(task.total_steps) || 0;
+    if (status === 'draft') return '📝 ' + t('task_status_draft');
     if (status === 'queued') return '⏳ ' + t('queued');
     if (status === 'active') {
         if (total > 0) {
@@ -151,7 +172,9 @@ function taskStatusLine(task) {
 
 function openTaskView(taskId) {
     if (!taskId) return;
+    tasksViewEmpty = false;
     window.currentTaskId = taskId;
+    lastTaskPayloadJson = '';
     document.querySelectorAll('.task-item').forEach(item => {
         item.classList.toggle('active', item.dataset.taskId === taskId);
     });
@@ -166,8 +189,50 @@ function openTaskView(taskId) {
     loadTaskConversation(taskId);
 }
 
+// The Tasks tab opened with no task selected: the main window shows the task
+// empty state (title «Задача», hint, no input) instead of the chat.
+function enterTasksEmptyState() {
+    if (window.currentTaskId) {
+        closeTaskView(true); // silent: the empty state replaces the view
+        return;
+    }
+    tasksViewEmpty = true;
+    lastTaskPayloadJson = '';
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '';
+    setTaskMode(true, null);
+    if (container) {
+        const hint = document.createElement('div');
+        hint.className = 'task-empty-state';
+        hint.textContent = t('task_empty_state');
+        container.appendChild(hint);
+    }
+}
+
+// The Tasks tab closed (Sessions/Documents opened): restore the chat window.
+function leaveTasksView() {
+    stopAwaitTimer();
+    tasksViewEmpty = false;
+    lastTaskPayloadJson = '';
+    if (window.currentTaskId) {
+        closeTaskView(false);
+        return;
+    }
+    // Empty state was showing — restore the current chat conversation.
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '';
+    setTaskMode(false, null);
+    // currentSessionId is a top-level `let` in chat-constants.js — a lexical
+    // global, not a window property (window.currentSessionId is undefined).
+    if (typeof window.loadMessages === 'function' && currentSessionId) {
+        window.loadMessages(currentSessionId).catch(() => {});
+    }
+    if (typeof updateMessageCount === 'function') updateMessageCount();
+}
+
 function closeTaskView(silent) {
     if (!window.currentTaskId) return;
+    stopAwaitTimer();
     window.currentTaskId = null;
     setTaskMode(false, null);
     if (!silent) {
@@ -232,6 +297,15 @@ function renderTaskConversation(payload) {
     const container = document.getElementById('chat-messages');
     if (!container) return;
 
+    // Identical payload → identical DOM: skip the rebuild entirely (a
+    // redundant SSE-triggered reload must not flicker the window).
+    const payloadJson = JSON.stringify([task.status, task.next_step_index, messages]);
+    if (payloadJson === lastTaskPayloadJson) {
+        setTaskMode(true, task);
+        return;
+    }
+    lastTaskPayloadJson = payloadJson;
+
     // Preserve the scroll position unless the user is at the bottom (new
     // step content then sticks to the bottom like a live chat).
     const nearBottom = typeof isNearBottom === 'function' ? isNearBottom(container) : true;
@@ -239,10 +313,18 @@ function renderTaskConversation(payload) {
 
     container.innerHTML = '';
 
-    // Status banner above the conversation (list item may be off-screen).
+    // Status banner above the conversation. While the task waits for the
+    // user's answer the banner becomes the chat-style live status (pulsing +
+    // elapsed seconds); otherwise it is the static status line.
     const banner = document.createElement('div');
-    banner.className = 'task-status-banner';
-    banner.textContent = taskStatusLine(task);
+    if (task.status === 'awaiting_user') {
+        banner.className = 'task-progress task-await-banner';
+        startAwaitTimer(task.id, banner);
+    } else {
+        stopAwaitTimer();
+        banner.className = 'task-status-banner';
+        banner.textContent = taskStatusLine(task);
+    }
     container.appendChild(banner);
 
     messages.forEach(m => {
@@ -257,6 +339,37 @@ function renderTaskConversation(payload) {
 
     const info = document.getElementById('context-info');
     if (info) info.textContent = t('messages') + ': ' + messages.length;
+}
+
+// Chat-style "waiting for your answer" status: pulsing element + a per-second
+// elapsed counter («⏳ Ожидаю ответа (5 с)...»), like the chat stage labels.
+function startAwaitTimer(taskId, el) {
+    stopAwaitTimer();
+    taskAwaitStartedAt = Date.now();
+    const base = '⏳ ' + t('task_awaiting_answer');
+    const suffix = t('stage_elapsed_s');
+    const paint = () => {
+        const secs = Math.floor((Date.now() - taskAwaitStartedAt) / 1000);
+        el.textContent = secs >= 1 ? base + ' (' + secs + suffix + ')' : base;
+    };
+    paint();
+    taskAwaitTimer = setInterval(() => {
+        if (!document.body.contains(el)) {
+            stopAwaitTimer();
+            return;
+        }
+        paint();
+    }, 1000);
+    // Keep ticking only while this task is open.
+    if (window.currentTaskId !== taskId) stopAwaitTimer();
+}
+
+function stopAwaitTimer() {
+    if (taskAwaitTimer) {
+        clearInterval(taskAwaitTimer);
+        taskAwaitTimer = null;
+    }
+    taskAwaitStartedAt = null;
 }
 
 function renderTaskMessage(m) {
@@ -285,14 +398,15 @@ function renderTaskMessage(m) {
 // ---------------------------------------------------------------------------
 
 // active=true shows the «Задача» title and the ■ Stop button and turns the
-// message input into the clarifying-question answer box.
+// message input into the clarifying-question answer box. task=null is the
+// empty tasks view: title shown, input hidden.
 function setTaskMode(active, task) {
     const taskTitle = document.getElementById('task-title-text');
     const chatTitle = document.getElementById('chat-title-text');
     const stopBtn = document.getElementById('stop-task-button');
     if (taskTitle) taskTitle.classList.toggle('hidden', !active);
     if (chatTitle) chatTitle.classList.toggle('hidden', active);
-    const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status);
+    const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status) || task.status === 'draft';
     if (stopBtn) stopBtn.classList.toggle('hidden', !active || stopped);
 
     const input = document.getElementById('message-input');
@@ -305,27 +419,67 @@ function setTaskMode(active, task) {
         return;
     }
     if (taskOrigPlaceholder === null) taskOrigPlaceholder = input.placeholder;
+    if (!task) {
+        // Empty tasks view: no input accepted (a request goes through «+»).
+        input.readOnly = true;
+        input.placeholder = t('task_empty_state');
+        if (sendBtn) sendBtn.disabled = true;
+        return;
+    }
     const awaiting = task.status === 'awaiting_user';
-    input.readOnly = !awaiting;
-    input.placeholder = awaiting ? t('task_answer_placeholder') : taskStatusLine(task);
-    // The send button doubles as the answer submit; a non-awaiting task has
-    // no input to accept (chat-init.js sendMessage routes to sendTaskAnswer).
-    if (sendBtn) sendBtn.disabled = !awaiting;
+    const draft = task.status === 'draft';
+    input.readOnly = !awaiting && !draft;
+    input.placeholder = draft
+        ? t('task_draft_placeholder')
+        : awaiting
+            ? t('task_answer_placeholder')
+            : taskStatusLine(task);
+    // The send button doubles as the answer submit (and the draft request
+    // submit); a running task has no input to accept.
+    if (sendBtn) sendBtn.disabled = !awaiting && !draft;
 }
 
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
-// Called from chat-init.js sendMessage when a task is open: the input is the
-// answer to the awaiting clarifying question (server validates with 409).
-function sendTaskAnswer() {
+// Called from chat-init.js sendMessage when a task is open. Two accepted
+// inputs: the draft's request text (draft → queued, planner picks it up) and
+// the answer to an awaiting clarifying question (server validates with 409).
+function sendTaskInput() {
     if (!window.currentTaskId) return;
     const task = tasksData[window.currentTaskId];
-    if (!task || task.status !== 'awaiting_user') return;
+    if (!task) return;
     const input = document.getElementById('message-input');
     const text = input ? input.value.trim() : '';
     if (!text) return;
+
+    if (task.status === 'draft') {
+        input.value = '';
+        fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ request: text }),
+        })
+            .then(res => res.json().catch(() => ({})))
+            .then(data => {
+                if (data.error) {
+                    if (input) input.value = text;
+                    alert(data.error);
+                    return;
+                }
+                if (data.task) tasksData[data.task.id] = Object.assign({}, tasksData[data.task.id], data.task);
+                renderTasksList();
+                setTaskMode(true, tasksData[window.currentTaskId]);
+            })
+            .catch(err => {
+                if (input) input.value = text;
+                alert(t('error') + ': ' + err.message);
+            });
+        return;
+    }
+
+    if (task.status !== 'awaiting_user') return;
     input.value = '';
     fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/answer', {
         method: 'POST',
@@ -391,58 +545,24 @@ function deleteTask(taskId) {
 }
 
 // ---------------------------------------------------------------------------
-// New task dialog
+// New task creation («+», like a new chat session)
 // ---------------------------------------------------------------------------
 
-function openNewTaskModal() {
-    const modal = document.getElementById('new-task-modal');
-    const input = document.getElementById('new-task-request');
-    const err = document.getElementById('new-task-error');
-    if (err) err.hidden = true;
-    if (input) input.value = '';
-    if (modal) modal.hidden = false;
-    document.addEventListener('keydown', onNewTaskModalKeydown);
-    if (input && typeof input.focus === 'function') input.focus();
-}
-
-function closeNewTaskModal() {
-    const modal = document.getElementById('new-task-modal');
-    if (modal) modal.hidden = true;
-    document.removeEventListener('keydown', onNewTaskModalKeydown);
-}
-
-// Escape closes the dialog (Enter intentionally does NOT submit — the request
-// textarea is multiline).
-function onNewTaskModalKeydown(e) {
-    if (e.key === 'Escape') closeNewTaskModal();
-}
-
-function submitNewTask() {
-    const input = document.getElementById('new-task-request');
-    const err = document.getElementById('new-task-error');
-    const requestText = input ? input.value.trim() : '';
-    if (!requestText) {
-        if (err) {
-            err.textContent = '⚠️ ' + t('empty_message');
-            err.hidden = false;
-        }
-        return;
-    }
+// «+» creates a draft task right away (no dialog) and opens its view; the
+// request text is typed into the ordinary message input (sendTaskInput
+// submits it via PATCH /request → the planner picks the task up).
+function createNewTask() {
     fetchWithCSRF('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request: requestText }),
+        body: JSON.stringify({}),
     })
         .then(res => res.json().catch(() => ({})))
         .then(data => {
             if (data.error) {
-                if (err) {
-                    err.textContent = data.error;
-                    err.hidden = false;
-                }
+                alert(data.error);
                 return;
             }
-            closeNewTaskModal();
             if (data.task && data.task.id) {
                 tasksData[data.task.id] = data.task;
                 renderTasksList();
@@ -451,12 +571,7 @@ function submitNewTask() {
                 loadTasksFromServer();
             }
         })
-        .catch(e => {
-            if (err) {
-                err.textContent = t('error') + ': ' + e.message;
-                err.hidden = false;
-            }
-        });
+        .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -499,18 +614,8 @@ function initTasksView() {
     if (newTaskBtn) {
         newTaskBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            openNewTaskModal();
+            createNewTask();
         });
-    }
-    const modal = document.getElementById('new-task-modal');
-    if (modal) {
-        modal.querySelectorAll('[data-new-task-close]').forEach(el => {
-            el.addEventListener('click', closeNewTaskModal);
-        });
-        const cancelBtn = document.getElementById('new-task-cancel');
-        if (cancelBtn) cancelBtn.addEventListener('click', closeNewTaskModal);
-        const submitBtn = document.getElementById('new-task-submit');
-        if (submitBtn) submitBtn.addEventListener('click', submitNewTask);
     }
     const stopBtn = document.getElementById('stop-task-button');
     if (stopBtn) {

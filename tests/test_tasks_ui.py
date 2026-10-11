@@ -41,7 +41,11 @@ UI_MSGIDS = {
     "Cancelled": "task_status_cancelled",
     "Failed": "task_status_failed",
     "Expired": "task_status_expired",
+    "Awaiting answer": "task_awaiting_answer",
     "Answer the clarifying question…": "task_answer_placeholder",
+    "Draft": "task_status_draft",
+    "Draft — describe the task…": "task_draft_placeholder",
+    "No task selected — use «+» to create one": "task_empty_state",
     "No tasks yet": "task_no_tasks",
     "Export is unavailable while viewing a task": "task_export_unavailable",
 }
@@ -51,8 +55,11 @@ TASK_JS_FUNCTIONS = (
     "renderTasksList",
     "openTaskView",
     "closeTaskView",
+    "enterTasksEmptyState",
+    "leaveTasksView",
     "loadTaskConversation",
-    "sendTaskAnswer",
+    "sendTaskInput",
+    "createNewTask",
     "stopCurrentTask",
     "deleteTask",
     "onTaskUpdate",
@@ -92,10 +99,8 @@ class TestTasksTabMarkup:
         assert "■" in CHAT_HTML
 
     def test_new_task_modal(self):
-        assert 'id="new-task-modal"' in CHAT_HTML
-        assert 'id="new-task-request"' in CHAT_HTML
-        assert 'id="new-task-error"' in CHAT_HTML
-        assert 'id="new-task-submit"' in CHAT_HTML
+        """Removed (v12.6 review): «+» creates a draft task like a new chat session."""
+        assert 'id="new-task-modal"' not in CHAT_HTML
 
 
 class TestTasksTranslations:
@@ -149,10 +154,11 @@ class TestTasksFrontendLogic:
         assert "task_answer_placeholder" in CHAT_TASKS
 
     def test_stop_and_delete_follow_the_session_pattern(self):
-        # The input is read-only while the task is not awaiting an answer, and
-        # the send flow routes through sendTaskAnswer (chat-init.js hook).
-        assert "input.readOnly = !awaiting" in CHAT_TASKS
-        assert "window.sendTaskAnswer" in CHAT_INIT
+        # The input is read-only while the task is neither awaiting nor a
+        # draft, and the send flow routes through sendTaskInput (chat-init.js
+        # hook).
+        assert "input.readOnly = !awaiting && !draft" in CHAT_TASKS
+        assert "window.sendTaskInput" in CHAT_INIT
         assert "window.currentTaskId" in CHAT_INIT
 
     def test_sse_handler_handles_deleted_and_running(self):
@@ -239,14 +245,34 @@ class TestReviewGuards:
         assert "window.currentTaskId" in CHAT_EXPORT
         assert "task_export_unavailable" in CHAT_EXPORT
 
-    def test_new_task_modal_escape_closes(self):
-        assert "onNewTaskModalKeydown" in CHAT_TASKS
-        assert "closeNewTaskModal" in CHAT_TASKS
+    def test_new_task_modal_removed(self):
+        """The new-task dialog is gone: «+» creates a draft directly."""
+        assert 'id="new-task-modal"' not in CHAT_HTML
+        assert "openNewTaskModal" not in CHAT_TASKS
+        assert "closeNewTaskModal" not in CHAT_TASKS
+        assert "createNewTask" in CHAT_TASKS
 
     def test_answer_restored_on_error(self):
-        # A failed answer POST must not wipe the typed text.
-        answer_block = self._function_block(CHAT_TASKS, "function sendTaskAnswer(")
+        # A failed answer/draft POST must not wipe the typed text.
+        answer_block = self._function_block(CHAT_TASKS, "function sendTaskInput(")
         assert "input.value = text" in answer_block
+
+    def test_awaiting_banner_is_the_chat_style_live_status(self):
+        """awaiting_user renders the pulsing banner with an elapsed-seconds
+        counter (chat stage look), not a static text line."""
+        assert "task-await-banner" in CHAT_TASKS
+        assert "progressPulse" in CHAT_CSS
+        assert "startAwaitTimer" in CHAT_TASKS and "stopAwaitTimer" in CHAT_TASKS
+        assert "task_awaiting_answer" in CHAT_TASKS
+
+    def test_conversation_payload_deduplicated(self):
+        """An identical payload does not rebuild the DOM (anti-flicker)."""
+        assert "lastTaskPayloadJson" in CHAT_TASKS
+
+    def test_empty_state_wired_into_view_switch(self):
+        """The Tasks tab owns the main window (empty state without a task)."""
+        assert "enterTasksEmptyState" in CHAT_DOCS and "leaveTasksView" in CHAT_DOCS
+        assert "task-empty-state" in CHAT_TASKS
 
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS

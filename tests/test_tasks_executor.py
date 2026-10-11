@@ -800,3 +800,46 @@ def test_plan_phase_cancel_flag_interrupts_planner(db_env, test_app, gate_open, 
     # The mock Redis answers None → not cancelled → the plan completes.
     assert seen["cancel_callable"]() is False
     assert task["step_plan"].get("steps"), "plan still parsed when not cancelled"
+
+
+# ── whole-branch review follow-up: UI bugfixes ──────────────────────────
+
+
+def test_awaiting_task_does_not_republish_each_cycle(db_env, test_app, gate_open, monkeypatch):
+    """An awaiting task is re-picked every cycle; the SSE update is published
+    only on a status TRANSITION — a per-cycle publish made the task window
+    re-render (flicker) once a second."""
+    store = db_env
+    plan = {
+        "title": "Needs answer",
+        "steps": [{"seq": 1, "goal": "Which port?", "tool": "llm", "user_input_expected": True}],
+    }
+    task_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=30)
+    publishes = []
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+
+    executor._process_one_cycle(gate_open=True)
+    assert store.get_task(task_id)["status"] == "awaiting_user"
+    first_count = len(publishes)
+
+    # The next cycle re-picks the awaiting task — no new publish (no transition).
+    executor._process_one_cycle(gate_open=True)
+    assert len(publishes) == first_count, "no republish while the status is unchanged"
+
+
+def test_publish_fires_on_status_transition(db_env, test_app, gate_open, monkeypatch):
+    """A real transition (active → awaiting_user) still publishes once."""
+    store = db_env
+    plan = {
+        "title": "Needs answer",
+        "steps": [{"seq": 1, "goal": "Which port?", "tool": "llm", "user_input_expected": True}],
+    }
+    task_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=30)
+    publishes = []
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+
+    executor._process_one_cycle(gate_open=True)
+
+    assert publishes == [task_id], "transition published exactly once"

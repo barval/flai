@@ -243,6 +243,9 @@ msgstr "Ответ пуст"
 msgid "Task is not awaiting an answer"
 msgstr "Задача не ожидает ответа"
 
+msgid "Task is not a draft"
+msgstr "Задача не является черновиком"
+
 msgid "Plan of {n} steps:"
 msgstr "План из {n} шагов:"
 
@@ -250,7 +253,7 @@ msgid "Step {n} of {m}:"
 msgstr "Шаг {n} из {m}:"
 
 msgid "Awaiting answer"
-msgstr "Ожидает ответа"
+msgstr "Ожидаю ответа"
 
 # Tasks subsystem (v12.6): панель «Задачи» UI (chat.html, chat-tasks.js)
 msgid "Tasks"
@@ -300,6 +303,15 @@ msgstr "Время истекло"
 
 msgid "Answer the clarifying question…"
 msgstr "Ответьте на уточнение…"
+
+msgid "Draft — describe the task…"
+msgstr "Черновик — опишите задачу…"
+
+msgid "Draft"
+msgstr "Черновик"
+
+msgid "No task selected — use «+» to create one"
+msgstr "Задача не выбрана — нажмите «+», чтобы создать"
 
 msgid "No tasks yet"
 msgstr "Пока нет задач"

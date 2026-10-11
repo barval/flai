@@ -592,14 +592,19 @@ class TaskExecutor:
         # (awaiting_user) — an active/frozen task holds the slot, a terminal
         # task waits for the next poll. ``seen`` guards against a task that
         # stays awaiting (answer still missing) being re-picked forever.
+        # Publish only on a status TRANSITION: an awaiting task is re-picked
+        # every poll cycle and a per-cycle SSE event made the task window
+        # fully re-render (flicker) once a second.
         seen: set[str] = set()
         while True:
             pick = next((t for t in get_in_progress_tasks() if t["id"] not in seen), None)
             if pick is not None:
                 seen.add(pick["id"])
+                status_before = pick.get("status")
                 self._run_task(pick, gate_open=gate_open)
-                self._publish_task_update(pick["id"])
                 current = get_task(pick["id"])
+                if current is not None and current.get("status") != status_before:
+                    self._publish_task_update(pick["id"])
                 if current is None or current["status"] != "awaiting_user":
                     return  # slot held (active/frozen) or terminal — stop the cycle
                 continue  # slot released — select the next task in this cycle
@@ -610,8 +615,9 @@ class TaskExecutor:
             seen.add(queued["id"])
             update_task(queued["id"], status="active", started_at=_now_iso())
             self._run_task(get_task(queued["id"]) or queued, gate_open=gate_open)
-            self._publish_task_update(queued["id"])
             current = get_task(queued["id"])
+            # A queued task always transitions (queued → anything) — publish.
+            self._publish_task_update(queued["id"])
             if current is None or current["status"] != "awaiting_user":
                 return
             continue

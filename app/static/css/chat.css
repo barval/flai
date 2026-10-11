@@ -241,6 +241,41 @@
     text-overflow: ellipsis;
 }
 
+/* The awaiting-answer live banner: same pulsing look as the chat's
+   .task-progress stage labels (progressPulse), plus the banner colors. */
+.task-await-banner {
+    background-color: #f5f0fa;
+    border: 1px solid #d5c8e8;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #6c3483;
+    animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+/* Tasks-tab empty state (no task selected): centred hint in the window. */
+.task-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    color: #888;
+    font-size: 0.95rem;
+    text-align: center;
+    padding: 1rem;
+}
+
+.dark-theme .task-await-banner {
+    color: #d2b4de;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.dark-theme .task-empty-state {
+    color: #aaa;
+}
+
 .tasks-empty {
     padding: 0.8rem;
     color: #7f8c8d;

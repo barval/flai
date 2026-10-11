@@ -13,6 +13,19 @@ tests can patch them at a single seam (see tests/test_tasks_executor.py);
 the SQL helpers the store module does not expose yet live here as public
 functions.
 
+Mid-step abort (chat preemption): while a direct step runs, the executor
+publishes ``task:running_step:<task_id>`` = step_id and adds the task id to
+the Redis SET ``task:active_running_steps``; both are cleared when the step
+ends or the task reaches a terminal state. The chat-activity hook in
+``app/queue.py:_mark_chat_activity`` turns each of those pointers into a
+``task:step_cancel:<step_id>`` flag (TTL 3600 s), which the runner polls
+between stream chunks and raises as ``StepAborted``. The executor deletes
+the flag after processing it (consumer-clears rule) and before every re-run.
+
+Server restart: on executor start every step row left in status 'running'
+by a dead process is marked ``interrupted``/``restart`` (fresh attempt on
+resume) and the pointer SET is rebuilt from scratch.
+
 Known limitation (Task 8 completes it): ``subtask`` steps (rlm / image_gen /
 image_edit / video_gen) are enqueued through the existing request queue with
 the ``task_step_subtask`` tag and marked ``subtask_queued``; the step loop
@@ -45,16 +58,26 @@ TASK_TOTAL_BUDGET_S = 86400
 TASK_STEP_MAX_ATTEMPTS = 3
 TASK_QUIET_PERIOD_S = 60
 
-# Test-visible seed for an expired budget (tests/tests_tasks_executor.py).
+# Test-visible seed for an expired budget (tests/test_tasks_executor.py).
 _BUDGET_CFG_FALLBACK = {"TASK_TOTAL_BUDGET_S": TASK_TOTAL_BUDGET_S}
 
 CANCEL_KEY_PREFIX = "task:step_cancel:"
+RUNNING_STEP_KEY_PREFIX = "task:running_step:"
+RUNNING_STEPS_SET = "task:active_running_steps"
 DEFERRED_SUBTASKS_KEY = "task:deferred_subtasks"
+# Safety TTL on step-cancel flags so a lost consumer cannot leak a flag.
+CANCEL_FLAG_TTL_S = 3600
 
 # Direct tools run in-process (runner); everything else goes through the queue.
 _SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen"}
 # Queue task_type per subtask tool (Task 8 refines the exact payloads).
 _SUBTASK_TYPE = {"image_gen": "image", "image_edit": "image_edit", "video_gen": "video", "rlm": "rlm_analysis"}
+
+# Localized user-facing fallbacks (⚠️ prefix per the project error rule).
+_MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
+_MSG_PLAN_UNREADABLE = "Task could not be planned: the planner returned an unreadable plan. Please try again."
+_FALLBACK_NO_FINAL = "The final answer could not be generated; please check the step results above."
+_FALLBACK_BUDGET_NO_SUMMARY = "Execution budget exhausted; the summary could not be generated."
 
 
 def _now_iso() -> str:
@@ -109,6 +132,14 @@ def get_running_step(task_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def get_all_running_steps() -> list[dict]:
+    """Every step row stuck in status 'running' (restart-marker sweep)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM task_steps WHERE status = 'running' ORDER BY seq ASC")
+        return [dict(r) for r in c.fetchall()]
+
+
 def get_unprocessed_user_input() -> dict | None:
     """Newest unprocessed user_input step on an awaiting_user task (resume seam)."""
     with get_db() as conn:
@@ -146,11 +177,23 @@ def add_user_input_step(task_id: str, question_seq: int, answer: str) -> str:
 
 
 def add_final_step(task_id: str, result_text: str, status: str = "passed") -> str:
-    """Append the closing ``final`` step row (answer, error note or summary)."""
+    """Append the closing ``final`` step row (answer, error note or summary).
+
+    Idempotent: a task may carry at most one ``final`` step — when one already
+    exists it is updated in place instead of being duplicated.
+    """
     with get_db() as conn:
         c = conn.cursor()
         c.execute("SELECT COALESCE(MAX(seq), 0) AS mx FROM task_steps WHERE task_id = %s", (task_id,))
         max_seq = int(c.fetchone()["mx"] or 0)
+        c.execute(
+            "SELECT id FROM task_steps WHERE task_id = %s AND kind = 'final' ORDER BY seq ASC LIMIT 1",
+            (task_id,),
+        )
+        existing = c.fetchone()
+    if existing:
+        update_step(existing["id"], result=result_text, status=status, finished_at=_now_iso())
+        return existing["id"]
     step_id = add_step(task_id=task_id, seq=max_seq + 1, kind="final")
     update_step(step_id, result=result_text, status=status, finished_at=_now_iso())
     return step_id
@@ -346,6 +389,11 @@ class TaskExecutor:
         self._redis = redis_client
         self._shutdown = threading.Event()
         self._thread: threading.Thread | None = None
+        # Step owned by THIS process right now — the gate-closed freeze path
+        # only interrupts a running row it owns itself (restart orphans are
+        # marked with interrupt_reason='restart' at executor start instead).
+        self._current_step_id: str | None = None
+        self._restart_sweep_done = False
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -364,19 +412,44 @@ class TaskExecutor:
         thread = self._thread
         if thread and thread.is_alive():
             if timeout is None:
-                timeout = max(0.5, float(TASK_POLL_INTERVAL_S) + 1.0)
+                timeout = max(0.5, float(self._cfg("TASK_POLL_INTERVAL_S", TASK_POLL_INTERVAL_S)) + 1.0)
             thread.join(timeout=timeout)
         self._thread = None
 
     def _loop(self) -> None:
         """Defensive daemon loop: every cycle in try/except — a crash must not
         kill the thread."""
+        poll = max(0.1, float(self._cfg("TASK_POLL_INTERVAL_S", TASK_POLL_INTERVAL_S)))
         while not self._shutdown.is_set():
             try:
+                if not self._restart_sweep_done:
+                    self._mark_interrupted_by_restart()
+                    self._restart_sweep_done = True
                 self._process_one_cycle()
             except Exception as exc:  # noqa: BLE001 — deliberate catch-all
                 logger.exception(f"TaskExecutor cycle failed: {exc}")
-            self._shutdown.wait(max(0.1, float(TASK_POLL_INTERVAL_S)))
+            self._shutdown.wait(poll)
+
+    def _mark_interrupted_by_restart(self) -> None:
+        """Server restart: no step is owned by this fresh process, so every row
+        left in status 'running' by a dead process gets a restart marker (its
+        task re-runs the step from scratch on resume, spec §2)."""
+        try:
+            orphans = get_all_running_steps()
+        except Exception as e:
+            logger.warning(f"restart sweep skipped (DB unavailable): {e}")
+            return
+        for row in orphans:
+            update_step(row["id"], status="interrupted", interrupt_reason="restart", finished_at=_now_iso())
+            update_task(row["task_id"], abort_reason="restart")
+        # The pointer SET died with the old process too — rebuild it empty.
+        try:
+            redis_client = self._redis or self.app.request_queue.redis
+            redis_client.delete(RUNNING_STEPS_SET)
+        except Exception as e:
+            logger.warning(f"running-steps SET reset failed: {e}")
+        if orphans:
+            logger.info(f"restart sweep: marked {len(orphans)} orphaned running step(s) interrupted")
 
     # ── Config / gate ─────────────────────────────────────────────────
 
@@ -413,6 +486,41 @@ class TaskExecutor:
         except Exception:
             return False
 
+    def _publish_running_step(self, task_id: str, step_id: str) -> None:
+        """Announce the in-flight step so the chat hook can raise its cancel flag.
+
+        Best effort: Redis failure must never break step execution.
+        """
+        try:
+            redis_client = self._redis or self.app.request_queue.redis
+            pipe = redis_client.pipeline()
+            pipe.set(f"{RUNNING_STEP_KEY_PREFIX}{task_id}", step_id)
+            pipe.sadd(RUNNING_STEPS_SET, task_id)
+            pipe.execute()
+        except Exception as e:
+            logger.warning(f"running-step pointer publish failed (task {task_id}): {e}")
+
+    def _clear_running_step(self, task_id: str) -> None:
+        """Retract the in-flight pointer once the step left ``running`` (or the
+        task reached a terminal state)."""
+        try:
+            redis_client = self._redis or self.app.request_queue.redis
+            pipe = redis_client.pipeline()
+            pipe.delete(f"{RUNNING_STEP_KEY_PREFIX}{task_id}")
+            pipe.srem(RUNNING_STEPS_SET, task_id)
+            pipe.execute()
+        except Exception as e:
+            logger.warning(f"running-step pointer clear failed (task {task_id}): {e}")
+
+    def _clear_cancel_flag(self, step_id: str) -> None:
+        """Consumer-clears rule: the flag is removed once the abort is processed
+        (and before every re-run, so a stale flag cannot abort a fresh attempt)."""
+        try:
+            redis_client = self._redis or self.app.request_queue.redis
+            redis_client.delete(f"{CANCEL_KEY_PREFIX}{step_id}")
+        except Exception as e:
+            logger.warning(f"cancel-flag clear failed (step {step_id}): {e}")
+
     # ── One cycle ─────────────────────────────────────────────────────
 
     def _process_one_cycle(self, gate_open: bool | None = None) -> None:
@@ -426,16 +534,21 @@ class TaskExecutor:
 
         if not self._gate_value(gate_open):
             # Gate closed: freeze the active task (only if it was active), then
-            # sleep — a queued task is simply not started on a closed gate.
+            # sleep — a queued task is simply not started on a closed gate. A
+            # running step is interrupted ONLY when this process owns it
+            # (self._current_step_id); a row left running by a previous process
+            # already got its restart marker and is left alone here.
             for t in get_tasks_by_status("active"):
                 running = get_running_step(t["id"])
-                if running:
+                if running and self._current_step_id == running["id"]:
+                    self._current_step_id = None
                     update_step(
                         running["id"],
                         status="interrupted",
                         interrupt_reason="chat",
                         finished_at=_now_iso(),
                     )
+                    self._clear_running_step(t["id"])
                 update_task(t["id"], status="frozen", abort_reason="chat")
             return
 
@@ -584,7 +697,7 @@ class TaskExecutor:
         with self.app.app_context():
             prompt = format_prompt("task_plan.template", params, lang=lang)
         if not prompt:
-            self._fail_task(task_id, lang, "Task could not be planned: the plan template is unavailable.")
+            self._fail_task(task_id, lang, _MSG_PLAN_TEMPLATE_UNAVAILABLE)
             return "failed"
 
         plan = _parse_plan(_run_planner(self.app, prompt, lambda: False, lang))
@@ -592,9 +705,7 @@ class TaskExecutor:
             # One retry before giving up (transient planner noise).
             plan = _parse_plan(_run_planner(self.app, prompt, lambda: False, lang))
         if plan is None:
-            self._fail_task(
-                task_id, lang, "Task could not be planned: the planner returned an unreadable plan. Please try again."
-            )
+            self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
 
         # Keep the user's original request for the step/final prompts.
@@ -607,9 +718,9 @@ class TaskExecutor:
         return "ok"
 
     def _create_plan_step_rows(self, task_id: str, plan_steps: list[dict]) -> None:
-        """Create one step row per plan position (kind per user_input_expected)."""
+        """Create one step row per plan position (kind per capability class)."""
         for pos, s in enumerate(plan_steps or []):
-            kind = "question" if s.get("user_input_expected") else "direct"
+            kind = self._step_kind(s)
             add_step(
                 task_id=task_id,
                 seq=pos + 1,
@@ -619,12 +730,23 @@ class TaskExecutor:
                 checkpoint_criteria=str(s.get("checkpoint_criteria", "")),
             )
 
+    @staticmethod
+    def _step_kind(step: dict) -> str:
+        """Row kind for a plan step: question (user input) / subtask (queue) / direct."""
+        if step.get("user_input_expected"):
+            return "question"
+        if str(step.get("tool", "")) in _SUBTASK_TOOLS:
+            return "subtask"
+        return "direct"
+
     def _fail_task(self, task_id: str, lang: str, message: str) -> None:
-        """Terminal failure with a localized ⚠️ error step."""
+        """Terminal failure with a localized ⚠️ error step (order per M3:
+        error step persisted first, then the terminal status write)."""
         from app.llamacpp_client import _tr
 
-        update_task(task_id, status="failed", completed_at=_now_iso())
+        self._clear_running_step(task_id)
         add_final_step(task_id, f"⚠️ {_tr(message, lang=lang)}", status="failed")
+        update_task(task_id, status="failed", completed_at=_now_iso())
         logger.error(f"task {task_id} failed: {message}")
 
     # ── Direct steps ──────────────────────────────────────────────────
@@ -635,11 +757,10 @@ class TaskExecutor:
         for r in get_task_steps(task_id):
             if int(r["seq"]) == want_seq:
                 return r
-        kind = "question" if step.get("user_input_expected") else "direct"
         sid = add_step(
             task_id=task_id,
             seq=want_seq,
-            kind=kind,
+            kind=self._step_kind(step),
             goal=str(step.get("goal", "")),
             tool=str(step.get("tool", "")),
             checkpoint_criteria=str(step.get("checkpoint_criteria", "")),
@@ -657,6 +778,7 @@ class TaskExecutor:
         max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
         plan_text = _plan_text(task.get("step_plan"))
         user_answers = self._user_answers_text(task_id)
+        corrective_note = ""  # checkpoint mismatch carried into the retry digest
 
         while True:
             attempts = int(row.get("attempts") or 0)
@@ -672,6 +794,8 @@ class TaskExecutor:
                 return "continue"  # the failure is carried into the context
 
             if self._redis_flag(f"{CANCEL_KEY_PREFIX}{row['id']}"):
+                # Flag set by the chat hook (or a leftover): abort BEFORE running.
+                self._clear_cancel_flag(row["id"])
                 update_step(
                     row["id"],
                     status="interrupted",
@@ -681,13 +805,18 @@ class TaskExecutor:
                 update_task(task_id, status="frozen", abort_reason="chat")
                 return "stop"
 
+            # Publish the running-step pointer BEFORE the row goes running so a
+            # chat request arriving mid-stream can raise the cancel flag.
+            self._publish_running_step(task_id, row["id"])
+            self._current_step_id = row["id"]
             update_step(row["id"], status="running", started_at=_now_iso(), attempts=attempts + 1)
+            digest = self._context_digest(task_id, idx, corrective_note=corrective_note)
             start = time.monotonic()
             try:
                 outcome = run_direct_step(
                     self.app,
                     row,
-                    self._context_digest(task_id, idx),
+                    digest,
                     lambda step_id=row["id"]: self._redis_flag(f"{CANCEL_KEY_PREFIX}{step_id}"),
                     user_id=task.get("user_id") or "",
                     lang=lang,
@@ -699,25 +828,13 @@ class TaskExecutor:
             except StepAborted:
                 elapsed = round(time.monotonic() - start, 2)
                 self._add_budget(task_id, elapsed)
-                update_step(
-                    row["id"],
-                    status="interrupted",
-                    interrupt_reason="chat",
-                    exec_seconds=elapsed,
-                    finished_at=_now_iso(),
-                )
+                self._end_step(task_id, row["id"], status="interrupted", interrupt_reason="chat", exec_seconds=elapsed)
                 update_task(task_id, status="frozen", abort_reason="chat")
                 return "stop"
             except Exception as e:
                 elapsed = round(time.monotonic() - start, 2)
                 self._add_budget(task_id, elapsed)
-                update_step(
-                    row["id"],
-                    status="failed",
-                    last_error=str(e)[:500],
-                    exec_seconds=elapsed,
-                    finished_at=_now_iso(),
-                )
+                self._end_step(task_id, row["id"], status="failed", exec_seconds=elapsed, last_error=str(e)[:500])
                 logger.error(f"task {task_id} step {idx + 1} raised: {e} — continuing with the next step")
                 update_task(task_id, next_step_index=idx + 1)
                 return "continue"
@@ -729,12 +846,12 @@ class TaskExecutor:
             status = outcome.get("status")
             result = outcome.get("result") or ""
             if status == "passed":
-                update_step(
+                self._end_step(
+                    task_id,
                     row["id"],
                     status="passed",
                     result=result,
                     exec_seconds=elapsed,
-                    finished_at=_now_iso(),
                     checkpoint_result=str(checkpoint.get("explanation", "")),
                     checkpoint_verdict=bool(checkpoint.get("verdict")),
                 )
@@ -742,45 +859,46 @@ class TaskExecutor:
                 return "continue"
             if status == "aborted":
                 # Race-cancel on a fast tool: the result is kept but not trusted.
-                update_step(
+                self._end_step(
+                    task_id,
                     row["id"],
                     status="interrupted",
                     interrupt_reason="chat",
                     result=result,
                     exec_seconds=elapsed,
-                    finished_at=_now_iso(),
                 )
                 update_task(task_id, status="frozen", abort_reason="chat")
                 return "stop"
             if status == "error":
                 # Tool failure (not a verifier rejection): step failed, task continues.
-                update_step(
+                self._end_step(
+                    task_id,
                     row["id"],
                     status="failed",
                     result=result,
                     last_error=result[:500] or "tool error",
                     exec_seconds=elapsed,
-                    finished_at=_now_iso(),
                 )
                 update_task(task_id, next_step_index=idx + 1)
                 return "continue"
 
             # status == "failed": the checkpoint rejected the result — corrective
-            # retry of the SAME step with the mismatch fed back into the context.
-            update_step(
+            # retry of the SAME step with the mismatch fed back into the next
+            # attempt's context digest (I2).
+            self._end_step(
+                task_id,
                 row["id"],
                 status="failed",
                 result=result,
                 exec_seconds=elapsed,
-                finished_at=_now_iso(),
                 checkpoint_result=str(checkpoint.get("explanation", "")),
                 checkpoint_verdict=False,
             )
+            corrective_note = str(checkpoint.get("explanation") or "")
             logger.info(
                 f"task {task_id} step {idx + 1} checkpoint rejected (attempt {attempts + 1}/{max_attempts})"
                 f" — retrying with the mismatch in context"
             )
-            row = self._step_row_for(task_id, idx, step)
             row = get_step(row["id"]) or row
 
     def _task_request(self, task: dict) -> str:
@@ -800,8 +918,20 @@ class TaskExecutor:
                 parts.append(f"A: {r['result'] or ''}")
         return "\n".join(parts)[:4000]
 
-    def _context_digest(self, task_id: str, upto_idx: int, char_cap: int = 12000) -> str:
-        """Previous step results as the running context for the next step."""
+    def _end_step(self, task_id: str, step_id: str, status: str, **fields: Any) -> None:
+        """Close a step attempt: persist the final row state and retract the
+        running-step pointer (the chat hook can no longer cancel it)."""
+        self._current_step_id = None
+        self._clear_running_step(task_id)
+        self._clear_cancel_flag(step_id)
+        update_step(step_id, status=status, finished_at=_now_iso(), **fields)
+
+    def _context_digest(self, task_id: str, upto_idx: int, corrective_note: str = "", char_cap: int = 12000) -> str:
+        """Previous step results as the running context for the next step.
+
+        ``corrective_note`` (I2): the checkpoint mismatch of the just-rejected
+        attempt of THIS step, so the model fixes the actual problem on retry.
+        """
         parts = []
         for r in get_task_steps(task_id):
             if int(r["seq"]) > upto_idx:
@@ -811,8 +941,16 @@ class TaskExecutor:
             if r["status"] in ("passed", "failed", "interrupted"):
                 body = (r["result"] or "")[:3000]
                 if r["status"] == "failed":
-                    body = f"[failed: {r.get('last_error') or 'checkpoint rejected'}] {body}"
+                    if r.get("checkpoint_result") and r.get("checkpoint_verdict") is False:
+                        body = f"[checkpoint rejected: {r.get('checkpoint_result')}] {body}"
+                    else:
+                        body = f"[failed: {r.get('last_error') or 'checkpoint rejected'}] {body}"
                 parts.append(f"Step {r['seq']} ({r['tool'] or 'llm'}) — {r['goal']}: {body}")
+        if corrective_note:
+            parts.append(
+                f"Corrective note: the verifier REJECTED the previous attempt of step {upto_idx + 1}. "
+                f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
+            )
         return "\n".join(parts)[:char_cap]
 
     def _add_budget(self, task_id: str, seconds: float) -> None:
@@ -830,6 +968,7 @@ class TaskExecutor:
         slot released (the cycle's selection loop picks the next task)."""
         task_id = task["id"]
         row = self._step_row_for(task_id, idx, step)
+        self._clear_running_step(task_id)
         update_step(row["id"], status="awaiting_user", result=str(step.get("goal", "")))
         update_task(task_id, status="awaiting_user")
         logger.info(f"task {task_id} awaiting user input at step {idx + 1}")
@@ -860,30 +999,47 @@ class TaskExecutor:
             )
         except Exception as e:
             logger.error(f"subtask enqueue failed for task {task_id} step {idx + 1}: {e}")
-            update_step(row["id"], status="failed", last_error=str(e)[:500], finished_at=_now_iso())
+            self._end_step(task_id, row["id"], status="failed", last_error=str(e)[:500])
             update_task(task_id, next_step_index=idx + 1)
             return
+        self._current_step_id = None
+        self._clear_running_step(task_id)
         update_step(row["id"], status="subtask_queued", extra={"subtask_queue_id": subtask_queue_id})
         logger.info(f"task {task_id} step {idx + 1} ({tool}) queued as subtask {subtask_queue_id}")
 
     def _finalize(self, task: dict) -> None:
-        """Plan exhausted → the final answer over the accumulated results."""
+        """Plan exhausted → the final answer over the accumulated results.
+
+        Order (M3): generate → persist the final step → terminal status, so a
+        crash between steps cannot lose the summary.
+        """
         task_id = task["id"]
+        lang = task.get("lang") or "ru"
         text = _run_final_summary(self.app, task)
         if not text:
-            text = "⚠️ The final answer could not be generated; please check the step results above."
+            from app.llamacpp_client import _tr
+
+            text = f"⚠️ {_tr(_FALLBACK_NO_FINAL, lang=lang)}"
+        self._clear_running_step(task_id)
         add_final_step(task_id, text)
         update_task(task_id, status="completed", completed_at=_now_iso())
         logger.info(f"task {task_id} completed")
 
     def _budget_expired(self, task: dict) -> None:
-        """accumulated >= budget ⇒ expired + final summary from the results so far."""
+        """accumulated >= budget ⇒ expired + final summary from the results so far.
+
+        Order (M3): summary persisted BEFORE the terminal status write.
+        """
         task_id = task["id"]
-        update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
+        lang = task.get("lang") or "ru"
         text = _run_final_summary(self.app, task)
         if not text:
-            text = "⚠️ Execution budget exhausted; the summary could not be generated."
+            from app.llamacpp_client import _tr
+
+            text = f"⚠️ {_tr(_FALLBACK_BUDGET_NO_SUMMARY, lang=lang)}"
+        self._clear_running_step(task_id)
         add_final_step(task_id, text)
+        update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
         logger.info(f"task {task_id} expired (budget) — final summary recorded")
 
     def _cancel_task(self, task: dict) -> None:
@@ -891,12 +1047,14 @@ class TaskExecutor:
         task_id = task["id"]
         running = get_running_step(task_id)
         if running:
+            self._current_step_id = None
             update_step(
                 running["id"],
                 status="interrupted",
                 interrupt_reason="user_cancel",
                 finished_at=_now_iso(),
             )
+        self._clear_running_step(task_id)
         update_task(task_id, status="cancelled", completed_at=_now_iso())
         logger.info(f"task {task_id} cancelled by user")
 

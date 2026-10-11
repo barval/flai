@@ -13,6 +13,7 @@ create_app() is stopped in the fixture so manual drives are deterministic.
 """
 
 import os
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -215,6 +216,7 @@ def test_aborts_step_on_chat(db_env, test_app, gate_open, monkeypatch):
     task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
 
     def _aborted(*a, **k):
+        time.sleep(0.05)  # I9: elapsed must exceed 0 deterministically
         raise StepAborted("step cancelled during reasoning generation")
 
     monkeypatch.setattr(ex, "run_direct_step", _aborted)
@@ -416,7 +418,8 @@ def test_executor_start_stop_idempotent(test_app, monkeypatch):
     """start() twice starts one daemon thread; stop() joins it; singleton accessor."""
     executor = ex.TaskExecutor(app=test_app)
     monkeypatch.setattr(executor, "_process_one_cycle", lambda *a, **k: None)
-    monkeypatch.setattr(ex, "TASK_POLL_INTERVAL_S", 0.01)
+    # The loop/stop read the poll interval from the app config (I5).
+    test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
 
     executor.start()
     executor.start()  # idempotent
@@ -442,7 +445,7 @@ def test_executor_start_stop_idempotent(test_app, monkeypatch):
 def test_executor_loop_survives_exceptions(test_app, monkeypatch):
     """A raising cycle must not kill the daemon loop (defensive try/except)."""
     executor = ex.TaskExecutor(app=test_app)
-    monkeypatch.setattr(ex, "TASK_POLL_INTERVAL_S", 0.01)
+    test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
     state = {"cycles": 0}
 
     def _boom(*a, **k):
@@ -454,3 +457,166 @@ def test_executor_loop_survives_exceptions(test_app, monkeypatch):
     monkeypatch.setattr(executor, "_process_one_cycle", _boom)
     executor._loop()
     assert state["cycles"] >= 2, "loop keeps cycling after an exception"
+
+
+# ── 10. restart markers (I6) ─────────────────────────────────────────────
+
+
+def test_restart_marks_orphaned_running_steps(db_env, test_app, gate_open, monkeypatch):
+    """Executor start: steps left 'running' by a dead process → interrupted/restart."""
+    store = db_env
+    task_id = _mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=30)
+    orphan = store.add_step(task_id=task_id, seq=1, kind="direct", goal="g", tool="llm")
+    store.update_step(orphan, status="running", started_at="2026-10-11T10:00:00+00:00")
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._mark_interrupted_by_restart()
+
+    s = store.get_step(orphan)
+    assert s["status"] == "interrupted" and s["interrupt_reason"] == "restart"
+    t = store.get_task(task_id)
+    assert t["abort_reason"] == "restart", "task-level restart marker set"
+    # Re-running the sweep is idempotent (no rows left running).
+    executor._mark_interrupted_by_restart()
+    assert store.get_step(orphan)["interrupt_reason"] == "restart"
+
+
+def test_gate_closed_does_not_touch_foreign_running_step(db_env, test_app, monkeypatch):
+    """Gate-closed freeze leaves a running row from ANOTHER process alone (I6b)."""
+    store = db_env
+    task_id = _mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=30)
+    orphan = store.add_step(task_id=task_id, seq=1, kind="direct", goal="g", tool="llm")
+    store.update_step(orphan, status="running")
+
+    _cycle(test_app, gate=False)
+
+    s = store.get_step(orphan)
+    assert s["status"] == "running", "a step not owned by this process is not re-marked"
+    t = store.get_task(task_id)
+    assert t["status"] == "frozen" and t["abort_reason"] == "chat"
+
+
+# ── 11. mid-step abort trigger (C1) ──────────────────────────────────────
+
+
+def test_running_step_pointer_published_and_cleared(db_env, test_app, gate_open, monkeypatch):
+    """Step start publishes the pointer + SET member; step end retracts both."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    fake = test_app.request_queue.redis
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    assert fake.get(f"task:running_step:{task_id}") is None, "pointer cleared after the step ends"
+    assert fake.smembers("task:active_running_steps") == set(), "SET empty after the task completed"
+
+
+def test_chat_hook_raises_cancel_flag(db_env, test_app, monkeypatch):
+    """_mark_chat_activity turns a published running-step pointer into a cancel flag."""
+    fake = test_app.request_queue.redis
+    fake.smembers.return_value = {"task-abc"}
+    fake.get.return_value = "step-xyz"
+    queue = test_app.request_queue
+
+    queue._mark_chat_activity({"type": "text", "data": {"type": "text", "text": "hi"}})
+
+    assert fake.set.call_args_list[-1].args[0] == "task:step_cancel:step-xyz"
+    fake.smembers.return_value = set()
+    fake.get.return_value = None
+
+
+def test_chat_hook_swallows_redis_errors(db_env, test_app, monkeypatch):
+    """A failing Redis must never break the chat enqueue path."""
+    fake = test_app.request_queue.redis
+    fake.smembers.side_effect = RuntimeError("redis down")
+    queue = test_app.request_queue
+
+    queue._mark_chat_activity({"type": "text", "data": {"type": "text", "text": "hi"}})  # must not raise
+    fake.smembers.side_effect = None
+    fake.smembers.return_value = set()
+
+
+# ── 12. corrective retry carries the mismatch (I2) ───────────────────────
+
+
+def test_retry_digest_contains_checkpoint_mismatch(db_env, test_app, gate_open, monkeypatch):
+    """False verdict ⇒ second attempt's context_digest carries the explanation."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    digests = []
+    attempts = {"n": 0}
+
+    def _runner(app, step, context_digest, cancel_check, **kwargs):
+        if int(step.get("seq") or 0) != 1:
+            return _ok_step_result()  # the second plan step just passes
+        attempts["n"] += 1
+        digests.append(context_digest)
+        if attempts["n"] == 1:
+            return {
+                "result": "wrong result",
+                "exec_seconds": 0.3,
+                "status": "failed",
+                "checkpoint": {"verdict": False, "explanation": "missing the port number", "exec_seconds": 0.2},
+            }
+        return _ok_step_result()
+
+    monkeypatch.setattr(ex, "run_direct_step", _runner)
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    assert attempts["n"] == 2, "one corrective retry ran"
+    assert "missing the port number" in digests[1], "retry digest carries the checkpoint mismatch"
+    assert digests[0] == "" or "missing the port number" not in digests[0], "first attempt had no mismatch note"
+    # The step row keeps the False verdict + explanation.
+    row = store.get_task_steps(task_id)[0]
+    assert row["checkpoint_verdict"] is True and row["status"] == "passed"
+    assert row["attempts"] == 2
+
+
+# ── 13. no duplicate final (M3) + subtask kind (M1) + poll interval (I5) ──
+
+
+def test_final_step_not_duplicated(db_env, test_app, gate_open, monkeypatch):
+    """A task that already has a final step reuses it instead of adding another."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    existing_final = store.add_step(task_id=task_id, seq=99, kind="final")
+
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    _cycle(test_app)
+
+    finals = [s for s in store.get_task_steps(task_id) if s["kind"] == "final"]
+    assert len(finals) == 1 and finals[0]["id"] == existing_final
+    assert finals[0]["result"] == "final summary text", "existing final reused and updated"
+
+
+def test_subtask_rows_use_subtask_kind(db_env, test_app, gate_open, monkeypatch):
+    """Plan rows for media/RLM tools get kind='subtask' (M1), not 'direct'."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    executor = ex.TaskExecutor(app=test_app)
+    executor._create_plan_step_rows(
+        task_id,
+        [
+            {"seq": 1, "goal": "draw", "tool": "image_gen", "checkpoint_criteria": "c"},
+            {"seq": 2, "goal": "think", "tool": "llm", "checkpoint_criteria": "c"},
+        ],
+    )
+    kinds = [s["kind"] for s in store.get_task_steps(task_id)]
+    assert kinds == ["subtask", "direct"]
+
+
+def test_poll_interval_from_app_config(test_app, monkeypatch):
+    """_loop and stop() read TASK_POLL_INTERVAL_S from the app config (I5)."""
+    executor = ex.TaskExecutor(app=test_app)
+    test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
+    monkeypatch.setattr(executor, "_process_one_cycle", lambda *a, **k: executor._shutdown.set())
+
+    executor.start()
+    thread = executor._thread
+    executor.stop(timeout=2)
+    assert not thread.is_alive(), "stop() joined the loop quickly with the config interval"

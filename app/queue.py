@@ -327,8 +327,40 @@ class RedisRequestQueue:
             return
         try:
             chat_activity_now(self.redis)
+            # Mid-step abort (v12.6): every running task step must die when a
+            # chat request arrives. The executor publishes one pointer per
+            # running task (task:running_step:<task_id> + the
+            # task:active_running_steps SET); this hook turns them into
+            # step-cancel flags the runner polls between stream chunks.
+            self._raise_step_cancel_flags()
         except Exception as e:
             self.logger.warning(f"chat activity signal failed: {e}")
+
+    def _raise_step_cancel_flags(self) -> None:
+        """Raise task:step_cancel:<step_id> for every published running step.
+
+        Best effort only — a Redis failure here must never break chat.
+        """
+        try:
+            from app.tasks.executor import (
+                CANCEL_FLAG_TTL_S,
+                CANCEL_KEY_PREFIX,
+                RUNNING_STEP_KEY_PREFIX,
+                RUNNING_STEPS_SET,
+            )
+
+            task_ids = self.redis.smembers(RUNNING_STEPS_SET)
+            for raw in task_ids or []:
+                task_id = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else raw
+                step_id = self.redis.get(f"{RUNNING_STEP_KEY_PREFIX}{task_id}")
+                if not step_id:
+                    continue
+                if isinstance(step_id, bytes):
+                    step_id = step_id.decode("utf-8", "ignore")
+                self.redis.set(f"{CANCEL_KEY_PREFIX}{step_id}", "1", ex=CANCEL_FLAG_TTL_S)
+                self.logger.info(f"chat activity: cancel flag raised for task step {step_id}")
+        except Exception as e:
+            self.logger.warning(f"step cancel flag raise failed: {e}")
 
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""

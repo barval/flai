@@ -46,6 +46,12 @@ def stop_app_background_threads(flask_app: Any) -> None:
         from app.tasks.health_monitor import stop_watchdog
 
         stop_watchdog(flask_app, timeout=3)
+    with contextlib.suppress(Exception):
+        from app.tasks import executor as tasks_executor
+
+        tasks_executor.stop_task_executor(timeout=2)
+        with tasks_executor._executor_lock:
+            tasks_executor._EXECUTOR = None
 
 
 def create_mock_redis():

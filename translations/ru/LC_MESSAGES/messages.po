@@ -217,6 +217,19 @@ msgstr "Не удалось распознать речь"
 msgid "Task cancelled"
 msgstr "Задача отменена"
 
+# Tasks subsystem (v12.6): planning failures and terminal fallbacks
+msgid "Task could not be planned: the plan template is unavailable."
+msgstr "Задачу невозможно спланировать: шаблон планирования недоступен."
+
+msgid "Task could not be planned: the planner returned an unreadable plan. Please try again."
+msgstr "Задачу невозможно спланировать: планировщик вернул нечитаемый план. Попробуйте ещё раз."
+
+msgid "The final answer could not be generated; please check the step results above."
+msgstr "Не удалось сформировать итоговый ответ; проверьте промежуточные результаты шагов выше."
+
+msgid "Execution budget exhausted; the summary could not be generated."
+msgstr "Время исполнения задачи исчерпано; сводку сформировать не удалось."
+
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624
 #: modules/multimodal.py:302

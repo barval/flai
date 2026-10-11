@@ -291,5 +291,13 @@ class TestReviewGuards:
         assert "task-msg-service" in CHAT_CSS
         assert "font-style: italic" in CHAT_CSS
 
+    def test_list_items_show_token_totals_and_exec(self):
+        """Task list items carry [▲out ▼in] token totals like session cards
+        and the total ⏱️ execution time (user request)."""
+        assert "sessionTokenStatsHTML" in CHAT_TASKS
+        block = self._function_block(CHAT_TASKS, "function renderTasksList(")
+        assert "token_totals" in block and "exec_seconds" in block
+        assert "_token_totals_for" in ROUTES_TASKS and "token_totals" in ROUTES_TASKS
+
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS

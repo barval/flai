@@ -96,13 +96,18 @@ function renderTasksList() {
         const dateStr = task.created_at ? formatFullDateTime(task.created_at) : '';
         const steps = task.total_steps ? ' [' + task.total_steps + ']' : '';
         const title = task.title || t('task_status_draft');
+        // Token totals (▲out ▼in) like session cards, from summed step usage.
+        const totals = task.token_totals || {};
+        const tokensHTML = sessionTokenStatsHTML(totals.prompt_tokens, totals.completion_tokens);
+        const secs = Number(task.exec_seconds) || 0;
+        const execHTML = secs >= 0.1 ? ' <span class="text-muted">⏱️ ' + secs.toFixed(0) + t('seconds_suffix') + '</span>' : '';
         html += `
 <div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}">
     <div class="session-content">
         <div class="session-info">
             <div class="session-title">📝 ${escapeHtml(title)}</div>
-            <div class="session-date">📅 ${dateStr}${steps}</div>
-            <div class="task-status-line">${escapeHtml(taskStatusLine(task))}</div>
+            <div class="session-date">📅 ${dateStr}${steps}${tokensHTML}</div>
+            <div class="task-status-line">${escapeHtml(taskStatusLine(task))}${execHTML}</div>
         </div>
         <button class="delete-session-button task-delete-button" title="${t('delete_task')}">🗑️</button>
     </div>

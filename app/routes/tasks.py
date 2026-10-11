@@ -15,6 +15,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request, session
 from flask_babel import gettext as _
 
+from app.database import get_db
 from app.tasks.events import publish_task_update
 from app.tasks.executor import add_user_input_step, get_task_steps
 from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_task
@@ -60,9 +61,13 @@ def _plan_steps(task: dict) -> list[dict]:
     return [s for s in (steps or []) if isinstance(s, dict)]
 
 
-def _task_summary(task: dict) -> dict:
-    """List-item / status payload (no filesystem paths, no plan bodies)."""
-    return {
+def _task_summary(task: dict, token_totals: dict[str, dict[str, int]] | None = None) -> dict:
+    """List-item / status payload (no filesystem paths, no plan bodies).
+
+    ``token_totals`` (optional) maps task_id → summed step usage; provided by
+    the list route so list items can show [▲out ▼in] like session cards.
+    """
+    summary = {
         "id": task["id"],
         "title": task.get("title") or "",
         "status": task.get("status"),
@@ -78,6 +83,28 @@ def _task_summary(task: dict) -> dict:
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
     }
+    if token_totals is not None:
+        summary["token_totals"] = token_totals.get(task["id"]) or {"prompt_tokens": 0, "completion_tokens": 0}
+    return summary
+
+
+def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
+    """Per-task summed step usage (prompt/completion tokens) from step extras."""
+    if not task_ids:
+        return {}
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT task_id,
+                   COALESCE(SUM((extra->'usage'->>'prompt_tokens')::bigint), 0) AS p,
+                   COALESCE(SUM((extra->'usage'->>'completion_tokens')::bigint), 0) AS c
+            FROM task_steps WHERE task_id::text = ANY(%s) GROUP BY task_id
+            """,
+            (task_ids,),
+        )
+        rows = c.fetchall()
+    return {r["task_id"]: {"prompt_tokens": int(r["p"]), "completion_tokens": int(r["c"])} for r in rows}
 
 
 def _step_message(row: dict, total: int) -> dict:
@@ -163,7 +190,8 @@ def list_tasks():
     if "login" not in session:
         return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
     tasks = get_tasks_by_user(session["login"])
-    return jsonify({"tasks": [_task_summary(t) for t in tasks]})
+    totals = _token_totals_for([t["id"] for t in tasks])
+    return jsonify({"tasks": [_task_summary(t, totals) for t in tasks]})
 
 
 @bp.route("", methods=["POST"])

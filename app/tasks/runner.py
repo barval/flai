@@ -242,7 +242,17 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
         return {"verdict": False, "explanation": "unparseable checkpoint reply"}
     if not isinstance(data, dict):
         return {"verdict": False, "explanation": "unparseable checkpoint reply"}
-    return {"verdict": bool(data.get("verdict")), "explanation": str(data.get("explanation", ""))}
+    # Strict verdict coercion: a truthy string ("false", free text) must never
+    # pass as True. Only a real bool (or the exact words true/false) counts;
+    # anything else is an unparseable reply.
+    raw_verdict = data.get("verdict")
+    if isinstance(raw_verdict, bool):
+        verdict = raw_verdict
+    elif isinstance(raw_verdict, str) and raw_verdict.strip().lower() in ("true", "false"):
+        verdict = raw_verdict.strip().lower() == "true"
+    else:
+        return {"verdict": False, "explanation": "unparseable checkpoint reply"}
+    return {"verdict": verdict, "explanation": str(data.get("explanation", ""))}
 
 
 def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "ru") -> dict[str, Any]:

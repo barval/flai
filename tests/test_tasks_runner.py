@@ -197,3 +197,31 @@ def test_checkpoint_garbage(test_app):
     with patch.object(base.llamacpp, "call", return_value="Просто текст без JSON"):
         out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
     assert out["verdict"] is False and out["explanation"] == "unparseable checkpoint reply"
+
+
+@pytest.mark.parametrize(
+    "raw_verdict,expected",
+    [
+        ('{"verdict": "false", "explanation": "x"}', False),  # truthy string must NOT pass as True
+        ('{"verdict": "результат выглядит хорошо"}', False),  # free text → unparseable
+        ('{"verdict": 1}', False),  # int is not a bool verdict
+        ('{"verdict": null}', False),  # missing/null → unparseable
+        ('{"verdict": "true", "explanation": "ok"}', True),  # exact word "true" accepted
+        ('{"verdict": "True", "explanation": "ok"}', True),  # case-insensitive word accepted
+        ('{"verdict": true, "explanation": "ok"}', True),  # real bool
+        ('{"verdict": false, "explanation": "mismatch"}', False),  # real bool
+    ],
+)
+def test_checkpoint_verdict_strict_coercion(test_app, raw_verdict, expected):
+    base = test_app.modules["base"]
+    with patch.object(base.llamacpp, "call", return_value=raw_verdict):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["verdict"] is expected
+
+
+def test_checkpoint_nonbool_verdict_explanation(test_app):
+    """Non-bool verdicts are reported as unparseable, not silently False-with-explanation."""
+    base = test_app.modules["base"]
+    with patch.object(base.llamacpp, "call", return_value='{"verdict": "результат выглядит хорошо"}'):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["explanation"] == "unparseable checkpoint reply"

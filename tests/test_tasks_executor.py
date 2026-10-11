@@ -847,3 +847,102 @@ def test_publish_fires_on_status_transition(db_env, test_app, gate_open, monkeyp
 
     assert publishes.count(task_id) == 2, "plan-phase publish + awaiting transition"
     assert publishes[0] == task_id
+
+
+def test_verifier_needs_user_input_asks_and_reruns(db_env, test_app, gate_open, monkeypatch):
+    """Checkpoint third verdict needs_user_input: a dedicated question row is
+    appended (linked to the direct step), the task awaits, and after the
+    answer the SAME direct step re-runs with the answer in the digest."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    attempts = {"n": 0}
+
+    def _runner(app, step, context_digest, cancel_check, **kwargs):
+        if int(step.get("seq") or 0) != 1:
+            return _ok_step_result()
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return {
+                "result": "incomplete answer",
+                "exec_seconds": 0.2,
+                "status": "failed",
+                "checkpoint": {
+                    "verdict": False,
+                    "needs_user_input": True,
+                    "question": "Which city do you mean?",
+                    "explanation": "the city is ambiguous",
+                },
+            }
+        assert "city" in context_digest.lower(), "answer lands in the retry digest"
+        return _ok_step_result()
+
+    monkeypatch.setattr(ex, "run_direct_step", _runner)
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._process_one_cycle(gate_open=True)
+
+    # Task awaits; question row appended and linked to the direct step.
+    t = store.get_task(task_id)
+    assert t["status"] == "awaiting_user"
+    rows = store.get_task_steps(task_id)
+    questions = [r for r in rows if r["kind"] == "question"]
+    direct = next(r for r in rows if r["kind"] == "direct" and int(r["seq"] or 0) == 1)
+    assert len(questions) == 1 and questions[0]["parent_step_id"] == direct["id"]
+    assert questions[0]["status"] == "awaiting_user"
+    assert questions[0]["result"] == "Which city do you mean?"
+    assert direct["status"] == "pending", "rejected attempt resets for the re-run"
+
+    # Answer arrives → the direct step re-runs (attempt 2), task completes.
+    ui_id = ex.add_user_input_step(task_id, int(questions[0]["seq"]), "London")
+    ui = next(r for r in store.get_task_steps(task_id) if r["id"] == ui_id)
+    executor._process_user_answer(ui)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "active"
+    assert int(t["next_step_index"]) == 0, "resume at the direct step's position"
+    assert attempts["n"] == 1, "re-run happens on the NEXT cycle"
+    executor._process_one_cycle(gate_open=True)
+    assert attempts["n"] == 2, "the same step ran again with the answer"
+    assert store.get_task(task_id)["status"] == "completed"
+
+
+def test_verifier_question_row_after_plan_steps(db_env, test_app, gate_open, monkeypatch):
+    """The verifier question row gets seq = max(seq)+1 (after the plan rows)
+    and is consumed as passed once answered."""
+    store = db_env
+    plan = {
+        "title": "T",
+        "steps": [{"seq": 1, "goal": "g", "tool": "llm", "checkpoint_criteria": "c"}],
+    }
+    task_id = _mk_task(store, step_plan=plan, minutes_ago=30)
+
+    def _runner(app, step, context_digest, cancel_check, **kwargs):
+        return {
+            "result": "partial",
+            "exec_seconds": 0.2,
+            "status": "failed",
+            "checkpoint": {
+                "verdict": False,
+                "needs_user_input": True,
+                "question": "Clarify?",
+                "explanation": "x",
+            },
+        }
+
+    monkeypatch.setattr(ex, "run_direct_step", _runner)
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final")
+    executor = ex.TaskExecutor(app=test_app)
+    executor._process_one_cycle(gate_open=True)
+
+    rows = store.get_task_steps(task_id)
+    assert [int(r["seq"] or 0) for r in rows] == [1, 2], "question appended after plan steps"
+    assert rows[1]["kind"] == "question" and rows[1]["parent_step_id"] == rows[0]["id"]
+
+    ui_id = ex.add_user_input_step(task_id, 2, "yes")
+    ui = next(r for r in store.get_task_steps(task_id) if r["id"] == ui_id)
+    executor._process_user_answer(ui)
+    rows = store.get_task_steps(task_id)
+    q = rows[1]
+    assert q["status"] == "passed" and q["finished_at"], "question closed on answer"
+    assert int(store.get_task(task_id)["next_step_index"]) == 0

@@ -266,6 +266,20 @@
     padding: 1rem;
 }
 
+/* Service lines in task messages («🗒️ План из N шагов:», «⚙️ Шаг N из M:»):
+   their own line, italic, muted — visually distinct from the body. */
+.task-msg-service {
+    font-style: italic;
+    font-size: 0.78rem;
+    color: #8e44ad;
+    margin-bottom: 0.25rem;
+    white-space: pre-wrap;
+}
+
+.dark-theme .task-msg-service {
+    color: #d2b4de;
+}
+
 .dark-theme .task-await-banner {
     color: #d2b4de;
     background: rgba(255, 255, 255, 0.05);

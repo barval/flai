@@ -167,7 +167,12 @@ def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) 
 
 
 def _run_calculate_step(step: dict[str, Any]) -> Any:
-    """Calculator runner via the capabilities registry (raw value out)."""
+    """Calculator runner via the capabilities registry (raw value out).
+
+    The planner should put the bare expression in the goal; when prose slips
+    in («Вычислите результат выражения 2 + 2 * 2») the expression is extracted
+    from the text before safe_eval — a prose goal is a SyntaxError otherwise.
+    """
     from app.tasks.tools import TOOL_RUNNERS
 
     runner = TOOL_RUNNERS.get("calculate")
@@ -175,7 +180,44 @@ def _run_calculate_step(step: dict[str, Any]) -> Any:
         raise RuntimeError("calculate runner is not registered")
     step_extra = step.get("extra") or {}
     expression = str(step_extra.get("expression") or step.get("goal") or "")
-    return runner(expression)
+    try:
+        return runner(expression)
+    except SyntaxError:
+        extracted = _extract_math_expression(expression)
+        if not extracted or extracted == expression:
+            raise
+        return runner(extracted)
+
+
+_MATH_TOKEN_RE = re.compile(r"[-+*/().,0-9\s^%√πe]+", re.UNICODE)
+
+
+def _extract_math_expression(text: str) -> str:
+    """Longest contiguous math-ish chunk containing at least one digit+operator.
+
+    Used only as a fallback when safe_eval rejects the raw goal as prose.
+    """
+    candidates = []
+    buf = ""
+    for ch in text:
+        if _MATH_TOKEN_RE.match(ch):
+            buf += ch
+        else:
+            if buf.strip():
+                candidates.append(buf.strip())
+            buf = ""
+    if buf.strip():
+        candidates.append(buf.strip())
+    candidates = [c for c in candidates if any(d.isdigit() for d in c)]
+    if not candidates:
+        return ""
+    # A prose sentence leaves its trailing period inside the chunk («2 + 2 * 2.»)
+    # — safe_eval reads it as a float literal (6.0). Strip trailing dots so the
+    # result keeps its natural int shape (6).
+    best = max(candidates, key=len)
+    while best.endswith("."):
+        best = best[:-1].rstrip()
+    return best.replace(",", ".").strip()
 
 
 def run_direct_step(

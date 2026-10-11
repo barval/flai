@@ -312,13 +312,18 @@ function renderTaskConversation(payload) {
 
     container.innerHTML = '';
 
-    // Status banner above the conversation. While the task waits for the
-    // user's answer the banner becomes the chat-style live status (pulsing +
-    // elapsed seconds); otherwise it is the static status line.
+    // Status banner above the conversation. Every live (non-terminal) status
+    // uses the chat-style pulsing look; awaiting also ticks elapsed seconds.
     const banner = document.createElement('div');
-    if (task.status === 'awaiting_user') {
-        banner.className = 'task-progress task-await-banner';
-        startAwaitTimer(task.id, banner);
+    const live = ['queued', 'active', 'frozen', 'awaiting_user'].includes(task.status);
+    if (live) {
+        banner.className = 'task-await-banner';
+        if (task.status === 'awaiting_user') {
+            startAwaitTimer(task.id, banner);
+        } else {
+            stopAwaitTimer();
+            banner.textContent = taskStatusLine(task);
+        }
     } else {
         stopAwaitTimer();
         banner.className = 'task-status-banner';
@@ -327,7 +332,7 @@ function renderTaskConversation(payload) {
     container.appendChild(banner);
 
     messages.forEach(m => {
-        container.appendChild(renderTaskMessage(m));
+        container.appendChild(renderTaskMessage(m, task));
     });
 
     if (nearBottom) {
@@ -371,7 +376,7 @@ function stopAwaitTimer() {
     taskAwaitStartedAt = null;
 }
 
-function renderTaskMessage(m) {
+function renderTaskMessage(m, task) {
     const div = document.createElement('div');
     const isUser = m.role === 'user';
     div.className = isUser ? 'user-message' : 'assistant-message bot-message';
@@ -379,17 +384,100 @@ function renderTaskMessage(m) {
     if (m.created_at) div.setAttribute('data-timestamp', m.created_at);
     div.setAttribute('data-raw-text', String(m.content || ''));
 
+    // Chat-style header: date | model | ⏱️ duration | 🔢 tokens | 🚀 tps,
+    // plus 🤖 style emoji and the 🗣️/📋 buttons — the same shape as the chat's
+    // displayMessage header (user request: the task view must look like chat).
     const header = document.createElement('span');
     header.className = 'message-header';
     const ts = m.created_at ? formatFullDateTime(m.created_at) : '';
     header.textContent = '📅 ' + (ts || '');
+    if (!isUser && m.model_name) {
+        const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
+        header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji('reasoning') || '') + escapeHtml(shortModel) + '</span>';
+    }
+    const secs = Number(m.exec_seconds) || 0;
+    if (!isUser && secs >= 0.1) {
+        header.innerHTML += ' <span class="text-muted">| ⏱️ ' + secs.toFixed(1) + t('seconds_suffix') + ' |</span>';
+        const usage = m.usage || {};
+        header.innerHTML += tokenStatsHTML(usage.prompt_tokens, usage.completion_tokens);
+        if (usage.completion_tokens) {
+            const tps = (usage.completion_tokens / secs).toFixed(1);
+            header.innerHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
+        }
+        if (task && task.response_style) {
+            const styleEmoji = getResponseStyleEmoji(task.response_style);
+            if (styleEmoji) {
+                const styleSpan = document.createElement('span');
+                styleSpan.className = 'response-style-indicator';
+                styleSpan.textContent = styleEmoji;
+                header.appendChild(styleSpan);
+            }
+        }
+    }
+
+    // TTS button (assistant messages with a body)
+    if (!isUser && String(m.content || '').trim()) {
+        const ttsButton = document.createElement('button');
+        ttsButton.className = 'tts-button';
+        ttsButton.title = t('speak');
+        ttsButton.textContent = '🗣️';
+        ttsButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.playTTS === 'function') window.playTTS(ttsButton, div);
+        });
+        header.appendChild(ttsButton);
+    }
+    // Copy button (all messages with a body)
+    if (String(m.content || '').trim()) {
+        const copyButton = document.createElement('button');
+        copyButton.className = 'copy-message-button';
+        copyButton.title = t('copy_text');
+        copyButton.textContent = '📋';
+        copyButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const success = await copyToClipboard(div.dataset.rawText);
+            const originalHTML = copyButton.innerHTML;
+            const originalTitle = copyButton.title;
+            copyButton.innerHTML = success ? '✓' : '✗';
+            copyButton.title = t(success ? 'copied' : 'copy_failed');
+            setTimeout(() => {
+                copyButton.innerHTML = originalHTML;
+                copyButton.title = originalTitle;
+            }, 2000);
+        });
+        header.appendChild(copyButton);
+    }
     div.appendChild(header);
 
+    // Service lines («План из N шагов:», «Шаг N из M:») render as their own
+    // italic muted line with an emoji, separate from the message body.
     const content = document.createElement('div');
     content.className = 'message-content';
-    content.innerHTML = DOMPurify.sanitize(marked.parse(String(m.content || '')));
+    let body = String(m.content || '');
+    const serviceLine = splitServiceLine(m.kind, body);
+    if (serviceLine) {
+        body = serviceLine.rest;
+        const svc = document.createElement('div');
+        svc.className = 'task-msg-service';
+        svc.textContent = serviceLine.text;
+        div.appendChild(svc);
+    }
+    content.innerHTML = DOMPurify.sanitize(marked.parse(body));
     div.appendChild(content);
     return div;
+}
+
+// Pull the leading service header out of the message body: «Шаг N из M:» for
+// direct/subtask steps and «План из N шагов:» + numbered list for the plan.
+function splitServiceLine(kind, body) {
+    if (kind === 'plan') {
+        const m = body.match(/^(.*\d+)\n([\s\S]*)$/);
+        if (m) return { text: '🗒️ ' + m[1], rest: m[2] };
+        return null;
+    }
+    const m = body.match(/^(Шаг \d+ из \d+:|Step \d+ of \d+:)\n?([\s\S]*)$/);
+    if (m) return { text: '⚙️ ' + m[1], rest: m[2] };
+    return null;
 }
 
 // ---------------------------------------------------------------------------

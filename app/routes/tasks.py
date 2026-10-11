@@ -73,6 +73,7 @@ def _task_summary(task: dict) -> dict:
         "started_at": _iso(task.get("started_at")),
         "completed_at": _iso(task.get("completed_at")),
         "abort_reason": task.get("abort_reason"),
+        "response_style": task.get("response_style") or "neutral",
         # Total accumulated execution time (LLM calls only, waits excluded —
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
@@ -104,6 +105,7 @@ def _step_message(row: dict, total: int) -> dict:
         "tool": row.get("tool") or "",
         "exec_seconds": float(row.get("exec_seconds") or 0.0),
         "model_name": (row.get("extra") or {}).get("model_name", ""),
+        "usage": (row.get("extra") or {}).get("usage") or {},
         "extra": row.get("extra") or {},
         # task_steps has no created_at: a step's timestamp is when it started
         # running (a queued step with no timestamp renders without a date).

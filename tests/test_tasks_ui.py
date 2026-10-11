@@ -258,12 +258,14 @@ class TestReviewGuards:
         assert "input.value = text" in answer_block
 
     def test_awaiting_banner_is_the_chat_style_live_status(self):
-        """awaiting_user renders the pulsing banner with an elapsed-seconds
-        counter (chat stage look), not a static text line."""
+        """Every live status renders the pulsing banner (chat stage look);
+        awaiting_user additionally ticks the elapsed-seconds counter."""
         assert "task-await-banner" in CHAT_TASKS
         assert "progressPulse" in CHAT_CSS
         assert "startAwaitTimer" in CHAT_TASKS and "stopAwaitTimer" in CHAT_TASKS
         assert "task_awaiting_answer" in CHAT_TASKS
+        # queued/active/frozen/awaiting_user are all live (pulsing).
+        assert "'queued', 'active', 'frozen', 'awaiting_user'" in CHAT_TASKS
 
     def test_conversation_payload_deduplicated(self):
         """An identical payload does not rebuild the DOM (anti-flicker)."""
@@ -273,6 +275,21 @@ class TestReviewGuards:
         """The Tasks tab owns the main window (empty state without a task)."""
         assert "enterTasksEmptyState" in CHAT_DOCS and "leaveTasksView" in CHAT_DOCS
         assert "task-empty-state" in CHAT_TASKS
+
+    def test_chat_style_message_headers(self):
+        """Task messages carry the chat header shape: model, ⏱️, 🔢, 🚀,
+        TTS + copy buttons (user request: same format as chat messages)."""
+        assert "tokenStatsHTML" in CHAT_TASKS
+        assert "getModelEmoji" in CHAT_TASKS and "getResponseStyleEmoji" in CHAT_TASKS
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "tts-button" in block and "copy-message-button" in block
+        assert "tps_suffix" in block and "seconds_suffix" in block
+
+    def test_service_lines_styled_separately(self):
+        """«План из N шагов:» / «Шаг N из M:» are their own italic line."""
+        assert "splitServiceLine" in CHAT_TASKS and "task-msg-service" in CHAT_TASKS
+        assert "task-msg-service" in CHAT_CSS
+        assert "font-style: italic" in CHAT_CSS
 
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS

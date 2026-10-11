@@ -225,3 +225,29 @@ def test_checkpoint_nonbool_verdict_explanation(test_app):
     with patch.object(base.llamacpp, "call", return_value='{"verdict": "результат выглядит хорошо"}'):
         out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
     assert out["explanation"] == "unparseable checkpoint reply"
+
+
+def test_calculate_prose_goal_extracts_expression(test_app):
+    """A prose goal («Вычислите результат выражения 2 + 2 * 2.») does not kill
+    the step: the bare expression is extracted from the text and evaluated."""
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app,
+            _step(tool="calculate", goal="Вычислите результат арифметического выражения 2 + 2 * 2."),
+            context_digest="",
+            cancel_check=lambda: False,
+        )
+    assert out["result"] == "6" and out["status"] == "passed"
+
+
+def test_calculate_prose_no_numbers_still_errors(test_app):
+    """A prose goal without any math-looking chunk keeps the error path
+    (status=error, the step fails honestly instead of guessing)."""
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app,
+            _step(tool="calculate", goal="Сложите два числа."),
+            context_digest="",
+            cancel_check=lambda: False,
+        )
+    assert out["status"] == "error"

@@ -689,7 +689,16 @@ class TaskExecutor:
         if parent_id:
             question = get_step(parent_id)
             if question is not None:
-                question_seq = int(question["seq"])
+                if question.get("parent_step_id"):
+                    # Verifier question (kind=question, parent = the rejected
+                    # direct step): the direct step re-runs, so the loop must
+                    # resume AT its 0-based plan position (parent seq - 1).
+                    parent = get_step(question["parent_step_id"])
+                    question_seq = int(parent["seq"]) - 1 if parent else None
+                else:
+                    # Plan question: the question step itself is consumed —
+                    # resume at the next plan position.
+                    question_seq = int(question["seq"])
                 if question["status"] in ("pending", "awaiting_user"):
                     update_step(parent_id, status="passed", finished_at=_now_iso())
         if question_seq is None:
@@ -698,7 +707,9 @@ class TaskExecutor:
             question_seq = int(task.get("next_step_index") or 0) + 1
         update_step(ui["id"], status="passed")
         self._preempt_running_task(task_id)
-        # The question sits at plan position question_seq-1 ⇒ resume at question_seq.
+        # Plan question: resume at question_seq (past the consumed question).
+        # Verifier question: resume at the direct step's plan position — it
+        # re-runs with the answer in _user_answers_text.
         update_task(task_id, status="active", next_step_index=question_seq)
         self._publish_task_update(task_id)
 

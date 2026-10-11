@@ -67,4 +67,4 @@ CAPABILITIES: list[dict[str, str]] = [
 
 
 def get_capabilities() -> list[dict[str, str]]:
-    return CAPABILITIES
+    return [dict(c) for c in CAPABILITIES]

@@ -53,7 +53,7 @@ from flask import Flask
 
 from app.database import get_db
 from app.tasks.gate import is_gate_open
-from app.tasks.runner import StepAborted, run_direct_step
+from app.tasks.runner import StepAborted, run_checkpoint, run_direct_step
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
 
 logger = logging.getLogger(__name__)
@@ -750,10 +750,15 @@ class TaskExecutor:
             self._fail_task(task_id, lang, _MSG_PLAN_TEMPLATE_UNAVAILABLE)
             return "failed"
 
-        plan = _parse_plan(_run_planner(self.app, prompt, lambda: False, lang))
+        # The planner streams for tens of seconds — a UI/API stop arriving
+        # mid-plan must take effect at once (spec §2: the button marks the
+        # running step), so the cancel flag is checked between chunks.
+        plan = _parse_plan(_run_planner(self.app, prompt, lambda: self._redis_flag(f"task:cancelled:{task_id}"), lang))
         if plan is None:
             # One retry before giving up (transient planner noise).
-            plan = _parse_plan(_run_planner(self.app, prompt, lambda: False, lang))
+            plan = _parse_plan(
+                _run_planner(self.app, prompt, lambda: self._redis_flag(f"task:cancelled:{task_id}"), lang)
+            )
         if plan is None:
             self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
@@ -1054,7 +1059,19 @@ class TaskExecutor:
             return
         self._current_step_id = None
         self._clear_running_step(task_id)
-        update_step(row["id"], status="subtask_queued", extra={"subtask_queue_id": subtask_queue_id})
+        # Resume of an interrupted subtask: keep the superseded queue id(s) in
+        # extra for the audit trail (the old request was cancelled on abort —
+        # re-cancel defensively so a late worker completion can never be
+        # mistaken for this step's result).
+        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": subtask_queue_id}
+        old_id = (row.get("extra") or {}).get("subtask_queue_id")
+        if old_id and str(old_id) != str(subtask_queue_id):
+            merged_extra.setdefault("superseded_queue_ids", []).append(old_id)
+            try:
+                _get_request_queue().cancel_task(str(old_id))
+            except Exception as e:
+                logger.warning(f"old subtask re-cancel failed ({old_id}): {e}")
+        update_step(row["id"], status="subtask_queued", extra=merged_extra)
         logger.info(f"task {task_id} step {idx + 1} ({tool}) queued as subtask {subtask_queue_id}")
 
     # ── Subtask polling (Task 8) ──────────────────────────────────────
@@ -1206,8 +1223,16 @@ class TaskExecutor:
 
         Error envelope (worker marked the task failed) ⇒ step failed (attempts
         NOT incremented — a queue failure is a tool error, spec §3), the task
-        continues. Success ⇒ step passed with the media refs in extra["media"].
+        continues. Success ⇒ a normal checkpoint verifies the result against
+        the step's checkpoint_criteria (spec §4), then the step passes with
+        the media refs in extra["media"]; a rejected verification fails the
+        step and the task continues.
         """
+        task = get_task(task_id) or {}
+        step = {
+            "goal": row.get("goal", ""),
+            "checkpoint_criteria": row.get("checkpoint_criteria", ""),
+        }
         elapsed = self._subtask_seconds(row)
         self._add_budget(task_id, elapsed)
         result_data = stored.get("result") if isinstance(stored.get("result"), dict) else {}
@@ -1231,12 +1256,37 @@ class TaskExecutor:
             value = stored.get(key) if key in stored else result_data.get(key)
             if value:
                 media[key] = value
+        result_text = response_text or "done"
+        # Spec §4: a subtask result is verified like any other step result —
+        # a normal checkpoint runs against the step's checkpoint_criteria
+        # (e.g. "file exists, non-empty, matches expectation"). A verifier
+        # rejection fails the step (the task continues), matching the
+        # attempts-exhausted semantics of a direct step.
+        checkpoint: dict = {}
+        if str(step.get("checkpoint_criteria", "") or "").strip():
+            checkpoint = run_checkpoint(self.app, step, result_text, lang=task.get("lang") or "ru")
+            self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
+        if checkpoint and not checkpoint.get("verdict"):
+            self._end_step(
+                task_id,
+                row["id"],
+                status="failed",
+                exec_seconds=elapsed,
+                result=result_text,
+                checkpoint_result=str(checkpoint.get("explanation", "")),
+                checkpoint_verdict=False,
+            )
+            logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — continuing")
+            update_task(task_id, next_step_index=idx + 1)
+            return "done"
         self._end_step(
             task_id,
             row["id"],
             status="passed",
             exec_seconds=elapsed,
-            result=response_text or "done",
+            result=result_text,
+            checkpoint_result=str(checkpoint.get("explanation", "")),
+            checkpoint_verdict=bool(checkpoint.get("verdict")) if checkpoint else None,
         )
         merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media}
         update_step(row["id"], extra=merged_extra)

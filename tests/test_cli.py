@@ -114,3 +114,41 @@ class TestBackfillAttachmentPaths:
             if p.get("file_path") and os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))
         ]
         assert not saved, "dry-run must not write any attachment file"
+
+
+class TestCleanupUploadsTaskMedia:
+    """cleanup-uploads must keep task-generated files (task_steps.extra.media)
+    referenced by running/completed tasks (whole-branch review, I6)."""
+
+    def _setup_upload(self, test_app, rel_path):
+        full = os.path.join(test_app.config["UPLOAD_FOLDER"], rel_path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(b"media-bytes")
+
+    def test_task_media_survives_cleanup(self, runner, test_app):
+        from app.database import get_db
+
+        with test_app.app_context():
+            from app.tasks import store
+
+            task_id = store.create_task("clitest", 3, "T", "ru", "neutral")
+            step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="draw", tool="image_gen")
+            store.update_step(
+                step_id,
+                extra={"subtask_queue_id": "q1", "media": {"file_path": "clitest/task-image.png"}},
+            )
+
+        self._setup_upload(test_app, "clitest/task-image.png")
+        self._setup_upload(test_app, "clitest/orphan.png")
+
+        result = runner.invoke(args=["cleanup-uploads"])
+
+        assert result.exit_code == 0, result.output
+        # The task media file survives; the true orphan is deleted.
+        assert os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], "clitest/task-image.png"))
+        assert not os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], "clitest/orphan.png"))
+        with test_app.app_context(), get_db() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM task_steps")
+            c.execute("DELETE FROM tasks")

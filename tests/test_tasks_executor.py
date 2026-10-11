@@ -620,3 +620,183 @@ def test_poll_interval_from_app_config(test_app, monkeypatch):
     thread = executor._thread
     executor.stop(timeout=2)
     assert not thread.is_alive(), "stop() joined the loop quickly with the config interval"
+
+
+# ── whole-branch review fixes ────────────────────────────────────────────
+
+
+class _SimpleQ:
+    """Minimal request-queue stub: add_request returns a fixed id, cancel is a no-op."""
+
+    def add_request(self, *a, **k):
+        return "sub-queue-id-1", {}
+
+    def cancel_task(self, *a, **k):
+        pass
+
+
+def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch):
+    """Spec §4: a subtask result is verified by a normal checkpoint against
+    the step's checkpoint_criteria; a rejected verification fails the step
+    and the task continues (media refs still recorded)."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [
+            {"seq": 1, "goal": "Make an image", "tool": "image_gen", "checkpoint_criteria": "image matches the request"}
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+
+    class _Q:
+        def add_request(self, *a, **k):
+            return "sub-queue-id-1", {}
+
+        def cancel_task(self, *a, **k):
+            pass
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+    executor._enqueue_subtask(
+        store.get_task(task_id),
+        0,
+        store.get_task(task_id)["step_plan"]["steps"][0],
+    )
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+    assert row["status"] == "subtask_queued"
+
+    envelope = {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"}
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    checks = []
+
+    def _fake_checkpoint(app, step, result, lang="ru"):
+        checks.append({"step": step, "result": result, "lang": lang})
+        return {"verdict": False, "explanation": "wrong subject", "exec_seconds": 0.3}
+
+    monkeypatch.setattr(ex, "run_checkpoint", _fake_checkpoint)
+
+    outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert outcome == "done"
+    assert len(checks) == 1 and checks[0]["result"] == "an image was generated"
+    assert checks[0]["step"]["checkpoint_criteria"] == "image matches the request"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "failed", "rejected verification fails the step"
+    assert step["checkpoint_verdict"] is False and step["checkpoint_result"] == "wrong subject"
+    assert store.get_task(task_id)["next_step_index"] == 1, "the task continues"
+
+
+def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open, monkeypatch):
+    """A passing verification marks the step passed with checkpoint fields and
+    the media refs merged into extra."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen", "checkpoint_criteria": "image exists"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {"status": "completed", "response": "done", "file_path": "a/b.png", "file_name": "b.png"}
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.2}
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "passed"
+    assert step["checkpoint_verdict"] is True
+    assert step["extra"]["media"]["file_path"] == "a/b.png"
+    assert step["extra"]["media"]["file_name"] == "b.png"
+
+
+def test_subtask_no_criteria_skips_checkpoint(db_env, test_app, gate_open, monkeypatch):
+    """No checkpoint_criteria on the subtask step ⇒ no verifier call (the
+    checkpoint machinery is opt-in per plan step)."""
+    store = db_env
+    plan = {"title": "Media task", "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen"}]}
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {"status": "completed", "response": "done"}
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("verifier must not run"))
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+    assert store.get_task_steps(task_id)[0]["status"] == "passed"
+
+
+def test_resume_of_interrupted_subtask_cancels_old_and_keeps_audit(db_env, test_app, gate_open, monkeypatch):
+    """Resuming an interrupted subtask enqueues a fresh request, re-cancels the
+    superseded queue id and keeps it in extra (C2: the old job can never be
+    mistaken for this step's result)."""
+    store = db_env
+    plan = {"title": "Media task", "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen"}]}
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+
+    # First enqueue (as on the first pass).
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    first_queue_id = row["extra"]["subtask_queue_id"]
+
+    # Chat abort path: the old request is cancelled, the step goes interrupted.
+    cancelled = []
+
+    class _Q2:
+        def add_request(self, *a, **k):
+            return "sub-queue-id-2", {}
+
+        def cancel_task(self, task_id):
+            cancelled.append(task_id)
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q2())
+    executor._abort_subtask(task_id, 0, row, first_queue_id, reason="chat")
+    row = store.get_task_steps(task_id)[0]
+    assert row["status"] == "interrupted"
+
+    # Resume: the loop sees interrupted (not queued/running) → re-enqueue.
+    assert str(row["tool"]) == "image_gen"
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    row2 = store.get_task_steps(task_id)[0]
+    assert row2["extra"]["subtask_queue_id"] == "sub-queue-id-2"
+    assert first_queue_id in (row2["extra"].get("superseded_queue_ids") or [])
+    assert first_queue_id in cancelled, "the superseded request is re-cancelled defensively"
+
+
+def test_plan_phase_cancel_flag_interrupts_planner(db_env, test_app, gate_open, monkeypatch):
+    """The planner's cancel_check reads the task:cancelled flag (I5) — a stop
+    arriving mid-plan is observed between stream chunks."""
+    store = db_env
+    task_id = _mk_task(store)
+    seen = {}
+
+    def _fake_planner(app, prompt, cancel_check, lang):
+        seen["cancel_callable"] = cancel_check
+        return '{"title": "T", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}'
+
+    monkeypatch.setattr(ex, "_run_planner", _fake_planner)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+
+    _cycle(test_app)
+
+    assert "cancel_callable" in seen, "the planner receives a real cancel check"
+    task = store.get_task(task_id)
+    # The mock Redis answers None → not cancelled → the plan completes.
+    assert seen["cancel_callable"]() is False
+    assert task["step_plan"].get("steps"), "plan still parsed when not cancelled"

@@ -63,6 +63,24 @@ def cleanup_uploads(dry_run):
                 if isinstance(item, dict) and item.get("file_path"):
                     db_files.add(item["file_path"])
 
+        # Task media live in task_steps.extra ({"media": {"file_path": ...}})
+        # — a running task's generated files must survive the cleanup.
+        try:
+            c.execute("SELECT extra FROM task_steps WHERE extra IS NOT NULL")
+            for row in c.fetchall():
+                try:
+                    extra = json.loads(row["extra"]) if isinstance(row["extra"], str) else (row["extra"] or {})
+                except Exception:
+                    continue
+                if not isinstance(extra, dict):
+                    continue
+                media = extra.get("media") or {}
+                if isinstance(media, dict) and media.get("file_path"):
+                    db_files.add(media["file_path"])
+        except Exception:
+            # The tasks tables may not exist in legacy DBs — cleanup still runs.
+            pass
+
     click.echo(f"Files referenced in DB: {len(db_files)}")
 
     # Walk upload dir and find orphans

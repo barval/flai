@@ -336,6 +336,98 @@ class RedisRequestQueue:
         except Exception as e:
             self.logger.warning(f"chat activity signal failed: {e}")
 
+    def _defer_subtask_if_gate_closed(self, task: dict[str, Any]) -> bool:
+        """Slow-worker gate guard for Tasks-subsystem media sub-tasks (v12.6).
+
+        Returns True when the dequeued task was deferred to
+        ``task:deferred_subtasks`` (the worker must NOT process it) and False
+        when it should run normally. Only tagged subtask requests
+        (``data.task_step_subtask`` with ``user_class >= 3``) are subject —
+        chat NEVER hits this path. Any failure inside the guard is fail-open:
+        the task is processed normally.
+        """
+        try:
+            data = task.get("data", {})
+            step_id = data.get("task_step_subtask")
+            if not step_id or (task.get("user_class") or 0) < 3:
+                return False
+
+            from app.resource_manager import get_resource_manager
+            from app.tasks.executor import DEFERRED_SUBTASKS_KEY
+            from app.tasks.gate import is_gate_open
+
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 60))
+            gate_open = is_gate_open(
+                self.redis,
+                quiet_s=quiet_s,
+                gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
+                queues_empty=lambda: all(
+                    self.redis.llen(key) == 0
+                    for key in (
+                        self.queue_key,
+                        self.slow_queue_key,
+                        self.background_queue_key,
+                        self.crawl_queue_key,
+                    )
+                ),
+            )
+            if gate_open:
+                return False
+
+            serialized = self._serialize(task)
+            self.redis.rpush(DEFERRED_SUBTASKS_KEY, serialized)
+            self.logger.info(
+                f"Gate closed: deferred subtask {str(task.get('id'))[:12]} (step {step_id}) for later requeue"
+            )
+            return True
+        except Exception as e:
+            self.logger.warning(f"Subtask gate guard failed (processing task normally): {e}")
+            return False
+
+    def requeue_deferred_subtasks(self) -> int:
+        """Move deferred subtasks back onto the slow queue once the gate opens.
+
+        Called by the TaskExecutor once per cycle (Task 8b). Returns the number
+        of requeued tasks; 0 when the gate is closed, the list is empty or the
+        operation failed (fail-open).
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+            from app.tasks.executor import DEFERRED_SUBTASKS_KEY
+            from app.tasks.gate import is_gate_open
+
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 60))
+            gate_open = is_gate_open(
+                self.redis,
+                quiet_s=quiet_s,
+                gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
+                queues_empty=lambda: all(
+                    self.redis.llen(key) == 0
+                    for key in (
+                        self.queue_key,
+                        self.slow_queue_key,
+                        self.background_queue_key,
+                        self.crawl_queue_key,
+                    )
+                ),
+            )
+            if not gate_open:
+                return 0
+
+            count = 0
+            while True:
+                serialized = self.redis.lpop(DEFERRED_SUBTASKS_KEY)
+                if not serialized:
+                    break
+                self.redis.rpush(self.slow_queue_key, serialized)
+                count += 1
+            if count:
+                self.logger.info(f"Gate open: requeued {count} deferred subtask(s) onto the slow queue")
+            return count
+        except Exception as e:
+            self.logger.warning(f"Deferred subtask requeue failed: {e}")
+            return 0
+
     def _raise_step_cancel_flags(self) -> None:
         """Raise task:step_cancel:<step_id> for every published running step.
 
@@ -911,6 +1003,10 @@ class RedisRequestQueue:
                         f"Slow worker: dequeued task {str(task.get('id'))[:12]} "
                         f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
                     )
+                    # Tasks-subsystem sub-tasks wait while the scheduler gate
+                    # is closed (chat activity / busy GPU / occupied queues).
+                    if self._defer_subtask_if_gate_closed(task):
+                        continue
                     with self._gpu_lock:
                         self._process_single_task(task, self.slow_processing_key)
                     continue

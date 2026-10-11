@@ -139,6 +139,7 @@ class TestTasksApi:
 
         assert response.status_code == 200
         messages = response.get_json()["messages"]
+        assert response.get_json()["task"]["id"] == task_id
         assert messages[0]["role"] == "user" and messages[0]["content"] == "Summarize the report"
         plan_msg = next(m for m in messages if m["kind"] == "plan")
         assert plan_msg["content"].startswith("План из 2 шагов:")

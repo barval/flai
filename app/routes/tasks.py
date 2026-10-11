@@ -182,7 +182,7 @@ def task_messages(task_id):
     task = _owned_task(task_id)
     if task is None:
         return jsonify({"error": "⚠️ " + _("Task not found")}), 404
-    return jsonify({"messages": _render_messages(task)})
+    return jsonify({"task": _task_summary(task), "messages": _render_messages(task)})
 
 
 @bp.route("/<task_id>/answer", methods=["POST"])

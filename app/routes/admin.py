@@ -224,17 +224,20 @@ def get_users():
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id
                          WHERE cs2.user_id = %s AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count,
                         (SELECT COUNT(*) FROM api_tokens
-                         WHERE login = %s AND revoked_at IS NULL) as api_keys_count
+                         WHERE login = %s AND revoked_at IS NULL) as api_keys_count,
+                        (SELECT COUNT(*) FROM tasks
+                         WHERE user_id = %s) as tasks_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = %s
                 """,
-                    (u["login"], u["login"], u["login"], u["login"]),
+                    (u["login"], u["login"], u["login"], u["login"], u["login"]),
                 )
                 stats = c.fetchone()
 
                 u_dict = dict(u)
                 u_dict["sessions_count"] = stats["sessions"] if stats else 0
+                u_dict["tasks_count"] = stats["tasks_count"] if stats else 0
                 u_dict["messages_count"] = stats["messages"] if stats else 0
                 u_dict["outgoing_tokens"] = stats["outgoing_tokens"] if stats else 0
                 u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0

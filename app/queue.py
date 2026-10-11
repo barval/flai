@@ -293,6 +293,43 @@ class RedisRequestQueue:
             self._crawl_worker_thread.join(timeout=timeout)
         self.app.logger.info("RedisRequestQueue: workers stopped")
 
+    # Task types that do NOT represent user chat activity for the Tasks
+    # scheduler gate: stateless API service calls, background fact tasks and
+    # document indexing/description. Everything else arriving through
+    # add_request() counts as chat activity (text/image/video/RLM/reasoning/
+    # crawl/transcribe-with-answer/api_image_edit).
+    _NON_CHAT_ACTIVITY_TYPES = frozenset(
+        {
+            "api_embedding",
+            "api_transcribe",
+            "index_document",
+            "reindex_all_embeddings",
+            "describe_document_image",
+            "describe_document_pdf",
+            "fact_extraction_task",
+            "fact_merge_task",
+        }
+    )
+
+    def _mark_chat_activity(self, task: dict[str, Any]) -> None:
+        """Record chat activity for the Tasks gate; swallow any Redis error."""
+        from app.tasks.gate import chat_activity_now
+
+        if task.get("type") in self._NON_CHAT_ACTIVITY_TYPES:
+            return
+        data = task.get("data", {})
+        # API service types (embeddings/transcriptions) and document indexing
+        # travel in data.type, not top-level task_type.
+        if data.get("type") in self._NON_CHAT_ACTIVITY_TYPES:
+            return
+        # Media sub-tasks of the Tasks subsystem must not keep the gate closed.
+        if data.get("task_step_subtask"):
+            return
+        try:
+            chat_activity_now(self.redis)
+        except Exception as e:
+            self.logger.warning(f"chat activity signal failed: {e}")
+
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
@@ -391,6 +428,13 @@ class RedisRequestQueue:
             queue_key = self.queue_key
 
         serialized = self._serialize(task)
+
+        # Chat activity signal for the Tasks scheduler gate (v12.6): every
+        # chat-bearing enqueue refreshes the sliding window. Not counted:
+        # stateless API service types (embeddings, transcriptions), background
+        # fact tasks, document indexing/description, and Tasks-subsystem media
+        # sub-tasks (task_step_subtask tag). Redis failure must never break chat.
+        self._mark_chat_activity(task)
 
         # Atomic: RPUSH + HINCRBY in the same pipeline so get_user_queue_counts()
         # never sees a task in the LIST before the hash counter is updated.

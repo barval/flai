@@ -71,7 +71,7 @@ class TestAdminTasksPayload:
 
     def test_tasks_count_in_users_payload(self, tasks_env, client, test_app):
         from app.tasks.store import create_task, delete_task
-        from app.userdb import create_user, get_user_by_login
+        from app.userdb import create_user, delete_user, get_user_by_login
 
         login = "tasks-admin-ui"
         # A dedicated row guarantees a non-zero count regardless of suite order.
@@ -92,3 +92,6 @@ class TestAdminTasksPayload:
             assert row["tasks_count"] == 1
         finally:
             delete_task(task_id)
+            with test_app.app_context():
+                if get_user_by_login(login):
+                    delete_user(login)

@@ -149,6 +149,23 @@ class TestTasksApi:
         question_msg = next(m for m in messages if m["kind"] == "question")
         assert "Шаг 2 из 2:" in question_msg["content"] and "Ожидает ответа" in question_msg["content"]
 
+    def test_messages_carry_created_at_for_timestamps(self, tasks_env, client):
+        from app.tasks.store import add_step, update_step
+
+        plan = {"task_request": "Do it", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}
+        task_id = _seed_task(status="active", plan=plan)
+        step = add_step(task_id=task_id, seq=1, kind="direct", goal="g", tool="llm")
+        update_step(step, status="passed", result="r", started_at="2026-10-11T10:00:00+00:00")
+        _login(client)
+
+        response = client.get(f"/api/tasks/{task_id}/messages")
+
+        assert response.status_code == 200
+        messages = response.get_json()["messages"]
+        assert len(messages) == 3  # request + plan + step
+        for message in messages:
+            assert message["created_at"], f"message {message['kind']} has no created_at timestamp"
+
     def test_answer_creates_user_input_step(self, tasks_env, client):
         from app.tasks.executor import get_task_steps
         from app.tasks.store import add_step, update_step
@@ -204,6 +221,61 @@ class TestTasksApi:
 
         assert get_task(task_id)["status"] == "active"  # the executor interrupts the step
         test_app.request_queue.redis.set.assert_any_call(f"task:cancelled:{task_id}", "1", ex=3600)
+
+    def test_delete_removes_task_and_steps(self, tasks_env, client, test_app):
+        from app.tasks.executor import get_task_steps
+        from app.tasks.store import add_step, get_task, update_step
+
+        task_id = _seed_task(status="active", plan={"steps": [{"seq": 1, "goal": "g", "tool": "llm"}]})
+        step = add_step(task_id=task_id, seq=1, kind="direct", goal="g", tool="llm")
+        update_step(step, status="passed", result="r")
+        _login(client)
+
+        response = client.post(f"/api/tasks/{task_id}/delete")
+
+        assert response.status_code == 200
+        assert response.get_json() == {"status": "ok"}
+        assert get_task(task_id) is None
+        assert get_task_steps(task_id) == []
+        assert client.get(f"/api/tasks/{task_id}/messages").status_code == 404
+
+    def test_delete_active_raises_cancel_flag(self, tasks_env, client, test_app):
+        from app.tasks.store import get_task
+
+        task_id = _seed_task(status="active", plan={"steps": [{"seq": 1, "goal": "g", "tool": "llm"}]})
+        _login(client)
+
+        response = client.post(f"/api/tasks/{task_id}/delete")
+
+        assert response.status_code == 200
+        # The executor must never resume a deleted task.
+        test_app.request_queue.redis.set.assert_any_call(f"task:cancelled:{task_id}", "1", ex=3600)
+        assert get_task(task_id) is None
+
+    def test_delete_terminal_skips_cancel_flag(self, tasks_env, client, test_app):
+        from app.tasks.store import get_task
+
+        task_id = _seed_task(status="completed", plan={"steps": [{"seq": 1, "goal": "g", "tool": "llm"}]})
+        _login(client)
+
+        assert client.post(f"/api/tasks/{task_id}/delete").status_code == 200
+        assert get_task(task_id) is None
+        # No flag write for an already-terminal task.
+        flag_calls = [
+            c
+            for c in test_app.request_queue.redis.set.call_args_list
+            if c.args and str(c.args[0]).startswith(f"task:cancelled:{task_id}")
+        ]
+        assert flag_calls == []
+
+    def test_delete_foreign_is_not_found(self, tasks_env, client):
+        task_id = _seed_task(user_id="someone-else", status="queued")
+        _login(client, login="owner")
+
+        response = client.post(f"/api/tasks/{task_id}/delete")
+
+        assert response.status_code == 404
+        assert response.get_json()["error"].startswith("⚠️ ")
 
     def test_foreign_task_is_not_found(self, tasks_env, client):
         from app.tasks.store import add_step

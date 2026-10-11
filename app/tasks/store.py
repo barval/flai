@@ -113,6 +113,18 @@ def get_tasks_by_user(user_id: str) -> list[dict]:
         return [dict(r) for r in c.fetchall()]
 
 
+def delete_task(task_id: str) -> None:
+    """Remove a task and its steps.
+
+    ``task_steps.task_id`` has ``ON DELETE CASCADE``; the explicit step delete
+    is a safety net for databases without cascade enforcement.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM task_steps WHERE task_id = %s", (task_id,))
+        c.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
+
+
 def update_task(task_id: str, **fields: Any) -> dict:
     """Update allowed task columns; return the fresh row (None when task is absent)."""
     sets, vals = _build_update("tasks", _TASK_FIELDS, fields)

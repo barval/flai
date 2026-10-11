@@ -17,7 +17,7 @@ from flask_babel import gettext as _
 
 from app.tasks.events import publish_task_update
 from app.tasks.executor import add_user_input_step, get_task_steps
-from app.tasks.store import create_task, get_task, get_tasks_by_user, update_task
+from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_task
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
 
@@ -99,6 +99,9 @@ def _step_message(row: dict, total: int) -> dict:
         "status": row.get("status"),
         "tool": row.get("tool") or "",
         "extra": row.get("extra") or {},
+        # task_steps has no created_at: a step's timestamp is when it started
+        # running (a queued step with no timestamp renders without a date).
+        "created_at": _iso(row.get("started_at") or row.get("finished_at")),
     }
 
 
@@ -117,6 +120,7 @@ def _render_messages(task: dict) -> list[dict]:
             "status": None,
             "tool": "",
             "extra": {},
+            "created_at": _iso(task.get("created_at")),
         }
     ]
     if total:
@@ -132,6 +136,7 @@ def _render_messages(task: dict) -> list[dict]:
                 "status": None,
                 "tool": "",
                 "extra": {},
+                "created_at": _iso(task.get("created_at")),
             }
         )
     for row in get_task_steps(task["id"]):
@@ -237,3 +242,26 @@ def task_stop(task_id):
 
     publish_task_update(current_app._get_current_object(), task)
     return jsonify({"ok": True, "status": task.get("status")})
+
+
+@bp.route("/<task_id>/delete", methods=["POST"])
+def task_delete(task_id):
+    if "login" not in session:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    task = _owned_task(task_id)
+    if task is None:
+        return jsonify({"error": "⚠️ " + _("Task not found")}), 404
+    if task.get("status") not in _TERMINAL_STATUSES:
+        # The executor must never resume a deleted task: raise its cancel flag
+        # and mark it cancelled before removing the rows.
+        try:
+            current_app.request_queue.redis.set(f"task:cancelled:{task_id}", "1", ex=_CANCEL_FLAG_TTL_S)
+        except Exception as e:  # noqa: BLE001 — best effort
+            current_app.logger.warning(f"task cancel flag write failed ({task_id}): {e}")
+        update_task(task_id, status="cancelled")
+    delete_task(task_id)
+    publish_task_update(
+        current_app._get_current_object(),
+        {"id": task["id"], "user_id": task["user_id"], "status": "deleted"},
+    )
+    return jsonify({"status": "ok"})

@@ -95,17 +95,20 @@
 }
 
 .sessions-list,
-.documents-list {
+.documents-list,
+.tasks-list {
     padding: 0.5rem;
     overflow-y: auto;
     flex: 1;
 }
 
-.documents-list {
+.documents-list,
+.tasks-list {
     display: none;
 }
 
-.documents-list.active {
+.documents-list.active,
+.tasks-list.active {
     display: block;
 }
 
@@ -114,7 +117,8 @@
 }
 
 .session-item,
-.document-item {
+.document-item,
+.task-item {
     background-color: white;
     border: 1px solid #ddd;
     border-radius: 6px;
@@ -127,13 +131,15 @@
 }
 
 .session-item:hover,
-.document-item:hover {
+.document-item:hover,
+.task-item:hover {
     background-color: #e6f2ff;
     border-color: #3498db;
 }
 
 .session-item.active,
-.document-item.active {
+.document-item.active,
+.task-item.active {
     background-color: #e6f2ff;
     border-color: #3498db;
     box-shadow: 0 2px 6px rgba(52,152,219,0.2);
@@ -213,6 +219,50 @@
 .delete-session-button:hover,
 .delete-document-button:hover {
     color: #e74c3c;
+}
+
+/* ===== TASKS ===== */
+.task-status-line {
+    font-size: 0.72rem;
+    color: #8e44ad;
+    margin-top: 0.2rem;
+}
+
+.task-status-banner {
+    background-color: #f5f0fa;
+    border: 1px solid #d5c8e8;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #6c3483;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tasks-empty {
+    padding: 0.8rem;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.new-task-request {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #b8cfe8;
+    border-radius: 5px;
+    font-size: 0.95rem;
+    color: #2c3e50;
+    background: #fff;
+    font-family: inherit;
+    resize: vertical;
+}
+.new-task-request:focus {
+    outline: none;
+    border-color: #3498db;
 }
 
 /* ===== DOCUMENT FOLDERS ===== */

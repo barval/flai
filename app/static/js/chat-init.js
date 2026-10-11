@@ -295,6 +295,14 @@ async function sendMessage() {
         dlog('Send already in progress, ignoring duplicate');
         return;
     }
+    // Task view: the message input answers the open task's clarifying
+    // question (chat-tasks.js owns the flow from there).
+    if (window.currentTaskId) {
+        if (typeof window.sendTaskAnswer === 'function') {
+            window.sendTaskAnswer();
+        }
+        return;
+    }
     const rlmToggle = document.getElementById('rlm-toggle');
     if (rlmToggle && rlmToggle.checked) {
         const docsSelect = document.getElementById('rlm-docs');

@@ -10,6 +10,11 @@
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
                     <button id="add-folder-button" class="new-tab-button" title="{{ _('New folder') }}">📁</button>
                 </div>
+                <!-- Tasks tab -->
+                <div class="header-tab tasks-tab {% if active_view == 'tasks' %}active{% endif %}" data-view="tasks">
+                    <span class="tab-text">{{ _('Tasks') }} (<span id="tasks-count">0</span>)</span>
+                    <button id="new-task-button" class="new-tab-button" title="{{ _('New task') }}">➕</button>
+                </div>
                 <!-- Sessions tab -->
                 <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
                     <span class="tab-text">{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
@@ -37,11 +42,16 @@
         <div class="documents-list hidden" id="documents-list">
             <!-- Documents will be loaded via JavaScript -->
         </div>
+
+        <!-- Tasks list (hidden by default) -->
+        <div class="tasks-list hidden" id="tasks-list">
+            <!-- Tasks will be loaded via JavaScript -->
+        </div>
     </div>
 
     <div class="chat-main">
         <div class="chat-header">
-            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;&nbsp;<span class="header-divider">|</span>&nbsp;&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
+            <h2><span id="chat-title-text">{{ _('Chat') }}</span><span id="task-title-text" class="task-title-text hidden">{{ _('Task') }}</span> <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;&nbsp;<span class="header-divider">|</span>&nbsp;&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
                 <div class="response-style-dropdown">
                     <button class="response-style-btn" id="response-style-btn" title="{{ _('response_style_title') }}">
                         {% set style_icons = {'neutral': '🤖', 'academic': '🎓', 'professional': '💼', 'friendly': '😊', 'funny': '😂'} %}
@@ -57,6 +67,7 @@
                 </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="stop-task-button" class="cancel-stream-header hidden" title="{{ _('Stop task') }}">■</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
@@ -87,6 +98,22 @@
                 <div class="folder-name-actions">
                     <button type="button" id="folder-name-cancel" class="folder-name-cancel"></button>
                     <button type="button" id="folder-name-submit" class="folder-name-submit"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- New task dialog -->
+        <div id="new-task-modal" class="folder-name-modal" hidden>
+            <div class="folder-name-backdrop" data-new-task-close></div>
+            <div class="folder-name-content" role="dialog" aria-modal="true" aria-labelledby="new-task-title">
+                <button type="button" class="folder-name-close" data-new-task-close aria-label="{{ _('close_about') }}">&times;</button>
+                <h3 id="new-task-title">{{ _('New task') }}</h3>
+                <div class="folder-name-label">{{ _('Task request') }}</div>
+                <textarea id="new-task-request" class="new-task-request" rows="4" maxlength="2000"></textarea>
+                <div id="new-task-error" class="folder-name-error" hidden></div>
+                <div class="folder-name-actions">
+                    <button type="button" id="new-task-cancel" class="folder-name-cancel">{{ _('Cancel') }}</button>
+                    <button type="button" id="new-task-submit" class="folder-name-submit">{{ _('Create task') }}</button>
                 </div>
             </div>
         </div>
@@ -144,6 +171,23 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'chat': {{ _("Chat")|tojson }},
     'sessions': {{ _("Sessions")|tojson }},
     'documents': {{ _("Documents")|tojson }},
+    'tasks': {{ _("Tasks")|tojson }},
+    'new_task': {{ _("New task")|tojson }},
+    'task': {{ _("Task")|tojson }},
+    'task_request_label': {{ _("Task request")|tojson }},
+    'create_task': {{ _("Create task")|tojson }},
+    'stop_task': {{ _("Stop task")|tojson }},
+    'delete_task': {{ _("Delete task")|tojson }},
+    'delete_task_confirm': {{ _("Delete task {title} from {date}?")|tojson }},
+    'task_status_running': {{ _("Running (step {n} of {m})")|tojson }},
+    'task_status_frozen': {{ _("Frozen")|tojson }},
+    'task_status_completed': {{ _("Completed")|tojson }},
+    'task_status_cancelled': {{ _("Cancelled")|tojson }},
+    'task_status_failed': {{ _("Failed")|tojson }},
+    'task_status_expired': {{ _("Expired")|tojson }},
+    'task_awaiting_answer': {{ _("Awaiting answer")|tojson }},
+    'task_answer_placeholder': {{ _("Answer the clarifying question…")|tojson }},
+    'task_no_tasks': {{ _("No tasks yet")|tojson }},
     'messages': {{ _("Messages")|tojson }},
     'your_requests': {{ _("Your requests in queue / Total in queue")|tojson }},
     'error': {{ _("Error")|tojson }},
@@ -296,6 +340,7 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-utils.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-sessions.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-documents.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-tasks.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-messages.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-tts.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-recording.js', v=config.STATIC_VERSION) }}"></script>

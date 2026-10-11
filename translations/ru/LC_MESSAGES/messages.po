@@ -252,6 +252,55 @@ msgstr "Шаг {n} из {m}:"
 msgid "Awaiting answer"
 msgstr "Ожидает ответа"
 
+# Tasks subsystem (v12.6): панель «Задачи» UI (chat.html, chat-tasks.js)
+msgid "Tasks"
+msgstr "Задачи"
+
+msgid "New task"
+msgstr "Новая задача"
+
+msgid "Task"
+msgstr "Задача"
+
+msgid "Task request"
+msgstr "Запрос задачи"
+
+msgid "Create task"
+msgstr "Создать задачу"
+
+msgid "Stop task"
+msgstr "Остановить задачу"
+
+msgid "Delete task"
+msgstr "Удалить задачу"
+
+msgid "Delete task {title} from {date}?"
+msgstr "Удалить задачу «{title}» от {date}?"
+
+msgid "Running (step {n} of {m})"
+msgstr "Выполняется (шаг {n} из {m})"
+
+msgid "Frozen"
+msgstr "Приостановлено"
+
+msgid "Completed"
+msgstr "Завершено"
+
+msgid "Cancelled"
+msgstr "Отменено"
+
+msgid "Failed"
+msgstr "Ошибка"
+
+msgid "Expired"
+msgstr "Время истекло"
+
+msgid "Answer the clarifying question…"
+msgstr "Ответьте на уточнение…"
+
+msgid "No tasks yet"
+msgstr "Пока нет задач"
+
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624
 #: modules/multimodal.py:302

@@ -29,17 +29,38 @@ function applyCurrentView() {
     // Show/hide lists
     const sessionsList = document.getElementById('sessions-list');
     const documentsList = document.getElementById('documents-list');
+    const tasksList = document.getElementById('tasks-list');
     if (view === 'sessions') {
         sessionsList.classList.add('active');
         sessionsList.style.display = 'block';
         documentsList.classList.remove('active');
         documentsList.classList.add('hidden');
-    } else {
+        if (tasksList) {
+            tasksList.classList.remove('active');
+            tasksList.classList.add('hidden');
+        }
+    } else if (view === 'documents') {
         sessionsList.classList.remove('active');
         sessionsList.style.display = 'none';
         documentsList.classList.remove('hidden');
         documentsList.classList.add('active');
+        if (tasksList) {
+            tasksList.classList.remove('active');
+            tasksList.classList.add('hidden');
+        }
         loadDocuments(); // immediate load (no polling — SSE handles updates)
+    } else if (view === 'tasks') {
+        sessionsList.classList.remove('active');
+        sessionsList.style.display = 'none';
+        documentsList.classList.remove('active');
+        documentsList.classList.add('hidden');
+        if (tasksList) {
+            tasksList.classList.remove('hidden');
+            tasksList.classList.add('active');
+        }
+        if (typeof loadTasksFromServer === 'function') {
+            loadTasksFromServer(); // immediate load (no polling — SSE handles updates)
+        }
     }
 }
 
@@ -950,7 +971,7 @@ function initDocumentsView() {
     const login = window.CURRENT_USER_LOGIN;
     if (login) {
         const savedView = localStorage.getItem(`current_view_${login}`);
-        if (savedView && ['sessions', 'documents'].includes(savedView)) {
+        if (savedView && ['sessions', 'documents', 'tasks'].includes(savedView)) {
             currentView = savedView;
         }
     }

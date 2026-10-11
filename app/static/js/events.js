@@ -196,6 +196,11 @@ function handleEvent(event) {
                 loadDocuments(false);
             }
             break;
+        case 'task_update':
+            if (typeof onTaskUpdate === 'function') {
+                onTaskUpdate(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }

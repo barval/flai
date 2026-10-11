@@ -249,6 +249,55 @@ msgstr "Step {n} of {m}:"
 msgid "Awaiting answer"
 msgstr "Awaiting answer"
 
+# Tasks subsystem (v12.6): Tasks panel UI (chat.html, chat-tasks.js)
+msgid "Tasks"
+msgstr "Tasks"
+
+msgid "New task"
+msgstr "New task"
+
+msgid "Task"
+msgstr "Task"
+
+msgid "Task request"
+msgstr "Task request"
+
+msgid "Create task"
+msgstr "Create task"
+
+msgid "Stop task"
+msgstr "Stop task"
+
+msgid "Delete task"
+msgstr "Delete task"
+
+msgid "Delete task {title} from {date}?"
+msgstr "Delete task {title} from {date}?"
+
+msgid "Running (step {n} of {m})"
+msgstr "Running (step {n} of {m})"
+
+msgid "Frozen"
+msgstr "Frozen"
+
+msgid "Completed"
+msgstr "Completed"
+
+msgid "Cancelled"
+msgstr "Cancelled"
+
+msgid "Failed"
+msgstr "Failed"
+
+msgid "Expired"
+msgstr "Expired"
+
+msgid "Answer the clarifying question…"
+msgstr "Answer the clarifying question…"
+
+msgid "No tasks yet"
+msgstr "No tasks yet"
+
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624
 #: modules/multimodal.py:302

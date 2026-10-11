@@ -65,6 +65,11 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
+    // The Tasks tab owns the main window (task conversation or empty task
+    // state): a chat reload (initial load, deleted-session switch, periodic
+    // reselect) must not paint session messages over it. The view restores
+    // the chat itself via leaveTasksView/closeTaskView → loadMessages.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return Promise.resolve();
 
     if (!sessionId) {
         console.error('loadMessages called with empty sessionId');

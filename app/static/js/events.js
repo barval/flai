@@ -691,6 +691,9 @@ function _clearStreamFromSessionStorage(taskId) {
 
 function restoreStreamingFromSessionStorage() {
     if (!currentSessionId) return;
+    // The Tasks tab owns the main window (task view or empty state) — do not
+    // paint streaming chat elements into it.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     const keysToRemove = [];
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
@@ -1553,6 +1556,9 @@ function onMessageNew(data) {
 // -- Progress restore after reconnect / page reload ------------------
 
 async function restoreTaskProgress() {
+    // The Tasks tab owns the main window (task view or empty state) — chat
+    // progress bars must not be restored into it.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     for (const [taskId, info] of Object.entries(pendingRequestIds)) {
         if (info.sessionId !== currentSessionId) continue;
         if (info._progressRestored) continue;

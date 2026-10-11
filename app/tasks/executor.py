@@ -52,6 +52,7 @@ from typing import Any
 from flask import Flask
 
 from app.database import get_db
+from app.model_config import get_model_config
 from app.tasks.gate import is_gate_open
 from app.tasks.runner import StepAborted, run_checkpoint, run_direct_step
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
@@ -178,16 +179,19 @@ def add_user_input_step(task_id: str, question_seq: int, answer: str) -> str:
         qrow = c.fetchone()
     parent_id = qrow["id"] if qrow else None
     step_id = add_step(task_id=task_id, seq=max_seq + 1, kind="user_input", parent_step_id=parent_id)
-    update_step(step_id, result=answer)
+    update_step(step_id, result=answer, started_at=_now_iso())
     return step_id
 
 
-def add_final_step(task_id: str, result_text: str, status: str = "passed") -> str:
+def add_final_step(task_id: str, result_text: str, status: str = "passed", meta: dict[str, Any] | None = None) -> str:
     """Append the closing ``final`` step row (answer, error note or summary).
 
     Idempotent: a task may carry at most one ``final`` step — when one already
-    exists it is updated in place instead of being duplicated.
+    exists it is updated in place instead of being duplicated. ``meta`` (model
+    name + real token usage) goes into the row's extra for the chat-style
+    header.
     """
+    extra = dict(meta or {})
     with get_db() as conn:
         c = conn.cursor()
         c.execute("SELECT COALESCE(MAX(seq), 0) AS mx FROM task_steps WHERE task_id = %s", (task_id,))
@@ -198,10 +202,10 @@ def add_final_step(task_id: str, result_text: str, status: str = "passed") -> st
         )
         existing = c.fetchone()
     if existing:
-        update_step(existing["id"], result=result_text, status=status, finished_at=_now_iso())
+        update_step(existing["id"], result=result_text, status=status, finished_at=_now_iso(), extra=extra)
         return existing["id"]
     step_id = add_step(task_id=task_id, seq=max_seq + 1, kind="final")
-    update_step(step_id, result=result_text, status=status, finished_at=_now_iso())
+    update_step(step_id, result=result_text, status=status, finished_at=_now_iso(), extra=extra)
     return step_id
 
 
@@ -341,23 +345,68 @@ def _parse_plan(raw: str) -> dict | None:
     return {"title": str(data.get("title", "")), "steps": steps}
 
 
+def _last_meaningful_step(task_id: str) -> dict | None:
+    """The last non-trivial step row (for the final-summary dedup)."""
+    rows = [r for r in get_task_steps(task_id) if r.get("kind") in ("direct", "subtask")]
+    return rows[-1] if rows else None
+
+
+def _results_match(final_text: str, step_result: str) -> bool:
+    """True when the final summary duplicates the last step's result.
+
+    One-step plans make the final summary a re-render of the same answer:
+    strip reasoning residue and compare normalized prefixes (a full equality
+    never holds — the final LLM rewords slightly). The threshold is generous
+    (0.9 of the shorter head) to catch real duplicates only.
+    """
+    import difflib
+
+    def norm(s: str) -> str:
+        s = re.sub(r"<think>[\s\S]*?</think>", "", s or "")
+        s = re.sub(r"\s+", " ", s).strip().lower()
+        return s
+
+    a, b = norm(final_text), norm(step_result)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    shorter = a if len(a) <= len(b) else b
+    longer = b if shorter is a else a
+    if len(shorter) < 200:  # too short to judge reliably — only exact match counts
+        return False
+    ratio = difflib.SequenceMatcher(None, shorter[:2000], longer[: len(shorter) + 200]).ratio()
+    return ratio >= 0.9
+
+
 def _run_planner(app: Flask, prompt: str, cancel_check, lang: str) -> str:
-    """One reasoning-model call for the plan phase.
+    """One reasoning-model call for the plan phase (text only).
 
     Uses the runner's private streaming helper on purpose (the brief allows
     importing it): the reasoning model is JIT-loaded exactly as the workers
     do, and tests patch this wrapper to isolate the LLM.
     """
+    text, _usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0.2)
+    return text
+
+
+def _run_planner_full(
+    app: Flask, prompt: str, cancel_check, lang: str, temperature: float | None = None
+) -> tuple[str, dict[str, int]]:
+    """Same call, also returning the real token usage (final-summary header)."""
     from app.tasks import runner
 
-    return runner._call_reasoning(app, prompt, cancel_check, lang=lang, temperature=0.2)
+    return runner._call_reasoning(app, prompt, cancel_check, lang=lang, temperature=temperature)
 
 
-def _run_final_summary(app: Flask, task: dict) -> str | None:
+def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None = None) -> str | None:
     """Reasoning call over the accumulated results (task_final.template).
 
     Returns the cleaned final text, or None when generation fails (the caller
-    then records a non-LLM fallback note).
+    then records a non-LLM fallback note). ``meta_out`` (optional dict) is
+    filled with the model name + real token usage for the final step's
+    chat-style header — a separate argument keeps the mocked str contract
+    of the tests intact.
     """
     from app.utils import format_prompt
 
@@ -370,12 +419,19 @@ def _run_final_summary(app: Flask, task: dict) -> str | None:
         "response_language": _response_language_name(lang),
         "response_style": _style_instruction(lang, task.get("response_style") or "neutral"),
     }
+    meta: dict[str, Any] = meta_out if meta_out is not None else {}
     try:
         with app.app_context():
             prompt = format_prompt("task_final.template", params, lang=lang)
         if not prompt:
             raise RuntimeError("task_final prompt template unavailable")
-        raw = _run_planner(app, prompt, lambda: False, lang)
+        raw, usage = _run_planner_full(app, prompt, lambda: False, lang)
+        config = get_model_config("reasoning") or {}
+        meta["model_name"] = str(config.get("model_name") or "")
+        meta["usage"] = {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
     except Exception as e:
         logger.error(f"final summary generation failed for task {task.get('id', '?')}: {e}")
         return None
@@ -635,7 +691,7 @@ class TaskExecutor:
             if question is not None:
                 question_seq = int(question["seq"])
                 if question["status"] in ("pending", "awaiting_user"):
-                    update_step(parent_id, status="passed")
+                    update_step(parent_id, status="passed", finished_at=_now_iso())
         if question_seq is None:
             # No linked question row — advance past the current pointer.
             task = get_task(task_id) or {}
@@ -644,6 +700,7 @@ class TaskExecutor:
         self._preempt_running_task(task_id)
         # The question sits at plan position question_seq-1 ⇒ resume at question_seq.
         update_task(task_id, status="active", next_step_index=question_seq)
+        self._publish_task_update(task_id)
 
     def _preempt_running_task(self, keep_task_id: str) -> None:
         """One active task globally: any OTHER active task returns to queued with
@@ -682,9 +739,14 @@ class TaskExecutor:
         plan = task.get("step_plan") or {}
         if not (plan.get("steps") if isinstance(plan, dict) else plan):
             # PLAN PHASE: decompose the request before any step can run.
+            # Publish first so the panel switches «Составляю план…» (active,
+            # total_steps=0) immediately — the phase lasts tens of seconds.
+            self._publish_task_update(task_id)
             if self._run_plan_phase(task) != "ok":
                 return
             task = get_task(task_id) or task
+            # The plan just materialized — the conversation view needs it.
+            self._publish_task_update(task_id)
 
         while True:
             task = get_task(task_id)
@@ -736,6 +798,10 @@ class TaskExecutor:
 
             if self._execute_direct(task, idx, step) == "stop":
                 return
+            # The step just finished (result + metadata persisted) — publish so
+            # the conversation view fills in while the task keeps running
+            # (previously everything arrived at once when the task completed).
+            self._publish_task_update(task_id)
 
     # ── Plan phase ────────────────────────────────────────────────────
 
@@ -769,11 +835,10 @@ class TaskExecutor:
             self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
 
-        # Keep the user's original request for the step/final prompts.
-        plan["task_request"] = task.get("title") or ""
+        # Keep the user's original request as the title — the planner's own
+        # title (an LLM rephrase like «Ответить на вопрос о количестве дней в
+        # году») never overwrites it.
         fields: dict[str, Any] = {"step_plan": plan, "next_step_index": 0}
-        if plan.get("title"):
-            fields["title"] = plan["title"]
         update_task(task_id, **fields)
         self._create_plan_step_rows(task_id, plan["steps"])
         return "ok"
@@ -901,6 +966,15 @@ class TaskExecutor:
                 return "continue"
 
             elapsed = float(outcome.get("exec_seconds") or 0.0)
+            # Chat-style header data (per step): model + real token usage.
+            step_extra: dict[str, Any] = {}
+            if outcome.get("model_name"):
+                step_extra["model_name"] = str(outcome["model_name"])
+            if outcome.get("usage"):
+                step_extra["usage"] = {
+                    "prompt_tokens": int(outcome["usage"].get("prompt_tokens") or 0),
+                    "completion_tokens": int(outcome["usage"].get("completion_tokens") or 0),
+                }
             checkpoint = outcome.get("checkpoint") or {}
             self._add_budget(task_id, elapsed + float(checkpoint.get("exec_seconds") or 0.0))
 
@@ -913,6 +987,7 @@ class TaskExecutor:
                     status="passed",
                     result=result,
                     exec_seconds=elapsed,
+                    extra=step_extra,
                     checkpoint_result=str(checkpoint.get("explanation", "")),
                     checkpoint_verdict=bool(checkpoint.get("verdict")),
                 )
@@ -939,19 +1014,43 @@ class TaskExecutor:
                     result=result,
                     last_error=result[:500] or "tool error",
                     exec_seconds=elapsed,
+                    extra=step_extra,
                 )
                 update_task(task_id, next_step_index=idx + 1)
                 return "continue"
 
             # status == "failed": the checkpoint rejected the result — corrective
             # retry of the SAME step with the mismatch fed back into the next
-            # attempt's context digest (I2).
+            # attempt's context digest (I2). Special third verdict: user data
+            # missing — a dedicated question row is appended (like plan
+            # questions) and the direct step re-runs with the answer; the
+            # attempt is NOT counted (an incomplete spec is not a model
+            # failure).
+            needs_input = checkpoint.get("needs_user_input") is True and str(checkpoint.get("question") or "").strip()
+            if needs_input:
+                question = str(checkpoint["question"]).strip()
+                self._current_step_id = None
+                self._clear_running_step(task_id)
+                self._clear_cancel_flag(row["id"])
+                # Reset the rejected attempt: the row re-runs from scratch.
+                update_step(row["id"], status="pending", result="")
+                with get_db() as conn:
+                    c = conn.cursor()
+                    c.execute("SELECT COALESCE(MAX(seq), 0) AS mx FROM task_steps WHERE task_id = %s", (task_id,))
+                    next_seq = int(c.fetchone()["mx"] or 0) + 1
+                q_id = add_step(task_id=task_id, seq=next_seq, kind="question", goal=question, parent_step_id=row["id"])
+                update_step(q_id, status="awaiting_user", result=question, started_at=_now_iso())
+                update_task(task_id, status="awaiting_user")
+                self._publish_task_update(task_id)
+                logger.info(f"task {task_id} step {idx + 1} needs user input — question asked")
+                return "stop"
             self._end_step(
                 task_id,
                 row["id"],
                 status="failed",
                 result=result,
                 exec_seconds=elapsed,
+                extra=step_extra,
                 checkpoint_result=str(checkpoint.get("explanation", "")),
                 checkpoint_verdict=False,
             )
@@ -1030,8 +1129,12 @@ class TaskExecutor:
         task_id = task["id"]
         row = self._step_row_for(task_id, idx, step)
         self._clear_running_step(task_id)
-        update_step(row["id"], status="awaiting_user", result=str(step.get("goal", "")))
+        # started_at doubles as the message timestamp for the conversation
+        # view (task_steps has no created_at — a row without started_at
+        # rendered «📅 » with no time).
+        update_step(row["id"], status="awaiting_user", result=str(step.get("goal", "")), started_at=_now_iso())
         update_task(task_id, status="awaiting_user")
+        self._publish_task_update(task_id)
         logger.info(f"task {task_id} awaiting user input at step {idx + 1}")
 
     def _enqueue_subtask(self, task: dict, idx: int, step: dict) -> None:
@@ -1308,15 +1411,23 @@ class TaskExecutor:
         """
         task_id = task["id"]
         lang = task.get("lang") or "ru"
-        text = _run_final_summary(self.app, task)
+        final_meta: dict[str, Any] = {}
+        text = _run_final_summary(self.app, task, meta_out=final_meta)
         if not text:
             from app.llamacpp_client import _tr
 
             text = f"⚠️ {_tr(_FALLBACK_NO_FINAL, lang=lang)}"
+        # The final summary must not repeat the last step's answer verbatim
+        # (a one-step task's summary IS that answer — the user saw it twice).
+        last_step = _last_meaningful_step(task_id)
+        if last_step and _results_match(text, str(last_step.get("result") or "")):
+            text = str(last_step.get("result") or "")
+            final_meta = dict(last_step.get("extra") or {})  # reuse the step's header meta
         self._clear_running_step(task_id)
-        add_final_step(task_id, text)
+        add_final_step(task_id, text, meta=final_meta)
         update_task(task_id, status="completed", completed_at=_now_iso())
         logger.info(f"task {task_id} completed")
+        self._publish_task_update(task_id)
 
     def _budget_expired(self, task: dict) -> None:
         """accumulated >= budget ⇒ expired + final summary from the results so far.
@@ -1334,6 +1445,7 @@ class TaskExecutor:
         add_final_step(task_id, text)
         update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
         logger.info(f"task {task_id} expired (budget) — final summary recorded")
+        self._publish_task_update(task_id)
 
     def _cancel_task(self, task: dict) -> None:
         """User abort (API stop, Task 9): running step marked, terminal cancelled."""
@@ -1350,6 +1462,7 @@ class TaskExecutor:
         self._clear_running_step(task_id)
         update_task(task_id, status="cancelled", completed_at=_now_iso())
         logger.info(f"task {task_id} cancelled by user")
+        self._publish_task_update(task_id)
 
 
 # ── Module-level singleton (same pattern as the resource manager) ───────

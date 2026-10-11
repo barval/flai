@@ -295,10 +295,10 @@ async function sendMessage() {
         dlog('Send already in progress, ignoring duplicate');
         return;
     }
-    // Task view: the message input answers the open task's clarifying
-    // question (chat-tasks.js owns the flow from there).
-    if (window.currentTaskId) {
-        if (typeof window.sendTaskInput === 'function') {
+    // Tasks tab owns the main window: a task conversation routes the input
+    // to the task flow; the empty state has no input at all (read-only).
+    if (typeof window.isTaskViewActive === 'function' && window.isTaskViewActive()) {
+        if (window.currentTaskId && typeof window.sendTaskInput === 'function') {
             window.sendTaskInput();
         }
         return;

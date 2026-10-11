@@ -39,17 +39,14 @@ let lastTaskPayloadJson = '';
 let taskAwaitTimer = null;
 let taskAwaitStartedAt = null;
 
-// True while a task conversation is open in the main window. The chat SSE
-// render paths (events.js) consult this to keep session streams from
-// interleaving into the task conversation — #chat-messages is a single
-// container and the task view is its second "mode" (like IS_RELOADING).
+// True while the Tasks tab owns the main window: a task conversation is
+// open OR the empty task state is showing. The chat render paths consult
+// this to keep session streams and message reloads from interleaving into
+// the task window — #chat-messages is a single container and the task view
+// is its second "mode" (like IS_RELOADING). When the view closes
+// (leaveTasksView/closeTaskView) both flags are cleared BEFORE the chat
+// reload is requested, so the restore path renders normally.
 function isTaskViewActive() {
-    return Boolean(window.currentTaskId);
-}
-
-// True when the Tasks tab owns the main window (a task OR the empty state).
-// Same guard purpose as isTaskViewActive, but covers the empty state too.
-function isTasksTabActive() {
     return Boolean(window.currentTaskId) || tasksViewEmpty;
 }
 
@@ -200,6 +197,8 @@ function enterTasksEmptyState() {
     lastTaskPayloadJson = '';
     const container = document.getElementById('chat-messages');
     if (container) container.innerHTML = '';
+    const info = document.getElementById('context-info');
+    if (info) info.textContent = '';
     setTaskMode(true, null);
     if (container) {
         const hint = document.createElement('div');

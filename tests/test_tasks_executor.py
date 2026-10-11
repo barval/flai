@@ -373,7 +373,8 @@ def test_subtask_step_queued_and_loop_breaks(db_env, test_app, gate_open, monkey
 
 
 def test_plan_phase_creates_steps(db_env, test_app, gate_open, monkeypatch):
-    """No plan ⇒ planner call → parsed JSON → step rows, title set, question kind."""
+    """No plan ⇒ planner call → parsed JSON → step rows. The planner's own
+    title never overwrites the user's request (the request IS the title)."""
     store = db_env
     task_id = _mk_task(store)
     plan_json = (
@@ -387,7 +388,7 @@ def test_plan_phase_creates_steps(db_env, test_app, gate_open, monkeypatch):
     _cycle(test_app)
 
     t = store.get_task(task_id)
-    assert t["title"] == "Planned task"
+    assert t["title"] == "seed", "planner title must not overwrite the request"
     assert t["status"] == "awaiting_user", "second plan step is a question ⇒ awaiting"
     assert t["next_step_index"] == 1, "first step ran, awaiting the answer to the second"
     assert len(t["step_plan"]["steps"]) == 2
@@ -829,7 +830,9 @@ def test_awaiting_task_does_not_republish_each_cycle(db_env, test_app, gate_open
 
 
 def test_publish_fires_on_status_transition(db_env, test_app, gate_open, monkeypatch):
-    """A real transition (active → awaiting_user) still publishes once."""
+    """A real transition (active → awaiting_user) publishes: the plan-phase
+    pre-publish (panel switches to «Составляю план…») plus the awaiting
+    transition — 2 publishes for a one-question plan."""
     store = db_env
     plan = {
         "title": "Needs answer",
@@ -842,4 +845,5 @@ def test_publish_fires_on_status_transition(db_env, test_app, gate_open, monkeyp
 
     executor._process_one_cycle(gate_open=True)
 
-    assert publishes == [task_id], "transition published exactly once"
+    assert publishes.count(task_id) == 2, "plan-phase publish + awaiting transition"
+    assert publishes[0] == task_id

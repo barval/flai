@@ -2359,6 +2359,14 @@ msgstr "Tavily API - лимит исчерпан"
 msgid "tavily_status_unavailable"
 msgstr "Tavily API - недоступен"
 
+
+#: app/templates/base.html:75
+msgid "tavily_refreshing"
+msgstr "Обновляется информация"
+#: app/templates/base.html:75
+msgid "tavily_elapsed_s"
+msgstr "с"
+
 #: app/templates/base.html:76
 msgid "tavily_quota"
 msgstr ""

@@ -25,7 +25,7 @@ function applyCurrentView() {
     if (typeof enterTasksEmptyState === 'function' && typeof leaveTasksView === 'function') {
         if (view === 'tasks') {
             if (!window.currentTaskId) enterTasksEmptyState();
-        } else if (typeof isTasksTabActive === 'function' && isTasksTabActive()) {
+        } else if (typeof isTaskViewActive === 'function' && isTaskViewActive()) {
             leaveTasksView();
         }
     }

@@ -25,17 +25,27 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
+import uuid
 from collections.abc import Callable, Generator
 from typing import Any
 
 from flask import Flask
+
+from app.model_config import get_model_config
+from app.utils import begin_usage_account, finish_usage_account
 
 logger = logging.getLogger(__name__)
 
 # The verifier prompt keeps the step result bounded — a huge intermediate
 # result would waste the reasoning window on repeated context.
 CHECKPOINT_RESULT_MAX_CHARS = 8000
+
+# Real token usage of the LAST _call_reasoning on this thread (executor
+# threads run one step at a time): _run_llm_step stashes it, run_direct_step
+# reads it into the returned payload (→ the step row's extra → the UI header).
+_last_call_usage = threading.local()
 
 
 class StepAborted(Exception):  # noqa: N818 - name fixed by the Task 6 implementer brief
@@ -64,21 +74,32 @@ def _reasoning_chat(
 
 def _call_reasoning(
     app: Flask, prompt: str, cancel_check: Callable[[], bool], lang: str = "ru", temperature: float | None = None
-) -> str:
-    """Stream one reasoning-model call for a step; abort mid-stream on cancel."""
+) -> tuple[str, dict[str, int]]:
+    """Stream one reasoning-model call for a step; abort mid-stream on cancel.
+
+    Opens a per-call usage account (keyed by the prompt hash) so the real
+    stream-usage totals (stream_options.include_usage) are attributable to
+    THIS call; returns ``(text, usage)``. The executor stores usage into the
+    step's extra for the chat-style header (🔢 tokens).
+    """
     messages = [{"role": "user", "content": prompt}]
+    account_id = f"task-call:{uuid.uuid4()}"
+    begin_usage_account(account_id)
     text = ""
     for chunk in _reasoning_chat(app, messages, lang, temperature=temperature):
         if cancel_check():
+            finish_usage_account(account_id)
             raise StepAborted("step cancelled during reasoning generation")
         if isinstance(chunk, dict):
             continue
         text += chunk
     if cancel_check():
+        finish_usage_account(account_id)
         # Cancel arrived with the tail of the stream — discard it entirely
         # rather than return a partial result.
         raise StepAborted("step cancelled at end of reasoning generation")
-    return text
+    usage = finish_usage_account(account_id) or {}
+    return text, {k: int(v) for k, v in usage.items() if isinstance(v, (int, float)) and v > 0}
 
 
 def _is_error_text(text: str) -> bool:
@@ -117,7 +138,10 @@ def _run_llm_step(
     prompt = format_prompt("task_step.template", params, lang=lang)
     if not prompt:
         raise RuntimeError("task_step prompt template unavailable")
-    return _call_reasoning(app, prompt, cancel_check, lang=lang)
+    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
+    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
+    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
+    return text
 
 
 def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) -> str:
@@ -213,16 +237,23 @@ def run_direct_step(
             # but reported aborted so the executor does not advance the plan.
             return {"result": result, "exec_seconds": exec_seconds, "status": "aborted", "checkpoint": None}
         checkpoint = run_checkpoint(app, step, result, lang=lang)
-        return {
+        payload = {
             "result": result,
             "exec_seconds": exec_seconds,
             "status": "passed" if checkpoint.get("verdict") else "failed",
             "checkpoint": checkpoint,
         }
+        if tool == "llm":
+            # Chat-style header data (model + 🔢 tokens) for the conversation view.
+            config = get_model_config("reasoning") or {}
+            payload["model_name"] = str(config.get("model_name") or "")
+            payload["usage"] = dict(getattr(_last_call_usage, "value", {}) or {})
+        return payload
 
 
 def _parse_verdict(reply: str) -> dict[str, Any]:
-    """Parse a verifier reply into ``{"verdict": bool, "explanation": str}``.
+    """Parse a verifier reply into ``{"verdict": bool, "explanation": str}``
+    plus the optional "needs_user_input" verdict: ``{"question": str}``.
 
     Tolerates thinking-tag residue, markdown fences and any prose around the
     JSON object. Any parse failure is a failed verdict — never a crash.
@@ -252,7 +283,16 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
         verdict = raw_verdict.strip().lower() == "true"
     else:
         return {"verdict": False, "explanation": "unparseable checkpoint reply"}
-    return {"verdict": verdict, "explanation": str(data.get("explanation", ""))}
+    parsed = {"verdict": verdict, "explanation": str(data.get("explanation", ""))}
+    # Third verdict: user data missing — the question goes to the user and the
+    # step re-runs with the answer. Only honored on a failed verdict (the
+    # templates emit it as verdict=false + needs_user_input=true).
+    if not verdict and data.get("needs_user_input") is True:
+        question = str(data.get("question") or "").strip()
+        if question:
+            parsed["needs_user_input"] = True
+            parsed["question"] = question
+    return parsed
 
 
 def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "ru") -> dict[str, Any]:

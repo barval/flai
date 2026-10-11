@@ -105,6 +105,14 @@ def get_task(task_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def get_tasks_by_user(user_id: str) -> list[dict]:
+    """Every task of one user, newest first (the Tasks panel list)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM tasks WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+        return [dict(r) for r in c.fetchall()]
+
+
 def update_task(task_id: str, **fields: Any) -> dict:
     """Update allowed task columns; return the fresh row (None when task is absent)."""
     sets, vals = _build_update("tasks", _TASK_FIELDS, fields)

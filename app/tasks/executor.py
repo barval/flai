@@ -518,6 +518,19 @@ class TaskExecutor:
         except Exception as e:
             logger.warning(f"running-step pointer clear failed (task {task_id}): {e}")
 
+    def _publish_task_update(self, task_id: str) -> None:
+        """Announce the task's post-cycle state on the user's SSE channel.
+
+        Best effort (Tasks panel live status, spec §5); a publish failure never
+        breaks the cycle.
+        """
+        try:
+            from app.tasks.events import publish_task_update
+
+            publish_task_update(self.app, get_task(task_id))
+        except Exception as e:
+            logger.warning(f"task-update publish failed (task {task_id}): {e}")
+
     def _clear_cancel_flag(self, step_id: str) -> None:
         """Consumer-clears rule: the flag is removed once the abort is processed
         (and before every re-run, so a stale flag cannot abort a fresh attempt)."""
@@ -585,6 +598,7 @@ class TaskExecutor:
             if pick is not None:
                 seen.add(pick["id"])
                 self._run_task(pick, gate_open=gate_open)
+                self._publish_task_update(pick["id"])
                 current = get_task(pick["id"])
                 if current is None or current["status"] != "awaiting_user":
                     return  # slot held (active/frozen) or terminal — stop the cycle
@@ -596,6 +610,7 @@ class TaskExecutor:
             seen.add(queued["id"])
             update_task(queued["id"], status="active", started_at=_now_iso())
             self._run_task(get_task(queued["id"]) or queued, gate_open=gate_open)
+            self._publish_task_update(queued["id"])
             current = get_task(queued["id"])
             if current is None or current["status"] != "awaiting_user":
                 return
@@ -651,6 +666,12 @@ class TaskExecutor:
             # Resuming after a gate re-open: back to active before stepping.
             update_task(task_id, status="active")
             task["status"] = "active"
+
+        # A user stop may have arrived while the task was still queued — honour
+        # the flag BEFORE the plan phase so no LLM call is spent on it.
+        if self._redis_flag(f"task:cancelled:{task_id}"):
+            self._cancel_task(task)
+            return
 
         plan = task.get("step_plan") or {}
         if not (plan.get("steps") if isinstance(plan, dict) else plan):

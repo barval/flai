@@ -227,6 +227,28 @@ msgstr "The final answer could not be generated; please check the step results a
 msgid "Execution budget exhausted; the summary could not be generated."
 msgstr "Execution budget exhausted; the summary could not be generated."
 
+# Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation view
+msgid "Background tasks are disabled"
+msgstr "Background tasks are disabled"
+
+msgid "Task request is empty"
+msgstr "Task request is empty"
+
+msgid "Answer is empty"
+msgstr "Answer is empty"
+
+msgid "Task is not awaiting an answer"
+msgstr "Task is not awaiting an answer"
+
+msgid "Plan of {n} steps:"
+msgstr "Plan of {n} steps:"
+
+msgid "Step {n} of {m}:"
+msgstr "Step {n} of {m}:"
+
+msgid "Awaiting answer"
+msgstr "Awaiting answer"
+
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624
 #: modules/multimodal.py:302

@@ -230,6 +230,28 @@ msgstr "Не удалось сформировать итоговый ответ
 msgid "Execution budget exhausted; the summary could not be generated."
 msgstr "Время исполнения задачи исчерпано; сводку сформировать не удалось."
 
+# Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation view
+msgid "Background tasks are disabled"
+msgstr "Фоновые задачи отключены"
+
+msgid "Task request is empty"
+msgstr "Запрос задачи пуст"
+
+msgid "Answer is empty"
+msgstr "Ответ пуст"
+
+msgid "Task is not awaiting an answer"
+msgstr "Задача не ожидает ответа"
+
+msgid "Plan of {n} steps:"
+msgstr "План из {n} шагов:"
+
+msgid "Step {n} of {m}:"
+msgstr "Шаг {n} из {m}:"
+
+msgid "Awaiting answer"
+msgstr "Ожидает ответа"
+
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624
 #: modules/multimodal.py:302

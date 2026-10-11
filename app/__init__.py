@@ -373,6 +373,7 @@ def create_app():
         queue,
         rlm,
         sessions,
+        tasks,
         tts,
     )
 
@@ -390,6 +391,7 @@ def create_app():
     app.register_blueprint(events.bp)
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
+    app.register_blueprint(tasks.bp)
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)

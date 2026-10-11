@@ -280,6 +280,9 @@ msgstr "Удалить задачу «{title}» от {date}?"
 msgid "Running (step {n} of {m})"
 msgstr "Выполняется (шаг {n} из {m})"
 
+msgid "Running"
+msgstr "Выполняется"
+
 msgid "Frozen"
 msgstr "Приостановлено"
 
@@ -300,6 +303,9 @@ msgstr "Ответьте на уточнение…"
 
 msgid "No tasks yet"
 msgstr "Пока нет задач"
+
+msgid "Export is unavailable while viewing a task"
+msgstr "Экспорт недоступен при просмотре задачи"
 
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624

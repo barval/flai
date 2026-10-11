@@ -277,6 +277,9 @@ msgstr "Delete task {title} from {date}?"
 msgid "Running (step {n} of {m})"
 msgstr "Running (step {n} of {m})"
 
+msgid "Running"
+msgstr "Running"
+
 msgid "Frozen"
 msgstr "Frozen"
 
@@ -297,6 +300,9 @@ msgstr "Answer the clarifying question…"
 
 msgid "No tasks yet"
 msgstr "No tasks yet"
+
+msgid "Export is unavailable while viewing a task"
+msgstr "Export is unavailable while viewing a task"
 
 # GPU memory error messages
 #: app/queue.py:1397 app/queue.py:1576 app/queue.py:2453 app/queue.py:2624

@@ -6,6 +6,13 @@ function siteTitleFallback() {
 }
 
 async function saveChatAsHTML() {
+    // The export walks the session DOM and names the file after the active
+    // chat session — exporting from the task view would mix task steps into a
+    // session artifact.
+    if (window.currentTaskId) {
+        alert(t('task_export_unavailable'));
+        return;
+    }
     const userNameElement = document.querySelector('.logout-container .user-name');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');    const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {

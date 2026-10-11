@@ -211,6 +211,7 @@ function handleEvent(event) {
 function onCameraImage(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (data.message_id && displayedMessageIds.has(data.message_id)) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return; // message persisted; reloads with the session
     dlog('onCameraImage:', data.message_id);
     window.displayMessage('assistant', data.response, null,
         data.file_type || null, data.file_name || null, data.file_path || null,
@@ -242,6 +243,7 @@ function getToolLabel(toolName) {
 
 function onToolCall(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onToolCall:', data.tool_name);
     _updateProgressElement(data.task_id, data.session_id, getToolLabel(data.tool_name));
 }
@@ -305,6 +307,7 @@ function getStageLabel(stage, count) {
 function onTaskProgress(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.stage) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onTaskProgress:', data.stage);
 
     _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages));
@@ -379,6 +382,7 @@ function _removeProgressElement(taskId) {
 function onVideoStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onVideoStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -408,6 +412,7 @@ function onVideoStep(data) {
 function onImageStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onImageStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -442,6 +447,7 @@ function onImageStep(data) {
 function onImagePreview(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || !data.image_b64) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onImagePreview:', data.task_id, 'step:', data.step);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -587,6 +593,11 @@ function onStreamToken(data) {
 
     // Only update DOM for active session
     if (data.session_id !== currentSessionId) return;
+    // Task conversation is open in the main window — the stream is persisted
+    // (sessionStorage above) and rendered by loadMessages after the view
+    // closes; appending its tokens into the task view would interleave two
+    // conversations in one container.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
 
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
@@ -1073,6 +1084,12 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
         scrollToBottom(chatMessages);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
+        // Task view open: skip the DOM render (message persisted; reloads with
+        // the session) — without this guard the streamed chat answer would be
+        // appended into the open task conversation.
+        if (typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+            return;
+        }
         // Fallback: create the message via displayMessage
             window.displayMessage('assistant', data.result.response, null, null, null, null,
                 data.result.assistant_timestamp || new Date().toISOString(),
@@ -1201,7 +1218,8 @@ function handleCompletedResult(result, expectedSessionId) {
 
     // Error result
     if (result.error) {
-        if (resultSessionId === currentSessionId) {
+        if (resultSessionId === currentSessionId
+            && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
             // Error headers intentionally get no ⏱️/🚀/🤖 - pass null for
             // responseTime and modelName='system'.
             window.displayMessage('assistant', result.error, null, null, null, null,
@@ -1242,7 +1260,8 @@ function handleCompletedResult(result, expectedSessionId) {
                 modelUsed = result.gen_model;
             }
 
-            if (resultSessionId === currentSessionId) {
+            if (resultSessionId === currentSessionId
+                && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
                 window.displayMessage('assistant', result.response, result.file_data,
                     result.file_type, result.file_name, result.file_path,
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
@@ -1272,7 +1291,8 @@ function handleCompletedResult(result, expectedSessionId) {
 }
 
 function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
-    if (resultSessionId === currentSessionId) {
+    if (resultSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         if (!result.transcribed_message_id || !displayedMessageIds.has(result.transcribed_message_id)) {
             const transcribedText = result.transcribed_text || '(empty transcription)';
             var transcribedContent = JSON.stringify({prefix: '🎤 ' + t('transcribed') + ': ', text: transcribedText});
@@ -1346,7 +1366,8 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
 
 function handleCameraResult(result, resultSessionId) {
     const cameraSessionId = result.session_id || resultSessionId;
-    if (cameraSessionId === currentSessionId) {
+    if (cameraSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         for (const msg of result.messages) {
             if (msg.message_id && displayedMessageIds.has(msg.message_id)) continue;
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
@@ -1365,7 +1386,8 @@ function handleCameraResult(result, resultSessionId) {
 
 function handleErrorResult(data, expectedSessionId) {
     const errorSessionId = data.result?.session_id || expectedSessionId;
-    if (errorSessionId === currentSessionId) {
+    if (errorSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         const errorMsg = data.result?.error || data.error || t('unknown_error');
         window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
             new Date().toISOString(), null, 'system', null, null, null, null, null, null, null, null, 'system');
@@ -1389,6 +1411,15 @@ function clearSessionQueue(sessionId) {
 function onMessageNew(data) {
     if (!data || !data.session_id || !data.message_id) return;
     dlog('onMessageNew: session', data.session_id, 'msg', data.message_id, 'role', data.role);
+
+    // Task conversation is open in the main window: the message is already
+    // persisted, so skip only the render (counters/indicators below still run
+    // for the other-session branch; for the current session the message
+    // reloads with loadMessages when the task view closes).
+    if (data.session_id === currentSessionId
+        && typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+        return;
+    }
 
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {

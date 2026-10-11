@@ -26,6 +26,14 @@ const TASK_TERMINAL_STATUSES = new Set(['completed', 'failed', 'expired', 'cance
 let taskReloadTimer = null;
 let taskOrigPlaceholder = null;
 
+// True while a task conversation is open in the main window. The chat SSE
+// render paths (events.js) consult this to keep session streams from
+// interleaving into the task conversation — #chat-messages is a single
+// container and the task view is its second "mode" (like IS_RELOADING).
+function isTaskViewActive() {
+    return Boolean(window.currentTaskId);
+}
+
 // ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------
@@ -72,7 +80,7 @@ function renderTasksList() {
         const dateStr = task.created_at ? formatFullDateTime(task.created_at) : '';
         const steps = task.total_steps ? ' [' + task.total_steps + ']' : '';
         html += `
-<div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}" data-task-title="${escapeHtml(task.title || '')}">
+<div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}">
     <div class="session-content">
         <div class="session-info">
             <div class="session-title">📝 ${escapeHtml(task.title || '')}</div>
@@ -124,7 +132,9 @@ function taskStatusLine(task) {
             const n = Math.min((Number(task.next_step_index) || 0) + 1, total);
             return '▶ ' + formatString(t('task_status_running'), { n: n, m: total });
         }
-        return '▶ ' + t('queued');
+        // Plan phase: the executor is running (making the plan) but no steps
+        // exist yet — never render this as "queued".
+        return '▶ ' + t('task_running');
     }
     if (status === 'frozen') return '⏸ ' + t('task_status_frozen');
     if (status === 'awaiting_user') return '⏳ ' + t('task_awaiting_answer');
@@ -166,8 +176,10 @@ function closeTaskView(silent) {
         // silent=true because it loads its own messages).
         const container = document.getElementById('chat-messages');
         if (container) container.innerHTML = '';
-        if (typeof window.loadMessages === 'function' && window.currentSessionId) {
-            window.loadMessages(window.currentSessionId).catch(() => {});
+        // currentSessionId is a top-level `let` in chat-constants.js — a lexical
+        // global, not a window property (window.currentSessionId is undefined).
+        if (typeof window.loadMessages === 'function' && currentSessionId) {
+            window.loadMessages(currentSessionId).catch(() => {});
         }
         if (typeof updateMessageCount === 'function') updateMessageCount();
     }
@@ -177,7 +189,9 @@ function loadTaskConversation(taskId) {
     return fetch('/api/tasks/' + encodeURIComponent(taskId) + '/messages')
         .then(res => {
             if (!res.ok) {
-                throw new Error(`HTTP error ${res.status}`);
+                const error = new Error(`HTTP error ${res.status}`);
+                error.status = res.status;
+                throw error;
             }
             return res.json();
         })
@@ -190,6 +204,15 @@ function loadTaskConversation(taskId) {
             setTaskMode(true, tasksData[taskId]);
         })
         .catch(err => {
+            if (typeof window.hideMessagesLoadingIndicator === 'function') {
+                window.hideMessagesLoadingIndicator();
+            }
+            // 404 races a pending SSE reload after the task was deleted — the
+            // view closes right after, no alert needed.
+            if (err.status === 404) {
+                console.warn('Task messages gone (deleted?):', taskId);
+                return;
+            }
             console.error('Error loading task messages:', err);
             alert(t('error') + ': ' + err.message);
         });
@@ -312,12 +335,18 @@ function sendTaskAnswer() {
         .then(res => res.json().catch(() => ({})))
         .then(data => {
             if (data.error) {
+                // Restore the answer — a 409 (stale awaiting state) must not
+                // wipe a long typed answer.
+                if (input) input.value = text;
                 alert(data.error);
                 return;
             }
             scheduleTaskReload(window.currentTaskId);
         })
-        .catch(err => alert(t('error') + ': ' + err.message));
+        .catch(err => {
+            if (input) input.value = text;
+            alert(t('error') + ': ' + err.message);
+        });
 }
 
 function stopCurrentTask() {
@@ -372,12 +401,20 @@ function openNewTaskModal() {
     if (err) err.hidden = true;
     if (input) input.value = '';
     if (modal) modal.hidden = false;
+    document.addEventListener('keydown', onNewTaskModalKeydown);
     if (input && typeof input.focus === 'function') input.focus();
 }
 
 function closeNewTaskModal() {
     const modal = document.getElementById('new-task-modal');
     if (modal) modal.hidden = true;
+    document.removeEventListener('keydown', onNewTaskModalKeydown);
+}
+
+// Escape closes the dialog (Enter intentionally does NOT submit — the request
+// textarea is multiline).
+function onNewTaskModalKeydown(e) {
+    if (e.key === 'Escape') closeNewTaskModal();
 }
 
 function submitNewTask() {
@@ -414,9 +451,9 @@ function submitNewTask() {
                 loadTasksFromServer();
             }
         })
-        .catch(err => {
+        .catch(e => {
             if (err) {
-                err.textContent = t('error') + ': ' + err.message;
+                err.textContent = t('error') + ': ' + e.message;
                 err.hidden = false;
             }
         });

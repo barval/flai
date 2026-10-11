@@ -19,6 +19,7 @@ CHAT_DOCS = (ROOT / "app/static/js/chat-documents.js").read_text(encoding="utf-8
 CHAT_INIT = (ROOT / "app/static/js/chat-init.js").read_text(encoding="utf-8")
 CHAT_SESSIONS = (ROOT / "app/static/js/chat-sessions.js").read_text(encoding="utf-8")
 EVENTS_JS = (ROOT / "app/static/js/events.js").read_text(encoding="utf-8")
+CHAT_EXPORT = (ROOT / "app/static/js/chat-export.js").read_text(encoding="utf-8")
 CHAT_CSS = (ROOT / "app/static/css/chat.css").read_text(encoding="utf-8")
 DARK_CSS = (ROOT / "app/static/css/dark-theme.css").read_text(encoding="utf-8")
 ROUTES_TASKS = (ROOT / "app/routes/tasks.py").read_text(encoding="utf-8")
@@ -34,6 +35,7 @@ UI_MSGIDS = {
     "Delete task": "delete_task",
     "Delete task {title} from {date}?": "delete_task_confirm",
     "Running (step {n} of {m})": "task_status_running",
+    "Running": "task_running",
     "Frozen": "task_status_frozen",
     "Completed": "task_status_completed",
     "Cancelled": "task_status_cancelled",
@@ -41,6 +43,7 @@ UI_MSGIDS = {
     "Expired": "task_status_expired",
     "Answer the clarifying question…": "task_answer_placeholder",
     "No tasks yet": "task_no_tasks",
+    "Export is unavailable while viewing a task": "task_export_unavailable",
 }
 
 TASK_JS_FUNCTIONS = (
@@ -184,3 +187,66 @@ class TestTasksFrontendLogic:
         # renderTaskMessage sets data-timestamp from it; task_steps has no
         # created_at, so a step's timestamp is its started_at.
         assert '"created_at": _iso(row.get("started_at") or row.get("finished_at"))' in ROUTES_TASKS
+
+
+class TestReviewGuards:
+    """Regression guards from the Task 10 review round."""
+
+    @staticmethod
+    def _function_block(source, signature):
+        start = source.index(signature)
+        end = source.find("\nfunction ", start + 1)
+        return source[start : end if end > start else len(source)]
+
+    def test_events_js_chat_render_paths_respect_task_view(self):
+        # The chat SSE render paths must not interleave into the open task
+        # conversation: every DOM-mutating handler checks isTaskViewActive().
+        for name in (
+            "onStreamToken",
+            "onMessageNew",
+            "onCameraImage",
+            "onToolCall",
+            "onTaskProgress",
+            "onVideoStep",
+            "onImageStep",
+            "onImagePreview",
+        ):
+            block = self._function_block(EVENTS_JS, f"function {name}(")
+            assert "isTaskViewActive" in block, f"{name} does not check isTaskViewActive()"
+
+    def test_result_paths_suppress_display_message(self):
+        # Result-completion paths render through displayMessage only when the
+        # task view is closed.
+        for name in ("handleCompletedResult", "handleErrorResult", "handleCameraResult", "handleTranscriptionResult"):
+            block = self._function_block(EVENTS_JS, f"function {name}(")
+            assert "isTaskViewActive" in block, f"{name} does not check isTaskViewActive()"
+
+    def test_close_task_view_uses_lexical_session_id(self):
+        # window.currentSessionId is never assigned anywhere (currentSessionId
+        # is a top-level `let` in chat-constants.js, a lexical global) — the
+        # reload after closing a task view must consult the lexical binding,
+        # not a window property. The comment in closeTaskView documents this;
+        # the CODE itself must not dereference window.currentSessionId.
+        assert "window.currentSessionId" not in re.sub(r"//.*", "", CHAT_TASKS)
+        assert "window.loadMessages(currentSessionId)" in CHAT_TASKS
+
+    def test_active_task_without_steps_is_not_queued(self):
+        # Plan phase (active, total_steps=0) must not display "queued".
+        assert "task_running" in CHAT_TASKS
+        assert "t('task_status_running')" in CHAT_TASKS
+
+    def test_export_blocked_during_task_view(self):
+        assert "window.currentTaskId" in CHAT_EXPORT
+        assert "task_export_unavailable" in CHAT_EXPORT
+
+    def test_new_task_modal_escape_closes(self):
+        assert "onNewTaskModalKeydown" in CHAT_TASKS
+        assert "closeNewTaskModal" in CHAT_TASKS
+
+    def test_answer_restored_on_error(self):
+        # A failed answer POST must not wipe the typed text.
+        answer_block = self._function_block(CHAT_TASKS, "function sendTaskAnswer(")
+        assert "input.value = text" in answer_block
+
+    def test_task_modal_has_no_dead_attributes(self):
+        assert "data-task-title" not in CHAT_TASKS

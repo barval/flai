@@ -146,6 +146,10 @@ def load_config(app):
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
     app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
     app.config["TASK_POLL_INTERVAL_S"] = int(os.getenv("TASK_POLL_INTERVAL_S", "1"))
+    # How many executor cycles a subtask result may stay absent before the
+    # poller checks whether its queue worker is still alive (default 10 = 10 s
+    # with TASK_POLL_INTERVAL_S=1; exhausted+dead ⇒ step failed, task continues).
+    app.config["TASK_SUBTASK_POLL_CYCLES"] = int(os.getenv("TASK_SUBTASK_POLL_CYCLES", "10"))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))

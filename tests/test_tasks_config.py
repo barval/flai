@@ -9,3 +9,4 @@ def test_task_config_defaults(test_app):
         assert current_app.config["TASK_TOTAL_BUDGET_S"] == 86400
         assert current_app.config["TASK_STEP_MAX_ATTEMPTS"] == 3
         assert current_app.config["TASK_POLL_INTERVAL_S"] == 1
+        assert current_app.config["TASK_SUBTASK_POLL_CYCLES"] == 10

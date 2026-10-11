@@ -564,6 +564,17 @@ class TaskExecutor:
         if ui is not None:
             self._process_user_answer(ui)
 
+        # Deferred subtasks (Task 8): with the gate open, the slow-worker guard
+        # may have parked tagged media tasks — move them back onto the slow
+        # queue so the worker can run them. Fail-open: a broken queue must not
+        # kill the cycle.
+        try:
+            requeued = _get_request_queue().requeue_deferred_subtasks()
+            if requeued:
+                logger.info(f"requeued {requeued} deferred subtask(s) onto the slow queue")
+        except Exception as e:
+            logger.warning(f"deferred subtask requeue skipped: {e}")
+
         # Selection loop. Chained only while the slot keeps being RELEASED
         # (awaiting_user) — an active/frozen task holds the slot, a terminal
         # task waits for the next poll. ``seen`` guards against a task that
@@ -681,9 +692,21 @@ class TaskExecutor:
             if step.get("user_input_expected"):
                 self._ask_user(task, idx, step)
                 return  # slot freed
+
+            # Media/RLM subtask (Task 8): a fresh step is enqueued onto the
+            # request queue; an already-enqueued one is driven to completion by
+            # polling its result store. One peek per cycle — "hold" yields the
+            # cycle to the executor loop (which re-checks gate/deferred/answers
+            # and resumes polling), while "done" advances past the consumed step.
             if str(step.get("tool", "llm")) in _SUBTASK_TOOLS:
+                row = self._step_row_for(task_id, idx, step)
+                if row["status"] in ("subtask_queued", "subtask_running"):
+                    if self._poll_subtask(task, idx, row, gate_open=gate_open) in ("stop", "hold"):
+                        return  # interrupted (frozen) or still running — release the cycle
+                    continue  # consumed — re-read the loop state for the next step
                 self._enqueue_subtask(task, idx, step)
-                return  # loop breaks — completion polling lands with Task 8
+                return  # the queue owns it now — polling resumes on the next cycle
+
             if self._execute_direct(task, idx, step) == "stop":
                 return
 
@@ -1012,6 +1035,175 @@ class TaskExecutor:
         self._clear_running_step(task_id)
         update_step(row["id"], status="subtask_queued", extra={"subtask_queue_id": subtask_queue_id})
         logger.info(f"task {task_id} step {idx + 1} ({tool}) queued as subtask {subtask_queue_id}")
+
+    # ── Subtask polling (Task 8) ──────────────────────────────────────
+
+    def _peek_subtask_result(self, queue_id: str) -> dict | None:
+        """Non-blocking peek of a subtask's queue result (the API bridge's key).
+
+        Returns the stored envelope ``{"status": "completed"|"error", ...}``
+        or None while the result is absent/queued. Test seam.
+        """
+        try:
+            return _get_request_queue().check_result(queue_id)
+        except Exception as e:
+            logger.warning(f"subtask result peek failed ({queue_id}): {e}")
+            return None
+
+    def _subtask_alive(self, queue_id: str) -> bool:
+        """Is the subtask still pending somewhere in the queue machinery?
+
+        Used to tell "the worker is still on it" from "the result expired".
+        Fail-closed (False) so a broken queue never freezes a task forever.
+        """
+        try:
+            queue = _get_request_queue()
+            for key in (queue.processing_key, queue.slow_processing_key, queue.crawl_processing_key):
+                if queue.redis.hexists(key, queue_id):
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"subtask liveness check failed ({queue_id}): {e}")
+            return False
+
+    def _poll_budget_polls(self) -> int:
+        """How many cycles a subtask result may stay absent before a liveness check."""
+        return max(1, int(self._cfg("TASK_SUBTASK_POLL_CYCLES", 10)))
+
+    def _poll_subtask(self, task: dict, idx: int, row: dict, gate_open: bool | None = None) -> str:
+        """One poll of a subtask step's queue result (one peek per cycle).
+
+        Returns:
+          "done" — the step was consumed (passed / failed / expired) and the
+                   caller advances to the next plan step;
+          "hold" — the result is not ready yet; the caller yields the cycle so
+                   the executor loop can re-check the gate and resume polling;
+          "stop" — the subtask was aborted (chat) and the task is frozen.
+
+        Budget approximation: the queue result carries no per-task exec
+        duration, so ``now − step.started_at`` is the practical upper bound of
+        the GPU work. ``TASK_SUBTASK_POLL_CYCLES`` bounds how many cycles a
+        result may stay absent before a liveness check decides between "the
+        worker is still on it" (keep waiting) and "the result expired" (fail).
+        """
+        task_id = task["id"]
+        extra = dict(row.get("extra") or {})
+        queue_id = extra.get("subtask_queue_id") or ""
+        if not queue_id:
+            # Defensive: a tagged row without a queue id cannot ever complete.
+            self._end_step(task_id, row["id"], status="failed", last_error="subtask queue id missing")
+            update_task(task_id, next_step_index=idx + 1)
+            return "done"
+
+        if row["status"] == "subtask_queued":
+            # First poll flips the status; only stamp the start when absent
+            # (an enqueued row may already carry a start for the budget clock).
+            started = row.get("started_at") or _now_iso()
+            update_step(row["id"], status="subtask_running", started_at=started)
+            row = {**row, "status": "subtask_running", "started_at": started}
+
+        # Chat abort: the hook raised our cancel flag mid-subtask.
+        if self._redis_flag(f"{CANCEL_KEY_PREFIX}{row['id']}"):
+            return self._abort_subtask(task_id, idx, row, queue_id, reason="chat")
+
+        # Gate closed mid-poll: chat took over — same interrupted path.
+        if not self._gate_value(gate_open):
+            return self._abort_subtask(task_id, idx, row, queue_id, reason="chat")
+
+        stored = self._peek_subtask_result(queue_id)
+        if stored is not None:
+            return self._consume_subtask_result(task_id, idx, row, queue_id, stored)
+
+        # No result yet: spend one poll from the cycle budget and keep waiting.
+        polls = int(extra.get("subtask_polls") or 0) + 1
+        extra["subtask_polls"] = polls
+        update_step(row["id"], extra=extra)
+        if polls < self._poll_budget_polls():
+            return "hold"
+
+        # Budget exhausted: a live worker still owns it (keep waiting); a gone
+        # one means the result expired (fail the step and move on).
+        if self._subtask_alive(queue_id):
+            logger.info(f"task {task_id} step {idx + 1}: subtask {queue_id} still running — holding")
+            return "hold"
+        self._end_step(
+            task_id,
+            row["id"],
+            status="failed",
+            exec_seconds=self._subtask_seconds(row),
+            last_error="subtask result expired",
+        )
+        update_task(task_id, next_step_index=idx + 1)
+        return "done"
+
+    def _subtask_seconds(self, row: dict) -> float:
+        """Wall-clock approximation of a subtask's exec time (now − started_at)."""
+        started = row.get("started_at")
+        if not started:
+            return 0.0
+        try:
+            started_dt = datetime.fromisoformat(str(started))
+            if started_dt.tzinfo is None:
+                started_dt = started_dt.replace(tzinfo=UTC)
+            return round(max(0.0, (datetime.now(UTC) - started_dt).total_seconds()), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _abort_subtask(self, task_id: str, idx: int, row: dict, queue_id: str, reason: str) -> str:
+        """Cancel the queue task, mark the step interrupted, freeze the task."""
+        try:
+            _get_request_queue().cancel_task(queue_id)
+        except Exception as e:
+            logger.warning(f"subtask cancel failed ({queue_id}): {e}")
+        elapsed = self._subtask_seconds(row)
+        self._add_budget(task_id, elapsed)
+        self._end_step(task_id, row["id"], status="interrupted", interrupt_reason=reason, exec_seconds=elapsed)
+        update_task(task_id, status="frozen", abort_reason="chat")
+        logger.info(f"task {task_id} step {idx + 1}: subtask aborted ({reason}) — frozen")
+        return "stop"
+
+    def _consume_subtask_result(self, task_id: str, idx: int, row: dict, queue_id: str, stored: dict) -> str:
+        """A result envelope arrived: consume it into the step row.
+
+        Error envelope (worker marked the task failed) ⇒ step failed (attempts
+        NOT incremented — a queue failure is a tool error, spec §3), the task
+        continues. Success ⇒ step passed with the media refs in extra["media"].
+        """
+        elapsed = self._subtask_seconds(row)
+        self._add_budget(task_id, elapsed)
+        result_data = stored.get("result") if isinstance(stored.get("result"), dict) else {}
+        error_text = str(stored.get("error") or result_data.get("error") or "")
+        is_error = stored.get("status") == "error" or bool(error_text)
+        if is_error:
+            self._end_step(
+                task_id,
+                row["id"],
+                status="failed",
+                exec_seconds=elapsed,
+                last_error=error_text[:500] or "subtask failed",
+            )
+            logger.warning(f"task {task_id} step {idx + 1}: subtask failed — continuing")
+            update_task(task_id, next_step_index=idx + 1)
+            return "done"
+
+        response_text = str(stored.get("response") or result_data.get("response") or "")
+        media: dict = {}
+        for key in ("file_path", "file_name", "file_type", "file_size", "message_id"):
+            value = stored.get(key) if key in stored else result_data.get(key)
+            if value:
+                media[key] = value
+        self._end_step(
+            task_id,
+            row["id"],
+            status="passed",
+            exec_seconds=elapsed,
+            result=response_text or "done",
+        )
+        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media}
+        update_step(row["id"], extra=merged_extra)
+        logger.info(f"task {task_id} step {idx + 1}: subtask completed ({queue_id})")
+        update_task(task_id, next_step_index=idx + 1)
+        return "done"
 
     def _finalize(self, task: dict) -> None:
         """Plan exhausted → the final answer over the accumulated results.

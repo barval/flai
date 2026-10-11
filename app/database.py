@@ -663,6 +663,54 @@ def _init_postgresql():
     """)
     c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
 
+    # v12.6: Tasks subsystem — persisted background task plans and their steps.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id UUID PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            task_class SMALLINT NOT NULL DEFAULT 5,
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            step_plan JSONB NOT NULL DEFAULT '{}'::jsonb,
+            next_step_index INT NOT NULL DEFAULT 0,
+            accumulated_exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+            lang TEXT NOT NULL DEFAULT 'ru',
+            response_style TEXT NOT NULL DEFAULT 'neutral',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            abort_reason TEXT
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS task_steps (
+            id UUID PRIMARY KEY,
+            task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            seq INT NOT NULL,
+            parent_step_id UUID,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            goal TEXT NOT NULL DEFAULT '',
+            tool TEXT NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            result TEXT NOT NULL DEFAULT '',
+            checkpoint_criteria TEXT NOT NULL DEFAULT '',
+            checkpoint_result TEXT NOT NULL DEFAULT '',
+            checkpoint_verdict BOOLEAN,
+            attempts INT NOT NULL DEFAULT 0,
+            last_error TEXT NOT NULL DEFAULT '',
+            exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+            started_at TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ,
+            interrupt_reason TEXT,
+            extra JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_task_steps_task_id ON task_steps(task_id)")
+
     # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
     # so the lightweight models don't burn RAM with oversized KV cache.
     # v11.4: bumps are VRAM-aware — capped by the same auto-fit logic as the

@@ -6,7 +6,8 @@ Two backup types:
   2. 'full'      — users + chats + messages + documents + model_configs +
                    session_visits + user_sessions + user_storage +
                    gguf_models_cache + model_vram_estimates +
-                   slm_import_progress + camera_rooms + files
+                   slm_import_progress + camera_rooms + tasks +
+                   task_steps + files
 """
 
 import contextlib
@@ -50,6 +51,8 @@ FULL_TABLES = [
     "slm_import_progress",
     "camera_rooms",
     "branding_settings",
+    "tasks",
+    "task_steps",
 ]
 
 # Directories included in 'full' backup

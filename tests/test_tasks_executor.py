@@ -1,0 +1,456 @@
+# tests/test_tasks_executor.py
+"""TaskExecutor state-machine tests (Tasks subsystem, v12.6).
+
+The executor imports its store/gate/runner/queue collaborators into its own
+module namespace precisely so tests can patch them there
+(``monkeypatch.setattr(ex, "name", ...)``). The LLM/streaming layer is mocked
+at ``run_direct_step`` / ``_run_planner`` / ``_run_final_summary`` — no real
+model, GPU or Redis call is made.
+
+DB-backed tests skip cleanly when no PostgreSQL is reachable (same sentinel
+pattern as tests/test_tasks_db.py). The per-app executor thread started by
+create_app() is stopped in the fixture so manual drives are deterministic.
+"""
+
+import os
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+import app.tasks.executor as ex
+from app.tasks.runner import StepAborted
+
+pytestmark = [pytest.mark.unit]
+
+# Same sentinel pattern as tests/test_tasks_db.py: without a real DATABASE_URL
+# the conftest mock DB cannot answer store queries, so DB-backed tests skip.
+_db_available = (
+    bool(os.environ.get("DATABASE_URL")) and os.environ["DATABASE_URL"] != "postgresql://localhost:5432/flai_test"
+)
+
+
+def _ok_step_result(exec_seconds=0.5, result="step result text", verdict=True):
+    """A runner return payload for a passed direct step."""
+    return {
+        "result": result,
+        "exec_seconds": exec_seconds,
+        "status": "passed",
+        "checkpoint": {"verdict": verdict, "explanation": "ok", "exec_seconds": 0.2},
+    }
+
+
+def _seed_plan():
+    """A two-step direct plan as the planner would emit it."""
+    return {
+        "title": "Test task",
+        "steps": [
+            {"seq": 1, "goal": "Do first thing", "tool": "llm", "checkpoint_criteria": "answer given"},
+            {"seq": 2, "goal": "Do second thing", "tool": "llm", "checkpoint_criteria": "answer given"},
+        ],
+    }
+
+
+@pytest.fixture
+def db_env(test_app):
+    """Store-backed environment; skip when no real DB is reachable.
+
+    Stops the create_app()-started executor singleton so the tests drive the
+    state machine manually without a concurrent polling thread.
+    """
+    if not _db_available:
+        pytest.skip("No reachable PostgreSQL for tasks executor tests")
+    from app.database import get_db, init_db
+
+    try:
+        init_db()
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM tasks LIMIT 1")
+            c.fetchone()
+        ex.get_task("00000000-0000-0000-0000-000000000000")
+    except Exception as exc:
+        pytest.skip(f"PostgreSQL unreachable: {exc}")
+
+    # No Redis flag is ever set in these tests (the shared mock answers None).
+    test_app.request_queue.redis.get.return_value = None
+    # Stop the singleton executor thread started with this app instance.
+    ex.stop_task_executor(timeout=2)
+    with ex._executor_lock:
+        ex._EXECUTOR = None
+
+    # Clean slate for tasks/task_steps.
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM task_steps")
+        c.execute("DELETE FROM tasks")
+
+    yield ex  # the executor module re-exports get_task/add_step/update_step/...
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM task_steps")
+        c.execute("DELETE FROM tasks")
+
+
+@pytest.fixture
+def gate_open(monkeypatch):
+    """Gate forced open at the executor seam (no Redis read)."""
+    monkeypatch.setattr(ex, "is_gate_open", lambda *a, **k: True)
+
+
+def _mk_task(
+    store,
+    task_class=3,
+    status="queued",
+    step_plan=None,
+    next_step_index=0,
+    accumulated=0.0,
+    minutes_ago=30,
+    user_id="tester",
+):
+    """Create a real task row via the store (DB-backed tests)."""
+    from app.tasks.store import create_task, update_task
+
+    created = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    task_id = create_task(user_id=user_id, task_class=task_class, title="seed", lang="ru", response_style="neutral")
+    # Force created_at ordering determinism (create_task stamps NOW()).
+    with ex.get_db() as conn:
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET created_at = %s WHERE id = %s", (created, task_id))
+    if step_plan is not None or status != "queued" or accumulated or next_step_index:
+        update_task(
+            task_id,
+            status=status,
+            step_plan=step_plan or {},
+            next_step_index=next_step_index,
+            accumulated_exec_seconds=accumulated,
+        )
+    return task_id
+
+
+def _cycle(test_app, gate=True):
+    """Drive one executor cycle manually (no thread)."""
+    executor = ex.TaskExecutor(app=test_app)
+    executor._process_one_cycle(gate_open=gate)
+    return executor
+
+
+# ── 1. queued → active: selection order + step execution + completion ──
+
+
+def test_queued_to_active(db_env, test_app, gate_open, monkeypatch):
+    """Executor picks the queued task, activates it and runs its steps to completion."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    other_id = _mk_task(store, task_class=5, step_plan=_seed_plan(), minutes_ago=10)
+    calls = []
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: (calls.append(1), _ok_step_result())[1])
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["started_at"] is not None, "queued task was activated"
+    assert t["status"] == "completed" and t["completed_at"] is not None
+    assert t["next_step_index"] == 2, "both steps done"
+    # Budget: per step 0.5 (tool) + 0.2 (checkpoint) = 0.7 × 2
+    assert abs(t["accumulated_exec_seconds"] - 1.4) < 0.01
+    steps = store.get_task_steps(task_id)
+    assert [s["status"] for s in steps if s["kind"] != "final"] == ["passed", "passed"]
+    final_step = steps[-1]
+    assert final_step["kind"] == "final" and final_step["result"] == "final summary text"
+    assert len(calls) == 2, "runner called once per step"
+    assert store.get_task(other_id)["status"] == "queued", "one active task at a time"
+
+
+def test_selection_order_class_then_created(db_env, test_app, gate_open, monkeypatch):
+    """Queued selection: lowest task_class first, then earliest created_at."""
+    store = db_env
+    late_low_class = _mk_task(store, task_class=5, step_plan=_seed_plan(), minutes_ago=60)
+    early_high_class = _mk_task(store, task_class=3, step_plan=_seed_plan(), minutes_ago=10)
+
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    assert store.get_task(early_high_class)["status"] == "completed"
+    assert store.get_task(late_low_class)["status"] == "queued"
+
+
+# ── 2. gate closed ⇒ frozen ──────────────────────────────────────────────
+
+
+def test_gate_closed_freezes(db_env, test_app, monkeypatch):
+    """Gate closed ⇒ active task frozen (abort_reason=chat); open ⇒ continues."""
+    store = db_env
+    task_id = _mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=30)
+    ran = []
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: (ran.append(1), _ok_step_result())[1])
+
+    _cycle(test_app, gate=False)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "frozen", "gate closed ⇒ frozen"
+    assert t["abort_reason"] == "chat"
+    assert t["next_step_index"] == 0 and not ran, "no step may run while frozen"
+
+    # Gate re-opens ⇒ the frozen task resumes and completes.
+    monkeypatch.setattr(ex, "is_gate_open", lambda *a, **k: True)
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    _cycle(test_app, gate=True)
+    t2 = store.get_task(task_id)
+    # The frozen task resumes and keeps running: it may complete within this
+    # cycle (two-step plan) — what matters is that it is no longer frozen.
+    assert t2["status"] in ("active", "completed"), "frozen task resumed on gate re-open"
+    assert t2["next_step_index"] >= 1
+
+
+# ── 3. chat aborts the in-flight step ────────────────────────────────────
+
+
+def test_aborts_step_on_chat(db_env, test_app, gate_open, monkeypatch):
+    """StepAborted ⇒ step interrupted(chat), budget grows, task frozen, index held."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+
+    def _aborted(*a, **k):
+        raise StepAborted("step cancelled during reasoning generation")
+
+    monkeypatch.setattr(ex, "run_direct_step", _aborted)
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "frozen", "abort inside a step freezes the task"
+    assert t["abort_reason"] == "chat"
+    assert t["next_step_index"] == 0, "interrupted step re-runs on resume"
+    assert t["accumulated_exec_seconds"] > 0, "aborted attempt still consumes budget"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "interrupted"
+    assert step["interrupt_reason"] == "chat"
+    assert step["attempts"] == 1
+
+
+# ── 4. budget expiry ⇒ expired + final summary step ──────────────────────
+
+
+def test_budget_expiry_generates_summary(db_env, test_app, gate_open, monkeypatch):
+    """accumulated >= budget ⇒ expired, no further step runs, final summary added."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), accumulated=ex._BUDGET_CFG_FALLBACK["TASK_TOTAL_BUDGET_S"])
+    ran = []
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: (ran.append(1), _ok_step_result())[1])
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "expired"
+    assert t["abort_reason"] == "budget_expired"
+    assert t["completed_at"] is not None
+    assert not ran, "no ordinary step may run once the budget is exhausted"
+    steps = store.get_task_steps(task_id)
+    assert steps[-1]["kind"] == "final" and steps[-1]["result"] == "final summary text"
+
+
+# ── 5. question step ⇒ awaiting_user frees the slot ─────────────────────
+
+
+def test_awaiting_user_releases_slot(db_env, test_app, gate_open, monkeypatch):
+    """question step ⇒ step+task awaiting_user; the next queued task takes the slot."""
+    store = db_env
+    plan = {
+        "title": "Needs answer",
+        "steps": [{"seq": 1, "goal": "Which port?", "tool": "llm", "user_input_expected": True}],
+    }
+    awaiting_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=20)
+    other_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=10)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    _cycle(test_app)
+
+    ta = store.get_task(awaiting_id)
+    assert ta["status"] == "awaiting_user", "question step ⇒ task awaiting_user"
+    sa = store.get_task_steps(awaiting_id)[0]
+    assert sa["kind"] == "question" and sa["status"] == "awaiting_user"
+    # Slot released within the same cycle: the other queued task got picked and ran.
+    tb = store.get_task(other_id)
+    assert tb["started_at"] is not None, "slot released — next queued task started"
+    assert tb["status"] in ("active", "completed")
+
+
+# ── 6. user answer resumes the task ──────────────────────────────────────
+
+
+def test_user_answer_resumes_task(db_env, test_app, gate_open, monkeypatch):
+    """Unprocessed user_input ⇒ question closed passed, continuation runs."""
+    store = db_env
+    plan = {
+        "title": "Needs answer",
+        "steps": [
+            {"seq": 1, "goal": "Which port?", "tool": "llm", "user_input_expected": True},
+            {"seq": 2, "goal": "Continue work", "tool": "llm", "checkpoint_criteria": "done"},
+        ],
+    }
+    task_id = _mk_task(store, status="awaiting_user", step_plan=plan, minutes_ago=30)
+    # Plan-phase rows (as the executor would have created them before awaiting).
+    q_id = store.add_step(task_id=task_id, seq=1, kind="question", goal="Which port?", tool="llm")
+    cont_id = store.add_step(task_id=task_id, seq=2, kind="direct", goal="Continue work", tool="llm")
+    ui_id = store.add_user_input_step(task_id, question_seq=1, answer="Rotterdam")
+
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    _cycle(test_app)
+
+    assert store.get_step(q_id)["status"] == "passed", "answered question closes as passed"
+    assert store.get_step(ui_id)["status"] == "passed", "user_input step consumed"
+    assert store.get_step(cont_id)["status"] == "passed", "continuation step ran"
+    t = store.get_task(task_id)
+    assert t["status"] == "completed"
+    assert t["next_step_index"] == 2, "resumed at the step AFTER the question and finished"
+
+
+def test_running_task_preempted_by_user_answer(db_env, test_app, gate_open, monkeypatch):
+    """Answered awaiting task preempts the currently running task (spec §2 rule 6)."""
+    store = db_env
+    running_id = _mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=5)
+    running_step = store.add_step(task_id=running_id, seq=1, kind="direct", goal="Do first thing", tool="llm")
+    store.update_step(running_step, status="running")
+    answered_id = _mk_task(store, status="awaiting_user", step_plan=_seed_plan(), minutes_ago=30)
+    store.add_step(task_id=answered_id, seq=1, kind="question", goal="q", tool="llm")
+    store.add_step(task_id=answered_id, seq=2, kind="direct", goal="Do first thing", tool="llm")
+    store.add_user_input_step(answered_id, question_seq=1, answer="answer text")
+
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    _cycle(test_app)
+
+    t_run = store.get_task(running_id)
+    assert t_run["status"] == "queued", "previously running task returns to queued"
+    assert t_run["abort_reason"] == "preempted"
+    s_run = store.get_step(running_step)
+    assert s_run["status"] == "interrupted" and s_run["interrupt_reason"] == "preempted"
+    t_ans = store.get_task(answered_id)
+    assert t_ans["status"] in ("active", "completed"), "answered task takes the slot back"
+
+
+# ── 7. subtask branch: queued + loop break (Task 8 completes it) ─────────
+
+
+def test_subtask_step_queued_and_loop_breaks(db_env, test_app, gate_open, monkeypatch):
+    """subtask kind ⇒ step subtask_queued with the tag stored; no runner call; loop breaks."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    enq = []
+
+    class _Q:
+        def add_request(self, user_id, session_id, request_data, user_class, lang, task_type=None):
+            enq.append({"user_id": user_id, "data": request_data, "task_type": task_type, "user_class": user_class})
+            return "sub-queue-id-1", {}
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+
+    _cycle(test_app)
+
+    assert enq, "subtask must be enqueued through the request queue"
+    assert enq[0]["data"].get("task_step_subtask"), "tag task_step_subtask=<step_id> required"
+    assert enq[0]["user_class"] == 3, "user_class carries the task class"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "subtask_queued"
+    t = store.get_task(task_id)
+    assert t["status"] == "active" and t["next_step_index"] == 0, "loop breaks — completion polling is Task 8"
+
+
+# ── 8. plan phase ────────────────────────────────────────────────────────
+
+
+def test_plan_phase_creates_steps(db_env, test_app, gate_open, monkeypatch):
+    """No plan ⇒ planner call → parsed JSON → step rows, title set, question kind."""
+    store = db_env
+    task_id = _mk_task(store)
+    plan_json = (
+        '{"title": "Planned task", "steps": ['
+        '{"seq": 1, "goal": "g1", "tool": "llm", "checkpoint_criteria": "c1"},'
+        '{"seq": 2, "goal": "ask user", "tool": "llm", "user_input_expected": true}]}'
+    )
+    monkeypatch.setattr(ex, "_run_planner", lambda *a, **k: plan_json)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["title"] == "Planned task"
+    assert t["status"] == "awaiting_user", "second plan step is a question ⇒ awaiting"
+    assert t["next_step_index"] == 1, "first step ran, awaiting the answer to the second"
+    assert len(t["step_plan"]["steps"]) == 2
+    kinds = [s["kind"] for s in store.get_task_steps(task_id)]
+    assert kinds == ["direct", "question"], "user_input_expected ⇒ question kind"
+
+
+def test_plan_parse_failure_marks_task_failed(db_env, test_app, gate_open, monkeypatch):
+    """Planner output unparseable after retry ⇒ localized ⚠️ error step, task failed."""
+    store = db_env
+    task_id = _mk_task(store)
+    monkeypatch.setattr(ex, "_run_planner", lambda *a, **k: "not json at all")
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "failed"
+    assert t["completed_at"] is not None
+    steps = store.get_task_steps(task_id)
+    assert steps and steps[-1]["status"] == "failed"
+    assert steps[-1]["result"].startswith("⚠️"), "user-facing error must carry the ⚠️ prefix"
+
+
+# ── 9. executor thread lifecycle (no DB) ─────────────────────────────────
+
+
+def test_executor_start_stop_idempotent(test_app, monkeypatch):
+    """start() twice starts one daemon thread; stop() joins it; singleton accessor."""
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(executor, "_process_one_cycle", lambda *a, **k: None)
+    monkeypatch.setattr(ex, "TASK_POLL_INTERVAL_S", 0.01)
+
+    executor.start()
+    executor.start()  # idempotent
+    assert executor._thread is not None and executor._thread.daemon
+    assert executor._thread.is_alive()
+    thread = executor._thread
+    executor.stop()
+    executor.stop()  # idempotent
+    assert not thread.is_alive() and executor._thread is None
+
+    # Module-level singleton accessor: same instance, app bound on first call.
+    with ex._executor_lock:
+        ex._EXECUTOR = None
+    try:
+        e1 = ex.get_task_executor(test_app)
+        e2 = ex.get_task_executor()
+        assert e1 is e2
+    finally:
+        with ex._executor_lock:
+            ex._EXECUTOR = None
+
+
+def test_executor_loop_survives_exceptions(test_app, monkeypatch):
+    """A raising cycle must not kill the daemon loop (defensive try/except)."""
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "TASK_POLL_INTERVAL_S", 0.01)
+    state = {"cycles": 0}
+
+    def _boom(*a, **k):
+        state["cycles"] += 1
+        if state["cycles"] >= 2:
+            executor._shutdown.set()
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(executor, "_process_one_cycle", _boom)
+    executor._loop()
+    assert state["cycles"] >= 2, "loop keeps cycling after an exception"

@@ -346,6 +346,15 @@ def create_app():
     # Initialize Redis queue (workers only in server processes, never in CLI)
     app.request_queue = RedisRequestQueue(app, start_workers=not _is_cli_process())
 
+    # Background Tasks executor: one daemon thread, server processes only
+    if app.config.get("TASKS_ENABLED") and not _is_cli_process():
+        try:
+            from app.tasks.executor import get_task_executor
+
+            get_task_executor(app).start()
+        except Exception as e:
+            app.logger.warning(f"Could not start tasks executor: {e}")
+
     # Initialize events publisher (Redis pub/sub for SSE)
     init_events_publisher(app)
 

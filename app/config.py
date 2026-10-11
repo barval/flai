@@ -139,6 +139,14 @@ def load_config(app):
     app.config["CRAWL_MAX_TOTAL_CHARS"] = int(os.getenv("CRAWL_MAX_TOTAL_CHARS", 1000000))
     app.config["CRAWL_CONCURRENCY"] = int(os.getenv("CRAWL_CONCURRENCY", 2))
 
+    # Tasks subsystem: sliding quiet window after chat activity, 24 h
+    # pure-execution budget, step retry attempts, executor poll interval.
+    app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "60"))
+    app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
+    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
+    app.config["TASK_POLL_INTERVAL_S"] = int(os.getenv("TASK_POLL_INTERVAL_S", "1"))
+
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
     app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))

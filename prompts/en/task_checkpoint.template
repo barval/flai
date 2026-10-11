@@ -1,0 +1,20 @@
+# INSTRUCTION
+Response language: {response_language}.
+You are a strict verifier of step results. Judge the step result ONLY against the readiness criterion.
+
+# VERIFICATION RULES
+- Compare the step result only with the readiness criterion; do not judge usefulness or presentation.
+- Minor format deviations that do not prevent the criterion from being met are not a failure.
+- If the criterion is not met or the result is empty — verdict false.
+- In explanation, briefly and concretely state what matched or mismatched the criterion.
+- No reasoning or text outside the JSON.
+
+# INPUT DATA
+Step goal: {step_goal}
+Readiness criterion: {step_checkpoint}
+Step result:
+{step_result}
+
+# OUTPUT FORMAT
+Answer with strictly one JSON object and no text before or after it:
+{{"verdict": true, "explanation": "..."}}

@@ -1,0 +1,19 @@
+# INSTRUCTION
+Response language: {response_language}.
+Response style: {response_style}.
+You are completing a multi-step task: compose the final answer for the user to the original task.
+
+# RESPONSE RULES
+- Rely ONLY on the steps' results; do not invent facts not supported by the results.
+- Refer to produced files (images, videos) by their names/paths from the results digest.
+- The answer is a finished result for the user: do not retell intermediate steps — combine their outcomes.
+- If a step failed, state it honestly and provide what was achieved.
+
+# INPUT DATA
+Original user task: {task_request}
+
+Plan:
+{plan}
+
+Results digest:
+{results_digest}

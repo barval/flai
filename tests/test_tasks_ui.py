@@ -219,6 +219,37 @@ class TestReviewGuards:
         end = source.find("\nfunction ", start + 1)
         return source[start : end if end > start else len(source)]
 
+    @staticmethod
+    def _arrow_block(source, signature):
+        """Block of a const arrow function (``const name = (...) => {``)."""
+        start = source.index(signature)
+        end = source.find("\n    };", start + 1)
+        return source[start : end + 6 if end > start else len(source)]
+
+    def test_documents_ride_with_task_send(self):
+        """The shared Documents-panel selection is snapshotted into the task
+        request/answer (the same #rlm-docs multi-select the chat reads)."""
+        helper = self._function_block(CHAT_TASKS, "function taskDocIds(")
+        assert "'rlm-docs'" in helper
+        assert "selectedOptions" in helper
+        # The multipart builder is used by BOTH submits (/request and /answer):
+        # it must read the doc selection and the 🔬 toggle together.
+        builder = self._arrow_block(CHAT_TASKS, "const formDataFor = ")
+        assert builder.count("taskDocIds()") == 1 and "doc_ids" in builder
+        assert "taskDeepAnalysis()" in builder
+        send = self._function_block(CHAT_TASKS, "function sendTaskInput(")
+        assert send.count("formDataFor(") == 2, "both /request and /answer use the multipart builder"
+        assert "doc_ids" in send and "deep_analysis" in send
+
+    def test_images_ride_with_task_send(self):
+        """Attached images (v12.6 vision) ride both submits as multipart parts."""
+        helper = self._function_block(CHAT_TASKS, "function taskImageFiles(")
+        assert "attachedFiles" in helper and "isImageFile" in helper
+        builder = self._arrow_block(CHAT_TASKS, "const formDataFor = ")
+        assert builder.count("images") >= 2, "builder appends every queued image as 'images'"
+        send = self._function_block(CHAT_TASKS, "function sendTaskInput(")
+        assert "taskImageFiles()" in send
+
     def test_events_js_chat_render_paths_respect_task_view(self):
         # The chat SSE render paths must not interleave into the open task
         # conversation: every DOM-mutating handler checks isTaskViewActive().
@@ -339,14 +370,29 @@ class TestReviewGuards:
         # header has no tool fallback branch.
         assert "m.tool" not in block
 
-    def test_tool_badge_prefixes_the_answer_line(self):
-        """A tool-produced step names its tool (localized, with an emoji) at the
-        start of the answer line; the model step has no such prefix."""
+    def test_tool_badge_is_its_own_service_line(self):
+        """A tool-produced step names its tool (localized, with an emoji) on its
+        own italic line — the server sends it as ``badge`` and the client
+        renders it with the same class as the step header."""
         tools_src = (ROOT / "app/tasks/tools.py").read_text(encoding="utf-8")
         assert "TOOL_BADGES" in tools_src and "🧮" in tools_src
         assert "Calculator" in tools_src and "Web search" in tools_src
         assert "_tool_badge" in ROUTES_TASKS and "TOOL_BADGES" in ROUTES_TASKS
-        assert "_tool_badge(row.get('tool'))" in ROUTES_TASKS
+        assert '_tool_badge(row.get("tool"))' in ROUTES_TASKS
+        assert '"badge": badge' in ROUTES_TASKS
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "m.badge" in block and "task-msg-service" in block
+
+    def test_step_media_rendered_chat_style(self):
+        """Camera snapshots / generated media in a step's extra render as chat
+        image blocks after the text body (user: «сами снимки не выводятся»)."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "extra.media" in block
+        assert "image-container" in block and "attached-image" in block
+        assert "openImageModal" in block
+        assert "'/api/files/' + media.file_path" in block
+        # Video steps render a player too.
+        assert "video/" in block and "createElement('video')" in block
 
     def test_service_lines_styled_separately(self):
         """«План из N шагов:» / «Шаг N из M:» are their own italic line."""

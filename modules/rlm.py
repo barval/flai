@@ -156,6 +156,15 @@ _STEP_LADDER: tuple[tuple[int, int], ...] = (
 _STEP_LADDER_FLOOR = 6  # CPU-only / <8 GB — analysis must stay usable
 _STEP_LADDER_MAX = 18
 
+# Nudge after a final() call with an empty answer (one retry, then the run
+# fails with «empty final answer»).
+EMPTY_FINAL_NUDGE = {
+    "ru": "Вызов final(answer) вернул ПУСТОЙ ответ. Составь содержательный финальный ответ "
+    "по собранным данным и вызови final(answer) ещё раз — текст обязателен.",
+    "en": "The final(answer) call returned an EMPTY answer. Compose a substantive final answer "
+    "from the gathered data and call final(answer) again — the text is required.",
+}
+
 
 def _resource_step_budget(hw: Any | None) -> int:
     """Per-host step allowance from detected hardware (0 = no extra cap)."""
@@ -431,6 +440,7 @@ class RlmModule:
         self.lang = lang
         sandbox.start()
         trace: list[RlmTraceStep] = []
+        final_nudged = False
         try:
             for step in range(1, max_steps + 1):
                 if is_cancelled():
@@ -521,6 +531,19 @@ class RlmModule:
                             continue
                         answer = str(args.get("answer", "")).strip()
                         if not answer:
+                            # Empty final() args are a known model flake — nudge
+                            # once instead of failing the whole run (the model
+                            # is loaded and the corpus work is done).
+                            if not final_nudged:
+                                final_nudged = True
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.get("id", ""),
+                                        "content": EMPTY_FINAL_NUDGE[lang],
+                                    }
+                                )
+                                continue
                             return RlmResult("", trace, step, error="empty final answer")
                         return RlmResult(answer, trace, step)
                     if name == "web_fetch":
@@ -532,6 +555,16 @@ class RlmModule:
                     observation, final_answer = self._execute_tool(name, args, sandbox, broker)
                     if final_answer is not None:
                         if not final_answer.strip():
+                            if not final_nudged:
+                                final_nudged = True
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.get("id", ""),
+                                        "content": EMPTY_FINAL_NUDGE[lang],
+                                    }
+                                )
+                                continue
                             return RlmResult("", trace, step, error="empty final answer")
                         return RlmResult(final_answer, trace, step)
                     observation = observation[:obs_trunc]

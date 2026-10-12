@@ -143,6 +143,72 @@ def test_search_query_extra_override(test_app):
     assert fake_search.search_with_fallback.call_args.args[0] == "explicit query"
 
 
+def _fake_rag(chunks, scores, available=True):
+    fake = MagicMock()
+    fake.available = available
+    fake.search.return_value = (chunks, scores)
+    return fake
+
+
+def test_rag_step_formats_fragments_and_scopes_documents(test_app):
+    test_app.modules["rag"] = _fake_rag(
+        [
+            {"filename": "contract.pdf", "text": "Работы: 100", "doc_id": "d1", "coverage": True},
+            {"filename": "report.pdf", "text": "Итого: 200", "doc_id": "d2"},
+        ],
+        [0.91, 0.42],
+    )
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app,
+            _step(tool="rag", goal="найти перечень работ"),
+            context_digest="",
+            cancel_check=lambda: False,
+            user_id="valery",
+            doc_ids=["d1", "d2"],
+        )
+    assert out["status"] == "passed"
+    assert "contract.pdf (score: 0.91)" in out["result"]
+    assert "Работы: 100" in out["result"] and "Итого: 200" in out["result"]
+    kwargs = test_app.modules["rag"].search.call_args.kwargs
+    assert kwargs["doc_ids"] == ["d1", "d2"]
+    assert kwargs["file_coverage"] is True
+
+
+def test_rag_step_drops_low_scores_keeps_coverage(test_app):
+    test_app.modules["rag"] = _fake_rag(
+        [
+            {"filename": "a.pdf", "text": "high", "doc_id": "d1"},
+            {"filename": "b.pdf", "text": "low", "doc_id": "d2"},
+            {"filename": "c.pdf", "text": "cov", "doc_id": "d3", "coverage": True},
+        ],
+        [0.8, 0.05, 0.01],
+    )
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app, _step(tool="rag", goal="q"), context_digest="", cancel_check=lambda: False, user_id="u"
+        )
+    assert "high" in out["result"] and "cov" in out["result"]
+    assert "low" not in out["result"]
+
+
+def test_rag_step_reports_no_fragments(test_app):
+    test_app.modules["rag"] = _fake_rag([], [])
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app, _step(tool="rag", goal="найти акт"), context_digest="", cancel_check=lambda: False, user_id="u"
+        )
+    assert out["result"] == "Релевантные документы не найдены для запроса: найти акт"
+
+
+def test_rag_step_unavailable_module_is_error(test_app):
+    test_app.modules["rag"] = _fake_rag([], [], available=False)
+    out = run_direct_step(
+        test_app, _step(tool="rag", goal="q"), context_digest="", cancel_check=lambda: False, user_id="u"
+    )
+    assert out["status"] == "error" and out["checkpoint"] is None
+
+
 def test_unknown_tool_is_error(test_app):
     out = run_direct_step(test_app, _step(tool="video_gen"), context_digest="", cancel_check=lambda: False)
     assert out["status"] == "error" and out["checkpoint"] is None

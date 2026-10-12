@@ -2,7 +2,7 @@
 """Executes a single direct task step and its checkpoint verifier (Tasks subsystem).
 
 The TaskExecutor (app/tasks/executor.py, Task 7) calls ``run_direct_step`` for
-each direct step (tool: llm | search | calculate) and ``run_checkpoint`` to
+each direct step (tool: llm | search | rag | calculate) and ``run_checkpoint`` to
 judge the step result against its readiness criterion.
 
 Runner contract (Task 4 review ruling): the registry/tool runners return raw
@@ -55,6 +55,45 @@ class StepAborted(Exception):  # noqa: N818 - name fixed by the Task 6 implement
 def _result_to_str(raw: Any) -> str:
     """Normalize a tool's raw value to str at a single boundary (Task 4 ruling)."""
     return raw if isinstance(raw, str) else str(raw)
+
+
+def recall_slm_facts(app: Flask, query: str, user_id: str, lang: str, limit: int | None = None) -> str:
+    """Recall the user's long-term memory facts for ``query`` (Tasks ↔ SLM, v12.6).
+
+    Mirrors the chat's ``BaseModule._get_context_for_model`` recall exactly: the
+    SLM module is optional (absent → empty section), one ``recall`` call with a
+    doubled limit is filtered locally by fact type (session-specific first), and
+    the section is capped at ``limit`` facts (default ``SLM_RECALL_LIMIT``, like
+    chat). The returned text is an inline prompt section — SLM is a context
+    service the server resolves, never a tool the model calls. Errors degrade to
+    an empty section, never a task failure.
+    """
+    if not query or not user_id:
+        return ""
+    slm = app.modules.get("slm")
+    if slm is None:
+        return ""
+    if limit is None:
+        limit = int(app.config.get("SLM_RECALL_LIMIT", 7))
+    try:
+        raw = slm.recall(query, limit=limit * 2, profile=user_id)
+    except Exception as e:
+        logger.warning(f"task SLM recall failed for profile {user_id}: {e}")
+        return ""
+    if not raw:
+        return ""
+    session_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
+    general_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
+    all_facts = (session_facts + general_facts)[:limit]
+    if not all_facts:
+        return ""
+    header = (
+        "Дополнительная информация из долговременной памяти:"
+        if lang == "ru"
+        else "Additional context from long-term memory:"
+    )
+    lines = [header] + [f"- {f.get('content', f.get('text', ''))}" for f in all_facts]
+    return "\n" + "\n".join(lines)
 
 
 def _reasoning_chat(
@@ -119,6 +158,7 @@ def _run_llm_step(
     task_request: str,
     plan_text: str,
     user_answers: str,
+    user_id: str = "",
 ) -> str:
     """Build the step prompt from the task_step template and stream the model."""
     from app.utils import format_prompt
@@ -132,6 +172,7 @@ def _run_llm_step(
         "step_checkpoint": step.get("checkpoint_criteria", ""),
         "previous_results": context_digest,
         "user_answers": user_answers,
+        "slm_facts": recall_slm_facts(app, task_request or step.get("goal", ""), user_id, lang),
         "response_language": response_language_name(lang),
         "response_style": get_style_instruction(lang, response_style),
     }
@@ -142,6 +183,45 @@ def _run_llm_step(
     text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
     _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
     return text
+
+
+def _run_rag_step(app: Flask, step: dict[str, Any], user_id: str, lang: str, doc_ids: list[str] | None = None) -> str:
+    """Document-search runner: query from step extra (fallback: goal), fragments out.
+
+    Mirrors ``RedisRequestQueue._process_rag_task`` retrieval: the task's
+    attached documents scope the search (``doc_ids``), otherwise every indexed
+    document of the user is searched with file coverage; fragments below the
+    relevance threshold are dropped except coverage chunks. The following llm
+    step composes the answer from the returned fragments — this step never
+    generates text itself (capability parity with the chat RAG path).
+    """
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
+    rag = app.modules.get("rag")
+    if rag is None or not getattr(rag, "available", False):
+        raise RuntimeError("document search module is not enabled")
+    step_extra = step.get("extra") or {}
+    query = str(step_extra.get("query") or step.get("goal") or "")
+    threshold = app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
+    chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True, doc_ids=doc_ids)
+    filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= threshold or c.get("coverage")]
+    if not filtered:
+        with force_locale(lang):
+            return _("No relevant documents found for query: {query}").format(query=query)
+    with force_locale(lang):
+        source_label = _("Source")
+    parts = []
+    semantic_seen = 0
+    for chunk, score in filtered:
+        if not chunk.get("coverage"):
+            if semantic_seen >= 15:
+                continue
+            semantic_seen += 1
+        filename = chunk.get("filename", "?")
+        text = chunk.get("text", str(chunk))
+        parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+    return "\n\n".join(parts)
 
 
 def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) -> str:
@@ -164,6 +244,42 @@ def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) 
     base = app.modules.get("base")
     max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
     return search.format_results_context(results or [], lang=lang, max_chars=max_chars)
+
+
+def _run_history_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) -> str:
+    """Conversation-history runner: past-dialogue fragments matching the query.
+
+    Mirrors ``RedisRequestQueue._process_history_task`` retrieval (CPU-only
+    PostgreSQL full-text search, no embeddings, no GPU): matching fragments
+    from the user's previous sessions are formatted with the same caps. A
+    wildcard goal or no direct matches degrades to a compact overview drawn
+    from representative user messages. The following llm step composes the
+    answer from the fragments — this step never generates text itself.
+    """
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
+    from modules.history import format_history_context, get_history_overview, search_history
+
+    step_extra = step.get("extra") or {}
+    query = str(step_extra.get("query") or step.get("goal") or "")
+    max_chars = int(app.config.get("HISTORY_MAX_RESULTS_CHARS", 5000))
+    history_context = ""
+    if query.strip() != "*":
+        fragments = search_history(
+            user_id,
+            query,
+            limit=int(app.config.get("HISTORY_SEARCH_LIMIT", 5)),
+            max_message_chars=int(app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000)),
+        )
+        history_context = format_history_context(fragments, max_chars=max_chars)
+    if not history_context:
+        overview = get_history_overview(user_id, max_chars=max_chars)
+        history_context = format_history_context(overview, max_chars=max_chars)
+    if not history_context:
+        with force_locale(lang):
+            return _("No previous conversations found on topic: {topic}").format(topic=query or "-")
+    return history_context
 
 
 def _run_calculate_step(step: dict[str, Any]) -> Any:
@@ -231,8 +347,9 @@ def run_direct_step(
     task_request: str = "",
     plan_text: str = "",
     user_answers: str = "",
+    doc_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Run ONE direct step (tool: llm | search | calculate) and its checkpoint.
+    """Run ONE direct step (tool: llm | search | rag | history | calculate) and its checkpoint.
 
     Returns ``{"result": str, "exec_seconds": float,
     "status": "passed"|"failed"|"aborted"|"error",
@@ -252,10 +369,23 @@ def run_direct_step(
         try:
             if tool == "llm":
                 raw = _run_llm_step(
-                    app, step, context_digest, cancel_check, lang, response_style, task_request, plan_text, user_answers
+                    app,
+                    step,
+                    context_digest,
+                    cancel_check,
+                    lang,
+                    response_style,
+                    task_request,
+                    plan_text,
+                    user_answers,
+                    user_id,
                 )
             elif tool == "search":
                 raw = _run_search_step(app, step, user_id, lang)
+            elif tool == "rag":
+                raw = _run_rag_step(app, step, user_id, lang, doc_ids)
+            elif tool == "history":
+                raw = _run_history_step(app, step, user_id, lang)
             elif tool == "calculate":
                 raw = _run_calculate_step(step)
             else:

@@ -23,6 +23,9 @@ _TASK_FIELDS = {
     "step_plan",
     "next_step_index",
     "accumulated_exec_seconds",
+    "doc_ids",
+    "deep_analysis",
+    "images",
     "started_at",
     "completed_at",
     "abort_reason",
@@ -41,7 +44,7 @@ _STEP_FIELDS = {
     "interrupt_reason",
     "extra",
 }
-_JSONB_FIELDS = {"step_plan", "extra"}
+_JSONB_FIELDS = {"step_plan", "extra", "doc_ids", "images"}
 _TIMESTAMPTZ_FIELDS = {"started_at", "finished_at", "completed_at"}
 
 
@@ -82,16 +85,46 @@ def _build_update(
     return sets, vals
 
 
-def create_task(user_id: str, task_class: int, title: str, lang: str, response_style: str) -> str:
-    """Insert a queued task row; return the generated task id (UUID string)."""
+def create_task(
+    user_id: str,
+    task_class: int,
+    title: str,
+    lang: str,
+    response_style: str,
+    doc_ids: list[str] | None = None,
+    deep_analysis: bool = False,
+    images: list[dict[str, str]] | None = None,
+) -> str:
+    """Insert a queued task row; return the generated task id (UUID string).
+
+    ``doc_ids`` are the documents attached to the task (the Documents-panel
+    selection at submit time) — an empty list means "all of the user's
+    documents", matching the chat behaviour.
+
+    ``deep_analysis`` is the 🔬 toggle state at submit time: the planner is
+    told to include a deep-analysis (``rlm``) step over those documents.
+
+    ``images`` are the images attached in the task view (v12.6 vision): a list
+    of ``{file_path, file_name}`` dicts saved under the user's upload folder.
+    """
     task_id = str(uuid.uuid4())
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """INSERT INTO tasks (id, user_id, task_class, title, status, step_plan, next_step_index,
-               accumulated_exec_seconds, lang, response_style, created_at, updated_at)
-               VALUES (%s, %s, %s, %s, 'queued', '{}'::jsonb, 0, 0, %s, %s, NOW(), NOW())""",
-            (task_id, user_id, task_class, title, lang, response_style),
+               accumulated_exec_seconds, lang, response_style, doc_ids, deep_analysis, images, created_at, updated_at)
+               VALUES (%s, %s, %s, %s, 'queued', '{}'::jsonb, 0, 0, %s, %s, %s::jsonb, %s, %s::jsonb, NOW(), NOW())""",
+            (
+                task_id,
+                user_id,
+                task_class,
+                title,
+                lang,
+                response_style,
+                _prepare_value("doc_ids", doc_ids or []),
+                bool(deep_analysis),
+                _prepare_value("images", images or []),
+            ),
         )
     return task_id
 

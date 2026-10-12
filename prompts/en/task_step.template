@@ -13,6 +13,7 @@ You are the executor of a single step of a larger task. Complete ONLY the curren
 
 # INPUT DATA
 Original user task: {task_request}
+{slm_facts}
 
 Plan:
 {plan}

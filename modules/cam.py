@@ -2,6 +2,7 @@
 import base64
 import json
 import logging
+import re
 import time
 from datetime import datetime
 
@@ -238,6 +239,10 @@ class CamModule(TranslationMixin):
         1. Exact match in self.room_codes (all stored forms).
         2. Substring match: any stored form contained in the query,
            or the query contained in a stored form.
+        3. Token-level prefix match: each query token against each stored
+           form (longest common prefix ≥ 4 chars). Resolves Russian
+           declensions the substring pass misses («кухни» vs «кухня») —
+           task-planner goals are full sentences naming the room.
         """
         room_name_lower = room_name.lower().strip()
         # 1. Exact match
@@ -248,7 +253,18 @@ class CamModule(TranslationMixin):
             for form in forms:
                 if form in room_name_lower or room_name_lower in form:
                     return code
-        return None
+        # 3. Token-level prefix match (declension-aware).
+        tokens = [t for t in re.split(r"[\s,.!?«»\"'()\-]+", room_name_lower) if t]
+        best: tuple[int, str] | None = None
+        for code, forms in self.room_name_forms.items():
+            for form in forms:
+                for token in tokens:
+                    n = 0
+                    while n < min(len(token), len(form)) and token[n] == form[n]:
+                        n += 1
+                    if n >= 4 and (best is None or n > best[0]):
+                        best = (n, code)
+        return best[1] if best else None
 
     def get_all_rooms_with_forms(self) -> list[tuple[str, list[str]]]:
         """Return list of (code, [name_forms]) for enabled rooms.

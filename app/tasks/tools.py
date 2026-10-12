@@ -25,7 +25,12 @@ TOOL_RUNNERS: dict[str, Callable] = {"calculate": _run_calculate}
 # msgid inside the request locale and prefixes the step's answer line with it.
 TOOL_BADGES: dict[str, tuple[str, str]] = {
     "search": ("🔎", "Web search"),
+    "rag": ("📄", "Document search"),
+    "history": ("🕘", "Conversation history"),
+    "vision": ("🖼️", "Image analysis"),
     "calculate": ("🧮", "Calculator"),
+    "camera": ("📷", "Camera"),
+    "crawl": ("🕸️", "Site study"),
     "rlm": ("🔬", "Deep analysis"),
     "image_gen": ("🖼️", "Image generation"),
     "image_edit": ("🎨", "Image editing"),
@@ -44,6 +49,56 @@ CAPABILITIES: list[dict[str, str]] = [
         "label": "Web search",
         "description": "Search the internet for fresh data (rates, news, current facts).",
         "checkpoint_hint": "Name the fact or data the search must confirm.",
+    },
+    {
+        "id": "rag",
+        "label": "Document search",
+        "description": (
+            "Search the user's own documents and return the relevant fragments. "
+            "Pair with a following llm step that composes the answer from them."
+        ),
+        "checkpoint_hint": "Name the data the search must find in the documents.",
+    },
+    {
+        "id": "history",
+        "label": "Conversation history",
+        "description": (
+            "Search the user's past conversations for a topic and return matching "
+            "fragments (what was discussed earlier). Pair with a following llm step "
+            "that composes the answer from them."
+        ),
+        "checkpoint_hint": "Name the topic the past conversation must contain.",
+    },
+    {
+        "id": "vision",
+        "label": "Image analysis",
+        "description": (
+            "Analyze the image(s) attached to the task with the multimodal model "
+            "and answer the question about what they show. Use only when images "
+            "are attached to the task."
+        ),
+        "checkpoint_hint": "Name the attached image and what the analysis must state about it.",
+    },
+    {
+        "id": "camera",
+        "label": "Camera",
+        "description": (
+            "Take a camera snapshot of one of the user's rooms and answer a question "
+            "about what the camera sees (e.g. whether a cat is in the room). "
+            "To compare several rooms, plan ONE step per room with the room name "
+            "in the goal."
+        ),
+        "checkpoint_hint": "Name the room and the question the analysis must answer.",
+    },
+    {
+        "id": "crawl",
+        "label": "Site study",
+        "description": (
+            "Deeply study a website (it contains a URL): fetch its pages, index them "
+            "as a document and answer questions about the site. Pair with a following "
+            "llm step that composes the answer from the collected material."
+        ),
+        "checkpoint_hint": "Name the site and the question the study must answer.",
     },
     {
         "id": "calculate",

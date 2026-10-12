@@ -421,6 +421,67 @@ def test_run_error_string_response_is_error(test_app):
 
 
 @pytest.mark.unit
+def test_run_empty_final_answer_nudged_once(test_app):
+    """final() with an empty answer is nudged once; the retry answers."""
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+        {
+            "content": "",
+            "tool_calls": [{"id": "2", "function": {"name": "final", "arguments": json.dumps({"answer": "42"})}}],
+        },
+    ]
+    module, llamacpp = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "42"
+    assert result.error == ""
+    # The nudge message must have reached the model on the second call.
+    nudge_seen = any("EMPTY" in str(m.get("content", "")) or "EMPTY" in str(m) for m in llamacpp.calls[1]["messages"])
+    assert nudge_seen
+
+
+@pytest.mark.unit
+def test_run_empty_final_answer_twice_fails(test_app):
+    """Two empty finals → the run fails with «empty final answer»."""
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+        {
+            "content": "",
+            "tool_calls": [{"id": "2", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == ""
+    assert result.error == "empty final answer"
+
+
+@pytest.mark.unit
 def test_run_llm_tool_calls_broker(test_app):
     script = [
         {

@@ -12,6 +12,7 @@ You are completing a multi-step task: compose the final answer for the user to t
 
 # INPUT DATA
 Original user task: {task_request}
+{slm_facts}
 
 Plan:
 {plan}

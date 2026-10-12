@@ -391,9 +391,49 @@ msgstr "Изучаю сайт…"
 msgid "Deep analysis"
 msgstr "Глубокий анализ"
 
+#: app/tasks/executor.py (_run_plan_phase deep-analysis note)
+msgid ""
+"Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
+"\"rlm\" that deeply analyzes the attached documents (all of the user's "
+"documents when none are attached) and answers the task request; do not ask "
+"which documents to analyze."
+msgstr ""
+"Глубокий анализ: пользователь включил 🔬 Глубокий анализ — обязательно "
+"включи в план шаг с tool \"rlm\", который глубоко анализирует приложенные "
+"документы (или все документы пользователя, если ничего не приложено) и "
+"отвечает на запрос задачи; не спрашивай, какие документы анализировать."
+
+#: app/tasks/executor.py (append_deep_analysis_step checkpoint criteria)
+msgid "the analysis contains the concrete data from the documents that answers the request"
+msgstr "в анализе есть конкретные данные из документов, отвечающие на запрос"
+
 #: app/tasks/tools.py (TOOL_BADGES)
 msgid "Web search"
 msgstr "Веб-поиск"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Document search"
+msgstr "Поиск по документам"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Conversation history"
+msgstr "История переписки"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Camera"
+msgstr "Камера"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image analysis"
+msgstr "Анализ изображений"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Site study"
+msgstr "Изучение сайта"
+
+#: app/tasks/runner.py (_run_history_step)
+msgid "No previous conversations found on topic: {topic}"
+msgstr "По теме \"{topic}\" прошлых диалогов не найдено"
 
 #: app/tasks/tools.py (TOOL_BADGES)
 msgid "Calculator"
@@ -530,10 +570,34 @@ msgstr ""
 msgid "Camera module unavailable"
 msgstr "Модуль камер недоступен"
 
+#: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached images: {names}"
+msgstr "Приложенные изображения: {names}"
+
+#: app/routes/tasks.py
+msgid "Only image files can be attached to a task"
+msgstr "К задаче можно приложить только изображения"
+
 #: app/queue.py:2842 app/queue.py:2934 app/templates/chat.html:135
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Снимок с камеры: {room_name}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Camera snapshot analysis: {question}"
+msgstr "Это снимок с камеры. Ответь по снимку: {question}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Describe what the camera snapshot of {room_name} shows and answer: {question}"
+msgstr "Опиши, что видно на снимке камеры «{room_name}», и ответь: {question}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Describe what the camera snapshot of {room_name} shows."
+msgstr "Опиши, что видно на снимке камеры «{room_name}»."
 
 #: app/queue.py:3165
 msgid "Web search is not available"

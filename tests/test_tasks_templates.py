@@ -9,7 +9,7 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
 EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
-    "task_plan": {"task_request", "capabilities_section", "response_language"},
+    "task_plan": {"task_request", "capabilities_section", "slm_facts", "deep_analysis_note", "response_language"},
     "task_step": {
         "task_request",
         "plan",
@@ -18,16 +18,26 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "step_checkpoint",
         "previous_results",
         "user_answers",
+        "slm_facts",
         "response_language",
         "response_style",
     },
     "task_checkpoint": {"step_goal", "step_checkpoint", "step_result", "response_language"},
-    "task_final": {"task_request", "plan", "results_digest", "response_language", "response_style"},
+    "task_final": {
+        "task_request",
+        "plan",
+        "results_digest",
+        "slm_facts",
+        "response_language",
+        "response_style",
+    },
 }
 
 DUMMY_VALUES: dict[str, str] = {
     "task_request": "Prepare a currency rate report",
     "capabilities_section": "- llm: reasoning model\n- search: web search",
+    "deep_analysis_note": "",
+    "slm_facts": "",
     "response_language": "Russian",
     "response_style": "neutral",
     "plan": "1. Step one\n2. Step two",

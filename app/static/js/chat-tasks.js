@@ -573,9 +573,50 @@ function renderTaskMessage(m, task) {
         svc.className = 'task-msg-service';
         svc.textContent = serviceLine.text;
         div.appendChild(svc);
+        // A tool-produced step names its tool on its own italic line right
+        // below the step line (same font). The server sends the localized
+        // badge and prefixes the body with it — strip that line before
+        // rendering the body.
+        if (m.badge) {
+            const nl = body.indexOf('\n');
+            const firstLine = (nl === -1 ? body : body.slice(0, nl)).trim();
+            if (firstLine === m.badge) {
+                body = nl === -1 ? '' : body.slice(nl + 1);
+            }
+            const toolSvc = document.createElement('div');
+            toolSvc.className = 'task-msg-service';
+            toolSvc.textContent = m.badge;
+            div.appendChild(toolSvc);
+        }
     }
     content.innerHTML = DOMPurify.sanitize(marked.parse(body));
     div.appendChild(content);
+
+    // Media refs (camera snapshots, generated images/videos) ride the step's
+    // extra — render chat-style image blocks after the text body.
+    const media = (m.extra && m.extra.media) || {};
+    if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'image-container';
+        const img = document.createElement('img');
+        img.src = '/api/files/' + media.file_path;
+        img.loading = 'lazy';
+        img.className = 'attached-image';
+        img.alt = media.file_name || 'image';
+        img.title = t('click_to_enlarge');
+        img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
+        imgContainer.appendChild(img);
+        div.appendChild(imgContainer);
+    } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.preload = 'metadata';
+        video.loading = 'lazy';
+        video.src = '/api/files/' + media.file_path;
+        video.style.maxWidth = '100%';
+        video.style.borderRadius = '8px';
+        div.appendChild(video);
+    }
     return div;
 }
 
@@ -643,9 +684,32 @@ function setTaskMode(active, task) {
 // Actions
 // ---------------------------------------------------------------------------
 
+// Documents attached to a task = the shared Documents-panel selection at
+// submit time (the same #rlm-docs multi-select the chat uses). An empty list
+// means "search all of the user's documents".
+function taskDocIds() {
+    const docsSelect = document.getElementById('rlm-docs');
+    return docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+}
+
+// The 🔬 Deep Analysis toggle rides the submit: the planner is told to
+// include an rlm step over the attached documents.
+function taskDeepAnalysis() {
+    const toggle = document.getElementById('rlm-toggle');
+    return !!(toggle && toggle.checked);
+}
+
+// Images attached in the task view (the shared chat chips): every queued
+// image rides the submit as an "images" form part — the vision capability
+// analyzes them (v12.6). Documents/audio stay chat-only here.
+function taskImageFiles() {
+    return (typeof attachedFiles !== 'undefined' ? attachedFiles : []).filter(isImageFile);
+}
+
 // Called from chat-init.js sendMessage when a task is open. Two accepted
 // inputs: the draft's request text (draft → queued, planner picks it up) and
 // the answer to an awaiting clarifying question (server validates with 409).
+// Attached images (v12.6 vision) ride either submit as multipart "images".
 function sendTaskInput() {
     if (!window.currentTaskId) return;
     const task = tasksData[window.currentTaskId];
@@ -653,13 +717,22 @@ function sendTaskInput() {
     const input = document.getElementById('message-input');
     const text = input ? input.value.trim() : '';
     if (!text) return;
+    const images = taskImageFiles();
+
+    const formDataFor = (payloadText) => {
+        const fd = new FormData();
+        fd.append('request', payloadText);
+        fd.append('doc_ids', JSON.stringify(taskDocIds()));
+        fd.append('deep_analysis', taskDeepAnalysis() ? 'true' : 'false');
+        for (const img of images) fd.append('images', img);
+        return fd;
+    };
 
     if (task.status === 'draft') {
         input.value = '';
         fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/request', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ request: text }),
+            body: formDataFor(text),
         })
             .then(res => res.json().catch(() => ({})))
             .then(data => {
@@ -668,6 +741,7 @@ function sendTaskInput() {
                     alert(data.error);
                     return;
                 }
+                if (typeof clearAllAttachments === 'function') clearAllAttachments();
                 if (data.task) tasksData[data.task.id] = Object.assign({}, tasksData[data.task.id], data.task);
                 renderTasksList();
                 setTaskMode(true, tasksData[window.currentTaskId]);
@@ -683,8 +757,7 @@ function sendTaskInput() {
     input.value = '';
     fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/answer', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer: text }),
+        body: formDataFor(text),
     })
         .then(res => res.json().catch(() => ({})))
         .then(data => {
@@ -695,6 +768,7 @@ function sendTaskInput() {
                 alert(data.error);
                 return;
             }
+            if (typeof clearAllAttachments === 'function') clearAllAttachments();
             scheduleTaskReload(window.currentTaskId);
         })
         .catch(err => {

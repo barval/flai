@@ -88,6 +88,21 @@ class TestCamModule:
         rooms["new"] = "new room"
         assert "new room" not in cam_module.get_all_rooms()
 
+    def test_get_room_code_declined_genitive(self, cam_module):
+        """Token-level prefix match resolves declensions substring matching misses.
+
+        Task-planner goals are full sentences naming the room («Сделайте снимок
+        кухни…»); the genitive «кухни» contains neither stored form («кухня»…).
+        """
+        assert cam_module.get_room_code("Сделайте снимок кухни и проверьте наличие кошки.") == "kuh"
+        assert cam_module.get_room_code("Сделайте снимок спальни и проверьте наличие кошки.") == "spa"
+        assert cam_module.get_room_code("Сделайте снимок тамбура и проверьте наличие кошки.") == "tam"
+        assert cam_module.get_room_code("Сделайте снимок детской и проверьте наличие кошки.") == "det"
+        # Best (longest) prefix wins when several tokens partially overlap.
+        assert cam_module.get_room_code("прихожей") == "pri"
+        # No room named anywhere in the sentence → None.
+        assert cam_module.get_room_code("Проверьте погоду на улице.") is None
+
 
 class TestCameraPermissions:
     """Test camera permission checking."""

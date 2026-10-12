@@ -679,6 +679,16 @@ def _init_postgresql():
             accumulated_exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
             lang TEXT NOT NULL DEFAULT 'ru',
             response_style TEXT NOT NULL DEFAULT 'neutral',
+            -- Attached documents (Documents-panel selection at submit time);
+            -- an empty array means "search all of the user's documents".
+            doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Deep-analysis toggle (🔬) state at submit time: forces a deep
+            -- analysis (rlm) step over the attached documents.
+            deep_analysis BOOLEAN NOT NULL DEFAULT FALSE,
+            -- Attached images (v12.6 vision): each entry is {file_path,
+            -- file_name} on disk under UPLOAD_FOLDER/<login>/; the planner
+            -- sees only their names, the vision step reads the files.
+            images JSONB NOT NULL DEFAULT '[]'::jsonb,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             started_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
@@ -688,6 +698,11 @@ def _init_postgresql():
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
+    # NOT EXISTS never alters a live table).
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

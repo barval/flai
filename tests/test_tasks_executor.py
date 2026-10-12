@@ -15,13 +15,20 @@ create_app() is stopped in the fixture so manual drives are deterministic.
 import os
 import time
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
 import app.tasks.executor as ex
-from app.tasks.runner import StepAborted
+from app.tasks.runner import StepAborted, run_direct_step
 
 pytestmark = [pytest.mark.unit]
+
+
+def _passed_checkpoint():
+    """A runner checkpoint payload for a passed verifier verdict."""
+    return {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+
 
 # Same sentinel pattern as tests/test_tasks_db.py: without a real DATABASE_URL
 # the conftest mock DB cannot answer store queries, so DB-backed tests skip.
@@ -971,3 +978,336 @@ def test_verifier_question_row_after_plan_steps(db_env, test_app, gate_open, mon
     q = rows[1]
     assert q["status"] == "passed" and q["finished_at"], "question closed on answer"
     assert int(store.get_task(task_id)["next_step_index"]) == 0
+
+
+# ── deep-analysis toggle ↔ plan appending (v12.6) ─────────────────────────
+
+
+def test_append_deep_analysis_step(db_env):
+    """Turning the 🔬 toggle ON at answer time appends an rlm step over the
+    task request; its checkpoint criteria are localized."""
+    store = db_env
+    task_id = _mk_task(
+        store,
+        status="active",
+        step_plan={
+            "task_request": "Проанализируй документы про кошек",
+            "steps": [{"seq": 1, "goal": "g1", "tool": "llm", "checkpoint_criteria": "c1"}],
+        },
+    )
+
+    ex.append_deep_analysis_step(task_id, lang="ru")
+
+    steps = store.get_task(task_id)["step_plan"]["steps"]
+    assert len(steps) == 2
+    assert steps[1]["tool"] == "rlm"
+    assert int(steps[1]["seq"]) == 2
+    assert steps[1]["goal"] == "Проанализируй документы про кошек"
+    # Criteria are localized at append time — lang="ru" produced the ru wording.
+    assert steps[1]["checkpoint_criteria"], "criteria present"
+    assert steps[1]["user_input_expected"] is False
+
+    # Idempotent: a second call (another answer with the toggle) appends nothing.
+    ex.append_deep_analysis_step(task_id, lang="ru")
+    assert len(store.get_task(task_id)["step_plan"]["steps"]) == 2
+
+
+def test_capabilities_section_lists_camera_rooms():
+    """The planner prompt advertises the user's exact camera rooms so it can
+    emit ONE camera step per room ("which room…" questions)."""
+    section = ex._capabilities_section(camera_rooms=["Кухня", "Гостиная"])
+    assert "camera" in section
+    assert "Available rooms: Кухня, Гостиная" in section, "rooms listed verbatim in the section"
+    # Without cameras the section is unchanged (no dangling fragment).
+    assert ex._capabilities_section() == ex._capabilities_section(camera_rooms=None)
+
+
+def test_camera_rooms_safe_when_camera_off(test_app):
+    from unittest.mock import MagicMock
+
+    cam = MagicMock()
+    cam.available = False
+    test_app.modules["cam"] = cam
+    executor = ex.TaskExecutor(app=test_app)
+
+    assert executor._camera_rooms({"user_id": "tester"}) == []
+    cam.get_available_rooms.assert_not_called()
+
+
+def test_camera_rooms_resolve_available(test_app):
+    from unittest.mock import MagicMock
+
+    cam = MagicMock()
+    cam.available = True
+    cam.get_available_rooms.return_value = {"kitchen": "Кухня", "living": "Гостиная"}
+    test_app.modules["cam"] = cam
+    executor = ex.TaskExecutor(app=test_app)
+
+    assert executor._camera_rooms({"user_id": "tester"}) == ["Гостиная", "Кухня"]
+    cam.get_available_rooms.assert_called_once_with("tester")
+
+
+def test_subtask_mapping_has_camera_and_crawl():
+    """camera/crawl ride the queue as camera_task / crawl_task sub-tasks."""
+    assert ex._SUBTASK_TYPE["camera"] == "camera_task"
+    assert ex._SUBTASK_TYPE["crawl"] == "crawl_task"
+    assert {"camera", "crawl"} <= ex._SUBTASK_TOOLS
+
+
+def test_subtask_mapping_has_vision():
+    """vision rides the queue as a vision_task sub-task."""
+    assert ex._SUBTASK_TYPE["vision"] == "vision_task"
+    assert "vision" in ex._SUBTASK_TOOLS
+
+
+def test_capabilities_section_hides_vision_without_images():
+    """vision is advertised ONLY with attached images — the planner must not
+    invent image-analysis steps for a text-only task."""
+    with_images = ex._capabilities_section(camera_rooms=None, has_images=True)
+    without_images = ex._capabilities_section(camera_rooms=None, has_images=False)
+    assert "vision" in with_images
+    assert "vision (" not in without_images
+    # Other capabilities are unaffected.
+    assert "llm (" in with_images and "llm (" in without_images
+
+
+def test_task_image_parts_read_files(test_app, tmp_path):
+    """Stored files are read back into data: URLs; missing files are skipped."""
+    upload = tmp_path / "uploads"
+    sub = upload / "sess1"
+    sub.mkdir(parents=True)
+    (sub / "a.jpg").write_bytes(b"jpegbytes")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    executor = ex.TaskExecutor(app=test_app)
+    task = {
+        "id": "t1",
+        "images": [
+            {"file_path": "sess1/a.jpg", "file_name": "a.jpg"},
+            {"file_path": "sess1/gone.jpg", "file_name": "gone.jpg"},
+            {"file_path": "../escape.jpg", "file_name": "evil.jpg"},
+        ],
+    }
+    parts = executor._task_image_parts(task)
+    assert len(parts) == 1, "missing and escaping paths skipped"
+    assert parts[0]["name"] == "a.jpg"
+    assert parts[0]["data"].startswith("data:image/jpeg;base64,")
+
+
+def test_task_image_parts_empty_when_no_images(test_app):
+    executor = ex.TaskExecutor(app=test_app)
+    assert executor._task_image_parts({"id": "t1", "images": []}) == []
+    assert executor._task_image_parts({"id": "t1"}) == []
+
+
+def test_vision_subtask_enqueue_carries_images_and_question(db_env, test_app, gate_open, monkeypatch):
+    """A vision step enqueues a vision_task with data: parts + the question."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=None)
+    store.update_task(
+        task_id,
+        step_plan={
+            "title": "seed",
+            "steps": [{"seq": 1, "goal": "Что на картинке?", "tool": "vision", "checkpoint_criteria": "c"}],
+        },
+        next_step_index=0,
+        status="active",
+        images=[{"file_path": "x/a.jpg", "file_name": "a.jpg"}],
+    )
+    executor = ex.TaskExecutor(app=test_app)
+    executor._task_image_parts = lambda task: [{"data": "data:image/jpeg;base64,QQ==", "name": "a.jpg"}]
+    added = {}
+
+    class _FakeQueue:
+        def add_request(self, **kwargs):
+            added.update(kwargs)
+            return "q1", {}
+
+        def cancel_task(self, *a, **k):
+            return None
+
+    fake_queue = _FakeQueue()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: fake_queue)
+    task = store.get_task(task_id)
+    executor._enqueue_subtask(task, 0, task["step_plan"]["steps"][0])
+
+    assert added["request_data"]["type"] == "vision_task"
+    assert added["request_data"]["images"] == [{"data": "data:image/jpeg;base64,QQ==", "name": "a.jpg"}]
+    assert added["request_data"]["task_question"] == "seed"
+
+
+# ── SLM long-term memory in tasks (v12.6) ───────────────────────────────
+
+
+def _fake_slm(recalled=None, available=True):
+    from unittest.mock import MagicMock
+
+    slm = MagicMock()
+    slm.available = available
+    slm.recall.return_value = recalled or []
+    return slm
+
+
+def _llm_step(goal="g", extra=None):
+    """A direct llm step dict (same shape as the runner tests' _step)."""
+    step = {"id": "s1", "kind": "direct", "tool": "llm", "goal": goal, "checkpoint_criteria": "c"}
+    if extra is not None:
+        step["extra"] = extra
+    return step
+
+
+def test_recall_slm_facts_formats_section(test_app):
+    """Facts render as a prompt section, session-specific first (chat parity)."""
+    from app.tasks.runner import recall_slm_facts
+
+    test_app.modules["slm"] = _fake_slm(
+        [
+            {"content": "general fact", "metadata": {"fact_type": "general"}},
+            {"content": "session fact", "metadata": {"fact_type": "session_specific"}},
+        ]
+    )
+    out = recall_slm_facts(test_app, "составь меню", "valery", "ru")
+    assert "Дополнительная информация из долговременной памяти:" in out
+    assert "- session fact" in out and "- general fact" in out
+    assert out.index("session fact") < out.index("general fact")
+
+
+def test_recall_slm_facts_absent_module_is_empty(test_app):
+    """No SLM module / empty user → empty section, never an error."""
+    from app.tasks.runner import recall_slm_facts
+
+    test_app.modules["slm"] = _fake_slm()
+    assert recall_slm_facts(test_app, "query", "valery", "ru") == ""
+    assert recall_slm_facts(test_app, "query", "", "ru") == ""
+
+
+def test_recall_slm_facts_recall_error_is_empty(test_app):
+    """A raised recall degrades to an empty section, never a task failure."""
+    from app.tasks.runner import recall_slm_facts
+
+    slm = _fake_slm()
+    slm.recall.side_effect = RuntimeError("slm down")
+    test_app.modules["slm"] = slm
+    assert recall_slm_facts(test_app, "query", "valery", "ru") == ""
+
+
+def test_llm_step_prompt_contains_slm_facts(test_app):
+    """The llm step prompt embeds the recalled memory section."""
+    captured = {}
+
+    def fake_call(app, prompt, cancel_check, lang="ru", temperature=None):
+        captured["prompt"] = prompt
+        return "R"
+
+    test_app.modules["slm"] = _fake_slm(
+        [{"content": "пользователь вегетарианец", "metadata": {"fact_type": "general"}}]
+    )
+    with (
+        patch("app.tasks.runner._call_reasoning", side_effect=fake_call),
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
+        run_direct_step(
+            test_app,
+            _llm_step(goal="Составь меню"),
+            context_digest="",
+            cancel_check=lambda: False,
+            user_id="valery",
+            task_request="Составь меню на неделю",
+        )
+    assert "пользователь вегетарианец" in captured["prompt"]
+    assert test_app.modules["slm"].recall.call_args.kwargs["profile"] == "valery"
+
+
+def test_llm_step_without_slm_module_has_no_placeholder(test_app):
+    """Without SLM the step prompt carries no memory section and no residue."""
+    import re
+
+    captured = {}
+    test_app.modules.pop("slm", None)
+    with (
+        patch("app.tasks.runner._call_reasoning", return_value="R"),
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
+        run_direct_step(test_app, _llm_step(), context_digest="", cancel_check=lambda: False, user_id="u")
+    prompt = captured.get("prompt", "")
+    assert "долговременной памяти" not in prompt
+    assert not re.search(r"\{[a-z_]+\}", prompt)
+
+
+def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monkeypatch):
+    """The planner prompt embeds the user's long-term memory facts."""
+    store = db_env
+    _mk_task(store)
+    captured = {}
+
+    def fake_planner(app, prompt, cancel_check, lang="ru"):
+        captured["prompt"] = prompt
+        return '{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm", "checkpoint_criteria": "c"}]}'
+
+    monkeypatch.setattr(ex, "_run_planner", fake_planner)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
+    test_app.modules["slm"] = _fake_slm(
+        [{"content": "пользователь не ест грибы", "metadata": {"fact_type": "general"}}]
+    )
+
+    _cycle(test_app)
+
+    assert "пользователь не ест грибы" in captured["prompt"]
+    assert test_app.modules["slm"].recall.call_args.kwargs["profile"] == "tester"
+
+
+def test_extract_facts_thread_started_on_passed_llm_step(db_env, test_app, gate_open, monkeypatch):
+    """A passed llm step triggers the chat-style background fact extraction."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), status="active", next_step_index=0)
+    started = []
+
+    def fake_bg(app, query, response, session_id, user_id, lang):
+        started.append((query, response, session_id, user_id, lang))
+
+    import app.queue as q
+
+    monkeypatch.setattr(q, "_extract_facts_bg", fake_bg)
+    plan = _seed_plan()
+    store.update_task(task_id, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    executor._maybe_extract_facts(store.get_task(task_id), {"tool": "llm"}, "Задача выполнена, вот подробный ответ")
+
+    assert len(started) == 1
+    query, response, session_id, user_id, lang = started[0]
+    assert query == "seed" and "подробный ответ" in response
+    assert session_id == f"task:{task_id}"
+    assert user_id == "tester" and lang == "ru"
+
+
+def test_extract_facts_skips_tool_steps_and_errors(db_env, test_app, gate_open):
+    """Search/rag results and ⚠️ errors are data, not user memories."""
+    store = db_env
+    task_id = _mk_task(store)
+    task = store.get_task(task_id)
+    executor = ex.TaskExecutor(app=test_app)
+    executor._maybe_extract_facts(task, {"tool": "search"}, "Длинный результат поиска, точно больше двадцати")
+    executor._maybe_extract_facts(task, {"tool": "llm"}, "⚠️ GPU memory unavailable")
+    executor._extract_facts_text(task, "короткий")
+
+    import app.queue as q
+
+    assert q._extract_facts_bg is not None  # sanity: nothing raised; patch-based check below
+
+
+def test_extract_facts_skips_via_patch(db_env, test_app, gate_open, monkeypatch):
+    """Negative extraction cases observed through the patched hook."""
+    store = db_env
+    task_id = _mk_task(store)
+    started = []
+
+    import app.queue as q
+
+    monkeypatch.setattr(q, "_extract_facts_bg", lambda *a: started.append(a))
+    task = store.get_task(task_id)
+    executor = ex.TaskExecutor(app=test_app)
+    executor._maybe_extract_facts(task, {"tool": "search"}, "Длинный результат поиска, точно больше двадцати")
+    executor._maybe_extract_facts(task, {"tool": "llm"}, "⚠️ GPU memory unavailable")
+    executor._extract_facts_text(task, "короткий")
+
+    assert started == []

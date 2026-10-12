@@ -388,9 +388,49 @@ msgstr "Studying the site…"
 msgid "Deep analysis"
 msgstr "Deep analysis"
 
+#: app/tasks/executor.py (_run_plan_phase deep-analysis note)
+msgid ""
+"Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
+"\"rlm\" that deeply analyzes the attached documents (all of the user's "
+"documents when none are attached) and answers the task request; do not ask "
+"which documents to analyze."
+msgstr ""
+"Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
+"\"rlm\" that deeply analyzes the attached documents (all of the user's "
+"documents when none are attached) and answers the task request; do not ask "
+"which documents to analyze."
+
+#: app/tasks/executor.py (append_deep_analysis_step checkpoint criteria)
+msgid "the analysis contains the concrete data from the documents that answers the request"
+msgstr "the analysis contains the concrete data from the documents that answers the request"
+
 #: app/tasks/tools.py (TOOL_BADGES)
 msgid "Web search"
 msgstr "Web search"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Document search"
+msgstr "Document search"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Conversation history"
+msgstr "Conversation history"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Camera"
+msgstr "Camera"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image analysis"
+msgstr "Image analysis"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Site study"
+msgstr "Site study"
+
+#: app/tasks/runner.py (_run_history_step)
+msgid "No previous conversations found on topic: {topic}"
+msgstr "No previous conversations found on topic: {topic}"
 
 #: app/tasks/tools.py (TOOL_BADGES)
 msgid "Calculator"
@@ -527,10 +567,34 @@ msgstr ""
 msgid "Camera module unavailable"
 msgstr "Camera module unavailable"
 
+#: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached images: {names}"
+msgstr "Attached images: {names}"
+
+#: app/routes/tasks.py
+msgid "Only image files can be attached to a task"
+msgstr "Only image files can be attached to a task"
+
 #: app/queue.py:2842 app/queue.py:2934 app/templates/chat.html:135
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Camera snapshot: {room_name}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Camera snapshot analysis: {question}"
+msgstr "Camera snapshot analysis: {question}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Describe what the camera snapshot of {room_name} shows and answer: {question}"
+msgstr "Describe what the camera snapshot of {room_name} shows and answer: {question}"
+
+#: app/queue.py
+#, python-brace-format
+msgid "Describe what the camera snapshot of {room_name} shows."
+msgstr "Describe what the camera snapshot of {room_name} shows."
 
 #: app/queue.py:3165
 msgid "Web search is not available"

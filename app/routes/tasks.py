@@ -10,14 +10,22 @@ parallel messages table.
 
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
+from flask_babel import force_locale
 from flask_babel import gettext as _
 
 from app.database import get_db
 from app.tasks.events import publish_task_update
-from app.tasks.executor import add_user_input_step, get_queued_task_positions, get_task_steps
+from app.tasks.executor import (
+    add_user_input_step,
+    append_deep_analysis_step,
+    get_queued_task_positions,
+    get_task_steps,
+)
 from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_task
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
@@ -35,6 +43,81 @@ def _iso(value: Any) -> str | None:
     if value is None:
         return None
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _save_task_images(uploads: list[Any]) -> tuple[list[dict[str, str]] | None, str | None, int | None]:
+    """Save attached images of a task request/answer; return (parts, error, status).
+
+    Chat parity: up to ``MAX_CHAT_IMAGES`` images, quota-checked, downscaled
+    (single → ``MAX_IMAGE_SIZE``, several → ``MAX_IMAGE_SIZE_MULTI``), stored
+    under the user's upload folder via ``save_uploaded_file``. Only
+    ``{file_path, file_name}`` dicts persist — bytes never enter the DB.
+    """
+    import base64 as _b64
+    import mimetypes
+
+    from app.utils import check_upload_quota, resize_image_if_needed, save_uploaded_file
+
+    max_images = current_app.config.get("MAX_CHAT_IMAGES", 4)
+    max_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
+    if len(uploads) > 1:
+        max_size = current_app.config.get("MAX_IMAGE_SIZE_MULTI", 1024)
+    user_id = session["login"]
+    lang = session.get("language", "ru")
+    images: list[dict[str, str]] = []
+    for upload in uploads:
+        file_bytes = upload.read()
+        part_size = len(file_bytes)
+        part_type = upload.content_type or mimetypes.guess_type(upload.filename)[0] or "application/octet-stream"
+        part_name = upload.filename
+        if not part_type.startswith("image/"):
+            with force_locale(lang):
+                return None, _("Only image files can be attached to a task"), 400
+        if len(images) >= max_images:
+            with force_locale(lang):
+                return None, _("max_images_reached") % max_images, 400
+        quota_error = check_upload_quota(user_id, part_size)
+        if quota_error:
+            return None, quota_error, 413
+        part_data = _b64.b64encode(file_bytes).decode("utf-8")
+        n_data, _n_type, _n_name, _r, _od, _nd = resize_image_if_needed(part_data, part_type, part_name, max_size)
+        rel_path = save_uploaded_file(
+            file_data=n_data,
+            filename=part_name,
+            session_id=str(uuid.uuid4()),
+            upload_folder=current_app.config.get("UPLOAD_FOLDER", "data/uploads"),
+            user_id=user_id,
+        )
+        if not rel_path:
+            with force_locale(lang):
+                return None, _("Failed to save file"), 500
+        images.append({"file_path": rel_path, "file_name": part_name})
+    return images, None, None
+
+
+def _truthy_flag(value: Any) -> bool:
+    """Client boolean flag: real booleans (JSON) and 'true'/'1' (form) are true."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
+
+def _clean_doc_ids(value: Any) -> list[str]:
+    """Coerce a client ``doc_ids`` payload into a list of non-empty id strings.
+
+    Accepts a JSON array (fetch JSON body) and a JSON string (multipart form
+    field — the browser sends ``JSON.stringify`` output as text).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return []
+    if not isinstance(value, list):
+        return []
+    return [str(v) for v in value if v]
 
 
 def _owned_task(task_id: str) -> dict | None:
@@ -85,6 +168,13 @@ def _task_summary(
         "completed_at": _iso(task.get("completed_at")),
         "abort_reason": task.get("abort_reason"),
         "response_style": task.get("response_style") or "neutral",
+        # Attached documents (empty = all of the user's documents).
+        "doc_ids": [str(d) for d in (task.get("doc_ids") or [])],
+        # Attached images (names only — no filesystem paths, no bytes).
+        "images": [str(i.get("file_name") or "") for i in (task.get("images") or []) if isinstance(i, dict)],
+        # 🔬 Deep-analysis toggle state at submit: the planner must include an
+        # rlm step over the attached documents.
+        "deep_analysis": bool(task.get("deep_analysis")),
         # Total accumulated execution time (LLM calls only, waits excluded —
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
@@ -116,7 +206,7 @@ def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
 
 
 def _tool_badge(tool: Any) -> str:
-    """Localized «🧮 Calculator: » prefix for a tool-produced step body.
+    """Localized «🧮 Calculator:» label for a tool-produced step body (or "").
 
     Empty for the reasoning-model step (the model answers) and unknown tools.
     The emoji lives in ``TOOL_BADGES``; the name is a gettext msgid rendered
@@ -128,7 +218,7 @@ def _tool_badge(tool: Any) -> str:
     if not badge:
         return ""
     emoji, msgid = badge
-    return f"{emoji} {_(msgid)}: "
+    return f"{emoji} {_(msgid)}:"
 
 
 def _step_message(row: dict, total: int) -> dict:
@@ -137,10 +227,17 @@ def _step_message(row: dict, total: int) -> dict:
     kind = row.get("kind") or "direct"
     body = str(row.get("result") or "")
     header = _("Step {n} of {m}:").format(n=seq, m=total)
+    # A tool-produced step names its tool on its own line above the answer; the
+    # client renders it as a second italic service line, same font as the step
+    # header. The model step has no badge and answers on its own.
+    badge = _tool_badge(row.get("tool")) if kind in ("direct", "subtask") else ""
     if kind in ("direct", "subtask"):
-        # A tool-produced step (calculate/search/media) names the tool at the
-        # start of its answer line; the model step answers on its own.
-        content = f"{header}\n{_tool_badge(row.get('tool'))}{body}" if body else header
+        lines = [header] + ([badge] if badge else []) + ([body] if body else [])
+        # A failed step with no result body must still show WHY it failed
+        # (chat parity: errors are visible, never silently blank).
+        if not body and row.get("status") == "failed" and row.get("last_error"):
+            lines.append(str(row["last_error"]))
+        content = "\n".join(lines)
     elif kind == "question":
         # The goal IS the verbatim question (prompt rule) — show it as a plain
         # assistant message; the waiting state lives in the banner/live status.
@@ -152,6 +249,7 @@ def _step_message(row: dict, total: int) -> dict:
         "role": "user" if kind == "user_input" else "assistant",
         "kind": kind,
         "content": content,
+        "badge": badge,
         "seq": seq,
         "total_steps": total,
         "status": row.get("status"),
@@ -174,6 +272,10 @@ def _render_messages(task: dict) -> list[dict]:
     request_text = _task_request(task)
     if request_text:
         # A draft task has no request yet — the conversation starts empty.
+        image_names = [str(i.get("file_name") or "") for i in (task.get("images") or []) if isinstance(i, dict)]
+        image_names = [n for n in image_names if n]
+        if image_names:
+            request_text = request_text + "\n\n" + _("Attached images: {names}").format(names=", ".join(image_names))
         messages.append(
             {
                 "id": f"{task['id']}:request",
@@ -243,6 +345,8 @@ def create_task_route():
         title=user_request[:300],
         lang=session.get("language", "ru"),
         response_style=session.get("response_style", "neutral"),
+        doc_ids=_clean_doc_ids(data.get("doc_ids")),
+        deep_analysis=_truthy_flag(data.get("deep_analysis")),
     )
     if not user_request:
         update_task(task_id, status="draft")
@@ -262,12 +366,37 @@ def task_request_route(task_id):
     if task.get("status") != "draft":
         return jsonify({"error": "⚠️ " + _("Task is not a draft")}), 409
 
-    data = request.get_json(silent=True) or {}
+    data: dict[str, Any] = {}
+    uploads: list[Any] = []
+    if request.content_type and "multipart/form-data" in request.content_type:
+        # Vision flow (v12.6): the request may carry attached images (chips in
+        # the task view). JSON fields ride the form alongside the files.
+        data = {key: val for key, val in request.form.items()}
+        uploads = [f for f in request.files.getlist("images") if f and f.filename]
+    else:
+        data = request.get_json(silent=True) or {}
+
     user_request = str(data.get("request") or "").strip()
     if not user_request:
         return jsonify({"error": "⚠️ " + _("Task request is empty")}), 400
 
+    images = None
+    if uploads:
+        images, img_error, img_status = _save_task_images(uploads)
+        if img_error:
+            return jsonify({"error": "⚠️ " + img_error}), img_status
+
     update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
+    if "doc_ids" in data:
+        # Snapshot the Documents-panel selection at submit time (like a chat
+        # request): an empty list means "all documents".
+        update_task(task_id, doc_ids=_clean_doc_ids(data.get("doc_ids")))
+    if images:
+        update_task(task_id, images=images)
+    if "deep_analysis" in data:
+        # The 🔬 toggle state rides the request: the planner is told to include
+        # a deep-analysis (rlm) step over the attached documents.
+        update_task(task_id, deep_analysis=_truthy_flag(data.get("deep_analysis")))
     task = get_task(task_id)
     publish_task_update(current_app._get_current_object(), task)
     return jsonify({"task": _task_summary(task)}), 202
@@ -291,7 +420,13 @@ def task_answer(task_id):
     if task is None:
         return jsonify({"error": "⚠️ " + _("Task not found")}), 404
 
-    data = request.get_json(silent=True) or {}
+    data: dict[str, Any] = {}
+    uploads: list[Any] = []
+    if request.content_type and "multipart/form-data" in request.content_type:
+        data = {key: val for key, val in request.form.items()}
+        uploads = [f for f in request.files.getlist("images") if f and f.filename]
+    else:
+        data = request.get_json(silent=True) or {}
     answer = str(data.get("answer") or "").strip()
     if not answer:
         return jsonify({"error": "⚠️ " + _("Answer is empty")}), 400
@@ -308,6 +443,23 @@ def task_answer(task_id):
         return jsonify({"error": "⚠️ " + _("Task is not awaiting an answer")}), 409
 
     add_user_input_step(task_id, int(question["seq"]), answer)
+    if "doc_ids" in data:
+        # The answer may carry a fresh Documents-panel selection — it scopes
+        # every remaining rag/rlm step of the task.
+        update_task(task_id, doc_ids=_clean_doc_ids(data.get("doc_ids")))
+    if uploads:
+        images, img_error, img_status = _save_task_images(uploads)
+        if img_error:
+            return jsonify({"error": "⚠️ " + img_error}), img_status
+        if images:
+            merged = list(task.get("images") or []) + images
+            update_task(task_id, images=merged)
+    if "deep_analysis" in data and _truthy_flag(data.get("deep_analysis")):
+        # The toggle switched ON while answering: the plan already exists and
+        # the planner cannot amend it, so a deep-analysis (rlm) step over the
+        # attached documents is appended to the plan for the remaining steps.
+        update_task(task_id, deep_analysis=True)
+        append_deep_analysis_step(task_id, lang=task.get("lang") or "ru")
     publish_task_update(current_app._get_current_object(), get_task(task_id))
     return jsonify({"ok": True}), 202
 

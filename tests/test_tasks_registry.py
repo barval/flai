@@ -6,7 +6,20 @@ from app.tasks.tools import TOOL_RUNNERS, get_capabilities
 
 def test_registry_contains_core_tools():
     caps = {c["id"] for c in get_capabilities()}
-    assert {"llm", "search", "calculate", "rlm", "image_gen", "image_edit", "video_gen"} == caps
+    assert {
+        "llm",
+        "search",
+        "rag",
+        "history",
+        "vision",
+        "calculate",
+        "camera",
+        "crawl",
+        "rlm",
+        "image_gen",
+        "image_edit",
+        "video_gen",
+    } == caps
 
 
 def test_registry_entries_complete():
@@ -29,5 +42,18 @@ def test_get_capabilities_returns_defensive_copies():
     caps.append({"id": "ghost"})
     caps[0]["label"] = "x"
     fresh = get_capabilities()
-    assert {c["id"] for c in fresh} == {"llm", "search", "calculate", "rlm", "image_gen", "image_edit", "video_gen"}
+    assert {c["id"] for c in fresh} == {
+        "llm",
+        "search",
+        "rag",
+        "history",
+        "vision",
+        "calculate",
+        "camera",
+        "crawl",
+        "rlm",
+        "image_gen",
+        "image_edit",
+        "video_gen",
+    }
     assert fresh[0]["label"] != "x"

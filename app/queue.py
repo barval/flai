@@ -496,6 +496,10 @@ class RedisRequestQueue:
             return "slow"
         if req_type == "rlm_analysis":
             return "slow"
+        # Tasks-subsystem vision step: the joint multimodal call holds the GPU —
+        # slow queue (gate guard + _gpu_lock, same as the camera sub-task).
+        if req_type in ("vision_task", "camera_task"):
+            return "slow"
         if req_type == "reasoning_task":
             return "slow"
         # Text tasks are fast
@@ -667,6 +671,10 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
+        if task_type == "camera_task":
+            return "multimodal"  # snapshot analysis via the resident multimodal model
+        if task_type == "vision_task":
+            return "multimodal"  # attached-image analysis via the resident multimodal model
         if task_type == "api_image_edit":
             return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
@@ -3091,6 +3099,201 @@ class RedisRequestQueue:
 
         return {"messages": messages, "session_id": session_id}
 
+    def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Camera step of a Tasks-subsystem plan: one room's snapshot + analysis.
+
+        Mirrors the chat camera path without chat plumbing (no message pair, no
+        reasoning requeue): the snapshot is described by the resident multimodal
+        model and the description IS the step result, which the executor's
+        checkpoint then verifies. The planner emits ONE such step per room for
+        "which room…" questions; the goal names the room (``get_room_code``
+        resolves declensions). Errors return the localized text as an error
+        envelope so the step fails and the task continues.
+        """
+        data = task.get("data", {})
+        session_id = task.get("session_id", "")
+        user_id = task.get("user_id", "")
+        lang = task.get("lang", "ru")
+        base = self.app.modules.get("base")
+
+        def _err(msgid: str, **kwargs: Any) -> dict[str, Any]:
+            text = str(base._(msgid, lang, **kwargs)) if base else msgid.format(**kwargs)
+            return {"status": "completed", "session_id": session_id, "error": text}
+
+        cam = self.app.modules.get("cam")
+        if cam is None or not getattr(cam, "available", False):
+            return _err("Camera module unavailable")
+
+        room_name = str(data.get("room") or data.get("prompt") or "").strip()
+        if not room_name:
+            return _err("Unknown room: {room}", room="")
+        camera_result = cam.get_snapshot(user_id, room_name, lang=lang)
+        if not camera_result.get("success"):
+            return {
+                "status": "completed",
+                "session_id": session_id,
+                "error": str(camera_result.get("error") or "Camera error"),
+            }
+
+        mm = self.app.modules.get("multimodal")
+        if mm is None or not getattr(mm, "available", False):
+            return _err("Multimodal model unavailable")
+
+        question = str(data.get("task_question") or "").strip()
+        current_time_str = get_current_time_in_timezone(self.app) or ""
+        room_display = str(camera_result.get("room_name") or room_name)
+
+        def _ask_mm(q: str) -> tuple[str | None, str | None]:
+            return mm.process_image_with_text(
+                camera_result["image_data"],
+                q,
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style=str(data.get("response_style") or "neutral"),
+            )
+
+        # Analysis framing, never the raw planner goal («Сделайте снимок…»
+        # reads as an image-generation request and the multimodal classifier
+        # answers with a router marker like [-IMAGE-EDIT-]).
+        if question:
+            question = (
+                str(base._("Camera snapshot analysis: {question}", lang)).format(question=question)
+                if base
+                else question
+            )
+        bot_reply, mm_error = _ask_mm(question or room_display)
+        if not bot_reply or self._is_llm_error_string(bot_reply) or not str(bot_reply).strip():
+            # One retry: the model is already loaded and the known
+            # empty-output flake (thinking-only answer) usually clears.
+            retry_question = (
+                str(
+                    base._("Describe what the camera snapshot of {room_name} shows and answer: {question}", lang)
+                ).format(room_name=room_display, question=question or "")
+                if base
+                else f"Describe the camera snapshot of {room_display}. {question}"
+            )
+            bot_reply, mm_error = _ask_mm(retry_question)
+        # Router-marker guard (chat parity): the classifier may misroute the
+        # analysis question as an image/video request and echo the marker.
+        if bot_reply and str(bot_reply).strip().startswith((("[-IMAGE-EDIT-]"), "[-IMAGE-]", "[-VIDEO-]")):
+            bot_reply, mm_error = _ask_mm(
+                str(base._("Describe what the camera snapshot of {room_name} shows.", lang)).format(
+                    room_name=room_display
+                )
+                if base
+                else f"Describe what the camera snapshot of {room_display} shows."
+            )
+            # Still a marker after the retry → the analysis never happened;
+            # surface the error instead of leaking the echo.
+            if bot_reply and str(bot_reply).strip().startswith((("[-IMAGE-EDIT-]"), "[-IMAGE-]", "[-VIDEO-]")):
+                bot_reply = None
+        if mm_error:
+            bot_reply = f"⚠️ {mm_error}"
+        if not bot_reply or not str(bot_reply).strip():
+            bot_reply = "⚠️ " + (
+                str(base._("Failed to process image request. Please try again.", lang))
+                if base
+                else "Failed to process image request. Please try again."
+            )
+        snapshot_label = str(base._("Camera snapshot: {room_name}", lang)) if base else "Camera snapshot: {room_name}"
+        text = snapshot_label.replace("{room_name}", room_display) + "\n" + bot_reply
+        envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "response": text}
+        # The snapshot itself rides the envelope as media refs so the executor
+        # stores it in the step's extra and the task view renders it (chat
+        # parity: the chat camera path shows the image too).
+        if camera_result.get("image_data"):
+            file_path = save_uploaded_file(
+                file_data=camera_result["image_data"],
+                filename=camera_result["file_name"],
+                session_id=str(task.get("id") or ""),
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+            if file_path:
+                envelope["file_path"] = file_path
+                envelope["file_name"] = camera_result["file_name"]
+                envelope["file_type"] = camera_result.get("image_type")
+                envelope["file_size"] = camera_result.get("file_size")
+        return envelope
+
+    def _process_vision_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Vision step of a Tasks-subsystem plan: analyze the attached images.
+
+        The images arrive as ``{data, name}`` parts (data: URLs built from the
+        stored files at enqueue time); the question is the task's request or
+        the step goal. ONE joint multimodal call (several images in a single
+        request, chat parity), per-image-description fallback on failure —
+        the same degradation the chat image path uses. Errors return the
+        localized error envelope so the step fails and the task continues.
+        """
+        data = task.get("data", {})
+        session_id = task.get("session_id", "")
+        lang = task.get("lang", "ru")
+        base = self.app.modules.get("base")
+
+        def _err(text: str) -> dict[str, Any]:
+            return {"status": "completed", "session_id": session_id, "error": text}
+
+        images = [p.get("data") for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
+        if not images:
+            return _err(str(base._("No image in your message", lang)) if base else "No image in your message")
+
+        mm = self.app.modules.get("multimodal")
+        if mm is None or not getattr(mm, "available", False):
+            return _err(str(base._("Multimodal model unavailable", lang)) if base else "Multimodal model unavailable")
+
+        task_question = str(data.get("task_question") or "").strip()
+        step_goal = str(data.get("prompt") or "").strip()
+        question = step_goal if step_goal and step_goal != task_question else (task_question or step_goal)
+        current_time_str = get_current_time_in_timezone(self.app) or ""
+
+        if len(images) > 1:
+            bot_reply, mm_error = mm.process_images_with_text(
+                images, question, current_time_str, lang=lang, session_id=None, response_style="neutral"
+            )
+            if (mm_error and self._is_llm_error_string(mm_error or "")) or not bot_reply:
+                bot_reply, mm_error = self._describe_images_fallback(
+                    images, question, current_time_str, lang, session_id, "neutral"
+                )
+        else:
+            bot_reply, mm_error = mm.process_image_with_text(
+                images[0],
+                question,
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style="neutral",
+            )
+            if (mm_error or not bot_reply) and not self._is_llm_error_string(bot_reply or ""):
+                # Empty image answer → text-only multimodal call (chat parity:
+                # never build a data: URL from an empty payload).
+                text_only, text_err = mm.process_image_with_text(
+                    "",
+                    question,
+                    current_time_str,
+                    lang=lang,
+                    session_id=None,
+                    response_style="neutral",
+                )
+                if text_only:
+                    bot_reply, mm_error = text_only, None
+        if mm_error:
+            bot_reply = f"⚠️ {mm_error}"
+        if not bot_reply or not str(bot_reply).strip():
+            return _err(
+                str(base._("Failed to process image request. Please try again.", lang))
+                if base
+                else "Failed to process image request. Please try again."
+            )
+        if self._is_llm_error_string(str(bot_reply)):
+            return _err(str(bot_reply))
+        # Router-marker guard (chat parity): the classifier may misroute the
+        # analysis question as an image/video request; the echo is never a
+        # valid step answer, so it is stripped from the result text.
+        stripped = re.sub(r"\[-(IMAGE(?:-EDIT)?|VIDEO)-\]\s*", "", str(bot_reply)).strip()
+        return {"status": "completed", "session_id": session_id, "response": stripped or str(bot_reply).strip()}
+
     def _process_camera_task_stream(
         self,
         task: dict[str, Any],
@@ -3723,6 +3926,17 @@ class RedisRequestQueue:
 
         process_time = round(time.time() - start_time, 1)
         self.app.logger.info(f"Crawl task done in {process_time}s — requeueing reasoning over the corpus")
+        if data.get("task_step_subtask"):
+            # A Tasks-subsystem crawl step: the site material is indexed as the
+            # user's document and the collected context IS the step result — no
+            # reasoning continuation is re-queued (the plan's following llm
+            # step composes the answer over this context). Success-path only:
+            # the doc_id was stored above.
+            self.app.logger.info(
+                f"Crawl subtask {data.get('task_step_subtask')} stored document {doc_id} "
+                f"({len(pages)} pages, {sum(len(p.get('markdown', '')) for p in pages)} chars)"
+            )
+            return {"status": "completed", "session_id": session_id, "response": self._crawl_context(pages)}
         return self._requeue_reasoning_task(
             query,
             session_id,
@@ -4695,6 +4909,10 @@ class RedisRequestQueue:
             return self._process_index_task(task)
         if task_type == "crawl_task":
             return self._process_crawl_task(task)
+        if task_type == "camera_task":
+            return self._process_camera_subtask(task)
+        if task_type == "vision_task":
+            return self._process_vision_subtask(task)
         if task_type == "reindex_all_embeddings":
             return self._process_reindex_all_task(task)
         if task_type == "transcribe_audio":

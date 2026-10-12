@@ -41,8 +41,10 @@ the slow-worker gate guard land with Task 8.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -54,7 +56,7 @@ from flask import Flask
 from app.database import get_db
 from app.model_config import get_model_config
 from app.tasks.gate import is_gate_open
-from app.tasks.runner import StepAborted, run_checkpoint, run_direct_step
+from app.tasks.runner import StepAborted, recall_slm_facts, run_checkpoint, run_direct_step
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
 
 logger = logging.getLogger(__name__)
@@ -76,9 +78,17 @@ DEFERRED_SUBTASKS_KEY = "task:deferred_subtasks"
 CANCEL_FLAG_TTL_S = 3600
 
 # Direct tools run in-process (runner); everything else goes through the queue.
-_SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen"}
+_SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen", "camera", "crawl", "vision"}
 # Queue task_type per subtask tool (Task 8 refines the exact payloads).
-_SUBTASK_TYPE = {"image_gen": "image", "image_edit": "image_edit", "video_gen": "video", "rlm": "rlm_analysis"}
+_SUBTASK_TYPE = {
+    "image_gen": "image",
+    "image_edit": "image_edit",
+    "video_gen": "video",
+    "rlm": "rlm_analysis",
+    "camera": "camera_task",
+    "crawl": "crawl_task",
+    "vision": "vision_task",
+}
 
 # Localized user-facing fallbacks (⚠️ prefix per the project error rule).
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
@@ -89,6 +99,15 @@ _FALLBACK_BUDGET_NO_SUMMARY = "Execution budget exhausted; the summary could not
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _first_url(text: str) -> str:
+    """First http(s) URL in free text, or "" (same shape as queue's extractor)."""
+    match = _URL_RE.search(text or "")
+    return match.group(0).rstrip(".,;:!?»)]}") if match else ""
 
 
 # ── Executor-owned SQL (the store module does not expose these yet) ─────
@@ -177,6 +196,48 @@ def get_unprocessed_user_input() -> dict | None:
         )
         row = c.fetchone()
         return dict(row) if row else None
+
+
+def append_deep_analysis_step(task_id: str, lang: str = "ru") -> None:
+    """Append a 🔬 deep-analysis (``rlm``) step to a plan that lacks one (v12.6).
+
+    The planner only sees the toggle at plan time; when the user switches the
+    toggle ON while answering a clarifying question, the plan already exists
+    and the planner cannot amend it — this appends an ``rlm`` step whose
+    question is the task request, so the attached documents receive the deep
+    analysis the toggle promises (idempotent: a plan that already contains an
+    ``rlm`` step is left untouched).
+    """
+    task = get_task(task_id)
+    if not task:
+        return
+    plan = task.get("step_plan") or {}
+    steps = list(plan.get("steps") or []) if isinstance(plan, dict) else list(plan or [])
+    if any(isinstance(s, dict) and str(s.get("tool") or "") == "rlm" for s in steps):
+        return
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
+    with force_locale(lang):
+        criteria = _("the analysis contains the concrete data from the documents that answers the request")
+    goal = (
+        str(plan.get("task_request") or task.get("title") or "")
+        if isinstance(plan, dict)
+        else str(task.get("title") or "")
+    )
+    seq = len(steps) + 1
+    steps.append(
+        {
+            "seq": seq,
+            "goal": goal,
+            "tool": "rlm",
+            "checkpoint_criteria": criteria,
+            "user_input_expected": False,
+        }
+    )
+    merged_plan = {**plan, "steps": steps} if isinstance(plan, dict) else {"steps": steps}
+    update_task(task_id, step_plan=merged_plan)
+    logger.info(f"task {task_id}: appended rlm step (seq {seq}) — deep-analysis toggle ON at answer time")
 
 
 def add_user_input_step(task_id: str, question_seq: int, answer: str) -> str:
@@ -281,13 +342,24 @@ def _queues_empty() -> bool:
     )
 
 
-def _capabilities_section() -> str:
-    """Render the capabilities registry for the planner prompt."""
+def _capabilities_section(camera_rooms: list[str] | None = None, has_images: bool = False) -> str:
+    """Render the capabilities registry for the planner prompt.
+
+    ``camera_rooms`` (the user's accessible camera rooms, when known) appends
+    the exact room names so the planner can emit one camera step per room —
+    answering "which room…" questions needs the concrete room list. ``vision``
+    is advertised ONLY when images are attached to the task, so the planner
+    never invents an image-analysis step without attachments.
+    """
     from app.tasks.tools import get_capabilities
 
     lines = []
     for cap in get_capabilities():
+        if cap["id"] == "vision" and not has_images:
+            continue
         lines.append(f"- {cap['id']} ({cap['label']}): {cap['description']} Checkpoint hint: {cap['checkpoint_hint']}")
+        if cap["id"] == "camera" and camera_rooms:
+            lines.append(f"  Available rooms: {', '.join(camera_rooms)}")
     return "\n".join(lines)
 
 
@@ -447,6 +519,12 @@ def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None =
         "task_request": (plan.get("task_request") if isinstance(plan, dict) else None) or task.get("title") or "",
         "plan": _plan_text(plan),
         "results_digest": _results_digest(task["id"]),
+        "slm_facts": recall_slm_facts(
+            app,
+            (plan.get("task_request") if isinstance(plan, dict) else None) or task.get("title") or "",
+            task.get("user_id") or "",
+            lang,
+        ),
         "response_language": _response_language_name(lang),
         "response_style": _style_instruction(lang, task.get("response_style") or "neutral"),
     }
@@ -849,14 +927,70 @@ class TaskExecutor:
 
     # ── Plan phase ────────────────────────────────────────────────────
 
+    def _task_image_parts(self, task: dict) -> list[dict[str, str]]:
+        """The task's attached images as ``{data, name}`` vision parts.
+
+        The stored paths live under the user's upload folder; a missing or
+        unreadable file is skipped (the vision step answers over what arrived).
+        """
+        parts: list[dict[str, str]] = []
+        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+        for img in task.get("images") or []:
+            if not isinstance(img, dict):
+                continue
+            rel = str(img.get("file_path") or "")
+            name = str(img.get("file_name") or "")
+            if not rel or not upload_folder:
+                continue
+            path = os.path.realpath(os.path.join(upload_folder, rel))
+            if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
+                logger.warning(f"task {task.get('id')}: attached image missing on disk: {rel}")
+                continue
+            try:
+                with open(path, "rb") as fh:
+                    parts.append(
+                        {"data": "data:image/jpeg;base64," + base64.b64encode(fh.read()).decode(), "name": name}
+                    )
+            except OSError as e:
+                logger.warning(f"task {task.get('id')}: attached image unread ({rel}): {e}")
+        return parts
+
+    def _camera_rooms(self, task: dict) -> list[str]:
+        """The user's accessible camera room names (empty when cameras are off)."""
+        try:
+            cam = self.app.modules.get("cam")
+            if cam is None or not getattr(cam, "available", False):
+                return []
+            rooms = cam.get_available_rooms(task.get("user_id") or "")
+            return sorted(str(n) for n in (rooms or {}).values())
+        except Exception as e:
+            logger.warning(f"camera rooms not resolved for task {task.get('id')}: {e}")
+            return []
+
     def _run_plan_phase(self, task: dict) -> str:
         """Planner call → parse → step rows. Returns "ok" or "failed"."""
         task_id = task["id"]
         lang = task.get("lang") or "ru"
+        deep_note = ""
+        if task.get("deep_analysis"):
+            from flask_babel import force_locale
+            from flask_babel import gettext as _
+
+            with force_locale(lang):
+                deep_note = _(
+                    "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
+                    '"rlm" that deeply analyzes the attached documents (all of the user\'s documents '
+                    "when none are attached) and answers the task request; do not ask which documents "
+                    "to analyze."
+                )
         params = {
             "task_request": task.get("title") or "",
-            "capabilities_section": _capabilities_section(),
+            "capabilities_section": _capabilities_section(
+                camera_rooms=self._camera_rooms(task), has_images=bool(task.get("images"))
+            ),
+            "slm_facts": recall_slm_facts(self.app, task.get("title") or "", task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),
+            "deep_analysis_note": deep_note,
         }
         from app.utils import format_prompt
 
@@ -994,6 +1128,7 @@ class TaskExecutor:
                     task_request=self._task_request(task),
                     plan_text=plan_text,
                     user_answers=user_answers,
+                    doc_ids=task.get("doc_ids") or [],
                 )
             except StepAborted:
                 elapsed = round(time.monotonic() - start, 2)
@@ -1040,6 +1175,7 @@ class TaskExecutor:
                     checkpoint_verdict=bool(checkpoint.get("verdict")),
                 )
                 update_task(task_id, next_step_index=idx + 1)
+                self._maybe_extract_facts(task, row, result)
                 return "continue"
             if status == "aborted":
                 # Race-cancel on a fast tool: the result is kept but not trusted.
@@ -1194,17 +1330,53 @@ class TaskExecutor:
         tool = str(step.get("tool", ""))
         row = self._step_row_for(task_id, idx, step)
         task_type = _SUBTASK_TYPE.get(tool, "image")
+        request_data: dict[str, Any] = {
+            "type": task_type,
+            "prompt": str(step.get("goal", "")),
+            # Gate hook excludes tagged requests from chat activity.
+            "task_step_subtask": row["id"],
+        }
+        if tool == "rlm":
+            # RLM corpus = the task's attached documents; with none attached,
+            # every indexed document of the user is analyzed (the same scope
+            # rule the rag step follows).
+            doc_ids = [str(d) for d in (task.get("doc_ids") or [])]
+            if not doc_ids:
+                try:
+                    from app.db import INDEX_STATUS_INDEXED, get_user_documents
+
+                    doc_ids = [
+                        str(d["id"])
+                        for d in (get_user_documents(task.get("user_id") or "") or [])
+                        if d.get("index_status") == INDEX_STATUS_INDEXED and d.get("id")
+                    ]
+                except Exception as e:
+                    logger.warning(f"rlm doc scope resolution failed for task {task_id}: {e}")
+            request_data["doc_ids"] = doc_ids
+        if tool == "crawl":
+            # The site address comes from the user's own request (the planner
+            # keeps it verbatim in the goal); the handler re-extracts it too.
+            request_data["url"] = _first_url(str(step.get("goal") or "")) or _first_url(str(task.get("title") or ""))
+        if tool == "camera":
+            # The goal names the room (one step per room); the handler resolves
+            # the name against the user's available rooms. The task's request
+            # travels along as the analysis QUESTION (chat parity): the raw
+            # goal («Сделайте снимок…») reads as an image-generation request
+            # and misroutes the multimodal classifier to a router marker.
+            request_data["room"] = str(step.get("goal") or "")
+            request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
+        if tool == "vision":
+            # The attached images travel as base64 data (the stored files are
+            # read back into data: URLs at enqueue time) — the sub-task runs
+            # the same joint multimodal call the chat image path uses.
+            request_data["images"] = self._task_image_parts(task)
+            request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
         try:
             queue = _get_request_queue()
             subtask_queue_id, _info = queue.add_request(
                 user_id=task.get("user_id") or "",
                 session_id=f"task:{task_id}",
-                request_data={
-                    "type": task_type,
-                    "prompt": str(step.get("goal", "")),
-                    # Gate hook excludes tagged requests from chat activity.
-                    "task_step_subtask": row["id"],
-                },
+                request_data=request_data,
                 user_class=int(task.get("task_class") or 5),
                 lang=task.get("lang") or "ru",
                 task_type=task_type,
@@ -1451,6 +1623,45 @@ class TaskExecutor:
         update_task(task_id, next_step_index=idx + 1)
         return "done"
 
+    def _extract_facts_text(self, task: dict, text: str) -> None:
+        """Feed the user's long-term memory from a task answer (Tasks ↔ SLM, v12.6).
+
+        Mirrors the chat's post-answer background extraction (CPU-only,
+        rule-based, no LLM, no GPU lock): a daemon thread calls the queue's
+        ``_extract_facts_bg`` so the single executor thread never blocks on SLM.
+        Error fallbacks (the localized ⚠️ notice) and short texts are not
+        memories. Errors are logged, never fatal.
+        """
+        text = str(text or "")
+        if not text.strip() or len(text) <= 20 or text.strip().startswith("⚠️"):
+            return
+        try:
+            from app.queue import _extract_facts_bg
+
+            threading.Thread(
+                target=_extract_facts_bg,
+                args=(
+                    self.app,
+                    task.get("title") or "",
+                    text[:3000],
+                    f"task:{task['id']}",
+                    task.get("user_id") or "",
+                    task.get("lang") or "ru",
+                ),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            logger.warning(f"task {task['id']}: fact extraction thread failed to start: {e}")
+
+    def _maybe_extract_facts(self, task: dict, row: dict, result_text: str) -> None:
+        """Extract facts from a passed llm step's Q&A only (chat parity).
+
+        Tool-produced fragments (search/rag/calculate) are data, not user facts.
+        """
+        if str(row.get("tool") or "llm") != "llm":
+            return
+        self._extract_facts_text(task, result_text)
+
     def _finalize(self, task: dict) -> None:
         """Plan exhausted → the final answer over the accumulated results.
 
@@ -1473,6 +1684,7 @@ class TaskExecutor:
             final_meta = dict(last_step.get("extra") or {})  # reuse the step's header meta
         self._clear_running_step(task_id)
         add_final_step(task_id, text, meta=final_meta)
+        self._extract_facts_text(task, text)
         update_task(task_id, status="completed", completed_at=_now_iso())
         logger.info(f"task {task_id} completed")
         self._publish_task_update(task_id)
@@ -1492,6 +1704,7 @@ class TaskExecutor:
             text = f"⚠️ {_tr(_FALLBACK_BUDGET_NO_SUMMARY, lang=lang)}"
         self._clear_running_step(task_id)
         add_final_step(task_id, text, meta=final_meta)
+        self._extract_facts_text(task, text)
         update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
         logger.info(f"task {task_id} expired (budget) — final summary recorded")
         self._publish_task_update(task_id)

@@ -1013,6 +1013,30 @@ class TaskExecutor:
             self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
 
+        # Deep Analysis toggle at submit time: if the user turned on 🔬 but the
+        # planner omitted the rlm step, append it now (idempotent). The note in
+        # the planner prompt is advisory; we enforce the contract here.
+        if task.get("deep_analysis"):
+            has_rlm = any(isinstance(s, dict) and str(s.get("tool") or "") == "rlm" for s in (plan.get("steps") or []))
+            if not has_rlm:
+                from flask_babel import force_locale
+                from flask_babel import gettext as _
+
+                with force_locale(lang):
+                    criteria = _("the analysis contains the concrete data from the documents that answers the request")
+                goal = str(plan.get("task_request") or task.get("title") or "")
+                seq = len(plan.get("steps") or []) + 1
+                plan.setdefault("steps", []).append(
+                    {
+                        "seq": seq,
+                        "goal": goal,
+                        "tool": "rlm",
+                        "checkpoint_criteria": criteria,
+                        "user_input_expected": False,
+                    }
+                )
+                logger.info(f"task {task_id}: forced rlm step (seq {seq}) — deep-analysis toggle ON at submit time")
+
         # Keep the user's original request as the title — the planner's own
         # title (an LLM rephrase like «Ответить на вопрос о количестве дней в
         # году») never overwrites it.

@@ -302,6 +302,18 @@ class TestReviewGuards:
         assert "task-msg-service" in CHAT_CSS
         assert "font-style: italic" in CHAT_CSS
 
+    def test_service_line_split_is_language_agnostic(self):
+        """The split keys on the shape (a first line ending with ':'), never on
+        the localized wording: hardcoding «Шаг N из M:» once left the plan line
+        («План из 1 шагов:» — ends with a colon, not a digit) unstyled."""
+        block = self._function_block(CHAT_TASKS, "function splitServiceLine(")
+        assert "endsWith(':')" in block
+        assert "🗒️" in block and "⚙️" in block, "plan and step emojis"
+        assert "Шаг" not in block and "Plan of" not in block
+        assert "'plan'" in block and "'direct'" in block and "'subtask'" in block
+        # The plan message the server builds is header + newline + numbered lines.
+        assert '"kind": "plan"' in ROUTES_TASKS
+
     def test_list_items_show_token_totals_and_exec(self):
         """Task list items carry [▲out ▼in] token totals like session cards
         and the total ⏱️ execution time (user request)."""

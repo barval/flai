@@ -536,17 +536,18 @@ function renderTaskMessage(m, task) {
     return div;
 }
 
-// Pull the leading service header out of the message body: «Шаг N из M:» for
-// direct/subtask steps and «План из N шагов:» + numbered list for the plan.
+// Pull the leading service header out of the message body: the server
+// prefixes the plan as «План из N шагов:» (kind=plan) and each step as
+// «Шаг N из M:» (direct/subtask) — always the first content line, in the
+// user's language. The split therefore keys on the SHAPE (a first line
+// ending with a colon), never on the wording, so it survives localization.
 function splitServiceLine(kind, body) {
-    if (kind === 'plan') {
-        const m = body.match(/^(.*\d+)\n([\s\S]*)$/);
-        if (m) return { text: '🗒️ ' + m[1], rest: m[2] };
-        return null;
-    }
-    const m = body.match(/^(Шаг \d+ из \d+:|Step \d+ of \d+:)\n?([\s\S]*)$/);
-    if (m) return { text: '⚙️ ' + m[1], rest: m[2] };
-    return null;
+    if (kind !== 'plan' && kind !== 'direct' && kind !== 'subtask') return null;
+    const nl = body.indexOf('\n');
+    const first = (nl === -1 ? body : body.slice(0, nl)).trim();
+    if (!first.endsWith(':')) return null;
+    const rest = nl === -1 ? '' : body.slice(nl + 1);
+    return { text: (kind === 'plan' ? '🗒️ ' : '⚙️ ') + first, rest };
 }
 
 // ---------------------------------------------------------------------------

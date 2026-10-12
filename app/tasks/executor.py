@@ -202,10 +202,24 @@ def add_final_step(task_id: str, result_text: str, status: str = "passed", meta:
         )
         existing = c.fetchone()
     if existing:
-        update_step(existing["id"], result=result_text, status=status, finished_at=_now_iso(), extra=extra)
+        update_step(
+            existing["id"],
+            result=result_text,
+            status=status,
+            finished_at=_now_iso(),
+            extra=extra,
+            exec_seconds=float(extra.get("exec_seconds") or 0.0),
+        )
         return existing["id"]
     step_id = add_step(task_id=task_id, seq=max_seq + 1, kind="final")
-    update_step(step_id, result=result_text, status=status, finished_at=_now_iso(), extra=extra)
+    update_step(
+        step_id,
+        result=result_text,
+        status=status,
+        finished_at=_now_iso(),
+        extra=extra,
+        exec_seconds=float(extra.get("exec_seconds") or 0.0),
+    )
     return step_id
 
 
@@ -425,7 +439,9 @@ def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None =
             prompt = format_prompt("task_final.template", params, lang=lang)
         if not prompt:
             raise RuntimeError("task_final prompt template unavailable")
+        start = time.monotonic()
         raw, usage = _run_planner_full(app, prompt, lambda: False, lang)
+        meta["exec_seconds"] = round(time.monotonic() - start, 2)
         config = get_model_config("reasoning") or {}
         meta["model_name"] = str(config.get("model_name") or "")
         meta["usage"] = {
@@ -1447,13 +1463,14 @@ class TaskExecutor:
         """
         task_id = task["id"]
         lang = task.get("lang") or "ru"
-        text = _run_final_summary(self.app, task)
+        final_meta: dict[str, Any] = {}
+        text = _run_final_summary(self.app, task, meta_out=final_meta)
         if not text:
             from app.llamacpp_client import _tr
 
             text = f"⚠️ {_tr(_FALLBACK_BUDGET_NO_SUMMARY, lang=lang)}"
         self._clear_running_step(task_id)
-        add_final_step(task_id, text)
+        add_final_step(task_id, text, meta=final_meta)
         update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
         logger.info(f"task {task_id} expired (budget) — final summary recorded")
         self._publish_task_update(task_id)

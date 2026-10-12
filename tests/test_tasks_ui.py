@@ -296,6 +296,18 @@ class TestReviewGuards:
         assert "tts-button" in block and "copy-message-button" in block
         assert "tps_suffix" in block and "seconds_suffix" in block
 
+    def test_header_fields_are_independent(self):
+        """⏱️/🔢/🚀 stand on their own: the final summary has tokens with no
+        duration column, and a tool step (calculate/search) has no tokens —
+        gating the token block on ``exec_seconds`` hid both."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "hasTokens" in block
+        # Tokens are gated on the usage, not on the duration.
+        assert "if (!isUser && hasTokens)" in block
+        assert "tokenStatsHTML(promptTokens, completionTokens)" in block
+        # A non-LLM step names the capability that produced the message.
+        assert "⚙️ ' + escapeHtml(String(m.tool))" in block
+
     def test_service_lines_styled_separately(self):
         """«План из N шагов:» / «Шаг N из M:» are their own italic line."""
         assert "splitServiceLine" in CHAT_TASKS and "task-msg-service" in CHAT_TASKS

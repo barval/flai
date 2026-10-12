@@ -595,6 +595,28 @@ def test_final_step_not_duplicated(db_env, test_app, gate_open, monkeypatch):
     assert finals[0]["result"] == "final summary text", "existing final reused and updated"
 
 
+def test_final_step_records_header_meta(db_env, test_app):
+    """The final summary's model/tokens/duration reach the row (chat-style header).
+
+    ``exec_seconds`` was never written for a final step, so the header silently
+    dropped ⏱️/🔢/🚀 even though the summary ran on the reasoning model.
+    """
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    meta = {
+        "model_name": "Qwen3.6-Test.gguf",
+        "usage": {"prompt_tokens": 284, "completion_tokens": 747},
+        "exec_seconds": 4.2,
+    }
+    ex.add_final_step(task_id, "the answer", meta=meta)
+
+    rows = [s for s in store.get_task_steps(task_id) if s["kind"] == "final"]
+    assert len(rows) == 1
+    assert abs(float(rows[0]["exec_seconds"]) - 4.2) < 0.01
+    assert rows[0]["extra"]["usage"]["completion_tokens"] == 747
+    assert rows[0]["extra"]["model_name"] == "Qwen3.6-Test.gguf"
+
+
 def test_subtask_rows_use_subtask_kind(db_env, test_app, gate_open, monkeypatch):
     """Plan rows for media/RLM tools get kind='subtask' (M1), not 'direct'."""
     store = db_env

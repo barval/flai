@@ -456,31 +456,45 @@ function renderTaskMessage(m, task) {
     // Chat-style header: date | model | ⏱️ duration | 🔢 tokens | 🚀 tps,
     // plus 🤖 style emoji and the 🗣️/📋 buttons — the same shape as the chat's
     // displayMessage header (user request: the task view must look like chat).
+    // Each field stands on its own: a step handled by a tool (calculate/search)
+    // has no model tokens, and the final summary has tokens with no separate
+    // duration column — neither may hide the other.
     const header = document.createElement('span');
     header.className = 'message-header';
     const ts = m.created_at ? formatFullDateTime(m.created_at) : '';
     header.textContent = '📅 ' + (ts || '');
-    if (!isUser && m.model_name) {
-        const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
-        header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji('reasoning') || '') + escapeHtml(shortModel) + '</span>';
+    if (!isUser) {
+        if (m.model_name) {
+            const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
+            header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji('reasoning') || '') + escapeHtml(shortModel) + '</span>';
+        } else if (m.tool) {
+            // Not a model-produced step (calculate/search/media sub-task): name
+            // the capability that produced the message instead.
+            header.innerHTML += ' <span class="text-muted">| ⚙️ ' + escapeHtml(String(m.tool)) + '</span>';
+        }
     }
     const secs = Number(m.exec_seconds) || 0;
+    const usage = (!isUser && m.usage) || {};
+    const promptTokens = Number(usage.prompt_tokens) || 0;
+    const completionTokens = Number(usage.completion_tokens) || 0;
+    const hasTokens = promptTokens > 0 || completionTokens > 0;
     if (!isUser && secs >= 0.1) {
         header.innerHTML += ' <span class="text-muted">| ⏱️ ' + secs.toFixed(1) + t('seconds_suffix') + ' |</span>';
-        const usage = m.usage || {};
-        header.innerHTML += tokenStatsHTML(usage.prompt_tokens, usage.completion_tokens);
-        if (usage.completion_tokens) {
-            const tps = (usage.completion_tokens / secs).toFixed(1);
-            header.innerHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
-        }
-        if (task && task.response_style) {
-            const styleEmoji = getResponseStyleEmoji(task.response_style);
-            if (styleEmoji) {
-                const styleSpan = document.createElement('span');
-                styleSpan.className = 'response-style-indicator';
-                styleSpan.textContent = styleEmoji;
-                header.appendChild(styleSpan);
-            }
+    }
+    if (!isUser && hasTokens) {
+        header.innerHTML += tokenStatsHTML(promptTokens, completionTokens);
+    }
+    if (!isUser && hasTokens && secs >= 0.1) {
+        const tps = (completionTokens / secs).toFixed(1);
+        header.innerHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
+    }
+    if (!isUser && task && task.response_style) {
+        const styleEmoji = getResponseStyleEmoji(task.response_style);
+        if (styleEmoji) {
+            const styleSpan = document.createElement('span');
+            styleSpan.className = 'response-style-indicator';
+            styleSpan.textContent = styleEmoji;
+            header.appendChild(styleSpan);
         }
     }
 

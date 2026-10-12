@@ -32,7 +32,7 @@
 | `image_gen` / `image_edit` / `video_gen` | media sub-tasks through the existing GPU queue |
 
 3. **Checkpoint** — a short reasoning call verifies the step result against `checkpoint_criteria`; on failure the step reruns with the mismatch description (up to `TASK_STEP_MAX_ATTEMPTS` = 3 total), then is marked `failed` and the task continues. When the failure means **user data is missing** (not a model error), the verifier returns a third verdict `needs_user_input`: the step pauses as `awaiting_user`, a verbatim question is appended to the conversation, and after the answer the same step re-runs with it (the paused attempt is not counted against the 3-attempt limit).
-4. **Final** — the answer/action over the accumulated results, with media references; the task becomes `completed`. A final summary that merely restates the last step's answer is detected and suppressed (the step's answer is shown once, with its own header metadata).
+4. **Final** — the answer/action over the accumulated results, with media references; the task becomes `completed`. A final summary that merely restates the last step's answer is detected and suppressed (the step's answer is shown once, with its own header metadata). Step and final prompts require math and formulas as plain text (no LaTeX — the web UI ships no formula renderer, so `$…$`/`\times` would reach the user as raw markup).
 
 Media sub-tasks run in the existing queue at the task's class (3/4/5). A slow-worker guard keeps them from starting while the gate is closed — they wait in a deferred list and return to the queue when chat goes quiet.
 

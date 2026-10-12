@@ -80,3 +80,12 @@ def test_templates_do_not_use_skills_section():
     for name in TEMPLATES:
         for lang in ("ru", "en"):
             assert "{skills_section}" not in _load(name, lang), f"{name}/{lang} uses skills_section"
+
+
+def test_answer_templates_forbid_latex_math():
+    """User-facing task answers must use plain-text math: the chat ships no
+    LaTeX renderer, so ``$2 + 2 \\times 2$`` reached the user as raw markup."""
+    for name in ("task_step", "task_final"):
+        for lang in ("ru", "en"):
+            src = _load(name, lang)
+            assert "LaTeX" in src, f"{name}/{lang}: missing the plain-text-math rule"

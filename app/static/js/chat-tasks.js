@@ -30,6 +30,31 @@ let taskOrigPlaceholder = null;
 // the empty task state (title «Задача», no input) instead of the chat.
 let tasksViewEmpty = false;
 
+// The last task opened in the main window. Unlike the task VIEW (which is
+// closed when the tab is left so the chat can be restored into the shared
+// #chat-messages container), this id survives the tab switch — and a page
+// reload, mirroring how the chat keeps its last session open.
+let lastTaskId = null;
+
+function rememberTaskId(taskId) {
+    lastTaskId = taskId;
+    const login = window.CURRENT_USER_LOGIN;
+    if (login && taskId) localStorage.setItem(`last_task_${login}`, taskId);
+}
+
+function readRememberedTaskId() {
+    if (lastTaskId) return lastTaskId;
+    const login = window.CURRENT_USER_LOGIN;
+    if (!login) return null;
+    return localStorage.getItem(`last_task_${login}`) || null;
+}
+
+function forgetTaskId() {
+    lastTaskId = null;
+    const login = window.CURRENT_USER_LOGIN;
+    if (login) localStorage.removeItem(`last_task_${login}`);
+}
+
 // Last rendered conversation payload (JSON string) — a re-delivered identical
 // payload (e.g. a redundant SSE reload) must not rebuild the DOM (flicker).
 let lastTaskPayloadJson = '';
@@ -70,6 +95,9 @@ function loadTasksFromServer() {
             if (window.currentTaskId && !tasksData[window.currentTaskId]) {
                 // The open task was deleted elsewhere — return to the chat.
                 closeTaskView(false);
+            }
+            if (readRememberedTaskId() && !tasksData[readRememberedTaskId()]) {
+                forgetTaskId(); // deleted: a reload must not try to restore it
             }
             renderTasksList();
         })
@@ -177,6 +205,7 @@ function openTaskView(taskId) {
     tasksViewEmpty = false;
     window.currentTaskId = taskId;
     lastTaskPayloadJson = '';
+    rememberTaskId(taskId);
     document.querySelectorAll('.task-item').forEach(item => {
         item.classList.toggle('active', item.dataset.taskId === taskId);
     });
@@ -189,6 +218,41 @@ function openTaskView(taskId) {
     }
     setTaskMode(true, tasksData[taskId]);
     loadTaskConversation(taskId);
+}
+
+// The Tasks tab opened with no task selected: reopen the last task the user
+// had (tab switch or page reload), falling back to the empty state. Mirrors
+// the chat, which always has a current session.
+function restoreTasksView() {
+    const remembered = readRememberedTaskId();
+    if (!remembered) {
+        enterTasksEmptyState();
+        return;
+    }
+    // Claim the window immediately (same flag the empty state sets) so the
+    // chat's async initial load cannot paint its session over it, then open
+    // the task once the list confirms it still exists.
+    tasksViewEmpty = true;
+    lastTaskPayloadJson = '';
+    setTaskMode(true, null);
+    const container = document.getElementById('chat-messages');
+    if (container) {
+        container.innerHTML = '';
+        if (typeof showMessagesLoadingIndicator === 'function') {
+            showMessagesLoadingIndicator();
+        }
+    }
+    loadTasksFromServer().then(() => {
+        if (tasksData[remembered]) {
+            openTaskView(remembered);
+            return;
+        }
+        // Only forget when the list actually arrived (a failed fetch also
+        // leaves it empty — a transient error must not lose the memory).
+        if (Object.keys(tasksData).length) forgetTaskId();
+        tasksViewEmpty = false;
+        enterTasksEmptyState();
+    });
 }
 
 // The Tasks tab opened with no task selected: the main window shows the task
@@ -628,6 +692,7 @@ function deleteTask(taskId) {
                 return;
             }
             delete tasksData[taskId];
+            if (readRememberedTaskId() === taskId) forgetTaskId();
             if (window.currentTaskId === taskId) {
                 closeTaskView(false);
             }
@@ -676,6 +741,7 @@ function onTaskUpdate(data) {
     if (!data || !data.task_id) return;
     if (data.status === 'deleted') {
         delete tasksData[data.task_id];
+        if (readRememberedTaskId() === data.task_id) forgetTaskId();
         if (window.currentTaskId === data.task_id) {
             closeTaskView(false);
         }

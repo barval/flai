@@ -24,7 +24,12 @@ function applyCurrentView() {
     // Leaving the tab restores the chat conversation.
     if (typeof enterTasksEmptyState === 'function' && typeof leaveTasksView === 'function') {
         if (view === 'tasks') {
-            if (!window.currentTaskId) enterTasksEmptyState();
+            if (!window.currentTaskId) {
+                // Reopen the last task (tab switch or page reload); the empty
+                // state is the fallback when there is nothing to restore.
+                if (typeof restoreTasksView === 'function') restoreTasksView();
+                else enterTasksEmptyState();
+            }
         } else if (typeof isTaskViewActive === 'function' && isTaskViewActive()) {
             leaveTasksView();
         }

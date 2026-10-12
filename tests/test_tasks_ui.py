@@ -272,9 +272,20 @@ class TestReviewGuards:
         assert "lastTaskPayloadJson" in CHAT_TASKS
 
     def test_empty_state_wired_into_view_switch(self):
-        """The Tasks tab owns the main window (empty state without a task)."""
-        assert "enterTasksEmptyState" in CHAT_DOCS and "leaveTasksView" in CHAT_DOCS
+        """The Tasks tab owns the main window; the last task is restored on
+        re-entry (tab switch and page reload), the empty state is the fallback."""
+        assert "restoreTasksView" in CHAT_DOCS and "leaveTasksView" in CHAT_DOCS
+        assert "enterTasksEmptyState" in CHAT_DOCS
         assert "task-empty-state" in CHAT_TASKS
+        # Remembered across tab switches and reloads (per user, like the view).
+        assert "last_task_" in CHAT_TASKS
+        assert "rememberTaskId" in CHAT_TASKS and "readRememberedTaskId" in CHAT_TASKS
+        assert "forgetTaskId" in CHAT_TASKS
+        assert "rememberTaskId(taskId)" in self._function_block(CHAT_TASKS, "function openTaskView(")
+        restore_block = self._function_block(CHAT_TASKS, "function restoreTasksView(")
+        assert "loadTasksFromServer" in restore_block and "openTaskView(remembered)" in restore_block
+        # A remembered task deleted meanwhile is forgotten, not restored forever.
+        assert "forgetTaskId" in self._function_block(CHAT_TASKS, "function loadTasksFromServer(")
 
     def test_chat_style_message_headers(self):
         """Task messages carry the chat header shape: model, ⏱️, 🔢, 🚀,

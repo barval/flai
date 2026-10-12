@@ -4,7 +4,7 @@
 
 ## How to use it
 
-1. Open the **Задачи / Tasks** tab in the left column (between **Documents** and **Sessions**), press ➕ and describe the desired result.
+1. Open the **Задачи / Tasks** tab in the left column (between **Documents** and **Sessions**), press ➕ and describe the desired result. The tab reopens the task you last had open (also after a page reload) — like the chat reopens its last session; the empty state appears only when there is nothing to restore.
 2. You can also create the task first and describe it later: ➕ opens a **draft** task (draft status, the input becomes the description box); sending the description enqueues the task.
 3. The task is planned and starts running. Its conversation opens in the main window and looks like a normal chat: the user request, a «Plan of N steps:» message, then each step's output prefixed with «Шаг N из M:» (Step N of M), and the final answer. The plan/step prefixes are rendered as their own italic service line, and every assistant message carries the same header as chat messages: 📅 date | model name | ⏱️ execution time | 🔢 token usage | 🚀 tokens/s, plus 🗣️ (read aloud) and 📋 (copy) buttons.
 4. Live status is shown on each list item: ⏳ queued / ▶ Running (step n of m) / ⏸ Frozen / ⏳ Awaiting answer / ✔ Completed / ✖ Failed / ✖ Cancelled / ⏰ Expired. While the task is being planned, the status line shows «Составляю план…» (Making the plan…); non-terminal statuses pulse like chat stage labels.

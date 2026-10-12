@@ -17,7 +17,7 @@ from flask_babel import gettext as _
 
 from app.database import get_db
 from app.tasks.events import publish_task_update
-from app.tasks.executor import add_user_input_step, get_task_steps
+from app.tasks.executor import add_user_input_step, get_queued_task_positions, get_task_steps
 from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_task
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
@@ -61,11 +61,17 @@ def _plan_steps(task: dict) -> list[dict]:
     return [s for s in (steps or []) if isinstance(s, dict)]
 
 
-def _task_summary(task: dict, token_totals: dict[str, dict[str, int]] | None = None) -> dict:
+def _task_summary(
+    task: dict,
+    token_totals: dict[str, dict[str, int]] | None = None,
+    queue_positions: dict[str, int] | None = None,
+) -> dict:
     """List-item / status payload (no filesystem paths, no plan bodies).
 
     ``token_totals`` (optional) maps task_id → summed step usage; provided by
     the list route so list items can show [▲out ▼in] like session cards.
+    ``queue_positions`` (optional) maps task_id → 1-based queue rank; the list
+    route renders it as the ⏳ badge on ``queued`` rows.
     """
     summary = {
         "id": task["id"],
@@ -85,6 +91,8 @@ def _task_summary(task: dict, token_totals: dict[str, dict[str, int]] | None = N
     }
     if token_totals is not None:
         summary["token_totals"] = token_totals.get(task["id"]) or {"prompt_tokens": 0, "completion_tokens": 0}
+    if queue_positions and task.get("status") == "queued":
+        summary["queue_position"] = queue_positions.get(str(task["id"]), 0)
     return summary
 
 
@@ -209,7 +217,8 @@ def list_tasks():
         return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
     tasks = get_tasks_by_user(session["login"])
     totals = _token_totals_for([t["id"] for t in tasks])
-    return jsonify({"tasks": [_task_summary(t, totals) for t in tasks]})
+    positions = get_queued_task_positions()
+    return jsonify({"tasks": [_task_summary(t, totals, positions) for t in tasks]})
 
 
 @bp.route("", methods=["POST"])

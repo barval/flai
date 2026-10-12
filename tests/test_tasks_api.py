@@ -102,6 +102,20 @@ class TestTasksApi:
         ids = [t["id"] for t in listed.get_json()["tasks"]]
         assert task["id"] in ids
 
+    def test_list_reports_queue_position(self, tasks_env, client):
+        """A queued row carries its global 1-based queue rank (the executor's
+        own order: task_class asc, then FIFO); a non-queued row carries none."""
+        _login(client)
+        first = _seed_task(status="queued")
+        second = _seed_task(status="queued")
+        active = _seed_task(status="active")
+
+        listed = {t["id"]: t for t in client.get("/api/tasks").get_json()["tasks"]}
+
+        assert listed[first]["queue_position"] == 1
+        assert listed[second]["queue_position"] == 2
+        assert "queue_position" not in listed[active]
+
     def test_create_without_request_makes_draft(self, tasks_env, client):
         """«+» flow: no request → draft (executor never selects it)."""
         _login(client)

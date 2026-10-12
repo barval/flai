@@ -24,6 +24,10 @@ window.currentTaskId = null;
 const TASK_TERMINAL_STATUSES = new Set(['completed', 'failed', 'expired', 'cancelled']);
 
 let taskReloadTimer = null;
+// Queue positions are global — any task entering or leaving the queue shifts
+// the numbers of the others — so a status event re-reads the list (debounced)
+// instead of trusting the per-task patch alone.
+let tasksListReloadTimer = null;
 let taskOrigPlaceholder = null;
 
 // True when the Tasks tab is open in the main window but no task is selected:
@@ -133,7 +137,7 @@ function renderTasksList() {
 <div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}">
     <div class="session-content">
         <div class="session-info">
-            <div class="session-title">📝 ${escapeHtml(title)}</div>
+            <div class="session-title">${taskStatusIcon(task)}📝 ${escapeHtml(title)}</div>
             <div class="session-date">📅 ${dateStr}${steps}${tokensHTML}</div>
             <div class="task-status-line">${escapeHtml(taskStatusLine(task))}${execHTML}</div>
         </div>
@@ -171,6 +175,27 @@ function attachTaskEventHandlers() {
             deleteTask(taskItem.dataset.taskId);
         });
     });
+}
+
+function taskStatusIcon(task) {
+    // List badge before the title, mirroring the session cards: a blinking
+    // lightning while the executor runs the task, a blinking question mark
+    // while it awaits the user's answer, an hourglass with the queue
+    // position while it waits its turn. Terminal states carry no badge —
+    // the small status line below the title already names them.
+    const status = task.status;
+    if (status === 'active') {
+        return '<span class="session-status-icon processing blink" title="' + escapeHtml(t('task_running')) + '">⚡</span>';
+    }
+    if (status === 'awaiting_user') {
+        return '<span class="session-status-icon awaiting blink" title="' + escapeHtml(t('task_awaiting_answer')) + '">❓</span>';
+    }
+    if (status === 'queued') {
+        const pos = Number(task.queue_position) || 0;
+        const label = pos > 0 ? t('queued') + ' (#' + pos + ')' : t('queued');
+        return '<span class="session-status-icon queued blink" title="' + escapeHtml(label) + '">⏳' + (pos > 0 ? ' ' + pos : '') + '</span>';
+    }
+    return '';
 }
 
 function taskStatusLine(task) {
@@ -356,6 +381,14 @@ function scheduleTaskReload(taskId) {
     taskReloadTimer = setTimeout(() => {
         taskReloadTimer = null;
         loadTaskConversation(taskId);
+    }, 400);
+}
+
+function scheduleTasksListReload() {
+    if (tasksListReloadTimer) clearTimeout(tasksListReloadTimer);
+    tasksListReloadTimer = setTimeout(() => {
+        tasksListReloadTimer = null;
+        loadTasksFromServer();
     }, 400);
 }
 
@@ -757,6 +790,7 @@ function onTaskUpdate(data) {
             closeTaskView(false);
         }
         renderTasksList();
+        scheduleTasksListReload();
         return;
     }
     const prev = tasksData[data.task_id] || {};
@@ -769,6 +803,7 @@ function onTaskUpdate(data) {
         abort_reason: data.abort_reason,
     });
     renderTasksList();
+    scheduleTasksListReload();
     if (window.currentTaskId === data.task_id) {
         scheduleTaskReload(data.task_id);
     }

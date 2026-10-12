@@ -111,6 +111,23 @@ def get_queued_task() -> dict | None:
         return dict(row) if row else None
 
 
+def get_queued_task_positions() -> dict[str, int]:
+    """1-based queue position per queued task, in ``get_queued_task()``'s order.
+
+    The Tasks list shows the number the executor will honour (the queue is
+    global, not per user) as an hourglass badge on every ``queued`` row.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, ROW_NUMBER() OVER (ORDER BY task_class ASC, created_at ASC) AS pos
+            FROM tasks WHERE status = 'queued'
+            """
+        )
+        return {str(r["id"]): int(r["pos"]) for r in c.fetchall()}
+
+
 def get_in_progress_tasks() -> list[dict]:
     """Tasks currently holding or having released the slot (active/frozen/awaiting)."""
     with get_db() as conn:

@@ -256,6 +256,21 @@ class TestReviewGuards:
         assert "task_running" in CHAT_TASKS
         assert "t('task_status_running')" in CHAT_TASKS
 
+    def test_list_badges_follow_the_session_pattern(self):
+        """A queued/active/awaiting row carries a blinking session-style badge
+        before its title: hourglass + queue position, lightning, question mark.
+        The small status line below the title stays (terminal states only)."""
+        block = self._function_block(CHAT_TASKS, "function taskStatusIcon(")
+        assert "session-status-icon" in block
+        assert "'active'" in block and "processing blink" in block and "⚡" in block
+        assert "'awaiting_user'" in block and "awaiting blink" in block and "❓" in block
+        assert "'queued'" in block and "task.queue_position" in block and "⏳" in block
+        # The badge precedes the title in the list row.
+        assert "taskStatusIcon(task)" in self._function_block(CHAT_TASKS, "function renderTasksList(")
+        # Queue positions are global → a status event re-reads the list.
+        assert "scheduleTasksListReload" in self._function_block(CHAT_TASKS, "function onTaskUpdate(")
+        assert ".session-status-icon.awaiting" in CHAT_CSS
+
     def test_export_blocked_during_task_view(self):
         assert "window.currentTaskId" in CHAT_EXPORT
         assert "task_export_unavailable" in CHAT_EXPORT

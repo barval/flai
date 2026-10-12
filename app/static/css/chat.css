@@ -625,6 +625,7 @@
 .document-status-icon.blink,
 .session-status-icon.processing,
 .session-status-icon.queued,
+.session-status-icon.awaiting,
 .session-status-icon.unread,
 .session-status-icon.transcribing {
     animation: blink-animation 2s infinite !important;
@@ -645,6 +646,10 @@
 
 .session-status-icon.queued {
     color: #95a5a6;
+}
+
+.session-status-icon.awaiting {
+    color: #3498db;
 }
 
 .session-status-icon.unread {

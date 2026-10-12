@@ -158,6 +158,9 @@ def test_queued_to_active(db_env, test_app, gate_open, monkeypatch):
     assert abs(t["accumulated_exec_seconds"] - 1.4) < 0.01
     steps = store.get_task_steps(task_id)
     assert [s["status"] for s in steps if s["kind"] != "final"] == ["passed", "passed"]
+    # Step duration includes its checkpoint verification (0.5 tool + 0.2 verify):
+    # the header's ⏱️/🚀 then line up with the tokens shown for the step.
+    assert abs(float(steps[0]["exec_seconds"]) - 0.7) < 0.01
     final_step = steps[-1]
     assert final_step["kind"] == "final" and final_step["result"] == "final summary text"
     assert len(calls) == 2, "runner called once per step"

@@ -391,6 +391,26 @@ msgstr "Изучаю сайт…"
 msgid "Deep analysis"
 msgstr "Глубокий анализ"
 
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Web search"
+msgstr "Веб-поиск"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Calculator"
+msgstr "Калькулятор"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image generation"
+msgstr "Генерация изображения"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image editing"
+msgstr "Редактирование изображения"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Video generation"
+msgstr "Генерация видео"
+
 #: app/queue.py:1960
 msgid "No documents selected for analysis"
 msgstr "Для анализа не выбрано ни одного документа"

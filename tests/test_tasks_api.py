@@ -192,6 +192,9 @@ class TestTasksApi:
         step_msg = next(m for m in messages if m["kind"] == "direct")
         assert step_msg["content"].startswith("Шаг 1 из 2:")
         assert "Found three sources" in step_msg["content"]
+        # A tool-produced step names the tool (emoji + localized name) at the
+        # start of its answer line — the header then reports the verifier.
+        assert "🔎" in step_msg["content"], "tool badge missing from the step body"
         question_msg = next(m for m in messages if m["kind"] == "question")
         # The question shows as a plain assistant message (no step header, no
         # «Awaiting answer» marker — the waiting state lives in the live status).

@@ -388,6 +388,26 @@ msgstr "Studying the site…"
 msgid "Deep analysis"
 msgstr "Deep analysis"
 
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Web search"
+msgstr "Web search"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Calculator"
+msgstr "Calculator"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image generation"
+msgstr "Image generation"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Image editing"
+msgstr "Image editing"
+
+#: app/tasks/tools.py (TOOL_BADGES)
+msgid "Video generation"
+msgstr "Video generation"
+
 #: app/queue.py:1960
 msgid "No documents selected for analysis"
 msgstr "No documents selected for analysis"

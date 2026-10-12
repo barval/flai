@@ -227,6 +227,45 @@ def test_checkpoint_nonbool_verdict_explanation(test_app):
     assert out["explanation"] == "unparseable checkpoint reply"
 
 
+def test_checkpoint_reports_verifier_model_and_usage(test_app):
+    """The verifier's model + real token usage ride back with the verdict — a
+    tool-produced step (calculate/search) shows them in its message header."""
+    base = test_app.modules["base"]
+
+    def _fake_call(*args, **kwargs):
+        from app.utils import record_usage_for_current
+
+        record_usage_for_current(150, 8)
+        return '{"verdict": true, "explanation": "ok"}'
+
+    with (
+        patch.object(base.llamacpp, "call", side_effect=_fake_call),
+        patch("app.tasks.runner.get_model_config", return_value={"model_name": "Test-Verifier.gguf"}),
+    ):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["usage"] == {"prompt_tokens": 150, "completion_tokens": 8}
+    assert out["model_name"] == "Test-Verifier.gguf"
+
+
+def test_tool_step_header_uses_verifier_meta(test_app):
+    """A tool step carries no model call of its own — the header reports the
+    checkpoint verifier's model and tokens instead."""
+    cp = {
+        "verdict": True,
+        "explanation": "ok",
+        "exec_seconds": 0.1,
+        "model_name": "Test-Verifier.gguf",
+        "usage": {"prompt_tokens": 40, "completion_tokens": 5},
+    }
+    with patch("app.tasks.runner.run_checkpoint", return_value=cp):
+        out = run_direct_step(
+            test_app, _step(tool="calculate", goal="2 + 2"), context_digest="", cancel_check=lambda: False
+        )
+    assert out["result"] == "4" and out["status"] == "passed"
+    assert out["model_name"] == "Test-Verifier.gguf"
+    assert out["usage"] == {"prompt_tokens": 40, "completion_tokens": 5}
+
+
 def test_calculate_prose_goal_extracts_expression(test_app):
     """A prose goal («Вычислите результат выражения 2 + 2 * 2.») does not kill
     the step: the bare expression is extracted from the text and evaluated."""

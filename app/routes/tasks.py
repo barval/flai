@@ -107,6 +107,22 @@ def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
     return {r["task_id"]: {"prompt_tokens": int(r["p"]), "completion_tokens": int(r["c"])} for r in rows}
 
 
+def _tool_badge(tool: Any) -> str:
+    """Localized «🧮 Calculator: » prefix for a tool-produced step body.
+
+    Empty for the reasoning-model step (the model answers) and unknown tools.
+    The emoji lives in ``TOOL_BADGES``; the name is a gettext msgid rendered
+    inside the request locale, so the label follows the user's language.
+    """
+    from app.tasks.tools import TOOL_BADGES
+
+    badge = TOOL_BADGES.get(str(tool or ""))
+    if not badge:
+        return ""
+    emoji, msgid = badge
+    return f"{emoji} {_(msgid)}: "
+
+
 def _step_message(row: dict, total: int) -> dict:
     """One task_steps row as a conversation message."""
     seq = int(row.get("seq") or 0)
@@ -114,7 +130,9 @@ def _step_message(row: dict, total: int) -> dict:
     body = str(row.get("result") or "")
     header = _("Step {n} of {m}:").format(n=seq, m=total)
     if kind in ("direct", "subtask"):
-        content = f"{header}\n{body}" if body else header
+        # A tool-produced step (calculate/search/media) names the tool at the
+        # start of its answer line; the model step answers on its own.
+        content = f"{header}\n{_tool_badge(row.get('tool'))}{body}" if body else header
     elif kind == "question":
         # The goal IS the verbatim question (prompt rule) — show it as a plain
         # assistant message; the waiting state lives in the banner/live status.

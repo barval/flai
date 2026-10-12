@@ -290,6 +290,11 @@ def run_direct_step(
             config = get_model_config("reasoning") or {}
             payload["model_name"] = str(config.get("model_name") or "")
             payload["usage"] = dict(getattr(_last_call_usage, "value", {}) or {})
+        else:
+            # A tool produced the content: the checkpoint verifier is the only
+            # model call made for this step, so the header reports IT.
+            payload["model_name"] = str(checkpoint.get("model_name") or "")
+            payload["usage"] = dict(checkpoint.get("usage") or {})
         return payload
 
 
@@ -347,6 +352,7 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
     from app.utils import format_prompt
 
     start = time.monotonic()
+    account_id = f"task-checkpoint:{uuid.uuid4()}"
     with app.app_context():
         try:
             from modules.base import response_language_name
@@ -363,6 +369,7 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
             prompt = format_prompt("task_checkpoint.template", params, lang=lang)
             if not prompt:
                 raise RuntimeError("task_checkpoint prompt template unavailable")
+            begin_usage_account(account_id)
             reply = base.call_llamacpp(
                 [{"role": "user", "content": prompt}],
                 model_type="reasoning",
@@ -373,5 +380,19 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
         except Exception as e:
             logger.error(f"run_checkpoint failed for step {step.get('id', '?')}: {e}")
             verdict = {"verdict": False, "explanation": "checkpoint verification failed"}
+        finally:
+            usage = finish_usage_account(account_id) or {}
         verdict["exec_seconds"] = round(time.monotonic() - start, 2)
+        # The verifier's model + real token usage. For a step whose content came
+        # from a tool (calculate/search) this is the ONLY model call made for it,
+        # so the conversation header shows it there instead of a tool name.
+        config = get_model_config("reasoning") or {}
+        verdict["model_name"] = str(config.get("model_name") or "")
+        totals = {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
+        # ``finish_usage_account`` also carries submitted_at — keep only the
+        # real token totals, and report "no usage" as an empty dict.
+        verdict["usage"] = totals if any(totals.values()) else {}
         return verdict

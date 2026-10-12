@@ -20,6 +20,18 @@ def _run_calculate(expression: str) -> Any:
 
 TOOL_RUNNERS: dict[str, Callable] = {"calculate": _run_calculate}
 
+# Display badge for a step whose content a TOOL produced (not the model):
+# emoji + the gettext msgid of its localized name. The API layer renders the
+# msgid inside the request locale and prefixes the step's answer line with it.
+TOOL_BADGES: dict[str, tuple[str, str]] = {
+    "search": ("🔎", "Web search"),
+    "calculate": ("🧮", "Calculator"),
+    "rlm": ("🔬", "Deep analysis"),
+    "image_gen": ("🖼️", "Image generation"),
+    "image_edit": ("🎨", "Image editing"),
+    "video_gen": ("🎬", "Video generation"),
+}
+
 CAPABILITIES: list[dict[str, str]] = [
     {
         "id": "llm",

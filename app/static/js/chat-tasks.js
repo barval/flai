@@ -467,10 +467,6 @@ function renderTaskMessage(m, task) {
         if (m.model_name) {
             const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
             header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji('reasoning') || '') + escapeHtml(shortModel) + '</span>';
-        } else if (m.tool) {
-            // Not a model-produced step (calculate/search/media sub-task): name
-            // the capability that produced the message instead.
-            header.innerHTML += ' <span class="text-muted">| ⚙️ ' + escapeHtml(String(m.tool)) + '</span>';
         }
     }
     const secs = Number(m.exec_seconds) || 0;

@@ -126,6 +126,21 @@ class TestTasksTranslations:
                 else:
                     assert resolved != msgid and resolved.strip(), f"ru: {msgid!r} resolves to itself"
 
+    def test_tool_badges_localized_in_both_catalogs(self):
+        """Server-rendered tool labels (TOOL_BADGES msgids) resolve in en and ru."""
+        from app.tasks.tools import TOOL_BADGES
+
+        for lang in ("en", "ru"):
+            mo = ROOT / "translations" / lang / "LC_MESSAGES" / "messages.mo"
+            with mo.open("rb") as fh:
+                catalog = gettext.GNUTranslations(fh)
+            for _emoji, msgid in TOOL_BADGES.values():
+                resolved = catalog.gettext(msgid)
+                if lang == "en":
+                    assert resolved == msgid
+                else:
+                    assert resolved != msgid and resolved.strip(), f"ru: {msgid!r} resolves to itself"
+
 
 class TestTasksFrontendLogic:
     def test_core_functions_defined(self):
@@ -298,15 +313,25 @@ class TestReviewGuards:
 
     def test_header_fields_are_independent(self):
         """⏱️/🔢/🚀 stand on their own: the final summary has tokens with no
-        duration column, and a tool step (calculate/search) has no tokens —
-        gating the token block on ``exec_seconds`` hid both."""
+        duration column, and a tool step (calculate/search) reports its
+        verifier's model — gating the token block on ``exec_seconds`` hid both."""
         block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
         assert "hasTokens" in block
         # Tokens are gated on the usage, not on the duration.
         assert "if (!isUser && hasTokens)" in block
         assert "tokenStatsHTML(promptTokens, completionTokens)" in block
-        # A non-LLM step names the capability that produced the message.
-        assert "⚙️ ' + escapeHtml(String(m.tool))" in block
+        # The tool name is NOT in the header — the verifier model is — so the
+        # header has no tool fallback branch.
+        assert "m.tool" not in block
+
+    def test_tool_badge_prefixes_the_answer_line(self):
+        """A tool-produced step names its tool (localized, with an emoji) at the
+        start of the answer line; the model step has no such prefix."""
+        tools_src = (ROOT / "app/tasks/tools.py").read_text(encoding="utf-8")
+        assert "TOOL_BADGES" in tools_src and "🧮" in tools_src
+        assert "Calculator" in tools_src and "Web search" in tools_src
+        assert "_tool_badge" in ROUTES_TASKS and "TOOL_BADGES" in ROUTES_TASKS
+        assert "_tool_badge(row.get('tool'))" in ROUTES_TASKS
 
     def test_service_lines_styled_separately(self):
         """«План из N шагов:» / «Шаг N из M:» are their own italic line."""

@@ -1004,6 +1004,10 @@ class TaskExecutor:
                 }
             checkpoint = outcome.get("checkpoint") or {}
             self._add_budget(task_id, elapsed + float(checkpoint.get("exec_seconds") or 0.0))
+            # The step's displayed duration covers the tool/step call AND its
+            # checkpoint verification, so the header's ⏱️/🚀 match the
+            # model+tokens shown there (a tool step reports its verifier).
+            step_seconds = round(elapsed + float(checkpoint.get("exec_seconds") or 0.0), 2)
 
             status = outcome.get("status")
             result = outcome.get("result") or ""
@@ -1013,7 +1017,7 @@ class TaskExecutor:
                     row["id"],
                     status="passed",
                     result=result,
-                    exec_seconds=elapsed,
+                    exec_seconds=step_seconds,
                     extra=step_extra,
                     checkpoint_result=str(checkpoint.get("explanation", "")),
                     checkpoint_verdict=bool(checkpoint.get("verdict")),
@@ -1076,7 +1080,7 @@ class TaskExecutor:
                 row["id"],
                 status="failed",
                 result=result,
-                exec_seconds=elapsed,
+                exec_seconds=step_seconds,
                 extra=step_extra,
                 checkpoint_result=str(checkpoint.get("explanation", "")),
                 checkpoint_verdict=False,

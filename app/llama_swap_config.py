@@ -24,7 +24,7 @@ DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 DEFAULT_TTL = {
     # llama-swap: ttl=0 means "never unload", ttl=N means "unload after N seconds idle"
     "embedding": 1,  # unload 1 second after response (fast: ~500 MB, reload is instant)
-    "reasoning": 1,  # unload 1 second after response
+    "reasoning": 10,  # unload 10 seconds after response (long enough to survive VRAM check → gen race)
     "multimodal": 0,  # never unload — always resident (router + chat + vision)
 }
 

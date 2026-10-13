@@ -2686,7 +2686,15 @@ class RedisRequestQueue:
                 attempt == 0
                 and not self._is_task_cancelled(task["id"])
                 and self._is_llm_error_string(full_response)
-                and ("502" in full_response or "HTTP error" in full_response or "Ошибка HTTP" in full_response)
+                and (
+                    "502" in full_response
+                    or "HTTP error" in full_response
+                    or "Ошибка HTTP" in full_response
+                    or "model unloaded" in full_response
+                    or "была выгружен" in full_response
+                    or "shutting down" in full_response
+                    or "перезагружает" in full_response
+                )
             ):
                 self.app.logger.warning(
                     f"Reasoning backend HTTP failure on attempt {attempt + 1}, retrying once: {full_response[:200]}"

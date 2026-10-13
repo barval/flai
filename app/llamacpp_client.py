@@ -133,6 +133,16 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
             "Requested model is not available on the model server. Check the selected model in the admin panel.",
             lang,
         )
+    if "model unloaded" in lower:
+        return _tr(
+            "Model was unloaded to free GPU memory. Please repeat the request.",
+            lang,
+        )
+    if "group is shutting down" in lower:
+        return _tr(
+            "Model server is reloading due to configuration changes. Please wait a few seconds and repeat the request.",
+            lang,
+        )
     return msg
 
 

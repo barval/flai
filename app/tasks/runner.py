@@ -130,29 +130,46 @@ def _call_reasoning(
 ) -> tuple[str, dict[str, int]]:
     """Stream one reasoning-model call for a step; abort mid-stream on cancel.
 
+    Retries ONCE on transient llama-swap errors (model just got unloaded,
+    config reload in progress) — the model reload after the first attempt is
+    fast because JIT load just happened.
+
     Opens a per-call usage account (keyed by the prompt hash) so the real
     stream-usage totals (stream_options.include_usage) are attributable to
     THIS call; returns ``(text, usage)``. The executor stores usage into the
     step's extra for the chat-style header (🔢 tokens).
     """
     messages = [{"role": "user", "content": prompt}]
-    account_id = f"task-call:{uuid.uuid4()}"
-    begin_usage_account(account_id)
-    text = ""
-    for chunk in _reasoning_chat(app, messages, lang, temperature=temperature, status_callback=status_callback):
+    for attempt in range(2):
+        account_id = f"task-call:{uuid.uuid4()}"
+        begin_usage_account(account_id)
+        text = ""
+        for chunk in _reasoning_chat(app, messages, lang, temperature=temperature, status_callback=status_callback):
+            if cancel_check():
+                finish_usage_account(account_id)
+                raise StepAborted("step cancelled during reasoning generation")
+            if isinstance(chunk, dict):
+                continue
+            text += chunk
         if cancel_check():
             finish_usage_account(account_id)
-            raise StepAborted("step cancelled during reasoning generation")
-        if isinstance(chunk, dict):
+            raise StepAborted("step cancelled at end of reasoning generation")
+        usage = finish_usage_account(account_id) or {}
+        # Retry once on transient llama-swap errors (model unloaded / config reload).
+        if (
+            attempt == 0
+            and _is_error_text(text)
+            and (
+                "model unloaded" in text
+                or "была выгружен" in text
+                or "shutting down" in text
+                or "перезагружает" in text
+            )
+        ):
+            app.logger.warning(f"call_reasoning transient error on attempt 1, retrying: {text[:200]}")
             continue
-        text += chunk
-    if cancel_check():
-        finish_usage_account(account_id)
-        # Cancel arrived with the tail of the stream — discard it entirely
-        # rather than return a partial result.
-        raise StepAborted("step cancelled at end of reasoning generation")
-    usage = finish_usage_account(account_id) or {}
-    return text, {k: int(v) for k, v in usage.items() if isinstance(v, (int, float)) and v > 0}
+        return text, {k: int(v) for k, v in usage.items() if isinstance(v, (int, float)) and v > 0}
+    return text, {}  # exhausted retries, return the error text
 
 
 def _is_error_text(text: str) -> bool:

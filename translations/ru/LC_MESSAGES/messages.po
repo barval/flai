@@ -140,6 +140,14 @@ msgstr ""
 msgid "Server is busy. All slots are occupied. Please try again shortly."
 msgstr "Сервер занят. Все слоты заняты. Попробуйте снова через несколько секунд."
 
+#: app/llamacpp_client.py:135
+msgid "Model was unloaded to free GPU memory. Please repeat the request."
+msgstr "Модель была выгружена для освобождения памяти GPU. Пожалуйста, повторите запрос."
+
+#: app/llamacpp_client.py:139
+msgid "Model server is reloading due to configuration changes. Please wait a few seconds and repeat the request."
+msgstr "Сервер моделей перезагружается из-за изменения конфигурации. Подождите несколько секунд и повторите запрос."
+
 #: app/llamacpp_client.py:141 app/routes/admin.py:915 modules/sd_cpp.py:294
 #: modules/sd_cpp.py:475
 #, python-brace-format

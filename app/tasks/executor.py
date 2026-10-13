@@ -1122,9 +1122,15 @@ class TaskExecutor:
 
     def _create_plan_step_rows(self, task_id: str, plan_steps: list[dict]) -> None:
         """Create one step row per plan position (kind per capability class)."""
+        # The plan carries the planner's own header metadata (a reasoning
+        # call): a plan-typed clarifying question (user_input_expected step)
+        # borrows it so its message shows the model + tokens + time too.
+        task = get_task(task_id) or {}
+        plan_meta = (task.get("step_plan") or {}).get("plan_meta") if isinstance(task.get("step_plan"), dict) else None
+        plan_meta = plan_meta if isinstance(plan_meta, dict) else {}
         for pos, s in enumerate(plan_steps or []):
             kind = self._step_kind(s)
-            add_step(
+            sid = add_step(
                 task_id=task_id,
                 seq=pos + 1,
                 kind=kind,
@@ -1132,6 +1138,16 @@ class TaskExecutor:
                 tool=str(s.get("tool", "")),
                 checkpoint_criteria=str(s.get("checkpoint_criteria", "")),
             )
+            if kind == "question" and (plan_meta.get("model_name") or plan_meta.get("usage")):
+                update_step(
+                    sid,
+                    extra={
+                        "model_name": str(plan_meta.get("model_name") or ""),
+                        "model_type": "reasoning",
+                        "usage": dict(plan_meta.get("usage") or {}),
+                        "exec_seconds": float(plan_meta.get("exec_seconds") or 0.0),
+                    },
+                )
 
     @staticmethod
     def _step_kind(step: dict) -> str:
@@ -1322,7 +1338,16 @@ class TaskExecutor:
                     c.execute("SELECT COALESCE(MAX(seq), 0) AS mx FROM task_steps WHERE task_id = %s", (task_id,))
                     next_seq = int(c.fetchone()["mx"] or 0) + 1
                 q_id = add_step(task_id=task_id, seq=next_seq, kind="question", goal=question, parent_step_id=row["id"])
-                update_step(q_id, status="awaiting_user", result=question, started_at=_now_iso())
+                # The question comes from the checkpoint verifier (short
+                # reasoning call): carry its model + real token usage + time so
+                # the question message renders the same chat-style header as
+                # every other task message.
+                q_extra: dict[str, Any] = {}
+                q_extra["model_name"] = str(checkpoint.get("model_name") or "")
+                q_extra["model_type"] = "reasoning"
+                q_extra["usage"] = dict(checkpoint.get("usage") or {})
+                q_extra["exec_seconds"] = float(checkpoint.get("exec_seconds") or 0.0)
+                update_step(q_id, status="awaiting_user", result=question, started_at=_now_iso(), extra=q_extra)
                 update_task(task_id, status="awaiting_user")
                 self._publish_task_update(task_id)
                 logger.info(f"task {task_id} step {idx + 1} needs user input — question asked")

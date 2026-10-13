@@ -692,6 +692,41 @@ def test_subtask_rows_use_subtask_kind(db_env, test_app, gate_open, monkeypatch)
     assert kinds == ["subtask", "direct"]
 
 
+def test_plan_question_row_gets_planner_meta(db_env, test_app, gate_open, monkeypatch):
+    """A plan-typed clarifying question (user_input_expected) carries the
+    planner's chat-style header metadata — model, type, tokens, time — into
+    its row's extra, so the question message renders like every other."""
+    store = db_env
+    from app.tasks.store import update_task
+
+    plan = {
+        "title": "Ask me",
+        "plan_meta": {
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "exec_seconds": 23.4,
+            "usage": {"prompt_tokens": 1003, "completion_tokens": 1984},
+        },
+        "steps": [
+            {"seq": 1, "goal": "Which city?", "tool": "llm", "user_input_expected": True},
+            {"seq": 2, "goal": "Continue", "tool": "llm", "checkpoint_criteria": "c"},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    update_task(task_id, status="awaiting_user")
+    executor = ex.TaskExecutor(app=test_app)
+    executor._create_plan_step_rows(task_id, plan["steps"])
+
+    rows = store.get_task_steps(task_id)
+    question = next(r for r in rows if r["kind"] == "question")
+    direct = next(r for r in rows if r["kind"] == "direct")
+    assert question["extra"]["model_name"] == "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
+    assert question["extra"]["model_type"] == "reasoning"
+    assert question["extra"]["usage"] == {"prompt_tokens": 1003, "completion_tokens": 1984}
+    assert question["extra"]["exec_seconds"] == 23.4
+    assert not direct["extra"], "non-question rows keep an empty extra"
+
+
 def test_poll_interval_from_app_config(test_app, monkeypatch):
     """_loop and stop() read TASK_POLL_INTERVAL_S from the app config (I5)."""
     executor = ex.TaskExecutor(app=test_app)
@@ -1053,6 +1088,9 @@ def test_verifier_needs_user_input_asks_and_reruns(db_env, test_app, gate_open, 
                     "needs_user_input": True,
                     "question": "Which city do you mean?",
                     "explanation": "the city is ambiguous",
+                    "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+                    "usage": {"prompt_tokens": 320, "completion_tokens": 11},
+                    "exec_seconds": 0.8,
                 },
             }
         assert "city" in context_digest.lower(), "answer lands in the retry digest"
@@ -1073,6 +1111,12 @@ def test_verifier_needs_user_input_asks_and_reruns(db_env, test_app, gate_open, 
     assert len(questions) == 1 and questions[0]["parent_step_id"] == direct["id"]
     assert questions[0]["status"] == "awaiting_user"
     assert questions[0]["result"] == "Which city do you mean?"
+    # The question carries the verifier's model + tokens + time (chat-style
+    # header, same as every other task message).
+    assert questions[0]["extra"]["model_name"] == "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
+    assert questions[0]["extra"]["model_type"] == "reasoning"
+    assert questions[0]["extra"]["usage"] == {"prompt_tokens": 320, "completion_tokens": 11}
+    assert questions[0]["extra"]["exec_seconds"] == 0.8
     assert direct["status"] == "pending", "rejected attempt resets for the re-run"
 
     # Answer arrives → the direct step re-runs (attempt 2), task completes.

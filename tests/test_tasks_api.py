@@ -239,6 +239,51 @@ class TestTasksApi:
         # «Awaiting answer» marker — the waiting state lives in the live status).
         assert question_msg["content"] == "Which format?"
 
+    def test_question_answer_render_at_parent_plan_position(self, tasks_env, client):
+        """A runtime clarifying question (parent = the direct step) and its
+        answer must render at the PARENT's plan position — before the re-run of
+        the direct step and before the final step — not at the tail (the
+        rows are appended with MAX(seq)+1, which would place them last)."""
+        from app.tasks.store import add_step, update_step
+
+        plan = {
+            "task_request": "Summarize the report",
+            "steps": [
+                {"seq": 1, "goal": "Find sources", "tool": "search", "checkpoint_criteria": "x"},
+                {"seq": 2, "goal": "Summarize", "tool": "llm", "checkpoint_criteria": "done"},
+            ],
+        }
+        task_id = _seed_task(status="completed", plan=plan)
+        # Plan rows: subtask-like direct (search) + direct (summarize).
+        step1 = add_step(task_id=task_id, seq=1, kind="direct", goal="Find sources", tool="search")
+        update_step(step1, status="passed", result="Found three sources")
+        step2 = add_step(task_id=task_id, seq=2, kind="direct", goal="Summarize", tool="llm")
+        update_step(step2, status="passed", result="Re-run summary after the answer")
+        # Runtime question appended at MAX(seq)+1 with parent = the direct step;
+        # the answer appended after it with parent = the question. In the DB they
+        # live at seq 3/4 (after final would be 5); the renderer must still show
+        # them at the direct step's position.
+        question = add_step(task_id=task_id, seq=3, kind="question", goal="Which summary?", parent_step_id=step2)
+        update_step(
+            question,
+            status="passed",
+            result="Which summary?",
+            started_at="2026-10-11T09:00:00+00:00",
+            extra={"model_name": "m", "usage": {}},
+        )
+        answer = add_step(task_id=task_id, seq=4, kind="user_input", goal="", parent_step_id=question)
+        update_step(answer, status="passed", result="short", started_at="2026-10-11T09:01:00+00:00")
+        final = add_step(task_id=task_id, seq=5, kind="final", goal="")
+        update_step(final, status="passed", result="Final answer", started_at="2026-10-11T09:02:00+00:00")
+        _login(client)
+
+        response = client.get(f"/api/tasks/{task_id}/messages")
+
+        assert response.status_code == 200
+        kinds = [m["kind"] for m in response.get_json()["messages"]]
+        # request, plan, then the direct step, Q, A, re-run result, final.
+        assert kinds == ["request", "plan", "direct", "question", "user_input", "direct", "final"]
+
     def test_plan_message_carries_model_meta(self, tasks_env, client):
         """plan_meta stored with the plan (model/tokens/duration of the
         planner call) rides the plan message for the chat-style header."""

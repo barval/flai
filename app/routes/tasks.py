@@ -317,7 +317,37 @@ def _render_messages(task: dict) -> list[dict]:
                 "created_at": _iso(task.get("created_at")),
             }
         )
-    for row in get_task_steps(task["id"]):
+    steps = get_task_steps(task["id"])
+    by_id = {r["id"]: r for r in steps}
+
+    def _chrono_key(row: dict) -> tuple[float, int]:
+        """Chronological anchor for sorting: a clarifying question and its
+        answer belong to the step that asked them (the runtime question points
+        at the direct step via ``parent_step_id``, the answer at the question),
+        so they render at the parent's plan position — before the re-run step,
+        matching the real order — instead of at the tail after the final step.
+        """
+        seq = int(row.get("seq") or 0)
+        kind = row.get("kind")
+        parent = by_id.get(row.get("parent_step_id")) if row.get("parent_step_id") else None
+        if kind == "user_input":
+            if parent is not None and parent.get("kind") == "question":
+                grand = by_id.get(parent.get("parent_step_id")) if parent.get("parent_step_id") else None
+                anchor = int(grand["seq"]) if grand is not None else int(parent.get("seq") or 0)
+                return (anchor, 2)
+            return (seq, 2)
+        if kind == "question":
+            anchor = int(parent["seq"]) if parent is not None else seq
+            return (anchor, 1)
+        if kind in ("direct", "subtask", "final") and any(
+            q.get("kind") == "question" and q.get("parent_step_id") == row["id"] for q in steps
+        ):
+            # A step that got a clarifying question re-runs after it: place the
+            # re-run result after the Q&A pair instead of before it.
+            return (seq, 3)
+        return (seq, 0)
+
+    for row in sorted(steps, key=_chrono_key):
         if row.get("status") == "pending" and not str(row.get("result") or "").strip():
             continue  # not materialized yet — nothing to show
         messages.append(_step_message(row, total))

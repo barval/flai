@@ -839,6 +839,44 @@ def test_subtask_envelope_meta_lands_in_step_extra(db_env, test_app, gate_open, 
     assert step["extra"]["media"]["file_path"] == "t/cat.jpg", "media refs keep working"
 
 
+def test_subtask_error_envelope_keeps_media_and_meta(db_env, test_app, gate_open, monkeypatch):
+    """A camera step the worker reported as FAILED (snapshot error) still gets
+    its full header: the multimodal model the step would have used + the real
+    token totals are part of the error envelope now, and the executor merges
+    them into the step's extra even when the step does not pass."""
+    store = db_env
+    plan = {
+        "title": "Camera task",
+        "steps": [{"seq": 1, "goal": "Snapshot the kitchen", "tool": "camera", "checkpoint_criteria": "x"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {
+        "status": "completed",
+        "error": "Не удалось получить изображение с камеры детская: Таймаут (15с)",
+        "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+        "model_type": "multimodal",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "failed"
+    assert "Таймаут" in step["last_error"]
+    assert step["extra"]["model_name"] == "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "failed step keeps the model in the header"
+    assert step["extra"]["model_type"] == "multimodal"
+    # usage of all-zero tokens is kept as {0,0} (the camera error burned no
+    # LLM time); the JS renders nothing for it, the model name stays.
+    assert step["extra"]["usage"] == {"prompt_tokens": 0, "completion_tokens": 0}
+
+
 def test_subtask_envelope_without_meta_keeps_extra_clean(db_env, test_app, gate_open, monkeypatch):
     """A worker without the meta fields (or an error envelope) changes nothing."""
     store = db_env

@@ -438,8 +438,13 @@ def task_answer(task_id):
         uploads = [f for f in request.files.getlist("images") if f and f.filename]
     else:
         data = request.get_json(silent=True) or {}
-    answer = str(data.get("answer") or "").strip()
+    answer = str(data.get("answer") or data.get("request") or "").strip()
     if not answer:
+        # Log what the client actually sent — a cached pre-fix page posts the
+        # draft field "request" to /answer, which used to answer «Ответ пуст».
+        current_app.logger.warning(
+            f"task answer empty: form keys={sorted(request.form.keys() if hasattr(request, 'form') else [])}"
+        )
         return jsonify({"error": "⚠️ " + _("Answer is empty")}), 400
 
     question = next(

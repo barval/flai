@@ -108,6 +108,31 @@ def test_calculate_step_boundary(test_app):
     assert out["status"] == "passed"
 
 
+def test_calculate_step_variable_name_readable_error(test_app):
+    """A planner-drifting variable name (rate_eur) surfaces a readable error
+    instead of the bare 'tool error' — the calculator only knows numbers."""
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app,
+            _step(tool="calculate", goal="(rate_eur + rate_usd) / 2"),
+            context_digest="",
+            cancel_check=lambda: False,
+        )
+    assert out["status"] == "error"
+    assert "rate_eur" in out["result"]
+    assert out["result"].startswith("calculator:")
+
+
+def test_calculate_step_unknown_function_readable_error(test_app):
+    """Unknown functions are surfaced the same way."""
+    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+        out = run_direct_step(
+            test_app, _step(tool="calculate", goal="rate_eur / 2"), context_digest="", cancel_check=lambda: False
+        )
+    assert out["status"] == "error"
+    assert "rate_eur" in out["result"] and "calculator:" in out["result"]
+
+
 def test_search_step(test_app):
     fake_search = MagicMock()
     fake_search.search_with_fallback.return_value = ([{"title": "t", "url": "u", "content": "c"}], "searxng")

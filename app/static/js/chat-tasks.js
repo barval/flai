@@ -588,7 +588,7 @@ function renderTaskMessage(m, task) {
         const tps = (completionTokens / secs).toFixed(1);
         header.innerHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
     }
-    if (!isUser && task && task.response_style) {
+    if (!isUser && m.model_name && task && task.response_style) {
         const styleEmoji = getResponseStyleEmoji(task.response_style);
         if (styleEmoji) {
             const styleSpan = document.createElement('span');
@@ -791,9 +791,9 @@ function sendTaskInput() {
     if (!text) return;
     const images = taskImageFiles();
 
-    const formDataFor = (payloadText) => {
+    const formDataFor = (payloadText, field) => {
         const fd = new FormData();
-        fd.append('request', payloadText);
+        fd.append(field || 'request', payloadText);
         fd.append('doc_ids', JSON.stringify(taskDocIds()));
         fd.append('deep_analysis', taskDeepAnalysis() ? 'true' : 'false');
         for (const img of images) fd.append('images', img);
@@ -804,7 +804,7 @@ function sendTaskInput() {
         input.value = '';
         fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/request', {
             method: 'POST',
-            body: formDataFor(text),
+            body: formDataFor(text, 'request'),
         })
             .then(res => res.json().catch(() => ({})))
             .then(data => {
@@ -829,7 +829,7 @@ function sendTaskInput() {
     input.value = '';
     fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/answer', {
         method: 'POST',
-        body: formDataFor(text),
+        body: formDataFor(text, 'answer'),
     })
         .then(res => res.json().catch(() => ({})))
         .then(data => {

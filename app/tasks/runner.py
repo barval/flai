@@ -302,6 +302,10 @@ def _run_calculate_step(step: dict[str, Any]) -> Any:
     The planner should put the bare expression in the goal; when prose slips
     in («Вычислите результат выражения 2 + 2 * 2») the expression is extracted
     from the text before safe_eval — a prose goal is a SyntaxError otherwise.
+    A variable name the calculator does not know (planner-drift like
+    ``(rate_eur + rate_usd) / 2``) raises a readable error instead of the
+    bare "tool error" the user saw: the inability is a prompt/planner bug,
+    not a runtime crash.
     """
     from app.tasks.tools import TOOL_RUNNERS
 
@@ -317,6 +321,11 @@ def _run_calculate_step(step: dict[str, Any]) -> Any:
         if not extracted or extracted == expression:
             raise
         return runner(extracted)
+    except (ValueError, TypeError) as e:
+        # safe_eval rejects variable names ("Unknown variable: rate_eur") and
+        # unknown functions. Surface the reason in the step's error text so
+        # the user (and the verifier) see what actually failed.
+        raise ValueError(f"calculator: {e}") from None
 
 
 _MATH_TOKEN_RE = re.compile(r"[-+*/().,0-9\s^%√πe]+", re.UNICODE)
@@ -407,9 +416,11 @@ def run_direct_step(
         except StepAborted:
             raise
         except Exception as e:
+            err_text = str(e) or "tool error"
+            message = err_text if tool == "calculate" else ""
             logger.error(f"direct step {step.get('id', '?')} tool={tool} failed: {e}")
             return {
-                "result": "",
+                "result": message,
                 "exec_seconds": round(time.monotonic() - start, 2),
                 "status": "error",
                 "checkpoint": None,

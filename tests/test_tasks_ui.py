@@ -388,6 +388,14 @@ class TestReviewGuards:
         assert "tts-button" in block and "copy-message-button" in block
         assert "tps_suffix" in block and "seconds_suffix" in block
 
+    def test_style_emoji_needs_a_model(self):
+        """The style emoji (🤖 neutral) must NOT hang in a step header that has
+        no model (a camera error before any LLM call): it renders only when the
+        header also carries the model name, so an error step reads as an error,
+        not as a robot answer."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "m.model_name && task && task.response_style" in block, "style emoji requires a model in the header"
+
     def test_header_fields_are_independent(self):
         """⏱️/🔢/🚀 stand on their own: the final summary has tokens with no
         duration column, and a tool step (calculate/search) reports its
@@ -476,6 +484,19 @@ class TestReviewGuards:
         chat_messages = (ROOT / "app/static/js/chat-messages.js").read_text(encoding="utf-8")
         assert "if (role === 'user' && !isSystemErrorRow)" in chat_messages
         assert chat_messages.count("tts-button") >= 2, "a TTS button in both the assistant and user branches"
+
+    def test_answer_submit_sends_answer_field(self):
+        """The clarifying-question answer is submitted in the 'answer' field —
+        the /answer route reads data['answer'] and answers 'Answer is empty'
+        (⚠️ Ответ пуст) when it is missing. A regression here silently breaks
+        every task answer."""
+        # The answer branch must POST field 'answer' (not 'request').
+        answer_post = CHAT_TASKS[CHAT_TASKS.index("/answer', {") :]
+        assert "'answer'" in answer_post.split("})")[0], "sendTaskInput must append the answer under the 'answer' key"
+        # Both submits route through the shared formDataFor(field) helper.
+        assert "fd.append(field || 'request', payloadText)" in CHAT_TASKS
+        # The server route reads data['answer'].
+        assert 'data.get("answer")' in ROUTES_TASKS
 
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS

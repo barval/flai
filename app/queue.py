@@ -3271,7 +3271,15 @@ class RedisRequestQueue:
 
         def _err(msgid: str, **kwargs: Any) -> dict[str, Any]:
             text = str(base._(msgid, lang, **kwargs)) if base else msgid.format(**kwargs)
-            return {"status": "completed", "session_id": session_id, "error": text}
+            envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "error": text}
+            # The multimodal model is the analyzer for camera steps even when
+            # it only reports the failure: the step header keeps the model
+            # name (and real tokens when the model actually ran) so a failed
+            # snapshot is shown like every other message, not as a bare text.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
 
         cam = self.app.modules.get("cam")
         if cam is None or not getattr(cam, "available", False):
@@ -3282,11 +3290,17 @@ class RedisRequestQueue:
             return _err("Unknown room: {room}", room="")
         camera_result = cam.get_snapshot(user_id, room_name, lang=lang)
         if not camera_result.get("success"):
-            return {
+            envelope: dict[str, Any] = {
                 "status": "completed",
                 "session_id": session_id,
                 "error": str(camera_result.get("error") or "Camera error"),
             }
+            # The camera call is not an LLM call (no tokens yet), but the step
+            # header must still show the model that would analyze the snapshot.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
 
         mm = self.app.modules.get("multimodal")
         if mm is None or not getattr(mm, "available", False):
@@ -3394,7 +3408,13 @@ class RedisRequestQueue:
         base = self.app.modules.get("base")
 
         def _err(text: str) -> dict[str, Any]:
-            return {"status": "completed", "session_id": session_id, "error": text}
+            envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "error": text}
+            # The multimodal model analyzes the attached images (or reports why
+            # it cannot): the failure header keeps its name and real tokens.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
 
         images = [p.get("data") for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
         if not images:

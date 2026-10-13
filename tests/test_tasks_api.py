@@ -385,6 +385,24 @@ class TestTasksApi:
         assert response.status_code == 202
         assert get_task(task_id)["doc_ids"] == ["d7"]
 
+    def test_answer_accepts_draft_field_fallback(self, tasks_env, client):
+        """/answer accepts the draft field 'request' as a fallback: a cached
+        pre-fix page posts 'request' to /answer and used to get «Ответ пуст»."""
+        from app.tasks.store import add_step, update_step
+
+        plan = {
+            "task_request": "Ask me",
+            "steps": [{"seq": 1, "goal": "Q?", "tool": "llm", "user_input_expected": True}],
+        }
+        task_id = _seed_task(status="awaiting_user", plan=plan)
+        question = add_step(task_id=task_id, seq=1, kind="question", goal="Q?", tool="llm")
+        update_step(question, status="awaiting_user", result="Q?")
+        _login(client)
+
+        response = client.post(f"/api/tasks/{task_id}/answer", json={"request": "да, равнобедренная"})
+
+        assert response.status_code == 202, response.get_json()
+
     def test_answer_without_question_conflicts(self, tasks_env, client):
         task_id = _seed_task(status="active", plan={"steps": [{"seq": 1, "goal": "g", "tool": "llm"}]})
         _login(client)

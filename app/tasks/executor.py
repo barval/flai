@@ -1700,7 +1700,29 @@ class TaskExecutor:
         result_data = stored.get("result") if isinstance(stored.get("result"), dict) else {}
         error_text = str(stored.get("error") or result_data.get("error") or "")
         is_error = stored.get("status") == "error" or bool(error_text)
+
+        # Chat-style header media + meta (file refs, model name / type / token
+        # usage) are collected BEFORE the error check: the envelope reports
+        # which model produced the artifact, so even a step that FAILED (a
+        # rejected checkpoint or a camera that answered but was then rejected)
+        # keeps the image and its model/tokens in the conversation, exactly
+        # like the chat header. The task view renders them regardless of the
+        # step status.
+        media: dict = {}
+        for key in ("file_path", "file_name", "file_type", "file_size", "message_id"):
+            value = stored.get(key) if key in stored else result_data.get(key)
+            if value:
+                media[key] = value
+        meta: dict = {}
+        for key in ("model_name", "model_type", "usage"):
+            value = stored.get(key) if key in stored else result_data.get(key)
+            if value:
+                meta[key] = value
+        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta}
+
         if is_error:
+            if media or meta:
+                update_step(row["id"], extra=merged_extra)
             self._end_step(
                 task_id,
                 row["id"],
@@ -1713,19 +1735,6 @@ class TaskExecutor:
             return "done"
 
         response_text = str(stored.get("response") or result_data.get("response") or "")
-        media: dict = {}
-        for key in ("file_path", "file_name", "file_type", "file_size", "message_id"):
-            value = stored.get(key) if key in stored else result_data.get(key)
-            if value:
-                media[key] = value
-        # Chat-style header (model name / type / token usage): the envelope
-        # reports which model produced the artifact; the task view renders it
-        # exactly like the chat message header.
-        meta: dict = {}
-        for key in ("model_name", "model_type", "usage"):
-            value = stored.get(key) if key in stored else result_data.get(key)
-            if value:
-                meta[key] = value
         result_text = response_text or "done"
         # Spec §4: a subtask result is verified like any other step result —
         # a normal checkpoint runs against the step's checkpoint_criteria
@@ -1745,6 +1754,7 @@ class TaskExecutor:
                 result=result_text,
                 checkpoint_result=str(checkpoint.get("explanation", "")),
                 checkpoint_verdict=False,
+                extra=merged_extra,
             )
             logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — continuing")
             update_task(task_id, next_step_index=idx + 1)
@@ -1758,7 +1768,6 @@ class TaskExecutor:
             checkpoint_result=str(checkpoint.get("explanation", "")),
             checkpoint_verdict=bool(checkpoint.get("verdict")) if checkpoint else None,
         )
-        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta}
         update_step(row["id"], extra=merged_extra)
         logger.info(f"task {task_id} step {idx + 1}: subtask completed ({queue_id})")
         update_task(task_id, next_step_index=idx + 1)

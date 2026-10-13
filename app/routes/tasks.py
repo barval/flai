@@ -11,6 +11,7 @@ parallel messages table.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from typing import Any
 
@@ -488,7 +489,6 @@ def task_answer(task_id):
     if question is None:
         return jsonify({"error": "⚠️ " + _("Task is not awaiting an answer")}), 409
 
-    add_user_input_step(task_id, int(question["seq"]), answer)
     if "doc_ids" in data:
         # The answer may carry a fresh Documents-panel selection — it scopes
         # every remaining rag/rlm step of the task.
@@ -500,6 +500,28 @@ def task_answer(task_id):
         if images:
             merged = list(task.get("images") or []) + images
             update_task(task_id, images=merged)
+            # Describe attached images via the multimodal model and append the
+            # descriptions to the answer text, so the next reasoning step sees
+            # them (the user_input step result is the enriched text).
+            mm = current_app.modules.get("multimodal")
+            if mm and mm.available:
+                lang = task.get("lang") or "ru"
+                import base64 as _b64
+
+                upload_folder = str(current_app.config.get("UPLOAD_FOLDER") or "")
+                for img in images:
+                    file_path = img.get("file_path") or ""
+                    if not file_path:
+                        continue
+                    full_path = os.path.join(upload_folder, file_path)
+                    if os.path.isfile(full_path):
+                        with open(full_path, "rb") as fh:
+                            b64 = _b64.b64encode(fh.read()).decode("ascii")
+                        desc, _err = mm.describe_image_for_rlm(b64, lang=lang)
+                        if desc:
+                            label = _("{file_name} — image description").format(file_name=img.get("file_name", ""))
+                            answer = f"{answer}\n\n[{label}]\n{desc}"
+    add_user_input_step(task_id, int(question["seq"]), answer)
     if "deep_analysis" in data and _truthy_flag(data.get("deep_analysis")):
         # The toggle switched ON while answering: the plan already exists and
         # the planner cannot amend it, so a deep-analysis (rlm) step over the

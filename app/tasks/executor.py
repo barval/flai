@@ -1669,12 +1669,15 @@ class TaskExecutor:
         if self._subtask_alive(queue_id):
             logger.info(f"task {task_id} step {idx + 1}: subtask {queue_id} still running — holding")
             return "hold"
+        from app.llamacpp_client import _tr
+
+        lang = task.get("lang") or "ru"
         self._end_step(
             task_id,
             row["id"],
             status="failed",
             exec_seconds=self._subtask_seconds(row),
-            last_error="subtask result expired",
+            last_error=_tr("Result of subtask expired while task was paused. Please restart the task.", lang),
         )
         update_task(task_id, next_step_index=idx + 1)
         return "done"

@@ -148,6 +148,14 @@ msgstr "Модель была выгружена для освобождения
 msgid "Model server is reloading due to configuration changes. Please wait a few seconds and repeat the request."
 msgstr "Сервер моделей перезагружается из-за изменения конфигурации. Подождите несколько секунд и повторите запрос."
 
+#: app/tasks/executor.py:135
+msgid "Result of subtask expired while task was paused. Please restart the task."
+msgstr "Результат подзадачи устарел, пока задача была на паузе. Пожалуйста, перезапустите задачу."
+
+#: app/routes/tasks.py
+msgid "{file_name} — image description"
+msgstr "{file_name} — описание изображения"
+
 #: app/llamacpp_client.py:141 app/routes/admin.py:915 modules/sd_cpp.py:294
 #: modules/sd_cpp.py:475
 #, python-brace-format

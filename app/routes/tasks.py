@@ -152,7 +152,8 @@ def _task_summary(
     """List-item / status payload (no filesystem paths, no plan bodies).
 
     ``token_totals`` (optional) maps task_id → summed step usage; provided by
-    the list route so list items can show [▲out ▼in] like session cards.
+    the list route so list items can show [▲requests ▼answers] like session
+    cards (▲ = outgoing prompt tokens, ▼ = incoming completion tokens).
     ``queue_positions`` (optional) maps task_id → 1-based queue rank; the list
     route renders it as the ⏳ badge on ``queued`` rows.
     """
@@ -256,6 +257,7 @@ def _step_message(row: dict, total: int) -> dict:
         "tool": row.get("tool") or "",
         "exec_seconds": float(row.get("exec_seconds") or 0.0),
         "model_name": (row.get("extra") or {}).get("model_name", ""),
+        "model_type": (row.get("extra") or {}).get("model_type", ""),
         "usage": (row.get("extra") or {}).get("usage") or {},
         "extra": row.get("extra") or {},
         # task_steps has no created_at: a step's timestamp is when it started
@@ -292,6 +294,11 @@ def _render_messages(task: dict) -> list[dict]:
         )
     if total:
         lines = [f"{i + 1}. {s.get('goal', '')}" for i, s in enumerate(plan_steps)]
+        # The plan message carries the same chat-style header as a step
+        # (model + real tokens + duration of the planner call), stored with
+        # the plan itself.
+        plan_meta = task.get("step_plan").get("plan_meta") if isinstance(task.get("step_plan"), dict) else None
+        plan_extra = plan_meta if isinstance(plan_meta, dict) else {}
         messages.append(
             {
                 "id": f"{task['id']}:plan",
@@ -302,6 +309,10 @@ def _render_messages(task: dict) -> list[dict]:
                 "total_steps": total,
                 "status": None,
                 "tool": "",
+                "exec_seconds": float(plan_extra.get("exec_seconds") or 0.0),
+                "model_name": str(plan_extra.get("model_name") or ""),
+                "model_type": str(plan_extra.get("model_type") or ""),
+                "usage": plan_extra.get("usage") or {},
                 "extra": {},
                 "created_at": _iso(task.get("created_at")),
             }
@@ -464,6 +475,26 @@ def task_answer(task_id):
     return jsonify({"ok": True}), 202
 
 
+def _cancel_inflight_subtasks(task_id: str) -> None:
+    """Cancel the media sub-task a running step already put on the queue (v12.6).
+
+    A tagged request whose step is gone is dropped by the worker, but one the
+    worker already holds keeps the slow worker and the GPU lock — the orphan
+    that left the next task looking hung after this task was stopped or deleted.
+    Best effort: a failure here never blocks the stop/delete itself.
+    """
+    try:
+        queue = current_app.request_queue
+        for row in get_task_steps(task_id):
+            if str(row.get("status") or "") not in ("subtask_queued", "subtask_running"):
+                continue
+            queue_id = (row.get("extra") or {}).get("subtask_queue_id")
+            if queue_id:
+                queue.cancel_task(str(queue_id))
+    except Exception as e:  # noqa: BLE001 — the cancel is best effort
+        current_app.logger.warning(f"in-flight subtask cancel failed ({task_id}): {e}")
+
+
 @bp.route("/<task_id>/stop", methods=["POST"])
 def task_stop(task_id):
     if "login" not in session:
@@ -481,6 +512,8 @@ def task_stop(task_id):
         current_app.request_queue.redis.set(f"task:cancelled:{task_id}", "1", ex=_CANCEL_FLAG_TTL_S)
     except Exception as e:  # noqa: BLE001 — the flag is best effort
         current_app.logger.warning(f"task cancel flag write failed ({task_id}): {e}")
+    # A running step's own sub-task must die too, or it holds the GPU queue.
+    _cancel_inflight_subtasks(task_id)
     if task.get("status") in ("queued", "frozen", "awaiting_user"):
         update_task(task_id, status="cancelled")
         task = get_task(task_id) or task
@@ -504,6 +537,9 @@ def task_delete(task_id):
         except Exception as e:  # noqa: BLE001 — best effort
             current_app.logger.warning(f"task cancel flag write failed ({task_id}): {e}")
         update_task(task_id, status="cancelled")
+    # The orphan guard can only stop a sub-task that has not been dequeued yet;
+    # an in-flight one is cancelled explicitly (it holds the GPU queue).
+    _cancel_inflight_subtasks(task_id)
     delete_task(task_id)
     publish_task_update(
         current_app._get_current_object(),

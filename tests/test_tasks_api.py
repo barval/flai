@@ -221,6 +221,10 @@ class TestTasksApi:
         assert messages[0]["role"] == "user" and messages[0]["content"] == "Summarize the report"
         plan_msg = next(m for m in messages if m["kind"] == "plan")
         assert plan_msg["content"].startswith("План из 2 шагов:")
+        # The plan message carries the chat-style header fields (model +
+        # real tokens + duration) when the executor stored plan_meta.
+        assert plan_msg["model_name"] == ""
+        assert plan_msg["usage"] == {} and plan_msg["exec_seconds"] == 0.0
         step_msg = next(m for m in messages if m["kind"] == "direct")
         assert step_msg["content"].startswith("Шаг 1 из 2:")
         assert "Found three sources" in step_msg["content"]
@@ -234,6 +238,34 @@ class TestTasksApi:
         # The question shows as a plain assistant message (no step header, no
         # «Awaiting answer» marker — the waiting state lives in the live status).
         assert question_msg["content"] == "Which format?"
+
+    def test_plan_message_carries_model_meta(self, tasks_env, client):
+        """plan_meta stored with the plan (model/tokens/duration of the
+        planner call) rides the plan message for the chat-style header."""
+        from app.tasks.store import create_task, update_task
+
+        plan = {
+            "task_request": "Do it",
+            "plan_meta": {
+                "model_name": "gpt-oss-20b-mxfp4",
+                "model_type": "reasoning",
+                "exec_seconds": 38.4,
+                "usage": {"prompt_tokens": 2100, "completion_tokens": 330},
+            },
+            "steps": [{"seq": 1, "goal": "g", "tool": "llm"}],
+        }
+        task_id = create_task(user_id="owner", task_class=3, title="Do it", lang="ru", response_style="neutral")
+        update_task(task_id, status="awaiting_user", step_plan=plan)
+        _login(client)
+
+        response = client.get(f"/api/tasks/{task_id}/messages")
+
+        assert response.status_code == 200
+        plan_msg = next(m for m in response.get_json()["messages"] if m["kind"] == "plan")
+        assert plan_msg["model_name"] == "gpt-oss-20b-mxfp4"
+        assert plan_msg["model_type"] == "reasoning"
+        assert plan_msg["exec_seconds"] == 38.4
+        assert plan_msg["usage"] == {"prompt_tokens": 2100, "completion_tokens": 330}
 
     def test_failed_step_shows_last_error(self, tasks_env, client):
         """A failed step with an empty result must show WHY it failed (chat
@@ -387,6 +419,24 @@ class TestTasksApi:
         assert get_task(task_id)["status"] == "active"  # the executor interrupts the step
         test_app.request_queue.redis.set.assert_any_call(f"task:cancelled:{task_id}", "1", ex=3600)
 
+    def test_stop_cancels_the_inflight_subtask(self, tasks_env, client, test_app, monkeypatch):
+        """A running step's queued media sub-task is cancelled explicitly —
+        the worker-side orphan guard only drops one it has not dequeued yet."""
+        from app.tasks.store import add_step, update_step
+
+        plan = {"steps": [{"seq": 1, "goal": "Draw a cat", "tool": "image_gen"}]}
+        task_id = _seed_task(status="active", plan=plan)
+        step_id = add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw a cat", tool="image_gen")
+        update_step(step_id, status="subtask_running", extra={"subtask_queue_id": "sub-queue-1"})
+        cancelled = []
+        monkeypatch.setattr(test_app.request_queue, "cancel_task", lambda qid: cancelled.append(qid))
+        _login(client)
+
+        response = client.post(f"/api/tasks/{task_id}/stop")
+
+        assert response.status_code == 200
+        assert cancelled == ["sub-queue-1"]
+
     def test_delete_removes_task_and_steps(self, tasks_env, client, test_app):
         from app.tasks.executor import get_task_steps
         from app.tasks.store import add_step, get_task, update_step
@@ -416,6 +466,29 @@ class TestTasksApi:
         # The executor must never resume a deleted task.
         test_app.request_queue.redis.set.assert_any_call(f"task:cancelled:{task_id}", "1", ex=3600)
         assert get_task(task_id) is None
+
+    def test_delete_cancels_the_inflight_subtask(self, tasks_env, client, test_app, monkeypatch):
+        """Deleting an active task cancels its queued sub-task; a finished step
+        with a stale queue id is left alone."""
+        from app.tasks.store import add_step, update_step
+
+        plan = {
+            "steps": [
+                {"seq": 1, "goal": "Draw a cat", "tool": "image_gen"},
+                {"seq": 2, "goal": "Think", "tool": "llm"},
+            ]
+        }
+        task_id = _seed_task(status="active", plan=plan)
+        live = add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw a cat", tool="image_gen")
+        update_step(live, status="subtask_queued", extra={"subtask_queue_id": "sub-queue-2"})
+        done = add_step(task_id=task_id, seq=2, kind="direct", goal="Think", tool="llm")
+        update_step(done, status="passed", extra={"subtask_queue_id": "sub-queue-old"})
+        cancelled = []
+        monkeypatch.setattr(test_app.request_queue, "cancel_task", lambda qid: cancelled.append(qid))
+        _login(client)
+
+        assert client.post(f"/api/tasks/{task_id}/delete").status_code == 200
+        assert cancelled == ["sub-queue-2"]
 
     def test_delete_terminal_skips_cancel_flag(self, tasks_env, client, test_app):
         from app.tasks.store import get_task

@@ -104,8 +104,8 @@ class TestAdminUsers:
         response = admin_client.get("/admin/api/users")
         assert response.status_code == 200
         target = next(user for user in response.get_json() if user["login"] == login)
-        assert target["outgoing_tokens"] == 345
-        assert target["incoming_tokens"] == 2100
+        assert target["outgoing_tokens"] == 2100
+        assert target["incoming_tokens"] == 345
 
     @pytest.mark.integration
     def test_add_user(self, admin_client):

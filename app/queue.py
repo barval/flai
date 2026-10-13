@@ -336,6 +336,35 @@ class RedisRequestQueue:
         except Exception as e:
             self.logger.warning(f"chat activity signal failed: {e}")
 
+    def _drop_orphan_subtask(self, task: dict[str, Any]) -> bool:
+        """Drop a Tasks-subsystem media sub-task whose step is gone (v12.6).
+
+        Stop/delete cancels the queued request, but a request the worker already
+        dequeued would keep running as an orphan — holding the slow worker, the
+        GPU lock and (RLM) ``is_gpu_busy()``, which starved the next task's steps
+        and left it looking hung after a running task was removed. The step row
+        is the source of truth: a tagged sub-task whose step no longer exists, or
+        is no longer queued or running, is discarded. Fail-open on any error so a
+        transient DB hiccup never drops live work.
+        """
+        step_id = (task.get("data") or {}).get("task_step_subtask")
+        if not step_id:
+            return False
+        try:
+            from app.tasks.store import get_step
+
+            status = str((get_step(str(step_id)) or {}).get("status") or "")
+            if status not in ("subtask_queued", "subtask_running"):
+                self.logger.info(
+                    f"Orphan subtask dropped: step {step_id} status={status or 'missing'} "
+                    f"(request {str(task.get('id'))[:12]})"
+                )
+                return True
+            return False
+        except Exception as e:
+            self.logger.warning(f"Orphan subtask check failed (processing normally): {e}")
+            return False
+
     def _defer_subtask_if_gate_closed(self, task: dict[str, Any]) -> bool:
         """Slow-worker gate guard for Tasks-subsystem media sub-tasks (v12.6).
 
@@ -356,7 +385,7 @@ class RedisRequestQueue:
             from app.tasks.executor import DEFERRED_SUBTASKS_KEY
             from app.tasks.gate import is_gate_open
 
-            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 60))
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 15))
             gate_open = is_gate_open(
                 self.redis,
                 quiet_s=quiet_s,
@@ -396,7 +425,7 @@ class RedisRequestQueue:
             from app.tasks.executor import DEFERRED_SUBTASKS_KEY
             from app.tasks.gate import is_gate_open
 
-            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 60))
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 15))
             gate_open = is_gate_open(
                 self.redis,
                 quiet_s=quiet_s,
@@ -1013,6 +1042,12 @@ class RedisRequestQueue:
                     )
                     # Tasks-subsystem sub-tasks wait while the scheduler gate
                     # is closed (chat activity / busy GPU / occupied queues).
+                    # A sub-task whose step was removed or is no longer queued
+                    # (the task was stopped/deleted meanwhile) is dropped
+                    # outright — it would otherwise run as an orphan and starve
+                    # the next task.
+                    if self._drop_orphan_subtask(task):
+                        continue
                     if self._defer_subtask_if_gate_closed(task):
                         continue
                     with self._gpu_lock:
@@ -1058,6 +1093,10 @@ class RedisRequestQueue:
                     f"Crawl worker: dequeued task {str(task.get('id'))[:12]} "
                     f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
                 )
+                # A crawl step of a stopped/deleted task must not run (it would
+                # replace the user's document as an orphan).
+                if self._drop_orphan_subtask(task):
+                    continue
                 # The HTTP crawl must not hold the GPU lock; the task takes it
                 # itself for the embedding phase of indexing.
                 self._process_single_task(task, self.crawl_processing_key)
@@ -1260,6 +1299,78 @@ class RedisRequestQueue:
         if extra:
             result.update(extra)
         return result
+
+    @staticmethod
+    def _is_task_subtask(task: dict[str, Any] | None) -> bool:
+        """Is this queue request a Tasks-subsystem step (a tagged sub-task)?"""
+        return bool(task and (task.get("data") or {}).get("task_step_subtask"))
+
+    def _subtask_envelope(
+        self,
+        task: dict[str, Any] | None,
+        session_id: str,
+        response: str,
+        file_path: str | None,
+        media: dict[str, Any],
+        meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Result envelope for a Tasks-subsystem step (media / RLM), else None.
+
+        A task step has no chat session, so its artifact is returned in the
+        result envelope (the executor stores it in the step's extra and the task
+        view renders it) instead of being persisted as a chat message — the
+        camera, vision and crawl sub-tasks have always worked that way. The
+        normal chat path returns None and saves the message as before. ``meta``
+        carries the chat-style header fields (model name / type / token usage)
+        the executor merges into the step's extra.
+        """
+        if not self._is_task_subtask(task):
+            return None
+        envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "response": response}
+        if file_path:
+            envelope.update(
+                {
+                    "file_path": file_path,
+                    "file_name": media.get("file_name"),
+                    "file_type": media.get("file_type"),
+                    "file_size": media.get("file_size"),
+                }
+            )
+        if meta:
+            envelope.update(meta)
+        return envelope
+
+    @staticmethod
+    def _subtask_usage_meta() -> dict[str, int] | None:
+        """Real token totals of the current per-request account, or None.
+
+        Camera and vision sub-tasks bill through the account opened in
+        ``_process_request`` (their multimodal calls record into it); without
+        this peek the totals were dropped by the worker's cleanup clause and
+        the step header showed no tokens.
+        """
+        from app.utils import peek_usage_account
+
+        totals = peek_usage_account() or {}
+        usage = {
+            "prompt_tokens": int(totals.get("prompt_tokens") or 0),
+            "completion_tokens": int(totals.get("completion_tokens") or 0),
+        }
+        return usage if (usage["prompt_tokens"] or usage["completion_tokens"]) else None
+
+    def _subtask_model_meta(self, model_name: str, model_type: str, with_usage: bool = False) -> dict[str, Any]:
+        """Chat-style header metadata for a task-step envelope.
+
+        ``model_type`` doubles as the emoji key in the task view (multimodal/
+        image_gen/image_edit/video/rlm); the model name is the same value the
+        chat message of that kind shows (multimodal/reasoning via
+        get_model_config, image_gen/image_edit/video via their config).
+        """
+        meta: dict[str, Any] = {"model_name": str(model_name or ""), "model_type": model_type}
+        usage = self._subtask_usage_meta() if with_usage else None
+        if usage:
+            meta["usage"] = usage
+        return meta
 
     def _unload_video_pipeline(self) -> None:
         """Unload LTX-Video pipeline to free VRAM after generation."""
@@ -1649,9 +1760,10 @@ class RedisRequestQueue:
                     )
                     .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
                 )
-            resize_notice_id = save_message(
-                session_id, "assistant", resize_text, model_name="system", response_time="0"
-            )
+            if not self._is_task_subtask(task):
+                resize_notice_id = save_message(
+                    session_id, "assistant", resize_text, model_name="system", response_time="0"
+                )
             resize_notice = resize_text
         elif image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
             orig_w, orig_h = image_result["original_size"]
@@ -1667,9 +1779,10 @@ class RedisRequestQueue:
                     )
                     .format(max_w=1024, max_h=1024, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                 )
-            resize_notice_id = save_message(
-                session_id, "assistant", resize_text, model_name="system", response_time="0"
-            )
+            if not self._is_task_subtask(task):
+                resize_notice_id = save_message(
+                    session_id, "assistant", resize_text, model_name="system", response_time="0"
+                )
             resize_notice = resize_text
 
         # Reload multimodal model for next interaction
@@ -1711,6 +1824,16 @@ class RedisRequestQueue:
             "resize_notice": resize_notice,
             "resize_notice_id": resize_notice_id,
         }
+        subtask_result = self._subtask_envelope(
+            task,
+            session_id,
+            message_text,
+            file_path,
+            image_result,
+            meta=self._subtask_model_meta("flux-2-klein-4b", "image_edit"),
+        )
+        if subtask_result is not None:
+            return subtask_result
         return self._save_and_respond(
             session_id,
             message_text_out,
@@ -1826,6 +1949,7 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
         # CPU mode halves the generation size: surface the reduced resolution.
+        # Only for chat — a task step keeps the notice out of the chat tables.
         cpu_notice_id = None
         cpu_notice = None
         cpu_dg = image_result.get("cpu_degrade") or {}
@@ -1841,7 +1965,10 @@ class RedisRequestQueue:
                     )
                     .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
                 )
-            cpu_notice_id = save_message(session_id, "assistant", cpu_notice, model_name="system", response_time="0")
+            if not self._is_task_subtask(task):
+                cpu_notice_id = save_message(
+                    session_id, "assistant", cpu_notice, model_name="system", response_time="0"
+                )
 
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
@@ -1878,6 +2005,11 @@ class RedisRequestQueue:
             "resize_notice": cpu_notice,
             "resize_notice_id": cpu_notice_id,
         }
+        subtask_result = self._subtask_envelope(
+            task, session_id, query, file_path, image_result, meta=self._subtask_model_meta(sd_model, "image_gen")
+        )
+        if subtask_result is not None:
+            return subtask_result
         return self._save_and_respond(
             session_id,
             message_text,
@@ -2321,6 +2453,16 @@ class RedisRequestQueue:
                 lang,
             )
 
+        subtask_result = self._subtask_envelope(
+            task,
+            session_id,
+            result.answer,
+            None,
+            {},
+            meta=self._subtask_model_meta(self._get_model_name("reasoning") or "reasoning", "rlm"),
+        )
+        if subtask_result is not None:
+            return {**subtask_result, "rlm_steps": result.steps}
         return self._save_and_respond(
             session_id,
             result.answer,
@@ -2769,6 +2911,11 @@ class RedisRequestQueue:
                 },
                 "metadata": video_result.get("metadata", {}),
             }
+            subtask_result = self._subtask_envelope(
+                task, session_id, query, file_path, video_result, meta=self._subtask_model_meta(video_model, "video")
+            )
+            if subtask_result is not None:
+                return subtask_result
             return self._save_and_respond(
                 session_id,
                 message_text,
@@ -2951,9 +3098,10 @@ class RedisRequestQueue:
                         )
                         .format(max_w=768, max_h=768, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                     )
-                resize_notice_id = save_message(
-                    session_id, "assistant", resize_text, model_name="system", response_time="0"
-                )
+                if not self._is_task_subtask(task):
+                    resize_notice_id = save_message(
+                        session_id, "assistant", resize_text, model_name="system", response_time="0"
+                    )
                 resize_notice = resize_text
 
             video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
@@ -2990,6 +3138,11 @@ class RedisRequestQueue:
                 "resize_notice": resize_notice,
                 "resize_notice_id": resize_notice_id,
             }
+            subtask_result = self._subtask_envelope(
+                task, session_id, query, file_path, video_result, meta=self._subtask_model_meta(video_model, "video")
+            )
+            if subtask_result is not None:
+                return subtask_result
             return self._save_and_respond(
                 session_id,
                 message_text,
@@ -3199,6 +3352,11 @@ class RedisRequestQueue:
         snapshot_label = str(base._("Camera snapshot: {room_name}", lang)) if base else "Camera snapshot: {room_name}"
         text = snapshot_label.replace("{room_name}", room_display) + "\n" + bot_reply
         envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "response": text}
+        # Chat-style header: the snapshot analysis runs on the multimodal model
+        # — the step header shows its name and the real token totals.
+        envelope.update(
+            self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+        )
         # The snapshot itself rides the envelope as media refs so the executor
         # stores it in the step's extra and the task view renders it (chat
         # parity: the chat camera path shows the image too).
@@ -3206,7 +3364,10 @@ class RedisRequestQueue:
             file_path = save_uploaded_file(
                 file_data=camera_result["image_data"],
                 filename=camera_result["file_name"],
-                session_id=str(task.get("id") or ""),
+                # The task's own id: the folder /api/files resolves through the
+                # tasks table. The queue request id used before was no owner of
+                # any session or task, so the task view's <img> got a 403.
+                session_id=session_id,
                 upload_folder=self.app.config["UPLOAD_FOLDER"],
                 user_id=user_id,
             )
@@ -3292,7 +3453,17 @@ class RedisRequestQueue:
         # analysis question as an image/video request; the echo is never a
         # valid step answer, so it is stripped from the result text.
         stripped = re.sub(r"\[-(IMAGE(?:-EDIT)?|VIDEO)-\]\s*", "", str(bot_reply)).strip()
-        return {"status": "completed", "session_id": session_id, "response": stripped or str(bot_reply).strip()}
+        envelope = {
+            "status": "completed",
+            "session_id": session_id,
+            "response": stripped or str(bot_reply).strip(),
+        }
+        # Chat-style header: the joint image analysis runs on the multimodal
+        # model — the step header shows its name and the real token totals.
+        envelope.update(
+            self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+        )
+        return envelope
 
     def _process_camera_task_stream(
         self,

@@ -20,6 +20,7 @@ CHAT_INIT = (ROOT / "app/static/js/chat-init.js").read_text(encoding="utf-8")
 CHAT_SESSIONS = (ROOT / "app/static/js/chat-sessions.js").read_text(encoding="utf-8")
 EVENTS_JS = (ROOT / "app/static/js/events.js").read_text(encoding="utf-8")
 CHAT_EXPORT = (ROOT / "app/static/js/chat-export.js").read_text(encoding="utf-8")
+CHAT_UTILS = (ROOT / "app/static/js/chat-utils.js").read_text(encoding="utf-8")
 CHAT_CSS = (ROOT / "app/static/css/chat.css").read_text(encoding="utf-8")
 DARK_CSS = (ROOT / "app/static/css/dark-theme.css").read_text(encoding="utf-8")
 ROUTES_TASKS = (ROOT / "app/routes/tasks.py").read_text(encoding="utf-8")
@@ -97,6 +98,16 @@ class TestTasksTabMarkup:
     def test_stop_task_button_present(self):
         assert 'id="stop-task-button"' in CHAT_HTML
         assert "■" in CHAT_HTML
+
+    def test_stop_button_visibility_uses_inline_display(self):
+        """The button is shown/hidden with an inline display: the `hidden` class
+        is `display: none !important` (base.css) and silently beat setTaskMode's
+        inline style — the button existed but never appeared in task mode.
+        """
+        line = next(ln for ln in CHAT_HTML.splitlines() if 'id="stop-task-button"' in ln)
+        assert "hidden" not in line, "the !important class would override the inline display"
+        assert "cancel-stream-header" in line, "chat mode still hides it (display: none by default)"
+        assert "stopBtn.style.display" in CHAT_TASKS
 
     def test_new_task_modal(self):
         """Removed (v12.6 review): «+» creates a draft task like a new chat session."""
@@ -191,6 +202,26 @@ class TestTasksFrontendLogic:
     def test_events_js_dispatches_task_update(self):
         assert "case 'task_update':" in EVENTS_JS
         assert "onTaskUpdate(event.data)" in EVENTS_JS
+
+    def test_events_js_dispatches_task_stage(self):
+        assert "case 'task_stage':" in EVENTS_JS
+        assert "onTaskStage(event.data)" in EVENTS_JS
+
+    def test_stage_label_registered(self):
+        """The plan-phase stage resolves through the chat's stage-label map."""
+        assert "making_plan: 'stage_making_plan'" in EVENTS_JS
+        assert "'stage_making_plan':" in CHAT_HTML
+        assert "startStageTimer" in CHAT_TASKS
+
+    def test_plan_stage_msgids_resolve_in_both_compiled_catalogs(self):
+        for lang in ("en", "ru"):
+            mo = ROOT / "translations" / lang / "LC_MESSAGES" / "messages.mo"
+            with mo.open("rb") as fh:
+                resolved = gettext.GNUTranslations(fh).gettext("Making the plan...")
+            if lang == "en":
+                assert resolved == "Making the plan..."
+            else:
+                assert resolved != "Making the plan..." and "Составляю план" in resolved
 
     def test_css_classes_exist(self):
         for cls in (
@@ -413,12 +444,38 @@ class TestReviewGuards:
         assert '"kind": "plan"' in ROUTES_TASKS
 
     def test_list_items_show_token_totals_and_exec(self):
-        """Task list items carry [▲out ▼in] token totals like session cards
-        and the total ⏱️ execution time (user request)."""
+        """Task list items carry [▲requests ▼answers] token totals like session
+        cards and the total ⏱️ execution time (user request)."""
         assert "sessionTokenStatsHTML" in CHAT_TASKS
         block = self._function_block(CHAT_TASKS, "function renderTasksList(")
         assert "token_totals" in block and "exec_seconds" in block
         assert "_token_totals_for" in ROUTES_TASKS and "token_totals" in ROUTES_TASKS
+
+    def test_arrow_semantics_outgoing_first(self):
+        """The arrow semantics are user-perspective EVERYWHERE (chat-utils is
+        the single source shared by chat/tasks/sessions): ▲ first = the user's
+        OUTGOING requests (prompt), ▼ second = the model's INCOMING answers
+        (completion)."""
+        token_block = self._function_block(CHAT_UTILS, "function tokenStatsHTML(")
+        session_block = self._function_block(CHAT_UTILS, "function sessionTokenStatsHTML(")
+        assert "'▲' + input" in token_block and "'▼' + output" in token_block, (
+            "tokenStatsHTML must render ▲prompt (outgoing) first, ▼completion (incoming) second"
+        )
+        assert "▲' + fmt(prompt) + ' ▼' + fmt(completion)" in session_block, (
+            "sessionTokenStatsHTML must render ▲prompt first, ▼completion second"
+        )
+        # The plan message carries the same chat-style header (model/tokens/time).
+        assert '"exec_seconds": float(plan_extra.get("exec_seconds") or 0.0)' in ROUTES_TASKS
+        assert '"model_name": str(plan_extra.get("model_name") or "")' in ROUTES_TASKS
+
+    def test_user_messages_have_tts_and_copy_buttons(self):
+        """🗣️ + 📋 sit in the headers of BOTH sides (user request): the task
+        view renders one unconditional block, the chat adds a user branch."""
+        msg_block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "if (!isUser && String(m.content" not in msg_block, "TTS must not be assistant-only"
+        chat_messages = (ROOT / "app/static/js/chat-messages.js").read_text(encoding="utf-8")
+        assert "if (role === 'user' && !isSystemErrorRow)" in chat_messages
+        assert chat_messages.count("tts-button") >= 2, "a TTS button in both the assistant and user branches"
 
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS

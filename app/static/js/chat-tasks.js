@@ -21,6 +21,11 @@ let tasksData = {};
 // route the input to the task answer.
 window.currentTaskId = null;
 
+// Live plan-phase stages (SSE task_stage): task_id → {stage, since}.
+// The banner above the open task renders the stage with a ticking counter
+// while the executor loads the reasoning model / makes the plan.
+let taskStages = {};
+
 const TASK_TERMINAL_STATUSES = new Set(['completed', 'failed', 'expired', 'cancelled']);
 
 let taskReloadTimer = null;
@@ -67,6 +72,11 @@ let lastTaskPayloadJson = '';
 // seconds) — one per task view, started on entering awaiting_user.
 let taskAwaitTimer = null;
 let taskAwaitStartedAt = null;
+
+// The plan-phase stage timer (same ticking pattern) — one per task view.
+let taskStageTimer = null;
+let taskStageStartedAt = null;
+let taskStageTimerTaskId = null;
 
 // True while the Tasks tab owns the main window: a task conversation is
 // open OR the empty task state is showing. The chat render paths consult
@@ -128,7 +138,8 @@ function renderTasksList() {
         const dateStr = task.created_at ? formatFullDateTime(task.created_at) : '';
         const steps = task.total_steps ? ' [' + task.total_steps + ']' : '';
         const title = task.title || t('task_status_draft');
-        // Token totals (▲out ▼in) like session cards, from summed step usage.
+        // Token totals (▲outgoing requests ▼incoming answers) like session
+        // cards, from summed step usage.
         const totals = task.token_totals || {};
         const tokensHTML = sessionTokenStatsHTML(totals.prompt_tokens, totals.completion_tokens);
         const secs = Number(task.exec_seconds) || 0;
@@ -420,7 +431,11 @@ function renderTaskConversation(payload) {
     const live = ['queued', 'active', 'frozen', 'awaiting_user'].includes(task.status);
     if (live) {
         banner.className = 'task-await-banner';
-        if (task.status === 'awaiting_user') {
+        const stage = (task.status === 'active' && !(Number(task.total_steps) || 0)) ? taskStages[task.id] : null;
+        if (stage) {
+            // Plan phase progress: model load / planning, ticking per second.
+            startStageTimer(task.id, banner);
+        } else if (task.status === 'awaiting_user') {
             startAwaitTimer(task.id, banner);
         } else {
             stopAwaitTimer();
@@ -478,6 +493,62 @@ function stopAwaitTimer() {
     taskAwaitStartedAt = null;
 }
 
+// Live plan-phase stage («🧠 Загружаю модель рассуждений... (5 с)» →
+// «🧠 Составляю план... (12 с)»): the SSE task_stage event re-paints the
+// banner without a server round-trip, the timer ticks the elapsed seconds.
+function startStageTimer(taskId, el) {
+    stopStageTimer();
+    const stage = taskStages[taskId];
+    if (!stage) return;
+    taskStageStartedAt = stage.since || Date.now();
+    taskStageTimerTaskId = taskId;
+    const paint = () => {
+        const s = taskStages[taskId];
+        if (!s) { stopStageTimer(); return; }
+        const label = (typeof getStageLabel === 'function' ? getStageLabel(s.stage) : s.stage) || '';
+        const secs = Math.floor((Date.now() - taskStageStartedAt) / 1000);
+        el.textContent = '▶ ' + label + (secs >= 1 ? ' (' + secs + t('stage_elapsed_s') + ')' : '');
+    };
+    paint();
+    taskStageTimer = setInterval(() => {
+        if (!document.body.contains(el)) {
+            stopStageTimer();
+            return;
+        }
+        paint();
+    }, 1000);
+    if (window.currentTaskId !== taskId) stopStageTimer();
+}
+
+function stopStageTimer() {
+    if (taskStageTimer) {
+        clearInterval(taskStageTimer);
+        taskStageTimer = null;
+    }
+    taskStageStartedAt = null;
+    taskStageTimerTaskId = null;
+}
+
+// Dispatched by events.js handleEvent for `task_stage` events (plan-phase
+// progress). data: {task_id, stage} — an empty stage clears the line.
+function onTaskStage(data) {
+    if (!data || !data.task_id) return;
+    if (data.stage) {
+        taskStages[data.task_id] = { stage: data.stage, since: Date.now() };
+    } else {
+        delete taskStages[data.task_id];
+    }
+    if (window.currentTaskId !== data.task_id) return;
+    const banner = document.querySelector('.task-await-banner');
+    if (!banner) return;
+    const stage = taskStages[data.task_id];
+    if (stage) {
+        startStageTimer(data.task_id, banner);
+    } else {
+        stopStageTimer();
+    }
+}
+
 function renderTaskMessage(m, task) {
     const div = document.createElement('div');
     const isUser = m.role === 'user';
@@ -499,7 +570,7 @@ function renderTaskMessage(m, task) {
     if (!isUser) {
         if (m.model_name) {
             const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
-            header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji('reasoning') || '') + escapeHtml(shortModel) + '</span>';
+            header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji(m.model_type || 'reasoning') || '') + escapeHtml(shortModel) + '</span>';
         }
     }
     const secs = Number(m.exec_seconds) || 0;
@@ -527,8 +598,9 @@ function renderTaskMessage(m, task) {
         }
     }
 
-    // TTS button (assistant messages with a body)
-    if (!isUser && String(m.content || '').trim()) {
+    // TTS + copy buttons on EVERY message with a body, user requests included
+    // (user request: date, TTS (speak) and copy buttons everywhere).
+    if (String(m.content || '').trim()) {
         const ttsButton = document.createElement('button');
         ttsButton.className = 'tts-button';
         ttsButton.title = t('speak');
@@ -538,9 +610,6 @@ function renderTaskMessage(m, task) {
             if (typeof window.playTTS === 'function') window.playTTS(ttsButton, div);
         });
         header.appendChild(ttsButton);
-    }
-    // Copy button (all messages with a body)
-    if (String(m.content || '').trim()) {
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-message-button';
         copyButton.title = t('copy_text');
@@ -648,7 +717,10 @@ function setTaskMode(active, task) {
     if (taskTitle) taskTitle.classList.toggle('hidden', !active);
     if (chatTitle) chatTitle.classList.toggle('hidden', active);
     const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status) || task.status === 'draft';
-    if (stopBtn) stopBtn.classList.toggle('hidden', !active || stopped);
+    // `.cancel-stream-header` is display:none (chat.css) — the button is shown
+    // by an inline display, the same way the chat's cancel button is (a plain
+    // `.hidden` toggle could never overcome that rule).
+    if (stopBtn) stopBtn.style.display = active && !stopped ? 'inline-flex' : 'none';
 
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-button');

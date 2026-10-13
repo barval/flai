@@ -67,7 +67,7 @@
                 </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
-                <button id="stop-task-button" class="cancel-stream-header hidden" title="{{ _('Stop task') }}">■</button>
+                <button id="stop-task-button" class="cancel-stream-header" title="{{ _('Stop task') }}">■</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
@@ -316,6 +316,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_crawl_indexing': {{ _('Indexing crawled content...')|tojson }},
     'rlm_trace_summary': {{ _('Deep analysis (%s steps)')|tojson }},
     'stage_elapsed_s': {{ _('s')|tojson }},
+    'stage_making_plan': {{ _('Making the plan...')|tojson }},
     'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
     'step': {{ _('Step')|tojson }},
     'minute_abbr': {{ _('minute_abbr')|tojson }},

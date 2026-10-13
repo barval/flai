@@ -42,3 +42,25 @@ def publish_task_update(app: Any, task: dict | None) -> None:
         publisher.publish(user_id, "task_update", _task_event_payload(task))
     except Exception:  # noqa: BLE001 — SSE is advisory, never fatal
         return
+
+
+def publish_task_stage(app: Any, task: dict | None, stage: str | None) -> None:
+    """Publish one ``task_stage`` event (plan-phase progress; no-op on failure).
+
+    Same per-user stream as ``task_update``, but a distinct type: the task
+    view renders it as a live stage line with a ticking counter (chat parity
+    with ``task_progress``), while the chat render paths ignore it. An empty
+    stage clears the current one.
+    """
+    if not task:
+        return
+    user_id = task.get("user_id")
+    if not user_id:
+        return
+    try:
+        publisher = get_events_publisher(app)
+        if publisher is None:
+            return
+        publisher.publish(user_id, "task_stage", {"task_id": task.get("id"), "stage": stage or ""})
+    except Exception:  # noqa: BLE001 — SSE is advisory, never fatal
+        return

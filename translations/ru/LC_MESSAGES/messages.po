@@ -3076,6 +3076,10 @@ msgstr "🔬 Глубокий анализ (%s шагов)"
 msgid "s"
 msgstr " с"
 
+#: app/templates/chat.html:319
+msgid "Making the plan..."
+msgstr "🧠 Составляю план..."
+
 #: app/templates/chat.html:282
 msgid "Capturing snapshot..."
 msgstr "📹 Делаю снимок..."

@@ -142,7 +142,7 @@ def load_config(app):
     # Tasks subsystem: sliding quiet window after chat activity, 24 h
     # pure-execution budget, step retry attempts, executor poll interval.
     app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
-    app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "60"))
+    app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
     app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
     app.config["TASK_POLL_INTERVAL_S"] = int(os.getenv("TASK_POLL_INTERVAL_S", "1"))

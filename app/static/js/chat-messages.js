@@ -475,7 +475,10 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     const headerDiv = document.createElement('span');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = '📅 ' + timeDisplay;
-    
+    // Transcription rows (whisper) carry no buttons — the text is a service
+    // artifact, not a user-composed message.
+    const isSystemErrorRow = modelName === 'whisper' || modelName === 'system';
+
     if (role === 'assistant') {
         let headerExtraHTML = '';
 
@@ -498,7 +501,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             const langSuffix = t('seconds_suffix');
             headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
 
-            // Token usage counters (input ↓ / output ↑) across all LLM calls
+            // Token usage counters (▲ outgoing requests / ▼ incoming answers)
+        // across all LLM calls — shown between ⏱️ time and 🚀 tps.
             // that billed this request — shown between ⏱️ time and 🚀 tps.
             headerExtraHTML += tokenStatsHTML(promptTokens, completionTokens);
 
@@ -529,19 +533,35 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             }
         }
 
-        // TTS button
+        // TTS + copy buttons on assistant messages…
         const ttsButton = document.createElement('button');
         ttsButton.className = 'tts-button';
         ttsButton.title = t('speak');
         ttsButton.textContent = '🗣️';
         headerDiv.appendChild(ttsButton);
 
-        // Copy message button
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-message-button';
         copyButton.title = t('copy_text');
         copyButton.textContent = '📋';
         headerDiv.appendChild(copyButton);
+    }
+
+    // …and on user messages too (user request: TTS and copy in the headers of
+    // BOTH sides). Skip transcription/system-error rows: their text is a
+    // service artifact, not a user-composed message.
+    if (role === 'user' && !isSystemErrorRow) {
+        const userTtsButton = document.createElement('button');
+        userTtsButton.className = 'tts-button';
+        userTtsButton.title = t('speak');
+        userTtsButton.textContent = '🗣️';
+        headerDiv.appendChild(userTtsButton);
+
+        const userCopyButton = document.createElement('button');
+        userCopyButton.className = 'copy-message-button';
+        userCopyButton.title = t('copy_text');
+        userCopyButton.textContent = '📋';
+        headerDiv.appendChild(userCopyButton);
     }
 
     let contentHTML = '<div class="message-content">';

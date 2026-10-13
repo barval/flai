@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 TASK_POLL_INTERVAL_S = 1.0
 TASK_TOTAL_BUDGET_S = 86400
 TASK_STEP_MAX_ATTEMPTS = 3
-TASK_QUIET_PERIOD_S = 60
+TASK_QUIET_PERIOD_S = 15
 
 # Test-visible seed for an expired budget (tests/test_tasks_executor.py).
 _BUDGET_CFG_FALLBACK = {"TASK_TOTAL_BUDGET_S": TASK_TOTAL_BUDGET_S}
@@ -81,8 +81,8 @@ CANCEL_FLAG_TTL_S = 3600
 _SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen", "camera", "crawl", "vision"}
 # Queue task_type per subtask tool (Task 8 refines the exact payloads).
 _SUBTASK_TYPE = {
-    "image_gen": "image",
-    "image_edit": "image_edit",
+    "image_gen": "image_gen",
+    "image_edit": "api_image_edit",
     "video_gen": "video",
     "rlm": "rlm_analysis",
     "camera": "camera_task",
@@ -93,6 +93,10 @@ _SUBTASK_TYPE = {
 # Localized user-facing fallbacks (⚠️ prefix per the project error rule).
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
 _MSG_PLAN_UNREADABLE = "Task could not be planned: the planner returned an unreadable plan. Please try again."
+# Real token usage of the last planner call (module-level: the single
+# executor thread is the only planner caller; the plan phase reads it for
+# the plan message's chat-style header).
+_LAST_PLANNER_USAGE: dict[str, int] = {}
 _FALLBACK_NO_FINAL = "The final answer could not be generated; please check the step results above."
 _FALLBACK_BUDGET_NO_SUMMARY = "Execution budget exhausted; the summary could not be generated."
 
@@ -108,6 +112,12 @@ def _first_url(text: str) -> str:
     """First http(s) URL in free text, or "" (same shape as queue's extractor)."""
     match = _URL_RE.search(text or "")
     return match.group(0).rstrip(".,;:!?»)]}") if match else ""
+
+
+def _strip_data_url(value: str) -> str:
+    """Raw base64 payload of a ``data:`` URL (the edit pipeline wants the bytes
+    only); a plain base64 string is returned unchanged."""
+    return value.split(",", 1)[1] if value.startswith("data:") and "," in value else value
 
 
 # ── Executor-owned SQL (the store module does not expose these yet) ─────
@@ -482,24 +492,42 @@ def _results_match(final_text: str, step_result: str) -> bool:
     return ratio >= 0.9
 
 
-def _run_planner(app: Flask, prompt: str, cancel_check, lang: str) -> str:
+def _run_planner(app: Flask, prompt: str, cancel_check, lang: str, status_callback=None) -> str:
     """One reasoning-model call for the plan phase (text only).
 
     Uses the runner's private streaming helper on purpose (the brief allows
     importing it): the reasoning model is JIT-loaded exactly as the workers
-    do, and tests patch this wrapper to isolate the LLM.
+    do, and tests patch this wrapper to isolate the LLM. ``status_callback``
+    (optional) fires with "generating" once the model is loaded — the plan
+    phase turns it into the live stage event. The call's real token usage is
+    remembered module-level (``_LAST_PLANNER_USAGE``) — the executor thread
+    is the only planner caller, so the plan phase reads it for the header.
     """
-    text, _usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0.2)
+    global _LAST_PLANNER_USAGE
+    text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0.2, status_callback=status_callback)
+    _LAST_PLANNER_USAGE = usage or {}
     return text
 
 
 def _run_planner_full(
-    app: Flask, prompt: str, cancel_check, lang: str, temperature: float | None = None
+    app: Flask, prompt: str, cancel_check, lang: str, temperature: float | None = None, status_callback=None
 ) -> tuple[str, dict[str, int]]:
     """Same call, also returning the real token usage (final-summary header)."""
     from app.tasks import runner
 
-    return runner._call_reasoning(app, prompt, cancel_check, lang=lang, temperature=temperature)
+    return runner._call_reasoning(
+        app, prompt, cancel_check, lang=lang, temperature=temperature, status_callback=status_callback
+    )
+
+
+def _planner_usage() -> dict[str, int]:
+    """Real token usage of the LAST planner call (see ``_run_planner``).
+
+    ``_run_planner`` (the seam tests patch) returns text only; it stores the
+    closed call's totals in ``_LAST_PLANNER_USAGE`` for the plan-phase header.
+    """
+    totals = _LAST_PLANNER_USAGE or {}
+    return {k: int(v) for k, v in totals.items() if isinstance(v, (int, float)) and v > 0}
 
 
 def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None = None) -> str | None:
@@ -864,7 +892,15 @@ class TaskExecutor:
             # Publish first so the panel switches «Составляю план…» (active,
             # total_steps=0) immediately — the phase lasts tens of seconds.
             self._publish_task_update(task_id)
-            if self._run_plan_phase(task) != "ok":
+            try:
+                plan_status = self._run_plan_phase(task)
+            except StepAborted:
+                # A stop/cancel arrived while the planner was streaming (tens of
+                # seconds) — the same clean user cancellation a direct step gets,
+                # instead of an unhandled abort that killed the whole cycle.
+                self._cancel_task(get_task(task_id) or task)
+                return
+            if plan_status != "ok":
                 return
             task = get_task(task_id) or task
             # The plan just materialized — the conversation view needs it.
@@ -914,8 +950,14 @@ class TaskExecutor:
                 if row["status"] in ("subtask_queued", "subtask_running"):
                     if self._poll_subtask(task, idx, row, gate_open=gate_open) in ("stop", "hold"):
                         return  # interrupted (frozen) or still running — release the cycle
+                    # Consumed — publish so the finished step lands in the
+                    # conversation view immediately (previously every subtask
+                    # step appeared at once when the whole task completed).
+                    self._publish_task_update(task_id)
                     continue  # consumed — re-read the loop state for the next step
                 self._enqueue_subtask(task, idx, step)
+                # The queued step must reach the view now, not on the next cycle.
+                self._publish_task_update(task_id)
                 return  # the queue owns it now — polling resumes on the next cycle
 
             if self._execute_direct(task, idx, step) == "stop":
@@ -1002,13 +1044,39 @@ class TaskExecutor:
 
         # The planner streams for tens of seconds — a UI/API stop arriving
         # mid-plan must take effect at once (spec §2: the button marks the
-        # running step), so the cancel flag is checked between chunks.
-        plan = _parse_plan(_run_planner(self.app, prompt, lambda: self._redis_flag(f"task:cancelled:{task_id}"), lang))
-        if plan is None:
-            # One retry before giving up (transient planner noise).
-            plan = _parse_plan(
-                _run_planner(self.app, prompt, lambda: self._redis_flag(f"task:cancelled:{task_id}"), lang)
-            )
+        # running step), so the cancel flag is checked between chunks. The
+        # live stage line mirrors the chat's reasoning stages: model load
+        # (the long JIT cold load) → the plan itself → cleared.
+        from app.tasks.events import publish_task_stage
+
+        def _on_model_loaded(phase: str) -> None:
+            if phase == "generating":
+                publish_task_stage(self.app, task, "making_plan")
+
+        cancel_check = lambda: self._redis_flag(f"task:cancelled:{task_id}")  # noqa: E731
+        publish_task_stage(self.app, task, "loading_reasoning_model")
+        start = time.monotonic()
+        try:
+            plan = None
+            raw, usage = "", {}
+            for _attempt in range(2):
+                raw = _run_planner(self.app, prompt, cancel_check, lang, status_callback=_on_model_loaded)
+                usage = _planner_usage()
+                plan = _parse_plan(raw)
+                if plan is not None:
+                    break
+                # One retry before giving up (transient planner noise); the
+                # model is already loaded and the header shows the LAST call's
+                # totals (each attempt re-bills the prompt).
+            planner_meta = {
+                "exec_seconds": round(time.monotonic() - start, 2),
+                "usage": {
+                    "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                    "completion_tokens": int(usage.get("completion_tokens") or 0),
+                },
+            }
+        finally:
+            publish_task_stage(self.app, task, None)
         if plan is None:
             self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
@@ -1039,8 +1107,15 @@ class TaskExecutor:
 
         # Keep the user's original request as the title — the planner's own
         # title (an LLM rephrase like «Ответить на вопрос о количестве дней в
-        # году») never overwrites it.
-        fields: dict[str, Any] = {"step_plan": plan, "next_step_index": 0}
+        # году») never overwrites it. ``plan_meta`` carries the chat-style
+        # header of the plan message itself (model + real tokens + duration).
+        config = get_model_config("reasoning") or {}
+        plan_meta = {
+            "model_name": str(config.get("model_name") or ""),
+            "model_type": "reasoning",
+            **planner_meta,
+        }
+        fields: dict[str, Any] = {"step_plan": {**plan, "plan_meta": plan_meta}, "next_step_index": 0}
         update_task(task_id, **fields)
         self._create_plan_step_rows(task_id, plan["steps"])
         return "ok"
@@ -1353,10 +1428,14 @@ class TaskExecutor:
         task_id = task["id"]
         tool = str(step.get("tool", ""))
         row = self._step_row_for(task_id, idx, step)
-        task_type = _SUBTASK_TYPE.get(tool, "image")
+        task_type = _SUBTASK_TYPE.get(tool, "image_gen")
+        goal = str(step.get("goal", ""))
         request_data: dict[str, Any] = {
             "type": task_type,
-            "prompt": str(step.get("goal", "")),
+            # The queue handlers read the step's instruction from ``text`` (the
+            # planner goal); ``prompt`` stays for the tools that look for it.
+            "text": goal,
+            "prompt": goal,
             # Gate hook excludes tagged requests from chat activity.
             "task_step_subtask": row["id"],
         }
@@ -1395,11 +1474,38 @@ class TaskExecutor:
             # the same joint multimodal call the chat image path uses.
             request_data["images"] = self._task_image_parts(task)
             request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
+        if tool == "image_edit":
+            # The source to edit is the task's first attached image (its bytes
+            # are read back from the stored file, chat parity: the edit pipeline
+            # takes raw base64). Without an attachment there is nothing to edit —
+            # fail the step instead of spending a multimodal call on it.
+            parts = self._task_image_parts(task)
+            if not parts:
+                logger.warning(f"task {task_id} step {idx + 1} (image_edit) has no attached source image")
+                self._end_step(task_id, row["id"], status="failed", last_error="no source image attached")
+                update_task(task_id, next_step_index=idx + 1)
+                self._publish_task_update(task_id)
+                return
+            request_data["file_data"] = _strip_data_url(str(parts[0].get("data") or ""))
+            request_data["file_name"] = str(parts[0].get("name") or "")
+        # Write-ahead (v12.6 fix): the step row must already say
+        # ``subtask_queued`` BEFORE the request reaches the queue. An idle slow
+        # worker dequeues it within milliseconds and its orphan guard drops a
+        # tagged sub-task whose step is still 'pending' — every camera step then
+        # died with "subtask result expired" and no snapshot was ever taken
+        # (live log: "dequeued task … (type=camera_task)" 6 ms BEFORE the
+        # executor's own "queued as subtask" line).
+        update_step(row["id"], status="subtask_queued")
         try:
             queue = _get_request_queue()
             subtask_queue_id, _info = queue.add_request(
                 user_id=task.get("user_id") or "",
-                session_id=f"task:{task_id}",
+                # The queue session id IS the task id (not ``task:<id>``): the
+                # media the sub-task saves lands in the upload folder named after
+                # the task, which /api/files resolves through the tasks table —
+                # a «task:<id>» folder was rejected by save_uploaded_file (not a
+                # UUID) and an unowned folder 403'd the task view's <img>.
+                session_id=task_id,
                 request_data=request_data,
                 user_class=int(task.get("task_class") or 5),
                 lang=task.get("lang") or "ru",
@@ -1424,7 +1530,7 @@ class TaskExecutor:
                 _get_request_queue().cancel_task(str(old_id))
             except Exception as e:
                 logger.warning(f"old subtask re-cancel failed ({old_id}): {e}")
-        update_step(row["id"], status="subtask_queued", extra=merged_extra)
+        update_step(row["id"], extra=merged_extra)
         logger.info(f"task {task_id} step {idx + 1} ({tool}) queued as subtask {subtask_queue_id}")
 
     # ── Subtask polling (Task 8) ──────────────────────────────────────
@@ -1510,6 +1616,9 @@ class TaskExecutor:
             started = row.get("started_at") or _now_iso()
             update_step(row["id"], status="subtask_running", started_at=started)
             row = {**row, "status": "subtask_running", "started_at": started}
+            # Announce the running state — the step's long GPU work otherwise
+            # left the view silent until the result landed.
+            self._publish_task_update(task_id)
 
         # Chat abort: the hook raised our cancel flag mid-subtask.
         if self._redis_flag(f"{CANCEL_KEY_PREFIX}{row['id']}"):
@@ -1609,6 +1718,14 @@ class TaskExecutor:
             value = stored.get(key) if key in stored else result_data.get(key)
             if value:
                 media[key] = value
+        # Chat-style header (model name / type / token usage): the envelope
+        # reports which model produced the artifact; the task view renders it
+        # exactly like the chat message header.
+        meta: dict = {}
+        for key in ("model_name", "model_type", "usage"):
+            value = stored.get(key) if key in stored else result_data.get(key)
+            if value:
+                meta[key] = value
         result_text = response_text or "done"
         # Spec §4: a subtask result is verified like any other step result —
         # a normal checkpoint runs against the step's checkpoint_criteria
@@ -1641,7 +1758,7 @@ class TaskExecutor:
             checkpoint_result=str(checkpoint.get("explanation", "")),
             checkpoint_verdict=bool(checkpoint.get("verdict")) if checkpoint else None,
         )
-        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media}
+        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta}
         update_step(row["id"], extra=merged_extra)
         logger.info(f"task {task_id} step {idx + 1}: subtask completed ({queue_id})")
         update_task(task_id, next_step_index=idx + 1)

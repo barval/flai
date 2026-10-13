@@ -288,6 +288,21 @@ def current_usage_account_id() -> str | None:
     return getattr(_USAGE_CURRENT, "account_id", None)
 
 
+def peek_usage_account() -> dict[str, Any] | None:
+    """Totals of the account bound to this thread, WITHOUT popping it.
+
+    Task-subsystem sub-task handlers (camera/vision) read the real token
+    totals this way before returning their result envelope: the per-request
+    account stays open for the ``_process_single_task`` cleanup clause.
+    """
+    account_id = getattr(_USAGE_CURRENT, "account_id", None)
+    if not account_id:
+        return None
+    with _USAGE_ACCOUNTS_LOCK:
+        entry = _USAGE_ACCOUNTS.get(account_id)
+        return dict(entry) if entry else None
+
+
 def finish_usage_account(account_id: str | None = None) -> dict[str, Any] | None:
     """Pop a usage account and its thread-local binding, returning the totals.
 

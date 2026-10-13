@@ -453,7 +453,7 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 ## Per-Request Token Usage Counters
 
-Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (▲45 ▼1 234) ток | 🚀 0,8 ток/с |` (▲ output first, ▼ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (▲1 234 ▼45) ток | 🚀 0,8 ток/с |` (▲ first = the user's outgoing request — everything billed on the way IN: prompt text, images, video frames, documents; ▼ second = the model's incoming answer — completion, `tokens_unit` msgid — ru «ток» / en «tok»).
 
 **Backend** (`app/queue.py` + `app/utils.py`):
 - `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
@@ -463,12 +463,12 @@ Every assistant message header shows real billed tokens between the ⏱️ durat
 - Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
 
 **Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
-- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲45) ток` when input is unknown); empty/zero totals render nothing.
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (▲1 234) ток` when the answer side is unknown); empty/zero totals render nothing.
 - The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
 
 ## Admin User Token Totals
 
-`GET /admin/api/users` returns `outgoing_tokens` and `incoming_tokens` for each non-admin account. These are computed from messages joined through the user's `chat_sessions`: outgoing (from the user's perspective) sums `messages.prompt_tokens`, and incoming sums `messages.completion_tokens`. The admin users table displays the columns immediately after Sessions; both are sortable numeric fields. No schema change is needed. Full backups include `chat_sessions` and `messages`, so both inputs to these aggregates are restored; users-only backups include only `users` and intentionally do not preserve chat history or token totals.
+`GET /admin/api/users` returns `outgoing_tokens` and `incoming_tokens` for each non-admin account. These are computed from messages joined through the user's `chat_sessions`: outgoing (the user's requests) sums `messages.prompt_tokens`, and incoming (the model's answers) sums `messages.completion_tokens`. The admin users table displays the columns immediately after Sessions; both are sortable numeric fields. No schema change is needed. Full backups include `chat_sessions` and `messages`, so both inputs to these aggregates are restored; users-only backups include only `users` and intentionally do not preserve chat history or token totals.
 
 ## Chat Auto-Scroll
 

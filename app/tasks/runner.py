@@ -97,22 +97,36 @@ def recall_slm_facts(app: Flask, query: str, user_id: str, lang: str, limit: int
 
 
 def _reasoning_chat(
-    app: Flask, messages: list[dict], lang: str = "ru", temperature: float | None = None
+    app: Flask,
+    messages: list[dict],
+    lang: str = "ru",
+    temperature: float | None = None,
+    status_callback: Callable[[str], None] | None = None,
 ) -> Generator[str | dict[str, Any], None, None]:
     """Yield reasoning-model chunks via the same client the workers use.
 
     The client resolves the reasoning model config itself (JIT load through
     llama-swap) exactly as ``RedisRequestQueue`` does via ``base.llamacpp``.
     Runner-facing seam: tests patch this helper to isolate the LLM client.
+    ``status_callback`` (optional) is forwarded to the client and fires with
+    ``"generating"`` once the model is loaded — the plan phase turns it into
+    the live stage event.
     """
     base = app.modules.get("base")
     if base is None or not hasattr(base, "llamacpp"):
         raise RuntimeError("base module (llamacpp client) is unavailable")
-    yield from base.llamacpp.chat_stream(messages, model_type="reasoning", lang=lang, temperature=temperature)
+    yield from base.llamacpp.chat_stream(
+        messages, model_type="reasoning", lang=lang, temperature=temperature, status_callback=status_callback
+    )
 
 
 def _call_reasoning(
-    app: Flask, prompt: str, cancel_check: Callable[[], bool], lang: str = "ru", temperature: float | None = None
+    app: Flask,
+    prompt: str,
+    cancel_check: Callable[[], bool],
+    lang: str = "ru",
+    temperature: float | None = None,
+    status_callback: Callable[[str], None] | None = None,
 ) -> tuple[str, dict[str, int]]:
     """Stream one reasoning-model call for a step; abort mid-stream on cancel.
 
@@ -125,7 +139,7 @@ def _call_reasoning(
     account_id = f"task-call:{uuid.uuid4()}"
     begin_usage_account(account_id)
     text = ""
-    for chunk in _reasoning_chat(app, messages, lang, temperature=temperature):
+    for chunk in _reasoning_chat(app, messages, lang, temperature=temperature, status_callback=status_callback):
         if cancel_check():
             finish_usage_account(account_id)
             raise StepAborted("step cancelled during reasoning generation")

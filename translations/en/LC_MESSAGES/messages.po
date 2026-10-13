@@ -3054,6 +3054,10 @@ msgstr "🔬 Deep analysis (%s steps)"
 msgid "s"
 msgstr "s"
 
+#: app/templates/chat.html:319
+msgid "Making the plan..."
+msgstr "Making the plan..."
+
 #: app/templates/chat.html:282
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."

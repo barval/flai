@@ -12,6 +12,7 @@ pattern as tests/test_tasks_db.py). The per-app executor thread started by
 create_app() is stopped in the fixture so manual drives are deterministic.
 """
 
+import base64
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -422,6 +423,54 @@ def test_plan_parse_failure_marks_task_failed(db_env, test_app, gate_open, monke
     assert steps[-1]["result"].startswith("⚠️"), "user-facing error must carry the ⚠️ prefix"
 
 
+def test_plan_phase_publishes_live_stages(db_env, test_app, gate_open, monkeypatch):
+    """The plan phase reports its progress to the task view: model load →
+    making the plan (on the backend's "generating" callback) → cleared."""
+    store = db_env
+    task_id = _mk_task(store)
+    plan_json = '{"title": "p", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}'
+    stages: list[tuple[str, str]] = []
+
+    def _fake_planner(app, prompt, cancel_check, lang, status_callback=None):
+        stages.append(("loading_reasoning_model", ""))  # published before the call
+        if status_callback:
+            status_callback("generating")
+        return plan_json
+
+    monkeypatch.setattr(ex, "_run_planner", _fake_planner)
+    monkeypatch.setattr(
+        "app.tasks.events.publish_task_stage",
+        lambda app, task, stage: stages.append((stage or "", task.get("id") or "")),
+    )
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+
+    _cycle(test_app)
+
+    cleared = [s for s, _ in stages if s == ""]
+    assert ("loading_reasoning_model", task_id) in stages, "the load stage is announced before the planner call"
+    assert ("making_plan", task_id) in stages, "the generating callback flips the stage to planning"
+    assert cleared, "the stage is cleared when the plan phase ends"
+
+
+def test_plan_failure_clears_the_stage(db_env, test_app, gate_open, monkeypatch):
+    """An unreadable plan still clears the stage (try/finally, no stale line)."""
+    store = db_env
+    task_id = _mk_task(store)
+    cleared: list[bool] = []
+
+    def _fake_stage(app, task, stage):
+        if not stage:
+            cleared.append(True)
+
+    monkeypatch.setattr(ex, "_run_planner", lambda *a, **k: "not json at all")
+    monkeypatch.setattr("app.tasks.events.publish_task_stage", _fake_stage)
+
+    _cycle(test_app)
+
+    assert store.get_task(task_id)["status"] == "failed"
+    assert cleared, "the finally clause must clear the stage on the failure path too"
+
+
 # ── 9. executor thread lifecycle (no DB) ─────────────────────────────────
 
 
@@ -750,6 +799,69 @@ def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open,
     assert step["extra"]["media"]["file_name"] == "b.png"
 
 
+def test_subtask_envelope_meta_lands_in_step_extra(db_env, test_app, gate_open, monkeypatch):
+    """Model header metadata from the envelope (model name / type / token
+    usage) is merged into the step's extra — the task view renders the same
+    chat-style header on media steps as on direct ones."""
+    store = db_env
+    plan = {
+        "title": "Camera task",
+        "steps": [
+            {"seq": 1, "goal": "Snapshot the kitchen", "tool": "camera", "checkpoint_criteria": "snapshot taken"}
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {
+        "status": "completed",
+        "response": "Camera snapshot: кухня\nНа снимке кошка спит.",
+        "file_path": "t/cat.jpg",
+        "model_name": "Qwen3VL-4B",
+        "model_type": "multimodal",
+        "usage": {"prompt_tokens": 120, "completion_tokens": 45},
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.2}
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["extra"]["model_name"] == "Qwen3VL-4B"
+    assert step["extra"]["model_type"] == "multimodal"
+    assert step["extra"]["usage"] == {"prompt_tokens": 120, "completion_tokens": 45}
+    assert step["extra"]["media"]["file_path"] == "t/cat.jpg", "media refs keep working"
+
+
+def test_subtask_envelope_without_meta_keeps_extra_clean(db_env, test_app, gate_open, monkeypatch):
+    """A worker without the meta fields (or an error envelope) changes nothing."""
+    store = db_env
+    plan = {"title": "Media task", "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen"}]}
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {"status": "completed", "response": "done", "file_path": "a/b.png"}
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    extra = store.get_task_steps(task_id)[0]["extra"]
+    assert "model_name" not in extra and "model_type" not in extra and "usage" not in extra
+
+
 def test_subtask_no_criteria_skips_checkpoint(db_env, test_app, gate_open, monkeypatch):
     """No checkpoint_criteria on the subtask step ⇒ no verifier call (the
     checkpoint machinery is opt-in per plan step)."""
@@ -819,7 +931,7 @@ def test_plan_phase_cancel_flag_interrupts_planner(db_env, test_app, gate_open, 
     task_id = _mk_task(store)
     seen = {}
 
-    def _fake_planner(app, prompt, cancel_check, lang):
+    def _fake_planner(app, prompt, cancel_check, lang, status_callback=None):
         seen["cancel_callable"] = cancel_check
         return '{"title": "T", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}'
 
@@ -1239,7 +1351,7 @@ def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monke
     _mk_task(store)
     captured = {}
 
-    def fake_planner(app, prompt, cancel_check, lang="ru"):
+    def fake_planner(app, prompt, cancel_check, lang="ru", status_callback=None):
         captured["prompt"] = prompt
         return '{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm", "checkpoint_criteria": "c"}]}'
 
@@ -1311,3 +1423,194 @@ def test_extract_facts_skips_via_patch(db_env, test_app, gate_open, monkeypatch)
     executor._extract_facts_text(task, "короткий")
 
     assert started == []
+
+
+# ── media sub-task dispatch parity (v12.6 media fix) ────────────────────
+
+
+class _RecordingQ:
+    """Request-queue stub recording every add_request payload."""
+
+    def __init__(self):
+        self.calls = []
+
+    def add_request(self, **kwargs):
+        self.calls.append(kwargs)
+        return "sub-queue-id-1", {}
+
+    def cancel_task(self, *a, **k):
+        pass
+
+
+class _PublishProbeQ(_RecordingQ):
+    """Queue stub that reads the step row the instant the request is published.
+
+    The slow worker's orphan guard does exactly this, milliseconds after the
+    push (live log: "Slow worker: dequeued task … (type=camera_task)" followed
+    6 ms later by "Orphan subtask dropped: step … status=pending"): a step still
+    marked ``pending`` at publish time is discarded as an orphan, and the step
+    later dies with "subtask result expired".
+    """
+
+    def __init__(self, store):
+        super().__init__()
+        self.store = store
+        self.status_at_publish = None
+
+    def add_request(self, **kwargs):
+        step_id = kwargs["request_data"]["task_step_subtask"]
+        self.status_at_publish = (self.store.get_step(step_id) or {}).get("status")
+        return super().add_request(**kwargs)
+
+
+def _media_plan(tool, goal="Do the thing"):
+    return {"title": "Media task", "steps": [{"seq": 1, "goal": goal, "tool": tool}]}
+
+
+def test_enqueue_subtask_maps_tools_to_dispatched_queue_types(db_env, test_app, gate_open, monkeypatch):
+    """Each media tool reaches a queue task_type ``_process_request`` dispatches.
+
+    The previous mapping sent image_gen as "image" and image_edit as "image_edit",
+    neither of which has a dispatch branch — the worker answered "Unknown request
+    type" and the step failed without any media.
+    """
+    store = db_env
+    for tool, task_type in (("image_gen", "image_gen"), ("video_gen", "video")):
+        plan = _media_plan(tool)
+        task_id = _mk_task(store, step_plan=plan)
+        queue = _RecordingQ()
+        monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+        executor = ex.TaskExecutor(app=test_app)
+        executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+        call = queue.calls[0]
+        assert call["task_type"] == task_type
+        assert call["request_data"]["type"] == task_type
+        assert call["request_data"]["text"] == "Do the thing", "handlers read the instruction from text"
+        assert call["request_data"]["task_step_subtask"], "the step tag travels for the worker guard"
+        assert call["session_id"] == task_id, "the queue session IS the task id (media folder resolution)"
+        assert store.get_task_steps(task_id)[0]["status"] == "subtask_queued"
+
+
+def test_enqueue_subtask_stamps_the_step_before_publishing(db_env, test_app, gate_open, monkeypatch):
+    """The step is ``subtask_queued`` BEFORE the request reaches the queue.
+
+    Root cause of the live «camera steps show file names but no snapshots»
+    defect: the request was published first and the status written afterwards,
+    so the idle slow worker dequeued it within milliseconds and its orphan guard
+    dropped it — every camera step then failed with "subtask result expired"
+    (nothing was ever generated, so no media reached the step either).
+    """
+    store = db_env
+    plan = _media_plan("camera", goal="Сделайте снимок кухни")
+    task_id = _mk_task(store, step_plan=plan)
+    queue = _PublishProbeQ(store)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    assert queue.status_at_publish == "subtask_queued", (
+        "publishing before the status write leaves the step 'pending' when the "
+        "idle worker dequeues it — the orphan guard drops a live sub-task"
+    )
+    step = store.get_task_steps(task_id)[0]
+    assert step["extra"]["subtask_queue_id"], "the queue id is stamped on the step for polling"
+
+
+def test_enqueue_subtask_image_edit_sends_raw_base64(db_env, test_app, gate_open, monkeypatch):
+    """image_edit takes the task's first attached image as raw base64 (the edit
+    pipeline's ``file_data``), read back from the file stored on disk."""
+    store = db_env
+    plan = _media_plan("image_edit", goal="Make it snowy")
+    task_id = _mk_task(store, step_plan=plan)
+    store.update_task(
+        task_id,
+        images=[{"file_path": "tester/src.jpg", "file_name": "src.jpg", "file_type": "image/jpeg"}],
+    )
+    payload = b"\xff\xd8\xff\xe0jpegbytes"
+    src = os.path.join(test_app.config["UPLOAD_FOLDER"], "tester", "src.jpg")
+    os.makedirs(os.path.dirname(src), exist_ok=True)
+    with open(src, "wb") as fh:
+        fh.write(payload)
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    call = queue.calls[0]
+    assert call["task_type"] == "api_image_edit"
+    assert call["request_data"]["file_data"] == base64.b64encode(payload).decode()
+    assert not call["request_data"]["file_data"].startswith("data:"), "raw base64, not a data: URL"
+    assert call["request_data"]["file_name"] == "src.jpg"
+
+
+def test_enqueue_subtask_image_edit_without_image_fails_the_step(db_env, test_app, gate_open, monkeypatch):
+    """No attached source image ⇒ the edit step fails at once (no GPU spent),
+    the task continues and the failure reaches the view."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [
+            {"seq": 1, "goal": "Edit it", "tool": "image_edit"},
+            {"seq": 2, "goal": "think", "tool": "llm"},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+    publishes = []
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    assert queue.calls == [], "nothing is enqueued without a source image"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "failed" and step["last_error"] == "no source image attached"
+    assert store.get_task(task_id)["next_step_index"] == 1, "the task continues past the dead step"
+    assert publishes == [task_id]
+
+
+def test_cycle_publishes_the_queued_media_step(db_env, test_app, gate_open, monkeypatch):
+    """The cycle that enqueues a media step publishes ``task_update`` — the
+    plan's steps used to appear all at once when the whole task completed."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen", "checkpoint_criteria": "c"}],
+    }
+    task_id = _mk_task(store, step_plan=plan, minutes_ago=30)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor = ex.TaskExecutor(app=test_app)
+    publishes = []
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+
+    executor._process_one_cycle(gate_open=True)
+
+    assert store.get_task(task_id)["status"] == "active"
+    assert store.get_task_steps(task_id)[0]["status"] == "subtask_queued"
+    assert task_id in publishes, "the queued step must reach the view at once"
+
+
+def test_poll_subtask_publishes_the_flip_to_running(db_env, test_app, gate_open, monkeypatch):
+    """The first poll flips the step to ``subtask_running`` and publishes it —
+    the view had no other signal while the media sub-task held the GPU."""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    publishes = []
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: None)
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert store.get_task_steps(task_id)[0]["status"] == "subtask_running"
+    assert publishes == [task_id], "the flip to running is published"

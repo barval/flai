@@ -201,6 +201,11 @@ function handleEvent(event) {
                 onTaskUpdate(event.data);
             }
             break;
+        case 'task_stage':
+            if (typeof onTaskStage === 'function') {
+                onTaskStage(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }
@@ -283,6 +288,7 @@ const STAGE_LABEL_KEYS = {
     crawl_start: 'stage_crawl_start',
     crawl_page: 'stage_crawl_page',
     crawl_indexing: 'stage_crawl_indexing',
+    making_plan: 'stage_making_plan',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
@@ -941,8 +947,9 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                         timeSpan.textContent = ' | ⏱️ ' + duration + langSuffix + ' |';
                         newHeader.appendChild(timeSpan);
 
-                        // Token usage counters (input ↓ / output ↑) — between the
-                        // ⏱️ time and 🚀 tps segments of the header.
+                        // Token usage counters (▲ outgoing requests / ▼
+                        // incoming answers) — between the ⏱️ time and 🚀 tps
+                        // segments of the header.
                         var tokenHTML = tokenStatsHTML(result.prompt_tokens, result.completion_tokens);
                         if (tokenHTML) {
                             var tokenHolder = document.createElement('span');

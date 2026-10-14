@@ -12,6 +12,19 @@ from collections.abc import Callable
 from typing import Any
 
 
+def N_(message: str) -> str:  # noqa: N802 — gettext lazy marker (Babel default keyword)
+    """Mark a literal for Babel extraction without translating it now.
+
+    The badge names live in a module-level dict, so an ``_()`` call would be
+    invisible to ``pybabel extract`` (it only sees literal ``_("…")`` calls) and
+    the msgids would go obsolete on the next catalog update — they then vanish
+    from the compiled ``.mo`` and the badge falls back to English. ``N_`` is a
+    Babel default keyword, so wrapping the literals keeps them extracted while
+    still returning the untranslated string here; the render site applies ``_()``.
+    """
+    return message
+
+
 def _run_calculate(expression: str) -> Any:
     from app.tools import safe_eval
 
@@ -24,17 +37,17 @@ TOOL_RUNNERS: dict[str, Callable] = {"calculate": _run_calculate}
 # emoji + the gettext msgid of its localized name. The API layer renders the
 # msgid inside the request locale and prefixes the step's answer line with it.
 TOOL_BADGES: dict[str, tuple[str, str]] = {
-    "search": ("🔎", "Web search"),
-    "rag": ("📄", "Document search"),
-    "history": ("🕘", "Conversation history"),
-    "vision": ("🖼️", "Image analysis"),
-    "calculate": ("🧮", "Calculator"),
-    "camera": ("📷", "Camera"),
-    "crawl": ("🕸️", "Site study"),
-    "rlm": ("🔬", "Deep analysis"),
-    "image_gen": ("🖼️", "Image generation"),
-    "image_edit": ("🎨", "Image editing"),
-    "video_gen": ("🎬", "Video generation"),
+    "search": ("🔎", N_("Web search")),
+    "rag": ("📄", N_("Document search")),
+    "history": ("🕘", N_("Conversation history")),
+    "vision": ("🖼️", N_("Image analysis")),
+    "calculate": ("🧮", N_("Calculator")),
+    "camera": ("📷", N_("Camera")),
+    "crawl": ("🕸️", N_("Site study")),
+    "rlm": ("🔬", N_("Deep analysis")),
+    "image_gen": ("🖼️", N_("Image generation")),
+    "image_edit": ("🎨", N_("Image editing")),
+    "video_gen": ("🎬", N_("Video generation")),
 }
 
 CAPABILITIES: list[dict[str, str]] = [
@@ -73,11 +86,13 @@ CAPABILITIES: list[dict[str, str]] = [
         "id": "vision",
         "label": "Image analysis",
         "description": (
-            "Analyze the image(s) attached to the task with the multimodal model "
-            "and answer the question about what they show. Use only when images "
-            "are attached to the task."
+            "Extract data from the image(s) attached to the task with the multimodal "
+            "model: a detailed description of everything visible plus all text on the "
+            "image. It does not answer the task question — pair it with a following "
+            "llm step that composes the answer from the extraction. Use only when "
+            "images are attached to the task."
         ),
-        "checkpoint_hint": "Name the attached image and what the analysis must state about it.",
+        "checkpoint_hint": "Name the attached image and require a detailed description plus all text on it.",
     },
     {
         "id": "camera",

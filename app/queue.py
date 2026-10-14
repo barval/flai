@@ -3401,14 +3401,17 @@ class RedisRequestQueue:
         return envelope
 
     def _process_vision_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
-        """Vision step of a Tasks-subsystem plan: analyze the attached images.
+        """Vision step of a Tasks-subsystem plan: extract data from the images.
 
         The images arrive as ``{data, name}`` parts (data: URLs built from the
-        stored files at enqueue time); the question is the task's request or
-        the step goal. ONE joint multimodal call (several images in a single
-        request, chat parity), per-image-description fallback on failure —
-        the same degradation the chat image path uses. Errors return the
-        localized error envelope so the step fails and the task continues.
+        stored files at enqueue time). The step is a pure READER: it returns
+        the two-section extraction the multimodal model produces with the
+        extraction prompt (``image.template``) — a detailed description plus
+        all text — and never answers the planner goal (the plan's following
+        ``llm`` step composes the answer from this material). ONE joint
+        multimodal call for several images (chat parity), per-image extraction
+        on failure. Errors return the localized error envelope so the step
+        fails and the task continues.
         """
         data = task.get("data", {})
         session_id = task.get("session_id", "")
@@ -3432,41 +3435,24 @@ class RedisRequestQueue:
         if mm is None or not getattr(mm, "available", False):
             return _err(str(base._("Multimodal model unavailable", lang)) if base else "Multimodal model unavailable")
 
-        task_question = str(data.get("task_question") or "").strip()
-        step_goal = str(data.get("prompt") or "").strip()
-        question = step_goal if step_goal and step_goal != task_question else (task_question or step_goal)
         current_time_str = get_current_time_in_timezone(self.app) or ""
-
+        # Empty user text selects the extraction prompt (description + text)
+        # instead of the image-request classifier — the step only reads the image.
         if len(images) > 1:
             bot_reply, mm_error = mm.process_images_with_text(
-                images, question, current_time_str, lang=lang, session_id=None, response_style="neutral"
+                images, "", current_time_str, lang=lang, session_id=None, response_style="neutral"
             )
             if (mm_error and self._is_llm_error_string(mm_error or "")) or not bot_reply:
-                bot_reply, mm_error = self._describe_images_fallback(
-                    images, question, current_time_str, lang, session_id, "neutral"
-                )
+                bot_reply, mm_error = self._extract_images_fallback(images, lang)
         else:
             bot_reply, mm_error = mm.process_image_with_text(
                 images[0],
-                question,
+                "",
                 current_time_str,
                 lang=lang,
                 session_id=None,
                 response_style="neutral",
             )
-            if (mm_error or not bot_reply) and not self._is_llm_error_string(bot_reply or ""):
-                # Empty image answer → text-only multimodal call (chat parity:
-                # never build a data: URL from an empty payload).
-                text_only, text_err = mm.process_image_with_text(
-                    "",
-                    question,
-                    current_time_str,
-                    lang=lang,
-                    session_id=None,
-                    response_style="neutral",
-                )
-                if text_only:
-                    bot_reply, mm_error = text_only, None
         if mm_error:
             bot_reply = f"⚠️ {mm_error}"
         if not bot_reply or not str(bot_reply).strip():
@@ -3492,6 +3478,24 @@ class RedisRequestQueue:
             self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
         )
         return envelope
+
+    def _extract_images_fallback(self, images: list[str], lang: str) -> tuple[str | None, str | None]:
+        """Per-image extraction when the joint vision call fails (VRAM/context).
+
+        Each item from ``describe_images_for_context`` is already the two-section
+        extraction; they are joined into one step body. No answering call — the
+        vision step only reads the images.
+        """
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal:
+            return None, None
+        results = multimodal.describe_images_for_context(images, lang)
+        sections: list[str] = []
+        for idx, (_data, description, error) in enumerate(results, 1):
+            if error or not description:
+                return None, error
+            sections.append(f"{idx}. {description}")
+        return "\n\n".join(sections), None
 
     def _process_camera_task_stream(
         self,

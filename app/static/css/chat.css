@@ -959,8 +959,10 @@ video {
     border: none;
     cursor: pointer;
     font-size: 1.2rem;
-    margin-left: 8px;
-    padding: 2px 6px;
+    /* Spacing around the 🗣️ head in message headers is halved (user
+       request): 8px→4px left margin, 6px→3px side padding. */
+    margin-left: 4px;
+    padding: 2px 3px;
     border-radius: 4px;
     transition: background-color 0.2s;
     vertical-align: middle;
@@ -992,8 +994,9 @@ video {
     border: none;
     cursor: pointer;
     font-size: 1.2rem;
-    margin-left: 8px;
-    padding: 2px 6px;
+    /* Matches the halved 🗣️ spacing so the pair reads evenly. */
+    margin-left: 4px;
+    padding: 2px 3px;
     border-radius: 4px;
     transition: background-color 0.2s;
     vertical-align: middle;
@@ -1363,8 +1366,9 @@ video {
     .header-tab {
         flex: 1;
         /* Height is owned by .header-tabs (30px) — vertical padding only
-           centers the content inside it. */
-        padding: 0 0.3rem;
+           centers the content inside it. Horizontal gaps around the tab
+           titles («Документы», «Задачи», «Сеансы») are halved. */
+        padding: 0 0.15rem;
         min-height: 0;
     }
 
@@ -1419,6 +1423,16 @@ video {
     .chat-header {
         flex-shrink: 0;
         margin-bottom: 5px;
+        /* The bar is exactly as tall as the 💾 save button: no vertical
+           padding, and the button itself defines the bottom edge (no extra
+           space below it). */
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .chat-header h2,
+    .chat-header .context-info-container {
+        align-items: center;
     }
     
     .chat-messages {
@@ -1465,6 +1479,14 @@ video {
        button carries margin-left: auto (equal gaps between all three). */
     .rlm-controls {
         width: 100%;
+        /* The row is exactly as tall as the Send button: every control
+           stretches edge-to-edge with it (the label keeps its content
+           centered). */
+        align-items: stretch;
+    }
+
+    .rlm-controls label {
+        align-self: center;
     }
 
     .rlm-controls #voice-record-button {
@@ -1552,6 +1574,18 @@ video {
     .context-info {
         font-size: 0.8rem;
         padding: 0.2rem 0.4rem;
+    }
+
+    /* Halved spacing around the 🗣️ head in message headers (user request):
+       the flex gap between header items drops 0.5rem → 0.25rem and the head
+       button itself shrinks (shared rule above). */
+    .message-header {
+        gap: 0.25rem;
+    }
+
+    .save-chat-button,
+    .cancel-stream-header {
+        align-self: flex-end;
     }
 
     .message-input button {

@@ -286,10 +286,37 @@ class TestReviewGuards:
 
     def test_mobile_tabs_match_footer_height(self):
         """The tab-headers block is exactly as tall as the footer bar (30px),
-        and the tabs own the height (no vertical padding inflation)."""
+        and the tabs own the height (no vertical padding inflation). The
+        horizontal gaps around the tab titles are halved (0.15rem)."""
         block = self._css_media_block(CHAT_CSS)
         assert "height: 30px" in block
-        assert "padding: 0 0.3rem" in block
+        assert "padding: 0 0.15rem" in block
+
+    def test_mobile_header_bar_hugs_save_button(self):
+        """The «Чат/Задача 📊 …» bar has zero vertical padding and the save
+        button defines its bottom edge (align-items: stretch + flex-end)."""
+        block = self._css_media_block(CHAT_CSS, anchor="    .chat-header {")
+        assert "padding: 0;" in block
+        assert "align-items: stretch;" in block
+        idx = CHAT_CSS.index(".save-chat-button,\n    .cancel-stream-header {")
+        assert "align-self: flex-end" in CHAT_CSS[idx : idx + 120]
+
+    def test_mobile_controls_row_hugs_send_button(self):
+        """The «Глубокий анализ / 🎤 / 📎 / Отправить» row stretches every
+        control edge-to-edge with the Send button."""
+        block = self._css_media_block(CHAT_CSS, anchor="    .rlm-controls {")
+        assert "align-items: stretch;" in block
+        assert "align-self: center;" in block
+
+    def test_tts_head_spacing_halved(self):
+        """The 🗣️ head (and its 📋 neighbour) halve their spacing in message
+        headers: 4px left margin, 3px+1px padding instead of 8px/6px."""
+        for cls in (".tts-button {", ".copy-message-button {"):
+            block = self._block(CHAT_CSS, cls, "}")
+            assert "margin-left: 4px" in block, cls
+            assert "padding: 2px 3px" in block, cls
+        media = self._css_media_block(CHAT_CSS)
+        assert "gap: 0.25rem" in self._block(media, ".message-header {", "}")
 
     def test_header_row_matches_tab_font_and_half_divider_gaps(self):
         """The «Чат/Задача 📊 … | Стиль: …» row uses the tab headers' font size

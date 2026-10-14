@@ -3285,6 +3285,39 @@ msgstr ""
 "⚠️ No link found in your message. Send the address of the site you want "
 "me to study."
 
+#: app/queue.py:3432
+msgid "No image in your message"
+msgstr "No image in your message"
+
+#: app/routes/tasks.py:96
+msgid "Failed to save file"
+msgstr "Failed to save file"
+
+#: app/routes/tasks.py:532
+#, python-brace-format
+msgid "Image: {name}"
+msgstr "Image: {name}"
+
+#: app/routes/tasks.py:532
+msgid "[Image attached]"
+msgstr "[Image attached]"
+
+#: app/routes/tasks.py:608
+msgid "Only failed, expired or cancelled tasks can be restarted"
+msgstr "Only failed, expired or cancelled tasks can be restarted"
+
+#: app/tasks/executor.py:1224
+msgid "step attempts exhausted"
+msgstr "step attempts exhausted"
+
+#: app/templates/chat.html:71
+msgid "Restart task"
+msgstr "Restart task"
+
+#: app/templates/chat.html:180
+msgid "Task is not awaiting an answer right now — status:"
+msgstr "Task is not awaiting an answer right now — status:"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

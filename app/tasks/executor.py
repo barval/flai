@@ -643,6 +643,12 @@ class TaskExecutor:
         for row in orphans:
             update_step(row["id"], status="interrupted", interrupt_reason="restart", finished_at=_now_iso())
             update_task(row["task_id"], abort_reason="restart")
+        # A frozen task parked for the answer image-description thread died
+        # with the process (the daemon thread is gone): restore awaiting_user
+        # so the task does not hang forever.
+        for t in get_tasks_by_status("frozen"):
+            if t.get("abort_reason") == "answer_images":
+                update_task(t["id"], status="awaiting_user", abort_reason=None)
         # The pointer SET died with the old process too — rebuild it empty.
         try:
             redis_client = self._redis or self.app.request_queue.redis
@@ -876,6 +882,13 @@ class TaskExecutor:
         task_id = task["id"]
         task = get_task(task_id) or task
         if task["status"] == "frozen":
+            if task.get("abort_reason") == "answer_images":
+                # The answer's image-description thread is still running — the
+                # pending user_input row must NOT be consumed until the
+                # descriptions are appended (they arrive as a step-result
+                # append). A later cycle resumes the task once the thread
+                # flips the status back to awaiting_user.
+                return
             # Resuming after a gate re-open: back to active before stepping.
             update_task(task_id, status="active")
             task["status"] = "active"
@@ -1202,10 +1215,16 @@ class TaskExecutor:
         while True:
             attempts = int(row.get("attempts") or 0)
             if attempts >= max_attempts:
+                from app.llamacpp_client import _tr
+
+                last_reason = str(corrective_note[:300]) if corrective_note else str(row.get("checkpoint_result") or "")
+                user_error = _tr("step attempts exhausted", lang)
+                if last_reason:
+                    user_error += f": {last_reason[:300]}"
                 update_step(
                     row["id"],
                     status="failed",
-                    last_error="step attempts exhausted",
+                    last_error=user_error,
                     finished_at=_now_iso(),
                 )
                 logger.warning(f"task {task_id} step {idx + 1} failed after {attempts} attempts — continuing")

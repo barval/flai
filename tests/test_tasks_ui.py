@@ -402,8 +402,9 @@ class TestReviewGuards:
         verifier's model — gating the token block on ``exec_seconds`` hid both."""
         block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
         assert "hasTokens" in block
-        # Tokens are gated on the usage, not on the duration.
-        assert "if (!isUser && hasTokens)" in block
+        # Tokens are gated on the usage, not on the duration; `usage` itself is
+        # already gated on !isUser, so a user message never yields tokens.
+        assert "if (hasTokens)" in block
         assert "tokenStatsHTML(promptTokens, completionTokens)" in block
         # The tool name is NOT in the header — the verifier model is — so the
         # header has no tool fallback branch.

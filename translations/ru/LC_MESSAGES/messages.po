@@ -3313,6 +3313,39 @@ msgstr ""
 "⚠️ В вашем сообщении нет ссылки. Отправьте адрес сайта, который нужно "
 "изучить."
 
+#: app/queue.py:3432
+msgid "No image in your message"
+msgstr "В вашем сообщении нет изображения"
+
+#: app/routes/tasks.py:96
+msgid "Failed to save file"
+msgstr "Не удалось сохранить файл"
+
+#: app/routes/tasks.py:532
+#, python-brace-format
+msgid "Image: {name}"
+msgstr "Изображение: {name}"
+
+#: app/routes/tasks.py:532
+msgid "[Image attached]"
+msgstr "[Изображение прикреплено]"
+
+#: app/routes/tasks.py:608
+msgid "Only failed, expired or cancelled tasks can be restarted"
+msgstr "Перезапустить можно только неудачные, просроченные или отменённые задачи"
+
+#: app/tasks/executor.py:1224
+msgid "step attempts exhausted"
+msgstr "Исчерпаны попытки выполнения шага"
+
+#: app/templates/chat.html:71
+msgid "Restart task"
+msgstr "Перезапустить"
+
+#: app/templates/chat.html:180
+msgid "Task is not awaiting an answer right now — status:"
+msgstr "Задача сейчас не ждёт ответа — статус:"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

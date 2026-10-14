@@ -68,6 +68,7 @@
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
                 <button id="stop-task-button" class="cancel-stream-header" title="{{ _('Stop task') }}">■</button>
+                <button id="retry-task-button" class="cancel-stream-header" title="{{ _('Restart task') }}" style="display:none">🔄</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
@@ -176,6 +177,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'task_status_expired': {{ _("Expired")|tojson }},
     'task_awaiting_answer': {{ _("Awaiting answer")|tojson }},
     'task_answer_placeholder': {{ _("Answer the clarifying question…")|tojson }},
+    'task_not_awaiting': {{ _("Task is not awaiting an answer right now — status:")|tojson }},
     'task_no_tasks': {{ _("No tasks yet")|tojson }},
     'task_status_draft': {{ _("Draft")|tojson }},
     'task_draft_placeholder': {{ _("Draft — describe the task…")|tojson }},

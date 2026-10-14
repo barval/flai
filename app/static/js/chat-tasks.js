@@ -567,24 +567,22 @@ function renderTaskMessage(m, task) {
     header.className = 'message-header';
     const ts = m.created_at ? formatFullDateTime(m.created_at) : '';
     header.textContent = '📅 ' + (ts || '');
-    if (!isUser) {
-        if (m.model_name) {
-            const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
-            header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji(m.model_type || 'reasoning') || '') + escapeHtml(shortModel) + '</span>';
-        }
+    if (m.model_name) {
+        const shortModel = (m.model_name.split('/').pop() || m.model_name).replace(/\.gguf$/i, '');
+        header.innerHTML += ' <span class="text-muted">| ' + (getModelEmoji(m.model_type || 'reasoning') || '') + escapeHtml(shortModel) + '</span>';
     }
     const secs = Number(m.exec_seconds) || 0;
     const usage = (!isUser && m.usage) || {};
     const promptTokens = Number(usage.prompt_tokens) || 0;
     const completionTokens = Number(usage.completion_tokens) || 0;
     const hasTokens = promptTokens > 0 || completionTokens > 0;
-    if (!isUser && secs >= 0.1) {
+    if (secs >= 0.1) {
         header.innerHTML += ' <span class="text-muted">| ⏱️ ' + secs.toFixed(1) + t('seconds_suffix') + ' |</span>';
     }
-    if (!isUser && hasTokens) {
+    if (hasTokens) {
         header.innerHTML += tokenStatsHTML(promptTokens, completionTokens);
     }
-    if (!isUser && hasTokens && secs >= 0.1) {
+    if (hasTokens && secs >= 0.1) {
         const tps = (completionTokens / secs).toFixed(1);
         header.innerHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
     }
@@ -714,13 +712,14 @@ function setTaskMode(active, task) {
     const taskTitle = document.getElementById('task-title-text');
     const chatTitle = document.getElementById('chat-title-text');
     const stopBtn = document.getElementById('stop-task-button');
+    const retryBtn = document.getElementById('retry-task-button');
     if (taskTitle) taskTitle.classList.toggle('hidden', !active);
     if (chatTitle) chatTitle.classList.toggle('hidden', active);
     const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status) || task.status === 'draft';
-    // `.cancel-stream-header` is display:none (chat.css) — the button is shown
-    // by an inline display, the same way the chat's cancel button is (a plain
-    // `.hidden` toggle could never overcome that rule).
     if (stopBtn) stopBtn.style.display = active && !stopped ? 'inline-flex' : 'none';
+    // Retry button visible on failed/expired/cancelled terminal tasks.
+    const canRetry = task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed';
+    if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';
 
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-button');
@@ -788,8 +787,8 @@ function sendTaskInput() {
     if (!task) return;
     const input = document.getElementById('message-input');
     const text = input ? input.value.trim() : '';
-    if (!text) return;
     const images = taskImageFiles();
+    if (!text && images.length === 0) return;
 
     const formDataFor = (payloadText, field) => {
         const fd = new FormData();
@@ -825,7 +824,13 @@ function sendTaskInput() {
         return;
     }
 
-    if (task.status !== 'awaiting_user') return;
+    if (task.status !== 'awaiting_user') {
+        // Silent returns misled users: the typed answer sat in the input with
+        // no feedback. The task status banner already explains the state
+        // (running/queued/...); surface it on the attempt.
+        alert(t('task_not_awaiting') + ' ' + taskStatusLine(task));
+        return;
+    }
     input.value = '';
     fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/answer', {
         method: 'POST',
@@ -847,6 +852,21 @@ function sendTaskInput() {
             if (input) input.value = text;
             alert(t('error') + ': ' + err.message);
         });
+}
+
+function retryCurrentTask() {
+    if (!window.currentTaskId) return;
+    fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/retry', { method: 'POST' })
+        .then(res => res.json().catch(() => ({})))
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            loadTasksFromServer();
+            if (window.currentTaskId) scheduleTaskReload(window.currentTaskId);
+        })
+        .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function stopCurrentTask() {
@@ -970,6 +990,10 @@ function initTasksView() {
     const stopBtn = document.getElementById('stop-task-button');
     if (stopBtn) {
         stopBtn.addEventListener('click', stopCurrentTask);
+    }
+    const retryBtn = document.getElementById('retry-task-button');
+    if (retryBtn) {
+        retryBtn.addEventListener('click', retryCurrentTask);
     }
     // Initial load: fills the tab counter even before the first switch and
     // restores the open-task state after a page reload is not needed (views

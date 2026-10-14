@@ -10,9 +10,8 @@ parallel messages table.
 
 from __future__ import annotations
 
+import base64 as _b64
 import json
-import os
-import uuid
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
@@ -27,7 +26,7 @@ from app.tasks.executor import (
     get_queued_task_positions,
     get_task_steps,
 )
-from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_task
+from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_step, update_task
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
 
@@ -46,15 +45,18 @@ def _iso(value: Any) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
-def _save_task_images(uploads: list[Any]) -> tuple[list[dict[str, str]] | None, str | None, int | None]:
+def _save_task_images(uploads: list[Any], task_id: str) -> tuple[list[dict[str, str]] | None, str | None, int | None]:
     """Save attached images of a task request/answer; return (parts, error, status).
 
     Chat parity: up to ``MAX_CHAT_IMAGES`` images, quota-checked, downscaled
     (single → ``MAX_IMAGE_SIZE``, several → ``MAX_IMAGE_SIZE_MULTI``), stored
     under the user's upload folder via ``save_uploaded_file``. Only
-    ``{file_path, file_name}`` dicts persist — bytes never enter the DB.
+    ``{file_path, file_name, file_type}`` dicts persist — bytes never enter
+    the DB. The files land in the folder named after the TASK id (like the
+    camera/vision sub-task media, executor ``_enqueue_subtask``), so
+    ``/api/files`` resolves ownership through the tasks table — a random
+    folder id was rejected with 403 and the task view showed no image.
     """
-    import base64 as _b64
     import mimetypes
 
     from app.utils import check_upload_quota, resize_image_if_needed, save_uploaded_file
@@ -85,14 +87,14 @@ def _save_task_images(uploads: list[Any]) -> tuple[list[dict[str, str]] | None, 
         rel_path = save_uploaded_file(
             file_data=n_data,
             filename=part_name,
-            session_id=str(uuid.uuid4()),
+            session_id=task_id,
             upload_folder=current_app.config.get("UPLOAD_FOLDER", "data/uploads"),
             user_id=user_id,
         )
         if not rel_path:
             with force_locale(lang):
                 return None, _("Failed to save file"), 500
-        images.append({"file_path": rel_path, "file_name": part_name})
+        images.append({"file_path": rel_path, "file_name": part_name, "file_type": part_type})
     return images, None, None
 
 
@@ -279,6 +281,17 @@ def _render_messages(task: dict) -> list[dict]:
         image_names = [n for n in image_names if n]
         if image_names:
             request_text = request_text + "\n\n" + _("Attached images: {names}").format(names=", ".join(image_names))
+        # Expose the first task image as extra.media so JS renders it visually.
+        req_extra: dict[str, Any] = {}
+        task_images = task.get("images") or []
+        if task_images and isinstance(task_images, list):
+            first_img = task_images[0]
+            if isinstance(first_img, dict) and first_img.get("file_path"):
+                req_extra["media"] = {
+                    k: first_img[k] for k in ("file_path", "file_name", "file_type", "file_size") if k in first_img
+                }
+                if "file_type" not in req_extra.get("media", {}):
+                    req_extra["media"]["file_type"] = "image/jpeg"
         messages.append(
             {
                 "id": f"{task['id']}:request",
@@ -289,7 +302,7 @@ def _render_messages(task: dict) -> list[dict]:
                 "total_steps": total,
                 "status": None,
                 "tool": "",
-                "extra": {},
+                "extra": req_extra,
                 "created_at": _iso(task.get("created_at")),
             }
         )
@@ -424,7 +437,7 @@ def task_request_route(task_id):
 
     images = None
     if uploads:
-        images, img_error, img_status = _save_task_images(uploads)
+        images, img_error, img_status = _save_task_images(uploads, task_id)
         if img_error:
             return jsonify({"error": "⚠️ " + img_error}), img_status
 
@@ -470,7 +483,7 @@ def task_answer(task_id):
     else:
         data = request.get_json(silent=True) or {}
     answer = str(data.get("answer") or data.get("request") or "").strip()
-    if not answer:
+    if not answer and not uploads:
         # Log what the client actually sent — a cached pre-fix page posts the
         # draft field "request" to /answer, which used to answer «Ответ пуст».
         current_app.logger.warning(
@@ -493,35 +506,65 @@ def task_answer(task_id):
         # The answer may carry a fresh Documents-panel selection — it scopes
         # every remaining rag/rlm step of the task.
         update_task(task_id, doc_ids=_clean_doc_ids(data.get("doc_ids")))
+    images: list[dict[str, str]] = []
+    ui_media: dict[str, Any] | None = None
     if uploads:
-        images, img_error, img_status = _save_task_images(uploads)
+        images, img_error, img_status = _save_task_images(uploads, task_id)
         if img_error:
             return jsonify({"error": "⚠️ " + img_error}), img_status
         if images:
             merged = list(task.get("images") or []) + images
             update_task(task_id, images=merged)
-            # Describe attached images via the multimodal model and append the
-            # descriptions to the answer text, so the next reasoning step sees
-            # them (the user_input step result is the enriched text).
-            mm = current_app.modules.get("multimodal")
-            if mm and mm.available:
-                lang = task.get("lang") or "ru"
-                import base64 as _b64
+            # First image becomes the conversation-view thumbnail (the JS
+            # renderer shows images when extra.media has a file_path).
+            first = images[0]
+            ui_media = {k: first[k] for k in ("file_path", "file_name", "file_type", "file_size") if k in first}
+            if not ui_media.get("file_type"):
+                ui_media["file_type"] = "image/jpeg"
+    if not answer.strip() and images:
+        # Image-only answer: at least let the reasoning model know there IS
+        # an image attached (the background description below appends the
+        # full text to the step result as soon as the multimodal model has
+        # processed it).
+        fname = (images[0] or {}).get("file_name", "")
+        answer = _("Image: {name}").format(name=fname) if fname else _("[Image attached]")
 
-                upload_folder = str(current_app.config.get("UPLOAD_FOLDER") or "")
-                for img in images:
-                    file_path = img.get("file_path") or ""
-                    if not file_path:
-                        continue
-                    full_path = os.path.join(upload_folder, file_path)
-                    if os.path.isfile(full_path):
-                        with open(full_path, "rb") as fh:
-                            b64 = _b64.b64encode(fh.read()).decode("ascii")
-                        desc, _err = mm.describe_image_for_rlm(b64, lang=lang)
-                        if desc:
-                            label = _("{file_name} — image description").format(file_name=img.get("file_name", ""))
-                            answer = f"{answer}\n\n[{label}]\n{desc}"
-    add_user_input_step(task_id, int(question["seq"]), answer)
+    # De-duplicate: if a user_input for this question already exists, the
+    # browser resent the form (the previous fix needed 2-30 s of GPU image
+    # description inside this handler, which read as "nothing happened") —
+    # return success without a duplicate row.
+    existing_inputs = [
+        s
+        for s in get_task_steps(task_id)
+        if s.get("kind") == "user_input" and s.get("parent_step_id") == question.get("id")
+    ]
+    if existing_inputs:
+        publish_task_update(current_app._get_current_object(), get_task(task_id))
+        return jsonify({"ok": True, "dedup": True}), 200
+
+    ui_step_id = add_user_input_step(task_id, int(question["seq"]), answer)
+    # Chat-style header data: the multimodal model that will describe the
+    # images (added by the background thread) or nothing without images.
+    ui_extra: dict[str, Any] = {}
+    if ui_media:
+        ui_extra["media"] = ui_media
+    if images:
+        from app.model_config import get_model_config as _gmc
+
+        mm_config = _gmc("multimodal") or {}
+        mm_model_name = str(mm_config.get("model_name") or "")
+        if mm_model_name:
+            ui_extra["model_name"] = mm_model_name
+            ui_extra["model_type"] = "multimodal"
+    if ui_extra:
+        update_step(ui_step_id, extra=ui_extra)
+    if images:
+        # Describe the images AFTER answering (app/tasks/answer_images.py):
+        # the multimodal call is GPU work (2-30 s) — holding the HTTP response
+        # for it made users re-press send and produced duplicate answers.
+        from app.tasks.answer_images import describe_answer_images
+
+        describe_answer_images(self_app=current_app._get_current_object(), task=task, step_id=ui_step_id, images=images)
     if "deep_analysis" in data and _truthy_flag(data.get("deep_analysis")):
         # The toggle switched ON while answering: the plan already exists and
         # the planner cannot amend it, so a deep-analysis (rlm) step over the
@@ -550,6 +593,22 @@ def _cancel_inflight_subtasks(task_id: str) -> None:
                 queue.cancel_task(str(queue_id))
     except Exception as e:  # noqa: BLE001 — the cancel is best effort
         current_app.logger.warning(f"in-flight subtask cancel failed ({task_id}): {e}")
+
+
+@bp.route("/<task_id>/retry", methods=["POST"])
+def task_retry(task_id):
+    """Re-queue a failed/expired/cancelled task so the planner picks it up fresh."""
+    if "login" not in session:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    task = _owned_task(task_id)
+    if task is None:
+        return jsonify({"error": "⚠️ " + _("Task not found")}), 404
+    if task.get("status") not in ("failed", "expired", "cancelled"):
+        return jsonify({"error": "⚠️ " + _("Only failed, expired or cancelled tasks can be restarted")}), 409
+    update_task(task_id, status="queued", next_step_index=0, abort_reason=None, completed_at=None)
+    t = get_task(task_id)
+    publish_task_update(current_app._get_current_object(), t)
+    return jsonify({"task": _task_summary(t)}), 202
 
 
 @bp.route("/<task_id>/stop", methods=["POST"])

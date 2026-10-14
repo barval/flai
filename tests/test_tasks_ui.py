@@ -315,7 +315,8 @@ class TestReviewGuards:
         assert "    .chat-container .rlm-controls label {\n        align-self: center;" in block
         msgs = self._block(CHAT_CSS, "    .chat-messages {", "    .message-input {")
         assert "margin-bottom: 0;" in msgs
-        assert "        padding: 0;" in self._block(CHAT_CSS, "    .message-input {", "    #file-preview-container {")
+        input_block = self._block(CHAT_CSS, '    .message-input input[type="text"] {', "}")
+        assert "height: 2rem;" in input_block, "the text input matches the Send button's height"
 
     def test_tts_head_spacing_halved(self):
         """The 🗣️ head (and its 📋 neighbour) halve their spacing in message

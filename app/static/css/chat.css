@@ -1471,6 +1471,11 @@ video {
 
     .message-input input[type="text"] {
         width: 100%;
+        /* Same height as the Send button above (font line ~19px + its 0.4rem
+           vertical padding ≈ 2rem): box-sizing border-box makes the explicit
+           height include the border. */
+        height: 2rem;
+        padding: 0.15rem 0.6rem;
     }
 
     /* Chat controls: 🎤/📎/Send are relocated into the "Deep analysis" row

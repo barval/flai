@@ -259,6 +259,12 @@ class TestReviewGuards:
         return source[start : end + 6 if end > start else len(source)]
 
     @staticmethod
+    def _block(source, start_anchor, end_anchor):
+        start = source.index(start_anchor)
+        end = source.index(end_anchor, start) + len(end_anchor)
+        return source[start:end]
+
+    @staticmethod
     def _css_media_block(css, anchor="    .header-tabs {"):
         """The @media block containing the anchor (mobile overrides)."""
         start = css.rindex("@media", 0, css.index(anchor))
@@ -284,6 +290,18 @@ class TestReviewGuards:
         block = self._css_media_block(CHAT_CSS)
         assert "height: 30px" in block
         assert "padding: 0 0.3rem" in block
+
+    def test_header_row_matches_tab_font_and_half_divider_gaps(self):
+        """The «Чат/Задача 📊 … | Стиль: …» row uses the tab headers' font size
+        (desktop 1rem / mobile 0.85rem) and the divider gaps are half the old
+        two-nbsp padding (user request)."""
+        assert "font-size: 1rem" in self._block(CHAT_CSS, ".chat-header h2 {", "}")
+        media = self._css_media_block(CHAT_CSS)
+        h2 = self._block(media, ".chat-header h2 {", "}")
+        assert "font-size: 0.85rem" in h2, "the row matches the mobile tab font"
+        line = next(ln for ln in CHAT_HTML.splitlines() if 'id="status-counter"' in ln)
+        assert '&nbsp;<span class="header-divider">|</span>&nbsp;' in line
+        assert '&nbsp;&nbsp;<span class="header-divider">' not in line
 
     def test_stop_button_replaces_the_save_button(self):
         """The ■ replaces the 💾 in the header row while the task is processing

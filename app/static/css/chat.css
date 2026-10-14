@@ -730,7 +730,9 @@
 .chat-header h2 {
     color: #2c3e50;
     margin: 0;
-    font-size: 1.2rem;
+    /* Same size as the tab headers («Документы», «Задачи», «Сеансы»): the
+       header row reads as part of the same chrome, not as a page title. */
+    font-size: 1rem;
     /* The header row («Чат 📊 0/0 | Стиль: …» / «Задача 📊 …») is exactly as
        tall as its tallest button (the 💾 save button): the h2 line-height
        would otherwise inflate the bar. */
@@ -1532,7 +1534,8 @@ video {
     }
 
     .chat-header h2 {
-        font-size: 1rem;
+        /* Same size as the mobile tab headers (0.85rem). */
+        font-size: 0.85rem;
     }
 
     .response-style-btn {

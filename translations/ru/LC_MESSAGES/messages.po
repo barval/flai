@@ -305,6 +305,10 @@ msgstr "Выполняется"
 msgid "Frozen"
 msgstr "Приостановлено"
 
+#: app/templates/chat.html
+msgid "Transcribing audio…"
+msgstr "Распознаю аудио…"
+
 msgid "Completed"
 msgstr "Завершено"
 
@@ -599,6 +603,15 @@ msgstr "Приложенные документы: {names}"
 #: app/routes/tasks.py
 msgid "Only image files can be attached to a task"
 msgstr "К задаче можно приложить только изображения"
+
+#: app/routes/tasks.py
+msgid "Only audio files can be attached to a task"
+msgstr "К задаче можно приложить только аудиозаписи"
+
+#: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached audio recordings: {names}"
+msgstr "Приложенные аудиозаписи: {names}"
 
 #: app/queue.py:2842 app/queue.py:2934 app/templates/chat.html:135
 #, python-brace-format
@@ -2885,8 +2898,8 @@ msgstr "Не удалось удалить часть документов"
 
 #: app/templates/chat.html:221
 #, python-brace-format
-msgid "Selected documents: {count} ({size})"
-msgstr "Выделено документов: {count} ({size})"
+msgid "Selected: {count} ({size})"
+msgstr "Выделено: {count} ({size})"
 
 #: app/templates/chat.html:222
 msgid "Select all documents in folder"

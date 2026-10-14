@@ -55,6 +55,7 @@ from flask import Flask
 
 from app.database import get_db
 from app.model_config import get_model_config
+from app.tasks.audio_transcribe import ABORT_REASON as ATTACHMENT_TRANSCRIPT_REASON
 from app.tasks.gate import is_gate_open
 from app.tasks.runner import (
     StepAborted,
@@ -109,6 +110,39 @@ _FALLBACK_BUDGET_NO_SUMMARY = "Execution budget exhausted; the summary could not
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def audio_context_block(task: dict) -> str:
+    """Request-phase audio transcripts of a task as a prompt block.
+
+    Chat parity (v12.6): a voice message or an audio file attached to the task
+    request is transcribed into text that the planner and every step read as
+    the user's own words — the transcript is CONTEXT (like an image
+    description), never a Documents-panel document. Answer-phase transcripts
+    belong to their answer step and are appended there by the transcription
+    thread (``app/tasks/audio_transcribe.py``), so they are skipped here.
+    """
+    parts = []
+    for entry in task.get("audio") or []:
+        if not isinstance(entry, dict) or str(entry.get("phase") or "") == "answer":
+            continue
+        text = str(entry.get("transcript") or "").strip()
+        if not text:
+            continue
+        parts.append(f"[Audio transcript ({entry.get('file_name') or ''})]\n{text}")
+    return "\n\n".join(parts)
+
+
+def _request_text(task: dict) -> str:
+    """The user's original request plus any transcribed audio (single source
+    for the planner, every step prompt and the final summary)."""
+    plan = task.get("step_plan") or {}
+    if isinstance(plan, dict):
+        base = str(plan.get("task_request") or task.get("title") or "")
+    else:
+        base = str(task.get("title") or "")
+    block = audio_context_block(task)
+    return f"{base}\n\n{block}" if block else base
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -549,13 +583,14 @@ def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None =
 
     lang = task.get("lang") or "ru"
     plan = task.get("step_plan") or {}
+    request_text = _request_text(task)
     params = {
-        "task_request": (plan.get("task_request") if isinstance(plan, dict) else None) or task.get("title") or "",
+        "task_request": request_text,
         "plan": _plan_text(plan),
         "results_digest": _results_digest(task["id"]),
         "slm_facts": recall_slm_facts(
             app,
-            (plan.get("task_request") if isinstance(plan, dict) else None) or task.get("title") or "",
+            request_text,
             task.get("user_id") or "",
             lang,
         ),
@@ -655,6 +690,13 @@ class TaskExecutor:
         for t in get_tasks_by_status("frozen"):
             if t.get("abort_reason") == "answer_images":
                 update_task(t["id"], status="awaiting_user", abort_reason=None)
+            elif t.get("abort_reason") == ATTACHMENT_TRANSCRIPT_REASON:
+                # The transcription thread died with the process (its files are
+                # still on disk): restart it instead of unfreezing — restoring
+                # queued/awaiting here would hand the planner an empty request.
+                from app.tasks.audio_transcribe import start_task_audio_transcription
+
+                start_task_audio_transcription(self.app, t["id"])
         # The pointer SET died with the old process too — rebuild it empty.
         try:
             redis_client = self._redis or self.app.request_queue.redis
@@ -888,12 +930,13 @@ class TaskExecutor:
         task_id = task["id"]
         task = get_task(task_id) or task
         if task["status"] == "frozen":
-            if task.get("abort_reason") == "answer_images":
-                # The answer's image-description thread is still running — the
-                # pending user_input row must NOT be consumed until the
-                # descriptions are appended (they arrive as a step-result
-                # append). A later cycle resumes the task once the thread
-                # flips the status back to awaiting_user.
+            if task.get("abort_reason") in ("answer_images", ATTACHMENT_TRANSCRIPT_REASON):
+                # Attachment work is still running: either the answer's
+                # image-description thread (the pending user_input row must NOT
+                # be consumed until the descriptions are appended) or the
+                # Whisper transcription of a request/answer audio (a dictated
+                # task must not be planned before its text exists). A later
+                # cycle resumes the task once the worker flips the status back.
                 return
             # Resuming after a gate re-open: back to active before stepping.
             update_task(task_id, status="active")
@@ -1044,12 +1087,13 @@ class TaskExecutor:
                     "when none are attached) and answers the task request; do not ask which documents "
                     "to analyze."
                 )
+        request_text = _request_text(task)
         params = {
-            "task_request": task.get("title") or "",
+            "task_request": request_text,
             "capabilities_section": _capabilities_section(
                 camera_rooms=self._camera_rooms(task), has_images=bool(task.get("images"))
             ),
-            "slm_facts": recall_slm_facts(self.app, task.get("title") or "", task.get("user_id") or "", lang),
+            "slm_facts": recall_slm_facts(self.app, request_text, task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),
             "deep_analysis_note": deep_note,
         }
@@ -1395,11 +1439,8 @@ class TaskExecutor:
             row = get_step(row["id"]) or row
 
     def _task_request(self, task: dict) -> str:
-        """The user's original request (kept in the plan payload at plan phase)."""
-        plan = task.get("step_plan") or {}
-        if isinstance(plan, dict):
-            return str(plan.get("task_request") or task.get("title") or "")
-        return str(task.get("title") or "")
+        """The user's original request plus transcribed audio (module helper)."""
+        return _request_text(task)
 
     def _user_answers_text(self, task_id: str) -> str:
         """Q&A pairs accumulated so far (fed to the step prompt)."""

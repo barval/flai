@@ -49,6 +49,7 @@ UI_MSGIDS = {
     "No task selected — use «+» to create one": "task_empty_state",
     "No tasks yet": "task_no_tasks",
     "Export is unavailable while viewing a task": "task_export_unavailable",
+    "Transcribing audio…": "task_status_transcribing",
 }
 
 TASK_JS_FUNCTIONS = (
@@ -257,6 +258,41 @@ class TestReviewGuards:
         end = source.find("\n    };", start + 1)
         return source[start : end + 6 if end > start else len(source)]
 
+    @staticmethod
+    def _css_media_block(css, anchor="    .header-tabs {"):
+        """The @media block containing the anchor (mobile overrides)."""
+        start = css.rindex("@media", 0, css.index(anchor))
+        end = css.find("\n}", css.index(anchor))
+        return css[start:end]
+
+    def test_mobile_tasks_panel_full_screen(self):
+        """A task opened from the list takes the whole area between the tab
+        headers and the footer (same as the chat panel): the tasks list must be
+        part of BOTH mobile panel selectors."""
+        idx_hide = CHAT_CSS.index(".sessions-list,\n    .documents-list,\n    .tasks-list {")
+        idx_show = CHAT_CSS.index(
+            ".sessions-sidebar.panel-open .sessions-list.active,"
+            "\n    .sessions-sidebar.panel-open .documents-list.active,"
+            "\n    .sessions-sidebar.panel-open .tasks-list.active {"
+        )
+        assert idx_hide < idx_show
+        assert ".sessions-sidebar.panel-open ~ .chat-main {" in CHAT_CSS
+
+    def test_mobile_tabs_match_footer_height(self):
+        """The tab-headers block is exactly as tall as the footer bar (30px),
+        and the tabs own the height (no vertical padding inflation)."""
+        block = self._css_media_block(CHAT_CSS)
+        assert "height: 30px" in block
+        assert "padding: 0 0.3rem" in block
+
+    def test_stop_button_replaces_the_save_button(self):
+        """The ■ replaces the 💾 in the header row while the task is processing
+        (the chat's own stream swap pattern) and the 💾 returns when the task
+        stops/finishes — both bars keep their exact height."""
+        block = self._function_block(CHAT_TASKS, "function setTaskMode(")
+        assert "getElementById('save-chat-button')" in block
+        assert "saveBtn.style.display = active && !stopped ? 'none' : ''" in block
+
     def test_documents_ride_with_task_send(self):
         """The shared Documents-panel selection is snapshotted into the task
         request/answer (the same #rlm-docs multi-select the chat reads)."""
@@ -304,6 +340,40 @@ class TestReviewGuards:
         # selection (a submit that attached files must never mean "all docs").
         assert "update_task(task_id, doc_ids=new_doc_ids + " in ROUTES_TASKS
         assert ROUTES_TASKS.count("new_doc_ids + ") == 2
+
+    def test_audio_attachments_ride_with_task_send(self):
+        """Voice and audio reach a task like they do in chat (user request:
+        «вставка любых типов вложений в задачи должна быть как и в чате»): the
+        microphone blob and every audio chip are collected and shipped as
+        'audio' parts the server transcribes into the task's context."""
+        helper = self._function_block(CHAT_TASKS, "function taskAudioFiles(")
+        assert "isAudioTypeFile" in helper
+        assert "attachedVoiceBlob" in helper, "a recording paired with an image must not be dropped"
+        assert "attachedFile" in helper, "a lone recording parks in the legacy single slot"
+        builder = self._arrow_block(CHAT_TASKS, "const formDataFor = ")
+        assert "fd.append('audio', a)" in builder
+        send = self._function_block(CHAT_TASKS, "function sendTaskInput(")
+        assert "taskAudioFiles()" in send
+        assert "audio.length === 0" in send, "an audio-only submit must not silently do nothing"
+        # The recorder flags the chat as transcribing; the task reports its own
+        # progress through task events, so that flag must not linger.
+        assert "clearTaskVoiceState()" in send
+        voice_reset = self._function_block(CHAT_TASKS, "function clearTaskVoiceState(")
+        assert "attachedVoiceBlob = null" in voice_reset and "isVoiceRecorded = false" in voice_reset
+        assert "setLocalTranscribing" in voice_reset
+        assert ROUTES_TASKS.count('request.files.getlist("audio")') == 2, "both /request and /answer accept audio"
+        assert "def _save_task_audio(" in ROUTES_TASKS
+
+    def test_audio_transcript_renders_and_transcribing_status(self):
+        """The attachment line (📎, plan line font), the transcript in the
+        regular reading font and a «transcribing» status while the task waits
+        for Whisper."""
+        assert "'attached_audio'" in CHAT_TASKS, "the attachment line is a service line"
+        assert "audio_transcripts" in CHAT_TASKS and "task-msg-transcript" in CHAT_TASKS
+        assert ".task-msg-transcript" in CHAT_CSS, "a long transcript needs the regular font"
+        assert "task_status_transcribing" in CHAT_TASKS
+        assert "abort_reason === 'audio_transcript'" in CHAT_TASKS
+        assert "def _transcript_block(" in ROUTES_TASKS
 
     def test_deleting_the_open_task_stays_in_tasks_view(self):
         """Deleting the open task opens another task (or the empty state) — the
@@ -469,13 +539,14 @@ class TestReviewGuards:
         server ships the ready localized line in its own field, never appended
         to the request body (user request)."""
         block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
-        assert "['attached_images', 'attached_documents']" in block
+        assert "['attached_images', 'attached_documents', 'attached_audio']" in block
         assert "'📎 ' + m[key]" in block
         assert "task-msg-service" in block
-        # The server builds both lines (names joined by a newline) and never
+        # The server builds the lines (names joined by a newline) and never
         # rides the attachment names inside the request text.
         assert '"attached_images": attached_images' in ROUTES_TASKS
         assert '"attached_documents": attached_documents' in ROUTES_TASKS
+        assert '"attached_audio": attached_audio' in ROUTES_TASKS
         assert 'names="\\n".join(image_names)' in ROUTES_TASKS
         assert 'names="\\n".join(doc_names)' in ROUTES_TASKS
         assert 'names=", ".join(image_names)' not in ROUTES_TASKS

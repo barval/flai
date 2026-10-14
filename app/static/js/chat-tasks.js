@@ -224,7 +224,12 @@ function taskStatusLine(task) {
         // exist yet — never render this as "queued".
         return '▶ ' + t('task_running');
     }
-    if (status === 'frozen') return '⏸ ' + t('task_status_frozen');
+    if (status === 'frozen') {
+        // Whisper is transcribing an attached request/answer audio: «frozen»
+        // alone («Приостановлено») reads like the chat paused the task.
+        if (task.abort_reason === 'audio_transcript') return '🎤 ' + t('task_status_transcribing');
+        return '⏸ ' + t('task_status_frozen');
+    }
     if (status === 'awaiting_user') return '⏳ ' + t('task_awaiting_answer');
     if (status === 'completed') return '✔️ ' + t('task_status_completed');
     if (status === 'failed') return '✖️ ' + t('task_status_failed');
@@ -677,12 +682,23 @@ function renderTaskMessage(m, task) {
     // name per line (the server joins them) — each renders as a service line,
     // the same font as the plan line; the 📎 marks the block like 🗒️/⚙️ mark
     // the plan and step lines.
-    ['attached_images', 'attached_documents'].forEach((key) => {
+    ['attached_images', 'attached_documents', 'attached_audio'].forEach((key) => {
         if (!m[key]) return;
         const attached = document.createElement('div');
         attached.className = 'task-msg-service';
         attached.textContent = '📎 ' + m[key];
         div.appendChild(attached);
+    });
+
+    // The transcript of an attached audio (🎤, regular font): the chat shows it
+    // as its own message; here it renders below the attachment line. The
+    // italic service line would be unreadable for a long transcript.
+    (Array.isArray(m.audio_transcripts) ? m.audio_transcripts : []).forEach((block) => {
+        if (!block || !block.text) return;
+        const tr = document.createElement('div');
+        tr.className = 'task-msg-transcript';
+        tr.textContent = (block.label || '🎤') + ' ' + block.text;
+        div.appendChild(tr);
     });
 
     // Media refs (camera snapshots, generated images/videos) ride the step's
@@ -743,6 +759,12 @@ function setTaskMode(active, task) {
     if (chatTitle) chatTitle.classList.toggle('hidden', active);
     const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status) || task.status === 'draft';
     if (stopBtn) stopBtn.style.display = active && !stopped ? 'inline-flex' : 'none';
+    // The ■ replaces the 💾 in the header row while the task is processing
+    // (the chat's own stream does the same swap: events.js
+    // _showHeaderCancelButton/_hideHeaderCancelButton) — two buttons of the
+    // same size stacked in that slot would break the row on mobile.
+    const saveBtn = document.getElementById('save-chat-button');
+    if (saveBtn) saveBtn.style.display = active && !stopped ? 'none' : '';
     // Retry button visible on failed/expired/cancelled terminal tasks.
     const canRetry = task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed';
     if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';
@@ -817,10 +839,40 @@ function taskDocumentFiles() {
     return files;
 }
 
+// Audio attached in the task view (chat parity: the same chips, the paperclip
+// and the microphone): voice recordings, audio files and video containers
+// (chat transcribes the audio track of a video too). They ride the submit as
+// "audio" form parts and are transcribed server-side into the task's context —
+// never into the Documents panel. The microphone blob may sit in the legacy
+// single slot (a lone recording) or beside an image in attachedVoiceBlob —
+// both must reach the task.
+function taskAudioFiles() {
+    const files = (typeof attachedFiles !== 'undefined' ? attachedFiles : []).filter(isAudioTypeFile);
+    if (typeof attachedFile !== 'undefined' && attachedFile && isAudioTypeFile(attachedFile)) {
+        files.unshift(attachedFile);
+    }
+    if (typeof attachedVoiceBlob !== 'undefined' && attachedVoiceBlob && isAudioTypeFile(attachedVoiceBlob)) {
+        files.unshift(attachedVoiceBlob);
+    }
+    return files;
+}
+
+// The recorder flagged the chat as transcribing (chat-recording.js); a task
+// reports its own progress through task events, so the chat flag must not
+// linger and the recording must not ride the NEXT submit again.
+function clearTaskVoiceState() {
+    if (typeof isVoiceRecorded !== 'undefined') isVoiceRecorded = false;
+    if (typeof attachedVoiceBlob !== 'undefined') attachedVoiceBlob = null;
+    if (typeof setLocalTranscribing === 'function' && typeof currentSessionId !== 'undefined' && currentSessionId) {
+        setLocalTranscribing(currentSessionId, false);
+    }
+}
+
 // Called from chat-init.js sendMessage when a task is open. Two accepted
 // inputs: the draft's request text (draft → queued, planner picks it up) and
 // the answer to an awaiting clarifying question (server validates with 409).
-// Attached images (v12.6 vision) ride either submit as multipart "images".
+// Attached images (v12.6 vision) and audio (voice parity: transcribed into the
+// task's context) ride either submit as multipart parts.
 function sendTaskInput() {
     if (!window.currentTaskId) return;
     const task = tasksData[window.currentTaskId];
@@ -829,7 +881,8 @@ function sendTaskInput() {
     const text = input ? input.value.trim() : '';
     const images = taskImageFiles();
     const documents = taskDocumentFiles();
-    if (!text && images.length === 0 && documents.length === 0) return;
+    const audio = taskAudioFiles();
+    if (!text && images.length === 0 && documents.length === 0 && audio.length === 0) return;
 
     const formDataFor = (payloadText, field) => {
         const fd = new FormData();
@@ -838,6 +891,7 @@ function sendTaskInput() {
         fd.append('deep_analysis', taskDeepAnalysis() ? 'true' : 'false');
         for (const img of images) fd.append('images', img);
         for (const doc of documents) fd.append('files', doc);
+        for (const a of audio) fd.append('audio', a);
         return fd;
     };
 
@@ -855,6 +909,7 @@ function sendTaskInput() {
                     return;
                 }
                 if (typeof clearAllAttachments === 'function') clearAllAttachments();
+                clearTaskVoiceState();
                 if (data.task) tasksData[data.task.id] = Object.assign({}, tasksData[data.task.id], data.task);
                 renderTasksList();
                 setTaskMode(true, tasksData[window.currentTaskId]);
@@ -888,6 +943,7 @@ function sendTaskInput() {
                 return;
             }
             if (typeof clearAllAttachments === 'function') clearAllAttachments();
+            clearTaskVoiceState();
             scheduleTaskReload(window.currentTaskId);
         })
         .catch(err => {

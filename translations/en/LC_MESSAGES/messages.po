@@ -302,6 +302,10 @@ msgstr "Running"
 msgid "Frozen"
 msgstr "Frozen"
 
+#: app/templates/chat.html
+msgid "Transcribing audio…"
+msgstr "Transcribing audio…"
+
 msgid "Completed"
 msgstr "Completed"
 
@@ -596,6 +600,15 @@ msgstr "Attached documents: {names}"
 #: app/routes/tasks.py
 msgid "Only image files can be attached to a task"
 msgstr "Only image files can be attached to a task"
+
+#: app/routes/tasks.py
+msgid "Only audio files can be attached to a task"
+msgstr "Only audio files can be attached to a task"
+
+#: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached audio recordings: {names}"
+msgstr "Attached audio recordings: {names}"
 
 #: app/queue.py:2842 app/queue.py:2934 app/templates/chat.html:135
 #, python-brace-format
@@ -2861,8 +2874,8 @@ msgstr "Failed to delete some documents"
 
 #: app/templates/chat.html:221
 #, python-brace-format
-msgid "Selected documents: {count} ({size})"
-msgstr "Selected documents: {count} ({size})"
+msgid "Selected: {count} ({size})"
+msgstr "Selected: {count} ({size})"
 
 #: app/templates/chat.html:222
 msgid "Select all documents in folder"

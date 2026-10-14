@@ -541,6 +541,31 @@ def test_restart_marks_orphaned_running_steps(db_env, test_app, gate_open, monke
     assert store.get_step(orphan)["interrupt_reason"] == "restart"
 
 
+def test_restart_restarts_task_audio_transcription(db_env, test_app, monkeypatch):
+    """A task frozen for Whisper transcription when the process died keeps its
+    freeze and the transcription thread is started again (its files are still
+    on disk) — restoring queued/awaiting here would hand the planner an empty
+    dictated request."""
+    store = db_env
+    task_id = _mk_task(store, status="frozen", minutes_ago=30)
+    store.update_task(
+        task_id, abort_reason="audio_transcript", audio=[{"file_path": f"{task_id}/v.webm", "file_name": "v.webm"}]
+    )
+    started: list[str] = []
+    monkeypatch.setattr(
+        "app.tasks.audio_transcribe.start_task_audio_transcription",
+        lambda app, tid: started.append(tid),
+    )
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._mark_interrupted_by_restart()
+
+    t = store.get_task(task_id)
+    assert t["status"] == "frozen", "still parked for the transcription"
+    assert t["abort_reason"] == "audio_transcript"
+    assert started == [task_id], "the transcription thread is restarted"
+
+
 def test_gate_closed_does_not_touch_foreign_running_step(db_env, test_app, monkeypatch):
     """Gate-closed freeze leaves a running row from ANOTHER process alone (I6b)."""
     store = db_env
@@ -1756,3 +1781,33 @@ def test_poll_subtask_publishes_the_flip_to_running(db_env, test_app, gate_open,
 
     assert store.get_task_steps(task_id)[0]["status"] == "subtask_running"
     assert publishes == [task_id], "the flip to running is published"
+
+
+def test_audio_transcripts_join_the_request():
+    """A request-phase audio transcript is part of the task request the planner
+    and every step read (chat parity: the transcript is context, never a
+    document); an ANSWER-phase transcript belongs to its answer step instead."""
+    task = {
+        "title": "проанализируй аудио и скажи, какой цвет салфеток заказать",
+        "audio": [
+            {"file_name": "material.webm", "phase": "request", "transcript": "салфетки зелёные"},
+            {"file_name": "answer.webm", "phase": "answer", "step_id": "s9", "transcript": "это ответ"},
+            {"file_name": "pending.webm", "phase": "request", "transcript": ""},
+        ],
+    }
+
+    text = ex._request_text(task)
+
+    assert text.startswith("проанализируй аудио")
+    assert "салфетки зелёные" in text
+    assert "material.webm" in text, "the transcript names its file"
+    assert "это ответ" not in text, "an answer transcript is consumed by the answer step"
+    assert "pending.webm" not in text, "an untranscribed attachment adds nothing"
+
+
+def test_request_text_without_audio_is_untouched():
+    """Tasks without audio (and rows predating the column) read exactly as
+    before: the plan payload's request, else the title."""
+    assert ex._request_text({"title": "t"}) == "t"
+    assert ex._request_text({"title": "t", "step_plan": {"task_request": "plan-req"}}) == "plan-req"
+    assert ex._request_text({"title": "t", "audio": []}) == "t"

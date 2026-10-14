@@ -18,7 +18,9 @@ executor consumes unprocessed user_input rows in ``_process_user_answer``
 The answer route therefore marks the task ``frozen`` (reason ``answer_images``)
 while the thread runs and restores ``awaiting_user`` when it is done; the
 executor's selection loop skips frozen tasks (same mechanism a chat abort
-uses), so no task can be resumed mid-description.
+uses), so no task can be resumed mid-description. The audio-transcription
+thread (``app/tasks/audio_transcribe.py``) shares that freeze when the same
+answer carries audio: the last worker to finish restores the state.
 """
 
 import logging
@@ -29,6 +31,17 @@ logger = logging.getLogger(__name__)
 
 _DESCRIBE_THREADS_LOCK = threading.Lock()
 _ACTIVE: set[str] = set()
+
+
+def is_describing(task_id: str) -> bool:
+    """True while the image-description thread of *task_id* is running.
+
+    Public because the audio-transcription thread shares the same freeze: an
+    answer with images AND audio must not be resumed by whichever worker
+    finishes first (``app/tasks/audio_transcribe.py``).
+    """
+    with _DESCRIBE_THREADS_LOCK:
+        return task_id in _ACTIVE
 
 
 def describe_answer_images(app, task: dict, step_id: str, images: list[dict[str, str]]) -> None:
@@ -95,7 +108,10 @@ def describe_answer_images(app, task: dict, step_id: str, images: list[dict[str,
             logger.warning(f"answer image description failed for task {task['id']}: {e}")
         finally:
             # Restore the awaiting state: the executor's selection loop picks
-            # the task up again (the user_input row is still pending).
+            # the task up again (the user_input row is still pending). The
+            # audio-transcription thread may hold the same freeze (an answer
+            # with images AND audio): then it restores the state instead.
+            from app.tasks.audio_transcribe import is_transcribing
             from app.tasks.events import publish_task_update
 
             current = get_task(task_id)
@@ -103,6 +119,7 @@ def describe_answer_images(app, task: dict, step_id: str, images: list[dict[str,
                 current is not None
                 and current.get("status") == "frozen"
                 and current.get("abort_reason") == "answer_images"
+                and not is_transcribing(task_id)
             ):
                 update_task(task_id, status="awaiting_user", abort_reason=None)
             publish_task_update(app, get_task(task_id))

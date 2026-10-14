@@ -280,6 +280,22 @@
     color: #d2b4de;
 }
 
+/* The transcript of an audio attached to a task («🎤 Распознано (name): …»):
+   the chat shows it as its own message in the regular reading font — here it
+   keeps the chat's prefix but NOT the italic service-line font, a long
+   transcript would be unreadable. */
+.task-msg-transcript {
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    margin: 0.35rem 0;
+    padding-left: 0.6rem;
+    border-left: 2px solid #8e44ad;
+}
+
+.dark-theme .task-msg-transcript {
+    border-left-color: #d2b4de;
+}
+
 .dark-theme .task-await-banner {
     color: #d2b4de;
     background: rgba(255, 255, 255, 0.05);
@@ -420,7 +436,10 @@
     border-radius: 6px;
     padding: 0.45rem 0.6rem;
     margin-bottom: 0.6rem;
-    flex-wrap: wrap;
+    /* One line, always: the label shrinks («Выделено:»), the buttons keep
+       their size — wrapping squeezed the buttons onto two rows on mobile. */
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 .bulk-documents-bar.hidden {
     display: none;
@@ -428,6 +447,9 @@
 .bulk-label {
     font-weight: 500;
     color: #2c3e50;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .bulk-move-button,
 .bulk-clear-button,
@@ -709,6 +731,10 @@
     color: #2c3e50;
     margin: 0;
     font-size: 1.2rem;
+    /* The header row («Чат 📊 0/0 | Стиль: …» / «Задача 📊 …») is exactly as
+       tall as its tallest button (the 💾 save button): the h2 line-height
+       would otherwise inflate the bar. */
+    line-height: 1.1;
 }
 
 .context-info-container {
@@ -1327,11 +1353,17 @@ video {
     .header-tabs {
         display: flex;
         width: 100%;
+        /* Same height as the footer bar («ПЛИИ v12.6», min-height 30px):
+           the two bars frame the panel symmetrically. */
+        height: 30px;
     }
 
     .header-tab {
         flex: 1;
-        padding: 0.6rem 0.3rem;
+        /* Height is owned by .header-tabs (30px) — vertical padding only
+           centers the content inside it. */
+        padding: 0 0.3rem;
+        min-height: 0;
     }
 
     .header-tab span.tab-text {
@@ -1349,7 +1381,8 @@ video {
        lists are hidden entirely — the chat fills everything below the tabs
        down to the footer. */
     .sessions-list,
-    .documents-list {
+    .documents-list,
+    .tasks-list {
         display: none !important;
     }
 
@@ -1359,7 +1392,8 @@ video {
     }
 
     .sessions-sidebar.panel-open .sessions-list.active,
-    .sessions-sidebar.panel-open .documents-list.active {
+    .sessions-sidebar.panel-open .documents-list.active,
+    .sessions-sidebar.panel-open .tasks-list.active {
         display: block !important;
         overflow-y: auto;
         max-height: none;

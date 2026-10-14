@@ -26,6 +26,7 @@ _TASK_FIELDS = {
     "doc_ids",
     "deep_analysis",
     "images",
+    "audio",
     "started_at",
     "completed_at",
     "abort_reason",
@@ -44,7 +45,7 @@ _STEP_FIELDS = {
     "interrupt_reason",
     "extra",
 }
-_JSONB_FIELDS = {"step_plan", "extra", "doc_ids", "images"}
+_JSONB_FIELDS = {"step_plan", "extra", "doc_ids", "images", "audio"}
 _TIMESTAMPTZ_FIELDS = {"started_at", "finished_at", "completed_at"}
 
 

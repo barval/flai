@@ -689,6 +689,11 @@ def _init_postgresql():
             -- file_name} on disk under UPLOAD_FOLDER/<login>/; the planner
             -- sees only their names, the vision step reads the files.
             images JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Attached audio (v12.6 voice parity): each entry is {file_path,
+            -- file_name, file_type, phase, step_id, transcript} on disk under
+            -- UPLOAD_FOLDER/<login>/. The transcript is task CONTEXT (like an
+            -- image description), never a Documents-panel document.
+            audio JSONB NOT NULL DEFAULT '[]'::jsonb,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             started_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
@@ -703,6 +708,7 @@ def _init_postgresql():
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

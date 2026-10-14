@@ -167,6 +167,57 @@ def _save_task_documents(uploads: list[Any], task_id: str) -> tuple[list[str] | 
     return doc_ids, None, None
 
 
+def _save_task_audio(
+    uploads: list[Any], task_id: str, phase: str, step_id: str | None = None
+) -> tuple[list[dict[str, Any]] | None, str | None, int | None]:
+    """Save audio/voice attachments of a task request/answer; return (entries, error, status).
+
+    Chat parity (v12.6 voice): a recorded voice message or an audio file (a
+    video container counts too — chat transcribes its audio track) is stored
+    under the user's upload folder and transcribed into text by the
+    background thread (``app/tasks/audio_transcribe.py``). Only
+    ``{file_path, file_name, file_type, phase, step_id, transcript}`` dicts
+    persist — bytes never enter the DB, the transcript never becomes a
+    Documents-panel document. The files land in the folder named after the
+    TASK id, like images and documents attached to the same task.
+    """
+    import mimetypes
+
+    from app.utils import check_upload_quota, save_uploaded_file
+
+    user_id = session["login"]
+    lang = session.get("language", "ru")
+    audio_module = current_app.modules.get("audio")
+    entries: list[dict[str, Any]] = []
+    for upload in uploads:
+        file_bytes = upload.read()
+        part_size = len(file_bytes)
+        part_type = upload.content_type or mimetypes.guess_type(upload.filename)[0] or "application/octet-stream"
+        part_name = upload.filename
+        if not (audio_module and audio_module.is_audio_file(part_type, part_name)):
+            with force_locale(lang):
+                return None, _("Only audio files can be attached to a task"), 400
+        quota_error = check_upload_quota(user_id, part_size)
+        if quota_error:
+            return None, quota_error, 413
+        part_data = _b64.b64encode(file_bytes).decode("utf-8")
+        rel_path = save_uploaded_file(
+            file_data=part_data,
+            filename=part_name,
+            session_id=task_id,
+            upload_folder=current_app.config.get("UPLOAD_FOLDER", "data/uploads"),
+            user_id=user_id,
+        )
+        if not rel_path:
+            with force_locale(lang):
+                return None, _("Failed to save file"), 500
+        entry: dict[str, Any] = {"file_path": rel_path, "file_name": part_name, "file_type": part_type, "phase": phase}
+        if step_id:
+            entry["step_id"] = step_id
+        entries.append(entry)
+    return entries, None, None
+
+
 def _truthy_flag(value: Any) -> bool:
     """Client boolean flag: real booleans (JSON) and 'true'/'1' (form) are true."""
     if isinstance(value, bool):
@@ -311,7 +362,20 @@ def _tool_badge(tool: Any) -> str:
     return f"{emoji} {_(msgid)}:"
 
 
-def _step_message(row: dict, total: int) -> dict:
+def _transcript_block(entry: dict) -> dict:
+    """One audio attachment's transcript as a conversation block.
+
+    The label reuses the chat's «🎤 Распознано:» wording plus the file name (a
+    task may carry several recordings); the client renders it in the regular
+    reading font — a long transcript in the italic service line would be
+    unreadable.
+    """
+    name = str(entry.get("file_name") or "")
+    label = "🎤 " + _("Transcribed") + (f" ({name}):" if name else ":")
+    return {"label": label, "text": str(entry.get("transcript") or "").strip()}
+
+
+def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None) -> dict:
     """One task_steps row as a conversation message."""
     seq = int(row.get("seq") or 0)
     kind = row.get("kind") or "direct"
@@ -334,7 +398,7 @@ def _step_message(row: dict, total: int) -> dict:
         content = body
     else:  # user_input / final / plan — no step header
         content = body
-    return {
+    msg = {
         "id": row.get("id"),
         "role": "user" if kind == "user_input" else "assistant",
         "kind": kind,
@@ -353,6 +417,13 @@ def _step_message(row: dict, total: int) -> dict:
         # running (a queued step with no timestamp renders without a date).
         "created_at": _iso(row.get("started_at") or row.get("finished_at")),
     }
+    if audio_entries:
+        # An answer's audio attachments: the 📎 service line + the transcript
+        # blocks the transcription thread appended to this step's result.
+        names = [str(e.get("file_name") or "") for e in audio_entries if e.get("file_name")]
+        msg["attached_audio"] = _("Attached audio recordings: {names}").format(names="\n".join(names)) if names else ""
+        msg["audio_transcripts"] = [_transcript_block(e) for e in audio_entries if _transcript_block(e)["text"]]
+    return msg
 
 
 def _render_messages(task: dict) -> list[dict]:
@@ -371,6 +442,20 @@ def _render_messages(task: dict) -> list[dict]:
         attached_images = _("Attached images: {names}").format(names="\n".join(image_names)) if image_names else ""
         doc_names = _document_names(task)
         attached_documents = _("Attached documents: {names}").format(names="\n".join(doc_names)) if doc_names else ""
+        # Audio attachments (v12.6 voice parity): request-phase entries ride
+        # the request message; answer-phase ones ride their user_input step.
+        audio_entries = [e for e in (task.get("audio") or []) if isinstance(e, dict)]
+        req_audio = [e for e in audio_entries if str(e.get("phase") or "request") != "answer"]
+        req_audio_names = [str(e.get("file_name") or "") for e in req_audio if e.get("file_name")]
+        attached_audio = (
+            _("Attached audio recordings: {names}").format(names="\n".join(req_audio_names)) if req_audio_names else ""
+        )
+        req_transcripts = [_transcript_block(e) for e in req_audio if _transcript_block(e)["text"]]
+        answer_audio: dict[str, list[dict]] = {}
+        for e in audio_entries:
+            sid = str(e.get("step_id") or "")
+            if sid and str(e.get("phase") or "") == "answer":
+                answer_audio.setdefault(sid, []).append(e)
         # Expose the first task image as extra.media so JS renders it visually.
         req_extra: dict[str, Any] = {}
         task_images = task.get("images") or []
@@ -390,6 +475,8 @@ def _render_messages(task: dict) -> list[dict]:
                 "content": request_text,
                 "attached_images": attached_images,
                 "attached_documents": attached_documents,
+                "attached_audio": attached_audio,
+                "audio_transcripts": req_transcripts,
                 "seq": 0,
                 "total_steps": total,
                 "status": None,
@@ -456,7 +543,7 @@ def _render_messages(task: dict) -> list[dict]:
     for row in sorted(steps, key=_chrono_key):
         if row.get("status") == "pending" and not str(row.get("result") or "").strip():
             continue  # not materialized yet — nothing to show
-        messages.append(_step_message(row, total))
+        messages.append(_step_message(row, total, answer_audio.get(str(row["id"]))))
     return messages
 
 
@@ -516,17 +603,21 @@ def task_request_route(task_id):
     data: dict[str, Any] = {}
     uploads: list[Any] = []
     doc_uploads: list[Any] = []
+    audio_uploads: list[Any] = []
     if request.content_type and "multipart/form-data" in request.content_type:
         # Vision flow (v12.6): the request may carry attached images (chips in
         # the task view). JSON fields ride the form alongside the files.
         data = {key: val for key, val in request.form.items()}
         uploads = [f for f in request.files.getlist("images") if f and f.filename]
         doc_uploads = [f for f in request.files.getlist("files") if f and f.filename]
+        audio_uploads = [f for f in request.files.getlist("audio") if f and f.filename]
     else:
         data = request.get_json(silent=True) or {}
 
     user_request = str(data.get("request") or "").strip()
-    if not user_request:
+    if not user_request and not audio_uploads:
+        # A dictated task (audio, no text) is a valid request: the transcript
+        # arrives before the planner runs (the task freezes meanwhile).
         return jsonify({"error": "⚠️ " + _("Task request is empty")}), 400
 
     images = None
@@ -544,7 +635,19 @@ def task_request_route(task_id):
             return jsonify({"error": "⚠️ " + doc_error}), doc_status
         new_doc_ids = saved_ids or []
 
-    update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
+    audio_entries: list[dict[str, Any]] = []
+    if audio_uploads:
+        saved_audio, audio_error, audio_status = _save_task_audio(audio_uploads, task_id, phase="request")
+        if audio_error:
+            return jsonify({"error": "⚠️ " + audio_error}), audio_status
+        audio_entries = saved_audio or []
+
+    # A task with audio waits for Whisper (the dictated text must exist before
+    # the planner runs); everything else goes straight to the queue.
+    if audio_entries:
+        update_task(task_id, status="frozen", title=user_request[:300], abort_reason="audio_transcript")
+    else:
+        update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
     if "doc_ids" in data or new_doc_ids:
         # Snapshot the Documents-panel selection at submit time (like a chat
         # request): an empty list means "all documents". Documents just saved
@@ -554,10 +657,19 @@ def task_request_route(task_id):
         update_task(task_id, doc_ids=new_doc_ids + [d for d in selected if d not in new_doc_ids])
     if images:
         update_task(task_id, images=images)
+    if audio_entries:
+        update_task(task_id, audio=audio_entries)
     if "deep_analysis" in data:
         # The 🔬 toggle state rides the request: the planner is told to include
         # a deep-analysis (rlm) step over the attached documents.
         update_task(task_id, deep_analysis=_truthy_flag(data.get("deep_analysis")))
+    if audio_entries:
+        # Transcribe AFTER every task field is saved: the thread flips the
+        # status back to queued as soon as the transcripts exist, and the
+        # planner must then already see the final doc_ids/images/audio.
+        from app.tasks.audio_transcribe import start_task_audio_transcription
+
+        start_task_audio_transcription(current_app._get_current_object(), task_id)
     task = get_task(task_id)
     publish_task_update(current_app._get_current_object(), task)
     return jsonify({"task": _task_summary(task)}), 202
@@ -584,14 +696,18 @@ def task_answer(task_id):
     data: dict[str, Any] = {}
     uploads: list[Any] = []
     doc_uploads: list[Any] = []
+    audio_uploads: list[Any] = []
     if request.content_type and "multipart/form-data" in request.content_type:
         data = {key: val for key, val in request.form.items()}
         uploads = [f for f in request.files.getlist("images") if f and f.filename]
         doc_uploads = [f for f in request.files.getlist("files") if f and f.filename]
+        audio_uploads = [f for f in request.files.getlist("audio") if f and f.filename]
     else:
         data = request.get_json(silent=True) or {}
     answer = str(data.get("answer") or data.get("request") or "").strip()
-    if not answer and not uploads:
+    if not answer and not uploads and not audio_uploads:
+        # A voice-only answer is valid: the transcript is appended to the
+        # user_input step by the background thread (the task freezes meanwhile).
         # Log what the client actually sent — a cached pre-fix page posts the
         # draft field "request" to /answer, which used to answer «Ответ пуст».
         current_app.logger.warning(
@@ -664,7 +780,21 @@ def task_answer(task_id):
         selected = _clean_doc_ids(data.get("doc_ids")) if "doc_ids" in data else []
         update_task(task_id, doc_ids=new_doc_ids + [d for d in selected if d not in new_doc_ids])
 
+    audio_entries: list[dict[str, Any]] = []
+    if audio_uploads:
+        saved_audio, audio_error, audio_status = _save_task_audio(audio_uploads, task_id, phase="answer")
+        if audio_error:
+            return jsonify({"error": "⚠️ " + audio_error}), audio_status
+        audio_entries = saved_audio or []
+
     ui_step_id = add_user_input_step(task_id, int(question["seq"]), answer)
+    if audio_entries:
+        # The step ids are only known after the row exists: link each answer
+        # entry to it (the transcript is appended to THIS step by the thread).
+        for entry in audio_entries:
+            entry["step_id"] = ui_step_id
+        merged_audio = list(task.get("audio") or []) + audio_entries
+        update_task(task_id, audio=merged_audio)
     # Chat-style header data: the multimodal model that will describe the
     # images (added by the background thread) or nothing without images.
     ui_extra: dict[str, Any] = {}
@@ -687,6 +817,14 @@ def task_answer(task_id):
         from app.tasks.answer_images import describe_answer_images
 
         describe_answer_images(self_app=current_app._get_current_object(), task=task, step_id=ui_step_id, images=images)
+    if audio_entries:
+        # Transcribe the answer's audio AFTER the user_input row exists
+        # (app/tasks/audio_transcribe.py): Whisper is an HTTP call to the
+        # sidecar (no GPU), but the transcripts must be appended to the step
+        # before the executor consumes it — the task freezes meanwhile.
+        from app.tasks.audio_transcribe import start_task_audio_transcription
+
+        start_task_audio_transcription(current_app._get_current_object(), task_id)
     if "deep_analysis" in data and _truthy_flag(data.get("deep_analysis")):
         # The toggle switched ON while answering: the plan already exists and
         # the planner cannot amend it, so a deep-analysis (rlm) step over the

@@ -713,6 +713,88 @@ class TestTasksApi:
         listed = {t["id"]: t for t in client.get("/api/tasks").get_json()["tasks"]}
         assert listed[task_id]["images"] == ["a.png"]
 
+    def test_request_with_audio_freezes_until_transcribed(self, tasks_env, client, monkeypatch):
+        """A dictated task (audio, no text) is accepted, saved and FROZEN while
+        Whisper runs — the planner must never start from an empty request."""
+        import io
+
+        monkeypatch.setattr("app.routes.tasks.publish_task_update", lambda app, task: None)
+        started: list[str] = []
+        monkeypatch.setattr(
+            "app.tasks.audio_transcribe.start_task_audio_transcription",
+            lambda app, task_id: started.append(task_id),
+        )
+        _login(client)
+        draft = client.post("/api/tasks", json={}).get_json()["task"]
+
+        response = client.post(
+            f"/api/tasks/{draft['id']}/request",
+            data={"request": "", "audio": (io.BytesIO(b"voice-bytes"), "v.webm", "audio/webm")},
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 202
+        task = response.get_json()["task"]
+        assert task["status"] == "frozen"
+        assert task["abort_reason"] == "audio_transcript"
+
+        from app.tasks.store import get_task as get_task_row
+
+        row = get_task_row(draft["id"])
+        assert [a["file_name"] for a in row["audio"]] == ["v.webm"]
+        assert row["audio"][0]["file_path"], "relative path stored"
+        assert row["audio"][0]["phase"] == "request"
+        assert started == [draft["id"]], "the transcription thread is started after the fields are saved"
+
+    def test_request_rejects_non_audio_file(self, tasks_env, client, monkeypatch):
+        """A non-audio upload in the audio slot is rejected with a localized ⚠️ 400."""
+        import io
+
+        monkeypatch.setattr("app.routes.tasks.publish_task_update", lambda app, task: None)
+        _login(client, language="ru")
+        draft = client.post("/api/tasks", json={}).get_json()["task"]
+
+        response = client.post(
+            f"/api/tasks/{draft['id']}/request",
+            data={"request": "текст", "audio": (io.BytesIO(b"hello"), "note.txt", "text/plain")},
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 400
+        assert response.get_json()["error"].startswith("⚠️ ")
+        assert "аудио" in response.get_json()["error"]
+
+    def test_answer_with_audio_starts_transcription(self, tasks_env, client, monkeypatch):
+        """An audio answer feeds the user_input step: the answer may be voice-only."""
+        import io
+
+        monkeypatch.setattr("app.routes.tasks.publish_task_update", lambda app, task: None)
+        started: list[str] = []
+        monkeypatch.setattr(
+            "app.tasks.audio_transcribe.start_task_audio_transcription",
+            lambda app, task_id: started.append(task_id),
+        )
+        _login(client)
+        task_id = _seed_task(status="awaiting_user")
+        from app.tasks.store import add_step, update_step
+
+        question = add_step(task_id=task_id, seq=1, kind="question", goal="Какой город?", tool="llm")
+        update_step(question, status="awaiting_user", result="Какой город?")
+
+        response = client.post(
+            f"/api/tasks/{task_id}/answer",
+            data={"answer": "", "audio": (io.BytesIO(b"voice-bytes"), "a.webm", "audio/webm")},
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 202
+        from app.tasks.store import get_task as get_task_row
+
+        row = get_task_row(task_id)
+        assert [a["file_name"] for a in row["audio"]] == ["a.webm"]
+        assert row["audio"][0]["phase"] == "answer" and row["audio"][0]["step_id"]
+        assert started == [task_id]
+
 
 @pytest.mark.unit
 class TestTasksApiI18n:
@@ -733,7 +815,9 @@ class TestTasksApiI18n:
             "Image analysis",
             "Attached images: {names}",
             "Attached documents: {names}",
+            "Attached audio recordings: {names}",
             "Only image files can be attached to a task",
+            "Only audio files can be attached to a task",
         ]
         for catalog in ("translations/en/LC_MESSAGES/messages.po", "translations/ru/LC_MESSAGES/messages.po"):
             with open(catalog, encoding="utf-8") as fh:

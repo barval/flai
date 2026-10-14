@@ -294,23 +294,26 @@ class TestReviewGuards:
 
     def test_mobile_header_bar_hugs_save_button(self):
         """The «Чат/Задача 📊 …» bar hugs the save button's bottom edge with a
-        small top allowance (2px): a zero-height top clipped the glyph tops."""
+        top allowance (5px): smaller tops clipped the glyph tops."""
         block = self._css_media_block(CHAT_CSS, anchor="    .chat-header {")
-        assert "padding: 2px 0 0;" in block
+        assert "padding: 5px 0 0;" in block
         assert "align-items: stretch;" in block
         idx = CHAT_CSS.index(".save-chat-button,\n    .cancel-stream-header {")
         assert "align-self: flex-end" in CHAT_CSS[idx : idx + 120]
 
     def test_mobile_controls_row_hugs_send_button(self):
         """The «Глубокий анализ / 🎤 / 📎 / Отправить» row stretches every
-        control edge-to-edge with the Send button, and the excess gap above
-        the row is halved (0.5rem → 0.25rem) plus a slim chat-messages
-        margin."""
+        control edge-to-edge with the Send button and has NO vertical gaps:
+        the chat/task output window starts right above the row, the message
+        input right below it."""
         block = self._css_media_block(CHAT_CSS, anchor="    .rlm-controls {")
         assert "align-items: stretch;" in block
-        assert "margin-top: 0.25rem;" in block
+        assert "margin-top: 0;" in block
+        assert "margin-bottom: 0;" in block
         assert "align-self: center;" in block
-        assert "        margin-bottom: 2px;" in CHAT_CSS
+        msgs = self._block(CHAT_CSS, "    .chat-messages {", "    .message-input {")
+        assert "margin-bottom: 0;" in msgs
+        assert "        padding: 0;" in self._block(CHAT_CSS, "    .message-input {", "    #file-preview-container {")
 
     def test_tts_head_spacing_halved(self):
         """The 🗣️ head (and its 📋 neighbour) halve their spacing in message

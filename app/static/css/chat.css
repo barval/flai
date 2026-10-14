@@ -1423,10 +1423,10 @@ video {
     .chat-header {
         flex-shrink: 0;
         margin-bottom: 5px;
-        /* The bar hugs the 💾 save button (bottom edges flush) with a small
-           top allowance (2px): a zero-height top clipped the h2/status-counter
-           glyphs' tops. */
-        padding: 2px 0 0;
+        /* The bar hugs the 💾 save button (bottom edges flush) with a top
+           allowance (5px total): a zero/2px top still clipped the
+           h2/status-counter glyph tops. */
+        padding: 5px 0 0;
         align-items: stretch;
     }
 
@@ -1439,7 +1439,7 @@ video {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
-        margin-bottom: 2px;
+        margin-bottom: 0;
         padding: 8px;
         padding-bottom: 5px;
     }
@@ -1447,7 +1447,7 @@ video {
     .message-input {
         margin-top: 0;
         margin-bottom: 0;
-        padding: 5px 0;
+        padding: 0;
         flex-shrink: 0;
     }
     
@@ -1481,12 +1481,11 @@ video {
         width: 100%;
         /* The row is exactly as tall as the Send button: every control
            stretches edge-to-edge with it (the label keeps its content
-           centered). */
+           centered), and NO gaps: the chat/task output window starts right
+           above the row, the message input right below it. */
         align-items: stretch;
-        /* Halved top gap (user request): the base 0.5rem margin plus the
-           chat-messages margin left a visibly oversized gap over the Send
-           button. */
-        margin-top: 0.25rem;
+        margin-top: 0;
+        margin-bottom: 0;
     }
 
     .rlm-controls label {
@@ -1494,7 +1493,7 @@ video {
     }
 
     #file-preview-container {
-        margin: 0 0 3px;
+        margin: 0 0 0;
     }
 
     .rlm-controls #voice-record-button {

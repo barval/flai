@@ -56,7 +56,13 @@ from flask import Flask
 from app.database import get_db
 from app.model_config import get_model_config
 from app.tasks.gate import is_gate_open
-from app.tasks.runner import StepAborted, recall_slm_facts, run_checkpoint, run_direct_step
+from app.tasks.runner import (
+    StepAborted,
+    recall_slm_facts,
+    run_checkpoint,
+    run_direct_step,
+    wait_for_documents_indexed,
+)
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
 
 logger = logging.getLogger(__name__)
@@ -968,7 +974,7 @@ class TaskExecutor:
                     # step appeared at once when the whole task completed).
                     self._publish_task_update(task_id)
                     continue  # consumed — re-read the loop state for the next step
-                self._enqueue_subtask(task, idx, step)
+                self._enqueue_subtask(task, idx, step, gate_open)
                 # The queued step must reach the view now, not on the next cycle.
                 self._publish_task_update(task_id)
                 return  # the queue owns it now — polling resumes on the next cycle
@@ -1464,7 +1470,30 @@ class TaskExecutor:
         self._publish_task_update(task_id)
         logger.info(f"task {task_id} awaiting user input at step {idx + 1}")
 
-    def _enqueue_subtask(self, task: dict, idx: int, step: dict) -> None:
+    def _wait_for_attachments(self, task: dict, row: dict, gate_open: bool | None = None) -> bool:
+        """Wait until the task's attached documents finished indexing.
+
+        A scanned PDF has no text on disk (no ``.recognized_text`` sidecar)
+        before its OCR finished, so the RLM corpus would be read empty — the
+        same wait the rag step performs. The wait aborts as soon as the gate
+        closes (a chat request), exactly like the per-step gate check: the step
+        dies ``interrupted`` (``chat``) and re-executes on resume. Returns
+        False when the wait was preempted, True when the documents settled.
+        """
+        try:
+            wait_for_documents_indexed(
+                self.app,
+                str(task.get("user_id") or ""),
+                [str(d) for d in (task.get("doc_ids") or [])],
+                lambda: not self._gate_value(gate_open),
+            )
+        except StepAborted:
+            self._end_step(task["id"], row["id"], status="interrupted", interrupt_reason="chat")
+            update_task(task["id"], status="frozen", abort_reason="chat")
+            return False
+        return True
+
+    def _enqueue_subtask(self, task: dict, idx: int, step: dict, gate_open: bool | None = None) -> None:
         """Media/RLM subtask → the existing request queue with the task tag.
 
         Task 8 adds completion polling; the step loop breaks after enqueueing.
@@ -1487,7 +1516,8 @@ class TaskExecutor:
             # RLM corpus = the task's attached documents; with none attached,
             # every indexed document of the user is analyzed (the same scope
             # rule the rag step follows).
-            doc_ids = [str(d) for d in (task.get("doc_ids") or [])]
+            attached_ids = [str(d) for d in (task.get("doc_ids") or [])]
+            doc_ids = attached_ids
             if not doc_ids:
                 try:
                     from app.db import INDEX_STATUS_INDEXED, get_user_documents
@@ -1499,6 +1529,8 @@ class TaskExecutor:
                     ]
                 except Exception as e:
                     logger.warning(f"rlm doc scope resolution failed for task {task_id}: {e}")
+            elif not self._wait_for_attachments(task, row, gate_open):
+                return  # a chat request preempted the wait — task frozen
             request_data["doc_ids"] = doc_ids
         if tool == "crawl":
             # The site address comes from the user's own request (the planner

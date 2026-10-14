@@ -592,6 +592,11 @@ msgid "Attached images: {names}"
 msgstr "Приложенные изображения: {names}"
 
 #: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached documents: {names}"
+msgstr "Приложенные документы: {names}"
+
+#: app/routes/tasks.py
 msgid "Only image files can be attached to a task"
 msgstr "К задаче можно приложить только изображения"
 

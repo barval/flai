@@ -589,6 +589,11 @@ msgid "Attached images: {names}"
 msgstr "Attached images: {names}"
 
 #: app/routes/tasks.py
+#, python-brace-format
+msgid "Attached documents: {names}"
+msgstr "Attached documents: {names}"
+
+#: app/routes/tasks.py
 msgid "Only image files can be attached to a task"
 msgstr "Only image files can be attached to a task"
 

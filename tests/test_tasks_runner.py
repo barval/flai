@@ -183,7 +183,13 @@ def test_rag_step_formats_fragments_and_scopes_documents(test_app):
         ],
         [0.91, 0.42],
     )
-    with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
+    with (
+        patch(
+            "app.db.get_user_documents",
+            return_value=[{"id": "d1", "index_status": "indexed"}, {"id": "d2", "index_status": "indexed"}],
+        ),
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
         out = run_direct_step(
             test_app,
             _step(tool="rag", goal="найти перечень работ"),
@@ -232,6 +238,99 @@ def test_rag_step_unavailable_module_is_error(test_app):
         test_app, _step(tool="rag", goal="q"), context_digest="", cancel_check=lambda: False, user_id="u"
     )
     assert out["status"] == "error" and out["checkpoint"] is None
+
+
+def test_rag_step_waits_for_attached_documents_to_be_indexed(test_app):
+    """A rag step over the task's OWN attachments waits for them to be indexed.
+
+    Documents attached with the paperclip are uploaded at submit time, so the
+    search must not run against a half-indexed document (chat parity: a chat
+    answer over an attached document is produced only after its indexing).
+    """
+    polls = []
+
+    def fake_docs(user_id):
+        polls.append(user_id)
+        # First two polls: the attachment is still indexing; then it settles.
+        status = "indexing" if len(polls) < 3 else "indexed"
+        return [{"id": "d1", "index_status": status}]
+
+    test_app.modules["rag"] = _fake_rag([{"filename": "c.pdf", "text": "T", "doc_id": "d1"}], [0.9])
+    with (
+        patch("app.db.get_user_documents", side_effect=fake_docs),
+        patch("time.sleep"),
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
+        out = run_direct_step(
+            test_app,
+            _step(tool="rag", goal="q"),
+            context_digest="",
+            cancel_check=lambda: False,
+            user_id="u",
+            doc_ids=["d1"],
+        )
+    assert len(polls) == 3, "the wait re-polls until the document leaves the indexing state"
+    assert out["status"] == "passed" and "T" in out["result"]
+
+
+def test_rag_step_wait_is_interrupted_by_a_chat_request(test_app):
+    """The indexing wait is abortable: a chat request kills the step.
+
+    The pre-call check passes and the cancel arrives only inside the wait (the
+    exception message proves which check fired).
+    """
+    test_app.modules["rag"] = _fake_rag([{"filename": "c.pdf", "text": "T", "doc_id": "d1"}], [0.9])
+    checks = {"n": 0}
+
+    def cancel_check():
+        checks["n"] += 1
+        return checks["n"] > 1
+
+    with (
+        patch("app.db.get_user_documents", return_value=[{"id": "d1", "index_status": "indexing"}]),
+        patch("time.sleep"),
+        pytest.raises(StepAborted, match="waiting for document indexing"),
+    ):
+        run_direct_step(
+            test_app,
+            _step(tool="rag", goal="q"),
+            context_digest="",
+            cancel_check=cancel_check,
+            user_id="u",
+            doc_ids=["d1"],
+        )
+
+
+def test_rag_step_proceeds_when_the_index_status_check_fails(test_app):
+    """A failing status check never fails the step — the search runs as before."""
+    test_app.modules["rag"] = _fake_rag([{"filename": "c.pdf", "text": "T", "doc_id": "d1"}], [0.9])
+    with (
+        patch("app.db.get_user_documents", side_effect=RuntimeError("db down")),
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
+        out = run_direct_step(
+            test_app,
+            _step(tool="rag", goal="q"),
+            context_digest="",
+            cancel_check=lambda: False,
+            user_id="u",
+            doc_ids=["d1"],
+        )
+    assert out["status"] == "passed" and "T" in out["result"]
+
+
+def test_rag_step_without_attachments_does_not_touch_documents(test_app):
+    """An unscoped search (no doc_ids) never consults the document table."""
+    test_app.modules["rag"] = _fake_rag([{"filename": "c.pdf", "text": "T", "doc_id": "d1"}], [0.9])
+    with (
+        patch("app.db.get_user_documents") as docs,
+        patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
+    ):
+        out = run_direct_step(
+            test_app, _step(tool="rag", goal="q"), context_digest="", cancel_check=lambda: False, user_id="u"
+        )
+    assert out["status"] == "passed"
+    docs.assert_not_called()
 
 
 def test_unknown_tool_is_error(test_app):

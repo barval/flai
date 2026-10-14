@@ -732,6 +732,7 @@ class TestTasksApiI18n:
             "Document search",
             "Image analysis",
             "Attached images: {names}",
+            "Attached documents: {names}",
             "Only image files can be attached to a task",
         ]
         for catalog in ("translations/en/LC_MESSAGES/messages.po", "translations/ru/LC_MESSAGES/messages.po"):

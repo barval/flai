@@ -1601,6 +1601,66 @@ def test_enqueue_subtask_stamps_the_step_before_publishing(db_env, test_app, gat
     assert step["extra"]["subtask_queue_id"], "the queue id is stamped on the step for polling"
 
 
+def test_rlm_subtask_waits_for_attached_documents_then_enqueues(db_env, test_app, gate_open, monkeypatch):
+    """An rlm step over the task's OWN attachments waits for their indexing.
+
+    A scanned PDF has no text on disk before its OCR finished, so the corpus
+    would be read empty — the same wait the rag step performs. Attachments also
+    replace the "every indexed document of the user" scope.
+    """
+    store = db_env
+    plan = _media_plan("rlm", goal="Проанализируйте документы")
+    task_id = _mk_task(store, step_plan=plan)
+    from app.tasks.store import update_task as _ut
+
+    _ut(task_id, doc_ids=["d1", "d2"])
+    waited = []
+    monkeypatch.setattr(
+        ex,
+        "wait_for_documents_indexed",
+        lambda app, user_id, doc_ids, cancel_check=None: waited.append((user_id, tuple(doc_ids))),
+    )
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    assert waited == [("tester", ("d1", "d2"))], "the attached documents are waited for, in doc_ids order"
+    assert queue.calls[0]["request_data"]["doc_ids"] == ["d1", "d2"], "the corpus is scoped to the attachments"
+    assert store.get_task_steps(task_id)[0]["status"] == "subtask_queued"
+
+
+def test_rlm_subtask_wait_preempted_by_chat_freezes_the_task(db_env, test_app, gate_open, monkeypatch):
+    """A chat request during the wait interrupts the step and freezes the task.
+
+    The sub-task is never enqueued (the gate is closed — a chat request owns the
+    resources); the step re-executes on resume, like a chat-preempted direct step.
+    """
+    store = db_env
+    plan = _media_plan("rlm", goal="Проанализируйте документы")
+    task_id = _mk_task(store, step_plan=plan)
+    from app.tasks.store import update_task as _ut
+
+    _ut(task_id, doc_ids=["d1"])
+
+    def _abort(app, user_id, doc_ids, cancel_check=None):
+        raise StepAborted("cancelled while waiting")
+
+    monkeypatch.setattr(ex, "wait_for_documents_indexed", _abort)
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    assert queue.calls == [], "a preempted wait must not enqueue the sub-task"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "interrupted" and step["interrupt_reason"] == "chat"
+    task = store.get_task(task_id)
+    assert task["status"] == "frozen" and task["abort_reason"] == "chat"
+
+
 def test_enqueue_subtask_image_edit_sends_raw_base64(db_env, test_app, gate_open, monkeypatch):
     """image_edit takes the task's first attached image as raw base64 (the edit
     pipeline's ``file_data``), read back from the file stored on disk."""

@@ -107,8 +107,9 @@ function loadTasksFromServer() {
                 tasksData[task.id] = task;
             });
             if (window.currentTaskId && !tasksData[window.currentTaskId]) {
-                // The open task was deleted elsewhere — return to the chat.
-                closeTaskView(false);
+                // The open task was deleted elsewhere — show another one (or
+                // the empty state), never the chat session window.
+                replaceClosedTask();
             }
             if (readRememberedTaskId() && !tasksData[readRememberedTaskId()]) {
                 forgetTaskId(); // deleted: a reload must not try to restore it
@@ -351,6 +352,19 @@ function closeTaskView(silent) {
             window.loadMessages(currentSessionId).catch(() => {});
         }
         if (typeof updateMessageCount === 'function') updateMessageCount();
+    }
+}
+
+// The open task is gone (deleted here or in another tab): open the next task
+// of the list, or the empty state. The main window must stay in the Tasks view
+// — falling back to the chat session window there was the bug (user request).
+function replaceClosedTask() {
+    closeTaskView(true);
+    const remaining = Object.values(tasksData);
+    if (remaining.length) {
+        openTaskView(remaining[0].id);
+    } else {
+        enterTasksEmptyState();
     }
 }
 
@@ -659,6 +673,18 @@ function renderTaskMessage(m, task) {
     content.innerHTML = DOMPurify.sanitize(marked.parse(body));
     div.appendChild(content);
 
+    // Attached files ride the request as ready localized lines with one file
+    // name per line (the server joins them) — each renders as a service line,
+    // the same font as the plan line; the 📎 marks the block like 🗒️/⚙️ mark
+    // the plan and step lines.
+    ['attached_images', 'attached_documents'].forEach((key) => {
+        if (!m[key]) return;
+        const attached = document.createElement('div');
+        attached.className = 'task-msg-service';
+        attached.textContent = '📎 ' + m[key];
+        div.appendChild(attached);
+    });
+
     // Media refs (camera snapshots, generated images/videos) ride the step's
     // extra — render chat-style image blocks after the text body.
     const media = (m.extra && m.extra.media) || {};
@@ -772,9 +798,23 @@ function taskDeepAnalysis() {
 
 // Images attached in the task view (the shared chat chips): every queued
 // image rides the submit as an "images" form part — the vision capability
-// analyzes them (v12.6). Documents/audio stay chat-only here.
+// analyzes them (v12.6).
 function taskImageFiles() {
     return (typeof attachedFiles !== 'undefined' ? attachedFiles : []).filter(isImageFile);
+}
+
+// Documents attached in the task view (the same chips): everything that is
+// neither an image nor a voice recording. They ride the submit as "files"
+// form parts and become FULL user documents server-side (Documents parity:
+// saved + indexed, ids go into the task's doc_ids), so the task searches
+// exactly them. The first non-image file may sit in the legacy single slot —
+// without it a lone attached document was dropped silently.
+function taskDocumentFiles() {
+    const files = (typeof attachedFiles !== 'undefined' ? attachedFiles : []).filter(isDocumentFile);
+    if (typeof attachedFile !== 'undefined' && attachedFile && isDocumentFile(attachedFile)) {
+        files.unshift(attachedFile);
+    }
+    return files;
 }
 
 // Called from chat-init.js sendMessage when a task is open. Two accepted
@@ -788,7 +828,8 @@ function sendTaskInput() {
     const input = document.getElementById('message-input');
     const text = input ? input.value.trim() : '';
     const images = taskImageFiles();
-    if (!text && images.length === 0) return;
+    const documents = taskDocumentFiles();
+    if (!text && images.length === 0 && documents.length === 0) return;
 
     const formDataFor = (payloadText, field) => {
         const fd = new FormData();
@@ -796,6 +837,7 @@ function sendTaskInput() {
         fd.append('doc_ids', JSON.stringify(taskDocIds()));
         fd.append('deep_analysis', taskDeepAnalysis() ? 'true' : 'false');
         for (const img of images) fd.append('images', img);
+        for (const doc of documents) fd.append('files', doc);
         return fd;
     };
 
@@ -904,7 +946,9 @@ function deleteTask(taskId) {
             delete tasksData[taskId];
             if (readRememberedTaskId() === taskId) forgetTaskId();
             if (window.currentTaskId === taskId) {
-                closeTaskView(false);
+                // Deleted the open task: open the next one, or the empty state
+                // — the Tasks view stays in the main window (user request).
+                replaceClosedTask();
             }
             renderTasksList();
         })
@@ -953,7 +997,7 @@ function onTaskUpdate(data) {
         delete tasksData[data.task_id];
         if (readRememberedTaskId() === data.task_id) forgetTaskId();
         if (window.currentTaskId === data.task_id) {
-            closeTaskView(false);
+            replaceClosedTask();
         }
         renderTasksList();
         scheduleTasksListReload();

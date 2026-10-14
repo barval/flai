@@ -281,6 +281,46 @@ class TestReviewGuards:
         send = self._function_block(CHAT_TASKS, "function sendTaskInput(")
         assert "taskImageFiles()" in send
 
+    def test_paperclip_documents_ride_with_task_send(self):
+        """Documents attached with the paperclip (the chat chips) must reach the
+        task as FULL user documents: the helper collects the multi-queue AND the
+        legacy single slot (a lone attached document sat there and was dropped
+        silently), and the multipart builder ships them as 'files' parts that
+        the server saves through the Documents-panel intake chain."""
+        helper = self._function_block(CHAT_TASKS, "function taskDocumentFiles(")
+        assert "attachedFiles" in helper and "isDocumentFile" in helper
+        assert "attachedFile" in helper, "the legacy single slot holds the first non-image file"
+        assert "unshift" in helper, "the legacy-slot file leads the queue order"
+        builder = self._arrow_block(CHAT_TASKS, "const formDataFor = ")
+        assert "fd.append('files', doc)" in builder
+        send = self._function_block(CHAT_TASKS, "function sendTaskInput(")
+        assert "taskDocumentFiles()" in send
+        # A documents-only submit must not silently do nothing (the server
+        # answers with the localized "Task request is empty").
+        assert "documents.length === 0" in send
+        assert "def _save_task_documents(" in ROUTES_TASKS
+        assert ROUTES_TASKS.count('request.files.getlist("files")') == 2, "both /request and /answer accept files[]"
+        # The files ride as documents scoping the task, merged with the panel
+        # selection (a submit that attached files must never mean "all docs").
+        assert "update_task(task_id, doc_ids=new_doc_ids + " in ROUTES_TASKS
+        assert ROUTES_TASKS.count("new_doc_ids + ") == 2
+
+    def test_deleting_the_open_task_stays_in_tasks_view(self):
+        """Deleting the open task opens another task (or the empty state) — the
+        main window must never fall back to the chat session (user request:
+        «после её удаления в окне задач должна открыться другая задача»)."""
+        helper = self._function_block(CHAT_TASKS, "function replaceClosedTask(")
+        assert "closeTaskView(true)" in helper
+        assert "Object.values(tasksData)" in helper
+        assert "openTaskView(" in helper and "enterTasksEmptyState()" in helper
+        # Every "the open task is gone" path routes through it: the delete
+        # button, the SSE `deleted` event and a list reload after a deletion in
+        # another tab.
+        for name in ("deleteTask", "onTaskUpdate", "loadTasksFromServer"):
+            block = self._function_block(CHAT_TASKS, f"function {name}(")
+            assert "replaceClosedTask()" in block, f"{name} must not return to the chat window"
+            assert "closeTaskView(false)" not in block, f"{name} still falls back to the chat"
+
     def test_events_js_chat_render_paths_respect_task_view(self):
         # The chat SSE render paths must not interleave into the open task
         # conversation: every DOM-mutating handler checks isTaskViewActive().
@@ -422,6 +462,29 @@ class TestReviewGuards:
         assert '"badge": badge' in ROUTES_TASKS
         block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
         assert "m.badge" in block and "task-msg-service" in block
+
+    def test_request_attachments_are_a_service_line(self):
+        """Images and documents attached to a task render as service lines (the
+        plan line's font) with the 📎 marker and one file name per line — the
+        server ships the ready localized line in its own field, never appended
+        to the request body (user request)."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "['attached_images', 'attached_documents']" in block
+        assert "'📎 ' + m[key]" in block
+        assert "task-msg-service" in block
+        # The server builds both lines (names joined by a newline) and never
+        # rides the attachment names inside the request text.
+        assert '"attached_images": attached_images' in ROUTES_TASKS
+        assert '"attached_documents": attached_documents' in ROUTES_TASKS
+        assert 'names="\\n".join(image_names)' in ROUTES_TASKS
+        assert 'names="\\n".join(doc_names)' in ROUTES_TASKS
+        assert 'names=", ".join(image_names)' not in ROUTES_TASKS
+        # Document names resolve through the user's document list (doc_ids are
+        # ids only) and a deleted document is skipped.
+        assert '"Attached documents: {names}"' in ROUTES_TASKS
+        assert '"Attached images: {names}"' in ROUTES_TASKS
+        assert "def _document_names(" in ROUTES_TASKS
+        assert "get_user_documents(" in ROUTES_TASKS
 
     def test_step_media_rendered_chat_style(self):
         """Camera snapshots / generated media in a step's extra render as chat

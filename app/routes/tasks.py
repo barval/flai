@@ -98,6 +98,75 @@ def _save_task_images(uploads: list[Any], task_id: str) -> tuple[list[dict[str, 
     return images, None, None
 
 
+def _save_task_documents(uploads: list[Any], task_id: str) -> tuple[list[str] | None, str | None, int | None]:
+    """Save documents attached to a task request/answer; return (doc_ids, error, status).
+
+    Chat/Documents parity (a document attached with the paperclip used to be
+    dropped silently): every upload is validated and stored as a FULL user
+    document — ``DOCUMENTS_FOLDER/<login>/<doc_id><ext>`` plus a ``documents``
+    row — and its indexing is enqueued, exactly like a Documents-panel upload.
+    Only the ids leave here: the task stores them in ``doc_ids``, which scopes
+    every rag/rlm step and renders the attachment line in the conversation.
+    """
+    import os
+    import uuid
+    from io import BytesIO
+
+    from app import db
+    from app.routes.documents import validate_file
+    from app.utils import check_document_quota
+
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    user_id = session["login"]
+    lang = session.get("language", "ru")
+    max_size_mb = current_app.config["MAX_DOCUMENT_SIZE_MB"]
+    doc_ids: list[str] = []
+    for upload in uploads:
+        file_content = upload.read()
+        filename = upload.filename or "document"
+        is_valid, error_message = validate_file(BytesIO(file_content), filename)
+        if not is_valid:
+            return None, error_message, 400
+        if len(file_content) > max_size_mb * 1024 * 1024:
+            with force_locale(lang):
+                return None, _("Maximum file size {max_size} MB").format(max_size=max_size_mb), 400
+        quota_error = check_document_quota(user_id)
+        if quota_error:
+            return None, quota_error, 413
+
+        doc_id = str(uuid.uuid4())
+        user_folder = os.path.join(documents_folder, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        safe_ext = os.path.splitext(filename)[1].lower()
+        safe_filename = f"{doc_id}{safe_ext}"
+        file_path = os.path.join(user_folder, safe_filename)
+        # Double-check the path does not escape DOCUMENTS_FOLDER.
+        if not os.path.realpath(file_path).startswith(os.path.realpath(user_folder) + os.sep):
+            with force_locale(lang):
+                return None, _("Invalid file path"), 400
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+
+        db.save_document(
+            user_id,
+            doc_id,
+            filename,
+            len(file_content),
+            file_ext=safe_ext,
+            file_path=os.path.join(user_id, safe_filename),
+        )
+        db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
+        current_app.request_queue.add_request(
+            user_id=user_id,
+            session_id="",  # Document indexing does not belong to a chat session
+            request_data={"type": "index_document", "doc_id": doc_id, "file_path": file_path},
+            user_class=session.get("user_class", 100),
+            lang=lang,
+        )
+        doc_ids.append(doc_id)
+    return doc_ids, None, None
+
+
 def _truthy_flag(value: Any) -> bool:
     """Client boolean flag: real booleans (JSON) and 'true'/'1' (form) are true."""
     if isinstance(value, bool):
@@ -145,6 +214,23 @@ def _plan_steps(task: dict) -> list[dict]:
     plan = task.get("step_plan") or {}
     steps = plan.get("steps", []) if isinstance(plan, dict) else (plan or [])
     return [s for s in (steps or []) if isinstance(s, dict)]
+
+
+def _document_names(task: dict) -> list[str]:
+    """File names of the task's attached documents, in ``doc_ids`` order.
+
+    ``doc_ids`` carries ids only, so the names come from the user's document
+    list. An id whose document was deleted since is skipped.
+    """
+    doc_ids = [str(d) for d in (task.get("doc_ids") or []) if d]
+    if not doc_ids:
+        return []
+    from app.db import get_user_documents
+
+    by_id = {
+        str(d.get("id")): str(d.get("filename") or "") for d in (get_user_documents(task.get("user_id") or "") or [])
+    }
+    return [by_id[d] for d in doc_ids if by_id.get(d)]
 
 
 def _task_summary(
@@ -279,8 +365,12 @@ def _render_messages(task: dict) -> list[dict]:
         # A draft task has no request yet — the conversation starts empty.
         image_names = [str(i.get("file_name") or "") for i in (task.get("images") or []) if isinstance(i, dict)]
         image_names = [n for n in image_names if n]
-        if image_names:
-            request_text = request_text + "\n\n" + _("Attached images: {names}").format(names=", ".join(image_names))
+        # The attachment names never ride inside the request text: they travel
+        # as their own field so the task view renders them as a service line
+        # (the plan line's font) with one file name per line.
+        attached_images = _("Attached images: {names}").format(names="\n".join(image_names)) if image_names else ""
+        doc_names = _document_names(task)
+        attached_documents = _("Attached documents: {names}").format(names="\n".join(doc_names)) if doc_names else ""
         # Expose the first task image as extra.media so JS renders it visually.
         req_extra: dict[str, Any] = {}
         task_images = task.get("images") or []
@@ -298,6 +388,8 @@ def _render_messages(task: dict) -> list[dict]:
                 "role": "user",
                 "kind": "request",
                 "content": request_text,
+                "attached_images": attached_images,
+                "attached_documents": attached_documents,
                 "seq": 0,
                 "total_steps": total,
                 "status": None,
@@ -423,11 +515,13 @@ def task_request_route(task_id):
 
     data: dict[str, Any] = {}
     uploads: list[Any] = []
+    doc_uploads: list[Any] = []
     if request.content_type and "multipart/form-data" in request.content_type:
         # Vision flow (v12.6): the request may carry attached images (chips in
         # the task view). JSON fields ride the form alongside the files.
         data = {key: val for key, val in request.form.items()}
         uploads = [f for f in request.files.getlist("images") if f and f.filename]
+        doc_uploads = [f for f in request.files.getlist("files") if f and f.filename]
     else:
         data = request.get_json(silent=True) or {}
 
@@ -441,11 +535,23 @@ def task_request_route(task_id):
         if img_error:
             return jsonify({"error": "⚠️ " + img_error}), img_status
 
+    # Paperclip documents become full user documents (Documents parity); a
+    # failure keeps the task a draft so nothing is queued half-attached.
+    new_doc_ids: list[str] = []
+    if doc_uploads:
+        saved_ids, doc_error, doc_status = _save_task_documents(doc_uploads, task_id)
+        if doc_error:
+            return jsonify({"error": "⚠️ " + doc_error}), doc_status
+        new_doc_ids = saved_ids or []
+
     update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
-    if "doc_ids" in data:
+    if "doc_ids" in data or new_doc_ids:
         # Snapshot the Documents-panel selection at submit time (like a chat
-        # request): an empty list means "all documents".
-        update_task(task_id, doc_ids=_clean_doc_ids(data.get("doc_ids")))
+        # request): an empty list means "all documents". Documents just saved
+        # from paperclip attachments come first and scope the task too — a
+        # submit that attached files must never fall back to "all".
+        selected = _clean_doc_ids(data.get("doc_ids"))
+        update_task(task_id, doc_ids=new_doc_ids + [d for d in selected if d not in new_doc_ids])
     if images:
         update_task(task_id, images=images)
     if "deep_analysis" in data:
@@ -477,9 +583,11 @@ def task_answer(task_id):
 
     data: dict[str, Any] = {}
     uploads: list[Any] = []
+    doc_uploads: list[Any] = []
     if request.content_type and "multipart/form-data" in request.content_type:
         data = {key: val for key, val in request.form.items()}
         uploads = [f for f in request.files.getlist("images") if f and f.filename]
+        doc_uploads = [f for f in request.files.getlist("files") if f and f.filename]
     else:
         data = request.get_json(silent=True) or {}
     answer = str(data.get("answer") or data.get("request") or "").strip()
@@ -502,9 +610,11 @@ def task_answer(task_id):
     if question is None:
         return jsonify({"error": "⚠️ " + _("Task is not awaiting an answer")}), 409
 
-    if "doc_ids" in data:
+    if "doc_ids" in data and not doc_uploads:
         # The answer may carry a fresh Documents-panel selection — it scopes
-        # every remaining rag/rlm step of the task.
+        # every remaining rag/rlm step of the task. With attached documents the
+        # update moves past the de-duplication guard below (a resent form must
+        # not save the same documents twice).
         update_task(task_id, doc_ids=_clean_doc_ids(data.get("doc_ids")))
     images: list[dict[str, str]] = []
     ui_media: dict[str, Any] | None = None
@@ -541,6 +651,18 @@ def task_answer(task_id):
     if existing_inputs:
         publish_task_update(current_app._get_current_object(), get_task(task_id))
         return jsonify({"ok": True, "dedup": True}), 200
+
+    # Paperclip documents become full user documents (Documents parity) and
+    # scope the remaining rag/rlm steps together with the fresh panel
+    # selection. Past the de-duplication guard on purpose: a resent form must
+    # not create the same documents twice.
+    if doc_uploads:
+        saved_ids, doc_error, doc_status = _save_task_documents(doc_uploads, task_id)
+        if doc_error:
+            return jsonify({"error": "⚠️ " + doc_error}), doc_status
+        new_doc_ids = saved_ids or []
+        selected = _clean_doc_ids(data.get("doc_ids")) if "doc_ids" in data else []
+        update_task(task_id, doc_ids=new_doc_ids + [d for d in selected if d not in new_doc_ids])
 
     ui_step_id = add_user_input_step(task_id, int(question["seq"]), answer)
     # Chat-style header data: the multimodal model that will describe the

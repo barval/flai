@@ -216,7 +216,61 @@ def _run_llm_step(
     return text
 
 
-def _run_rag_step(app: Flask, step: dict[str, Any], user_id: str, lang: str, doc_ids: list[str] | None = None) -> str:
+# A task step that searches documents waits for the task's own attachments to
+# leave the indexing states. Chat parity: a chat answer over an attached
+# document is produced only after the document finished indexing
+# (``_process_doc_chat_task`` indexes it before re-queueing the question), so a
+# task step must not search a half-indexed document and report «no relevant
+# documents». The bound is the indexing pipeline's own worst case — the OCR
+# budget, because a scanned PDF is recognised page by page.
+_DOC_INDEX_POLL_S = 2
+
+
+def wait_for_documents_indexed(app: Flask, user_id: str, doc_ids: list[str], cancel_check=None) -> None:
+    """Block until every attached document is indexed (or its indexing failed).
+
+    A FAILED document counts as settled: it never reaches the index, so waiting
+    cannot fix it. A chat request interrupts the wait (``cancel_check``) — the
+    step dies ``interrupted`` and re-executes on resume, so chat never waits.
+
+    Shared by the rag step and the executor's RLM sub-task (the corpus of a
+    scanned PDF has no text on disk until its OCR finished).
+    """
+    import time as _time
+
+    from app.db import INDEX_STATUS_FAILED, INDEX_STATUS_INDEXED, get_user_documents
+
+    pending = {str(d) for d in (doc_ids or []) if d}
+    if not pending:
+        return
+    bound = app.config.get("OCR_TIME_BUDGET_S", 1800) or 1800
+    deadline = _time.monotonic() + bound
+    while pending and _time.monotonic() < deadline:
+        if cancel_check is not None and cancel_check():
+            raise StepAborted("step cancelled while waiting for document indexing")
+        try:
+            docs = get_user_documents(user_id) or []
+        except Exception as e:
+            # A status check must never fail the step: without it the search
+            # simply runs as before.
+            logger.warning(f"document index status check failed: {e}")
+            return
+        settled = {str(d.get("id")): d.get("index_status") for d in docs if str(d.get("id")) in pending}
+        pending = {d for d in pending if settled.get(d) not in (INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED)}
+        if pending:
+            _time.sleep(_DOC_INDEX_POLL_S)
+    if pending:
+        logger.warning(f"documents still indexing after {bound}s: {sorted(pending)}")
+
+
+def _run_rag_step(
+    app: Flask,
+    step: dict[str, Any],
+    user_id: str,
+    lang: str,
+    doc_ids: list[str] | None = None,
+    cancel_check=None,
+) -> str:
     """Document-search runner: query from step extra (fallback: goal), fragments out.
 
     Mirrors ``RedisRequestQueue._process_rag_task`` retrieval: the task's
@@ -225,6 +279,9 @@ def _run_rag_step(app: Flask, step: dict[str, Any], user_id: str, lang: str, doc
     relevance threshold are dropped except coverage chunks. The following llm
     step composes the answer from the returned fragments — this step never
     generates text itself (capability parity with the chat RAG path).
+
+    Attached documents are waited for first (they were uploaded with the task
+    moments ago) — the search must never run against a half-indexed document.
     """
     from flask_babel import force_locale
     from flask_babel import gettext as _
@@ -232,6 +289,7 @@ def _run_rag_step(app: Flask, step: dict[str, Any], user_id: str, lang: str, doc
     rag = app.modules.get("rag")
     if rag is None or not getattr(rag, "available", False):
         raise RuntimeError("document search module is not enabled")
+    wait_for_documents_indexed(app, user_id, doc_ids or [], cancel_check)
     step_extra = step.get("extra") or {}
     query = str(step_extra.get("query") or step.get("goal") or "")
     threshold = app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
@@ -423,7 +481,7 @@ def run_direct_step(
             elif tool == "search":
                 raw = _run_search_step(app, step, user_id, lang)
             elif tool == "rag":
-                raw = _run_rag_step(app, step, user_id, lang, doc_ids)
+                raw = _run_rag_step(app, step, user_id, lang, doc_ids, cancel_check)
             elif tool == "history":
                 raw = _run_history_step(app, step, user_id, lang)
             elif tool == "calculate":

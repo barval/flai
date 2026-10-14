@@ -1424,9 +1424,9 @@ video {
         flex-shrink: 0;
         margin-bottom: 5px;
         /* The bar hugs the 💾 save button (bottom edges flush) with a top
-           allowance (5px total): a zero/2px top still clipped the
-           h2/status-counter glyph tops. */
-        padding: 5px 0 0;
+           allowance (7px total): smaller tops still clipped the
+           h2/status-counter emoji glyphs. */
+        padding: 7px 0 0;
         align-items: stretch;
     }
 
@@ -1476,8 +1476,11 @@ video {
     /* Chat controls: 🎤/📎/Send are relocated into the "Deep analysis" row
        by chat-init.js relocateChatControls() — compact buttons there; the
        message input takes the full width below. Only the FIRST relocated
-       button carries margin-left: auto (equal gaps between all three). */
-    .rlm-controls {
+       button carries margin-left: auto (equal gaps between all three).
+       Selector specificity is raised (`.chat-container .rlm-controls`)
+       because the base .rlm-controls rule lives AFTER this media block in
+       the file and would win the tie. */
+    .chat-container .rlm-controls {
         width: 100%;
         /* The row is exactly as tall as the Send button: every control
            stretches edge-to-edge with it (the label keeps its content
@@ -1488,12 +1491,12 @@ video {
         margin-bottom: 0;
     }
 
-    .rlm-controls label {
+    .chat-container .rlm-controls label {
         align-self: center;
     }
 
-    #file-preview-container {
-        margin: 0 0 0;
+    .chat-container #file-preview-container {
+        margin: 0;
     }
 
     .rlm-controls #voice-record-button {

@@ -296,7 +296,7 @@ class TestReviewGuards:
         """The «Чат/Задача 📊 …» bar hugs the save button's bottom edge with a
         top allowance (5px): smaller tops clipped the glyph tops."""
         block = self._css_media_block(CHAT_CSS, anchor="    .chat-header {")
-        assert "padding: 5px 0 0;" in block
+        assert "padding: 7px 0 0;" in block
         assert "align-items: stretch;" in block
         idx = CHAT_CSS.index(".save-chat-button,\n    .cancel-stream-header {")
         assert "align-self: flex-end" in CHAT_CSS[idx : idx + 120]
@@ -305,12 +305,14 @@ class TestReviewGuards:
         """The «Глубокий анализ / 🎤 / 📎 / Отправить» row stretches every
         control edge-to-edge with the Send button and has NO vertical gaps:
         the chat/task output window starts right above the row, the message
-        input right below it."""
-        block = self._css_media_block(CHAT_CSS, anchor="    .rlm-controls {")
+        input right below it. Selectors carry .chat-container because the
+        base .rlm-controls rule sits AFTER this media block and would win a
+        same-specificity tie."""
+        block = self._css_media_block(CHAT_CSS, anchor="    .chat-container .rlm-controls {")
         assert "align-items: stretch;" in block
         assert "margin-top: 0;" in block
         assert "margin-bottom: 0;" in block
-        assert "align-self: center;" in block
+        assert "    .chat-container .rlm-controls label {\n        align-self: center;" in block
         msgs = self._block(CHAT_CSS, "    .chat-messages {", "    .message-input {")
         assert "margin-bottom: 0;" in msgs
         assert "        padding: 0;" in self._block(CHAT_CSS, "    .message-input {", "    #file-preview-container {")

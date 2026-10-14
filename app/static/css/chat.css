@@ -1423,10 +1423,10 @@ video {
     .chat-header {
         flex-shrink: 0;
         margin-bottom: 5px;
-        /* The bar is exactly as tall as the 💾 save button: no vertical
-           padding, and the button itself defines the bottom edge (no extra
-           space below it). */
-        padding: 0;
+        /* The bar hugs the 💾 save button (bottom edges flush) with a small
+           top allowance (2px): a zero-height top clipped the h2/status-counter
+           glyphs' tops. */
+        padding: 2px 0 0;
         align-items: stretch;
     }
 
@@ -1439,7 +1439,7 @@ video {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
-        margin-bottom: 5px;
+        margin-bottom: 2px;
         padding: 8px;
         padding-bottom: 5px;
     }
@@ -1483,10 +1483,18 @@ video {
            stretches edge-to-edge with it (the label keeps its content
            centered). */
         align-items: stretch;
+        /* Halved top gap (user request): the base 0.5rem margin plus the
+           chat-messages margin left a visibly oversized gap over the Send
+           button. */
+        margin-top: 0.25rem;
     }
 
     .rlm-controls label {
         align-self: center;
+    }
+
+    #file-preview-container {
+        margin: 0 0 3px;
     }
 
     .rlm-controls #voice-record-button {

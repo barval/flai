@@ -293,20 +293,24 @@ class TestReviewGuards:
         assert "padding: 0 0.15rem" in block
 
     def test_mobile_header_bar_hugs_save_button(self):
-        """The «Чат/Задача 📊 …» bar has zero vertical padding and the save
-        button defines its bottom edge (align-items: stretch + flex-end)."""
+        """The «Чат/Задача 📊 …» bar hugs the save button's bottom edge with a
+        small top allowance (2px): a zero-height top clipped the glyph tops."""
         block = self._css_media_block(CHAT_CSS, anchor="    .chat-header {")
-        assert "padding: 0;" in block
+        assert "padding: 2px 0 0;" in block
         assert "align-items: stretch;" in block
         idx = CHAT_CSS.index(".save-chat-button,\n    .cancel-stream-header {")
         assert "align-self: flex-end" in CHAT_CSS[idx : idx + 120]
 
     def test_mobile_controls_row_hugs_send_button(self):
         """The «Глубокий анализ / 🎤 / 📎 / Отправить» row stretches every
-        control edge-to-edge with the Send button."""
+        control edge-to-edge with the Send button, and the excess gap above
+        the row is halved (0.5rem → 0.25rem) plus a slim chat-messages
+        margin."""
         block = self._css_media_block(CHAT_CSS, anchor="    .rlm-controls {")
         assert "align-items: stretch;" in block
+        assert "margin-top: 0.25rem;" in block
         assert "align-self: center;" in block
+        assert "        margin-bottom: 2px;" in CHAT_CSS
 
     def test_tts_head_spacing_halved(self):
         """The 🗣️ head (and its 📋 neighbour) halve their spacing in message

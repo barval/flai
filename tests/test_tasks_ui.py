@@ -437,7 +437,7 @@ class TestReviewGuards:
         helper = self._function_block(CHAT_TASKS, "function replaceClosedTask(")
         assert "closeTaskView(true)" in helper
         assert "Object.values(tasksData)" in helper
-        assert "openTaskView(" in helper and "enterTasksEmptyState()" in helper
+        assert "openTaskView(" in helper and "ensureFirstTask()" in helper
         # Every "the open task is gone" path routes through it: the delete
         # button, the SSE `deleted` event and a list reload after a deletion in
         # another tab.
@@ -530,9 +530,11 @@ class TestReviewGuards:
 
     def test_empty_state_wired_into_view_switch(self):
         """The Tasks tab owns the main window; the last task is restored on
-        re-entry (tab switch and page reload), the empty state is the fallback."""
+        re-entry (tab switch and page reload), and when there are no tasks the
+        first draft task is created automatically (chat parity). The empty state
+        remains only as the failure fallback."""
         assert "restoreTasksView" in CHAT_DOCS and "leaveTasksView" in CHAT_DOCS
-        assert "enterTasksEmptyState" in CHAT_DOCS
+        assert "enterTasksEmptyState" in CHAT_DOCS  # fallback only
         assert "task-empty-state" in CHAT_TASKS
         # Remembered across tab switches and reloads (per user, like the view).
         assert "last_task_" in CHAT_TASKS
@@ -541,6 +543,7 @@ class TestReviewGuards:
         assert "rememberTaskId(taskId)" in self._function_block(CHAT_TASKS, "function openTaskView(")
         restore_block = self._function_block(CHAT_TASKS, "function restoreTasksView(")
         assert "loadTasksFromServer" in restore_block and "openTaskView(remembered)" in restore_block
+        assert "ensureFirstTask()" in restore_block
         # A remembered task deleted meanwhile is forgotten, not restored forever.
         assert "forgetTaskId" in self._function_block(CHAT_TASKS, "function loadTasksFromServer(")
 
@@ -697,3 +700,43 @@ class TestReviewGuards:
 
     def test_task_modal_has_no_dead_attributes(self):
         assert "data-task-title" not in CHAT_TASKS
+
+
+class TestTasksFirstTaskAutoCreate:
+    """When the Tasks list is empty the first draft task is created
+    automatically (chat parity: no empty session list), so the composer is
+    never a half-dead «empty state».
+    """
+
+    @staticmethod
+    def _function_block(source, signature):
+        start = source.index(signature)
+        end = source.find("\nfunction ", start + 1)
+        return source[start : end if end > start else len(source)]
+
+    def test_first_task_is_created_when_the_list_is_empty(self):
+        assert "function ensureFirstTask(" in CHAT_TASKS
+        helper = self._function_block(CHAT_TASKS, "function ensureFirstTask(")
+        # Creates a draft task and opens it.
+        assert "/api/tasks" in helper
+        assert "openTaskView" in helper
+        # Creation failure is the ONLY way back to the empty state.
+        assert "enterTasksEmptyState" in helper
+        # Idempotent: an existing task is opened, never duplicated.
+        assert "Object.keys(tasksData)" in helper
+
+    def test_restore_creates_the_first_task_instead_of_the_empty_state(self):
+        restore = self._function_block(CHAT_TASKS, "function restoreTasksView(")
+        assert "ensureFirstTask()" in restore
+        # loadTasksFromServer returns a success/fail flag so fetch errors do
+        # not auto-create (would duplicate existing tasks).
+        assert "loadTasksFromServer().then(" in restore
+
+    def test_replacing_a_closed_task_creates_a_new_one(self):
+        helper = self._function_block(CHAT_TASKS, "function replaceClosedTask(")
+        assert "ensureFirstTask()" in helper
+        assert "closeTaskView(true)" in helper
+
+    def test_load_tasks_reports_fetch_failure(self):
+        block = self._function_block(CHAT_TASKS, "function loadTasksFromServer(")
+        assert "return true" in block and "return false" in block

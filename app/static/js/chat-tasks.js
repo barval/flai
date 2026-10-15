@@ -115,9 +115,11 @@ function loadTasksFromServer() {
                 forgetTaskId(); // deleted: a reload must not try to restore it
             }
             renderTasksList();
+            return true;
         })
         .catch(err => {
             console.error('Error loading tasks:', err);
+            return false;
         });
 }
 
@@ -263,17 +265,13 @@ function openTaskView(taskId) {
 }
 
 // The Tasks tab opened with no task selected: reopen the last task the user
-// had (tab switch or page reload), falling back to the empty state. Mirrors
-// the chat, which always has a current session.
+// had (tab switch or page reload), or create the first draft task when there
+// are none (chat parity: the chat never shows an empty session list).
 function restoreTasksView() {
     const remembered = readRememberedTaskId();
-    if (!remembered) {
-        enterTasksEmptyState();
-        return;
-    }
     // Claim the window immediately (same flag the empty state sets) so the
-    // chat's async initial load cannot paint its session over it, then open
-    // the task once the list confirms it still exists.
+    // chat's async initial load cannot paint its session over it, then decide
+    // once the list has arrived.
     tasksViewEmpty = true;
     lastTaskPayloadJson = '';
     setTaskMode(true, null);
@@ -284,21 +282,36 @@ function restoreTasksView() {
             showMessagesLoadingIndicator();
         }
     }
-    loadTasksFromServer().then(() => {
-        if (tasksData[remembered]) {
+    loadTasksFromServer().then(ok => {
+        if (remembered && tasksData[remembered]) {
             openTaskView(remembered);
             return;
         }
-        // Only forget when the list actually arrived (a failed fetch also
-        // leaves it empty — a transient error must not lose the memory).
-        if (Object.keys(tasksData).length) forgetTaskId();
+        const ids = Object.keys(tasksData);
+        if (ok && ids.length) {
+            // The remembered id is gone but other tasks exist (or was never
+            // set on this device): open the newest/first, never create a
+            // duplicate.
+            if (remembered) forgetTaskId();
+            openTaskView(ids[0]);
+            return;
+        }
+        if (ok) {
+            // Zero tasks: create the first one (chat parity). The window
+            // remains claimed while the request is in flight.
+            ensureFirstTask();
+            return;
+        }
+        // The list could not be fetched — creating a task now could duplicate
+        // one; show the empty state instead.
         tasksViewEmpty = false;
         enterTasksEmptyState();
     });
 }
 
-// The Tasks tab opened with no task selected: the main window shows the task
-// empty state (title «Задача», hint, no input) instead of the chat.
+// The main window shows the task empty state (title «Задача», hint, no input)
+// instead of the chat. Only reached when a task cannot be created or the list
+// cannot be loaded — the normal empty list creates its first task.
 function enterTasksEmptyState() {
     if (window.currentTaskId) {
         closeTaskView(true); // silent: the empty state replaces the view
@@ -361,15 +374,16 @@ function closeTaskView(silent) {
 }
 
 // The open task is gone (deleted here or in another tab): open the next task
-// of the list, or the empty state. The main window must stay in the Tasks view
-// — falling back to the chat session window there was the bug (user request).
+// of the list, or create the first one. The main window must stay in the Tasks
+// view — falling back to the chat session window there was the bug (user
+// request).
 function replaceClosedTask() {
     closeTaskView(true);
     const remaining = Object.values(tasksData);
     if (remaining.length) {
         openTaskView(remaining[0].id);
     } else {
-        enterTasksEmptyState();
+        ensureFirstTask();
     }
 }
 
@@ -1044,6 +1058,45 @@ function createNewTask() {
             }
         })
         .catch(err => alert(t('error') + ': ' + err.message));
+}
+
+// The list has no tasks: create the first draft task and open it so the Tasks
+// view always has a live composer (chat parity — the chat never shows an empty
+// session list). Idempotent: an existing task is opened instead of a second one
+// being created; only a failed creation request falls back to the empty state
+// (offline, tasks disabled).
+function ensureFirstTask() {
+    const existing = Object.keys(tasksData);
+    if (existing.length) {
+        openTaskView(existing[0]);
+        return;
+    }
+    // Guard against a double trigger (delete + its SSE event): one draft only.
+    if (ensureFirstTask.pending) return;
+    ensureFirstTask.pending = true;
+    // Claim the window while the request is in flight: closeTaskView cleared
+    // currentTaskId and the chat must not repaint over this one.
+    tasksViewEmpty = true;
+    fetchWithCSRF('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    })
+        .then(res => res.json().catch(() => ({})))
+        .then(data => {
+            ensureFirstTask.pending = false;
+            if (data && data.task && data.task.id) {
+                tasksData[data.task.id] = data.task;
+                renderTasksList();
+                openTaskView(data.task.id);
+            } else {
+                enterTasksEmptyState();
+            }
+        })
+        .catch(() => {
+            ensureFirstTask.pending = false;
+            enterTasksEmptyState();
+        });
 }
 
 // ---------------------------------------------------------------------------

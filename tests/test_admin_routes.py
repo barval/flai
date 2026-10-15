@@ -90,7 +90,7 @@ class TestAdminUsers:
 
     @pytest.mark.unit
     def test_get_users_returns_user_relative_token_totals(self, admin_client, test_app):
-        """Admin totals count model replies as outgoing and user prompts as incoming."""
+        """Admin totals count user prompts as outgoing and model replies as incoming."""
         login = f"tokenuser_{uuid.uuid4().hex[:8]}"
         with test_app.app_context():
             from app.db import create_session, save_message

@@ -946,6 +946,17 @@ def task_redis(monkeypatch):
 # ── Fixtures ───────────────────────────────────────────────────────────
 
 
+def _is_test_database() -> bool:
+    """Whether ``DATABASE_URL`` points at a dedicated test database.
+
+    The destructive teardown TRUNCATE below is only allowed against a database
+    whose name ends with ``_test``, so a run with a live ``DATABASE_URL`` can
+    never wipe production data.
+    """
+    db_name = os.environ.get("DATABASE_URL", "").rsplit("/", 1)[-1].split("?")[0]
+    return db_name.endswith("_test")
+
+
 @pytest.fixture(scope="function")
 def test_app():
     """
@@ -1011,8 +1022,9 @@ def test_app():
         # Teardown: stop the per-app watcher threads (see helper above)
         stop_app_background_threads(flask_app)
 
-        # Teardown: clean real DB between tests to prevent cross-test pollution
-        if not _USE_MOCK_DB:
+        # Teardown: clean real DB between tests to prevent cross-test pollution.
+        # Guarded so a live database (non ``*_test``) is never truncated.
+        if not _USE_MOCK_DB and _is_test_database():
             try:
                 from app.database import get_db
 

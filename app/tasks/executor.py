@@ -65,6 +65,7 @@ from app.tasks.runner import (
     wait_for_documents_indexed,
 )
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
+from app.utils import get_current_time_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +423,60 @@ def _response_language_name(lang: str) -> str:
         return "Russian" if lang == "ru" else "English"
 
 
+def _attachments_section(task: dict, lang: str) -> str:
+    """Localized list of the task's attachments for the planner prompt.
+
+    The planner plans over WHAT EXISTS: 4 attached images must produce a
+    vision/llm plan, never a «Прикрепите изображения…» question (live defect —
+    the prompt carried only a boolean, so the planner asked for attachments it
+    already had). Documents and audio ride their existing capability rules;
+    this section only names the files.
+    """
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
+    with force_locale(lang):
+        lines: list[str] = []
+        image_names = [
+            str(i.get("file_name") or "")
+            for i in (task.get("images") or [])
+            if isinstance(i, dict) and i.get("file_name")
+        ]
+        image_names = [n for n in image_names if n]
+        if image_names:
+            lines.append(
+                _("Attached images: {count} ({names}).").format(count=len(image_names), names=", ".join(image_names))
+            )
+        doc_ids = [str(d) for d in (task.get("doc_ids") or []) if d]
+        if doc_ids:
+            try:
+                from app.db import get_user_documents
+
+                by_id = {
+                    str(d.get("id")): str(d.get("filename") or "")
+                    for d in (get_user_documents(task.get("user_id") or "") or [])
+                }
+                doc_names = [by_id[d] for d in doc_ids if by_id.get(d)]
+            except Exception as e:
+                logger.warning(f"attachment doc names not resolved for task {task.get('id', '?')}: {e}")
+                doc_names = []
+            if doc_names:
+                lines.append(
+                    _("Attached documents: {count} ({names}).").format(count=len(doc_names), names=", ".join(doc_names))
+                )
+        audio_entries = [e for e in (task.get("audio") or []) if isinstance(e, dict) and e.get("file_name")]
+        if audio_entries:
+            audio_names = [str(e["file_name"]) for e in audio_entries]
+            lines.append(
+                _("Attached audio recordings: {count} ({names}).").format(
+                    count=len(audio_names), names=", ".join(audio_names)
+                )
+            )
+        if not lines:
+            return _("No files are attached to the task.")
+    return "\n".join(lines)
+
+
 def _style_instruction(lang: str, style: str) -> str:
     try:
         from modules.base import get_style_instruction
@@ -596,6 +651,7 @@ def _run_final_summary(app: Flask, task: dict, meta_out: dict[str, Any] | None =
         ),
         "response_language": _response_language_name(lang),
         "response_style": _style_instruction(lang, task.get("response_style") or "neutral"),
+        "current_time": get_current_time_in_timezone(app) or "",
     }
     meta: dict[str, Any] = meta_out if meta_out is not None else {}
     try:
@@ -939,7 +995,10 @@ class TaskExecutor:
                 # cycle resumes the task once the worker flips the status back.
                 return
             # Resuming after a gate re-open: back to active before stepping.
-            update_task(task_id, status="active")
+            # The stale abort_reason goes with the freeze — a task that later
+            # completes must not keep carrying «chat» (the live list column
+            # rendered a finished task as still running).
+            update_task(task_id, status="active", abort_reason=None)
             task["status"] = "active"
 
         # A user stop may have arrived while the task was still queued — honour
@@ -1059,6 +1118,41 @@ class TaskExecutor:
                 logger.warning(f"task {task.get('id')}: attached image unread ({rel}): {e}")
         return parts
 
+    def _prior_step_media_image(self, task_id: str, idx: int) -> str | None:
+        """Raw base64 of the latest image artifact saved by a PRIOR step.
+
+        The video_gen sub-task animates the image a previous step produced (the
+        image_edit/image_gen artifact lives in that step's ``extra.media``);
+        ``None`` when no prior step saved an image (text-to-video then).
+        """
+        best: tuple[int, str] | None = None
+        for r in get_task_steps(task_id):
+            if int(r.get("seq") or 0) > idx:
+                continue
+            media = (r.get("extra") or {}).get("media") or {}
+            file_type = str(media.get("file_type") or "")
+            rel = str(media.get("file_path") or "")
+            if not rel or not file_type.startswith("image/"):
+                continue
+            seq = int(r.get("seq") or 0)
+            if best is None or seq > best[0]:
+                best = (seq, rel)
+        if best is None:
+            return None
+        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+        if not upload_folder:
+            return None
+        path = os.path.realpath(os.path.join(upload_folder, best[1]))
+        if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
+            logger.warning(f"task {task_id}: prior step image missing on disk: {best[1]}")
+            return None
+        try:
+            with open(path, "rb") as fh:
+                return "data:image/jpeg;base64," + base64.b64encode(fh.read()).decode()
+        except OSError as e:
+            logger.warning(f"task {task_id}: prior step image unread ({best[1]}): {e}")
+            return None
+
     def _camera_rooms(self, task: dict) -> list[str]:
         """The user's accessible camera room names (empty when cameras are off)."""
         try:
@@ -1088,6 +1182,7 @@ class TaskExecutor:
                     "to analyze."
                 )
         request_text = _request_text(task)
+        attachments = _attachments_section(task, lang)
         params = {
             "task_request": request_text,
             "capabilities_section": _capabilities_section(
@@ -1096,6 +1191,8 @@ class TaskExecutor:
             "slm_facts": recall_slm_facts(self.app, request_text, task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),
             "deep_analysis_note": deep_note,
+            "current_time": get_current_time_in_timezone(self.app) or "",
+            "attachments_section": attachments,
         }
         from app.utils import format_prompt
 
@@ -1605,6 +1702,15 @@ class TaskExecutor:
                 return
             request_data["file_data"] = _strip_data_url(str(parts[0].get("data") or ""))
             request_data["file_name"] = str(parts[0].get("name") or "")
+        if tool == "video_gen":
+            # Image+text pipeline when a PRIOR step produced an image artifact
+            # (e.g. step 1 edited a photo, step 2 animates THE EDITED IMAGE —
+            # the live defect made the video from the goal text instead). Chat
+            # parity: a request with no image stays text-to-video, so a missing
+            # prior image is not an error — the goal text alone goes through.
+            media_img = self._prior_step_media_image(task_id, idx)
+            if media_img is not None:
+                request_data["file_data"] = media_img
         # Write-ahead (v12.6 fix): the step row must already say
         # ``subtask_queued`` BEFORE the request reaches the queue. An idle slow
         # worker dequeues it within milliseconds and its orphan guard drops a
@@ -1856,6 +1962,20 @@ class TaskExecutor:
 
         response_text = str(stored.get("response") or result_data.get("response") or "")
         result_text = response_text or "done"
+        if media.get("file_path"):
+            # The verifier judges TEXT only: a media step whose artifact was
+            # saved but never named in the checkpoint input got rejected with
+            # «текстовая инструкция вместо файла» (live defect). Name the
+            # artifact so the criteria "file exists" is decidable.
+            from flask_babel import force_locale
+            from flask_babel import gettext as _t
+
+            with force_locale(task.get("lang") or "ru"):
+                artifact_line = _t("Media artifact saved: {name} ({type}).").format(
+                    name=str(media.get("file_name") or media["file_path"]),
+                    type=str(media.get("file_type") or "file"),
+                )
+            result_text = result_text + "\n" + artifact_line
         # Spec §4: a subtask result is verified like any other step result —
         # a normal checkpoint runs against the step's checkpoint_criteria
         # (e.g. "file exists, non-empty, matches expectation"). A verifier

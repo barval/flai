@@ -192,7 +192,7 @@ def _run_llm_step(
     user_id: str = "",
 ) -> str:
     """Build the step prompt from the task_step template and stream the model."""
-    from app.utils import format_prompt
+    from app.utils import format_prompt, get_current_time_in_timezone
     from modules.base import get_style_instruction, response_language_name
 
     params = {
@@ -206,6 +206,7 @@ def _run_llm_step(
         "slm_facts": recall_slm_facts(app, task_request or step.get("goal", ""), user_id, lang),
         "response_language": response_language_name(lang),
         "response_style": get_style_instruction(lang, response_style),
+        "current_time": get_current_time_in_timezone(app) or "",
     }
     prompt = format_prompt("task_step.template", params, lang=lang)
     if not prompt:

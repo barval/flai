@@ -9,7 +9,15 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
 EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
-    "task_plan": {"task_request", "capabilities_section", "slm_facts", "deep_analysis_note", "response_language"},
+    "task_plan": {
+        "task_request",
+        "capabilities_section",
+        "slm_facts",
+        "deep_analysis_note",
+        "response_language",
+        "attachments_section",
+        "current_time",
+    },
     "task_step": {
         "task_request",
         "plan",
@@ -21,6 +29,7 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "slm_facts",
         "response_language",
         "response_style",
+        "current_time",
     },
     "task_checkpoint": {"step_goal", "step_checkpoint", "step_result", "response_language"},
     "task_final": {
@@ -30,6 +39,7 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "slm_facts",
         "response_language",
         "response_style",
+        "current_time",
     },
 }
 
@@ -48,6 +58,8 @@ DUMMY_VALUES: dict[str, str] = {
     "user_answers": "",
     "step_result": "Got 12",
     "results_digest": "Step 1: done\nStep 2: got 12",
+    "attachments_section": "Attached images: 2 (a.jpg, b.jpg).",
+    "current_time": "15 October 2026, time 12:00:00 Thursday (UTC+3)",
 }
 
 
@@ -90,6 +102,26 @@ def test_templates_do_not_use_skills_section():
     for name in TEMPLATES:
         for lang in ("ru", "en"):
             assert "{skills_section}" not in _load(name, lang), f"{name}/{lang} uses skills_section"
+
+
+def test_plan_template_has_current_time_and_attachments():
+    """The planner must SEE the current date/time and the task's attachments:
+    a calendar question routed to web search because the prompt had no date,
+    and 4 attached images still got a «Прикрепите изображения…» question
+    because the prompt never named them."""
+    for lang in ("ru", "en"):
+        src = _load("task_plan", lang)
+        assert "{current_time}" in src, f"task_plan/{lang}: missing current_time"
+        assert "{attachments_section}" in src, f"task_plan/{lang}: missing attachments_section"
+
+
+def test_plan_template_dates_need_no_web_search():
+    """Planning rule: the date/time is given in the input — calendar questions
+    are computed by llm/calculate, not searched on the web."""
+    for lang in ("ru", "en"):
+        src = _load("task_plan", lang).lower()
+        word = "поиск" if lang == "ru" else "search"
+        assert word in src, f"task_plan/{lang}: the no-search rule names the capability"
 
 
 def test_answer_templates_forbid_latex_math():

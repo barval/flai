@@ -14,6 +14,8 @@ You are completing a multi-step task: compose the final answer for the user to t
 Original user task: {task_request}
 {slm_facts}
 
+Current time: {current_time}.
+
 Plan:
 {plan}
 

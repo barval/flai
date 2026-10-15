@@ -821,7 +821,11 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
 
     assert outcome == "done"
-    assert len(checks) == 1 and checks[0]["result"] == "an image was generated"
+    assert len(checks) == 1
+    assert "an image was generated" in checks[0]["result"]
+    # The saved artifact is named for the verifier (file_path rides the
+    # envelope; the artifact line is appended even without a file_name).
+    assert "x/y.png" in checks[0]["result"]
     assert checks[0]["step"]["checkpoint_criteria"] == "image matches the request"
     step = store.get_task_steps(task_id)[0]
     assert step["status"] == "failed", "rejected verification fails the step"
@@ -1475,6 +1479,65 @@ def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monke
     assert test_app.modules["slm"].recall.call_args.kwargs["profile"] == "tester"
 
 
+def test_plan_phase_prompt_lists_attached_images(db_env, test_app, gate_open, monkeypatch):
+    """The planner prompt names the attached images — a vision/llm plan over
+    them needs no user_input question like «Прикрепите изображения…» (bug: 4
+    images were attached and the planner still asked to attach them)."""
+    store = db_env
+    from app.tasks.store import update_task as _ut
+
+    task_id = _mk_task(store)
+    _ut(
+        task_id,
+        images=[
+            {"file_name": "photo1.jpg", "file_path": "t/photo1.jpg", "file_type": "image/jpeg"},
+            {"file_name": "photo2.jpg", "file_path": "t/photo2.jpg", "file_type": "image/jpeg"},
+        ],
+    )
+    captured = {}
+
+    def fake_planner(app, prompt, cancel_check, lang="ru", status_callback=None):
+        captured["prompt"] = prompt
+        return '{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "vision", "checkpoint_criteria": "c"}]}'
+
+    monkeypatch.setattr(ex, "_run_planner", fake_planner)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
+
+    _cycle(test_app)
+
+    prompt = captured["prompt"]
+    assert "photo1.jpg" in prompt and "photo2.jpg" in prompt, "attached image names reach the planner"
+    assert prompt.count("photo") >= 2, "every attached image is listed"
+
+
+def test_plan_phase_prompt_carries_current_time(db_env, test_app, gate_open, monkeypatch):
+    """The planner prompt carries the current date/time — a calendar question
+    («сколько дней до понедельника») needs no web search (bug: the planner
+    routed it to search because the prompt had no date)."""
+    store = db_env
+    _mk_task(store)
+    captured = {}
+
+    fake_now = "Current date and time: Thursday, 15 October 2026, 12:00 (Europe/Moscow)."
+
+    def fake_time(app):
+        return fake_now
+
+    def fake_planner(app, prompt, cancel_check, lang="ru", status_callback=None):
+        captured["prompt"] = prompt
+        return '{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm", "checkpoint_criteria": "c"}]}'
+
+    monkeypatch.setattr(ex, "_run_planner", fake_planner)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
+    monkeypatch.setattr(ex, "get_current_time_in_timezone", fake_time)
+
+    _cycle(test_app)
+
+    assert "15 October 2026" in captured["prompt"], "the current date reaches the planner prompt"
+
+
 def test_extract_facts_thread_started_on_passed_llm_step(db_env, test_app, gate_open, monkeypatch):
     """A passed llm step triggers the chat-style background fact extraction."""
     store = db_env
@@ -1624,6 +1687,153 @@ def test_enqueue_subtask_stamps_the_step_before_publishing(db_env, test_app, gat
     )
     step = store.get_task_steps(task_id)[0]
     assert step["extra"]["subtask_queue_id"], "the queue id is stamped on the step for polling"
+
+
+def test_video_gen_subtask_reuses_prior_step_image(db_env, test_app, gate_open, monkeypatch):
+    """A video_gen step generates from the EDITED IMAGE of a prior step, not
+    from the text goal (bug: the video was made from the goal description).
+
+    The prior step's extra.media.file_path (an image/* artifact, e.g. the png
+    an image_edit step saved) is read back from the upload folder and rides
+    the request as ``file_data`` — the queue's video handler branches on it
+    into the image+text pipeline. A data: prefix is fine (chat_with_image
+    normalizes it), so the same bytes the chat path sends travel along.
+    """
+    import base64
+    import json
+    import os
+
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = _media_plan("video_gen", goal="Оживите картинку")
+    task_id = _mk_task(store, step_plan=plan)
+
+    # The prior image_edit step stored its artifact in extra.media.
+    img_rel = f"{task_id}/edited.png"
+    upload_folder = str(test_app.config["UPLOAD_FOLDER"])
+    os.makedirs(os.path.join(upload_folder, task_id), exist_ok=True)
+    png_path = os.path.join(upload_folder, img_rel)
+    png_bytes = b"\x89PNG fake image bytes"
+    with open(png_path, "wb") as fh:
+        fh.write(png_bytes)
+
+    prior = add_step(task_id=task_id, seq=0, kind="subtask", goal="Edit the image", tool="image_edit")
+    update_step(prior, status="passed", extra=json.dumps({"media": {"file_path": img_rel, "file_type": "image/png"}}))
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    task = store.get_task(task_id)
+    executor._enqueue_subtask(task, 0, plan["steps"][0])
+
+    call = queue.calls[0]
+    file_data = call["request_data"].get("file_data")
+    assert file_data, "the video step must receive the prior step's image"
+    assert base64.b64decode(file_data.split(",", 1)[-1]) == png_bytes, "the prior step's edited image bytes travel"
+
+    # Housekeeping for the next tests.
+    os.remove(png_path)
+
+
+def test_video_gen_subtask_without_prior_image_falls_back_to_text(db_env, test_app, gate_open, monkeypatch):
+    """No image anywhere in the task ⇒ the video step stays text-to-video
+    (chat parity: a chat video request with no file generates from text)."""
+    store = db_env
+    plan = _media_plan("video_gen", goal="Волны на закате")
+    task_id = _mk_task(store, step_plan=plan)
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+
+    assert "file_data" not in queue.calls[0]["request_data"], "no image ⇒ text-to-video path"
+
+
+def test_frozen_resume_clears_abort_reason(db_env, test_app, gate_open, monkeypatch):
+    """Resuming a frozen task clears ``abort_reason`` — a completed task that
+    was once frozen by a chat request must not keep carrying ``abort_reason=
+    'chat'`` (bug: the list showed stale «выполняется»-ish state from the
+    leftover reason)."""
+    store = db_env
+    task_id = _mk_task(store, status="frozen", step_plan=_seed_plan(), minutes_ago=30)
+    from app.tasks.store import update_task as _ut
+
+    _ut(task_id, abort_reason="chat")
+
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
+    _cycle(test_app, gate=True)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "completed"
+    assert t["abort_reason"] is None, "resume must clear the stale abort_reason"
+
+
+def test_subtask_checkpoint_verdict_sees_media_artifact(db_env, test_app, gate_open, monkeypatch):
+    """The verifier's input mentions the saved media artifact (file name and
+    type) — a media step whose artifact exists must not be rejected with
+    «текстовая инструкция вместо файла» just because the artifact was never
+    named in the checkpoint text."""
+    import os
+
+    from app.tasks.store import update_task as _ut
+
+    store = db_env
+    plan = _media_plan("image_edit", goal="Make it winter")
+    plan["steps"][0]["checkpoint_criteria"] = "the edited image file exists"
+    task_id = _mk_task(store, step_plan=plan)
+
+    # image_edit reads the task's attached image from disk at enqueue time.
+    upload_folder = str(test_app.config["UPLOAD_FOLDER"])
+    os.makedirs(os.path.join(upload_folder, task_id), exist_ok=True)
+    src_path = os.path.join(upload_folder, task_id, "source.png")
+    with open(src_path, "wb") as fh:
+        fh.write(b"\x89PNG source bytes")
+    _ut(task_id, images=[{"file_name": "source.png", "file_path": f"{task_id}/source.png", "file_type": "image/png"}])
+
+    executor = ex.TaskExecutor(app=test_app)
+
+    class _Q:
+        def add_request(self, *a, **k):
+            return "sub-queue-id-1", {}
+
+        def cancel_task(self, *a, **k):
+            pass
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {
+        "status": "completed",
+        "response": "",
+        "file_path": f"{task_id}/winter.png",
+        "file_name": "winter.png",
+        "file_type": "image/png",
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    checks = []
+
+    def _fake_checkpoint(app, step, result, lang="ru"):
+        checks.append({"step": step, "result": result, "lang": lang})
+        return {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+
+    monkeypatch.setattr(ex, "run_checkpoint", _fake_checkpoint)
+
+    outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert outcome == "done"
+    assert len(checks) == 1
+    assert "winter.png" in checks[0]["result"], "the artifact file name reaches the verifier"
+    assert "image/png" in checks[0]["result"], "the artifact type reaches the verifier"
+    step_row = store.get_task_steps(task_id)[0]
+    assert step_row["status"] == "passed"
+    os.remove(src_path)
 
 
 def test_rlm_subtask_waits_for_attached_documents_then_enqueues(db_env, test_app, gate_open, monkeypatch):

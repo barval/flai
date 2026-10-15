@@ -372,6 +372,31 @@ class TestTasksApi:
         step_msg = next(m for m in messages if m["kind"] == "subtask")
         assert step_msg["extra"]["media"]["file_path"] == f"{task_id}/snap.jpg"
 
+    def test_request_message_carries_all_images(self, tasks_env, client):
+        """A task with several attached images exposes EVERY image in the
+        request message's extra (``media_all``), not only the first one — the
+        task window previously showed 1 of 4 attached images."""
+        from app.tasks.store import update_task
+
+        task_id = _seed_task(status="queued")
+        images = [
+            {"file_name": f"photo{i}.jpg", "file_path": f"{task_id}/photo{i}.jpg", "file_type": "image/jpeg"}
+            for i in range(1, 5)
+        ]
+        update_task(task_id, images=images)
+        _login(client)
+
+        response = client.get(f"/api/tasks/{task_id}/messages")
+
+        messages = response.get_json()["messages"]
+        request_msg = next(m for m in messages if m["kind"] == "request")
+        media_all = request_msg["extra"].get("media_all")
+        assert isinstance(media_all, list) and len(media_all) == 4, "all attached images ride extra.media_all"
+        assert media_all[0]["file_name"] == "photo1.jpg"
+        assert media_all[3]["file_path"] == f"{task_id}/photo4.jpg"
+        # Backward compatibility: the first image stays in extra.media.
+        assert request_msg["extra"]["media"]["file_name"] == "photo1.jpg"
+
     def test_messages_carry_created_at_for_timestamps(self, tasks_env, client):
         from app.tasks.store import add_step, update_step
 

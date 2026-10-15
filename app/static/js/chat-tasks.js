@@ -702,30 +702,35 @@ function renderTaskMessage(m, task) {
     });
 
     // Media refs (camera snapshots, generated images/videos) ride the step's
-    // extra — render chat-style image blocks after the text body.
-    const media = (m.extra && m.extra.media) || {};
-    if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
-        const imgContainer = document.createElement('div');
-        imgContainer.className = 'image-container';
-        const img = document.createElement('img');
-        img.src = '/api/files/' + media.file_path;
-        img.loading = 'lazy';
-        img.className = 'attached-image';
-        img.alt = media.file_name || 'image';
-        img.title = t('click_to_enlarge');
-        img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
-        imgContainer.appendChild(img);
-        div.appendChild(imgContainer);
-    } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
-        const video = document.createElement('video');
-        video.controls = true;
-        video.preload = 'metadata';
-        video.loading = 'lazy';
-        video.src = '/api/files/' + media.file_path;
-        video.style.maxWidth = '100%';
-        video.style.borderRadius = '8px';
-        div.appendChild(video);
-    }
+    // extra — render chat-style image blocks after the text body. The request
+    // message carries ALL its attached images in media_all; steps carry one.
+    const mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
+        ? m.extra.media_all
+        : (m.extra && m.extra.media ? [m.extra.media] : []));
+    mediaList.forEach(function(media) {
+        if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'image-container';
+            const img = document.createElement('img');
+            img.src = '/api/files/' + media.file_path;
+            img.loading = 'lazy';
+            img.className = 'attached-image';
+            img.alt = media.file_name || 'image';
+            img.title = t('click_to_enlarge');
+            img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
+            imgContainer.appendChild(img);
+            div.appendChild(imgContainer);
+        } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.loading = 'lazy';
+            video.src = '/api/files/' + media.file_path;
+            video.style.maxWidth = '100%';
+            video.style.borderRadius = '8px';
+            div.appendChild(video);
+        }
+    });
     return div;
 }
 

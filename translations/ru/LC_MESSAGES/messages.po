@@ -595,6 +595,30 @@ msgstr "Модуль камер недоступен"
 msgid "Attached images: {names}"
 msgstr "Приложенные изображения: {names}"
 
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Media artifact saved: {name} ({type})."
+msgstr "Сохранён медиафайл: {name} ({type})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached images: {count} ({names})."
+msgstr "Приложенные изображения: {count} ({names})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached documents: {count} ({names})."
+msgstr "Приложенные документы: {count} ({names})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached audio recordings: {count} ({names})."
+msgstr "Приложенные аудиозаписи: {count} ({names})."
+
+#: app/tasks/executor.py
+msgid "No files are attached to the task."
+msgstr "К задаче файлы не приложены."
+
 #: app/routes/tasks.py
 #, python-brace-format
 msgid "Attached documents: {names}"

@@ -623,6 +623,13 @@ class TestReviewGuards:
         # Video steps render a player too.
         assert "video/" in block and "createElement('video')" in block
 
+    def test_all_attached_images_rendered(self):
+        """Every image of the request message renders (bug: 4 attached images
+        showed 1 — the server exposes extra.media_all and the JS loops it)."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "media_all" in block, "the render must loop over extra.media_all"
+        assert "forEach" in block, "media blocks render in a loop"
+
     def test_service_lines_styled_separately(self):
         """«План из N шагов:» / «Шаг N из M:» are their own italic line."""
         assert "splitServiceLine" in CHAT_TASKS and "task-msg-service" in CHAT_TASKS

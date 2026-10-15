@@ -592,6 +592,30 @@ msgstr "Camera module unavailable"
 msgid "Attached images: {names}"
 msgstr "Attached images: {names}"
 
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Media artifact saved: {name} ({type})."
+msgstr "Media artifact saved: {name} ({type})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached images: {count} ({names})."
+msgstr "Attached images: {count} ({names})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached documents: {count} ({names})."
+msgstr "Attached documents: {count} ({names})."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Attached audio recordings: {count} ({names})."
+msgstr "Attached audio recordings: {count} ({names})."
+
+#: app/tasks/executor.py
+msgid "No files are attached to the task."
+msgstr "No files are attached to the task."
+
 #: app/routes/tasks.py
 #, python-brace-format
 msgid "Attached documents: {names}"

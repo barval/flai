@@ -456,17 +456,22 @@ def _render_messages(task: dict) -> list[dict]:
             sid = str(e.get("step_id") or "")
             if sid and str(e.get("phase") or "") == "answer":
                 answer_audio.setdefault(sid, []).append(e)
-        # Expose the first task image as extra.media so JS renders it visually.
+        # Every task image rides extra.media (JS renders the list in a loop);
+        # the FIRST one also stays in extra.media for backward compatibility.
         req_extra: dict[str, Any] = {}
         task_images = task.get("images") or []
         if task_images and isinstance(task_images, list):
-            first_img = task_images[0]
-            if isinstance(first_img, dict) and first_img.get("file_path"):
-                req_extra["media"] = {
-                    k: first_img[k] for k in ("file_path", "file_name", "file_type", "file_size") if k in first_img
-                }
-                if "file_type" not in req_extra.get("media", {}):
-                    req_extra["media"]["file_type"] = "image/jpeg"
+            img_media: list[dict[str, Any]] = []
+            for img in task_images:
+                if not isinstance(img, dict) or not img.get("file_path"):
+                    continue
+                entry = {k: img[k] for k in ("file_path", "file_name", "file_type", "file_size") if k in img}
+                if "file_type" not in entry:
+                    entry["file_type"] = "image/jpeg"
+                img_media.append(entry)
+            if img_media:
+                req_extra["media_all"] = img_media
+                req_extra["media"] = img_media[0]
         messages.append(
             {
                 "id": f"{task['id']}:request",
@@ -816,7 +821,7 @@ def task_answer(task_id):
         # for it made users re-press send and produced duplicate answers.
         from app.tasks.answer_images import describe_answer_images
 
-        describe_answer_images(self_app=current_app._get_current_object(), task=task, step_id=ui_step_id, images=images)
+        describe_answer_images(app=current_app._get_current_object(), task=task, step_id=ui_step_id, images=images)
     if audio_entries:
         # Transcribe the answer's audio AFTER the user_input row exists
         # (app/tasks/audio_transcribe.py): Whisper is an HTTP call to the

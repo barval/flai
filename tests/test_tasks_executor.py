@@ -1316,6 +1316,31 @@ def test_task_image_parts_read_files(test_app, tmp_path):
     assert parts[0]["data"].startswith("data:image/jpeg;base64,")
 
 
+def test_task_image_parts_label_the_real_image_type(test_app, tmp_path):
+    """A part carries its own image type: a PNG must not go out labelled JPEG.
+
+    The type comes from the stored ``file_type``, else from the file name; only
+    an image whose type stays unknown keeps the legacy JPEG label."""
+    upload = tmp_path / "uploads"
+    sub = upload / "sess1"
+    sub.mkdir(parents=True)
+    for name in ("pic.png", "photo.jpg", "note.bmp", "mystery.bin"):
+        (sub / name).write_bytes(b"x" * 8)
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    executor = ex.TaskExecutor(app=test_app)
+    task = {
+        "id": "t1",
+        "images": [
+            {"file_path": "sess1/pic.png", "file_name": "pic.png", "file_type": "image/png"},
+            {"file_path": "sess1/photo.jpg", "file_name": "photo.jpg"},
+            {"file_path": "sess1/note.bmp", "file_name": "note.bmp", "file_type": "application/octet-stream"},
+            {"file_path": "sess1/mystery.bin", "file_name": "mystery.bin"},
+        ],
+    }
+    types = [p["data"].split(";", 1)[0] for p in executor._task_image_parts(task)]
+    assert types == ["data:image/png", "data:image/jpeg", "data:image/bmp", "data:image/jpeg"]
+
+
 def test_task_image_parts_empty_when_no_images(test_app):
     executor = ex.TaskExecutor(app=test_app)
     assert executor._task_image_parts({"id": "t1", "images": []}) == []

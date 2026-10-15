@@ -587,6 +587,10 @@ msgstr ""
 msgid "Camera module unavailable"
 msgstr "Camera module unavailable"
 
+#: app/queue.py
+msgid "IMAGE FILE NAME"
+msgstr "IMAGE FILE NAME"
+
 #: app/routes/tasks.py
 #, python-brace-format
 msgid "Attached images: {names}"

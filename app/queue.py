@@ -3408,10 +3408,14 @@ class RedisRequestQueue:
         the two-section extraction the multimodal model produces with the
         extraction prompt (``image.template``) — a detailed description plus
         all text — and never answers the planner goal (the plan's following
-        ``llm`` step composes the answer from this material). ONE joint
-        multimodal call for several images (chat parity), per-image extraction
-        on failure. Errors return the localized error envelope so the step
-        fails and the task continues.
+        ``llm`` step composes the answer from this material). Every image is
+        read by its OWN call, because that prompt mandates exactly one
+        description block: a joint call over several images describes only the
+        first of them (the verifier rejects such a step and the planner asks
+        the user for images it already has). Each extraction is preceded by the
+        image's file name, written by the caller and never by the model, so the
+        material stays attributable. Errors return the localized error envelope
+        so the step fails and the task continues.
         """
         data = task.get("data", {})
         session_id = task.get("session_id", "")
@@ -3427,7 +3431,7 @@ class RedisRequestQueue:
             )
             return envelope
 
-        images = [p.get("data") for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
+        images = [p for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
         if not images:
             return _err(str(base._("No image in your message", lang)) if base else "No image in your message")
 
@@ -3436,23 +3440,33 @@ class RedisRequestQueue:
             return _err(str(base._("Multimodal model unavailable", lang)) if base else "Multimodal model unavailable")
 
         current_time_str = get_current_time_in_timezone(self.app) or ""
+        # The file name of every image precedes its extraction: the caller writes
+        # it, never the model — a guessed or absent name leaves the descriptions
+        # unattributable.
+        name_marker = str(base._("IMAGE FILE NAME", lang)) if base else "IMAGE FILE NAME"
+        bot_reply = ""
+        mm_error = None
+        sections: list[str] = []
         # Empty user text selects the extraction prompt (description + text)
-        # instead of the image-request classifier — the step only reads the image.
-        if len(images) > 1:
-            bot_reply, mm_error = mm.process_images_with_text(
-                images, "", current_time_str, lang=lang, session_id=None, response_style="neutral"
-            )
-            if (mm_error and self._is_llm_error_string(mm_error or "")) or not bot_reply:
-                bot_reply, mm_error = self._extract_images_fallback(images, lang)
-        else:
-            bot_reply, mm_error = mm.process_image_with_text(
-                images[0],
+        # instead of the image-request classifier — the step only reads. One call
+        # PER image: that prompt mandates exactly one description block, so a
+        # single joint call over several images describes only the first of them.
+        for part in images:
+            reply, err = mm.process_image_with_text(
+                str(part.get("data")),
                 "",
                 current_time_str,
                 lang=lang,
                 session_id=None,
                 response_style="neutral",
             )
+            if err or not reply or not str(reply).strip():
+                mm_error = err
+                break
+            name = str(part.get("name") or "") or (str(base._("Image", lang)) if base else "Image")
+            sections.append(f"=== {name_marker} ===\n{name}\n\n{str(reply).strip()}")
+        else:
+            bot_reply = "\n\n".join(sections)
         if mm_error:
             bot_reply = f"⚠️ {mm_error}"
         if not bot_reply or not str(bot_reply).strip():
@@ -3472,30 +3486,12 @@ class RedisRequestQueue:
             "session_id": session_id,
             "response": stripped or str(bot_reply).strip(),
         }
-        # Chat-style header: the joint image analysis runs on the multimodal
-        # model — the step header shows its name and the real token totals.
+        # Chat-style header: the image analysis runs on the multimodal model —
+        # the step header shows its name and the real token totals.
         envelope.update(
             self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
         )
         return envelope
-
-    def _extract_images_fallback(self, images: list[str], lang: str) -> tuple[str | None, str | None]:
-        """Per-image extraction when the joint vision call fails (VRAM/context).
-
-        Each item from ``describe_images_for_context`` is already the two-section
-        extraction; they are joined into one step body. No answering call — the
-        vision step only reads the images.
-        """
-        multimodal = self.app.modules.get("multimodal")
-        if not multimodal:
-            return None, None
-        results = multimodal.describe_images_for_context(images, lang)
-        sections: list[str] = []
-        for idx, (_data, description, error) in enumerate(results, 1):
-            if error or not description:
-                return None, error
-            sections.append(f"{idx}. {description}")
-        return "\n\n".join(sections), None
 
     def _process_camera_task_stream(
         self,

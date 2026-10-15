@@ -600,13 +600,18 @@ class TestReviewGuards:
         assert "['attached_images', 'attached_documents', 'attached_audio']" in block
         assert "'📎 ' + m[key]" in block
         assert "task-msg-service" in block
-        # The server builds the lines (names joined by a newline) and never
-        # rides the attachment names inside the request text.
+        # The server builds the lines (the label on its own line, then one file
+        # name per line — the task view keeps the newlines) and never rides the
+        # attachment names inside the request text.
         assert '"attached_images": attached_images' in ROUTES_TASKS
         assert '"attached_documents": attached_documents' in ROUTES_TASKS
         assert '"attached_audio": attached_audio' in ROUTES_TASKS
-        assert 'names="\\n".join(image_names)' in ROUTES_TASKS
-        assert 'names="\\n".join(doc_names)' in ROUTES_TASKS
+        # A newline starts the names block, so the label never shares its line
+        # with the first file name (user request).
+        assert 'names="\\n" + "\\n".join(image_names)' in ROUTES_TASKS
+        assert 'names="\\n" + "\\n".join(doc_names)' in ROUTES_TASKS
+        assert 'names="\\n" + "\\n".join(req_audio_names)' in ROUTES_TASKS
+        assert 'names="\\n" + "\\n".join(names)' in ROUTES_TASKS
         assert 'names=", ".join(image_names)' not in ROUTES_TASKS
         # Document names resolve through the user's document list (doc_ids are
         # ids only) and a deleted document is skipped.

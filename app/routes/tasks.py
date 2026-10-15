@@ -421,7 +421,9 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         # An answer's audio attachments: the 📎 service line + the transcript
         # blocks the transcription thread appended to this step's result.
         names = [str(e.get("file_name") or "") for e in audio_entries if e.get("file_name")]
-        msg["attached_audio"] = _("Attached audio recordings: {names}").format(names="\n".join(names)) if names else ""
+        msg["attached_audio"] = (
+            _("Attached audio recordings: {names}").format(names="\n" + "\n".join(names)) if names else ""
+        )
         msg["audio_transcripts"] = [_transcript_block(e) for e in audio_entries if _transcript_block(e)["text"]]
     return msg
 
@@ -438,17 +440,24 @@ def _render_messages(task: dict) -> list[dict]:
         image_names = [n for n in image_names if n]
         # The attachment names never ride inside the request text: they travel
         # as their own field so the task view renders them as a service line
-        # (the plan line's font) with one file name per line.
-        attached_images = _("Attached images: {names}").format(names="\n".join(image_names)) if image_names else ""
+        # (the plan line's font) — the label owns its line and the names start
+        # on the next one, one file name per line.
+        attached_images = (
+            _("Attached images: {names}").format(names="\n" + "\n".join(image_names)) if image_names else ""
+        )
         doc_names = _document_names(task)
-        attached_documents = _("Attached documents: {names}").format(names="\n".join(doc_names)) if doc_names else ""
+        attached_documents = (
+            _("Attached documents: {names}").format(names="\n" + "\n".join(doc_names)) if doc_names else ""
+        )
         # Audio attachments (v12.6 voice parity): request-phase entries ride
         # the request message; answer-phase ones ride their user_input step.
         audio_entries = [e for e in (task.get("audio") or []) if isinstance(e, dict)]
         req_audio = [e for e in audio_entries if str(e.get("phase") or "request") != "answer"]
         req_audio_names = [str(e.get("file_name") or "") for e in req_audio if e.get("file_name")]
         attached_audio = (
-            _("Attached audio recordings: {names}").format(names="\n".join(req_audio_names)) if req_audio_names else ""
+            _("Attached audio recordings: {names}").format(names="\n" + "\n".join(req_audio_names))
+            if req_audio_names
+            else ""
         )
         req_transcripts = [_transcript_block(e) for e in req_audio if _transcript_block(e)["text"]]
         answer_audio: dict[str, list[dict]] = {}

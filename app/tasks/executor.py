@@ -44,6 +44,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
 import os
 import re
 import threading
@@ -1095,6 +1096,8 @@ class TaskExecutor:
 
         The stored paths live under the user's upload folder; a missing or
         unreadable file is skipped (the vision step answers over what arrived).
+        Each part carries the image's own type — the stored ``file_type``, else
+        the type of the file name — so a PNG is never sent as a JPEG.
         """
         parts: list[dict[str, str]] = []
         upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
@@ -1109,11 +1112,14 @@ class TaskExecutor:
             if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
                 logger.warning(f"task {task.get('id')}: attached image missing on disk: {rel}")
                 continue
+            mime = str(img.get("file_type") or "")
+            if not mime.startswith("image/"):
+                mime = str(mimetypes.guess_type(name)[0] or "")
+            if not mime.startswith("image/"):
+                mime = "image/jpeg"
             try:
                 with open(path, "rb") as fh:
-                    parts.append(
-                        {"data": "data:image/jpeg;base64," + base64.b64encode(fh.read()).decode(), "name": name}
-                    )
+                    parts.append({"data": f"data:{mime};base64," + base64.b64encode(fh.read()).decode(), "name": name})
             except OSError as e:
                 logger.warning(f"task {task.get('id')}: attached image unread ({rel}): {e}")
         return parts

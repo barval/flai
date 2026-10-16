@@ -139,17 +139,20 @@ CAPABILITIES: list[dict[str, str]] = [
         "id": "image_edit",
         "label": "Image editing",
         "description": (
-            "Edit one image attached to the task according to an instruction. To edit "
-            "several images, plan ONE step per image with that image's file name in the "
-            "goal: the step edits the image its goal names (the first attached one when "
-            "the goal names none)."
+            "Edit one image according to an instruction: the attached image the "
+            "goal names (one step per image; the first attached one when the goal "
+            "names none), or the artifact of an earlier step when its seq is set "
+            'in "source_step" (no attachment edit). Without any source the step fails.'
         ),
         "checkpoint_hint": "Name this image's file in the goal and the change that must be visible.",
     },
     {
         "id": "video_gen",
         "label": "Video generation",
-        "description": "Generate a short video from a text prompt.",
+        "description": (
+            'Generate a short video from a text prompt; with "source_step" (or '
+            "any earlier step-produced image) it animates that image instead."
+        ),
         "checkpoint_hint": "Describe the scene and motion the video must show.",
     },
 ]

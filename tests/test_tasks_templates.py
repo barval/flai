@@ -131,3 +131,14 @@ def test_answer_templates_forbid_latex_math():
         for lang in ("ru", "en"):
             src = _load(name, lang)
             assert "LaTeX" in src, f"{name}/{lang}: missing the plain-text-math rule"
+
+
+def test_plan_template_binds_media_steps_to_their_source_step():
+    """The planner knows the ``source_step`` field: a media step consuming a
+    prior step's artifact names that producer step (live defect: two video
+    steps in one task could not name their different source images, so both
+    were made from the same «latest» image)."""
+    for lang in ("ru", "en"):
+        src = _load("task_plan", lang)
+        assert "source_step" in src, f"task_plan/{lang}: missing the source_step rule"
+        assert '"source_step"' in src, f"task_plan/{lang}: the JSON schema carries the source_step field"

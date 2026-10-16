@@ -524,6 +524,25 @@ def test_executor_loop_survives_exceptions(test_app, monkeypatch):
     assert state["cycles"] >= 2, "loop keeps cycling after an exception"
 
 
+def test_executor_loop_runs_every_cycle_inside_app_context(test_app, monkeypatch):
+    """The daemon loop wraps each cycle in the Flask app context (root cause of
+    the English service strings: force_locale/gettext resolve msgids only
+    inside an app context — outside one they return the English source)."""
+    from flask import has_app_context
+
+    executor = ex.TaskExecutor(app=test_app)
+    test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
+    contexts = []
+
+    def _cycle_probe(*a, **k):
+        contexts.append(has_app_context())
+        executor._shutdown.set()
+
+    monkeypatch.setattr(executor, "_process_one_cycle", _cycle_probe)
+    executor._loop()
+    assert contexts and all(contexts), "every cycle runs with an app context pushed"
+
+
 # ── 10. restart markers (I6) ─────────────────────────────────────────────
 
 
@@ -967,6 +986,39 @@ def test_subtask_envelope_without_meta_keeps_extra_clean(db_env, test_app, gate_
 
     extra = store.get_task_steps(task_id)[0]["extra"]
     assert "model_name" not in extra and "model_type" not in extra and "usage" not in extra
+
+
+def test_subtask_artifact_line_is_the_bare_file_name(db_env, test_app, gate_open, monkeypatch):
+    """The artifact service line is JUST the file name (no translatable
+    sentence): the user asked for the plain name, and a sentence that was
+    translated outside an app context leaked English into a Russian task."""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {
+        "status": "completed",
+        "response": "done",
+        "file_path": "a/b.png",
+        "file_name": "b.png",
+        "file_type": "image/png",
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    result = store.get_task_steps(task_id)[0]["result"]
+    assert "b.png" in result, "the artifact name still reaches the result"
+    assert "Сохранён" not in result and "saved" not in result, "the old sentence is gone entirely"
+    assert result.splitlines()[-1].strip() == "b.png", "the artifact line is the bare file name"
 
 
 def test_subtask_no_criteria_skips_checkpoint(db_env, test_app, gate_open, monkeypatch):
@@ -1427,6 +1479,27 @@ def test_prior_step_media_image_is_raw_base64(monkeypatch, test_app, tmp_path):
     assert base64.b64decode(data) == (sub / "shot.png").read_bytes(), "latest image step before idx wins"
 
 
+def test_prior_step_media_image_honours_source_step(monkeypatch, test_app, tmp_path):
+    """The legacy raw-base64 wrapper resolves ``source_step`` the same way:
+    the NAMED producer step's artifact, not the latest one before the index."""
+    upload = tmp_path / "uploads"
+    sub = upload / "task1"
+    sub.mkdir(parents=True)
+    (sub / "first.png").write_bytes(b"first-bytes")
+    (sub / "second.png").write_bytes(b"second-bytes")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    steps = [
+        {"seq": 1, "extra": {"media": {"file_path": "task1/first.png", "file_type": "image/png"}}},
+        {"seq": 2, "extra": {"media": {"file_path": "task1/second.png", "file_type": "image/png"}}},
+    ]
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: steps)
+    executor = ex.TaskExecutor(app=test_app)
+
+    data = executor._prior_step_media_image("t1", 5, source_seq=1)
+
+    assert base64.b64decode(data or "") == b"first-bytes"
+
+
 def test_vision_subtask_enqueue_carries_images_and_question(db_env, test_app, gate_open, monkeypatch):
     """A vision step enqueues a vision_task with data: parts + the question."""
     store = db_env
@@ -1842,6 +1915,43 @@ def test_video_gen_subtask_reuses_prior_step_image(db_env, test_app, gate_open, 
     os.remove(png_path)
 
 
+def test_prior_step_media_resolves_the_named_source_step(monkeypatch, test_app, tmp_path):
+    """``source_step`` binds a media step to ONE prior artifact: the producer
+    step's seq, not "the latest image so far" (live defect: a task that edited
+    the image and then asked for two videos got BOTH videos from the edited
+    image, because a second producer step's artifact could not be named)."""
+    upload = tmp_path / "uploads"
+    sub = upload / "task1"
+    sub.mkdir(parents=True)
+    (sub / "mars.png").write_bytes(b"mars-bytes")
+    (sub / "grass.png").write_bytes(b"grass-bytes")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    steps = [
+        {
+            "seq": 1,
+            "extra": {"media": {"file_path": "task1/mars.png", "file_name": "mars.png", "file_type": "image/png"}},
+        },
+        {
+            "seq": 2,
+            "extra": {"media": {"file_path": "task1/grass.png", "file_name": "grass.png", "file_type": "image/png"}},
+        },
+        {"seq": 3, "extra": {}},
+    ]
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: steps)
+    executor = ex.TaskExecutor(app=test_app)
+
+    named = executor._prior_step_media("t1", 2, source_seq=1)
+    assert named is not None
+    assert base64.b64decode(executor._media_to_raw_base64(named)) == b"mars-bytes", (
+        "source_step=1 yields step 1's artifact, not the latest (step 2)"
+    )
+    latest = executor._prior_step_media("t1", 2)
+    assert latest is not None
+    assert base64.b64decode(executor._media_to_raw_base64(latest)) == b"grass-bytes", (
+        "without source_step the latest prior image still wins"
+    )
+
+
 def test_video_gen_subtask_without_prior_image_falls_back_to_text(db_env, test_app, gate_open, monkeypatch):
     """No image anywhere in the task ⇒ the video step stays text-to-video
     (chat parity: a chat video request with no file generates from text)."""
@@ -1856,6 +1966,94 @@ def test_video_gen_subtask_without_prior_image_falls_back_to_text(db_env, test_a
     executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
 
     assert "file_data" not in queue.calls[0]["request_data"], "no image ⇒ text-to-video path"
+
+
+def test_parse_plan_keeps_valid_source_step():
+    """A media step may name the producer step whose artifact it consumes
+    (``source_step``): a valid in-range number is kept, anything else is
+    dropped — an out-of-range or non-numeric value must not poison the step."""
+    raw = (
+        '{"title": "t", "steps": ['
+        '{"seq": 1, "goal": "g1", "tool": "image_gen", "checkpoint_criteria": "c"},'
+        '{"seq": 2, "goal": "g2", "tool": "video_gen", "checkpoint_criteria": "c", "source_step": 1},'
+        '{"seq": 3, "goal": "g3", "tool": "video_gen", "checkpoint_criteria": "c", "source_step": "3"},'
+        '{"seq": 4, "goal": "g4", "tool": "video_gen", "checkpoint_criteria": "c", "source_step": 99},'
+        '{"seq": 5, "goal": "g5", "tool": "video_gen", "checkpoint_criteria": "c", "source_step": "abc"}'
+        "]}"
+    )
+
+    plan = ex._parse_plan(raw)
+
+    assert plan is not None
+    sources = [s.get("source_step") for s in plan["steps"]]
+    assert sources == [None, 1, None, None, None], "only 1 <= source_step < own seq survives"
+
+
+def test_parse_plan_plain_requests_still_parse():
+    assert ex._parse_plan('{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}') == {
+        "title": "t",
+        "steps": [
+            {
+                "seq": 1,
+                "goal": "g",
+                "tool": "llm",
+                "checkpoint_criteria": "",
+                "user_input_expected": False,
+                "source_step": None,
+            }
+        ],
+    }
+
+
+def test_video_gen_source_step_yields_that_steps_artifact(db_env, test_app, gate_open, monkeypatch):
+    """source_step=2 animates STEP 2's artifact even when a later-produced
+    plan position is consumed first (live defect: both videos came from the
+    step-1 image because «latest before idx» was the only rule)."""
+    import json as _json
+    import os
+
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Make grass", "tool": "video_gen", "source_step": 2, "checkpoint_criteria": "c"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+
+    upload_folder = str(test_app.config["UPLOAD_FOLDER"])
+    os.makedirs(os.path.join(upload_folder, task_id), exist_ok=True)
+    for name, payload in (("mars.png", b"mars-bytes"), ("grass.png", b"grass-bytes")):
+        with open(os.path.join(upload_folder, task_id, name), "wb") as fh:
+            fh.write(payload)
+    s1 = add_step(task_id=task_id, seq=1, kind="subtask", goal="Make mars", tool="image_gen")
+    update_step(
+        s1,
+        status="passed",
+        extra=_json.dumps({"media": {"file_path": f"{task_id}/mars.png", "file_type": "image/png"}}),
+    )
+    s2 = add_step(task_id=task_id, seq=2, kind="subtask", goal="Make grass", tool="image_gen")
+    update_step(
+        s2,
+        status="passed",
+        extra=_json.dumps({"media": {"file_path": f"{task_id}/grass.png", "file_type": "image/png"}}),
+    )
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    # The video step sits at plan position idx=2 (seq 3) but is fed here with
+    # the raw step dict; source_step=2 must win over the "no artifact at seq
+    # 3 yet" situation — and over the mars.png of step 1.
+    executor._enqueue_subtask(store.get_task(task_id), 2, plan["steps"][0])
+
+    call = queue.calls[0]
+    assert base64.b64decode(call["request_data"].get("file_data") or "") == b"grass-bytes", (
+        "source_step=2 binds the video to step 2's artifact"
+    )
+    for name in ("mars.png", "grass.png"):
+        os.remove(os.path.join(upload_folder, task_id, name))
 
 
 def test_frozen_resume_clears_abort_reason(db_env, test_app, gate_open, monkeypatch):
@@ -1935,10 +2133,48 @@ def test_subtask_checkpoint_verdict_sees_media_artifact(db_env, test_app, gate_o
     assert outcome == "done"
     assert len(checks) == 1
     assert "winter.png" in checks[0]["result"], "the artifact file name reaches the verifier"
-    assert "image/png" in checks[0]["result"], "the artifact type reaches the verifier"
     step_row = store.get_task_steps(task_id)[0]
     assert step_row["status"] == "passed"
     os.remove(src_path)
+
+
+def test_subtask_checkpoint_verdict_sees_the_artifact_line_of_a_media_step(db_env, test_app, gate_open, monkeypatch):
+    """The bare file name of the artifact reaches the verifier: a media step
+    whose artifact exists must not be rejected with «текстовая инструкция
+    вместо файла» just because the artifact was never named in the input.
+
+    (Kept as a separate pass-case: the artifact line is now the file name
+    alone, which is still enough for a "file exists" criteria.)"""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    plan["steps"][0]["checkpoint_criteria"] = "the generated image file exists"
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _SimpleQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    envelope = {
+        "status": "completed",
+        "response": "",
+        "file_path": f"{task_id}/gen.png",
+        "file_name": "gen.png",
+        "file_type": "image/png",
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    checks = []
+    monkeypatch.setattr(
+        ex,
+        "run_checkpoint",
+        lambda app, step, result, lang="ru": (
+            checks.append({"result": result}) or {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+        ),
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert checks and "gen.png" in checks[0]["result"], "the bare name reaches the verifier"
 
 
 def test_rlm_subtask_waits_for_attached_documents_then_enqueues(db_env, test_app, gate_open, monkeypatch):
@@ -2112,9 +2348,101 @@ def test_enqueue_subtask_image_edit_sends_raw_base64(db_env, test_app, gate_open
     assert call["request_data"]["file_name"] == "src.jpg"
 
 
-def test_enqueue_subtask_image_edit_without_image_fails_the_step(db_env, test_app, gate_open, monkeypatch):
-    """No attached source image ⇒ the edit step fails at once (no GPU spent),
-    the task continues and the failure reaches the view."""
+def test_enqueue_subtask_image_edit_falls_back_to_prior_step_artifact(db_env, test_app, gate_open, monkeypatch):
+    """An edit step with NO attached images edits the artifact a prior step
+    produced (live defect: step 2 «измени полученное изображение» failed with
+    "no source image attached" although step 1 had just generated one)."""
+    import json as _json
+    import os
+
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [
+            {"seq": 1, "goal": "Make an image", "tool": "image_gen"},
+            {"seq": 2, "goal": "Измените полученное изображение", "tool": "image_edit"},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+
+    upload_folder = str(test_app.config["UPLOAD_FOLDER"])
+    os.makedirs(os.path.join(upload_folder, task_id), exist_ok=True)
+    png_path = os.path.join(upload_folder, task_id, "generated.png")
+    with open(png_path, "wb") as fh:
+        fh.write(b"\x89PNG generated bytes")
+
+    prior = add_step(task_id=task_id, seq=1, kind="subtask", goal="Make an image", tool="image_gen")
+    update_step(
+        prior,
+        status="passed",
+        extra=_json.dumps({"media": {"file_path": f"{task_id}/generated.png", "file_type": "image/png"}}),
+    )
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 1, plan["steps"][1])
+
+    assert len(queue.calls) == 1, "the step must not fail — the prior artifact is a valid source"
+    call = queue.calls[0]
+    assert call["task_type"] == "api_image_edit"
+    assert base64.b64decode(call["request_data"]["file_data"]) == b"\x89PNG generated bytes"
+    assert call["request_data"]["file_name"] == "generated.png"
+    os.remove(png_path)
+
+
+def test_enqueue_subtask_image_edit_source_step_binds_the_artifact(db_env, test_app, gate_open, monkeypatch):
+    """source_step binds the edit to ONE producer step: with two prior image
+    steps, source_step=2 must yield step 2's artifact (not the latest rule's
+    second artifact — this branch exists so a plan can pin the source)."""
+    import json as _json
+    import os
+
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 3, "goal": "Измените изображение из шага 1", "tool": "image_edit", "source_step": 1}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+
+    upload_folder = str(test_app.config["UPLOAD_FOLDER"])
+    os.makedirs(os.path.join(upload_folder, task_id), exist_ok=True)
+    for name, payload in (("first.png", b"first-bytes"), ("second.png", b"second-bytes")):
+        with open(os.path.join(upload_folder, task_id, name), "wb") as fh:
+            fh.write(payload)
+    for seq, name in ((1, "first.png"), (2, "second.png")):
+        s = add_step(task_id=task_id, seq=seq, kind="subtask", goal=f"make {name}", tool="image_gen")
+        update_step(
+            s,
+            status="passed",
+            extra=_json.dumps({"media": {"file_path": f"{task_id}/{name}", "file_type": "image/png"}}),
+        )
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda q=queue: q)
+
+    executor = ex.TaskExecutor(app=test_app)
+    # The step sits at plan position idx=2 (seq 3) — source_step=1 must pin
+    # step 1's artifact although step 2's artifact is the more recent one.
+    executor._enqueue_subtask(store.get_task(task_id), 2, plan["steps"][0])
+
+    call = queue.calls[0]
+    assert base64.b64decode(call["request_data"]["file_data"]) == b"first-bytes", (
+        "source_step=1 pins the first step's artifact even though step 2 is later"
+    )
+    assert call["request_data"]["file_name"] == "first.png"
+    for name in ("first.png", "second.png"):
+        os.remove(os.path.join(upload_folder, task_id, name))
+
+
+def test_enqueue_subtask_image_edit_without_any_source_fails_localized(db_env, test_app, gate_open, monkeypatch):
+    """No attachment AND no prior artifact ⇒ the step fails with a LOCALIZED
+    ⚠️ message (chat parity: raw English errors never reach a Russian user)."""
     store = db_env
     plan = {
         "title": "Media task",
@@ -2130,11 +2458,16 @@ def test_enqueue_subtask_image_edit_without_image_fails_the_step(db_env, test_ap
     publishes = []
     monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
 
-    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    # Runtime parity: the executor cycle (and every _tr inside it) runs inside
+    # the app context the _loop pushes (fix A).
+    with test_app.app_context():
+        executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
 
     assert queue.calls == [], "nothing is enqueued without a source image"
     step = store.get_task_steps(task_id)[0]
-    assert step["status"] == "failed" and step["last_error"] == "no source image attached"
+    assert step["status"] == "failed"
+    assert step["last_error"].startswith("⚠️ "), "user-facing failure must carry the project error prefix"
+    assert "изображени" in step["last_error"].lower(), "the message is localized (ru task lang)"
     assert store.get_task(task_id)["next_step_index"] == 1, "the task continues past the dead step"
     assert publishes == [task_id]
 

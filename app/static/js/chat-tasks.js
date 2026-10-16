@@ -151,7 +151,7 @@ function renderTasksList() {
 <div class="task-item ${isActive}" data-task-id="${escapeHtml(task.id)}">
     <div class="session-content">
         <div class="session-info">
-            <div class="session-title">${taskStatusIcon(task)}📝 ${escapeHtml(title)}</div>
+            <div class="session-title">${taskStatusIcon(task)}📝 <span class="task-title-text">${escapeHtml(title)}</span></div>
             <div class="session-date">📅 ${dateStr}${steps}${tokensHTML}</div>
             <div class="task-status-line">${escapeHtml(taskStatusLine(task))}${execHTML}</div>
         </div>

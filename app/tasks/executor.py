@@ -55,6 +55,7 @@ from typing import Any
 from flask import Flask
 
 from app.database import get_db
+from app.llamacpp_client import _tr
 from app.model_config import get_model_config
 from app.tasks.audio_transcribe import ABORT_REASON as ATTACHMENT_TRANSCRIPT_REASON
 from app.tasks.gate import is_gate_open
@@ -102,6 +103,7 @@ _SUBTASK_TYPE = {
 # Localized user-facing fallbacks (⚠️ prefix per the project error rule).
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
 _MSG_PLAN_UNREADABLE = "Task could not be planned: the planner returned an unreadable plan. Please try again."
+_MSG_NO_EDIT_SOURCE = "The step has no image to edit: no image is attached and no earlier step produced one."
 # Real token usage of the last planner call (module-level: the single
 # executor thread is the only planner caller; the plan phase reads it for
 # the plan message's chat-style header).
@@ -160,6 +162,25 @@ def _strip_data_url(value: str) -> str:
     """Raw base64 payload of a ``data:`` URL (the edit pipeline wants the bytes
     only); a plain base64 string is returned unchanged."""
     return value.split(",", 1)[1] if value.startswith("data:") and "," in value else value
+
+
+def _valid_source_step(value: Any, own_seq: int) -> int | None:
+    """Validate a plan step's ``source_step`` field (producer step seq).
+
+    Accepts an int or a digit string in ``1 <= v < own_seq``; anything else
+    (bool, float, out-of-range, non-numeric) is None — an invalid binding must
+    not poison the step (the media branch then falls back to the latest prior
+    artifact or to no-source behaviour).
+    """
+    if isinstance(value, bool):
+        return None
+    try:
+        seq = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if seq < 1 or seq >= own_seq:
+        return None
+    return seq
 
 
 def images_named_in_goal(images: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
@@ -451,7 +472,7 @@ def _attachments_section(task: dict, lang: str) -> str:
     """Localized list of the task's attachments for the planner prompt.
 
     The planner plans over WHAT EXISTS: 4 attached images must produce a
-    vision/llm plan, never a «Прикрепите изображения…» question (live defect —
+    vision/llm plan, never an "Attach images..." question (live defect —
     the prompt carried only a boolean, so the planner asked for attachments it
     already had). Documents and audio ride their existing capability rules;
     this section only names the files.
@@ -563,15 +584,16 @@ def _parse_plan(raw: str) -> dict | None:
     for i, s in enumerate(raw_steps):
         if not isinstance(s, dict):
             continue
-        steps.append(
-            {
-                "seq": i + 1,
-                "goal": str(s.get("goal", "")),
-                "tool": str(s.get("tool", "llm")),
-                "checkpoint_criteria": str(s.get("checkpoint_criteria", "")),
-                "user_input_expected": bool(s.get("user_input_expected", False)),
-            }
-        )
+        seq = i + 1
+        entry = {
+            "seq": seq,
+            "goal": str(s.get("goal", "")),
+            "tool": str(s.get("tool", "llm")),
+            "checkpoint_criteria": str(s.get("checkpoint_criteria", "")),
+            "user_input_expected": bool(s.get("user_input_expected", False)),
+            "source_step": _valid_source_step(s.get("source_step"), seq),
+        }
+        steps.append(entry)
     if not steps:
         return None
     return {"title": str(data.get("title", "")), "steps": steps}
@@ -740,14 +762,21 @@ class TaskExecutor:
 
     def _loop(self) -> None:
         """Defensive daemon loop: every cycle in try/except — a crash must not
-        kill the thread."""
+        kill the thread.
+
+        Each cycle runs inside the Flask app context: ``_tr``/``force_locale``
+        resolve translated msgids only with a context pushed, so the executor's
+        user-facing strings (⚠️ errors, media notes) come out in the task's
+        language instead of the English msgid (live defect: every service line
+        of a Russian task rendered in English)."""
         poll = max(0.1, float(self._cfg("TASK_POLL_INTERVAL_S", TASK_POLL_INTERVAL_S)))
         while not self._shutdown.is_set():
             try:
-                if not self._restart_sweep_done:
-                    self._mark_interrupted_by_restart()
-                    self._restart_sweep_done = True
-                self._process_one_cycle()
+                with self.app.app_context():
+                    if not self._restart_sweep_done:
+                        self._mark_interrupted_by_restart()
+                        self._restart_sweep_done = True
+                    self._process_one_cycle()
             except Exception as exc:  # noqa: BLE001 — deliberate catch-all
                 logger.exception(f"TaskExecutor cycle failed: {exc}")
             self._shutdown.wait(poll)
@@ -1034,7 +1063,7 @@ class TaskExecutor:
         plan = task.get("step_plan") or {}
         if not (plan.get("steps") if isinstance(plan, dict) else plan):
             # PLAN PHASE: decompose the request before any step can run.
-            # Publish first so the panel switches «Составляю план…» (active,
+            # Publish first so the panel switches to the planning stage (active,
             # total_steps=0) immediately — the phase lasts tens of seconds.
             self._publish_task_update(task_id)
             try:
@@ -1147,45 +1176,64 @@ class TaskExecutor:
                 logger.warning(f"task {task.get('id')}: attached image unread ({rel}): {e}")
         return parts
 
-    def _prior_step_media_image(self, task_id: str, idx: int) -> str | None:
-        """Raw base64 of the latest image artifact saved by a PRIOR step.
+    def _prior_step_media(self, task_id: str, idx: int, source_seq: int | None = None) -> dict | None:
+        """The ``extra.media`` artifact of ONE prior step (an image file).
 
-        The video_gen sub-task animates the image a previous step produced (the
-        image_edit/image_gen artifact lives in that step's ``extra.media``);
-        ``None`` when no prior step saved an image (text-to-video then).
+        Default (no ``source_seq``): the LATEST image artifact saved by a step
+        before plan position ``idx``. With ``source_seq``: exactly the named
+        producer step's artifact — the planner binds a media step to its source
+        (``source_step`` in the plan), so a task with several image artifacts
+        can address each one (two video steps must animate DIFFERENT images).
 
-        Raw base64 (no ``data:`` prefix), because every consumer decodes the
-        payload itself: the LTX wrapper calls ``base64.b64decode`` and the video
-        params call adds its own data-URL prefix. A prefix here broke the video
-        step with "Invalid image data: Incorrect padding".
-        """
+        ``None`` when no such artifact exists (the caller decides: image_edit
+        fails the step, video_gen falls back to text-to-video)."""
         best: tuple[int, str] | None = None
         for r in get_task_steps(task_id):
-            if int(r.get("seq") or 0) > idx:
+            seq = int(r.get("seq") or 0)
+            if seq > idx or (source_seq is not None and seq != source_seq):
                 continue
             media = (r.get("extra") or {}).get("media") or {}
             file_type = str(media.get("file_type") or "")
             rel = str(media.get("file_path") or "")
             if not rel or not file_type.startswith("image/"):
                 continue
-            seq = int(r.get("seq") or 0)
             if best is None or seq > best[0]:
-                best = (seq, rel)
+                best = (seq, media)
         if best is None:
             return None
+        media = dict(best[1])
         upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
         if not upload_folder:
             return None
-        path = os.path.realpath(os.path.join(upload_folder, best[1]))
+        path = os.path.realpath(os.path.join(upload_folder, str(media.get("file_path") or "")))
         if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
-            logger.warning(f"task {task_id}: prior step image missing on disk: {best[1]}")
+            logger.warning(f"task {task_id}: prior step image missing on disk: {media.get('file_path')}")
             return None
         try:
             with open(path, "rb") as fh:
-                return base64.b64encode(fh.read()).decode()
+                media["_bytes"] = fh.read()
         except OSError as e:
-            logger.warning(f"task {task_id}: prior step image unread ({best[1]}): {e}")
+            logger.warning(f"task {task_id}: prior step image unread ({media.get('file_path')}): {e}")
             return None
+        return media
+
+    def _media_to_raw_base64(self, media: dict) -> str:
+        """Raw base64 (no ``data:`` prefix) of a ``_prior_step_media`` result.
+
+        Every consumer decodes the payload itself: the LTX wrapper calls
+        ``base64.b64decode`` and the edit pipeline takes the bytes only. A
+        ``data:`` prefix here broke the video step with "Incorrect padding"."""
+        return base64.b64encode(media["_bytes"]).decode()
+
+    def _prior_step_media_image(self, task_id: str, idx: int, source_seq: int | None = None) -> str | None:
+        """Raw base64 of a prior step's image artifact (``source_step`` aware).
+
+        The video_gen sub-task animates the image a previous step produced (the
+        image_edit/image_gen artifact lives in that step's ``extra.media``);
+        ``None`` when no prior step saved an image (text-to-video then).
+        """
+        media = self._prior_step_media(task_id, idx, source_seq=source_seq)
+        return self._media_to_raw_base64(media) if media is not None else None
 
     def _camera_rooms(self, task: dict) -> list[str]:
         """The user's accessible camera room names (empty when cameras are off)."""
@@ -1313,8 +1361,7 @@ class TaskExecutor:
                 logger.info(f"task {task_id}: forced rlm step (seq {seq}) — deep-analysis toggle ON at submit time")
 
         # Keep the user's original request as the title — the planner's own
-        # title (an LLM rephrase like «Ответить на вопрос о количестве дней в
-        # году») never overwrites it. ``plan_meta`` carries the chat-style
+        # title (an LLM rephrase like answering-the-question) never overwrites it. ``plan_meta`` carries the chat-style
         # header of the plan message itself (model + real tokens + duration).
         config = get_model_config("reasoning") or {}
         plan_meta = {
@@ -1688,6 +1735,10 @@ class TaskExecutor:
         row = self._step_row_for(task_id, idx, step)
         task_type = _SUBTASK_TYPE.get(tool, "image_gen")
         goal = str(step.get("goal", ""))
+        lang = task.get("lang") or "ru"
+        # ``source_step`` (optional plan field): the seq of the producer step
+        # whose artifact this media step consumes (None = no binding).
+        source_step = _valid_source_step(step.get("source_step"), idx + 1)
         request_data: dict[str, Any] = {
             "type": task_type,
             # The queue handlers read the step's instruction from ``text`` (the
@@ -1725,7 +1776,7 @@ class TaskExecutor:
             # The goal names the room (one step per room); the handler resolves
             # the name against the user's available rooms. The task's request
             # travels along as the analysis QUESTION (chat parity): the raw
-            # goal («Сделайте снимок…») reads as an image-generation request
+            # goal (like «Take a snapshot…») reads as an image-generation request
             # and misroutes the multimodal classifier to a router marker.
             request_data["room"] = str(step.get("goal") or "")
             request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
@@ -1736,35 +1787,50 @@ class TaskExecutor:
             request_data["images"] = self._task_image_parts(task)
             request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
         if tool == "image_edit":
-            # The source to edit is the image the step goal names (one step per
-            # image, like vision: the planner puts that image's file name into
-            # the goal); a goal naming no attached file edits the FIRST attached
-            # image (chat parity — the edit pipeline takes raw base64). Without
-            # an attachment there is nothing to edit — fail the step instead of
-            # spending a multimodal call on it.
+            # The source to edit is, in order: the attached image the step goal
+            # names (one step per image, like vision — the planner puts that
+            # image's file name into the goal); any attached image (the first —
+            # chat parity); an earlier step's artifact (``source_step`` pins ONE
+            # producer step, else the latest prior image artifact — the live
+            # defect: edit-step-wants-attached-image failed although step 1
+            # had just generated the image). With neither source the step
+            # fails locally — no multimodal call is spent on it.
             parts = self._task_image_parts(task)
             named = images_named_in_goal(parts, goal)
             if named:
                 parts = named
-            if not parts:
-                logger.warning(f"task {task_id} step {idx + 1} (image_edit) has no attached source image")
-                self._end_step(task_id, row["id"], status="failed", last_error="no source image attached")
-                update_task(task_id, next_step_index=idx + 1)
-                self._publish_task_update(task_id)
-                return
-            request_data["file_data"] = _strip_data_url(str(parts[0].get("data") or ""))
-            request_data["file_name"] = str(parts[0].get("name") or "")
+            if parts:
+                request_data["file_data"] = _strip_data_url(str(parts[0].get("data") or ""))
+                request_data["file_name"] = str(parts[0].get("name") or "")
+            else:
+                media = self._prior_step_media(task_id, idx, source_seq=source_step)
+                if media is None:
+                    logger.warning(f"task {task_id} step {idx + 1} (image_edit) has no source image")
+                    self._end_step(
+                        task_id,
+                        row["id"],
+                        status="failed",
+                        last_error=f"⚠️ {_tr(_MSG_NO_EDIT_SOURCE, lang=lang)}",
+                    )
+                    update_task(task_id, next_step_index=idx + 1)
+                    self._publish_task_update(task_id)
+                    return
+                request_data["file_data"] = self._media_to_raw_base64(media)
+                request_data["file_name"] = os.path.basename(str(media.get("file_path") or "")) or str(
+                    media.get("file_name") or ""
+                )
         if tool == "video_gen":
             # Image+text pipeline when a PRIOR step produced an image artifact
             # (e.g. step 1 edited a photo, step 2 animates THE EDITED IMAGE —
-            # the live defect made the video from the goal text instead). Chat
-            # parity: a request with no image stays text-to-video, so a missing
-            # prior image is not an error — the goal text alone goes through.
-            # The value is raw base64: the video wrapper decodes it directly.
-            media_img = self._prior_step_media_image(task_id, idx)
+            # the live defect made the video from the goal text instead).
+            # ``source_step`` pins ONE producer step (a task may hold several
+            # image artifacts; without it the latest before this step wins).
+            # Chat parity: a request with no image stays text-to-video, so a
+            # missing prior image is not an error — the goal text alone goes
+            # through. The value is raw base64: the video wrapper decodes it.
+            media_img = self._prior_step_media_image(task_id, idx, source_seq=source_step)
             if media_img is not None:
-                request_data["file_data"] = media_img
-        # Write-ahead (v12.6 fix): the step row must already say
+                request_data["file_data"] = media_img  # Write-ahead (v12.6 fix): the step row must already say
         # ``subtask_queued`` BEFORE the request reaches the queue. An idle slow
         # worker dequeues it within milliseconds and its orphan guard drops a
         # tagged sub-task whose step is still 'pending' — every camera step then
@@ -2018,17 +2084,12 @@ class TaskExecutor:
         if media.get("file_path"):
             # The verifier judges TEXT only: a media step whose artifact was
             # saved but never named in the checkpoint input got rejected with
-            # «текстовая инструкция вместо файла» (live defect). Name the
-            # artifact so the criteria "file exists" is decidable.
-            from flask_babel import force_locale
-            from flask_babel import gettext as _t
-
-            with force_locale(task.get("lang") or "ru"):
-                artifact_line = _t("Media artifact saved: {name} ({type}).").format(
-                    name=str(media.get("file_name") or media["file_path"]),
-                    type=str(media.get("file_type") or "file"),
-                )
-            result_text = result_text + "\n" + artifact_line
+            # "textual instruction instead of a file" (live defect). The artifact
+            # line is the bare file name (user preference: no translatable
+            # sentence around it — a sentence once leaked English when the
+            # gettext call ran outside an app context).
+            artifact_name = str(media.get("file_name") or media["file_path"])
+            result_text = result_text + "\n" + artifact_name
         # Spec §4: a subtask result is verified like any other step result —
         # a normal checkpoint runs against the step's checkpoint_criteria
         # (e.g. "file exists, non-empty, matches expectation"). A verifier

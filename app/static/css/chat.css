@@ -185,6 +185,18 @@
     min-width: 0;
 }
 
+.task-item .session-title {
+    overflow: hidden;
+}
+
+.task-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
 .session-icons {
     display: flex;
     align-items: center;

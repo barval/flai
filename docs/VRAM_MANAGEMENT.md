@@ -237,7 +237,7 @@ In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvid
   2. **384×256×120 @ 12 fps**,
   3. **256×192×57 @ 6 fps**.
   If even the last step doesn't fit, the task fails with a clear ⚠️ message — a model is never allowed to OOM.
-- The user is notified of the exact chosen format via an SSE `notice` event plus a saved assistant message (`model_name="system"`), sent *before* generation starts. The `fps` translation key maps to «к/с» in Russian.
+- The user is notified of the exact chosen format via an SSE `notice` event plus a saved assistant message (`model_name="system"`), sent *before* generation starts. The `fps` translation key maps to «fps» in Russian.
 - Text-to-video and image-to-video paths share the same planner; image sources are pre-resized to ≤768 px before planning (`resize_video_source_image()`), so the resize notice is emitted before the degradation notice.
 - `LTX_VIDEO_CPU_TIME_BUDGET_S` optionally limits planner wall-clock estimates as well as RAM: `0` (default) derives the budget as 85% of `LTX_VIDEO_TIMEOUT`; the planner selects the largest format satisfying both constraints.
 

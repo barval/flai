@@ -210,6 +210,13 @@
     font-family: monospace;
 }
 
+.task-search-header {
+    color: #5a6a7a;
+    font-size: 0.85rem;
+    font-family: monospace;
+    margin-top: 0.2rem;
+}
+
 .download-link-inline {
     font-size: 1.2rem;
     text-decoration: none;

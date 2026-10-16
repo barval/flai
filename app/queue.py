@@ -5756,14 +5756,19 @@ class RedisRequestQueue:
             }
 
     def _process_transcribe_task(self, task: dict[str, Any]) -> dict[str, Any]:
-        """Process audio transcription task asynchronously."""
+        """Process audio transcription task asynchronously.
+
+        A message may carry several audio items — one voice recording plus audio
+        files, at most ``MAX_CHAT_AUDIO`` in total — and every one of them is
+        transcribed in order: the transcripts join the question, so the message
+        is always answered (a plain audio file next to a typed question used to
+        be transcribed and left unanswered, because the answer was gated on the
+        voice-recording flag). An item that cannot be read is skipped; the
+        localized error appears only when nothing at all was recognized.
+        """
         user_id = task["user_id"]
         session_id = task["session_id"]
         request_data = task["data"]
-        file_data = request_data.get("file_data")
-        file_type = request_data.get("file_type")
-        file_name = request_data.get("file_name")
-        voice_record = request_data.get("voice_record", False)
         lang = task.get("lang", "ru")
         user_class = task.get("user_class", 2)
 
@@ -5773,79 +5778,123 @@ class RedisRequestQueue:
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
-        start_time = time.time()
-        transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
-        process_time = round(time.time() - start_time, 1)
-        if transcribed_text is None:
+        # Every audio item of the message in attachment order (the route puts a
+        # voice recording first); a legacy single-audio payload — a requeued
+        # task, the /v1 API — is read from the flat fields.
+        audios = [a for a in (request_data.get("audios") or []) if isinstance(a, dict) and a.get("data")]
+        if not audios and request_data.get("file_data"):
+            audios = [
+                {
+                    "data": request_data.get("file_data"),
+                    "type": request_data.get("file_type"),
+                    "name": request_data.get("file_name"),
+                }
+            ]
+
+        from flask_babel import force_locale
+
+        transcribed: list[str] = []
+        process_time = 0.0
+        transcribed_message_id = None
+        for audio in audios:
+            started = time.time()
+            text = audio_module.transcribe(audio.get("data"), audio.get("type"), audio.get("name"), lang=lang)
+            process_time += time.time() - started
+            text = str(text or "").strip()
+            if not text:
+                continue
+            transcribed.append(text)
+            name = str(audio.get("name") or "")
+            # With several items the file name tells the transcripts apart; a
+            # lone one keeps the familiar plain label.
+            suffix = f" ({name})" if name and len(audios) > 1 else ""
+            with force_locale(lang):
+                prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + suffix + ": "
+            transcribed_message_id = save_message(
+                session_id,
+                "assistant",
+                json.dumps({"prefix": prefix, "text": text}, ensure_ascii=False),
+                model_name="whisper",
+                response_time=str(round(process_time, 1)),
+            )
+
+        if not transcribed:
             error_msg = self.app.modules["base"]._("Failed to recognize speech", lang)
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
-        from flask_babel import force_locale
+        transcribed_text = "\n\n".join(transcribed)
+        process_time = round(process_time, 1)
 
-        with force_locale(lang):
-            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
-
-        system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
-        transcribed_message_id = save_message(
-            session_id, "assistant", system_content, model_name="whisper", response_time=str(process_time)
+        # The question: the typed text first, then every transcript in order.
+        typed = str(request_data.get("text") or "").strip()
+        question = f"{typed}\n\n{transcribed_text}" if typed else transcribed_text
+        preview = (
+            (transcribed_text[:50] + "...")
+            if transcribed_text
+            else self.app.modules["base"]._("Voice request", lang=lang)
         )
+        response_style = request_data.get("response_style", "neutral")
+        images = [img for img in (request_data.get("images") or []) if img]
+        image_data = request_data.get("image_data")
 
-        if voice_record:
-            response_style = request_data.get("response_style", "neutral")
-            image_data = request_data.get("image_data")
-            image_type = request_data.get("image_type")
-            image_name = request_data.get("image_name")
-
-            if image_data:
-                # Image + voice: requeue as image task (multimodal processing).
-                # Multi-attachment: extra images beyond the primary one travel
-                # in "images" and reach the joint vision call.
-                requeue_request_data = {
-                    "type": "image",
-                    "text": transcribed_text,
-                    "file_data": image_data,
-                    "file_type": image_type,
-                    "file_name": image_name,
-                    "preview": (transcribed_text[:50] + "...")
-                    if transcribed_text
-                    else self.app.modules["base"]._("Voice request", lang=lang),
-                    "response_style": response_style,
-                    "stream": True,
-                }
-                extra_images = [img for img in request_data.get("images", []) if img != image_data]
-                if extra_images:
-                    requeue_request_data["images"] = [image_data] + extra_images
-            else:
-                # Voice only: requeue as text task (router processing)
-                requeue_request_data = {
-                    "type": "text",
-                    "text": transcribed_text,
-                    "preview": (transcribed_text[:50] + "...")
-                    if transcribed_text
-                    else self.app.modules["base"]._("Voice request", lang=lang),
-                    "response_style": response_style,
-                    "stream": True,
-                }
-            new_request_id, _ = self.app.request_queue.add_request(
-                user_id, session_id, requeue_request_data, user_class, lang=lang
-            )
-            return {
-                "transcribed_text": transcribed_text,
-                "transcribed_message_id": transcribed_message_id,
-                "request_id": new_request_id,
-                "session_id": session_id,
-                "response_time": process_time,
-                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+        if request_data.get("doc_file_data"):
+            # A document attached next to the audio scopes the answer (the same
+            # doc_chat chain a document-only message takes), with the transcripts
+            # as the question — the document used to win the request type and the
+            # audio was never transcribed.
+            requeue_request_data: dict[str, Any] = {
+                "type": "doc_chat",
+                "text": question,
+                "doc_file_data": request_data.get("doc_file_data"),
+                "doc_file_type": request_data.get("doc_file_type"),
+                "doc_file_name": request_data.get("doc_file_name"),
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
             }
+            if images:
+                requeue_request_data["images"] = images
+        elif image_data:
+            # Image + audio: requeue as image task (multimodal processing).
+            # Multi-attachment: extra images beyond the primary one travel
+            # in "images" and reach the joint vision call.
+            requeue_request_data = {
+                "type": "image",
+                "text": question,
+                "file_data": image_data,
+                "file_type": request_data.get("image_type"),
+                "file_name": request_data.get("image_name"),
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
+            }
+            extra_images = [img for img in images if img != image_data]
+            if extra_images:
+                requeue_request_data["images"] = [image_data] + extra_images
         else:
-            return {
-                "transcribed_text": transcribed_text,
-                "transcribed_message_id": transcribed_message_id,
-                "session_id": session_id,
-                "response_time": process_time,
-                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+            # No image and no document: continue as a text task (router
+            # processing). Every audio message is answered — a plain audio file
+            # next to a typed question used to be left unanswered.
+            requeue_request_data = {
+                "type": "text",
+                "text": question,
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
             }
+
+        new_request_id, _ = self.app.request_queue.add_request(
+            user_id, session_id, requeue_request_data, user_class, lang=lang
+        )
+        return {
+            "transcribed_text": transcribed_text,
+            "transcribed_message_id": transcribed_message_id,
+            "request_id": new_request_id,
+            "session_id": session_id,
+            "response_time": process_time,
+            "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+        }
 
     def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
         """Publish a document_indexed event to the user's SSE stream."""

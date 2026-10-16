@@ -78,7 +78,7 @@ def _save_task_images(uploads: list[Any], task_id: str) -> tuple[list[dict[str, 
                 return None, _("Only image files can be attached to a task"), 400
         if len(images) >= max_images:
             with force_locale(lang):
-                return None, _("max_images_reached") % max_images, 400
+                return None, _("max_images_reached").format(max=max_images), 400
         quota_error = check_upload_quota(user_id, part_size)
         if quota_error:
             return None, quota_error, 413
@@ -188,6 +188,12 @@ def _save_task_audio(
     user_id = session["login"]
     lang = session.get("language", "ru")
     audio_module = current_app.modules.get("audio")
+    # One voice message plus audio files, this many audio items per submit
+    # (chat parity): the excess is refused instead of silently dropped.
+    max_audio = current_app.config.get("MAX_CHAT_AUDIO", 4)
+    if len(uploads) > max_audio:
+        with force_locale(lang):
+            return None, _("max_audio_reached").format(max=max_audio), 400
     entries: list[dict[str, Any]] = []
     for upload in uploads:
         file_bytes = upload.read()

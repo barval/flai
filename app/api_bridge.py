@@ -36,14 +36,17 @@ class ApiLocalizedError(Exception):
     language, keeping every user-facing string in the catalogs.
     """
 
-    def __init__(self, msgid: str, *args: Any) -> None:
+    def __init__(self, msgid: str, *args: Any, **kwargs: Any) -> None:
         super().__init__(msgid)
         self.msgid = msgid
         self.msgid_args = args
+        self.msgid_kwargs = kwargs
 
     def localized(self, translate: Any) -> str:
-        """Return the translated message, applying ``%``-style arguments."""
+        """Return the translated message, filling its placeholders."""
         text: str = translate(self.msgid)
+        if self.msgid_kwargs:
+            return text.format(**self.msgid_kwargs)
         return text % self.msgid_args if self.msgid_args else text
 
 
@@ -484,7 +487,7 @@ def normalize_chat_messages(messages: Any) -> tuple[str, list[dict[str, str]]]:
                     texts.append(part_text)
             elif part_type == "image_url":
                 if len(images) >= max_images:
-                    raise ApiImageRejectedError("max_images_reached", str(max_images))
+                    raise ApiImageRejectedError("max_images_reached", max=str(max_images))
                 image_url = part.get("image_url")
                 url = image_url.get("url") if isinstance(image_url, dict) else image_url
                 if not isinstance(url, str):

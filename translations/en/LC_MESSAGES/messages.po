@@ -79,10 +79,15 @@ msgstr "Message content must be a string or an array of parts"
 msgid "Each content part must be an object"
 msgstr "Each content part must be an object"
 
-#: app/api_bridge.py:487 app/routes/api_v1.py:639 app/routes/messages.py:144
-#: app/templates/chat.html:165
+#: app/api_bridge.py:490 app/routes/api_v1.py:639 app/routes/messages.py:144
+#: app/routes/tasks.py:81 app/templates/chat.html:206
+#, python-brace-format
 msgid "max_images_reached"
-msgstr "Maximum %s images per message"
+msgstr "Maximum {max} images per message"
+
+#: app/routes/messages.py:200 app/templates/chat.html:206
+msgid "max_audio_reached"
+msgstr "At most {max} audio items per message (a voice message counts as one)"
 
 #: app/api_bridge.py:495
 #, python-format

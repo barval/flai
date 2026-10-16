@@ -65,6 +65,9 @@ def load_config(app):
     # downscaled to this long side first — 4 images × ~1–4K vision tokens must
     # fit small context windows too.
     app.config["MAX_CHAT_IMAGES"] = int(os.getenv("MAX_CHAT_IMAGES", 4))
+    # Audio attachments of one chat message or task: a voice message plus audio
+    # files, this many audio items in total (1 voice + 3 files, or 4 files).
+    app.config["MAX_CHAT_AUDIO"] = int(os.getenv("MAX_CHAT_AUDIO", 4))
     app.config["MAX_IMAGE_SIZE_MULTI"] = int(os.getenv("MAX_IMAGE_SIZE_MULTI", 1024))
 
     # Document upload settings

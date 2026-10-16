@@ -636,7 +636,7 @@ def image_generations():
                 400,
                 "invalid_request_error",
                 "invalid_request",
-                ApiImageRejectedError("max_images_reached", str(max_refs)).localized(_),
+                ApiImageRejectedError("max_images_reached", max=str(max_refs)).localized(_),
             )
         for ref in refs:
             image_url = ref.get("image_url")

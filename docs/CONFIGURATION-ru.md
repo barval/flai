@@ -37,6 +37,7 @@ SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
 MAX_IMAGE_SIZE_MULTI=1024       # Per-image long side when several images are attached
 MAX_CHAT_IMAGES=4               # Max images per chat message (also for deep analysis)
+MAX_CHAT_AUDIO=4                # Max audio items per message (1 voice + 3 files, or 4 files)
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
 MAX_DOCUMENT_SIZE_MB=25         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note

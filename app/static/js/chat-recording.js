@@ -13,6 +13,12 @@ await startRecording();
 }
 async function startRecording() {
 if (isRecordingLocked) return;
+// The recording is one audio item of the message (3 files + a voice is the
+// cap), so a full attachment set must not start a new one.
+if (typeof audioAttachmentCount === 'function' && audioAttachmentCount() >= MAX_CHAT_AUDIO) {
+    showAttachmentToast(t('max_audio_reached').replace('{max}', String(MAX_CHAT_AUDIO)));
+    return;
+}
 isRecordingLocked = true;
 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
 alert(t('browser_no_audio_support'));

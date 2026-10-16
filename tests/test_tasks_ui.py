@@ -418,6 +418,10 @@ class TestReviewGuards:
         assert "setLocalTranscribing" in voice_reset
         assert ROUTES_TASKS.count('request.files.getlist("audio")') == 2, "both /request and /answer accept audio"
         assert "def _save_task_audio(" in ROUTES_TASKS
+        # One voice message plus audio files, at most MAX_CHAT_AUDIO per submit
+        # (chat parity): the excess is refused with a localized message.
+        assert 'current_app.config.get("MAX_CHAT_AUDIO", 4)' in ROUTES_TASKS
+        assert '_("max_audio_reached")' in ROUTES_TASKS
 
     def test_audio_transcript_renders_and_transcribing_status(self):
         """The attachment line (📎, plan line font), the transcript in the

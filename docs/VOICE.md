@@ -7,6 +7,8 @@ Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
 A voice message may be recorded on top of attached images: the transcript task carries the images, so the answer is re-queued as an image-chat task and the model sees both what you said and what you attached (voice in the legacy attachment slot and in the multi-attachment layout both pair correctly).
 
+A message may carry several audio items at once — one microphone recording plus audio files, up to `MAX_CHAT_AUDIO` (4) in total (1 voice + 3 files, or 4 files). Every item is transcribed in order (the recording first, then the attachments in order), each transcript is saved as its own assistant message and labelled with the file name when several items ride the message, and the model's question is your typed text followed by all transcripts. An audio message is always answered: the answer continues as a document task (`doc_chat`) when a document is attached, as an image task when an image is, otherwise as a plain text task — a plain audio file next to a typed question used to be transcribed and left unanswered. Tasks share the same cap and the same transcription order.
+
 ```bash
 # Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d

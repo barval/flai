@@ -663,9 +663,28 @@ function renderTaskMessage(m, task) {
 
     // Service lines («План из N шагов:», «Шаг N из M:») render as their own
     // italic muted line with an emoji, separate from the message body.
+    const mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
+        ? m.extra.media_all
+        : (m.extra && m.extra.media ? [m.extra.media] : []));
+    // Strip artifact file-name lines from body before rendering — the server
+    // appends them (executor.py _end_step) so the verifier sees them, but
+    // they must not appear as text above the media.
+    let body = String(m.content || '');
+    if (mediaList.length) {
+        const lines = body.split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const trimmed = lines[i].trim();
+            if (!trimmed) { lines.pop(); continue; }
+            const isArtifactLine = mediaList.find(function(m2) {
+                return trimmed === (m2.file_name || '') || trimmed === (m2.file_path || '');
+            }) !== undefined;
+            if (isArtifactLine) { lines.pop(); break; }
+            break;
+        }
+        body = lines.join('\n');
+    }
     const content = document.createElement('div');
     content.className = 'message-content';
-    let body = String(m.content || '');
     const serviceLine = splitServiceLine(m.kind, body);
     if (serviceLine) {
         body = serviceLine.rest;
@@ -714,67 +733,9 @@ function renderTaskMessage(m, task) {
         tr.textContent = (block.label || '🎤') + ' ' + block.text;
         div.appendChild(tr);
     });
-
-    // Media refs (camera snapshots, generated images/videos) ride the step's
-    // extra — render chat-style image blocks after the text body. The request
-    // message carries ALL its attached images in media_all; steps carry one.
-    const mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
-        ? m.extra.media_all
-        : (m.extra && m.extra.media ? [m.extra.media] : []));
-    mediaList.forEach(function(media) {
-        const downloadUrl = media.file_path ? '/api/files/' + media.file_path : '';
-        const fileName = media.file_name || 'file';
-        if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
-            const imgContainer = document.createElement('div');
-            imgContainer.className = 'image-container';
-            const img = document.createElement('img');
-            img.src = '/api/files/' + media.file_path;
-            img.loading = 'lazy';
-            img.className = 'attached-image';
-            img.alt = media.file_name || 'image';
-            img.title = t('click_to_enlarge');
-            img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
-            imgContainer.appendChild(img);
-            if (downloadUrl) {
-                const dl = document.createElement('a');
-                dl.href = downloadUrl;
-                dl.download = fileName;
-                dl.className = 'download-link-inline';
-                dl.title = t('download_image');
-                dl.onclick = function(e) { e.stopPropagation(); };
-                dl.textContent = '⬇️';
-                imgContainer.appendChild(dl);
-            }
-            div.appendChild(imgContainer);
-        } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
-            const video = document.createElement('video');
-            video.controls = true;
-            video.preload = 'metadata';
-            video.loading = 'lazy';
-            video.src = '/api/files/' + media.file_path;
-            video.style.maxWidth = '100%';
-            video.style.borderRadius = '8px';
-            div.appendChild(video);
-            if (downloadUrl) {
-                const dl = document.createElement('a');
-                dl.href = downloadUrl;
-                dl.download = fileName;
-                dl.className = 'download-link-inline';
-                dl.title = t('download_video');
-                dl.onclick = function(e) { e.stopPropagation(); };
-                dl.textContent = '⬇️';
-                div.appendChild(dl);
-            }
-        }
-    });
     return div;
 }
 
-// Pull the leading service header out of the message body: the server
-// prefixes the plan as «План из N шагов:» (kind=plan) and each step as
-// «Шаг N из M:» (direct/subtask) — always the first content line, in the
-// user's language. The split therefore keys on the SHAPE (a first line
-// ending with a colon), never on the wording, so it survives localization.
 function splitServiceLine(kind, body) {
     if (kind !== 'plan' && kind !== 'direct' && kind !== 'subtask') return null;
     const nl = body.indexOf('\n');

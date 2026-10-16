@@ -197,6 +197,19 @@
     min-width: 0;
 }
 
+.task-media-caption {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+
+.task-media-filename {
+    color: #5a6a7a;
+    font-size: 0.85rem;
+    font-family: monospace;
+}
+
 .download-link-inline {
     font-size: 1.2rem;
     text-decoration: none;

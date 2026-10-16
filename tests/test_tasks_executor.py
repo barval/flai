@@ -1347,6 +1347,42 @@ def test_task_image_parts_empty_when_no_images(test_app):
     assert executor._task_image_parts({"id": "t1"}) == []
 
 
+def test_prior_step_media_image_is_raw_base64(monkeypatch, test_app, tmp_path):
+    """The video wrapper decodes this value with ``base64.b64decode`` directly.
+
+    A ``data:`` URL there raises "Incorrect padding" — the format, not the
+    label, was what broke the video step that animates a prior step's image.
+    """
+    upload = tmp_path / "uploads"
+    sub = upload / "task1"
+    sub.mkdir(parents=True)
+    (sub / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\npayload")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    steps = [
+        {"seq": 1, "extra": {}},
+        {
+            "seq": 2,
+            "extra": {"media": {"file_path": "task1/shot.png", "file_name": "shot.png", "file_type": "image/png"}},
+        },
+        {
+            "seq": 3,
+            "extra": {"media": {"file_path": "task1/doc.pdf", "file_name": "doc.pdf", "file_type": "application/pdf"}},
+        },
+        {
+            "seq": 9,
+            "extra": {"media": {"file_path": "task1/later.png", "file_name": "later.png", "file_type": "image/png"}},
+        },
+    ]
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: steps)
+    executor = ex.TaskExecutor(app=test_app)
+
+    data = executor._prior_step_media_image("t1", 5)
+
+    assert data is not None
+    assert not data.startswith("data:"), "the wrapper decodes raw base64 only"
+    assert base64.b64decode(data) == (sub / "shot.png").read_bytes(), "latest image step before idx wins"
+
+
 def test_vision_subtask_enqueue_carries_images_and_question(db_env, test_app, gate_open, monkeypatch):
     """A vision step enqueues a vision_task with data: parts + the question."""
     store = db_env

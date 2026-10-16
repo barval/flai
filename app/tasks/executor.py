@@ -1130,6 +1130,11 @@ class TaskExecutor:
         The video_gen sub-task animates the image a previous step produced (the
         image_edit/image_gen artifact lives in that step's ``extra.media``);
         ``None`` when no prior step saved an image (text-to-video then).
+
+        Raw base64 (no ``data:`` prefix), because every consumer decodes the
+        payload itself: the LTX wrapper calls ``base64.b64decode`` and the video
+        params call adds its own data-URL prefix. A prefix here broke the video
+        step with "Invalid image data: Incorrect padding".
         """
         best: tuple[int, str] | None = None
         for r in get_task_steps(task_id):
@@ -1154,7 +1159,7 @@ class TaskExecutor:
             return None
         try:
             with open(path, "rb") as fh:
-                return "data:image/jpeg;base64," + base64.b64encode(fh.read()).decode()
+                return base64.b64encode(fh.read()).decode()
         except OSError as e:
             logger.warning(f"task {task_id}: prior step image unread ({best[1]}): {e}")
             return None
@@ -1714,6 +1719,7 @@ class TaskExecutor:
             # the live defect made the video from the goal text instead). Chat
             # parity: a request with no image stays text-to-video, so a missing
             # prior image is not an error — the goal text alone goes through.
+            # The value is raw base64: the video wrapper decodes it directly.
             media_img = self._prior_step_media_image(task_id, idx)
             if media_img is not None:
                 request_data["file_data"] = media_img

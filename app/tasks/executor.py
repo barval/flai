@@ -438,7 +438,11 @@ def _queues_empty() -> bool:
     )
 
 
-def _capabilities_section(camera_rooms: list[str] | None = None, has_images: bool = False) -> str:
+def _capabilities_section(
+    deep_analysis: bool = False,
+    camera_rooms: list[str] | None = None,
+    has_images: bool = False,
+) -> str:
     """Render the capabilities registry for the planner prompt.
 
     ``camera_rooms`` (the user's accessible camera rooms, when known) appends
@@ -446,6 +450,12 @@ def _capabilities_section(camera_rooms: list[str] | None = None, has_images: boo
     answering "which room…" questions needs the concrete room list. ``vision``
     is advertised ONLY when images are attached to the task, so the planner
     never invents an image-analysis step without attachments.
+
+    ``deep_analysis`` controls which document tool is offered: when the 🔬
+    toggle is ON the planner sees only ``rlm`` (the multi-step deep analysis)
+    and ``rag`` (simple document search) is hidden — the user chose deep
+    analysis over the documents. When the toggle is OFF ``rag`` is advertised
+    and ``rlm`` is hidden.
     """
     from app.tasks.tools import get_capabilities
 
@@ -453,6 +463,10 @@ def _capabilities_section(camera_rooms: list[str] | None = None, has_images: boo
     for cap in get_capabilities():
         if cap["id"] == "vision" and not has_images:
             continue
+        if cap["id"] == "rag" and deep_analysis:
+            continue  # deep-analysis ON → hide RAG, the planner must use rlm
+        if cap["id"] == "rlm" and not deep_analysis:
+            continue  # deep-analysis OFF → hide rlm
         lines.append(f"- {cap['id']} ({cap['label']}): {cap['description']} Checkpoint hint: {cap['checkpoint_hint']}")
         if cap["id"] == "camera" and camera_rooms:
             lines.append(f"  Available rooms: {', '.join(camera_rooms)}")
@@ -1268,7 +1282,9 @@ class TaskExecutor:
         params = {
             "task_request": request_text,
             "capabilities_section": _capabilities_section(
-                camera_rooms=self._camera_rooms(task), has_images=bool(task.get("images"))
+                deep_analysis=bool(task.get("deep_analysis")),
+                camera_rooms=self._camera_rooms(task),
+                has_images=bool(task.get("images")),
             ),
             "slm_facts": recall_slm_facts(self.app, request_text, task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),

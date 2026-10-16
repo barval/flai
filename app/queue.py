@@ -2287,12 +2287,29 @@ class RedisRequestQueue:
             )
 
         self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+        # Publish task_stage events for the task view when RLM runs as a subtask.
+        from app.tasks.events import publish_task_stage
+
+        subtask_step_id = (request_data or {}).get("task_step_subtask")
+        subtask_task_val = None
+        if subtask_step_id:
+            try:
+                from app.tasks.store import get_task as _gt
+
+                subtask_task_val = _gt(task["session_id"])
+            except Exception:
+                pass
+
+        def _publish_rlm_stage(stage: str) -> None:
+            if subtask_task_val is not None:
+                publish_task_stage(self.app, subtask_task_val, stage)
 
         def on_stage(stage: str, extra: dict | None = None) -> None:
             payload = {"stage": stage}
             if extra:
                 payload.update(extra)
             self._publish_stream_event(task, "task_progress", payload)
+            _publish_rlm_stage(stage)
 
         on_stage("rlm_reading", None)
 
@@ -2413,6 +2430,7 @@ class RedisRequestQueue:
             )
         finally:
             rm.mark_rlm_idle()
+            _publish_rlm_stage("")
 
         # Total time from request submission (queue wait + document reading +
         # image description + model load + analysis), not just the actor loop.

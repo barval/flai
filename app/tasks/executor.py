@@ -162,6 +162,29 @@ def _strip_data_url(value: str) -> str:
     return value.split(",", 1)[1] if value.startswith("data:") and "," in value else value
 
 
+def images_named_in_goal(images: list[dict[str, Any]], goal: str) -> list[dict[str, Any]]:
+    """The images whose file name the step goal mentions (case-insensitive).
+
+    One step per image: the planner writes that image's file name into the step
+    goal (the camera «one step per room» pattern) and the step must work on THAT
+    image, not on every attachment of the task. The name reaches the goal through
+    an LLM, so the match ignores case and demands whole-word boundaries
+    (``1.png`` must not match inside ``11.png``). An empty result means the goal
+    named no attached file — a single step covering the whole set — and the
+    caller then keeps them all. Used by the vision sub-task (the queue handler
+    reads only the named image) and by the `image_edit` step (it edits the named
+    source instead of the first attachment).
+    """
+    if not goal:
+        return []
+    named = []
+    for part in images:
+        name = str(part.get("name") or "")
+        if name and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", goal, re.IGNORECASE):
+            named.append(part)
+    return named
+
+
 # ── Executor-owned SQL (the store module does not expose these yet) ─────
 
 
@@ -1700,11 +1723,16 @@ class TaskExecutor:
             request_data["images"] = self._task_image_parts(task)
             request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
         if tool == "image_edit":
-            # The source to edit is the task's first attached image (its bytes
-            # are read back from the stored file, chat parity: the edit pipeline
-            # takes raw base64). Without an attachment there is nothing to edit —
-            # fail the step instead of spending a multimodal call on it.
+            # The source to edit is the image the step goal names (one step per
+            # image, like vision: the planner puts that image's file name into
+            # the goal); a goal naming no attached file edits the FIRST attached
+            # image (chat parity — the edit pipeline takes raw base64). Without
+            # an attachment there is nothing to edit — fail the step instead of
+            # spending a multimodal call on it.
             parts = self._task_image_parts(task)
+            named = images_named_in_goal(parts, goal)
+            if named:
+                parts = named
             if not parts:
                 logger.warning(f"task {task_id} step {idx + 1} (image_edit) has no attached source image")
                 self._end_step(task_id, row["id"], status="failed", last_error="no source image attached")

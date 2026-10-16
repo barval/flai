@@ -86,13 +86,15 @@ CAPABILITIES: list[dict[str, str]] = [
         "id": "vision",
         "label": "Image analysis",
         "description": (
-            "Extract data from the image(s) attached to the task with the multimodal "
+            "Extract data from ONE image attached to the task with the multimodal "
             "model: a detailed description of everything visible plus all text on the "
             "image. It does not answer the task question — pair it with a following "
-            "llm step that composes the answer from the extraction. Use only when "
+            "llm step that composes the answer from the extraction. To analyze "
+            "several images, plan ONE step per image with that image's file name in "
+            "the goal: the step reads only the image its goal names. Use only when "
             "images are attached to the task."
         ),
-        "checkpoint_hint": "Name the attached image and require a detailed description plus all text on it.",
+        "checkpoint_hint": "Name this image's file in the goal and require a detailed description plus all text on it.",
     },
     {
         "id": "camera",
@@ -136,8 +138,13 @@ CAPABILITIES: list[dict[str, str]] = [
     {
         "id": "image_edit",
         "label": "Image editing",
-        "description": "Edit an existing image according to an instruction.",
-        "checkpoint_hint": "Name the source image and the change that must be visible.",
+        "description": (
+            "Edit one image attached to the task according to an instruction. To edit "
+            "several images, plan ONE step per image with that image's file name in the "
+            "goal: the step edits the image its goal names (the first attached one when "
+            "the goal names none)."
+        ),
+        "checkpoint_hint": "Name this image's file in the goal and the change that must be visible.",
     },
     {
         "id": "video_gen",

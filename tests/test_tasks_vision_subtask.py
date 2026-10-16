@@ -14,6 +14,13 @@ images came back with ONE description — the extraction prompt mandates
 EXACTLY one description block, so a joint call over several images reads only
 one of them, the verifier rejects the step and the planner asks the user for
 images it already has.
+
+A step reads only the image its goal names (the camera «one step per room»
+pattern: one vision step per image, the file name in the goal). User-visible
+bug: a 4-image task planned one vision step per image, but every step re-read
+ALL four images (7148 prompt tokens per step, four file-name blocks in each
+body, 16 multimodal calls instead of 4). A goal that names no attached file
+keeps the old behaviour — it reads them all.
 """
 
 import gettext
@@ -76,13 +83,14 @@ class TestVisionSubtask:
         queue._publish_result_event = Mock()
         return queue
 
-    def _task(self, images):
+    def _task(self, images, goal=""):
         return {
             "id": "63f" + "0" * 29,  # UUID-shaped id (task/vision media layout)
             "data": {
                 "images": images,
-                "prompt": "Реши задачу на картинке",
-                "task_question": "Реши задачу на картинке",
+                "text": goal,
+                "prompt": goal or "Реши задачу на картинке",
+                "task_question": goal or "Реши задачу на картинке",
             },
             "session_id": "task:t1",
             "user_id": "tester",
@@ -136,6 +144,57 @@ class TestVisionSubtask:
         for call in mm.process_image_with_text.call_args_list:
             assert call[0][1] == ""
         assert "Реши задачу" not in str(mm.process_image_with_text.call_args_list)
+
+    def test_the_step_reads_only_the_image_its_goal_names(self):
+        """One vision step per image: the goal names that image's file, so the
+        step reads THAT image — not every attachment (live defect: each of the
+        four steps of a 4-image task re-read all four images)."""
+        mm = self._mm()
+        mm.process_image_with_text = Mock(return_value=(_TWO_SECTIONS_OTHER, None))
+        queue = self._make_queue(mm)
+        images = [
+            {"data": "d1", "name": "141ad92025c749a88cc75f1da3007d7c.png"},
+            {"data": "d2", "name": "1f29e286cbc74c138d18d40ab104d898.png"},
+        ]
+
+        result = queue._process_vision_subtask(
+            self._task(
+                images,
+                goal="Извлеки подробное описание изображения 1f29e286cbc74c138d18d40ab104d898.png и весь видимый текст с него.",
+            )
+        )
+
+        assert mm.process_image_with_text.call_count == 1
+        assert mm.process_image_with_text.call_args[0][0] == "d2", "the named image, not the first one"
+        assert result["response"] == _labelled("1f29e286cbc74c138d18d40ab104d898.png", _TWO_SECTIONS_OTHER)
+
+    def test_the_file_name_is_matched_without_regard_to_case(self):
+        """The name reaches the goal through an LLM: its casing must not decide
+        whether the step reads one image or all of them."""
+        mm = self._mm()
+        mm.process_image_with_text = Mock(return_value=(_TWO_SECTIONS, None))
+        queue = self._make_queue(mm)
+        images = [{"data": "d1", "name": "apple.png"}, {"data": "d2", "name": "pear.png"}]
+
+        result = queue._process_vision_subtask(self._task(images, goal="Опиши, что на изображении PEAR.PNG."))
+
+        assert mm.process_image_with_text.call_count == 1
+        assert result["response"] == _labelled("pear.png", _TWO_SECTIONS)
+
+    def test_a_goal_naming_no_image_reads_them_all(self):
+        """Fallback: a goal that names no attached file covers every image (one
+        step for the whole set), as before — no regression for such plans."""
+        mm = self._mm()
+        mm.process_image_with_text = Mock(side_effect=[(_TWO_SECTIONS, None), (_TWO_SECTIONS_OTHER, None)])
+        queue = self._make_queue(mm)
+        images = [{"data": "d1", "name": "a.jpg"}, {"data": "d2", "name": "b.jpg"}]
+
+        result = queue._process_vision_subtask(self._task(images, goal="Опиши приложенные изображения."))
+
+        assert mm.process_image_with_text.call_count == 2
+        assert result["response"] == "\n\n".join(
+            [_labelled("a.jpg", _TWO_SECTIONS), _labelled("b.jpg", _TWO_SECTIONS_OTHER)]
+        )
 
     def test_image_without_a_name_still_gets_a_file_name_block(self):
         """A nameless image is still labelled, so no extraction is orphaned."""

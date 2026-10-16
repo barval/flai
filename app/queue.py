@@ -3416,6 +3416,9 @@ class RedisRequestQueue:
         image's file name, written by the caller and never by the model, so the
         material stays attributable. Errors return the localized error envelope
         so the step fails and the task continues.
+
+        Only the images the step goal names by file name are read (see
+        ``images_named_in_goal``); a goal that names none reads them all.
         """
         data = task.get("data", {})
         session_id = task.get("session_id", "")
@@ -3434,6 +3437,15 @@ class RedisRequestQueue:
         images = [p for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
         if not images:
             return _err(str(base._("No image in your message", lang)) if base else "No image in your message")
+        # One step per image: the goal names the file (the executor puts the step
+        # goal into ``text``, the camera handler's ``room`` equivalent), so the
+        # step reads only that image. A goal naming no attached file covers the
+        # whole set — one step for every image.
+        from app.tasks.executor import images_named_in_goal
+
+        named_images = images_named_in_goal(images, str(data.get("text") or data.get("prompt") or ""))
+        if named_images:
+            images = named_images
 
         mm = self.app.modules.get("multimodal")
         if mm is None or not getattr(mm, "available", False):

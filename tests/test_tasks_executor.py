@@ -1290,6 +1290,11 @@ def test_capabilities_section_hides_vision_without_images():
     without_images = ex._capabilities_section(camera_rooms=None, has_images=False)
     assert "vision" in with_images
     assert "vision (" not in without_images
+    # One step per image with its file name in the goal: the vision handler
+    # reads only the images the goal names, so the rule must reach the planner.
+    assert "file name in the goal" in with_images
+    # The image_edit step binds its source the same way (resolution below).
+    assert "the step edits the image its goal names" in with_images
     # Other capabilities are unaffected.
     assert "llm (" in with_images and "llm (" in without_images
 
@@ -1955,6 +1960,89 @@ def test_rlm_subtask_wait_preempted_by_chat_freezes_the_task(db_env, test_app, g
     assert step["status"] == "interrupted" and step["interrupt_reason"] == "chat"
     task = store.get_task(task_id)
     assert task["status"] == "frozen" and task["abort_reason"] == "chat"
+
+
+def test_enqueue_subtask_image_edit_edits_the_image_the_goal_names(monkeypatch, test_app, tmp_path):
+    """One step per image: an edit step edits the image its goal names.
+
+    The planner names the source in the goal (the capability asks it to) and one
+    step per image is the plan shape for several attachments — the branch used to
+    ignore the name and always take the FIRST attachment, so every edit step of
+    an N-image task edited the same picture (the vision-goal defect, image side).
+    """
+    upload = tmp_path / "uploads"
+    sub = upload / "tester"
+    sub.mkdir(parents=True)
+    (sub / "first.jpg").write_bytes(b"first-bytes")
+    (sub / "second.jpg").write_bytes(b"second-bytes")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    images = [
+        {"file_path": "tester/first.jpg", "file_name": "first.jpg", "file_type": "image/jpeg"},
+        {"file_path": "tester/second.jpg", "file_name": "second.jpg", "file_type": "image/jpeg"},
+    ]
+    task = {"id": "t1", "user_id": "tester", "task_class": 5, "lang": "ru", "images": images}
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: [{"id": "s1", "seq": 1, "extra": {}}])
+    monkeypatch.setattr(ex, "update_step", lambda *a, **k: None)
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+
+    executor._enqueue_subtask(
+        task, 0, {"seq": 1, "goal": "Отредактируй изображение second.jpg: сделай его зимним", "tool": "image_edit"}
+    )
+
+    call = queue.calls[0]
+    assert call["task_type"] == "api_image_edit"
+    assert call["request_data"]["file_name"] == "second.jpg", "the named image wins over the first attachment"
+    assert base64.b64decode(call["request_data"]["file_data"]) == b"second-bytes"
+
+
+def test_enqueue_subtask_image_edit_without_a_named_image_takes_the_first(monkeypatch, test_app, tmp_path):
+    """Fallback: a goal naming no attached file edits the first image (the chat
+    contract — one step over the whole set keeps working)."""
+    upload = tmp_path / "uploads"
+    sub = upload / "tester"
+    sub.mkdir(parents=True)
+    (sub / "first.jpg").write_bytes(b"first-bytes")
+    (sub / "second.jpg").write_bytes(b"second-bytes")
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    task = {
+        "id": "t1",
+        "user_id": "tester",
+        "task_class": 5,
+        "lang": "ru",
+        "images": [
+            {"file_path": "tester/first.jpg", "file_name": "first.jpg", "file_type": "image/jpeg"},
+            {"file_path": "tester/second.jpg", "file_name": "second.jpg", "file_type": "image/jpeg"},
+        ],
+    }
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: [{"id": "s1", "seq": 1, "extra": {}}])
+    monkeypatch.setattr(ex, "update_step", lambda *a, **k: None)
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+
+    executor._enqueue_subtask(task, 0, {"seq": 1, "goal": "Сделай картинку зимней", "tool": "image_edit"})
+
+    call = queue.calls[0]
+    assert call["request_data"]["file_name"] == "first.jpg"
+    assert base64.b64decode(call["request_data"]["file_data"]) == b"first-bytes"
+
+
+def test_images_named_in_goal_matches_whole_names_only():
+    """The name comes from an LLM: case is ignored, and a shorter file name never
+    matches inside a longer one (``1.png`` inside ``11.png``)."""
+    images = [
+        {"name": "1.png", "id": "a"},
+        {"name": "11.png", "id": "b"},
+        {"name": "Финал.PNG", "id": "c"},
+    ]
+
+    assert [p["id"] for p in ex.images_named_in_goal(images, "Опиши 11.png")] == ["b"]
+    assert [p["id"] for p in ex.images_named_in_goal(images, "Сравни 1.png и 11.png")] == ["a", "b"]
+    assert [p["id"] for p in ex.images_named_in_goal(images, "что на финал.png?")] == ["c"]
+    assert ex.images_named_in_goal(images, "Опиши все изображения") == []
+    assert ex.images_named_in_goal(images, "") == []
 
 
 def test_enqueue_subtask_image_edit_sends_raw_base64(db_env, test_app, gate_open, monkeypatch):

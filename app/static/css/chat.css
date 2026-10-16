@@ -214,6 +214,7 @@
     color: #5a6a7a;
     font-size: 0.85rem;
     font-family: monospace;
+    display: block;
     margin-top: 0.2rem;
 }
 

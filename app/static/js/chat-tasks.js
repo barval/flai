@@ -708,35 +708,12 @@ function renderTaskMessage(m, task) {
             div.appendChild(toolSvc);
         }
     }
-    // Extract search-result header lines («[Результат поиска 1: Title]») from
-    // body and render them as styled divs above the content paragraph. Each
-    // result block is «[Header]\nurl\ncontent\n\n». We split on double-newline,
-    // check if the block starts with a bracketed label, emit the header as a
-    // separate element and keep url+content for Markdown.
-    const searchBodyParts = [];
-    const searchHeadersOut = [];
-    body.split('\n\n').forEach(function(block) {
-        var trimmed = block.trim();
-        if (!trimmed) { searchBodyParts.push(block); return; }
-        var nl = trimmed.indexOf('\n');
-        var firstLine = nl === -1 ? trimmed : trimmed.slice(0, nl).trim();
-        if (firstLine.startsWith('[') && firstLine.endsWith(']')) {
-            searchHeadersOut.push(firstLine.slice(1, -1));
-            var rest = nl === -1 ? '' : trimmed.slice(nl + 1);
-            if (rest.trim()) searchBodyParts.push(rest);
-        } else {
-            searchBodyParts.push(block);
-        }
-    });
-    content.innerHTML = DOMPurify.sanitize(marked.parse(searchBodyParts.join('\n\n')));
-    // Insert styled search headers before the rendered content.
-    searchHeadersOut.reverse();
-    searchHeadersOut.forEach(function(hdr) {
-        var hdrEl = document.createElement('div');
-        hdrEl.className = 'task-search-header';
-        hdrEl.textContent = hdr;
-        content.prepend(hdrEl);
-    });
+    // Style search-result headers («[Результат поиска 1: Title]») as inline
+    // spans — they stay with their own result content (url + text) instead of
+    // being extracted to a separate pile. A block-level span wraps the heading
+    // line so it renders on its own row; DOMPurify keeps harmless <span> tags.
+    body = body.replace(/^\[([^\]]+)\]\n/gm, '<span class="task-search-header">[$1]</span>\n');
+    content.innerHTML = DOMPurify.sanitize(marked.parse(body));
     div.appendChild(content);
     // name per line (the server joins them) — each renders as a service line,
     // the same font as the plan line; the 📎 marks the block like 🗒️/⚙️ mark

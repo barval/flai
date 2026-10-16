@@ -810,13 +810,19 @@ function setTaskMode(active, task) {
     if (taskTitle) taskTitle.classList.toggle('hidden', !active);
     if (chatTitle) chatTitle.classList.toggle('hidden', active);
     const stopped = !task || !task.status || TASK_TERMINAL_STATUSES.has(task.status) || task.status === 'draft';
-    if (stopBtn) stopBtn.style.display = active && !stopped ? 'inline-flex' : 'none';
+    const showStop = active && !stopped;
+    if (stopBtn) stopBtn.style.display = showStop ? 'inline-flex' : 'none';
     // The ■ replaces the 💾 in the header row while the task is processing
     // (the chat's own stream does the same swap: events.js
     // _showHeaderCancelButton/_hideHeaderCancelButton) — two buttons of the
     // same size stacked in that slot would break the row on mobile.
     const saveBtn = document.getElementById('save-chat-button');
-    if (saveBtn) saveBtn.style.display = active && !stopped ? 'none' : '';
+    if (saveBtn) saveBtn.style.display = showStop ? 'none' : '';
+    // Hide the chat-stream cancel button while task mode is active —
+    // setTaskMode owns the slot, events.js _showHeaderCancelButton must
+    // not leave the stream cancel button visible alongside stop-task-button.
+    const cancelStream = document.getElementById('cancel-stream-header');
+    if (cancelStream) cancelStream.style.display = showStop ? 'none' : '';
     // Retry button visible on failed/expired/cancelled terminal tasks.
     const canRetry = task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed';
     if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';

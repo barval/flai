@@ -58,6 +58,9 @@ function startSseReconcile() {
 }
 
 function _showHeaderCancelButton(taskId) {
+    // Do not touch the header buttons when a background task is active:
+    // setTaskMode owns that slot and shows stop-task-button instead.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     var saveBtn = document.getElementById('save-chat-button');
     var cancelBtn = document.getElementById('cancel-stream-header');
     if (saveBtn) saveBtn.style.display = 'none';
@@ -71,6 +74,8 @@ function _showHeaderCancelButton(taskId) {
 }
 
 function _hideHeaderCancelButton() {
+    // Do not touch header buttons when a background task is active.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     var saveBtn = document.getElementById('save-chat-button');
     var cancelBtn = document.getElementById('cancel-stream-header');
     if (cancelBtn) {

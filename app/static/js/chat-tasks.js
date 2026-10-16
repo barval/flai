@@ -733,6 +733,56 @@ function renderTaskMessage(m, task) {
         tr.textContent = (block.label || '🎤') + ' ' + block.text;
         div.appendChild(tr);
     });
+
+    // Render media (images, video) with filename caption and download button.
+    mediaList.forEach(function(media) {
+        const downloadUrl = media.file_path ? '/api/files/' + media.file_path : '';
+        const fileName = media.file_name || 'file';
+        const caption = document.createElement('div');
+        caption.className = 'task-media-caption';
+        if (media.file_name) {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'task-media-filename';
+            nameSpan.textContent = media.file_name;
+            caption.appendChild(nameSpan);
+        }
+        if (downloadUrl) {
+            const dl = document.createElement('a');
+            dl.href = downloadUrl;
+            dl.download = fileName;
+            dl.className = 'download-link-inline';
+            dl.onclick = function(e) { e.stopPropagation(); };
+            const isImage = media.file_type && String(media.file_type).startsWith('image/');
+            const isVideo = media.file_type && String(media.file_type).startsWith('video/');
+            dl.title = isImage ? t('download_image') : (isVideo ? t('download_video') : t('download'));
+            dl.textContent = '⬇️';
+            caption.appendChild(dl);
+        }
+        if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'image-container';
+            const img = document.createElement('img');
+            img.src = '/api/files/' + media.file_path;
+            img.loading = 'lazy';
+            img.className = 'attached-image';
+            img.alt = media.file_name || 'image';
+            img.title = t('click_to_enlarge');
+            img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
+            imgContainer.appendChild(img);
+            imgContainer.appendChild(caption);
+            div.appendChild(imgContainer);
+        } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.loading = 'lazy';
+            video.src = '/api/files/' + media.file_path;
+            video.style.maxWidth = '100%';
+            video.style.borderRadius = '8px';
+            div.appendChild(video);
+            div.appendChild(caption);
+        }
+    });
     return div;
 }
 

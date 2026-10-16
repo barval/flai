@@ -1253,9 +1253,11 @@ class TaskExecutor:
         try:
             plan = None
             raw, usage = "", {}
+            attempts = 0
             for _attempt in range(2):
                 raw = _run_planner(self.app, prompt, cancel_check, lang, status_callback=_on_model_loaded)
                 usage = _planner_usage()
+                attempts = _attempt + 1
                 plan = _parse_plan(raw)
                 if plan is not None:
                     break
@@ -1272,6 +1274,17 @@ class TaskExecutor:
         finally:
             publish_task_stage(self.app, task, None)
         if plan is None:
+            # Diagnostic: without the raw reply there is no way to tell a
+            # genuinely unusable answer from one mangled by the output filters
+            # (2026-10-16: `_strip_generic_reasoning()` cut a valid JSON plan at
+            # a marker-like goal phrase and the task failed as unplannable).
+            logger.warning(
+                "task %s: planner reply unparseable after %d attempt(s) (%d chars); raw head=%r",
+                task_id,
+                attempts,
+                len(raw or ""),
+                (raw or "")[:300],
+            )
             self._fail_task(task_id, lang, _MSG_PLAN_UNREADABLE)
             return "failed"
 

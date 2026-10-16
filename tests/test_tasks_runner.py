@@ -389,6 +389,24 @@ def test_checkpoint_garbage(test_app):
     assert out["verdict"] is False and out["explanation"] == "unparseable checkpoint reply"
 
 
+def test_checkpoint_reply_with_marker_like_phrases_still_parses(test_app):
+    """A verdict whose JSON carries reasoning-marker phrases is not truncated.
+
+    Regression (2026-10-16): ``_strip_generic_reasoning()`` cut a valid JSON
+    reply at its last "Analyze …"/"Review …" marker, so a legitimate verdict
+    came back as "unparseable checkpoint reply" and the step was retried.
+    """
+    base = test_app.modules["base"]
+    reply = (
+        '{"verdict": true, "explanation": "Analyze attached images: all four show the same chart. '
+        'Review the columns — the values match across all four files."}'
+    )
+    with patch.object(base.llamacpp, "call", return_value=reply):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["verdict"] is True, "a marker phrase inside the JSON must not break the verdict"
+    assert out["explanation"].startswith("Analyze attached images")
+
+
 @pytest.mark.parametrize(
     "raw_verdict,expected",
     [

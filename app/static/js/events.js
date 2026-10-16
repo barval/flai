@@ -511,6 +511,10 @@ const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered
 
 function _stripGenericReasoning(text) {
     if (!text || text.length < 50) return text;
+    // A serialized reply — a JSON plan/verdict, a fenced code block — is never
+    // chain-of-thought: a marker phrase inside it ("Analyze attached images…")
+    // must not truncate the payload.
+    if (/^\s*(?:\{|\[|```)/.test(text)) return text;
     const matches = text.match(_REASONING_MARKERS_RE);
     if (matches && matches.length >= 2) {
         // Find the last marker and return text after it

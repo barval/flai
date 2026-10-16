@@ -13,6 +13,7 @@ create_app() is stopped in the fixture so manual drives are deterministic.
 """
 
 import base64
+import json
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -407,13 +408,14 @@ def test_plan_phase_creates_steps(db_env, test_app, gate_open, monkeypatch):
     assert kinds == ["direct", "question"], "user_input_expected ⇒ question kind"
 
 
-def test_plan_parse_failure_marks_task_failed(db_env, test_app, gate_open, monkeypatch):
+def test_plan_parse_failure_marks_task_failed(db_env, test_app, gate_open, monkeypatch, caplog):
     """Planner output unparseable after retry ⇒ localized ⚠️ error step, task failed."""
     store = db_env
     task_id = _mk_task(store)
     monkeypatch.setattr(ex, "_run_planner", lambda *a, **k: "not json at all")
 
-    _cycle(test_app)
+    with caplog.at_level("WARNING", logger="app.tasks.executor"):
+        _cycle(test_app)
 
     t = store.get_task(task_id)
     assert t["status"] == "failed"
@@ -421,6 +423,9 @@ def test_plan_parse_failure_marks_task_failed(db_env, test_app, gate_open, monke
     steps = store.get_task_steps(task_id)
     assert steps and steps[-1]["status"] == "failed"
     assert steps[-1]["result"].startswith("⚠️"), "user-facing error must carry the ⚠️ prefix"
+    # The raw reply is logged so a mangled (not genuinely unusable) answer is
+    # diagnosable without reproducing the run.
+    assert any("not json at all" in r.getMessage() for r in caplog.records), "raw planner head must be logged"
 
 
 def test_plan_phase_publishes_live_stages(db_env, test_app, gate_open, monkeypatch):
@@ -1243,6 +1248,40 @@ def test_capabilities_section_lists_camera_rooms():
     assert "Available rooms: Кухня, Гостиная" in section, "rooms listed verbatim in the section"
     # Without cameras the section is unchanged (no dangling fragment).
     assert ex._capabilities_section() == ex._capabilities_section(camera_rooms=None)
+
+
+def test_parse_plan_keeps_marker_like_goal_phrases():
+    """A plan whose title/goals carry reasoning-marker phrases still parses.
+
+    Regression (2026-10-16): the reply went through ``_strip_generic_reasoning()``,
+    which cut a valid JSON plan at its last "Analyze …"/"Identify …" marker and
+    failed the task with "the planner returned an unreadable plan".
+    """
+    raw = json.dumps(
+        {
+            "title": "Analyze attached images for similarities and differences",
+            "steps": [
+                {
+                    "seq": 1,
+                    "goal": "Extract a detailed description of everything visible plus all text in aaaa.png.",
+                    "tool": "vision",
+                    "checkpoint_criteria": "described.",
+                    "user_input_expected": False,
+                },
+                {
+                    "seq": 2,
+                    "goal": "Identify commonalities and differences between the four images",
+                    "tool": "llm",
+                    "checkpoint_criteria": "compared.",
+                    "user_input_expected": False,
+                },
+            ],
+        }
+    )
+    plan = ex._parse_plan(raw)
+    assert plan is not None, "a valid JSON plan must survive marker-like goal phrases"
+    assert [s["tool"] for s in plan["steps"]] == ["vision", "llm"]
+    assert plan["steps"][1]["goal"].startswith("Identify commonalities")
 
 
 def test_camera_rooms_safe_when_camera_off(test_app):

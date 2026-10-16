@@ -722,6 +722,8 @@ function renderTaskMessage(m, task) {
         ? m.extra.media_all
         : (m.extra && m.extra.media ? [m.extra.media] : []));
     mediaList.forEach(function(media) {
+        const downloadUrl = media.file_path ? '/api/files/' + media.file_path : '';
+        const fileName = media.file_name || 'file';
         if (media.file_path && media.file_type && String(media.file_type).startsWith('image/')) {
             const imgContainer = document.createElement('div');
             imgContainer.className = 'image-container';
@@ -733,6 +735,16 @@ function renderTaskMessage(m, task) {
             img.title = t('click_to_enlarge');
             img.onclick = function() { openImageModal(img.src, media.file_name || t('image')); };
             imgContainer.appendChild(img);
+            if (downloadUrl) {
+                const dl = document.createElement('a');
+                dl.href = downloadUrl;
+                dl.download = fileName;
+                dl.className = 'download-link-inline';
+                dl.title = t('download_image');
+                dl.onclick = function(e) { e.stopPropagation(); };
+                dl.textContent = '⬇️';
+                imgContainer.appendChild(dl);
+            }
             div.appendChild(imgContainer);
         } else if (media.file_path && media.file_type && String(media.file_type).startsWith('video/')) {
             const video = document.createElement('video');
@@ -743,6 +755,16 @@ function renderTaskMessage(m, task) {
             video.style.maxWidth = '100%';
             video.style.borderRadius = '8px';
             div.appendChild(video);
+            if (downloadUrl) {
+                const dl = document.createElement('a');
+                dl.href = downloadUrl;
+                dl.download = fileName;
+                dl.className = 'download-link-inline';
+                dl.title = t('download_video');
+                dl.onclick = function(e) { e.stopPropagation(); };
+                dl.textContent = '⬇️';
+                div.appendChild(dl);
+            }
         }
     });
     return div;

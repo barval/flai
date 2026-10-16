@@ -197,6 +197,13 @@
     min-width: 0;
 }
 
+.download-link-inline {
+    font-size: 1.2rem;
+    text-decoration: none;
+    cursor: pointer;
+    margin-left: 0.3rem;
+}
+
 .session-icons {
     display: flex;
     align-items: center;

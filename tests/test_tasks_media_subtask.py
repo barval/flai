@@ -154,6 +154,34 @@ class TestSubtaskModelMeta:
             meta = queue._subtask_model_meta("m", "multimodal", with_usage=True)
         assert meta == {"model_name": "m", "model_type": "multimodal"}
 
+    def test_every_meta_call_requests_the_token_totals(self):
+        """A sub-task that bills a model must carry its real token totals.
+
+        ``with_usage`` defaults to False, so a call site that forgets the flag
+        silently drops the tokens the multimodal/reasoning phase just recorded
+        (image_gen, image_edit, video and rlm were all missing it while camera
+        and vision had it). This guard reads the class source so a new media
+        sub-task cannot repeat the omission.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(RedisRequestQueue)))
+        missing = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and getattr(node.func, "attr", "") == "_subtask_model_meta"
+            and not any(
+                kw.arg == "with_usage" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                for kw in node.keywords
+            )
+        ]
+        assert missing == [], (
+            f"_subtask_model_meta calls without with_usage=True (offsets into the class source): {missing}"
+        )
+
     def test_envelope_merges_the_meta(self):
         queue = _make_queue()
         envelope = queue._subtask_envelope(
@@ -309,6 +337,38 @@ class TestImageGenSubtaskResult:
         }
         assert saved["session_id"] == task["id"], "the file lands in the task's own folder"
         queue._save_and_respond.assert_not_called()
+
+    def test_result_envelope_carries_the_token_usage(self):
+        """The multimodal parameter call bills real tokens — they must reach the
+        step header instead of dying in the worker's cleanup clause.
+
+        A media sub-task never calls ``_save_and_respond`` (there is no chat
+        message to consume the per-request account), so without the envelope the
+        totals were lost and the task step showed no 🔢 line at all.
+        """
+        image = MagicMock()
+        image.available = True
+        image._call_wrapper.return_value = {
+            "success": True,
+            "image_data": _PNG_B64,
+            "file_name": "cat.png",
+            "file_type": "image/png",
+            "file_size": 4242,
+        }
+        queue = self._queue(image)
+        task = self._task()
+
+        with (
+            patch("app.queue.save_uploaded_file", return_value=f"{task['id']}/cat.png"),
+            patch(
+                "app.utils.peek_usage_account",
+                return_value={"prompt_tokens": 1200, "completion_tokens": 180},
+            ),
+        ):
+            result = queue._process_image_gen_task("draw a cat", task["session_id"], "tester", "en", task=task)
+
+        assert result["model_type"] == "image_gen"
+        assert result["usage"] == {"prompt_tokens": 1200, "completion_tokens": 180}
 
     def test_chat_request_still_saves_the_message(self):
         image = MagicMock()

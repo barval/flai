@@ -294,6 +294,7 @@ const STAGE_LABEL_KEYS = {
     crawl_page: 'stage_crawl_page',
     crawl_indexing: 'stage_crawl_indexing',
     making_plan: 'stage_making_plan',
+    indexing_document: 'stage_indexing_document',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
@@ -303,6 +304,7 @@ const STAGE_COUNTER_KEYS = {
     searching_history: 'stage_history_found',
     rlm_step: 'stage_rlm_step',
     crawl_page: 'stage_crawl_page',
+    indexing_document: 'stage_indexing_document',
 };
 
 function getStageLabel(stage, count) {
@@ -393,7 +395,8 @@ function _removeProgressElement(taskId) {
 function onVideoStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
-    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
+    // In task view, we want the progress bar to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onVideoStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -423,7 +426,8 @@ function onVideoStep(data) {
 function onImageStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
-    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
+    // In task view, we want the progress bar to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onImageStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -458,7 +462,8 @@ function onImageStep(data) {
 function onImagePreview(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || !data.image_b64) return;
-    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
+    // In task view, we want the preview to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onImagePreview:', data.task_id, 'step:', data.step);
 
     const chatMessages = document.getElementById('chat-messages');

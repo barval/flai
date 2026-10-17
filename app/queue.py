@@ -1830,7 +1830,7 @@ class RedisRequestQueue:
             message_text,
             file_path,
             image_result,
-            meta=self._subtask_model_meta("flux-2-klein-4b", "image_edit"),
+            meta=self._subtask_model_meta("flux-2-klein-4b", "image_edit", with_usage=True),
         )
         if subtask_result is not None:
             return subtask_result
@@ -2006,7 +2006,12 @@ class RedisRequestQueue:
             "resize_notice_id": cpu_notice_id,
         }
         subtask_result = self._subtask_envelope(
-            task, session_id, query, file_path, image_result, meta=self._subtask_model_meta(sd_model, "image_gen")
+            task,
+            session_id,
+            query,
+            file_path,
+            image_result,
+            meta=self._subtask_model_meta(sd_model, "image_gen", with_usage=True),
         )
         if subtask_result is not None:
             return subtask_result
@@ -2334,6 +2339,78 @@ class RedisRequestQueue:
                         )
             if text:
                 corpus[doc.get("filename", doc_id)] = text
+            else:
+                # no text and no sidecar -> repair once
+                import contextlib as _ctx
+
+                with _ctx.suppress(Exception):
+                    subtask_task_val = subtask_task_val
+                try:
+                    from app.tasks.store import get_task as _gt
+
+                    if subtask_task_val is None and subtask_step_id:
+                        subtask_task_val = _gt(task["session_id"])
+                except Exception:
+                    pass
+                if subtask_task_val is not None:
+                    try:
+                        from app.tasks.events import publish_task_stage
+
+                        publish_task_stage(self.app, subtask_task_val, "indexing_document")
+                    except Exception:
+                        pass
+                # enqueue repair
+                try:
+                    q = RedisRequestQueue(self.app, start_workers=False)
+                    docs_folder = self.app.config["DOCUMENTS_FOLDER"]
+                    full_path = os.path.join(docs_folder, doc.get("file_path"))
+                    ext = os.path.splitext(full_path)[1].lower()
+                    if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".pdf"):
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": lang,
+                            "data": {
+                                "type": "describe_document_image",
+                                "doc_id": doc_id,
+                                "file_path": doc.get("file_path"),
+                            },
+                            "user_class": 5,
+                        }
+                    else:
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": lang,
+                            "data": {"type": "index_document", "doc_id": doc_id, "file_path": doc.get("file_path")},
+                            "user_class": 5,
+                        }
+                    q.add_request(
+                        user_id=user_id, session_id=rq["session_id"], request_data=rq["data"], user_class=5, lang=lang
+                    )
+                except Exception as e:
+                    self.app.logger.warning(f"rlm corpus repair enqueue failed: {e}")
+                # wait a bit
+                try:
+                    import time as _time
+
+                    _time.sleep(3)
+                except Exception:
+                    pass
+                # re-read
+                text = extract_text_from_file(full_path)
+                if not text:
+                    recognized_path = os.path.splitext(full_path)[0] + ".recognized_text"
+                    if os.path.exists(recognized_path):
+                        try:
+                            with open(recognized_path, encoding="utf-8") as f:
+                                text = f.read()
+                        except Exception:
+                            pass
+                if text:
+                    corpus[doc.get("filename", doc_id)] = text
 
         rm = get_resource_manager()
         if not rm:
@@ -2477,7 +2554,7 @@ class RedisRequestQueue:
             result.answer,
             None,
             {},
-            meta=self._subtask_model_meta(self._get_model_name("reasoning") or "reasoning", "rlm"),
+            meta=self._subtask_model_meta(self._get_model_name("reasoning") or "reasoning", "rlm", with_usage=True),
         )
         if subtask_result is not None:
             return {**subtask_result, "rlm_steps": result.steps}
@@ -2938,7 +3015,12 @@ class RedisRequestQueue:
                 "metadata": video_result.get("metadata", {}),
             }
             subtask_result = self._subtask_envelope(
-                task, session_id, query, file_path, video_result, meta=self._subtask_model_meta(video_model, "video")
+                task,
+                session_id,
+                query,
+                file_path,
+                video_result,
+                meta=self._subtask_model_meta(video_model, "video", with_usage=True),
             )
             if subtask_result is not None:
                 return subtask_result
@@ -3165,7 +3247,12 @@ class RedisRequestQueue:
                 "resize_notice_id": resize_notice_id,
             }
             subtask_result = self._subtask_envelope(
-                task, session_id, query, file_path, video_result, meta=self._subtask_model_meta(video_model, "video")
+                task,
+                session_id,
+                query,
+                file_path,
+                video_result,
+                meta=self._subtask_model_meta(video_model, "video", with_usage=True),
             )
             if subtask_result is not None:
                 return subtask_result

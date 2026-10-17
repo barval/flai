@@ -3703,3 +3703,8 @@ msgstr "The final answer could not be generated; please check the step results a
 msgid "Execution budget exhausted; the summary could not be generated."
 msgstr "Execution budget exhausted; the summary could not be generated."
 
+
+
+
+msgid "stage_indexing_document"
+msgstr "Creating index for document..."

@@ -1680,6 +1680,13 @@ class TaskExecutor:
                 parts.append(f"A: {r['result'] or ''}")
         return "\n".join(parts)[:4000]
 
+    def _clear_task_stage(self, task: dict) -> None:
+        """Clear the current task_stage banner for a completed subtask."""
+        from app.tasks.events import publish_task_stage
+
+        if task:
+            publish_task_stage(self.app, task, None)
+
     def _end_step(self, task_id: str, step_id: str, status: str, **fields: Any) -> None:
         """Close a step attempt: persist the final row state and retract the
         running-step pointer (the chat hook can no longer cancel it)."""
@@ -1879,6 +1886,18 @@ class TaskExecutor:
         # first poll, which the closed gate can delay by minutes: the result was
         # already waiting and a 2-minute RLM run was billed as ~0.02 s
         # (live: a 146 s task showed «⏱️ 9 с»).
+        # Publish stage immediately so the Tasks view shows a ticking counter
+        # even while the slow worker might be busy with other work.
+        from app.tasks.events import publish_task_stage
+
+        stage_map = {
+            "image_gen": "generating_image",
+            "image_edit": "editing_image",
+            "video_gen": "generating_video",
+        }
+        task_stage = stage_map.get(tool, "generating_image")
+        publish_task_stage(self.app, task, task_stage)
+
         update_step(row["id"], status="subtask_queued", started_at=_now_iso())
         try:
             queue = _get_request_queue()
@@ -2062,7 +2081,9 @@ class TaskExecutor:
             logger.warning(f"subtask cancel failed ({queue_id}): {e}")
         elapsed = self._subtask_seconds(row)
         self._add_budget(task_id, elapsed)
+        task = get_task(task_id) or {}
         self._end_step(task_id, row["id"], status="interrupted", interrupt_reason=reason, exec_seconds=elapsed)
+        self._clear_task_stage(task)
         update_task(task_id, status="frozen", abort_reason="chat")
         logger.info(f"task {task_id} step {idx + 1}: subtask aborted ({reason}) — frozen")
         return "stop"
@@ -2117,6 +2138,7 @@ class TaskExecutor:
                 exec_seconds=elapsed,
                 last_error=error_text[:500] or "subtask failed",
             )
+            self._clear_task_stage(task)
             logger.warning(f"task {task_id} step {idx + 1}: subtask failed — continuing")
             update_task(task_id, next_step_index=idx + 1)
             return "done"
@@ -2152,6 +2174,7 @@ class TaskExecutor:
                 checkpoint_verdict=False,
                 extra=merged_extra,
             )
+            self._clear_task_stage(task)
             logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — continuing")
             update_task(task_id, next_step_index=idx + 1)
             return "done"
@@ -2164,6 +2187,7 @@ class TaskExecutor:
             checkpoint_result=str(checkpoint.get("explanation", "")),
             checkpoint_verdict=bool(checkpoint.get("verdict")) if checkpoint else None,
         )
+        self._clear_task_stage(task)
         update_step(row["id"], extra=merged_extra)
         logger.info(f"task {task_id} step {idx + 1}: subtask completed ({queue_id})")
         update_task(task_id, next_step_index=idx + 1)

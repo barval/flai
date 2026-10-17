@@ -227,36 +227,137 @@ def _run_llm_step(
 _DOC_INDEX_POLL_S = 2
 
 
+def _doc_needs_repair(doc: dict, app=None) -> bool:
+    import os as _os
+    import time as _time
+
+    if not doc:
+        return False
+    idx = doc.get("index_status")
+    if idx == "failed":
+        return True
+    if idx == "indexing":
+        started = doc.get("indexing_started_at")
+        if started:
+            try:
+                # started_at is datetime/timestamp-like? handle naive
+                # store gives datetime objects in some cases? get_user_documents returns dicts; check
+                ts = started.timestamp() if hasattr(started, "timestamp") else float(started) if started else 0
+            except Exception:
+                ts = 0
+            if ts and (_time.time() - ts) > 1800:  # 30 min
+                return True
+        else:
+            # no start time, treat as potentially stuck
+            pass
+    file_path = doc.get("file_path")
+    if file_path and app is not None:
+        try:
+            docs_folder = app.config.get("DOCUMENTS_FOLDER", "data/documents")
+            full_path = _os.path.join(docs_folder, file_path)
+            name, ext = _os.path.splitext(full_path)
+            recognized = name + ".recognized_text"
+            if not _os.path.exists(recognized):
+                # likely image/PDF without sidecar; needs repair
+                low = (ext or "").lower()
+                if low in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".pdf"):
+                    return True
+        except Exception:
+            pass
+    return False
+
+
 def wait_for_documents_indexed(app: Flask, user_id: str, doc_ids: list[str], cancel_check=None) -> None:
-    """Block until every attached document is indexed (or its indexing failed).
-
-    A FAILED document counts as settled: it never reaches the index, so waiting
-    cannot fix it. A chat request interrupts the wait (``cancel_check``) — the
-    step dies ``interrupted`` and re-executes on resume, so chat never waits.
-
-    Shared by the rag step and the executor's RLM sub-task (the corpus of a
-    scanned PDF has no text on disk until its OCR finished).
-    """
+    """Block until every attached document is indexed (or fails after a single repair)."""
     import time as _time
 
     from app.db import INDEX_STATUS_FAILED, INDEX_STATUS_INDEXED, get_user_documents
+    from app.queue import RedisRequestQueue
 
     pending = {str(d) for d in (doc_ids or []) if d}
     if not pending:
         return
     bound = app.config.get("OCR_TIME_BUDGET_S", 1800) or 1800
     deadline = _time.monotonic() + bound
+    repaired = set()
+    queue = RedisRequestQueue(app, start_workers=False) if hasattr(RedisRequestQueue, "__init__") else None
     while pending and _time.monotonic() < deadline:
         if cancel_check is not None and cancel_check():
             raise StepAborted("step cancelled while waiting for document indexing")
         try:
             docs = get_user_documents(user_id) or []
         except Exception as e:
-            # A status check must never fail the step: without it the search
-            # simply runs as before.
             logger.warning(f"document index status check failed: {e}")
             return
-        settled = {str(d.get("id")): d.get("index_status") for d in docs if str(d.get("id")) in pending}
+        doc_map = {str(d.get("id")): d for d in docs}
+        # detect repairable in pending
+        to_repair = []
+        for d in list(pending):
+            dd = doc_map.get(d)
+            if dd and dd.get("index_status") == INDEX_STATUS_INDEXED:
+                pending.discard(d)
+                continue
+            if dd and dd.get("index_status") == INDEX_STATUS_FAILED and d not in repaired:
+                to_repair.append(d)
+                repaired.add(d)
+                continue
+            if _doc_needs_repair(dd, app) and d not in repaired:
+                to_repair.append(d)
+                repaired.add(d)
+                continue
+            # stuck indexing? check age
+            if dd and dd.get("index_status") == "indexing":
+                started = dd.get("indexing_started_at")
+                if started:
+                    try:
+                        ts = started.timestamp() if hasattr(started, "timestamp") else float(started)
+                    except Exception:
+                        ts = 0
+                    if ts and (_time.time() - ts) > 1800 and d not in repaired:
+                        to_repair.append(d)
+                        repaired.add(d)
+                # else leave pending
+        # enqueue repairs
+        if to_repair:
+            try:
+                docs_folder = app.config.get("DOCUMENTS_FOLDER", "data/documents")
+                for rid in to_repair:
+                    dd = doc_map.get(rid) or {}
+                    file_path = dd.get("file_path")
+                    if not file_path:
+                        continue
+                    import os as _os
+
+                    full_path = _os.path.join(docs_folder, file_path)
+                    ext = _os.path.splitext(full_path)[1].lower()
+                    if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".pdf"):
+                        # treat image/pdf as needing description/indexing
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": "ru",
+                            "data": {"type": "describe_document_image", "doc_id": rid, "file_path": file_path},
+                            "user_class": 5,
+                        }
+                    else:
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": "ru",
+                            "data": {"type": "index_document", "doc_id": rid, "file_path": file_path},
+                            "user_class": 5,
+                        }
+                    queue.add_request(
+                        user_id=user_id, session_id=rq["session_id"], request_data=rq["data"], user_class=5, lang="ru"
+                    )
+                _time.sleep(2)
+                continue
+            except Exception as e:
+                logger.warning(f"document repair enqueue failed: {e}")
+        # update pending
+        settled = {str(d.get("id")): d.get("index_status") for d in doc_map.values() if str(d.get("id")) in pending}
         pending = {d for d in pending if settled.get(d) not in (INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED)}
         if pending:
             _time.sleep(_DOC_INDEX_POLL_S)

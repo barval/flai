@@ -3735,3 +3735,8 @@ msgstr "Время исполнения задачи исчерпано; сво�
 
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation view
 
+
+
+
+msgid "stage_indexing_document"
+msgstr "Создаю индекс для документа..."

@@ -572,7 +572,16 @@ function onTaskStage(data) {
         delete taskStages[data.task_id];
     }
     if (window.currentTaskId !== data.task_id) return;
-    const banner = document.querySelector('.task-await-banner');
+    const task = tasksData[data.task_id] || {};
+    const live = ['queued', 'active', 'frozen', 'awaiting_user'].includes(task.status);
+    let banner = document.querySelector('.task-await-banner');
+    if (!banner && live) {
+        // Create banner lazily when a stage arrives (happens before renderTaskConversation
+        // can create it when the executor immediately publishes a stage for an in-queue subtask)
+        banner = document.createElement('div');
+        banner.className = 'task-await-banner';
+        document.getElementById('chat-messages').appendChild(banner);
+    }
     if (!banner) return;
     const stage = taskStages[data.task_id];
     if (stage) {

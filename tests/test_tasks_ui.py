@@ -214,6 +214,20 @@ class TestTasksFrontendLogic:
         assert "'stage_making_plan':" in CHAT_HTML
         assert "startStageTimer" in CHAT_TASKS
 
+    def test_numbered_stage_keeps_its_phase_number(self):
+        """A stage with a ``%s`` (RLM phase) gets its number filled in the task view.
+
+        The chat render path reads the counter from the event payload
+        (``data.step``); the task view must carry it through ``task_stage``
+        (``count``) all the way into ``getStageLabel`` — otherwise the label
+        shows a literal ``%s``.
+        """
+        assert "rlm_step: 'stage_rlm_step'" in EVENTS_JS
+        assert "rlm_step: 'stage_rlm_step'" in EVENTS_JS.split("STAGE_COUNTER_KEYS", 1)[1]
+        assert "count: data.count" in CHAT_TASKS
+        assert "getStageLabel(s.stage, s.count)" in CHAT_TASKS
+        assert "{{ _('Deep analysis: phase %s')|tojson }}" in CHAT_HTML
+
     def test_plan_stage_msgids_resolve_in_both_compiled_catalogs(self):
         for lang in ("en", "ru"):
             mo = ROOT / "translations" / lang / "LC_MESSAGES" / "messages.mo"
@@ -749,3 +763,40 @@ class TestTasksFirstTaskAutoCreate:
     def test_load_tasks_reports_fetch_failure(self):
         block = self._function_block(CHAT_TASKS, "function loadTasksFromServer(")
         assert "return true" in block and "return false" in block
+
+
+class TestTaskStagePayload:
+    """The ``task_stage`` payload contract the task view consumes.
+
+    ``onTaskStage`` stores ``data.count`` and hands it to ``getStageLabel``
+    (see TestTasksFrontendLogic), so a numbered stage (the RLM phase) must
+    actually carry the number on the wire.
+    """
+
+    class _Publisher:
+        def __init__(self, seen: list) -> None:
+            self.seen = seen
+
+        def publish(self, user_id, event_type, payload) -> None:
+            self.seen.append((user_id, event_type, payload))
+
+    def _publish(self, monkeypatch, stage, count=None):
+        from app.tasks import events as task_events
+
+        seen: list = []
+        monkeypatch.setattr(task_events, "get_events_publisher", lambda app: self._Publisher(seen))
+        task_events.publish_task_stage(None, {"id": "t1", "user_id": "valery"}, stage, count=count)
+        return seen
+
+    def test_count_rides_the_stage_payload(self, monkeypatch):
+        assert self._publish(monkeypatch, "rlm_step", count=4) == [
+            ("valery", "task_stage", {"task_id": "t1", "stage": "rlm_step", "count": 4})
+        ]
+
+    def test_numberless_stage_omits_the_count_key(self, monkeypatch):
+        assert self._publish(monkeypatch, "making_plan") == [
+            ("valery", "task_stage", {"task_id": "t1", "stage": "making_plan"})
+        ]
+
+    def test_cleared_stage_carries_no_count(self, monkeypatch):
+        assert self._publish(monkeypatch, None) == [("valery", "task_stage", {"task_id": "t1", "stage": ""})]

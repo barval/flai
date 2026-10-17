@@ -21,7 +21,7 @@ let tasksData = {};
 // route the input to the task answer.
 window.currentTaskId = null;
 
-// Live plan-phase stages (SSE task_stage): task_id → {stage, since}.
+// Live plan-phase stages (SSE task_stage): task_id → {stage, count, since}.
 // The banner above the open task renders the stage with a ticking counter
 // while the executor loads the reasoning model / makes the plan.
 let taskStages = {};
@@ -538,7 +538,7 @@ function startStageTimer(taskId, el) {
     const paint = () => {
         const s = taskStages[taskId];
         if (!s) { stopStageTimer(); return; }
-        const label = (typeof getStageLabel === 'function' ? getStageLabel(s.stage) : s.stage) || '';
+        const label = (typeof getStageLabel === 'function' ? getStageLabel(s.stage, s.count) : s.stage) || '';
         const secs = Math.floor((Date.now() - taskStageStartedAt) / 1000);
         el.textContent = '▶ ' + label + (secs >= 1 ? ' (' + secs + t('stage_elapsed_s') + ')' : '');
     };
@@ -563,11 +563,11 @@ function stopStageTimer() {
 }
 
 // Dispatched by events.js handleEvent for `task_stage` events (plan-phase
-// progress). data: {task_id, stage} — an empty stage clears the line.
+// progress). data: {task_id, stage, count?} — an empty stage clears the line.
 function onTaskStage(data) {
     if (!data || !data.task_id) return;
     if (data.stage) {
-        taskStages[data.task_id] = { stage: data.stage, since: Date.now() };
+        taskStages[data.task_id] = { stage: data.stage, count: data.count, since: Date.now() };
     } else {
         delete taskStages[data.task_id];
     }

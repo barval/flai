@@ -2300,16 +2300,16 @@ class RedisRequestQueue:
             except Exception:
                 pass
 
-        def _publish_rlm_stage(stage: str) -> None:
+        def _publish_rlm_stage(stage: str, count: int | None = None) -> None:
             if subtask_task_val is not None:
-                publish_task_stage(self.app, subtask_task_val, stage)
+                publish_task_stage(self.app, subtask_task_val, stage, count=count)
 
         def on_stage(stage: str, extra: dict | None = None) -> None:
             payload = {"stage": stage}
             if extra:
                 payload.update(extra)
             self._publish_stream_event(task, "task_progress", payload)
-            _publish_rlm_stage(stage)
+            _publish_rlm_stage(stage, (extra or {}).get("step"))
 
         on_stage("rlm_reading", None)
 

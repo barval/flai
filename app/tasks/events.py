@@ -44,13 +44,15 @@ def publish_task_update(app: Any, task: dict | None) -> None:
         return
 
 
-def publish_task_stage(app: Any, task: dict | None, stage: str | None) -> None:
+def publish_task_stage(app: Any, task: dict | None, stage: str | None, count: Any = None) -> None:
     """Publish one ``task_stage`` event (plan-phase progress; no-op on failure).
 
     Same per-user stream as ``task_update``, but a distinct type: the task
     view renders it as a live stage line with a ticking counter (chat parity
     with ``task_progress``), while the chat render paths ignore it. An empty
-    stage clears the current one.
+    stage clears the current one. *count* fills the ``%s`` of a numbered stage
+    (e.g. ``rlm_step`` — the phase number); without it the label keeps the
+    placeholder literally.
     """
     if not task:
         return
@@ -61,6 +63,9 @@ def publish_task_stage(app: Any, task: dict | None, stage: str | None) -> None:
         publisher = get_events_publisher(app)
         if publisher is None:
             return
-        publisher.publish(user_id, "task_stage", {"task_id": task.get("id"), "stage": stage or ""})
+        payload = {"task_id": task.get("id"), "stage": stage or ""}
+        if count is not None:
+            payload["count"] = count
+        publisher.publish(user_id, "task_stage", payload)
     except Exception:  # noqa: BLE001 — SSE is advisory, never fatal
         return

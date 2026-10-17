@@ -1266,16 +1266,33 @@ class TaskExecutor:
         task_id = task["id"]
         lang = task.get("lang") or "ru"
         deep_note = ""
-        if task.get("deep_analysis"):
-            from flask_babel import force_locale
-            from flask_babel import gettext as _
+        from flask_babel import force_locale
+        from flask_babel import gettext as _
 
-            with force_locale(lang):
+        with force_locale(lang):
+            if task.get("deep_analysis"):
+                # 🔬 ON: the documents are analyzed by the RLM deep-analysis
+                # step. The planner must NOT also plan a rag+llm search — with
+                # the old unconditional template rule it planned rag first and
+                # rlm on top, so the ordinary RAG path ran before RLM.
+                document_tool_rule = _(
+                    "The user turned on 🔬 Deep Analysis: to find data in the user's documents, "
+                    'plan a step with tool "rlm" (multi-step deep analysis) over the attached '
+                    "documents (all of the user's documents when none are attached). Do NOT plan "
+                    '"rag" or "llm" steps for document search. Do not ask which documents to analyze.'
+                )
                 deep_note = _(
                     "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
                     '"rlm" that deeply analyzes the attached documents (all of the user\'s documents '
                     "when none are attached) and answers the task request; do not ask which documents "
                     "to analyze."
+                )
+            else:
+                document_tool_rule = _(
+                    'To find data in the user\'s documents, plan a step with tool "rag" (document '
+                    'search) followed by a step with tool "llm" that composes the answer from the '
+                    "found fragments. Do NOT ask the user which documents to analyze: if documents are "
+                    "attached to the task — search them, otherwise search all of the user's documents."
                 )
         request_text = _request_text(task)
         attachments = _attachments_section(task, lang)
@@ -1289,6 +1306,7 @@ class TaskExecutor:
             "slm_facts": recall_slm_facts(self.app, request_text, task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),
             "deep_analysis_note": deep_note,
+            "document_tool_rule": document_tool_rule,
             "current_time": get_current_time_in_timezone(self.app) or "",
             "attachments_section": attachments,
         }

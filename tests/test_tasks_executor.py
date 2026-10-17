@@ -1385,9 +1385,22 @@ def test_capabilities_section_hides_vision_without_images():
     # reads only the images the goal names, so the rule must reach the planner.
     assert "file name in the goal" in with_images
     # The image_edit step binds its source the same way (resolution below).
-    assert "the step edits the image its goal names" in with_images
+    assert "the attached image the goal names" in with_images
     # Other capabilities are unaffected.
     assert "llm (" in with_images and "llm (" in without_images
+
+
+def test_capabilities_section_deep_analysis_swaps_document_tool():
+    """The 🔬 toggle swaps the document tool advertised to the planner: OFF
+    advertises rag (and hides rlm), ON advertises rlm (and hides rag) — with
+    Deep Analysis on the planner must not also plan the ordinary RAG path
+    (live defect: rag ran first, rlm on top)."""
+    off = ex._capabilities_section(deep_analysis=False)
+    on = ex._capabilities_section(deep_analysis=True)
+    assert "rag (" in off and "rlm (" not in off
+    assert "rlm (" in on and "rag (" not in on
+    # Default stays the plain RAG path (no deep analysis).
+    assert "rag (" in ex._capabilities_section()
 
 
 def test_task_image_parts_read_files(test_app, tmp_path):

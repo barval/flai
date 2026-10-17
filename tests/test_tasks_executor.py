@@ -2555,3 +2555,91 @@ def test_request_text_without_audio_is_untouched():
     assert ex._request_text({"title": "t"}) == "t"
     assert ex._request_text({"title": "t", "step_plan": {"task_request": "plan-req"}}) == "plan-req"
     assert ex._request_text({"title": "t", "audio": []}) == "t"
+
+
+# ── budget accounting: the phases outside the step loop (v12.6 fix) ──────
+#
+# ⏱️ in the task list (and TASK_TOTAL_BUDGET_S) reads
+# ``tasks.accumulated_exec_seconds``, which ``_add_budget`` accumulates. Three
+# phases did work that never reached it: the enqueued sub-task's GPU run (the
+# clock started at the first POLL, which the closed gate can delay by minutes —
+# live: a 146 s task showed «⏱️ 9 с»), the planner call, and the final summary.
+
+
+def test_subtask_budget_clock_starts_at_enqueue(db_env, test_app, monkeypatch):
+    """A sub-task's ``started_at`` is stamped when it is handed to the queue.
+
+    The old behaviour stamped it at the first poll (``_poll_subtask`` keeps an
+    existing value), so the whole GPU run was invisible whenever the executor
+    stopped polling — the result was already waiting when the gate reopened and
+    the elapsed time read ~0.02 s.
+    """
+    store = db_env
+    plan = {"title": "Media task", "steps": [{"seq": 1, "goal": "Analyze it", "tool": "rlm"}]}
+    task_id = _mk_task(store, step_plan=plan)
+    store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Analyze it", tool="rlm")
+
+    class _Q:
+        def add_request(self, **kwargs):
+            return "sub-q-1", {}
+
+        def cancel_task(self, task_id):
+            return True
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+
+    executor = ex.TaskExecutor(app=test_app)
+    executor._enqueue_subtask(store.get_task(task_id), 0, {"seq": 1, "goal": "Analyze it", "tool": "rlm"})
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "subtask_queued"
+    assert step["started_at"] is not None, "the budget clock must start at enqueue, not at the first poll"
+
+
+def test_planner_time_counts_into_the_budget(db_env, test_app, monkeypatch):
+    """The planner call is real execution and lands in ⏱️/budget.
+
+    ``planner_meta['exec_seconds']`` fed only the plan message header, so the
+    task total silently omitted the plan phase (tens of seconds on a JIT load).
+    """
+    store = db_env
+    task_id = _mk_task(store)
+    plan_json = '{"title": "p", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}'
+
+    def _fake_planner(app, prompt, cancel_check, lang, status_callback=None):
+        time.sleep(0.05)  # a measurable planner call
+        return plan_json
+
+    monkeypatch.setattr(ex, "_run_planner", _fake_planner)
+
+    assert ex.TaskExecutor(app=test_app)._run_plan_phase(store.get_task(task_id)) == "ok"
+
+    t = store.get_task(task_id)
+    planned = float((t["step_plan"] or {}).get("plan_meta", {}).get("exec_seconds") or 0.0)
+    assert planned > 0.01, "the plan phase reported a duration"
+    assert float(t["accumulated_exec_seconds"] or 0.0) == pytest.approx(planned, abs=0.02)
+
+
+def test_final_summary_time_counts_into_the_budget(db_env, test_app, monkeypatch):
+    """The final answer is a reasoning call — its seconds belong in ⏱️/budget.
+
+    ``_finalize`` stored ``exec_seconds`` in the final step's header only; a
+    26 s summary left the task total untouched.
+    """
+    store = db_env
+    task_id = _mk_task(store, status="active", accumulated=2.0)
+    step_id = store.add_step(task_id=task_id, seq=1, kind="direct", goal="g", tool="llm")
+    store.update_step(step_id, status="passed", result="step result text")
+
+    def _fake_final(app, task, meta_out=None):
+        if meta_out is not None:
+            meta_out.update({"exec_seconds": 7.5, "model_name": "m", "model_type": "reasoning"})
+        return "final summary text"
+
+    monkeypatch.setattr(ex, "_run_final_summary", _fake_final)
+
+    ex.TaskExecutor(app=test_app)._finalize(store.get_task(task_id))
+
+    t = store.get_task(task_id)
+    assert t["status"] == "completed"
+    assert float(t["accumulated_exec_seconds"] or 0.0) == pytest.approx(9.5, abs=0.01)

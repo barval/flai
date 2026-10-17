@@ -360,7 +360,8 @@ class TestReviewGuards:
         stops/finishes — both bars keep their exact height."""
         block = self._function_block(CHAT_TASKS, "function setTaskMode(")
         assert "getElementById('save-chat-button')" in block
-        assert "saveBtn.style.display = active && !stopped ? 'none' : ''" in block
+        # showStop is `active && !stopped` (the button swap precondition).
+        assert "saveBtn.style.display = showStop ? 'none' : ''" in block
 
     def test_documents_ride_with_task_send(self):
         """The shared Documents-panel selection is snapshotted into the task

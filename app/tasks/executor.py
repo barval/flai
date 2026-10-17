@@ -1355,6 +1355,9 @@ class TaskExecutor:
             }
         finally:
             publish_task_stage(self.app, task, None)
+        # The planner is a real model call (tens of seconds on a JIT load); its
+        # seconds belong in the task total, not only in the plan message header.
+        self._add_budget(task_id, planner_meta["exec_seconds"])
         if plan is None:
             # Diagnostic: without the raw reply there is no way to tell a
             # genuinely unusable answer from one mangled by the output filters
@@ -1871,7 +1874,12 @@ class TaskExecutor:
         # died with "subtask result expired" and no snapshot was ever taken
         # (live log: "dequeued task … (type=camera_task)" 6 ms BEFORE the
         # executor's own "queued as subtask" line).
-        update_step(row["id"], status="subtask_queued")
+        # ``started_at`` is the step's budget clock and it starts HERE, when the
+        # work is handed to the queue — ``_poll_subtask`` only stamps it on the
+        # first poll, which the closed gate can delay by minutes: the result was
+        # already waiting and a 2-minute RLM run was billed as ~0.02 s
+        # (live: a 146 s task showed «⏱️ 9 с»).
+        update_step(row["id"], status="subtask_queued", started_at=_now_iso())
         try:
             queue = _get_request_queue()
             subtask_queue_id, _info = queue.add_request(
@@ -2210,6 +2218,9 @@ class TaskExecutor:
         lang = task.get("lang") or "ru"
         final_meta: dict[str, Any] = {}
         text = _run_final_summary(self.app, task, meta_out=final_meta)
+        # The final answer is itself a reasoning call — its seconds count into
+        # the task total even when the text is reused from the last step.
+        self._add_budget(task_id, float(final_meta.get("exec_seconds") or 0.0))
         if not text:
             from app.llamacpp_client import _tr
 

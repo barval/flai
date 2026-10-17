@@ -302,7 +302,10 @@ class TestSubtaskPolling:
         assert task_row["next_step_index"] == 1, "poll consumed the ready subtask"
         assert task_row["accumulated_exec_seconds"] > 0, "budget grew by the subtask approximation"
         step = store.get_step(row_id)
-        assert step["status"] == "passed" and step["result"] == "image done"
+        assert step["status"] == "passed"
+        # The artifact line is appended to the result text (the verifier judges
+        # text only) — the bare file_path when the envelope carries no file_name.
+        assert step["result"] == "image done\n/uploads/x.png"
         assert step["extra"].get("media", {}).get("file_path") == "/uploads/x.png"
         assert task_row["status"] == "completed", "final step ran after the subtask passed"
 

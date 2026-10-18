@@ -590,7 +590,18 @@ def unload_pipeline():
         except Exception as e:
             logger.warning(f"VRAM query during unload failed: {e}")
     logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
-    return jsonify({"status": "ok", "freed": True, "free_mb": free_mem // 1024**2})
+    # Recycle the gunicorn worker to release the CUDA context (~3 GB) that
+    # torch.empty_cache() cannot free.  Without this, the next LLM/planning
+    # step finds only ~12.5 GB free on a 16 GB GPU and the reasoning model
+    # (Qwen3.6-35B-A3B-UD-Q2_K_XL, need 13.7 GB) fails with "GPU memory
+    # unavailable".  The gunicorn master creates a fresh worker immediately.
+    import os
+    import sys
+
+    logger.info("recycling gunicorn worker to reclaim CUDA context")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 @app.route("/v1/video/generations", methods=["POST"])

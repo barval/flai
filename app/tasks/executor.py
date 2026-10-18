@@ -1916,16 +1916,13 @@ class TaskExecutor:
         # Corrective retry: the previous attempt of THIS step was rejected by
         # the verifier — carry its reason into the media prompt so the generator
         # fixes the stated problem instead of repeating the rejected artifact.
-        # English like the direct-step retry digest: model context, never shown
-        # to the user.
+        # Carried as a SEPARATE request_data key (NOT merged into text/prompt):
+        # the media handlers append it to the model prompt themselves, while
+        # text stays the clean step goal — putting it into text leaked it into
+        # the step's visible result (the media envelope echoes `query`).
         corrective_note = str((row.get("extra") or {}).get("corrective_note") or "").strip()
         if corrective_note:
-            directive = (
-                "\n\nCorrective note: the verifier REJECTED the previous attempt of this step. "
-                f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
-            )
-            request_data["text"] = str(request_data["text"]) + directive
-            request_data["prompt"] = str(request_data["prompt"]) + directive
+            request_data["corrective_note"] = corrective_note[:1000]
         if tool == "rlm":
             # RLM corpus = the task's attached documents; with none attached,
             # every indexed document of the user is analyzed (the same scope

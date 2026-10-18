@@ -1708,7 +1708,17 @@ class RedisRequestQueue:
         mm_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
-        edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
+        # Corrective retry: append the verifier's reason to the edit prompt only,
+        # never to `message_text` itself (the media envelope below echoes it).
+        edit_prompt = message_text
+        corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+        if corrective_note:
+            from app.llamacpp_client import _tr
+
+            with force_locale(lang):
+                corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+            edit_prompt = f"{message_text}\n\n{corrective_note}. {corrective_label}"
+        edit_data, error = self.app.modules["multimodal"].generate_edit_params(edit_prompt, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
@@ -1916,6 +1926,17 @@ class RedisRequestQueue:
             with force_locale(lang):
                 examples_header = _("Reference examples (draw something similar):")
             generation_query = f"{query}\n\n{examples_header}\n" + "\n".join(example_sections)
+        # Corrective retry: the verifier rejected the previous attempt — pass
+        # its reason into the SD prompt so the generator fixes the issue. It is
+        # appended to the PROMPT only (generation_query), never to `query` —
+        # the media envelope echoes `query` and would leak it into the step.
+        corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+        if corrective_note:
+            from app.llamacpp_client import _tr
+
+            with force_locale(lang):
+                corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+            generation_query = f"{generation_query}\n\n{corrective_note}. {corrective_label}"
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             generation_query, lang=lang, response_style=response_style
         )
@@ -2904,8 +2925,18 @@ class RedisRequestQueue:
             mm_start = time.time()
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "analyzing"})
+            # Corrective retry: append the verifier's reason to the video prompt
+            # only, never to `query` (the media envelope below echoes it).
+            video_prompt = query
+            corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+            if corrective_note:
+                from app.llamacpp_client import _tr
+
+                with force_locale(lang):
+                    corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+                video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
             prompt_data, error = self.app.modules["multimodal"].generate_video_params(
-                query, lang=lang, response_style=response_style
+                video_prompt, lang=lang, response_style=response_style
             )
             mm_time = round(time.time() - mm_start, 1)
             if error:
@@ -3085,8 +3116,20 @@ class RedisRequestQueue:
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
             mm_model = self.app.modules.get("multimodal")
+            # Corrective retry: append the verifier's reason to the video prompt
+            # only, never to `query` (the media envelope below echoes it).
+            video_prompt = query
+            corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+            if corrective_note:
+                from app.llamacpp_client import _tr
+
+                with force_locale(lang):
+                    corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+                video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
             prompt_data, error = (
-                mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
+                mm_model.generate_video_params_from_image(
+                    video_prompt, image_data, lang=lang, response_style=response_style
+                )
                 if mm_model
                 else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
             )

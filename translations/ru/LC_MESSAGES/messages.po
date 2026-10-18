@@ -1501,6 +1501,10 @@ msgstr ""
 msgid "step attempts exhausted"
 msgstr "Исчерпаны попытки выполнения шага"
 
+#: app/queue.py
+msgid "Fix the stated problem and redo this step."
+msgstr "Исправь указанную проблему и выполни этот шаг заново."
+
 #: app/tasks/executor.py
 msgid "The step has no image to edit: no image is attached and no earlier step produced one."
 msgstr "У шага нет изображения для редактирования: изображение не приложено и ни один из предыдущих шагов не создал его."

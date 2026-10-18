@@ -1485,6 +1485,10 @@ msgstr ""
 msgid "step attempts exhausted"
 msgstr "step attempts exhausted"
 
+#: app/queue.py
+msgid "Fix the stated problem and redo this step."
+msgstr "Fix the stated problem and redo this step."
+
 #: app/tasks/executor.py
 msgid "The step has no image to edit: no image is attached and no earlier step produced one."
 msgstr "The step has no image to edit: no image is attached and no earlier step produced one."

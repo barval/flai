@@ -924,9 +924,12 @@ def test_subtask_retry_reenqueues_with_the_mismatch_in_the_prompt(db_env, test_a
     assert step["attempts"] == 2, "the retry counts a second attempt"
     assert step["status"] == "subtask_queued", "the retry is back on the queue"
     assert len(recorded.calls) == 2, "the same step was enqueued twice"
-    retry_prompt = recorded.calls[1]["request_data"]["text"]
-    assert "the astronaut is cropped" in retry_prompt, "the mismatch reaches the media prompt"
-    assert retry_prompt.startswith("Make an image"), "the original goal is still the prompt"
+    # The mismatch rides its OWN request_data key (corrective_note), NOT text:
+    # text must stay the clean step goal — putting the note into text leaked it
+    # into the step's visible result (the media envelope echoes query/text).
+    retry_req = recorded.calls[1]["request_data"]
+    assert retry_req["text"] == "Make an image", "the clean goal stays in text (and thus in the result)"
+    assert "the astronaut is cropped" in retry_req["corrective_note"], "the mismatch is passed to the media handler"
 
 
 def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open, monkeypatch):

@@ -1913,6 +1913,14 @@ class TaskExecutor:
             # Gate hook excludes tagged requests from chat activity.
             "task_step_subtask": row["id"],
         }
+        # Carry the context of ALL prior steps into the media prompt: the
+        # generative model (image/video) needs the previous steps' results
+        # (e.g. the searched course value, the generated image description)
+        # to produce the correct output — without it image_gen draws "USD"
+        # instead of "83,62" because it never saw the search result.
+        previous = self._context_digest(task_id, idx)
+        if previous.strip():
+            request_data["task_context"] = previous[:4000]
         # Corrective retry: the previous attempt of THIS step was rejected by
         # the verifier — carry its reason into the media prompt so the generator
         # fixes the stated problem instead of repeating the rejected artifact.

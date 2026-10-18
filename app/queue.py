@@ -1718,6 +1718,9 @@ class RedisRequestQueue:
             with force_locale(lang):
                 corrective_label = _tr("Fix the stated problem and redo this step.", lang)
             edit_prompt = f"{message_text}\n\n{corrective_note}. {corrective_label}"
+        task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+        if task_context:
+            edit_prompt = f"{edit_prompt}\n\nContext so far:\n{task_context}"
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(edit_prompt, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
@@ -1937,6 +1940,9 @@ class RedisRequestQueue:
             with force_locale(lang):
                 corrective_label = _tr("Fix the stated problem and redo this step.", lang)
             generation_query = f"{generation_query}\n\n{corrective_note}. {corrective_label}"
+        task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+        if task_context:
+            generation_query = f"{generation_query}\n\nContext so far:\n{task_context}"
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             generation_query, lang=lang, response_style=response_style
         )
@@ -2935,6 +2941,9 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     corrective_label = _tr("Fix the stated problem and redo this step.", lang)
                 video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
+            task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+            if task_context:
+                video_prompt = f"{video_prompt}\n\nContext so far:\n{task_context}"
             prompt_data, error = self.app.modules["multimodal"].generate_video_params(
                 video_prompt, lang=lang, response_style=response_style
             )
@@ -3126,6 +3135,9 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     corrective_label = _tr("Fix the stated problem and redo this step.", lang)
                 video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
+            task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+            if task_context:
+                video_prompt = f"{video_prompt}\n\nContext so far:\n{task_context}"
             prompt_data, error = (
                 mm_model.generate_video_params_from_image(
                     video_prompt, image_data, lang=lang, response_style=response_style

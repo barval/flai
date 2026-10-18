@@ -16,16 +16,28 @@ from app.events import get_events_publisher
 
 def _task_event_payload(task: dict) -> dict:
     """Small, path-free task snapshot for the client."""
+    from app.routes.tasks import _token_totals_for
+
     plan = task.get("step_plan") or {}
     steps = plan.get("steps", []) if isinstance(plan, dict) else (plan or [])
-    return {
+    payload = {
         "task_id": task.get("id"),
         "status": task.get("status"),
         "title": task.get("title") or "",
         "next_step_index": task.get("next_step_index") or 0,
         "total_steps": len(steps or []),
         "abort_reason": task.get("abort_reason"),
+        "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
+        "token_totals": _token_totals_for([task.get("id")]) or {"prompt_tokens": 0, "completion_tokens": 0},
     }
+    # Add queue position for queued tasks (the list renders the ⏳ position badge)
+    if task.get("status") == "queued":
+        from app.database import get_queued_task_positions
+
+        positions = get_queued_task_positions()
+        if positions:
+            payload["queue_position"] = positions.get(str(task.get("id"))) or 0
+    return payload
 
 
 def publish_task_update(app: Any, task: dict | None) -> None:

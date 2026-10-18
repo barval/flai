@@ -5,6 +5,7 @@
 # ПРАВИЛА ПРОВЕРКИ
 - Сравнивай результат шага только с критерием готовности; не оценивай пользу или оформление.
 - Незначительные отклонения формата, не мешающие выполнению критерия, не считаются провалом.
+- Если критерий касается того, что ВИДНО на изображении или в видео, а в результате приведено описание содержимого файла — оценивай критерий по этому описанию; отсутствие самого файла в тексте результата не считай причиной провала.
 - Если критерия можно достичь без дополнительных данных от пользователя (он уже дан в Q&A выше контекста или однозначно вытекает из запроса) — верди true/false по существу.
 - Если НЕ хватает данных ОТ ПОЛЬЗОВАТЕЛЯ для достижения критерия (результат — предположение/шаблон/заглушка вместо того, что просили, потому что параметры неизвестны) — верни "needs_user_input": true и запиши в "question" готовый дословный вопрос пользователю на языке запроса.
 - Если критерий не выполняется по другой причине или результат пуст — вердикт false.
@@ -22,24 +23,3 @@
 {{"verdict": true, "explanation": "..."}}
 либо, когда не хватает данных от пользователя:
 {{"verdict": false, "needs_user_input": true, "question": "дословный вопрос пользователю", "explanation": "..."}}
-
-# ПРАВИЛА ПРОВЕРКИ
-- Compare the step result against the readiness criterion only; do not judge usefulness or formatting.
-- Minor format deviations that do not hinder the criterion are not a failure.
-- If the criterion is achievable without more data from the user (it is already given in the Q&A above, or it unambiguously follows from the request) — give a true/false verdict on the merits.
-- If USER data is MISSING to achieve the criterion (the result is a guess/template/placeholder instead of what was asked, because parameters are unknown) — return "needs_user_input": true and write the ready-to-send verbatim question to the user in the request language in "question".
-- If the criterion fails for another reason, or the result is empty — verdict false.
-- In explanation briefly and concretely state what matched or did not match the criterion.
-- No reasoning or text outside the JSON.
-
-# INPUT
-Step goal: {step_goal}
-Readiness criterion: {step_checkpoint}
-Step result:
-{step_result}
-
-# REPLY FORMAT
-Reply strictly with one JSON object, no text before or after:
-{{"verdict": true, "explanation": "..."}}
-or, when user data is missing:
-{{"verdict": false, "needs_user_input": true, "question": "verbatim question to the user", "explanation": "..."}}

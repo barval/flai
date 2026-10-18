@@ -3717,3 +3717,138 @@ msgstr "Execution budget exhausted; the summary could not be generated."
 
 msgid "stage_indexing_document"
 msgstr "Creating index for document..."
+
+
+#: app/tasks/tools.py
+msgid "Reasoning model"
+msgstr "Reasoning model"
+
+
+#: app/tasks/tools.py
+msgid "Think, write, analyze, derive, write code without fresh internet data."
+msgstr "Think, write, analyze, derive, write code without fresh internet data."
+
+
+#: app/tasks/tools.py
+msgid "State the concrete artifact or answer the reasoning must produce."
+msgstr "State the concrete artifact or answer the reasoning must produce."
+
+
+#: app/tasks/tools.py
+msgid "Search the internet for fresh data (rates, news, current facts)."
+msgstr "Search the internet for fresh data (rates, news, current facts)."
+
+
+#: app/tasks/tools.py
+msgid "Name the fact or data the search must confirm."
+msgstr "Name the fact or data the search must confirm."
+
+
+#: app/tasks/tools.py
+msgid "Search the user's own documents and return the relevant fragments. Pair with a following llm step that composes the answer from them."
+msgstr "Search the user's own documents and return the relevant fragments. Pair with a following llm step that composes the answer from them."
+
+
+#: app/tasks/tools.py
+msgid "Name the data the search must find in the documents."
+msgstr "Name the data the search must find in the documents."
+
+
+#: app/tasks/tools.py
+msgid "Search the user's past conversations for a topic and return matching fragments (what was discussed earlier). Pair with a following llm step that composes the answer from them."
+msgstr "Search the user's past conversations for a topic and return matching fragments (what was discussed earlier). Pair with a following llm step that composes the answer from them."
+
+
+#: app/tasks/tools.py
+msgid "Name the topic the past conversation must contain."
+msgstr "Name the topic the past conversation must contain."
+
+
+#: app/tasks/tools.py
+msgid "Extract data from ONE image attached to the task with the multimodal model: a detailed description of everything visible plus all text on the image. It does not answer the task question — pair it with a following llm step that composes the answer from the extraction. To analyze several images, plan ONE step per image with that image's file name in the goal: the step reads only the image its goal names. Use only when images are attached to the task."
+msgstr "Extract data from ONE image attached to the task with the multimodal model: a detailed description of everything visible plus all text on the image. It does not answer the task question — pair it with a following llm step that composes the answer from the extraction. To analyze several images, plan ONE step per image with that image's file name in the goal: the step reads only the image its goal names. Use only when images are attached to the task."
+
+
+#: app/tasks/tools.py
+msgid "Name this image's file in the goal and require a detailed description plus all text on it."
+msgstr "Name this image's file in the goal and require a detailed description plus all text on it."
+
+
+#: app/tasks/tools.py
+msgid "Take a camera snapshot of one of the user's rooms and answer a question about what the camera sees (e.g. whether a cat is in the room). To compare several rooms, plan ONE step per room with the room name in the goal."
+msgstr "Take a camera snapshot of one of the user's rooms and answer a question about what the camera sees (e.g. whether a cat is in the room). To compare several rooms, plan ONE step per room with the room name in the goal."
+
+
+#: app/tasks/tools.py
+msgid "Name the room and the question the analysis must answer."
+msgstr "Name the room and the question the analysis must answer."
+
+
+#: app/tasks/tools.py
+msgid "Deeply study a website (it contains a URL): fetch its pages, index them as a document and answer questions about the site. Pair with a following llm step that composes the answer from the collected material."
+msgstr "Deeply study a website (it contains a URL): fetch its pages, index them as a document and answer questions about the site. Pair with a following llm step that composes the answer from the collected material."
+
+
+#: app/tasks/tools.py
+msgid "Name the site and the question the study must answer."
+msgstr "Name the site and the question the study must answer."
+
+
+#: app/tasks/tools.py
+msgid "Evaluate a math expression safely (arithmetic and math functions)."
+msgstr "Evaluate a math expression safely (arithmetic and math functions)."
+
+
+#: app/tasks/tools.py
+msgid "State the expression and its expected exact result."
+msgstr "State the expression and its expected exact result."
+
+
+#: app/tasks/tools.py
+msgid "Multi-step deep analysis over selected documents, images and web pages."
+msgstr "Multi-step deep analysis over selected documents, images and web pages."
+
+
+#: app/tasks/tools.py
+msgid "Name the documents and the question the analysis must answer."
+msgstr "Name the documents and the question the analysis must answer."
+
+
+#: app/tasks/tools.py
+msgid "Generate an image from a text prompt."
+msgstr "Generate an image from a text prompt."
+
+
+#: app/tasks/tools.py
+msgid "Describe the subject the generated image must show."
+msgstr "Describe the subject the generated image must show."
+
+
+#: app/tasks/tools.py
+msgid "Edit one image according to an instruction: the attached image the goal names (one step per image; the first attached one when the goal names none), or the artifact of an earlier step when its seq is set in \"source_step\" (no attachment edit). Without any source the step fails."
+msgstr "Edit one image according to an instruction: the attached image the goal names (one step per image; the first attached one when the goal names none), or the artifact of an earlier step when its seq is set in \"source_step\" (no attachment edit). Without any source the step fails."
+
+
+#: app/tasks/tools.py
+msgid "Name this image's file in the goal and the change that must be visible."
+msgstr "Name this image's file in the goal and the change that must be visible."
+
+
+#: app/tasks/tools.py
+msgid "Generate a short video from a text prompt; with \"source_step\" (or any earlier step-produced image) it animates that image instead."
+msgstr "Generate a short video from a text prompt; with \"source_step\" (or any earlier step-produced image) it animates that image instead."
+
+
+#: app/tasks/tools.py
+msgid "Describe the scene and motion the video must show."
+msgstr "Describe the scene and motion the video must show."
+
+
+#: app/tasks/executor.py
+msgid "Checkpoint hint:"
+msgstr "Checkpoint hint:"
+
+
+#: app/tasks/executor.py
+msgid "Available rooms:"
+msgstr "Available rooms:"

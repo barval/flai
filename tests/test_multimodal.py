@@ -3,6 +3,7 @@
 
 import base64
 import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -552,3 +553,34 @@ class TestImageTemplateFormatRule:
         en = (self.PROMPTS_DIR / "en" / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
 
         assert ru.count("\n   - ") == en.count("\n   - ")
+
+
+class TestImageTemplateCompositionRule:
+    """The generated image must keep the whole subject in frame.
+
+    Live defect: for "an astronaut walking on the surface of the Moon" the
+    enhancer appended "Low-angle shot focusing on the astronaut's legs and
+    boots", the diffusion model rendered exactly that, and the image (plus
+    both videos made from it) was unusable.
+    """
+
+    PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
+    WHOLE_SUBJECT_RULE = {
+        "ru": "показан в кадре ЦЕЛИКОМ и по центру",
+        "en": "shown WHOLE and centered",
+    }
+
+    @pytest.mark.parametrize("lang", ["ru", "en"])
+    def test_template_demands_a_whole_centered_subject(self, lang):
+        text = (self.PROMPTS_DIR / lang / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
+
+        assert self.WHOLE_SUBJECT_RULE[lang] in text
+
+    def test_template_pairs_keep_the_same_numbered_rules(self):
+        """The ru/en twins must stay in parity (same numbered generation rules)."""
+        counts = {}
+        for lang in ("ru", "en"):
+            text = (self.PROMPTS_DIR / lang / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
+            counts[lang] = len(re.findall(r"^\d+\. \*\*", text, flags=re.M))
+
+        assert counts["ru"] == counts["en"]

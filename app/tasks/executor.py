@@ -448,6 +448,7 @@ def _capabilities_section(
     deep_analysis: bool = False,
     camera_rooms: list[str] | None = None,
     has_images: bool = False,
+    lang: str = "ru",
 ) -> str:
     """Render the capabilities registry for the planner prompt.
 
@@ -462,20 +463,34 @@ def _capabilities_section(
     and ``rag`` (simple document search) is hidden — the user chose deep
     analysis over the documents. When the toggle is OFF ``rag`` is advertised
     and ``rlm`` is hidden.
+
+    ``lang`` localizes the registry fields (they are ``N_`` msgids): the
+    English block inside an otherwise Russian planner prompt pulled the model
+    into answering the WHOLE plan in English (live defect: a Russian task got
+    a plan with English goals, which then became the query of every media
+    step). Outside an app context (unit tests) gettext cannot translate and
+    the English msgids come back unchanged.
     """
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
     from app.tasks.tools import get_capabilities
 
     lines = []
-    for cap in get_capabilities():
-        if cap["id"] == "vision" and not has_images:
-            continue
-        if cap["id"] == "rag" and deep_analysis:
-            continue  # deep-analysis ON → hide RAG, the planner must use rlm
-        if cap["id"] == "rlm" and not deep_analysis:
-            continue  # deep-analysis OFF → hide rlm
-        lines.append(f"- {cap['id']} ({cap['label']}): {cap['description']} Checkpoint hint: {cap['checkpoint_hint']}")
-        if cap["id"] == "camera" and camera_rooms:
-            lines.append(f"  Available rooms: {', '.join(camera_rooms)}")
+    with force_locale(lang):
+        for cap in get_capabilities():
+            if cap["id"] == "vision" and not has_images:
+                continue
+            if cap["id"] == "rag" and deep_analysis:
+                continue  # deep-analysis ON → hide RAG, the planner must use rlm
+            if cap["id"] == "rlm" and not deep_analysis:
+                continue  # deep-analysis OFF → hide rlm
+            lines.append(
+                f"- {cap['id']} ({_(cap['label'])}): {_(cap['description'])} "
+                f"{_('Checkpoint hint:')} {_(cap['checkpoint_hint'])}"
+            )
+            if cap["id"] == "camera" and camera_rooms:
+                lines.append(f"  {_('Available rooms:')} {', '.join(camera_rooms)}")
     return "\n".join(lines)
 
 
@@ -667,9 +682,15 @@ def _run_planner(app: Flask, prompt: str, cancel_check, lang: str, status_callba
     phase turns it into the live stage event. The call's real token usage is
     remembered module-level (``_LAST_PLANNER_USAGE``) — the executor thread
     is the only planner caller, so the plan phase reads it for the header.
+
+    Greedy decoding (``temperature=0``): the plan is a contract, not prose —
+    at 0.2 the same request produced a Russian plan and, half an hour later,
+    an English one, and every media step inherits the plan's wording. The
+    answer LANGUAGE is pinned by the template rule and the localized
+    capabilities block, not by sampling luck.
     """
     global _LAST_PLANNER_USAGE
-    text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0.2, status_callback=status_callback)
+    text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
     _LAST_PLANNER_USAGE = usage or {}
     return text
 
@@ -1260,6 +1281,60 @@ class TaskExecutor:
         media = self._prior_step_media(task_id, idx, source_seq=source_seq)
         return self._media_to_raw_base64(media) if media is not None else None
 
+    def _describe_step_image(self, media: dict, lang: str) -> tuple[str, float]:
+        """Describe a media step's produced image for the checkpoint verifier.
+
+        The verifier call is text-only (the reasoning model), so a step whose
+        criterion is about what is VISIBLE was rejected with "the result
+        provides no image or its description" although the image existed
+        (live defect: every image_gen/image_edit step failed its checkpoint
+        while its media still fed the following steps). The artifact is
+        described with the multimodal model and the description is appended
+        to the verifier INPUT only — the step's stored result keeps the short
+        "goal + file name" form rendered in the task view.
+
+        Returns ``(text, seconds)``; the text is "" for a non-image artifact
+        or an unavailable/empty description (the step is verified as before).
+        """
+        if not str(media.get("file_type") or "").startswith("image/"):
+            return "", 0.0
+        rel = str(media.get("file_path") or "")
+        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+        if not rel or not upload_folder:
+            return "", 0.0
+        path = os.path.realpath(os.path.join(upload_folder, rel))
+        if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
+            return "", 0.0
+        mm = self.app.modules.get("multimodal")
+        if mm is None or not getattr(mm, "available", False):
+            return "", 0.0
+        start = time.monotonic()
+        try:
+            with open(path, "rb") as fh:
+                image_b64 = base64.b64encode(fh.read()).decode("ascii")
+        except OSError as e:
+            logger.warning(f"step image unread for the checkpoint ({rel}): {e}")
+            return "", 0.0
+        from app.utils import begin_usage_account, finish_usage_account
+
+        account_id = f"task-step-image:{os.path.basename(path)}"
+        begin_usage_account(account_id)
+        try:
+            description, _error = mm.describe_image_for_rlm(image_b64, lang=lang)
+        finally:
+            finish_usage_account(account_id)
+        seconds = round(time.monotonic() - start, 2)
+        if not description:
+            return "", seconds
+        from flask_babel import force_locale
+        from flask_babel import gettext as _
+
+        with force_locale(lang):
+            label = _("{file_name} — image description").format(
+                file_name=str(media.get("file_name") or os.path.basename(path))
+            )
+        return f"{label}\n{description}", seconds
+
     def _camera_rooms(self, task: dict) -> list[str]:
         """The user's accessible camera room names (empty when cameras are off)."""
         try:
@@ -1313,6 +1388,7 @@ class TaskExecutor:
                 deep_analysis=bool(task.get("deep_analysis")),
                 camera_rooms=self._camera_rooms(task),
                 has_images=bool(task.get("images")),
+                lang=lang,
             ),
             "slm_facts": recall_slm_facts(self.app, request_text, task.get("user_id") or "", lang),
             "response_language": _response_language_name(lang),
@@ -2188,15 +2264,21 @@ class TaskExecutor:
 
         response_text = str(stored.get("response") or result_data.get("response") or "")
         result_text = response_text or "done"
+        # What the verifier sees: the shown result plus, for an image artifact,
+        # a description of the produced picture (the verifier is a text-only
+        # reasoning call — see _describe_step_image).
+        checkpoint_input = result_text
         if media.get("file_path"):
-            # The verifier judges TEXT only: a media step whose artifact was
-            # saved but never named in the checkpoint input got rejected with
-            # "textual instruction instead of a file" (live defect). The artifact
-            # line is the bare file name (user preference: no translatable
-            # sentence around it — a sentence once leaked English when the
-            # gettext call ran outside an app context).
+            # The artifact line is the bare file name (user preference: no
+            # translatable sentence around it — a sentence once leaked English
+            # when the gettext call ran outside an app context).
             artifact_name = str(media.get("file_name") or media["file_path"])
             result_text = result_text + "\n" + artifact_name
+            image_note, describe_seconds = self._describe_step_image(media, task.get("lang") or "ru")
+            if describe_seconds:
+                self._add_budget(task_id, describe_seconds)
+            if image_note:
+                checkpoint_input = result_text + "\n\n" + image_note
         # Spec §4: a subtask result is verified like any other step result —
         # a normal checkpoint runs against the step's checkpoint_criteria
         # (e.g. "file exists, non-empty, matches expectation"). A verifier
@@ -2204,7 +2286,7 @@ class TaskExecutor:
         # attempts-exhausted semantics of a direct step.
         checkpoint: dict = {}
         if str(step.get("checkpoint_criteria", "") or "").strip():
-            checkpoint = run_checkpoint(self.app, step, result_text, lang=task.get("lang") or "ru")
+            checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
         if checkpoint and not checkpoint.get("verdict"):
             self._end_step(

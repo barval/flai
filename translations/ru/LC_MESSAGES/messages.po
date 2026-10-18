@@ -3749,3 +3749,138 @@ msgstr "Время исполнения задачи исчерпано; сво�
 
 msgid "stage_indexing_document"
 msgstr "Создаю индекс для документа..."
+
+
+#: app/tasks/tools.py
+msgid "Reasoning model"
+msgstr "Модель рассуждений"
+
+
+#: app/tasks/tools.py
+msgid "Think, write, analyze, derive, write code without fresh internet data."
+msgstr "Думает, пишет, анализирует, выводит, пишет код без свежих данных из интернета."
+
+
+#: app/tasks/tools.py
+msgid "State the concrete artifact or answer the reasoning must produce."
+msgstr "Укажи конкретный артефакт или ответ, который должно дать рассуждение."
+
+
+#: app/tasks/tools.py
+msgid "Search the internet for fresh data (rates, news, current facts)."
+msgstr "Ищет в интернете свежие данные (курсы, новости, актуальные факты)."
+
+
+#: app/tasks/tools.py
+msgid "Name the fact or data the search must confirm."
+msgstr "Назови факт или данные, которые должен подтвердить поиск."
+
+
+#: app/tasks/tools.py
+msgid "Search the user's own documents and return the relevant fragments. Pair with a following llm step that composes the answer from them."
+msgstr "Ищет по собственным документам пользователя и возвращает релевантные фрагменты. Пара: следующий шаг llm, который составляет по ним ответ."
+
+
+#: app/tasks/tools.py
+msgid "Name the data the search must find in the documents."
+msgstr "Назови данные, которые поиск должен найти в документах."
+
+
+#: app/tasks/tools.py
+msgid "Search the user's past conversations for a topic and return matching fragments (what was discussed earlier). Pair with a following llm step that composes the answer from them."
+msgstr "Ищет по прошлым разговорам пользователя на заданную тему и возвращает подходящие фрагменты (что обсуждалось раньше). Пара: следующий шаг llm, который составляет по ним ответ."
+
+
+#: app/tasks/tools.py
+msgid "Name the topic the past conversation must contain."
+msgstr "Назови тему, которая должна присутствовать в прошлом разговоре."
+
+
+#: app/tasks/tools.py
+msgid "Extract data from ONE image attached to the task with the multimodal model: a detailed description of everything visible plus all text on the image. It does not answer the task question — pair it with a following llm step that composes the answer from the extraction. To analyze several images, plan ONE step per image with that image's file name in the goal: the step reads only the image its goal names. Use only when images are attached to the task."
+msgstr "Извлекает данные из ОДНОГО изображения, приложенного к задаче, мультимодальной моделью: подробное описание всего видимого плюс весь текст на изображении. Он не отвечает на вопрос задачи — поставь парой следующий шаг llm, который составляет ответ по извлечённым данным. Чтобы проанализировать несколько изображений, запланируй ОДИН шаг на каждое изображение и укажи в goal имя файла этого изображения: шаг читает только то изображение, которое названо в goal. Используй, только если к задаче приложены изображения."
+
+
+#: app/tasks/tools.py
+msgid "Name this image's file in the goal and require a detailed description plus all text on it."
+msgstr "Назови в goal имя файла этого изображения и требуй подробное описание плюс весь текст на нём."
+
+
+#: app/tasks/tools.py
+msgid "Take a camera snapshot of one of the user's rooms and answer a question about what the camera sees (e.g. whether a cat is in the room). To compare several rooms, plan ONE step per room with the room name in the goal."
+msgstr "Делает снимок камеры в одной из комнат пользователя и отвечает на вопрос о том, что видит камера (например, есть ли в комнате кот). Чтобы сравнить несколько комнат, запланируй ОДИН шаг на каждую комнату с названием комнаты в goal."
+
+
+#: app/tasks/tools.py
+msgid "Name the room and the question the analysis must answer."
+msgstr "Назови комнату и вопрос, на который должен ответить анализ."
+
+
+#: app/tasks/tools.py
+msgid "Deeply study a website (it contains a URL): fetch its pages, index them as a document and answer questions about the site. Pair with a following llm step that composes the answer from the collected material."
+msgstr "Глубоко изучает сайт (в запросе есть URL): обходит его страницы, индексирует их как документ и отвечает на вопросы о сайте. Пара: следующий шаг llm, который составляет ответ по собранному материалу."
+
+
+#: app/tasks/tools.py
+msgid "Name the site and the question the study must answer."
+msgstr "Назови сайт и вопрос, на который должно ответить изучение."
+
+
+#: app/tasks/tools.py
+msgid "Evaluate a math expression safely (arithmetic and math functions)."
+msgstr "Безопасно вычисляет математическое выражение (арифметика и математические функции)."
+
+
+#: app/tasks/tools.py
+msgid "State the expression and its expected exact result."
+msgstr "Укажи выражение и его ожидаемый точный результат."
+
+
+#: app/tasks/tools.py
+msgid "Multi-step deep analysis over selected documents, images and web pages."
+msgstr "Многошаговый глубокий анализ по выбранным документам, изображениям и веб-страницам."
+
+
+#: app/tasks/tools.py
+msgid "Name the documents and the question the analysis must answer."
+msgstr "Назови документы и вопрос, на который должен ответить анализ."
+
+
+#: app/tasks/tools.py
+msgid "Generate an image from a text prompt."
+msgstr "Генерирует изображение по текстовому описанию."
+
+
+#: app/tasks/tools.py
+msgid "Describe the subject the generated image must show."
+msgstr "Опиши объект, который должно показать сгенерированное изображение."
+
+
+#: app/tasks/tools.py
+msgid "Edit one image according to an instruction: the attached image the goal names (one step per image; the first attached one when the goal names none), or the artifact of an earlier step when its seq is set in \"source_step\" (no attachment edit). Without any source the step fails."
+msgstr "Редактирует одно изображение по инструкции: приложенное изображение, названное в goal (один шаг на изображение; первое приложенное, если в goal ничего не названо), либо артефакт более раннего шага, если в \"source_step\" указан его seq (правка без вложения). Без источника шаг завершается ошибкой."
+
+
+#: app/tasks/tools.py
+msgid "Name this image's file in the goal and the change that must be visible."
+msgstr "Назови в goal имя файла этого изображения и изменение, которое должно быть видно."
+
+
+#: app/tasks/tools.py
+msgid "Generate a short video from a text prompt; with \"source_step\" (or any earlier step-produced image) it animates that image instead."
+msgstr "Генерирует короткое видео по текстовому описанию; с \"source_step\" (или любым более ранним изображением, созданным шагом) анимирует вместо этого то изображение."
+
+
+#: app/tasks/tools.py
+msgid "Describe the scene and motion the video must show."
+msgstr "Опиши сцену и движение, которые должно показать видео."
+
+
+#: app/tasks/executor.py
+msgid "Checkpoint hint:"
+msgstr "Критерий готовности:"
+
+
+#: app/tasks/executor.py
+msgid "Available rooms:"
+msgstr "Доступные комнаты:"

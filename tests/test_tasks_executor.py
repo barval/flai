@@ -1403,6 +1403,69 @@ def test_capabilities_section_deep_analysis_swaps_document_tool():
     assert "rag (" in ex._capabilities_section()
 
 
+def test_capabilities_section_is_localized_for_the_planner(test_app):
+    """The registry is rendered in the TASK language: the English block inside
+    the otherwise Russian planner prompt pulled the model into answering the
+    whole plan in English (live defect: a Russian task got a plan with English
+    goals, and every media step then used the English goal as its query)."""
+    with test_app.app_context():
+        ru = ex._capabilities_section(lang="ru")
+        en = ex._capabilities_section(lang="en")
+        rooms = ex._capabilities_section(camera_rooms=["Кухня"], lang="ru")
+
+    assert "Модель рассуждений" in ru, "the registry label is Russian"
+    assert "Критерий готовности:" in ru, "the fragment around the hint is localized too"
+    assert "Checkpoint hint:" not in ru, "no English fragment left in the Russian prompt"
+    assert "Reasoning model" in en and "Checkpoint hint:" in en
+    assert "Доступные комнаты: Кухня" in rooms
+    # Tool ids stay untranslated — the planner must emit the exact registry ids.
+    assert "- camera (" in ru and "- image_gen (" in ru
+
+
+def test_step_image_is_described_for_the_checkpoint(test_app, tmp_path):
+    """A produced image is described into the verifier input: the checkpoint
+    runs on the text-only reasoning model, so an image step was rejected with
+    "the result provides no image or its description" although the file
+    existed (live defect: every image step failed its checkpoint while its
+    media still fed the following steps)."""
+    from unittest.mock import MagicMock
+
+    upload = tmp_path / "uploads"
+    sub = upload / "sess1"
+    sub.mkdir(parents=True)
+    (sub / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    mm = MagicMock()
+    mm.available = True
+    mm.describe_image_for_rlm.return_value = ("An astronaut walking on grey lunar soil.", None)
+    test_app.modules["multimodal"] = mm
+    executor = ex.TaskExecutor(app=test_app)
+    media = {"file_path": "sess1/pic.png", "file_name": "pic.png", "file_type": "image/png"}
+
+    with test_app.app_context():
+        note, seconds = executor._describe_step_image(media, "ru")
+    assert "An astronaut walking on grey lunar soil." in note
+    assert "pic.png" in note, "the description names the file it belongs to"
+    assert seconds >= 0
+    mm.describe_image_for_rlm.assert_called_once()
+    assert mm.describe_image_for_rlm.call_args.kwargs["lang"] == "ru"
+
+    # A video artifact is not an image — nothing to describe.
+    with test_app.app_context():
+        assert executor._describe_step_image({"file_path": "sess1/clip.mp4", "file_type": "video/mp4"}, "ru") == (
+            "",
+            0.0,
+        )
+
+    # No multimodal module (or a missing file) degrades to no description.
+    test_app.modules.pop("multimodal")
+    with test_app.app_context():
+        assert executor._describe_step_image(media, "ru") == ("", 0.0)
+    test_app.modules["multimodal"] = mm
+    with test_app.app_context():
+        assert executor._describe_step_image({**media, "file_path": "sess1/gone.png"}, "ru") == ("", 0.0)
+
+
 def test_task_image_parts_read_files(test_app, tmp_path):
     """Stored files are read back into data: URLs; missing files are skipped."""
     upload = tmp_path / "uploads"

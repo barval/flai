@@ -144,3 +144,41 @@ def test_plan_template_binds_media_steps_to_their_source_step():
         src = _load("task_plan", lang)
         assert "source_step" in src, f"task_plan/{lang}: missing the source_step rule"
         assert '"source_step"' in src, f"task_plan/{lang}: the JSON schema carries the source_step field"
+
+
+def test_plan_template_pins_the_answer_language():
+    """Every plan text field is pinned to ``{response_language}``: at planner
+    temperature 0.2 the same Russian request produced a Russian plan once and
+    an English one half an hour later (live defect: the English goals reached
+    the user and became the query of every media step)."""
+    for lang in ("ru", "en"):
+        src = _load("task_plan", lang)
+        assert "{response_language}" in src, f"task_plan/{lang}: language placeholder missing"
+        marker = "языка описаний способностей" if lang == "ru" else "language of the capability descriptions"
+        assert marker in src, f"task_plan/{lang}: the language rule must outrank the capabilities block"
+        assert "checkpoint_criteria" in src, f"task_plan/{lang}: the rule names the plan's text fields"
+
+
+def test_checkpoint_template_carries_a_single_language():
+    """The Russian checkpoint template once had the whole English template
+    appended (45 vs 24 lines): every Russian verification call read a complete
+    English copy of the rules, and the step result was echoed twice."""
+    for lang in ("ru", "en"):
+        src = _load("task_checkpoint", lang)
+        for placeholder in ("{step_goal}", "{step_checkpoint}", "{step_result}"):
+            assert src.count(placeholder) == 1, f"task_checkpoint/{lang}: {placeholder} appears more than once"
+    ru = _load("task_checkpoint", "ru")
+    assert "# INPUT" not in ru and "Step goal:" not in ru, "the ru template must not carry the English block"
+    en = _load("task_checkpoint", "en")
+    assert "# ВХОДНЫЕ ДАННЫЕ" not in en and "Цель шага:" not in en, "the en template must not carry the Russian block"
+
+
+def test_checkpoint_template_accepts_a_media_description():
+    """The verifier is text-only: an image step's criterion is judged by the
+    description of the produced file (the executor appends it to the verifier
+    input), so the template must say so — otherwise every image step is
+    rejected with "the result provides no image or its description"."""
+    for lang in ("ru", "en"):
+        src = _load("task_checkpoint", lang)
+        marker = "описание содержимого файла" if lang == "ru" else "description of the file's content"
+        assert marker in src, f"task_checkpoint/{lang}: missing the media-description rule"

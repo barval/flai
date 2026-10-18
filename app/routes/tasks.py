@@ -393,9 +393,10 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
     badge = _tool_badge(row.get("tool")) if kind in ("direct", "subtask") else ""
     if kind in ("direct", "subtask"):
         lines = [header] + ([badge] if badge else []) + ([body] if body else [])
-        # A failed step with no result body must still show WHY it failed
-        # (chat parity: errors are visible, never silently blank).
-        if not body and row.get("status") == "failed" and row.get("last_error"):
+        # A failed OR skipped step with no result body must still show WHY it
+        # ended that way (chat parity: errors are visible, never silently
+        # blank; a skipped step names the producer step that yielded nothing).
+        if not body and row.get("status") in ("failed", "skipped") and row.get("last_error"):
             lines.append(str(row["last_error"]))
         content = "\n".join(lines)
     elif kind == "question":

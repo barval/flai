@@ -2643,3 +2643,118 @@ def test_final_summary_time_counts_into_the_budget(db_env, test_app, monkeypatch
     t = store.get_task(task_id)
     assert t["status"] == "completed"
     assert float(t["accumulated_exec_seconds"] or 0.0) == pytest.approx(9.5, abs=0.01)
+
+
+# ── a step bound to a source that never materialized is skipped ──────────
+
+
+def test_video_step_bound_to_a_missing_source_is_skipped(db_env, test_app, gate_open, monkeypatch):
+    """A ``video_gen`` step bound to a producer step (``source_step``) whose
+    image never materialized is SKIPPED with the producer named — it must not
+    silently degrade to text-to-video.
+
+    Live defect: step 1 (image_gen) timed out, step 2 (image_edit) failed for
+    the missing source, and the video steps were queued anyway — the plan asked
+    for a clip OF THAT IMAGE, the user got an unrelated text-to-video clip.
+    """
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [
+            {
+                "seq": 1,
+                "goal": "Создай изображение идущего по Луне астронавта",
+                "tool": "image_gen",
+                "checkpoint_criteria": "c1",
+            },
+            {
+                "seq": 2,
+                "goal": "Создай видео из изображения шага 1",
+                "tool": "video_gen",
+                "source_step": 1,
+                "checkpoint_criteria": "c2",
+            },
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    producer = add_step(task_id=task_id, seq=1, kind="subtask", goal=plan["steps"][0]["goal"], tool="image_gen")
+    update_step(producer, status="failed", last_error="⚠️ Превышено время ожидания генерации изображения")
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+    publishes = []
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: publishes.append(tid))
+
+    with test_app.app_context():
+        executor._enqueue_subtask(store.get_task(task_id), 1, plan["steps"][1])
+
+    assert queue.calls == [], "a bound video step is never enqueued without its image"
+    step = store.get_task_steps(task_id)[1]
+    assert step["status"] == "skipped"
+    assert step["last_error"].startswith("⚠️ "), "user-facing text carries the project error prefix"
+    assert "Пропущено" in step["last_error"], "the message is localized (ru task lang)"
+    assert "1" in step["last_error"], "the producer step is named"
+    assert float(step["exec_seconds"] or 0.0) == 0.0, "a skipped step spends nothing"
+    assert store.get_task(task_id)["next_step_index"] == 2, "the task continues past the skipped step"
+    assert publishes == [task_id]
+
+
+def test_image_edit_step_bound_to_a_missing_source_is_skipped(db_env, test_app, gate_open, monkeypatch):
+    """The same binding rule for ``image_edit``: with a declared ``source_step``
+    that produced nothing the step is skipped (a consequence of the upstream
+    failure), not failed."""
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [
+            {"seq": 1, "goal": "Создай изображение астронавта", "tool": "image_gen", "checkpoint_criteria": "c1"},
+            {
+                "seq": 2,
+                "goal": "Замени фон изображения из шага 1",
+                "tool": "image_edit",
+                "source_step": 1,
+                "checkpoint_criteria": "c2",
+            },
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    producer = add_step(task_id=task_id, seq=1, kind="subtask", goal=plan["steps"][0]["goal"], tool="image_gen")
+    update_step(producer, status="failed", last_error="⚠️ Image generation timed out. Try again later.")
+
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(executor, "_publish_task_update", lambda tid: None)
+
+    with test_app.app_context():
+        executor._enqueue_subtask(store.get_task(task_id), 1, plan["steps"][1])
+
+    assert queue.calls == []
+    step = store.get_task_steps(task_id)[1]
+    assert step["status"] == "skipped"
+    assert "Пропущено" in step["last_error"]
+    assert store.get_task(task_id)["next_step_index"] == 2
+
+
+def test_results_digest_reports_a_skipped_step_with_its_reason(db_env, test_app):
+    """The final summary reads ``_results_digest``: a skipped step must appear
+    with its reason, otherwise the answer cannot say the media was never made."""
+    from app.tasks.store import add_step, update_step
+
+    store = db_env
+    task_id = _mk_task(store, step_plan={"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "video_gen"}]})
+    sid = add_step(task_id=task_id, seq=1, kind="subtask", goal="Создай видео из изображения шага 1", tool="video_gen")
+    update_step(
+        sid,
+        status="skipped",
+        last_error="⚠️ Пропущено: шаг 1 не создал изображение для анимации.",
+    )
+
+    digest = ex._results_digest(task_id)
+    assert "→ skipped" in digest
+    assert "Пропущено" in digest, "the reason travels with the step"

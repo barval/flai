@@ -34,7 +34,7 @@
 | `crawl` | deep site study through the Crawl4AI sidecar as a queue sub-task (`crawl_task`); the collected pages become the step result (no reasoning requeue) and index as a per-user document |
 | `calculate` | the safe AST-based calculator; the planner puts the bare expression in the step goal («2 + 2 * 2»), and a prose goal falls back to extracting the math expression from the text |
 | `rlm` | Deep Analysis run as a queue sub-task |
-| `image_gen` / `image_edit` / `video_gen` | media sub-tasks through the existing GPU queue. With several images attached, `image_edit` edits the image its goal names (one step per image, like `vision`) and falls back to the first attached image when the goal names none |
+| `image_gen` / `image_edit` / `video_gen` | media sub-tasks through the existing GPU queue. With several images attached, `image_edit` edits the image its goal names (one step per image, like `vision`) and falls back to the first attached image when the goal names none. A step the plan binds to a producer step (`source_step`) and whose producer produced no image is **skipped** — the reason names that step, nothing is enqueued for the skipped step, and the task continues (the final summary explains the missing media); an unbound `video_gen` keeps its chat-parity fallback to text-to-video |
 
 ### Long-term memory (SLM)
 

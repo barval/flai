@@ -59,4 +59,9 @@ SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
 ```
 
+Two timeouts are nested: the wrapper that runs `sd-cli` guards its own subprocess
+(`SD_CLI_TIMEOUT`, default 600 s on GPU and 1800 s on CPU — an override applies to
+both cases), while FLAI waits on the HTTP call for `SD_CPP_TIMEOUT` (900 s). The inner
+guard is the one that reports a slow generation, so it must stay below the outer one.
+
 ---

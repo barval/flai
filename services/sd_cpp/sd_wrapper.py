@@ -376,7 +376,14 @@ def generate_image(data):
         result, log_tail = _run_sd_cli(
             cmd,
             "/tmp/sd_cli_output.log",
-            timeout=300 if _check_cuda() else _cli_timeout(1800),
+            # A GPU generation of the seeded Q8_0 z_image_turbo takes ~180 s, so
+            # the old hard 300 s cut a healthy run short as soon as the host was
+            # loaded (live defect: a 301 s run died as "sd-cli timeout" though
+            # nothing was wrong with the request). 600 s keeps the guard BELOW
+            # FLAI's own SD_CPP_TIMEOUT (900 s), so this wrapper still reports the
+            # failure itself instead of the client giving up first; the
+            # SD_CLI_TIMEOUT env var overrides the default.
+            timeout=_cli_timeout(600) if _check_cuda() else _cli_timeout(1800),
             preview_path=preview_path,
             preview_url=preview_url,
             user_id=user_id,

@@ -104,6 +104,12 @@ _SUBTASK_TYPE = {
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
 _MSG_PLAN_UNREADABLE = "Task could not be planned: the planner returned an unreadable plan. Please try again."
 _MSG_NO_EDIT_SOURCE = "The step has no image to edit: no image is attached and no earlier step produced one."
+# A step bound to a producer step (``source_step``) whose artifact never
+# materialized: the step is SKIPPED, not failed — the plan asked for the image
+# of THAT step, and neither an edit nor a video may quietly fall back to
+# something else (a video step quietly became text-to-video).
+_MSG_SKIP_EDIT_NO_SOURCE = "Skipped: step {source} produced no image to edit."
+_MSG_SKIP_VIDEO_NO_SOURCE = "Skipped: step {source} produced no image to animate."
 # Real token usage of the last planner call (module-level: the single
 # executor thread is the only planner caller; the plan phase reads it for
 # the plan message's chat-style header).
@@ -563,9 +569,13 @@ def _results_digest(task_id: str, char_cap: int = 20000) -> str:
     for r in get_task_steps(task_id):
         if r["kind"] in ("question", "user_input", "final"):
             continue
-        if r["status"] in ("passed", "failed", "interrupted", "subtask_queued"):
+        if r["status"] in ("passed", "failed", "interrupted", "subtask_queued", "skipped"):
             label = f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']} → {r['status']}"
+            # A skipped step has no result of its own; its reason is what lets
+            # the final answer explain that the step never ran.
             body = (r["result"] or "")[:3000]
+            if not body and r["status"] == "skipped":
+                body = str(r.get("last_error") or "")[:500]
             parts.append(f"{label}: {body}" if body else label)
     return "\n".join(parts)[:char_cap]
 
@@ -1199,8 +1209,9 @@ class TaskExecutor:
         (``source_step`` in the plan), so a task with several image artifacts
         can address each one (two video steps must animate DIFFERENT images).
 
-        ``None`` when no such artifact exists (the caller decides: image_edit
-        fails the step, video_gen falls back to text-to-video)."""
+        ``None`` when no such artifact exists (the caller decides: a bound
+        media step is skipped, image_edit without a binding fails, an unbound
+        video_gen falls back to text-to-video)."""
         best: tuple[int, str] | None = None
         for r in get_task_steps(task_id):
             seq = int(r.get("seq") or 0)
@@ -1695,6 +1706,26 @@ class TaskExecutor:
         self._clear_cancel_flag(step_id)
         update_step(step_id, status=status, finished_at=_now_iso(), **fields)
 
+    def _skip_missing_source(
+        self, task_id: str, step_id: str, idx: int, message: str, source_seq: int, lang: str
+    ) -> None:
+        """Close a step whose declared producer step produced no image.
+
+        ``skipped`` (not ``failed``): nothing was attempted and nothing was
+        spent — the step is a consequence of the upstream failure. The reason
+        carries the producer's seq, reaches the user in the step message and
+        travels into the final summary digest so the answer can explain it.
+        """
+        logger.warning(f"task {task_id} step {idx + 1}: skipped (step {source_seq} produced no image)")
+        self._end_step(
+            task_id,
+            step_id,
+            status="skipped",
+            last_error=f"⚠️ {_tr(message, lang=lang, source=source_seq)}",
+        )
+        update_task(task_id, next_step_index=idx + 1)
+        self._publish_task_update(task_id)
+
     def _context_digest(self, task_id: str, upto_idx: int, corrective_note: str = "", char_cap: int = 12000) -> str:
         """Previous step results as the running context for the next step.
 
@@ -1707,9 +1738,11 @@ class TaskExecutor:
                 continue
             if r["kind"] in ("question", "user_input", "final", "plan"):
                 continue
-            if r["status"] in ("passed", "failed", "interrupted"):
+            if r["status"] in ("passed", "failed", "interrupted", "skipped"):
                 body = (r["result"] or "")[:3000]
-                if r["status"] == "failed":
+                if r["status"] == "skipped":
+                    body = f"[skipped: {r.get('last_error') or 'source image missing'}]"
+                elif r["status"] == "failed":
                     if r.get("checkpoint_result") and r.get("checkpoint_verdict") is False:
                         body = f"[checkpoint rejected: {r.get('checkpoint_result')}] {body}"
                     else:
@@ -1849,6 +1882,9 @@ class TaskExecutor:
             else:
                 media = self._prior_step_media(task_id, idx, source_seq=source_step)
                 if media is None:
+                    if source_step is not None:
+                        self._skip_missing_source(task_id, row["id"], idx, _MSG_SKIP_EDIT_NO_SOURCE, source_step, lang)
+                        return
                     logger.warning(f"task {task_id} step {idx + 1} (image_edit) has no source image")
                     self._end_step(
                         task_id,
@@ -1869,12 +1905,19 @@ class TaskExecutor:
             # the live defect made the video from the goal text instead).
             # ``source_step`` pins ONE producer step (a task may hold several
             # image artifacts; without it the latest before this step wins).
-            # Chat parity: a request with no image stays text-to-video, so a
-            # missing prior image is not an error — the goal text alone goes
-            # through. The value is raw base64: the video wrapper decodes it.
+            # Chat parity: an UNBOUND request with no image stays text-to-video
+            # (the goal text alone goes through); a step bound to a producer is
+            # skipped below instead. The value is raw base64: the wrapper decodes it.
             media_img = self._prior_step_media_image(task_id, idx, source_seq=source_step)
             if media_img is not None:
                 request_data["file_data"] = media_img  # Write-ahead (v12.6 fix): the step row must already say
+            elif source_step is not None:
+                # The plan bound this video to an image a named earlier step had
+                # to produce and it never did: animating something else (or
+                # nothing) is not what was asked — skip and say why. An unbound
+                # video step keeps chat parity (text-to-video).
+                self._skip_missing_source(task_id, row["id"], idx, _MSG_SKIP_VIDEO_NO_SOURCE, source_step, lang)
+                return
         # ``subtask_queued`` BEFORE the request reaches the queue. An idle slow
         # worker dequeues it within milliseconds and its orphan guard drops a
         # tagged sub-task whose step is still 'pending' — every camera step then

@@ -708,10 +708,13 @@ msgstr "No editing instructions provided."
 msgid "No source image provided."
 msgstr "No source image provided."
 
-#: app/utils.py:1640
-#, python-brace-format
-msgid "Image editing timeout ({timeout}s)"
-msgstr "Image editing timeout ({timeout}s)"
+#: app/utils.py:1645
+msgid "Image generation timed out. Try again later."
+msgstr "Image generation timed out. Try again later."
+
+#: app/utils.py:1646
+msgid "Image editing timed out. Try again later."
+msgstr "Image editing timed out. Try again later."
 
 #: app/vram_estimate.py:304
 msgid "Model metadata not found. Run 'Refresh models' first."
@@ -1480,6 +1483,16 @@ msgstr "step attempts exhausted"
 #: app/tasks/executor.py
 msgid "The step has no image to edit: no image is attached and no earlier step produced one."
 msgstr "The step has no image to edit: no image is attached and no earlier step produced one."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Skipped: step {source} produced no image to edit."
+msgstr "Skipped: step {source} produced no image to edit."
+
+#: app/tasks/executor.py
+#, python-brace-format
+msgid "Skipped: step {source} produced no image to animate."
+msgstr "Skipped: step {source} produced no image to animate."
 
 #: app/tasks/executor.py:1999
 msgid "Result of subtask expired while task was paused. Please restart the task."

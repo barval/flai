@@ -54,12 +54,17 @@ SD_ERROR_TRANSLATIONS = {
     "sd-cli produced empty output": "Image generation produced empty output.",
     "sd-wrapper returned no image data": "sd-wrapper returned no image data.",
     "sd-wrapper returned no image": "sd-wrapper returned no image.",
-    "sd-cli timeout": "Image generation timeout ({timeout}s)",
+    # The sd-wrapper guards its own sd-cli run (services/sd_cpp/sd_wrapper.py):
+    # on timeout IT reports the error, so the message must not name FLAI's
+    # SD_CPP_TIMEOUT — that used to print 900 s while the wrapper had cut the
+    # run at 300 s (a live defect: a generation killed at 331 s announced
+    # "Image generation timeout (900s)").
+    "sd-cli timeout": "Image generation timed out. Try again later.",
     "Image editing failed": "Image editing failed. Try again later.",
     "Image editing produced empty output": "Image editing produced empty output.",
     "No edit prompt provided": "No editing instructions provided.",
     "No source image provided": "No source image provided.",
-    "sd-cli edit timeout": "Image editing timeout ({timeout}s)",
+    "sd-cli edit timeout": "Image editing timed out. Try again later.",
 }
 
 
@@ -1637,7 +1642,8 @@ def _sd_error_translation_markers() -> None:
     gettext("Image editing produced empty output.")
     gettext("No editing instructions provided.")
     gettext("No source image provided.")
-    gettext("Image editing timeout ({timeout}s)")
+    gettext("Image generation timed out. Try again later.")
+    gettext("Image editing timed out. Try again later.")
 
 
 def clean_markdown_for_tts(text: str) -> str:

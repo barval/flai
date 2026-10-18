@@ -111,6 +111,30 @@ class TestSdCppModuleGenerate:
                 assert "image_data" in result
                 assert "file_name" in result
 
+    def test_wrapper_timeout_error_does_not_print_our_own_limit(self, mock_app, mock_multimodal):
+        """The sd-wrapper guards its OWN sd-cli run and reports "sd-cli timeout".
+
+        The message must not name FLAI's ``SD_CPP_TIMEOUT``: the live defect
+        announced "Image generation timeout (900s)" for a generation the wrapper
+        had cut at 300 s (nothing was wrong with the request itself).
+        """
+        from modules.sd_cpp import SdCppModule
+
+        with patch("modules.sd_cpp.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(status_code=200)
+            module = SdCppModule(mock_app)
+            module.set_multimodal_module(mock_multimodal)
+
+            with patch("modules.sd_cpp.requests.post") as mock_post:
+                mock_post.return_value = MagicMock(status_code=200, json=lambda: {"error": "sd-cli timeout"})
+                result = module._call_wrapper(
+                    {"prompt": "test", "negative_prompt": "", "steps": 30, "width": 512, "height": 512}
+                )
+
+        assert result["success"] is False
+        assert result["error"] == "Image generation timed out. Try again later."
+        assert str(mock_app.config["SD_CPP_TIMEOUT"]) not in result["error"], "the wrapper's limit fired, not ours"
+
     def test_generate_image_api_error(self, mock_app, mock_multimodal):
         from modules.sd_cpp import SdCppModule
 
@@ -205,3 +229,27 @@ class TestSdCppModuleGenerate:
                 assert result["cpu_degrade"]["degraded"] is True
                 assert result["cpu_degrade"]["original_size"] == (64, 64)
                 assert result["cpu_degrade"]["new_size"] == (32, 32)
+
+
+@pytest.mark.unit
+def test_wrapper_generation_guard_leaves_room_and_fires_before_the_client_timeout():
+    """services/sd_cpp/sd_wrapper.py guards its own sd-cli run.
+
+    Two properties matter: a healthy ~180 s GPU generation must not be cut by a
+    hard 300 s wall (a live defect killed a 301 s run as "sd-cli timeout" while
+    the host was loaded), and the guard must stay BELOW FLAI's SD_CPP_TIMEOUT
+    (900 s) so the wrapper reports the failure itself instead of the client
+    giving up first.
+    """
+    import pathlib
+    import re
+
+    src = pathlib.Path("services/sd_cpp/sd_wrapper.py").read_text(encoding="utf-8")
+    match = re.search(
+        r"timeout=_cli_timeout\((\d+)\) if _check_cuda\(\) else _cli_timeout\((\d+)\)",
+        src,
+    )
+    assert match, "the CUDA generation guard must read its default from _cli_timeout (env-overridable)"
+    cuda_default = int(match.group(1))
+    assert cuda_default == 600
+    assert cuda_default < 900, "the wrapper's guard must fire before FLAI's SD_CPP_TIMEOUT"

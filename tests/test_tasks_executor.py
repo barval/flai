@@ -2320,6 +2320,68 @@ def test_subtask_checkpoint_verdict_sees_media_artifact(db_env, test_app, gate_o
     os.remove(src_path)
 
 
+def test_video_preview_frame_reaches_the_checkpoint_from_the_result_wrapper(db_env, test_app, gate_open, monkeypatch):
+    """The video frame reaches the verifier even when the envelope rides the
+    worker's ``{"status": "completed", "result": {...}}`` wrapper.
+
+    The queue stores every result as ``{status, result, timestamp}``; preview_data
+    therefore lives inside ``stored["result"]``, not at the top level. A media
+    step whose preview was read only from the top level silently lost the frame
+    and the text-only verifier kept rejecting the video with «only a filename».
+    """
+    from unittest.mock import MagicMock
+
+    store = db_env
+    plan = _media_plan("video_gen", goal="Make a video of the astronaut walking")
+    plan["steps"][0]["checkpoint_criteria"] = "video shows the astronaut walking"
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+
+    class _Q:
+        def add_request(self, *a, **k):
+            return "sub-queue-id-1", {}
+
+        def cancel_task(self, *a, **k):
+            pass
+
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+
+    # The worker stores the envelope inside {"result": ...}.
+    envelope = {
+        "status": "completed",
+        "response": "",
+        "file_path": f"{task_id}/clip.mp4",
+        "file_name": "clip.mp4",
+        "file_type": "video/mp4",
+        "preview_data": "FAKE_B64_JPEG",
+    }
+    stored = {"status": "completed", "result": envelope, "timestamp": 1.0}
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: stored if qid == queue_id else None)
+    checks = []
+
+    def _fake_checkpoint(app, step, result, lang="ru"):
+        checks.append(result)
+        return {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+
+    monkeypatch.setattr(ex, "run_checkpoint", _fake_checkpoint)
+    mm = MagicMock()
+    mm.available = True
+    mm.describe_image_for_rlm.return_value = ("An astronaut walking on grey soil.", None)
+    test_app.modules["multimodal"] = mm
+
+    outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert outcome == "done"
+    assert checks, "the verifier ran"
+    assert "An astronaut walking on grey soil." in checks[0], "the frame description reaches the verifier"
+    mm.describe_image_for_rlm.assert_called_once()
+    step_row = store.get_task_steps(task_id)[0]
+    assert step_row["status"] == "passed"
+
+
 def test_subtask_checkpoint_verdict_sees_the_artifact_line_of_a_media_step(db_env, test_app, gate_open, monkeypatch):
     """The bare file name of the artifact reaches the verifier: a media step
     whose artifact exists must not be rejected with «текстовая инструкция

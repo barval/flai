@@ -2321,7 +2321,9 @@ class TaskExecutor:
             # text here, so the verifier saw only a repeat of the goal).
             checkpoint_input = result_text
             image_note, describe_seconds = self._describe_step_image(
-                media, task.get("lang") or "ru", preview_data=str(stored.get("preview_data") or "")
+                media,
+                task.get("lang") or "ru",
+                preview_data=str(stored.get("preview_data") or result_data.get("preview_data") or ""),
             )
             if describe_seconds:
                 self._add_budget(task_id, describe_seconds)

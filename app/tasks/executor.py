@@ -2077,7 +2077,15 @@ class TaskExecutor:
         # extra for the audit trail (the old request was cancelled on abort —
         # re-cancel defensively so a late worker completion can never be
         # mistaken for this step's result).
-        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": subtask_queue_id}
+        # ALWAYS reset subtask_polls — a fresh enqueue starts its own poll
+        # budget, regardless of how many cycles the previous attempt survived
+        # (the first poll of a retry subtask that inherited 13+ polls would
+        # immediately exceed TASK_SUBTASK_POLL_CYCLES and the worker hadn't
+        # even dequeued the new request → "subtask result expired").
+        merged_extra = {
+            **{k: v for k, v in (row.get("extra") or {}).items() if k not in ("subtask_polls", "corrective_note")},
+            "subtask_queue_id": subtask_queue_id,
+        }
         old_id = (row.get("extra") or {}).get("subtask_queue_id")
         if old_id and str(old_id) != str(subtask_queue_id):
             merged_extra.setdefault("superseded_queue_ids", []).append(old_id)

@@ -601,10 +601,10 @@ def create_task_route():
     # English/Russian plan regardless of the user's actual preference.
     from app.database import get_db
 
-    _db = get_db()
-    _row = _db.execute("SELECT language FROM users WHERE login = %s", (session["login"],)).fetchone()
-    if _row and _row["language"] != session.get("language"):
-        session["language"] = _row["language"]
+    with get_db() as conn:
+        _row = conn.execute("SELECT language FROM users WHERE login = %s", (session["login"],)).fetchone()
+        if _row and _row["language"] != session.get("language"):
+            session["language"] = _row["language"]
     task_id = create_task(
         user_id=session["login"],
         task_class=task_class,

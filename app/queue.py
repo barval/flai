@@ -128,6 +128,7 @@ def _run_document_indexing(
     user_id: str,
     indexing_started_at: str | None,
     publish: Callable[[str], None],
+    lang: str = "ru",
 ) -> tuple[bool, str, str, bool]:
     """Extract, chunk, embed and upsert one document; mark it INDEXED on success.
 
@@ -144,8 +145,7 @@ def _run_document_indexing(
     """
     rag = app.modules.get("rag")
     if not rag or not rag.available:
-        with force_locale("en"):
-            error_msg = app.modules["base"]._("RAG module unavailable")
+        error_msg = app.modules["base"]._("RAG module unavailable", lang)
         return False, error_msg, "unknown", False
     try:
         success, message = rag.index_document(user_id, doc_id, file_path)
@@ -2475,7 +2475,8 @@ class RedisRequestQueue:
                 self.app.modules["base"]
                 ._(
                     "The selected documents are too large for deep analysis "
-                    "(limit: {limit} characters). Select fewer or smaller documents."
+                    "(limit: {limit} characters). Select fewer or smaller documents.",
+                    lang,
                 )
                 .format(limit=limit_chars),
                 0,
@@ -4091,6 +4092,7 @@ class RedisRequestQueue:
                 user_id,
                 indexing_started_at,
                 lambda status: _publish_document_index_event(self.app, user_id, doc_id, status),
+                lang=str(task.get("lang") or "ru"),
             )
             self._cleanup_vram_after_task(task)
         if not success:
@@ -5825,7 +5827,7 @@ class RedisRequestQueue:
         from flask_babel import force_locale
 
         with force_locale(lang):
-            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
+            prefix = "🎤 " + self.app.modules["base"]._("Transcribed", lang) + ": "
 
         system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
 
@@ -5914,7 +5916,7 @@ class RedisRequestQueue:
             # lone one keeps the familiar plain label.
             suffix = f" ({name})" if name and len(audios) > 1 else ""
             with force_locale(lang):
-                prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + suffix + ": "
+                prefix = "🎤 " + self.app.modules["base"]._("Transcribed", lang) + suffix + ": "
             transcribed_message_id = save_message(
                 session_id,
                 "assistant",
@@ -6024,7 +6026,7 @@ class RedisRequestQueue:
         if not doc_b64:
             return self._build_error_response(
                 session_id,
-                self.app.modules["base"]._("No file provided"),
+                self.app.modules["base"]._("No file provided", lang),
                 0,
                 lang,
             )
@@ -6058,6 +6060,7 @@ class RedisRequestQueue:
             user_id,
             indexing_started_at=None,
             publish=lambda status: self._publish_document_event(user_id, doc_id, status),
+            lang=lang,
         )
         if not success:
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -6120,6 +6123,7 @@ class RedisRequestQueue:
             user_id,
             indexing_started_at,
             lambda status: self._publish_document_event(user_id, doc_id, status),
+            lang=task.get("lang", "ru"),
         )
         if success:
             self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
@@ -6361,8 +6365,7 @@ class RedisRequestQueue:
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
             self.app.logger.error("RAG module not available for reindexing")
-            with force_locale("en"):
-                error_msg = self.app.modules["base"]._("RAG module unavailable")
+            error_msg = self.app.modules["base"]._("RAG module unavailable", task.get("lang", "ru"))
             return {"success": False, "error": error_msg}
 
         batch_size = 50

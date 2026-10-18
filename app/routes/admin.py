@@ -1590,7 +1590,7 @@ def update_model_config(module):
             current_app.logger.info(
                 f"Embedding model changed from '{old_model}' to '{new_model}', starting reindex all"
             )
-            current_app.request_queue.add_reindex_all_task(lang="ru")
+            current_app.request_queue.add_reindex_all_task(lang=session.get("language", "ru"))
             result["model_name"] = new_model
             result["reindex_triggered"] = True
         elif new_model == old_model:
@@ -1788,7 +1788,7 @@ def api_save_chunks_config():
                 and hasattr(current_app, "request_queue")
                 and current_app.request_queue
             ):
-                current_app.request_queue.add_reindex_all_task(lang="ru")
+                current_app.request_queue.add_reindex_all_task(lang=session.get("language", "ru"))
                 current_app.logger.info("Reindex triggered due to chunk config change")
                 reindex_triggered = True
 

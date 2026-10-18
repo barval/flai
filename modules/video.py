@@ -477,6 +477,7 @@ class VideoModule(TranslationMixin):
                     "generation_time": result.get("generation_time", 0),
                     "seed": result.get("seed", 0),
                     "metadata": result.get("metadata", {}),
+                    "preview_data": result.get("preview_data", ""),
                     "resized": resized_info["resized"],
                     "original_size": resized_info["original_size"],
                     "new_size": resized_info["new_size"],

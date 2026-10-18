@@ -802,9 +802,10 @@ class _SimpleQ:
 
 
 def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch):
-    """Spec §4: a subtask result is verified by a normal checkpoint against
-    the step's checkpoint_criteria; a rejected verification fails the step
-    and the task continues (media refs still recorded)."""
+    """Spec §4: a subtask result is verified by a normal checkpoint against the
+    step's checkpoint_criteria; a rejected verification opens a corrective
+    retry of the SAME step instead of letting the rejected media flow into the
+    following steps (media refs still recorded)."""
     store = db_env
     plan = {
         "title": "Media task",
@@ -815,14 +816,7 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     task_id = _mk_task(store, step_plan=plan)
     executor = ex.TaskExecutor(app=test_app)
 
-    class _Q:
-        def add_request(self, *a, **k):
-            return "sub-queue-id-1", {}
-
-        def cancel_task(self, *a, **k):
-            pass
-
-    monkeypatch.setattr(ex, "_get_request_queue", lambda: _Q())
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
     executor._enqueue_subtask(
         store.get_task(task_id),
         0,
@@ -831,6 +825,7 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     row = store.get_task_steps(task_id)[0]
     queue_id = row["extra"]["subtask_queue_id"]
     assert row["status"] == "subtask_queued"
+    assert row["attempts"] == 1, "the attempt is counted when the work is handed to the queue"
 
     envelope = {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"}
     monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
@@ -852,9 +847,86 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     assert "x/y.png" in checks[0]["result"]
     assert checks[0]["step"]["checkpoint_criteria"] == "image matches the request"
     step = store.get_task_steps(task_id)[0]
-    assert step["status"] == "failed", "rejected verification fails the step"
+    assert step["status"] == "pending", "a rejected verification re-opens the same step"
+    assert step["extra"]["corrective_note"] == "wrong subject", "the mismatch is kept for the retry"
+    assert step["extra"]["media"]["file_path"] == "x/y.png", "the rejected artifact is still recorded"
+    assert step["checkpoint_verdict"] is None, "only the final verdict is persisted"
+    assert store.get_task(task_id)["next_step_index"] == 0, "the retry stays on the same step"
+
+
+def test_subtask_checkpoint_rejection_fails_after_attempts_are_exhausted(db_env, test_app, gate_open, monkeypatch):
+    """Once TASK_STEP_MAX_ATTEMPTS attempts are spent, the rejected media step
+    is failed (media refs still recorded) and the task continues — the same
+    attempts-exhausted semantics a direct step has."""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    plan["steps"][0]["checkpoint_criteria"] = "image matches the request"
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    # Spend the retry budget: the next rejection closes the step.
+    store.update_step(row["id"], attempts=ex.TASK_STEP_MAX_ATTEMPTS)
+    row = store.get_task_steps(task_id)[0]
+
+    envelope = {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"}
+    monkeypatch.setattr(
+        executor, "_peek_subtask_result", lambda qid: envelope if qid == row["extra"]["subtask_queue_id"] else None
+    )
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": False, "explanation": "wrong subject", "exec_seconds": 0.3}
+    )
+
+    outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    assert outcome == "done"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "failed"
     assert step["checkpoint_verdict"] is False and step["checkpoint_result"] == "wrong subject"
-    assert store.get_task(task_id)["next_step_index"] == 1, "the task continues"
+    assert "exhausted" in step["last_error"], "the failure names the spent attempts"
+    assert step["extra"]["media"]["file_path"] == "x/y.png", "the rejected artifact is still recorded"
+    assert store.get_task(task_id)["next_step_index"] == 1, "the task continues once the attempts are spent"
+
+
+def test_subtask_retry_reenqueues_with_the_mismatch_in_the_prompt(db_env, test_app, gate_open, monkeypatch):
+    """The retry reaches the worker: the next cycle re-enqueues the same step
+    with the verifier's mismatch appended to the media prompt, so the generator
+    is told what to fix instead of repeating the rejected picture."""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    plan["steps"][0]["checkpoint_criteria"] = "image matches the request"
+    task_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=30)
+
+    class _Q(_RecordingQ):
+        def add_request(self, **kwargs):
+            super().add_request(**kwargs)
+            return f"sub-queue-id-{len(self.calls)}", {}
+
+    recorded = _Q()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: recorded)
+    monkeypatch.setattr(
+        ex,
+        "run_checkpoint",
+        lambda *a, **k: {"verdict": False, "explanation": "the astronaut is cropped", "exec_seconds": 0.3},
+    )
+    executor = ex.TaskExecutor(app=test_app)
+    executor._peek_subtask_result = lambda qid: (
+        {"status": "completed", "response": "an image", "file_path": "x/y.png"} if qid == "sub-queue-id-1" else None
+    )
+
+    executor._process_one_cycle(gate_open=True)  # cycle 1: the step is queued (attempt 1)
+    assert store.get_task_steps(task_id)[0]["attempts"] == 1
+
+    executor._process_one_cycle(gate_open=True)  # cycle 2: rejected → retry pending → re-enqueued
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["attempts"] == 2, "the retry counts a second attempt"
+    assert step["status"] == "subtask_queued", "the retry is back on the queue"
+    assert len(recorded.calls) == 2, "the same step was enqueued twice"
+    retry_prompt = recorded.calls[1]["request_data"]["text"]
+    assert "the astronaut is cropped" in retry_prompt, "the mismatch reaches the media prompt"
+    assert retry_prompt.startswith("Make an image"), "the original goal is still the prompt"
 
 
 def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open, monkeypatch):
@@ -1450,12 +1522,46 @@ def test_step_image_is_described_for_the_checkpoint(test_app, tmp_path):
     mm.describe_image_for_rlm.assert_called_once()
     assert mm.describe_image_for_rlm.call_args.kwargs["lang"] == "ru"
 
-    # A video artifact is not an image — nothing to describe.
+    # У видео без кадра описания нет (обратная совместимость).
     with test_app.app_context():
         assert executor._describe_step_image({"file_path": "sess1/clip.mp4", "file_type": "video/mp4"}, "ru") == (
             "",
             0.0,
         )
+
+
+def test_video_frame_is_described_for_the_checkpoint(test_app, tmp_path):
+    """A generated video's poster frame is described for the text-only verifier.
+
+    The wrapper now returns a representative JPEG from the middle of the clip;
+    the executor describes that frame (mirroring how it describes an image
+    artifact) so the checkpoint knows what the video is about — previously
+    video steps were blind to the verifier (live defect: 5 of 10 steps failed
+    while the mp4 existed).
+    """
+    from unittest.mock import MagicMock
+
+    upload = tmp_path / "uploads"
+    test_app.config["UPLOAD_FOLDER"] = str(upload)
+    mm = MagicMock()
+    mm.available = True
+    mm.describe_image_for_rlm.return_value = ("An astronaut walking on grey lunar soil.", None)
+    test_app.modules["multimodal"] = mm
+    executor = ex.TaskExecutor(app=test_app)
+    media = {"file_path": "video-task/clip.mp4", "file_name": "clip.mp4", "file_type": "video/mp4"}
+
+    with test_app.app_context():
+        note, seconds = executor._describe_step_image(media, "ru", preview_data="FAKE_B64_JPEG")
+    assert "An astronaut walking on grey lunar soil." in note
+    assert "clip.mp4" in note, "the description names the file it belongs to"
+    assert "кадр" in note, "the label identifies this as a video frame, not a full image"
+    assert seconds >= 0
+    mm.describe_image_for_rlm.assert_called_once()
+    assert mm.describe_image_for_rlm.call_args.kwargs["lang"] == "ru"
+
+    # Without the poster frame a video still degrades to no description.
+    with test_app.app_context():
+        assert executor._describe_step_image(media, "ru") == ("", 0.0)
 
     # No multimodal module (or a missing file) degrades to no description.
     test_app.modules.pop("multimodal")

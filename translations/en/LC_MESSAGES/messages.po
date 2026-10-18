@@ -1404,10 +1404,15 @@ msgstr "Only failed, expired or cancelled tasks can be restarted"
 msgid "Missing text"
 msgstr "Missing text"
 
-#: app/tasks/answer_images.py:90
+#: app/tasks/answer_images.py:90 app/tasks/executor.py:_describe_step_image
 #, python-brace-format
 msgid "{file_name} — image description"
 msgstr "{file_name} — image description"
+
+#: app/tasks/executor.py:_describe_step_image
+#, python-brace-format
+msgid "{file_name} — frame from the generated video"
+msgstr "{file_name} — frame from the generated video"
 
 #: app/tasks/executor.py:318 app/tasks/executor.py:1351
 msgid ""

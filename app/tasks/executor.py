@@ -1281,43 +1281,54 @@ class TaskExecutor:
         media = self._prior_step_media(task_id, idx, source_seq=source_seq)
         return self._media_to_raw_base64(media) if media is not None else None
 
-    def _describe_step_image(self, media: dict, lang: str) -> tuple[str, float]:
-        """Describe a media step's produced image for the checkpoint verifier.
+    def _describe_step_image(self, media: dict, lang: str, preview_data: str = "") -> tuple[str, float]:
+        """Describe a media step's produced artifact for the checkpoint verifier.
 
         The verifier call is text-only (the reasoning model), so a step whose
         criterion is about what is VISIBLE was rejected with "the result
-        provides no image or its description" although the image existed
-        (live defect: every image_gen/image_edit step failed its checkpoint
-        while its media still fed the following steps). The artifact is
-        described with the multimodal model and the description is appended
-        to the verifier INPUT only — the step's stored result keeps the short
-        "goal + file name" form rendered in the task view.
+        provides no image or its description" although the image/video existed.
+        The artifact is described with the multimodal model and the description
+        is appended to the verifier INPUT only — the step's stored result keeps
+        the short "goal + file name" form rendered in the task view.
+
+        For a ``video/mp4`` without a poster frame the description is empty
+        (the step is verified as before); when the wrapper provides a JPEG
+        preview of the generated clip the middle frame is described instead.
 
         Returns ``(text, seconds)``; the text is "" for a non-image artifact
-        or an unavailable/empty description (the step is verified as before).
+        without a preview, or an unavailable/empty description.
         """
-        if not str(media.get("file_type") or "").startswith("image/"):
+        is_image = str(media.get("file_type") or "").startswith("image/")
+        if not is_image and not preview_data:
             return "", 0.0
-        rel = str(media.get("file_path") or "")
-        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
-        if not rel or not upload_folder:
-            return "", 0.0
-        path = os.path.realpath(os.path.join(upload_folder, rel))
-        if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
-            return "", 0.0
+        file_name = str(media.get("file_name") or media.get("file_path", ""))
         mm = self.app.modules.get("multimodal")
         if mm is None or not getattr(mm, "available", False):
             return "", 0.0
-        start = time.monotonic()
-        try:
-            with open(path, "rb") as fh:
-                image_b64 = base64.b64encode(fh.read()).decode("ascii")
-        except OSError as e:
-            logger.warning(f"step image unread for the checkpoint ({rel}): {e}")
-            return "", 0.0
+        if is_image:
+            rel = str(media.get("file_path") or "")
+            upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+            if not rel or not upload_folder:
+                return "", 0.0
+            path = os.path.realpath(os.path.join(upload_folder, rel))
+            if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
+                return "", 0.0
+            start = time.monotonic()
+            try:
+                with open(path, "rb") as fh:
+                    image_b64 = base64.b64encode(fh.read()).decode("ascii")
+            except OSError as e:
+                logger.warning(f"step image unread for the checkpoint ({rel}): {e}")
+                return "", 0.0
+            account_id = f"task-step-image:{os.path.basename(path)}"
+            from_file = True
+        else:
+            image_b64 = preview_data
+            account_id = f"task-step-video-frame:{file_name}"
+            start = time.monotonic()
+            from_file = False
         from app.utils import begin_usage_account, finish_usage_account
 
-        account_id = f"task-step-image:{os.path.basename(path)}"
         begin_usage_account(account_id)
         try:
             description, _error = mm.describe_image_for_rlm(image_b64, lang=lang)
@@ -1330,9 +1341,10 @@ class TaskExecutor:
         from flask_babel import gettext as _
 
         with force_locale(lang):
-            label = _("{file_name} — image description").format(
-                file_name=str(media.get("file_name") or os.path.basename(path))
-            )
+            if from_file:
+                label = _("{file_name} — image description").format(file_name=file_name)
+            else:
+                label = _("{file_name} — frame from the generated video").format(file_name=file_name)
         return f"{label}\n{description}", seconds
 
     def _camera_rooms(self, task: dict) -> list[str]:
@@ -1901,6 +1913,19 @@ class TaskExecutor:
             # Gate hook excludes tagged requests from chat activity.
             "task_step_subtask": row["id"],
         }
+        # Corrective retry: the previous attempt of THIS step was rejected by
+        # the verifier — carry its reason into the media prompt so the generator
+        # fixes the stated problem instead of repeating the rejected artifact.
+        # English like the direct-step retry digest: model context, never shown
+        # to the user.
+        corrective_note = str((row.get("extra") or {}).get("corrective_note") or "").strip()
+        if corrective_note:
+            directive = (
+                "\n\nCorrective note: the verifier REJECTED the previous attempt of this step. "
+                f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
+            )
+            request_data["text"] = str(request_data["text"]) + directive
+            request_data["prompt"] = str(request_data["prompt"]) + directive
         if tool == "rlm":
             # RLM corpus = the task's attached documents; with none attached,
             # every indexed document of the user is analyzed (the same scope
@@ -2017,7 +2042,15 @@ class TaskExecutor:
         task_stage = stage_map.get(tool, "generating_image")
         publish_task_stage(self.app, task, task_stage)
 
-        update_step(row["id"], status="subtask_queued", started_at=_now_iso())
+        # The attempt is counted when the work is handed to the queue (the same
+        # point a direct step counts it) — so a step rejected by its checkpoint
+        # retries until TASK_STEP_MAX_ATTEMPTS is spent.
+        update_step(
+            row["id"],
+            status="subtask_queued",
+            started_at=_now_iso(),
+            attempts=int(row.get("attempts") or 0) + 1,
+        )
         try:
             queue = _get_request_queue()
             subtask_queue_id, _info = queue.add_request(
@@ -2274,7 +2307,14 @@ class TaskExecutor:
             # when the gettext call ran outside an app context).
             artifact_name = str(media.get("file_name") or media["file_path"])
             result_text = result_text + "\n" + artifact_name
-            image_note, describe_seconds = self._describe_step_image(media, task.get("lang") or "ru")
+            # The artifact name ALWAYS reaches the verifier (a media step whose
+            # description could not be produced must still be checkable against
+            # "the file exists" — checkpoint_input used to keep the original
+            # text here, so the verifier saw only a repeat of the goal).
+            checkpoint_input = result_text
+            image_note, describe_seconds = self._describe_step_image(
+                media, task.get("lang") or "ru", preview_data=str(stored.get("preview_data") or "")
+            )
             if describe_seconds:
                 self._add_budget(task_id, describe_seconds)
             if image_note:
@@ -2289,18 +2329,42 @@ class TaskExecutor:
             checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
         if checkpoint and not checkpoint.get("verdict"):
+            reason = str(checkpoint.get("explanation", ""))
+            attempts = int(row.get("attempts") or 0)
+            max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
+            if attempts < max_attempts:
+                # Corrective retry of the SAME step (mirrors a direct step): the
+                # step stays open, the rejected artifact is kept in extra and the
+                # mismatch is left for the next attempt's prompt — the task never
+                # carries a rejected artifact into the following steps. The poll
+                # budget restarts with the new attempt.
+                update_step(
+                    row["id"],
+                    status="pending",
+                    result=result_text,
+                    extra={**merged_extra, "corrective_note": reason, "subtask_polls": 0},
+                )
+                logger.warning(
+                    f"task {task_id} step {idx + 1}: subtask checkpoint rejected "
+                    f"(attempt {attempts}/{max_attempts}) — retrying with the mismatch in the prompt"
+                )
+                return "done"
+            last_error = _tr("step attempts exhausted", task.get("lang") or "ru")
+            if reason:
+                last_error += f": {reason[:300]}"
             self._end_step(
                 task_id,
                 row["id"],
                 status="failed",
                 exec_seconds=elapsed,
                 result=result_text,
-                checkpoint_result=str(checkpoint.get("explanation", "")),
+                last_error=last_error,
+                checkpoint_result=reason,
                 checkpoint_verdict=False,
                 extra=merged_extra,
             )
             self._clear_task_stage(task)
-            logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — continuing")
+            logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — attempts spent, continuing")
             update_task(task_id, next_step_index=idx + 1)
             return "done"
         self._end_step(

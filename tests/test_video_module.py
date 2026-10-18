@@ -113,6 +113,49 @@ class TestVideoModuleGenerate:
             assert result["video_data"] == mock_b64
             assert result["file_type"] == "video/mp4"
 
+    def test_generate_video_propagates_the_preview_frame(self, mock_app):
+        """The wrapper's poster frame must reach the queue.
+
+        The task checkpoint verifier is text-only and the web container cannot
+        read an mp4 (no ffmpeg), so the executor describes this frame to judge a
+        video criterion (live defect: 5 of 10 video steps failed while the mp4
+        existed).
+        """
+        from modules.video import VideoModule
+
+        mock_b64 = base64.b64encode(b"fake mp4 data").decode("utf-8")
+
+        with (
+            patch("modules.video.requests.get") as mock_get,
+            patch("modules.video.requests.post") as mock_post,
+            patch("app.resource_manager.get_resource_manager") as mock_rm,
+        ):
+            mock_get.return_value = MagicMock(status_code=200)
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "success": True,
+                    "video_data": mock_b64,
+                    "file_name": "test_video.mp4",
+                    "file_size": 1024,
+                    "file_type": "video/mp4",
+                    "preview_data": "FRAME_B64",
+                },
+            )
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video(
+                {"prompt": "test video prompt", "width": 1216, "height": 704, "num_frames": 120}
+            )
+
+            assert result["success"] is True
+            assert result["preview_data"] == "FRAME_B64"
+
     def test_generate_video_cpu_platform_skips_vram_check(self, mock_app):
         """CPU platform must skip the VRAM gate and proceed straight to ltx-wrapper.
 

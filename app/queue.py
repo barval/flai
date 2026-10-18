@@ -1336,6 +1336,9 @@ class RedisRequestQueue:
                     "file_size": media.get("file_size"),
                 }
             )
+            preview = media.get("preview_data")
+            if preview:
+                envelope["preview_data"] = preview
         if meta:
             envelope.update(meta)
         return envelope

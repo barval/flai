@@ -1422,10 +1422,15 @@ msgstr "Перезапустить можно только неудачные, �
 msgid "Missing text"
 msgstr "Отсутствует текст"
 
-#: app/tasks/answer_images.py:90
+#: app/tasks/answer_images.py:90 app/tasks/executor.py:_describe_step_image
 #, python-brace-format
 msgid "{file_name} — image description"
 msgstr "{file_name} — описание изображения"
+
+#: app/tasks/executor.py:_describe_step_image
+#, python-brace-format
+msgid "{file_name} — frame from the generated video"
+msgstr "{file_name} — кадр из сгенерированного видео"
 
 #: app/tasks/executor.py:318 app/tasks/executor.py:1351
 msgid ""

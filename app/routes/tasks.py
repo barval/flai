@@ -594,6 +594,17 @@ def create_task_route():
     # non-draft creation for API compatibility.
     service_class = session.get("service_class", 2)
     task_class = _SERVICE_TO_TASK_CLASS.get(service_class, 5)
+    # Sync the session language with the DB: the user may have changed their
+    # preference in the admin panel (or via a direct DB update) without a page
+    # reload that calls /set-language — an old session value would create a
+    # task in the wrong language and the planner would then produce an
+    # English/Russian plan regardless of the user's actual preference.
+    from app.database import get_db
+
+    _db = get_db()
+    _row = _db.execute("SELECT language FROM users WHERE login = %s", (session["login"],)).fetchone()
+    if _row and _row["language"] != session.get("language"):
+        session["language"] = _row["language"]
     task_id = create_task(
         user_id=session["login"],
         task_class=task_class,

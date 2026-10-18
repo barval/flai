@@ -228,7 +228,7 @@ window.updateStatusCounter = function() {
         .then(data => {
             if (window.IS_RELOADING || !data) return;
             if (isTask) {
-                counter.textContent = '📊 ' + (data.queued_tasks || 0);
+                counter.textContent = '📊 ' + (data.queued_tasks || 0) + '/' + (data.total_queued_tasks || 0);
             } else {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
             }

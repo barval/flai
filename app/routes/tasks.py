@@ -595,8 +595,18 @@ def list_tasks():
 def api_task_queue_count():
     if "login" not in session:
         return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
-    count = _queued_task_count(session["login"])
-    return jsonify({"queued_tasks": count})
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT count(*) FROM tasks WHERE user_id = %s AND status IN ('queued','active','frozen')",
+            (session["login"],),
+        )
+        user_count = c.fetchone()["count"] or 0
+        c.execute("SELECT count(*) FROM tasks WHERE status IN ('queued','active','frozen')")
+        total = c.fetchone()["count"] or 0
+    return jsonify({"queued_tasks": user_count, "total_queued_tasks": total})
 
 
 @bp.route("", methods=["POST"])

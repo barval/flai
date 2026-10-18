@@ -38,6 +38,19 @@ _TERMINAL_STATUSES = {"completed", "failed", "expired", "cancelled"}
 _CANCEL_FLAG_TTL_S = 3600
 
 
+def _queued_task_count(user_id: str) -> int:
+    """How many non-terminal tasks the user has in the queue."""
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT count(*) FROM tasks WHERE user_id = %s AND status IN ('queued','active','frozen')",
+            (user_id,),
+        )
+        return c.fetchone()["count"] or 0
+
+
 def _iso(value: Any) -> str | None:
     """Serialize a DB timestamp for the client (datetime → ISO, None stays None)."""
     if value is None:
@@ -576,6 +589,14 @@ def list_tasks():
     totals = _token_totals_for([t["id"] for t in tasks])
     positions = get_queued_task_positions()
     return jsonify({"tasks": [_task_summary(t, totals, positions) for t in tasks]})
+
+
+@bp.route("/queue-count", methods=["GET"])
+def api_task_queue_count():
+    if "login" not in session:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    count = _queued_task_count(session["login"])
+    return jsonify({"queued_tasks": count})
 
 
 @bp.route("", methods=["POST"])

@@ -713,6 +713,19 @@ def task_request_route(task_id):
         update_task(task_id, status="frozen", title=user_request[:300], abort_reason="audio_transcript")
     else:
         update_task(task_id, status="queued", title=user_request[:300], abort_reason=None)
+    # Sync the task language with the session/DB at submit time: a draft may
+    # have been created in another language than the one currently active
+    # (the user switched profiles between ➕ and sending). The planner then
+    # writes the plan in the wrong language.
+    from app.database import get_db as _get_db
+
+    with _get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT language FROM users WHERE login = %s", (session["login"],))
+        _row = c.fetchone()
+    if _row and _row["language"] != task.get("lang"):
+        session["language"] = _row["language"]
+        update_task(task_id, lang=_row["language"])
     if "doc_ids" in data or new_doc_ids:
         # Snapshot the Documents-panel selection at submit time (like a chat
         # request): an empty list means "all documents". Documents just saved

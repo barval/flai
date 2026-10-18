@@ -30,6 +30,7 @@ _TASK_FIELDS = {
     "started_at",
     "completed_at",
     "abort_reason",
+    "lang",
 }
 _STEP_FIELDS = {
     "status",

@@ -48,7 +48,6 @@ UI_MSGIDS = {
     "Draft — describe the task…": "task_draft_placeholder",
     "No task selected — use «+» to create one": "task_empty_state",
     "No tasks yet": "task_no_tasks",
-    "Export is unavailable while viewing a task": "task_export_unavailable",
     "Transcribing audio…": "task_status_transcribing",
 }
 
@@ -467,19 +466,26 @@ class TestReviewGuards:
 
     def test_events_js_chat_render_paths_respect_task_view(self):
         # The chat SSE render paths must not interleave into the open task
-        # conversation: every DOM-mutating handler checks isTaskViewActive().
+        # conversation: the DOM-mutating handlers check isTaskViewActive().
         for name in (
             "onStreamToken",
             "onMessageNew",
             "onCameraImage",
             "onToolCall",
             "onTaskProgress",
-            "onVideoStep",
-            "onImageStep",
-            "onImagePreview",
         ):
             block = self._function_block(EVENTS_JS, f"function {name}(")
             assert "isTaskViewActive" in block, f"{name} does not check isTaskViewActive()"
+
+    def test_media_step_paths_render_inside_the_task_view(self):
+        # image_step / video_step / image_preview must NOT be gated on the task
+        # view: in Tasks the queue session_id IS the parent task id, so the
+        # ``session_id !== currentSessionId`` check already scopes them — and
+        # they are what paints the image/video progress bar and the preview.
+        for name in ("onVideoStep", "onImageStep", "onImagePreview"):
+            block = self._function_block(EVENTS_JS, f"function {name}(")
+            assert "isTaskViewActive" not in block, f"{name} must render in the task view too"
+            assert "data.session_id !== currentSessionId" in block, f"{name} must scope by session"
 
     def test_result_paths_suppress_display_message(self):
         # Result-completion paths render through displayMessage only when the
@@ -517,9 +523,15 @@ class TestReviewGuards:
         assert "scheduleTasksListReload" in self._function_block(CHAT_TASKS, "function onTaskUpdate(")
         assert ".session-status-icon.awaiting" in CHAT_CSS
 
-    def test_export_blocked_during_task_view(self):
-        assert "window.currentTaskId" in CHAT_EXPORT
-        assert "task_export_unavailable" in CHAT_EXPORT
+    def test_export_supports_task_view(self):
+        """«Save» exports the open task like a chat: the same DOM walk, plus the
+        task title from tasksData and its plan/step service lines — no refusal."""
+        block = self._function_block(CHAT_EXPORT, "async function saveChatAsHTML(")
+        assert "window.currentTaskId" in block
+        assert "tasksData" in block
+        assert "task-msg-service" in block
+        assert "'task_'" in block
+        assert "task_export_unavailable" not in CHAT_EXPORT
 
     def test_new_task_modal_removed(self):
         """The new-task dialog is gone: «+» creates a draft directly."""

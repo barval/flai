@@ -2803,10 +2803,6 @@ msgstr "Черновик — опишите задачу…"
 msgid "No task selected — use «+» to create one"
 msgstr "Задача не выбрана — нажмите «+», чтобы создать"
 
-#: app/templates/chat.html:187
-msgid "Export is unavailable while viewing a task"
-msgstr "Экспорт недоступен при просмотре задачи"
-
 #: app/templates/chat.html:189
 msgid "Your requests in queue / Total in queue"
 msgstr "Ваши запросы в очереди / Всего в очереди"

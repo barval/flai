@@ -2775,10 +2775,6 @@ msgstr "Draft — describe the task…"
 msgid "No task selected — use «+» to create one"
 msgstr "No task selected — use «+» to create one"
 
-#: app/templates/chat.html:187
-msgid "Export is unavailable while viewing a task"
-msgstr "Export is unavailable while viewing a task"
-
 #: app/templates/chat.html:189
 msgid "Your requests in queue / Total in queue"
 msgstr "Your requests in queue / Total in queue"

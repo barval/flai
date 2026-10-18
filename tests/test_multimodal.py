@@ -3,6 +3,7 @@
 
 import base64
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -172,6 +173,27 @@ class TestGenerateImageParams:
 
         assert result["negative_prompt"] == ""
 
+    def test_generate_image_params_decodes_greedily(self, module_with_mock_llamacpp):
+        """Parameter generation INVENTS the size, so sampling must be off.
+
+        Live defect: two identical tasks (en/ru) got 1024×1024 and 1536×1024 —
+        the size is a sampled model decision at the configured temperature
+        (0.7) and the whole task (both images, both videos) inherited it.
+        """
+        module_with_mock_llamacpp.llamacpp.chat.return_value = json.dumps({"prompt": "a cat"})
+
+        module_with_mock_llamacpp.generate_image_params("draw a cat")
+
+        assert module_with_mock_llamacpp.llamacpp.chat.call_args.kwargs["temperature"] == 0
+
+    def test_call_multimodal_keeps_model_temperature_by_default(self, module_with_mock_llamacpp):
+        """Only parameter generation turns sampling off."""
+        module_with_mock_llamacpp.llamacpp.chat.return_value = "ok"
+
+        module_with_mock_llamacpp._call_multimodal([{"role": "user", "content": "hi"}], lang="en")
+
+        assert module_with_mock_llamacpp.llamacpp.chat.call_args.kwargs["temperature"] is None
+
 
 class TestCheckAvailability:
     """Test availability check."""
@@ -267,6 +289,14 @@ class TestGenerateVideoParams:
         assert result["num_frames"] == 240
         assert result["frame_rate"] == 24
         assert "negative_prompt" in result
+
+    def test_generate_video_params_decodes_greedily(self, module_with_mock_llamacpp):
+        """Video parameter generation invents resolution and frame count."""
+        module_with_mock_llamacpp.llamacpp.chat.return_value = json.dumps({"prompt": "a cat"})
+
+        module_with_mock_llamacpp.generate_video_params("make a video")
+
+        assert module_with_mock_llamacpp.llamacpp.chat.call_args.kwargs["temperature"] == 0
 
     def test_generate_video_params_from_image(self, module_with_mock_llamacpp):
         """Should handle video params from image."""
@@ -499,3 +529,26 @@ class TestImageAutoConvert:
         content = messages[0]["content"]
         assert len(content) == 1
         assert content[0]["type"] == "text"
+
+
+class TestImageTemplateFormatRule:
+    """The image template must let the user override the model's own size guess."""
+
+    PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
+    EXPLICIT_FORMAT_RULE = {
+        "ru": "Если в запросе явно указан формат — используй его",
+        "en": "If the request explicitly specifies a format — use it",
+    }
+
+    @pytest.mark.parametrize("lang", ["ru", "en"])
+    def test_template_honours_an_explicitly_requested_format(self, lang):
+        text = (self.PROMPTS_DIR / lang / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
+
+        assert self.EXPLICIT_FORMAT_RULE[lang] in text
+
+    def test_template_pairs_keep_the_same_format_bullets(self):
+        """The ru/en twins must stay in parity (same number of format bullets)."""
+        ru = (self.PROMPTS_DIR / "ru" / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
+        en = (self.PROMPTS_DIR / "en" / "create_image_z_image_turbo.template").read_text(encoding="utf-8")
+
+        assert ru.count("\n   - ") == en.count("\n   - ")

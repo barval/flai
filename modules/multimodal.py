@@ -411,7 +411,7 @@ class MultimodalModule(TranslationMixin):
             {"role": "user", "content": create_prompt},
         ]
 
-        response = self._call_multimodal(messages, lang=lang)
+        response = self._call_multimodal(messages, lang=lang, temperature=0)
 
         self.logger.info(f"Multimodal model response for parameter generation: {response[:500]}")
 
@@ -461,7 +461,7 @@ class MultimodalModule(TranslationMixin):
             {"role": "user", "content": create_prompt},
         ]
 
-        response = self._call_multimodal(messages, lang=lang)
+        response = self._call_multimodal(messages, lang=lang, temperature=0)
         self.logger.info(f"Multimodal model video param response: {response[:500]}")
 
         # Check for VRAM error before parsing JSON
@@ -579,10 +579,21 @@ class MultimodalModule(TranslationMixin):
         for key, value in DEFAULT_VIDEO_PARAMS.items():
             prompt_data.setdefault(key, value)
 
-    def _call_multimodal(self, messages: list[dict[str, Any]], lang: str = "ru") -> str:
-        """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""
+    def _call_multimodal(
+        self, messages: list[dict[str, Any]], lang: str = "ru", temperature: float | None = None
+    ) -> str:
+        """Call multimodal model via llama.cpp client (delegates to LlamaCppClient).
+
+        Parameter generation passes ``temperature=0``: that call INVENTS the
+        size (``width``/``height``) and the step count, so at the model's
+        configured temperature (0.7) the same request flipped between
+        1024×1024 and 1536×1024 from run to run — and the whole task (both
+        images and both videos) inherited whichever value came out.
+        """
         # LlamaCppClient handles validation and configuration internally
-        return self.llamacpp.chat(messages, model_type="multimodal", lang=lang)  # type: ignore[no-any-return]
+        return self.llamacpp.chat(  # type: ignore[no-any-return]
+            messages, model_type="multimodal", lang=lang, temperature=temperature
+        )
 
     def _is_vram_error(self, response: str | None) -> bool:
         """Check if the model response is a VRAM error message instead of JSON."""

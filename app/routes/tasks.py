@@ -602,7 +602,9 @@ def create_task_route():
     from app.database import get_db
 
     with get_db() as conn:
-        _row = conn.execute("SELECT language FROM users WHERE login = %s", (session["login"],)).fetchone()
+        c = conn.cursor()
+        c.execute("SELECT language FROM users WHERE login = %s", (session["login"],))
+        _row = c.fetchone()
         if _row and _row["language"] != session.get("language"):
             session["language"] = _row["language"]
     task_id = create_task(

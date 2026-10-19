@@ -61,7 +61,7 @@ def _seed_plan():
 
 
 @pytest.fixture
-def db_env(test_app):
+def db_env(test_app, monkeypatch):
     """Store-backed environment; skip when no real DB is reachable.
 
     Stops the create_app()-started executor singleton so the tests drive the
@@ -83,6 +83,9 @@ def db_env(test_app):
 
     # No Redis flag is ever set in these tests (the shared mock answers None).
     test_app.request_queue.redis.get.return_value = None
+    # The step loop reviews the remaining plan after every consumed step; the
+    # default stub answers «no change» so no test pays for a model call.
+    monkeypatch.setattr(ex, "_run_replan", lambda *a, **k: '{"changed": false}')
     # Stop the singleton executor thread started with this app instance.
     ex.stop_task_executor(timeout=2)
     with ex._executor_lock:
@@ -2992,3 +2995,274 @@ def test_results_digest_reports_a_skipped_step_with_its_reason(db_env, test_app)
     digest = ex._results_digest(task_id)
     assert "→ skipped" in digest
     assert "Пропущено" in digest, "the reason travels with the step"
+
+
+# ── plan correction: parse contract (no DB) ──────────────────────────────
+
+
+def test_parse_replan_no_change():
+    assert ex._parse_replan('{"changed": false}', 2) == {"changed": False, "steps": []}
+
+
+def test_parse_replan_rejects_an_unknown_tool():
+    """A syntactically valid reply naming a capability that does not exist must
+    not become a plan step — the whole reply is discarded (the plan is kept)."""
+    raw = '{"changed": true, "steps": [{"goal": "x", "tool": "teleport", "checkpoint_criteria": "c"}]}'
+    assert ex._parse_replan(raw, 2) is None
+
+
+def test_parse_replan_accepts_an_empty_tail():
+    """An empty replacement tail is legitimate: nothing remains to do."""
+    parsed = ex._parse_replan('{"changed": true, "steps": []}', 2)
+    assert parsed == {"changed": True, "steps": []}
+
+
+def test_parse_replan_numbers_steps_from_the_global_prefix():
+    """source_step is validated against the GLOBAL plan position, so a new step
+    may bind to an already-executed producer (image_gen → the rlm step)."""
+    raw = (
+        '```json\n{"changed": true, "steps": ['
+        '{"goal": "draw scene 1", "tool": "image_gen", "checkpoint_criteria": "an image exists", "source_step": 1}]}\n```'
+    )
+    parsed = ex._parse_replan(raw, 1)
+    assert parsed is not None and parsed["changed"] is True
+    assert parsed["steps"][0]["seq"] == 2, "positions continue after the executed prefix"
+    assert parsed["steps"][0]["source_step"] == 1
+    assert parsed["steps"][0]["tool"] == "image_gen"
+
+
+def test_parse_replan_ignores_prose_and_reasoning_wrappers():
+    raw = 'Thinking…\nhere is the verdict:\n{"changed": true, "steps": [{"goal": "g", "tool": "llm"}]}\nDone.'
+    parsed = ex._parse_replan(raw, 0)
+    assert parsed is not None and parsed["steps"][0]["goal"] == "g"
+
+
+def test_parse_replan_garbage_is_none():
+    assert ex._parse_replan("no json here", 1) is None
+    assert ex._parse_replan('{"changed": true}', 1) is None
+
+
+# ── plan correction: the review runs after every consumed step ───────────
+
+
+def _replan_reply(*steps):
+    return json.dumps({"changed": True, "steps": list(steps)})
+
+
+def _replan_once(payload):
+    """A stub that rewrites the plan on its FIRST call and then holds it.
+
+    A stub that keeps returning the same rewrite would grow the plan forever
+    (the review runs after every consumed step) — the tests below must express
+    «expanded once, then stable».
+    """
+    state = {"done": False}
+
+    def _stub(*a, **k):
+        if not state["done"]:
+            state["done"] = True
+            return payload
+        return '{"changed": false}'
+
+    return _stub
+
+
+def test_replan_expands_the_remaining_plan(db_env, test_app, gate_open, monkeypatch):
+    """The flagship case: the analysis finds more work than the planner guessed
+    (illustration steps are planned blind; the analysis discovers the scenes)."""
+    store = db_env
+    plan = {
+        "title": "t",
+        "steps": [
+            {"seq": 1, "goal": "analyse the document", "tool": "llm", "checkpoint_criteria": "scenes listed"},
+            {"seq": 2, "goal": "elaborate scene 1", "tool": "llm", "checkpoint_criteria": "scene written"},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan, minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result(result="scenes: 1,2,3"))
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(
+        ex,
+        "_run_replan",
+        _replan_once(_replan_reply(*[{"goal": f"elaborate scene {i}", "tool": "llm"} for i in (1, 2, 3)])),
+    )
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert [s["goal"] for s in t["step_plan"]["steps"]] == [
+        "analyse the document",
+        "elaborate scene 1",
+        "elaborate scene 2",
+        "elaborate scene 3",
+    ], "the executed prefix is kept and the tail is replaced by the discovered work"
+    assert t["step_plan"]["revisions"] == [{"upto": 1, "total": 4}]
+    assert t["step_plan"]["replanned_upto"] == 4
+    assert t["status"] == "completed" and t["next_step_index"] == 4
+    rows = {int(r["seq"]): r for r in store.get_task_steps(task_id)}
+    assert rows[2]["status"] == "passed" and rows[2]["goal"] == "elaborate scene 1"
+    assert rows[4]["goal"] == "elaborate scene 3", "every new tail position got its own row"
+
+
+def test_replan_no_change_and_garbage_keep_the_plan(db_env, test_app, gate_open, monkeypatch):
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", lambda *a, **k: "not a plan at all")
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert [s["goal"] for s in t["step_plan"]["steps"]] == ["Do first thing", "Do second thing"]
+    assert "revisions" not in (t["step_plan"] or {})
+    assert t["step_plan"]["replanned_upto"] == 2
+    assert t["status"] == "completed", "an unusable review is never a task failure"
+
+
+def test_replan_is_forward_only(db_env, test_app, gate_open, monkeypatch):
+    """An executed step keeps its result, its row and its goal."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result(result="kept"))
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", _replan_once(_replan_reply({"goal": "replacement", "tool": "llm"})))
+
+    _cycle(test_app)
+
+    steps = store.get_task_steps(task_id)
+    first = next(s for s in steps if int(s["seq"]) == 1)
+    assert first["goal"] == "Do first thing" and first["result"] == "kept"
+    assert store.get_task(task_id)["step_plan"]["steps"][0]["goal"] == "Do first thing"
+
+
+def test_replan_empty_tail_finalizes_the_task(db_env, test_app, gate_open, monkeypatch):
+    """{"changed": true, "steps": []} means «nothing remains» — the task must
+    finalize, not fail and not spin."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", _replan_once(_replan_reply()))
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "completed"
+    assert len(t["step_plan"]["steps"]) == 1, "the remaining step was removed"
+    assert t["step_plan"]["revisions"] == [{"upto": 1, "total": 1}]
+
+
+def test_replan_runs_after_the_last_step_when_the_user_answered(db_env, test_app, gate_open, monkeypatch):
+    """«Вечерняя сказка»: the plan was one clarifying question and NO
+    illustration steps. The user's answer «нарисуй все» is the new fact that
+    must grow the plan — even though the plan is already exhausted."""
+    store = db_env
+    plan = {"title": "t", "steps": [{"seq": 1, "goal": "which scenes?", "tool": "llm", "user_input_expected": True}]}
+    task_id = _mk_task(store, status="awaiting_user", step_plan=plan, minutes_ago=30)
+    store.add_step(task_id=task_id, seq=1, kind="question", goal="which scenes?", tool="llm")
+    store.add_user_input_step(task_id, question_seq=1, answer="draw them all")
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", _replan_once(_replan_reply({"goal": "elaborate scene 1", "tool": "llm"})))
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert [s["goal"] for s in t["step_plan"]["steps"]] == ["which scenes?", "elaborate scene 1"]
+    assert t["step_plan"]["revisions"] == [{"upto": 1, "total": 2}]
+    assert t["status"] == "completed"
+
+
+def test_replan_created_rows_use_the_capability_kind(db_env, test_app):
+    """A rewritten tail materializes its rows with the right kind — a media step
+    must go through the queue, not through the direct-step path."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    executor = ex.TaskExecutor(app=test_app)
+    task = store.get_task(task_id)
+    executor._apply_replan(
+        task, 1, [{"seq": 2, "goal": "draw scene 1", "tool": "image_gen", "checkpoint_criteria": "an image exists"}]
+    )
+
+    rows = {int(r["seq"]): r for r in store.get_task_steps(task_id)}
+    assert rows[2]["kind"] == "subtask" and rows[2]["tool"] == "image_gen"
+    assert "revisions" in store.get_task(task_id)["step_plan"]
+
+
+def test_replan_does_not_repeat_for_the_same_position(db_env, test_app, gate_open, monkeypatch):
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    calls = []
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", lambda *a, **k: (calls.append(1), '{"changed": false}')[1])
+
+    _cycle(test_app)
+
+    assert len(calls) == 2, "one review per consumed step, never repeated for the same index"
+    assert store.get_task(task_id)["step_plan"]["replanned_upto"] == 2
+
+
+def test_replan_skipped_while_the_gate_is_closed(db_env, test_app, monkeypatch):
+    """No model call may run outside the gate — the review waits, it is not lost."""
+    store = db_env
+    task_id = _mk_task(store, status="active", step_plan=_seed_plan(), next_step_index=1, minutes_ago=30)
+    calls = []
+    monkeypatch.setattr(ex, "_run_replan", lambda *a, **k: calls.append(1))
+
+    ex.TaskExecutor(app=test_app)._run_task(store.get_task(task_id), gate_open=False)
+
+    assert calls == [], "the review must not run with the gate closed"
+    assert store.get_task(task_id)["status"] == "frozen"
+
+
+def test_step_start_blocked_reports_cancel_and_budget(db_env, test_app):
+    """The review's guard names the reason so the hook applies the right exit
+    (cancel / expire / freeze) before any model call."""
+    store = db_env
+    executor = ex.TaskExecutor(app=test_app)
+
+    fresh = store.get_task(_mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=30))
+    assert executor._step_start_blocked(fresh, gate_open=True) is None
+
+    spent = dict(fresh, accumulated_exec_seconds=1e9)
+    assert executor._step_start_blocked(spent, gate_open=True) == "expired"
+
+    test_app.request_queue.redis.get.side_effect = lambda key: b"1"
+    assert executor._step_start_blocked(fresh, gate_open=True) == "cancelled"
+    test_app.request_queue.redis.get.side_effect = None
+    test_app.request_queue.redis.get.return_value = None
+
+
+def test_replan_skipped_when_the_budget_is_spent(db_env, test_app, gate_open, monkeypatch):
+    """The 24 h budget is the only growth limit — it also stops the review."""
+    store = db_env
+    task_id = _mk_task(
+        store, status="active", step_plan=_seed_plan(), next_step_index=1, accumulated=1e9, minutes_ago=30
+    )
+    calls = []
+    monkeypatch.setattr(ex, "_run_replan", lambda *a, **k: calls.append(1))
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "summary")
+
+    ex.TaskExecutor(app=test_app)._run_task(store.get_task(task_id), gate_open=True)
+
+    assert calls == []
+    assert store.get_task(task_id)["status"] == "expired"
+
+
+def test_replan_soft_failure_keeps_the_task_running(db_env, test_app, gate_open, monkeypatch):
+    """A broken re-planner call (transport error) is not a task failure."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+    def _boom(*a, **k):
+        raise RuntimeError("model exploded")
+
+    monkeypatch.setattr(ex, "_run_replan", _boom)
+
+    _cycle(test_app)
+
+    assert store.get_task(task_id)["status"] == "completed"

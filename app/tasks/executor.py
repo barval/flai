@@ -578,6 +578,43 @@ def _plan_text(step_plan: Any) -> str:
     return "\n".join(lines)
 
 
+def _document_tool_rule_and_note(task: dict, lang: str) -> tuple[str, str]:
+    """The localized (document_tool_rule, deep_analysis_note) pair.
+
+    Shared by the plan phase and the plan review so a rewritten plan keeps the
+    same 🔬 Deep Analysis contract the planner was given.
+    """
+    from flask_babel import force_locale
+    from flask_babel import gettext as _
+
+    with force_locale(lang):
+        if task.get("deep_analysis"):
+            # 🔬 ON: the documents are analyzed by the RLM deep-analysis
+            # step. The planner must NOT also plan a rag+llm search — with
+            # the old unconditional template rule it planned rag first and
+            # rlm on top, so the ordinary RAG path ran before RLM.
+            document_tool_rule = _(
+                "The user turned on 🔬 Deep Analysis: to find data in the user's documents, "
+                'plan a step with tool "rlm" (multi-step deep analysis) over the attached '
+                "documents (all of the user's documents when none are attached). Do NOT plan "
+                '"rag" or "llm" steps for document search. Do not ask which documents to analyze.'
+            )
+            deep_note = _(
+                "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
+                '"rlm" that deeply analyzes the attached documents (all of the user\'s documents '
+                "when none are attached) and answers the task request; do not ask which documents "
+                "to analyze."
+            )
+            return document_tool_rule, deep_note
+        document_tool_rule = _(
+            'To find data in the user\'s documents, plan a step with tool "rag" (document '
+            'search) followed by a step with tool "llm" that composes the answer from the '
+            "found fragments. Do NOT ask the user which documents to analyze: if documents are "
+            "attached to the task — search them, otherwise search all of the user's documents."
+        )
+        return document_tool_rule, ""
+
+
 def _results_digest(task_id: str, char_cap: int = 20000) -> str:
     """All step results (the final-answer / summary corpus)."""
     parts = []
@@ -593,6 +630,73 @@ def _results_digest(task_id: str, char_cap: int = 20000) -> str:
                 body = str(r.get("last_error") or "")[:500]
             parts.append(f"{label}: {body}" if body else label)
     return "\n".join(parts)[:char_cap]
+
+
+def _recent_results_digest(task_id: str, char_cap: int = 6000) -> str:
+    """Tail-weighted step results for the plan review.
+
+    ``_results_digest`` keeps the FIRST ``char_cap`` characters — on a task that
+    runs for hours that hides exactly the freshest facts the review is about.
+    """
+    parts = []
+    for r in get_task_steps(task_id):
+        if r["kind"] in ("question", "user_input", "final", "plan_update"):
+            continue
+        body = (r["result"] or "")[:2000]
+        if not body and r["status"] == "skipped":
+            body = str(r.get("last_error") or "")[:300]
+        parts.append(f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']} → {r['status']}: {body}")
+    return "\n".join(parts)[-char_cap:]
+
+
+def _parse_replan(raw: str, prefix_len: int) -> dict | None:
+    """Fence-tolerant parse of the re-planner reply.
+
+    Returns ``{"changed": bool, "steps": [...]}`` or None when the reply is
+    unusable. None is NOT an error: the caller keeps the plan and the task runs
+    on (a bad review must never damage a running plan).
+    """
+    from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
+    from app.tasks.tools import get_capabilities
+
+    text = _strip_thinking_tags(_strip_generic_reasoning(raw or "")).strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence:
+        text = fence.group(1).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if not bool(data.get("changed")):
+        return {"changed": False, "steps": []}
+    raw_steps = data.get("steps")
+    if not isinstance(raw_steps, list):
+        return None
+    known_tools = {str(c.get("id") or "") for c in get_capabilities()}
+    steps = []
+    for i, s in enumerate(raw_steps):
+        if not isinstance(s, dict):
+            return None
+        tool = str(s.get("tool", ""))
+        if tool not in known_tools:
+            return None
+        own_seq = prefix_len + i + 1
+        steps.append(
+            {
+                "seq": own_seq,
+                "goal": str(s.get("goal", "")),
+                "tool": tool,
+                "checkpoint_criteria": str(s.get("checkpoint_criteria", "")),
+                "user_input_expected": bool(s.get("user_input_expected", False)),
+                "source_step": _valid_source_step(s.get("source_step"), own_seq),
+            }
+        )
+    return {"changed": True, "steps": steps}
 
 
 def _parse_plan(raw: str) -> dict | None:
@@ -692,6 +796,16 @@ def _run_planner(app: Flask, prompt: str, cancel_check, lang: str, status_callba
     global _LAST_PLANNER_USAGE
     text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
     _LAST_PLANNER_USAGE = usage or {}
+    return text
+
+
+def _run_replan(app: Flask, prompt: str, cancel_check, lang: str, status_callback=None) -> str:
+    """One reasoning-model call for the plan review (text only).
+
+    Same JIT-loaded call as the planner; greedy decoding, because the answer is
+    a contract (a plan tail) and not prose. Tests patch this seam.
+    """
+    text, _usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
     return text
 
 
@@ -1133,6 +1247,40 @@ class TaskExecutor:
             steps = plan.get("steps", []) if isinstance(plan, dict) else plan
             idx = int(task.get("next_step_index") or 0)
 
+            replanned = int(plan.get("replanned_upto") or 0) if isinstance(plan, dict) else 0
+            if idx > replanned:
+                # A step was consumed since the last review: the remaining plan
+                # may need to change. Runs BEFORE the finalize check on purpose —
+                # a plan whose steps are all consumed can still GROW (the user's
+                # answer to a clarifying question is the new fact that adds the
+                # work). The same three guards protect this model call as protect
+                # a step start, so nothing runs outside the gate.
+                blocked = self._step_start_blocked(task, gate_open)
+                if blocked == "expired":
+                    self._budget_expired(task)
+                    return
+                if blocked == "frozen":
+                    update_task(task_id, status="frozen", abort_reason="chat")
+                    return
+                if blocked == "cancelled":
+                    self._cancel_task(task)
+                    return
+                try:
+                    task = self._replan_phase(task, idx)
+                except StepAborted:
+                    self._cancel_task(get_task(task_id) or task)
+                    return
+                except Exception as e:
+                    # A review failure is never a task failure: keep the plan.
+                    logger.warning(f"task {task_id}: plan review failed ({e}) — plan kept")
+                    task = get_task(task_id) or task
+                plan = task.get("step_plan") or {}
+                steps = plan.get("steps", []) if isinstance(plan, dict) else plan
+                idx = int(task.get("next_step_index") or 0)
+                if self._redis_flag(f"task:cancelled:{task_id}"):
+                    self._cancel_task(task)
+                    return
+
             if idx >= len(steps):
                 self._finalize(task)
                 return
@@ -1363,35 +1511,7 @@ class TaskExecutor:
         """Planner call → parse → step rows. Returns "ok" or "failed"."""
         task_id = task["id"]
         lang = task.get("lang") or "ru"
-        deep_note = ""
-        from flask_babel import force_locale
-        from flask_babel import gettext as _
-
-        with force_locale(lang):
-            if task.get("deep_analysis"):
-                # 🔬 ON: the documents are analyzed by the RLM deep-analysis
-                # step. The planner must NOT also plan a rag+llm search — with
-                # the old unconditional template rule it planned rag first and
-                # rlm on top, so the ordinary RAG path ran before RLM.
-                document_tool_rule = _(
-                    "The user turned on 🔬 Deep Analysis: to find data in the user's documents, "
-                    'plan a step with tool "rlm" (multi-step deep analysis) over the attached '
-                    "documents (all of the user's documents when none are attached). Do NOT plan "
-                    '"rag" or "llm" steps for document search. Do not ask which documents to analyze.'
-                )
-                deep_note = _(
-                    "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with tool "
-                    '"rlm" that deeply analyzes the attached documents (all of the user\'s documents '
-                    "when none are attached) and answers the task request; do not ask which documents "
-                    "to analyze."
-                )
-            else:
-                document_tool_rule = _(
-                    'To find data in the user\'s documents, plan a step with tool "rag" (document '
-                    'search) followed by a step with tool "llm" that composes the answer from the '
-                    "found fragments. Do NOT ask the user which documents to analyze: if documents are "
-                    "attached to the task — search them, otherwise search all of the user's documents."
-                )
+        document_tool_rule, deep_note = _document_tool_rule_and_note(task, lang)
         request_text = _request_text(task)
         attachments = _attachments_section(task, lang)
         params = {
@@ -1510,19 +1630,158 @@ class TaskExecutor:
         self._create_plan_step_rows(task_id, plan["steps"])
         return "ok"
 
-    def _create_plan_step_rows(self, task_id: str, plan_steps: list[dict]) -> None:
-        """Create one step row per plan position (kind per capability class)."""
+    # ── Plan review (dynamic plan correction, part C) ─────────────────
+
+    def _replan_params(self, task: dict, idx: int, lang: str) -> dict[str, str]:
+        """Template variables for the plan review (see ``_replan_phase``).
+
+        ``remaining_plan`` is numbered by GLOBAL plan position so the reviewer
+        and the JSON it returns share one numbering (an empty block means the
+        plan is exhausted — the reviewer may still add work).
+        """
+        plan = task.get("step_plan") or {}
+        steps = plan.get("steps", []) if isinstance(plan, dict) else (plan or [])
+        tail = [s for s in (steps or [])[idx:] if isinstance(s, dict)]
+        remaining = "\n".join(
+            f"{idx + i + 1}. [{s.get('tool', 'llm')}] {s.get('goal', '')}" for i, s in enumerate(tail)
+        )
+        document_tool_rule, deep_note = _document_tool_rule_and_note(task, lang)
+        return {
+            "task_request": _request_text(task),
+            "response_language": _response_language_name(lang),
+            "results_digest": _recent_results_digest(task["id"]),
+            "user_answers": self._user_answers_text(task["id"]),
+            "remaining_plan": remaining,
+            "capabilities_section": _capabilities_section(
+                deep_analysis=bool(task.get("deep_analysis")),
+                camera_rooms=self._camera_rooms(task),
+                has_images=bool(task.get("images")),
+                lang=lang,
+            ),
+            "attachments_section": _attachments_section(task, lang),
+            "document_tool_rule": document_tool_rule,
+            "deep_analysis_note": deep_note,
+            "current_time": get_current_time_in_timezone(self.app) or "",
+        }
+
+    def _step_start_blocked(self, task: dict, gate_open: bool | None = None) -> str | None:
+        """The same three guards a step start gets, for the plan review."""
+        task_id = task["id"]
+        if float(task.get("accumulated_exec_seconds") or 0.0) >= float(
+            self._cfg("TASK_TOTAL_BUDGET_S", TASK_TOTAL_BUDGET_S)
+        ):
+            return "expired"
+        if not self._gate_value(gate_open):
+            return "frozen"
+        if self._redis_flag(f"task:cancelled:{task_id}"):
+            return "cancelled"
+        return None
+
+    def _apply_replan(self, task: dict, idx: int, new_steps: list[dict]) -> dict:
+        """Replace the plan tail from ``idx`` on; forward-only.
+
+        ``steps[:idx]`` is copied verbatim — an executed step is immutable.
+        """
+        task_id = task["id"]
+        plan = self._plan_dict(task)
+        steps = list(plan.get("steps") or [])
+        merged = list(steps[:idx]) + list(new_steps)
+        for pos, s in enumerate(merged):
+            s["seq"] = pos + 1
+        from app.tasks.store import delete_pending_steps_after
+
+        delete_pending_steps_after(task_id, idx)
+        self._create_plan_step_rows(task_id, new_steps, start_pos=idx, meta={})
+        revisions = list(plan.get("revisions") or [])
+        revisions.append({"upto": idx, "total": len(merged)})
+        update_task(
+            task_id,
+            step_plan={**plan, "steps": merged, "replanned_upto": idx, "revisions": revisions},
+        )
+        logger.info(f"task {task_id}: plan rewritten at index {idx} ({len(merged)} steps total)")
+        self._publish_task_update(task_id)
+        return get_task(task_id) or task
+
+    def _plan_dict(self, task: dict) -> dict:
+        """The task's step_plan as a dict (tolerant of the legacy list form)."""
+        plan = task.get("step_plan") or {}
+        return plan if isinstance(plan, dict) else {"steps": list(plan or [])}
+
+    def _replan_phase(self, task: dict, idx: int) -> dict:
+        """Review the remaining plan against what the executed steps produced.
+
+        Never raises for a soft failure: an unusable reply is a «no change» and
+        the task runs on. ``StepAborted`` (a user stop inside the streaming call)
+        propagates to the caller, which cancels the task.
+        """
+        task_id = task["id"]
+        lang = task.get("lang") or "ru"
+        params = self._replan_params(task, idx, lang)
+        from app.utils import format_prompt
+
+        with self.app.app_context():
+            prompt = format_prompt("task_replan.template", params, lang=lang)
+        if not prompt:
+            logger.warning(f"task {task_id}: re-planner template unavailable — plan kept")
+            return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+
+        from app.tasks.events import publish_task_stage
+
+        def _on_model_loaded(phase: str) -> None:
+            if phase == "generating":
+                publish_task_stage(self.app, task, "making_plan")
+
+        cancel_check = lambda: self._redis_flag(f"task:cancelled:{task_id}")  # noqa: E731
+        publish_task_stage(self.app, task, "loading_reasoning_model")
+        start = time.monotonic()
+        try:
+            raw = _run_replan(self.app, prompt, cancel_check, lang, status_callback=_on_model_loaded)
+        except StepAborted:
+            raise
+        except Exception as e:
+            # A transport error in the review is not a task failure.
+            logger.warning(f"task {task_id}: re-planner call failed ({e}) — plan kept")
+            raw = ""
+        finally:
+            publish_task_stage(self.app, task, None)
+        self._add_budget(task_id, round(time.monotonic() - start, 2))
+
+        parsed = _parse_replan(raw, idx)
+        if parsed is None:
+            logger.warning(
+                "task %s: re-planner reply unusable (%d chars); raw head=%r", task_id, len(raw or ""), (raw or "")[:300]
+            )
+            return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+        if not parsed["changed"]:
+            return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+        return self._apply_replan(task, idx, parsed["steps"])
+
+    def _create_plan_step_rows(
+        self, task_id: str, plan_steps: list[dict], start_pos: int = 0, meta: dict | None = None
+    ) -> None:
+        """Create one step row per plan position (kind per capability class).
+
+        ``start_pos`` offsets the row seq for a plan rewrite (the tail starts at
+        the current plan index). ``meta`` overrides the header metadata stamped
+        on a question row (``None`` = the task's planner meta, the plan phase;
+        ``{}`` = no header, a review-created question).
+        """
         # The plan carries the planner's own header metadata (a reasoning
         # call): a plan-typed clarifying question (user_input_expected step)
         # borrows it so its message shows the model + tokens + time too.
         task = get_task(task_id) or {}
-        plan_meta = (task.get("step_plan") or {}).get("plan_meta") if isinstance(task.get("step_plan"), dict) else None
+        if meta is None:
+            plan_meta = (
+                (task.get("step_plan") or {}).get("plan_meta") if isinstance(task.get("step_plan"), dict) else None
+            )
+        else:
+            plan_meta = meta
         plan_meta = plan_meta if isinstance(plan_meta, dict) else {}
         for pos, s in enumerate(plan_steps or []):
             kind = self._step_kind(s)
             sid = add_step(
                 task_id=task_id,
-                seq=pos + 1,
+                seq=start_pos + pos + 1,
                 kind=kind,
                 goal=str(s.get("goal", "")),
                 tool=str(s.get("tool", "")),

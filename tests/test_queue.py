@@ -954,3 +954,74 @@ class TestApiImageEditTask:
             "neutral",
             task=task,
         )
+
+
+@pytest.mark.unit
+class TestWaitForVramDeadline:
+    """A busy GPU must be waited out, never reported as «GPU memory unavailable».
+
+    The queue carried its own hardcoded 30 s VRAM deadline beside the resource
+    manager's 15 s one: whichever expired first turned a GPU that was merely
+    still unloading a 12 GB model into a failed task step.
+    """
+
+    def _queue(self, monkeypatch, timeout_s, free_mb_after=None):
+        from app.queue import RedisRequestQueue
+
+        app = Mock()
+        app.config = {
+            "REDIS_URL": "redis://localhost:6379/0",
+            "SECRET_KEY": "test-secret-key",
+            "LLAMA_SWAP_URL": "http://swap:8080",
+            "VRAM_WAIT_TIMEOUT_S": timeout_s,
+        }
+        app.logger = Mock()
+        app.modules = {}
+        clock = {"t": 1000.0}
+
+        def _sleep(seconds):
+            clock["t"] += seconds
+
+        rm = Mock()
+        rm.hardware.platform = "nvidia"
+        rm.hardware.available_vram_mb = 100
+        rm.estimate_video_vram_needed.return_value = 8500
+        monkeypatch.setattr("app.queue.time.time", lambda: clock["t"])
+        monkeypatch.setattr("app.queue.time.sleep", _sleep)
+        monkeypatch.setattr("app.resource_manager.get_resource_manager", lambda: rm)
+        running = Mock(status_code=200)
+        running.json.return_value = {"running": []}
+        monkeypatch.setattr("requests.get", lambda *a, **k: running)
+
+        def _free(platform):
+            if free_mb_after is not None and clock["t"] - 1000.0 >= free_mb_after:
+                return 20000
+            return 100
+
+        monkeypatch.setattr("app.platform_detect.query_free_vram_mb", _free)
+        with (
+            patch("app.queue.RedisRequestQueue.start_worker"),
+            patch("app.queue.redis.from_url", return_value=Mock()),
+        ):
+            queue = RedisRequestQueue(app)
+        queue._unload_llamacpp_models = Mock()
+        return queue, clock
+
+    def test_it_gives_up_at_the_configured_deadline(self, monkeypatch):
+        queue, clock = self._queue(monkeypatch, timeout_s=5)
+
+        assert queue._wait_for_vram(needed_mb=8000) is False
+        waited = clock["t"] - 1000.0
+        assert 4.5 <= waited <= 6.5, f"the configured 5 s deadline must be honoured, waited {waited}"
+
+    def test_it_waits_out_a_busy_gpu_beyond_30s(self, monkeypatch):
+        queue, clock = self._queue(monkeypatch, timeout_s=120, free_mb_after=45)
+
+        assert queue._wait_for_vram(needed_mb=8000) is True
+        assert clock["t"] - 1000.0 >= 45, "the wait must outlast the old 30 s deadline"
+
+    def test_wait_for_vram_full_honours_the_same_deadline(self, monkeypatch):
+        queue, clock = self._queue(monkeypatch, timeout_s=5)
+
+        assert queue._wait_for_vram_full() is False
+        assert 4.5 <= clock["t"] - 1000.0 <= 6.5

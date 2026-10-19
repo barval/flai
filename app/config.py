@@ -35,6 +35,9 @@ def load_config(app):
     # automatically when empty; see app/platform_detect.py
     app.config["FLAI_PLATFORM"] = os.getenv("FLAI_PLATFORM", "")
     app.config["LLAMA_SWAP_URL"] = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+    # How long ensure_vram_for waits for a busy GPU before it gives up
+    # (one 12 GB load/unload cycle can outlive a 15 s deadline).
+    app.config["VRAM_WAIT_TIMEOUT_S"] = int(os.getenv("VRAM_WAIT_TIMEOUT_S", "120"))
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config["SD_MODEL_TYPE"] = os.getenv("SD_MODEL_TYPE", "z_image_turbo")
     app.config["SD_EDIT_MODEL_TYPE"] = os.getenv("SD_EDIT_MODEL_TYPE", "flux-2-klein-4b")
@@ -149,6 +152,12 @@ def load_config(app):
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
     app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
     app.config["TASK_POLL_INTERVAL_S"] = int(os.getenv("TASK_POLL_INTERVAL_S", "1"))
+    # How many executor cycles a subtask's failed liveness probe may hold the
+    # step before it is failed anyway (a broken queue must not wedge a task).
+    app.config["TASK_SUBTASK_ALIVE_UNKNOWN_MAX"] = int(os.getenv("TASK_SUBTASK_ALIVE_UNKNOWN_MAX", "3"))
+    # How long ONE direct step may wait for a busy GPU before it gives up
+    # (the step retries with backoff inside this budget, see runner._call_reasoning).
+    app.config["TASK_VRAM_WAIT_S"] = int(os.getenv("TASK_VRAM_WAIT_S", "600"))
     # How many executor cycles a subtask result may stay absent before the
     # poller checks whether its queue worker is still alive (default 10 = 10 s
     # with TASK_POLL_INTERVAL_S=1; exhausted+dead ⇒ step failed, task continues).

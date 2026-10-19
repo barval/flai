@@ -13,6 +13,7 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 ```bash
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
+VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
 ```
 
 **Service URLs:**
@@ -79,6 +80,8 @@ TASK_TOTAL_BUDGET_S=86400       # Pure execution budget per task (seconds); on e
 TASK_STEP_MAX_ATTEMPTS=3        # Step attempts including corrective checkpoint retries, then the step is failed
 TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
 TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check
+TASK_SUBTASK_ALIVE_UNKNOWN_MAX=3 # Cycles a failed liveness probe may hold a step before it is failed anyway
+TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU before it gives up
 ```
 
 **Router:**

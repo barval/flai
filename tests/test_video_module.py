@@ -351,6 +351,9 @@ class TestVideoModuleLowVram:
             "LTX_VIDEO_TIMEOUT": 600,
             "LLAMA_SWAP_URL": "http://test-llamaswap:8080",
             "LLAMACPP_URL": "http://test-llamacpp:8033",
+            # Keeps the low-VRAM tests short: the gate now waits out a busy GPU
+            # for VRAM_WAIT_TIMEOUT_S seconds instead of failing after 15 s.
+            "VRAM_WAIT_TIMEOUT_S": 1,
         }
         app.logger = MagicMock()
         return app
@@ -389,6 +392,65 @@ class TestVideoModuleLowVram:
         assert "VRAM" in result["error"]
         assert "1000" in result["error"] or "below" in result["error"].lower()
         assert post_calls["count"] == 0
+
+    def test_the_vram_gate_waits_out_a_busy_gpu(self, mock_app, monkeypatch):
+        """A busy GPU is a state to wait out, never «Video generation requires GPU».
+
+        The gate carried a hardcoded 15 s deadline beside the resource manager's
+        15 s one: a 12 GB reasoning model that was still unloading made video
+        generation fail instantly with a user-visible error.
+        """
+        import base64
+
+        import requests
+
+        from modules.video import VideoModule
+
+        mock_app.config["VRAM_WAIT_TIMEOUT_S"] = 120
+        clock = {"t": 1000.0}
+
+        def _sleep(seconds):
+            clock["t"] += seconds
+
+        get_resp = MagicMock(status_code=200)
+        get_resp.json.return_value = {"running": []}
+        post_resp = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "success": True,
+                "video_data": base64.b64encode(b"fake mp4").decode("utf-8"),
+                "file_name": "ok.mp4",
+                "file_size": 100,
+                "file_type": "video/mp4",
+                "generation_time": 5.0,
+                "seed": 1,
+                "metadata": {},
+            },
+        )
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: get_resp)
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: post_resp)
+        monkeypatch.setattr("modules.video.time.time", lambda: clock["t"])
+        monkeypatch.setattr("modules.video.time.sleep", _sleep)
+
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.total_vram_mb = 16311
+            mock_rm_instance.hardware.available_vram_mb = 1000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 3057
+
+            def _poll():
+                # The model unload finishes after ~40 s on this host.
+                mock_rm_instance.hardware.available_vram_mb = 12000 if clock["t"] - 1000.0 >= 40 else 1000
+
+            mock_rm_instance._poll_vram.side_effect = _poll
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 120})
+
+        assert result["success"] is True, result.get("error")
+        assert clock["t"] - 1000.0 >= 40, "the gate must outlast the old 15 s deadline"
 
     def test_healthy_vram_proceeds_normally(self, mock_app, monkeypatch):
         import base64

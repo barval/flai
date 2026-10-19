@@ -338,6 +338,34 @@ class TestImageGenSubtaskResult:
         assert saved["session_id"] == task["id"], "the file lands in the task's own folder"
         queue._save_and_respond.assert_not_called()
 
+    def test_a_failed_health_probe_does_not_block_the_generation(self):
+        """The sd-wrapper is single-threaded: while it renders, ``/health``
+        cannot answer, so the 5 s probe timeout used to be read as "service
+        down" and every step that landed during a generation died in ~5 s with
+        «Image generation module unavailable». A probe failure is not proof —
+        the generation request itself must decide.
+        """
+        image = MagicMock()
+        image.available = False
+        image.check_availability.return_value = False
+        image._call_wrapper.return_value = {
+            "success": True,
+            "image_data": _PNG_B64,
+            "file_name": "cat.png",
+            "file_type": "image/png",
+            "file_size": 4242,
+        }
+        queue = self._queue(image)
+        queue._build_error_response = MagicMock(return_value={"status": "error"})
+        task = self._task()
+
+        with patch("app.queue.save_uploaded_file", return_value=f"{task['id']}/cat.png"):
+            result = queue._process_image_gen_task("draw a cat", task["session_id"], "tester", "en", task=task)
+
+        assert result["status"] == "completed"
+        image._call_wrapper.assert_called_once()
+        queue._build_error_response.assert_not_called()
+
     def test_result_envelope_carries_the_token_usage(self):
         """The multimodal parameter call bills real tokens — they must reach the
         step header instead of dying in the worker's cleanup clause.

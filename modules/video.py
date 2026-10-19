@@ -343,7 +343,11 @@ class VideoModule(TranslationMixin):
             # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
             # with _resolve_use_gpu() below.
             swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-            deadline = time.time() + 15
+            # A busy GPU is waited out, not reported as a failure: a hardcoded
+            # 15 s deadline failed video generation while a 12 GB reasoning model
+            # was still unloading (same class of bug as ensure_vram_for).
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
+            deadline = time.time() + timeout
             video_needed = rm.estimate_video_vram_needed() + 1000
             while time.time() < deadline:
                 rm._poll_vram()
@@ -369,7 +373,7 @@ class VideoModule(TranslationMixin):
                     "is below safe threshold ({need} MB). Please try again later or simplify the request.",
                     lang,
                 ).format(free=free, need=video_needed)
-                self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
+                self.logger.warning(f"VRAM wait timeout ({timeout}s) — free={free}MB, models={loaded}")
                 return {"success": False, "error": err_msg}
 
             use_gpu = self._resolve_use_gpu(rm)

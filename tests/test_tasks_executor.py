@@ -568,6 +568,32 @@ def test_restart_marks_orphaned_running_steps(db_env, test_app, gate_open, monke
     assert store.get_step(orphan)["interrupt_reason"] == "restart"
 
 
+def test_restart_marks_orphaned_subtask_steps(db_env, test_app, gate_open):
+    """A step handed to the request queue when the process died is marked
+    interrupted too.
+
+    The 'running'-only sweep left it in 'subtask_running'; the queue request had
+    died with the worker, so the step failed minutes later with «Result of
+    subtask expired while task was paused» — GPU time the user already paid for
+    thrown away by a restart (live: task f2195bcf step 3, 14:58:16).
+    """
+    store = db_env
+    task_id = _mk_task(store, status="active", step_plan=_seed_plan(), minutes_ago=30)
+    orphan = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="draw a cat", tool="image_gen")
+    store.update_step(
+        orphan,
+        status="subtask_running",
+        started_at="2026-10-11T10:00:00+00:00",
+        extra={"subtask_queue_id": "q-1"},
+    )
+
+    ex.TaskExecutor(app=test_app)._mark_interrupted_by_restart()
+
+    s = store.get_step(orphan)
+    assert s["status"] == "interrupted" and s["interrupt_reason"] == "restart"
+    assert store.get_task(task_id)["abort_reason"] == "restart", "task-level restart marker set"
+
+
 def test_restart_restarts_task_audio_transcription(db_env, test_app, monkeypatch):
     """A task frozen for Whisper transcription when the process died keeps its
     freeze and the transcription thread is started again (its files are still

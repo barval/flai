@@ -1507,7 +1507,7 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int = 60) -> bool:
+    def _wait_for_vram_full(self, timeout: int | None = None) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
@@ -1518,7 +1518,12 @@ class RedisRequestQueue:
         Active unload synchronization: if models remain loaded in
         llama-swap after the initial POST /unload, re-triggers unload
         every poll cycle until /running reports 0.
+
+        The deadline defaults to ``VRAM_WAIT_TIMEOUT_S`` (120 s) — a busy GPU
+        is waited out, not reported as unavailable.
         """
+        if timeout is None:
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
@@ -1619,13 +1624,21 @@ class RedisRequestQueue:
 
         return prompt_data, None
 
-    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 30) -> bool:
+    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int | None = None) -> bool:
         """Block until at least ``needed_mb`` MB of VRAM is free AND no LLM tasks are running.
 
         First unloads llama.cpp models, then polls VRAM and llama-swap /running endpoint
         until sufficient space available AND no LLM processes occupy memory.
         Returns True on success, False if still insufficient after timeout.
+
+        ``timeout`` bounds a genuinely stuck GPU only — it is NOT a "give up on a
+        busy GPU" switch. The default comes from ``VRAM_WAIT_TIMEOUT_S`` (120 s):
+        a hardcoded 30 s deadline turned a GPU that was still unloading a 12 GB
+        model into «GPU memory unavailable. Try again in a moment.» and a failed
+        task step.
         """
+        if timeout is None:
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
         self._unload_llamacpp_models()
         from app.resource_manager import get_resource_manager
 
@@ -1883,11 +1896,16 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
-        self.app.modules["image"].check_availability()
-        if not self.app.modules["image"].available:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
-            )
+        image_module = self.app.modules["image"]
+        if not image_module.available:
+            # A probe failure is NOT proof the service is down: the wrapper is
+            # single-threaded and cannot answer /health while it renders (live:
+            # steps died in ~5 s with «Image generation module unavailable»
+            # during a running generation). Re-probe once for a stale flag, then
+            # attempt the request — a genuinely dead service reports itself.
+            image_module.check_availability()
+            if not image_module.available:
+                self.app.logger.warning("sd-wrapper health probe failed — attempting the generation anyway")
 
         # Pre-operation monitoring and VRAM cleanup
         self._log_gpu_state_before_op("sd-gen", 8000)

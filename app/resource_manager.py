@@ -479,7 +479,7 @@ class ResourceManager:
 
     # ── Unified VRAM guarantee ──
 
-    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 15) -> bool:
+    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int | None = None) -> bool:
         """Ensure VRAM is available for the given model type.
 
         1. If the needed model is already loaded — return True immediately
@@ -490,9 +490,18 @@ class ResourceManager:
 
         Returns True when the model is already loaded or VRAM is confirmed available.
         Returns False on timeout (model not loaded and VRAM insufficient).
+
+        ``timeout`` bounds a genuinely stuck GPU only — it is NOT a "give up on
+        a busy GPU" switch. The default comes from ``VRAM_WAIT_TIMEOUT_S``
+        (120 s) because one load/unload cycle of a 12 GB model outlives a 15 s
+        deadline: live evidence shows two 15 s timeouts at 8789 MB free and the
+        very next attempt freeing 15301 MB in 245 ms, while the task died with
+        «GPU memory unavailable» for a GPU that was merely busy.
         """
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
+        if timeout is None:
+            timeout = int(os.getenv("VRAM_WAIT_TIMEOUT_S", "120"))
 
         # CPU platform has no GPU memory to manage — nothing to wait for.
         if self.hardware.platform == "cpu":

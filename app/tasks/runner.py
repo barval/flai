@@ -140,7 +140,10 @@ def _call_reasoning(
     step's extra for the chat-style header (🔢 tokens).
     """
     messages = [{"role": "user", "content": prompt}]
-    for attempt in range(2):
+    transient_attempt = 0
+    busy_attempt = 0
+    busy_deadline = time.monotonic() + _gpu_wait_budget(app)
+    while True:
         account_id = f"task-call:{uuid.uuid4()}"
         begin_usage_account(account_id)
         text = ""
@@ -155,9 +158,23 @@ def _call_reasoning(
             finish_usage_account(account_id)
             raise StepAborted("step cancelled at end of reasoning generation")
         usage = finish_usage_account(account_id) or {}
+        totals = {k: int(v) for k, v in usage.items() if isinstance(v, (int, float)) and v > 0}
+        # A busy GPU is a state to wait out, never a step result: when the
+        # client's ensure_vram_for deadline expires it yields the localized
+        # «GPU memory unavailable» string, and that text would otherwise ride
+        # into the step (or the plan review) as if the model had answered.
+        if _is_gpu_busy_text(text):
+            if time.monotonic() >= busy_deadline:
+                app.logger.warning(f"call_reasoning: GPU still busy after the wait budget — giving up: {text[:120]}")
+                return text, totals
+            delay = min(_GPU_RETRY_MAX_S, _GPU_RETRY_STEP_S * (2 ** min(busy_attempt, 4)))
+            busy_attempt += 1
+            app.logger.info(f"call_reasoning: GPU busy — waiting {delay}s before retry ({text[:80]!r})")
+            _wait_cancellable(delay, cancel_check)
+            continue
         # Retry once on transient llama-swap errors (model unloaded / config reload).
         if (
-            attempt == 0
+            transient_attempt == 0
             and _is_error_text(text)
             and (
                 "model unloaded" in text
@@ -166,10 +183,44 @@ def _call_reasoning(
                 or "перезагружает" in text
             )
         ):
+            transient_attempt += 1
             app.logger.warning(f"call_reasoning transient error on attempt 1, retrying: {text[:200]}")
             continue
-        return text, {k: int(v) for k, v in usage.items() if isinstance(v, (int, float)) and v > 0}
-    return text, {}  # exhausted retries, return the error text
+        return text, totals
+
+
+_GPU_BUSY_PREFIXES = ("GPU memory ", "Память GPU ", "Проверка памяти GPU")
+_GPU_RETRY_STEP_S = 5.0
+_GPU_RETRY_MAX_S = 30.0
+
+
+def _is_gpu_busy_text(text: str) -> bool:
+    """Is this the client's «VRAM is not free yet» string (never an LLM answer)?
+
+    Prefix match, mirroring ``_is_llm_error_string``: the client emits these
+    strings only from its own error paths.
+    """
+    return isinstance(text, str) and text.startswith(_GPU_BUSY_PREFIXES)
+
+
+def _gpu_wait_budget(app: Flask) -> float:
+    """How long ONE reasoning call may wait for the GPU (``TASK_VRAM_WAIT_S``)."""
+    try:
+        return float(app.config.get("TASK_VRAM_WAIT_S", 600))
+    except Exception:
+        return 600.0
+
+
+def _wait_cancellable(seconds: float, cancel_check: Callable[[], bool]) -> None:
+    """Sleep in slices so a chat preemption aborts the GPU wait immediately."""
+    deadline = time.monotonic() + seconds
+    while True:
+        if cancel_check():
+            raise StepAborted("step cancelled while waiting for the GPU")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(1.0, remaining))
 
 
 def _is_error_text(text: str) -> bool:

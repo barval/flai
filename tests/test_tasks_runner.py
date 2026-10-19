@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.tasks import runner
 from app.tasks.runner import StepAborted, run_checkpoint, run_direct_step
 
 
@@ -47,6 +48,49 @@ def test_llm_error_string_is_error(test_app):
     with patch("app.tasks.runner._call_reasoning", return_value=err):
         out = run_direct_step(test_app, _step(), context_digest="", cancel_check=lambda: False)
     assert out["status"] == "error" and out["checkpoint"] is None and out["result"] == err
+
+
+def test_gpu_busy_error_is_waited_out_not_returned(test_app):
+    """«Память GPU недоступна» means the GPU is busy, not that the step failed.
+
+    The call must wait and retry instead of handing the error text to the
+    caller: the re-planner read that 40-char error as its reply and silently
+    dropped the review, and a direct step would have failed its checkpoint
+    three times for a resource that was about to free.
+    """
+    busy = "Память GPU недоступна. Попробуйте снова."
+    streams = [iter([busy]), iter(["готово"])]
+    clock = {"t": 1000.0}
+    slept: list[float] = []
+
+    def _sleep(seconds):
+        slept.append(seconds)
+        clock["t"] += seconds
+
+    with (
+        patch("app.tasks.runner._reasoning_chat", side_effect=streams),
+        patch("app.tasks.runner.time.monotonic", lambda: clock["t"]),
+        patch("app.tasks.runner.time.sleep", side_effect=_sleep),
+    ):
+        text, _usage = runner._call_reasoning(test_app, "prompt", lambda: False, lang="ru")
+    assert text == "готово"
+    assert slept, "the retry must wait before asking for the GPU again"
+
+
+def test_gpu_busy_wait_is_cancellable(test_app):
+    """Chat preemption wins over the wait: a cancel during the sleep aborts."""
+    busy = "Память GPU недоступна. Попробуйте снова."
+    cancelled = {"v": False}
+
+    def _sleep(_seconds):
+        cancelled["v"] = True
+
+    with (
+        patch("app.tasks.runner._reasoning_chat", return_value=iter([busy])),
+        patch("app.tasks.runner.time.sleep", side_effect=_sleep),
+        pytest.raises(StepAborted),
+    ):
+        runner._call_reasoning(test_app, "prompt", lambda: cancelled["v"], lang="ru")
 
 
 def test_aborted_before_llm_call(test_app):

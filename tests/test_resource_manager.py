@@ -304,6 +304,71 @@ class TestEnsureVramForCpu:
         mock_poll.assert_not_called()
 
 
+class TestEnsureVramForWaitsForTheGpu:
+    """A busy GPU is a state to wait out, not a failure to report.
+
+    Live evidence: two 15 s deadlines expired at 8789 MB free (need 13736) and
+    the very next attempt freed 15301 MB in 245 ms — llama-swap was still
+    finishing a load/unload cycle. The wait must outlast that cycle and return
+    as soon as VRAM is available.
+    """
+
+    def _rm(self):
+        rm = ResourceManager()
+        rm.hardware.platform = "nvidia"
+        rm.hardware.available_vram_mb = 8792
+        return rm
+
+    def test_it_keeps_waiting_past_15s_until_vram_frees(self, monkeypatch):
+        rm = self._rm()
+        clock = {"t": 1000.0}
+
+        def _sleep(seconds):
+            clock["t"] += seconds
+
+        def _poll():
+            # The host needs ~40 s to finish the unload; the old 15 s deadline
+            # gave up long before that.
+            rm.hardware.available_vram_mb = 20000 if clock["t"] - 1000.0 >= 40 else 8792
+
+        monkeypatch.setattr("app.resource_manager.time.time", lambda: clock["t"])
+        monkeypatch.setattr("app.resource_manager.time.sleep", _sleep)
+        monkeypatch.setattr(rm, "_poll_vram", _poll)
+        monkeypatch.setattr(rm, "unload_llamacpp_model", lambda url: None)
+        monkeypatch.setattr(rm, "unload_video_pipeline", lambda: None)
+        monkeypatch.setattr(rm, "get_vram_needed_mb", lambda model_type: 13736)
+        running = MagicMock(status_code=200)
+        running.json.return_value = {"running": []}
+        monkeypatch.setattr("app.resource_manager.requests.get", lambda *a, **k: running)
+
+        assert rm.ensure_vram_for("reasoning") is True
+        assert clock["t"] - 1000.0 >= 40, "the wait must outlast the old 15 s deadline"
+        assert rm.hardware.available_vram_mb == 20000
+
+    def test_the_deadline_is_configurable(self, monkeypatch):
+        """The wait bound is a deployment knob, not a hardcoded 15 s."""
+        rm = self._rm()
+        clock = {"t": 1000.0}
+
+        def _sleep(seconds):
+            clock["t"] += seconds
+
+        monkeypatch.setenv("VRAM_WAIT_TIMEOUT_S", "5")
+        monkeypatch.setattr("app.resource_manager.time.time", lambda: clock["t"])
+        monkeypatch.setattr("app.resource_manager.time.sleep", _sleep)
+        monkeypatch.setattr(rm, "_poll_vram", lambda: None)
+        monkeypatch.setattr(rm, "unload_llamacpp_model", lambda url: None)
+        monkeypatch.setattr(rm, "unload_video_pipeline", lambda: None)
+        monkeypatch.setattr(rm, "get_vram_needed_mb", lambda model_type: 13736)
+        running = MagicMock(status_code=200)
+        running.json.return_value = {"running": []}
+        monkeypatch.setattr("app.resource_manager.requests.get", lambda *a, **k: running)
+
+        assert rm.ensure_vram_for("reasoning") is False
+        waited = clock["t"] - 1000.0
+        assert 4.5 <= waited <= 6.5, f"the configured 5 s deadline must be honoured, waited {waited}"
+
+
 class TestGpuGating:
     def test_initial_not_busy(self):
         rm = ResourceManager()

@@ -245,8 +245,28 @@ class TestSubtaskPolling:
 
         calls = {"requeue": 0, "cancel": []}
 
+        class _FakeRedis:
+            """A queue that answers every liveness question DEFINITIVELY:
+            nobody is processing this id and no queue list holds it."""
+
+            @staticmethod
+            def hexists(key, member):  # noqa: ARG004
+                return False
+
+            @staticmethod
+            def lrange(key, start, end):  # noqa: ARG004
+                return []
+
         class _Q:
-            redis = MagicMock()
+            redis = _FakeRedis()
+            processing_key = "processing_requests"
+            slow_processing_key = "slow_processing_requests"
+            background_processing_key = "background_processing"
+            crawl_processing_key = "request_queue:crawl:processing"
+            queue_key = "request_queue"
+            slow_queue_key = "slow_request_queue"
+            background_queue_key = "background_queue"
+            crawl_queue_key = "request_queue:crawl"
 
             def requeue_deferred_subtasks(self):
                 calls["requeue"] += 1
@@ -397,6 +417,53 @@ class TestSubtaskPolling:
         assert step["status"] == "failed", "exhausted polls without a result ⇒ failed"
         assert "expired" in (step["last_error"] or "").lower()
         assert store.get_task(task_id)["next_step_index"] == 1, "task continues past the dead subtask"
+
+    def test_subtask_alive_unknown_holds_the_step(self, poll_env, monkeypatch):
+        """A liveness probe that CANNOT answer is not proof the subtask died.
+
+        Live evidence: the step was expired at 15:09:52.630 while the image was
+        saved at .750 and the result stored at .765 — 135 ms later. One failed
+        probe (a Redis hiccup, a stubbed/renamed key) must not throw away GPU
+        work whose result is already on its way; hold and re-poll instead.
+        """
+        test_app, calls, store = poll_env
+        task_id, row_id = self._seed_subtask(store)
+        test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
+        test_app.config["TASK_SUBTASK_POLL_CYCLES"] = 1
+
+        executor = ex.TaskExecutor(app=test_app)
+        monkeypatch.setattr(executor, "_peek_subtask_result", lambda queue_id: None)
+        monkeypatch.setattr(executor, "_subtask_alive", lambda queue_id: None)
+        executor._process_one_cycle(gate_open=True)
+
+        step = store.get_step(row_id)
+        assert step["status"] == "subtask_running", "unknown liveness ⇒ keep waiting"
+        t = store.get_task(task_id)
+        assert t["status"] == "active" and t["next_step_index"] == 0, "index held"
+        assert int(step["extra"].get("subtask_polls") or 0) == 0, "the poll budget is re-armed for the retry"
+
+    def test_subtask_alive_unknown_is_bounded(self, poll_env, monkeypatch):
+        """A persistently unanswerable probe still frees the task (fail-closed):
+        the unknown budget is spent, then the step expires as before."""
+        test_app, calls, store = poll_env
+        task_id, row_id = self._seed_subtask(store)
+        test_app.config["TASK_POLL_INTERVAL_S"] = 0.01
+        test_app.config["TASK_SUBTASK_POLL_CYCLES"] = 1
+        test_app.config["TASK_SUBTASK_ALIVE_UNKNOWN_MAX"] = 1
+        monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+
+        executor = ex.TaskExecutor(app=test_app)
+        monkeypatch.setattr(executor, "_peek_subtask_result", lambda queue_id: None)
+        monkeypatch.setattr(executor, "_subtask_alive", lambda queue_id: None)
+
+        executor._process_one_cycle(gate_open=True)
+        assert store.get_step(row_id)["status"] == "subtask_running", "first unknown ⇒ hold"
+
+        executor._process_one_cycle(gate_open=True)
+        step = store.get_step(row_id)
+        assert step["status"] == "failed", "unknown budget spent ⇒ expired (never wedged forever)"
+        assert "expired" in (step["last_error"] or "").lower()
+        assert store.get_task(task_id)["next_step_index"] == 1
 
     def test_poll_budget_holds_index_when_queue_alive(self, poll_env, monkeypatch):
         """Poll budget exhausted BUT the queue task is alive ⇒ keep polling (index held)."""

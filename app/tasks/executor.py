@@ -278,10 +278,18 @@ def get_running_step(task_id: str) -> dict | None:
 
 
 def get_all_running_steps() -> list[dict]:
-    """Every step row stuck in status 'running' (restart-marker sweep)."""
+    """Every step row a dead process left in flight (restart-marker sweep).
+
+    ``subtask_queued``/``subtask_running`` count as in flight: the queue request
+    died with the worker, so without this marker the step would sit until the
+    poll budget expired it («Result of subtask expired while task was paused»)
+    instead of re-running on resume.
+    """
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT * FROM task_steps WHERE status = 'running' ORDER BY seq ASC")
+        c.execute(
+            "SELECT * FROM task_steps WHERE status IN ('running', 'subtask_queued', 'subtask_running') ORDER BY seq ASC"
+        )
         return [dict(r) for r in c.fetchall()]
 
 
@@ -1007,8 +1015,12 @@ class TaskExecutor:
 
     def _mark_interrupted_by_restart(self) -> None:
         """Server restart: no step is owned by this fresh process, so every row
-        left in status 'running' by a dead process gets a restart marker (its
-        task re-runs the step from scratch on resume, spec §2)."""
+        left in flight by a dead process gets a restart marker (its task re-runs
+        the step from scratch on resume, spec §2). In flight covers the direct
+        steps in status 'running' AND the queue subtasks in
+        'subtask_queued'/'subtask_running' — the queue request died with the
+        worker, and without the marker such a step sat until the poll budget
+        expired its result instead of re-running."""
         try:
             orphans = get_all_running_steps()
         except Exception as e:
@@ -2450,7 +2462,7 @@ class TaskExecutor:
             logger.warning(f"subtask result peek failed ({queue_id}): {e}")
             return None
 
-    def _subtask_alive(self, queue_id: str) -> bool:
+    def _subtask_alive(self, queue_id: str) -> bool | None:
         """Is the subtask still pending in the queue machinery?
 
         Two states count as alive: the worker holds it in a processing hash, or
@@ -2458,7 +2470,11 @@ class TaskExecutor:
         tagged work there, and a subtask behind other queue work has not been
         picked up yet). Checking only the processing hashes would wrongly
         declare a merely-queued subtask expired once the poll budget runs out.
-        Fail-closed (False) so a broken queue never freezes a task forever.
+
+        Returns ``True``/``False`` when the queue ANSWERED, ``None`` when the
+        probe itself failed (Redis hiccup, renamed key): a failed probe is not
+        proof of death — live, a result landed 135 ms after a failed probe had
+        expired the step. The caller bounds how long ``None`` may hold.
         """
         try:
             queue = _get_request_queue()
@@ -2482,7 +2498,7 @@ class TaskExecutor:
             return False
         except Exception as e:
             logger.warning(f"subtask liveness check failed ({queue_id}): {e}")
-            return False
+            return None
 
     def _poll_budget_polls(self) -> int:
         """How many cycles a subtask result may stay absent before a liveness check."""
@@ -2544,7 +2560,25 @@ class TaskExecutor:
 
         # Budget exhausted: a live worker still owns it (keep waiting); a gone
         # one means the result expired (fail the step and move on).
-        if self._subtask_alive(queue_id):
+        alive = self._subtask_alive(queue_id)
+        if alive is None:
+            # The probe could not answer. "Unknown" is not "dead": failing here
+            # would throw away work whose result may land milliseconds later
+            # (live: the result was stored 135 ms after the step was expired).
+            # Re-arm the poll budget and keep waiting — bounded, so a
+            # persistently broken queue still frees the task (fail-closed).
+            unknown = int(extra.get("subtask_alive_unknown") or 0) + 1
+            if unknown <= max(1, int(self._cfg("TASK_SUBTASK_ALIVE_UNKNOWN_MAX", 3))):
+                extra["subtask_alive_unknown"] = unknown
+                extra["subtask_polls"] = 0
+                update_step(row["id"], extra=extra)
+                logger.warning(
+                    f"task {task_id} step {idx + 1}: subtask liveness probe failed "
+                    f"({unknown}/{int(self._cfg('TASK_SUBTASK_ALIVE_UNKNOWN_MAX', 3))}) — holding, not expiring"
+                )
+                return "hold"
+            logger.warning(f"task {task_id} step {idx + 1}: liveness probe still failing — expiring subtask {queue_id}")
+        elif alive:
             logger.info(f"task {task_id} step {idx + 1}: subtask {queue_id} still running — holding")
             return "hold"
         from app.llamacpp_client import _tr

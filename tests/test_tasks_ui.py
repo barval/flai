@@ -202,6 +202,21 @@ class TestTasksFrontendLogic:
         assert "window.sendTaskInput" in CHAT_INIT
         assert "window.currentTaskId" in CHAT_INIT
 
+    def test_draft_submit_reloads_the_conversation(self):
+        """Submitting the draft must re-render the task window.
+
+        Without the reload the window kept the draft banner («📝 Черновик»)
+        and an empty body while the list already said «⏳ В очереди»; the
+        content only appeared after switching to another task and back.
+        """
+        start = CHAT_TASKS.index("function sendTaskInput")
+        end = CHAT_TASKS.index("function retryCurrentTask")
+        draft_branch = CHAT_TASKS[start:end].split("task.status !== 'awaiting_user'")[0]
+        assert "scheduleTaskReload(" in draft_branch, (
+            "the draft submit must reload the conversation: the status banner "
+            "and the request message are rendered from that payload"
+        )
+
     def test_sse_handler_handles_deleted_and_running(self):
         assert "data.status === 'deleted'" in CHAT_TASKS
         assert "scheduleTaskReload(data.task_id)" in CHAT_TASKS

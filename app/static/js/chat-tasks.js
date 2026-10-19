@@ -983,6 +983,13 @@ function sendTaskInput() {
                 if (data.task) tasksData[data.task.id] = Object.assign({}, tasksData[data.task.id], data.task);
                 renderTasksList();
                 setTaskMode(true, tasksData[window.currentTaskId]);
+                // The draft's conversation is already on screen with the draft
+                // banner («📝 Черновик») and no body — setTaskMode only touches
+                // the input. Reload so the banner turns into the submitted
+                // status and the request message appears; without it the window
+                // kept looking like the draft until the user switched away and
+                // back (the list already said «⏳ В очереди»).
+                scheduleTaskReload(window.currentTaskId);
             })
             .catch(err => {
                 if (input) input.value = text;

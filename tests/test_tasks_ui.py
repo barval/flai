@@ -152,6 +152,21 @@ class TestTasksTranslations:
                 else:
                     assert resolved != msgid and resolved.strip(), f"ru: {msgid!r} resolves to itself"
 
+    def test_plan_update_notice_localized_in_both_catalogs(self):
+        """The plan-rewrite notice is server-rendered (no JS key), so only the
+        compiled catalogs can prove it reaches the user translated."""
+        msgid = "Plan updated ({n} steps)."
+        for lang in ("en", "ru"):
+            po = (ROOT / "translations" / lang / "LC_MESSAGES" / "messages.po").read_text(encoding="utf-8")
+            assert f'msgid "{msgid}"' in po, f"{lang}: msgid {msgid!r} missing from messages.po"
+            mo = ROOT / "translations" / lang / "LC_MESSAGES" / "messages.mo"
+            with mo.open("rb") as fh:
+                resolved = gettext.GNUTranslations(fh).gettext(msgid)
+            if lang == "en":
+                assert resolved == msgid
+            else:
+                assert resolved != msgid and resolved.strip(), f"ru: {msgid!r} resolves to itself"
+
 
 class TestTasksFrontendLogic:
     def test_core_functions_defined(self):

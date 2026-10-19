@@ -1365,6 +1365,11 @@ msgstr "Attached documents: {names}"
 msgid "Plan of {n} steps:"
 msgstr "Plan of {n} steps:"
 
+#: app/routes/tasks.py:308
+#, python-brace-format
+msgid "Plan updated ({n} steps)."
+msgstr "Plan updated ({n} steps)."
+
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
 # view
 #: app/routes/tasks.py:585

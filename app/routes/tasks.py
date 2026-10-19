@@ -286,6 +286,39 @@ def _plan_steps(task: dict) -> list[dict]:
     return [s for s in (steps or []) if isinstance(s, dict)]
 
 
+def _plan_revisions(task: dict) -> list[dict]:
+    """Recorded plan rewrites (see TaskExecutor._apply_replan), oldest first."""
+    plan = task.get("step_plan")
+    if not isinstance(plan, dict):
+        return []
+    return [r for r in (plan.get("revisions") or []) if isinstance(r, dict)]
+
+
+def _plan_update_message(task: dict, rev: dict) -> dict:
+    """One «Plan updated (N steps).» service notice.
+
+    Localized at render time (the plan message is too), so a language switch
+    re-renders the notice in the new language.
+    """
+    total = int(rev.get("total") or 0)
+    return {
+        "id": f"{task['id']}:plan_update:{int(rev.get('upto') or 0)}",
+        "role": "assistant",
+        "kind": "plan_update",
+        "content": _("Plan updated ({n} steps).").format(n=total),
+        "seq": int(rev.get("upto") or 0),
+        "total_steps": total,
+        "status": "passed",
+        "tool": "",
+        "exec_seconds": 0.0,
+        "model_name": "",
+        "model_type": "",
+        "usage": {},
+        "extra": {},
+        "created_at": None,
+    }
+
+
 def _document_names(task: dict) -> list[str]:
     """File names of the task's attached documents, in ``doc_ids`` order.
 
@@ -574,10 +607,18 @@ def _render_messages(task: dict) -> list[dict]:
             return (seq, 3)
         return (seq, 0)
 
-    for row in sorted(steps, key=_chrono_key):
-        if row.get("status") == "pending" and not str(row.get("result") or "").strip():
-            continue  # not materialized yet — nothing to show
-        messages.append(_step_message(row, total, answer_audio.get(str(row["id"]))))
+    # A plan rewrite is anchored to the step that triggered it (rank 4 = after
+    # that step's own render ranks 0..3), so the notice lands between the
+    # executed prefix and the new tail.
+    entries: list[tuple[tuple[int, int], dict]] = [
+        (_chrono_key(row), _step_message(row, total, answer_audio.get(str(row["id"]))))
+        for row in steps
+        if not (row.get("status") == "pending" and not str(row.get("result") or "").strip())
+    ]
+    for rev in _plan_revisions(task):
+        entries.append(((int(rev.get("upto") or 0), 4), _plan_update_message(task, rev)))
+    for _key, msg in sorted(entries, key=lambda e: e[0]):
+        messages.append(msg)
     return messages
 
 

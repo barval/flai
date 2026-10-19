@@ -1383,6 +1383,11 @@ msgstr "Приложенные документы: {names}"
 msgid "Plan of {n} steps:"
 msgstr "План из {n} шагов:"
 
+#: app/routes/tasks.py:308
+#, python-brace-format
+msgid "Plan updated ({n} steps)."
+msgstr "План обновлён ({n} шагов)."
+
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
 # view
 #: app/routes/tasks.py:585

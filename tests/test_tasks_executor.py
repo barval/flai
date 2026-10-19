@@ -3266,3 +3266,47 @@ def test_replan_soft_failure_keeps_the_task_running(db_env, test_app, gate_open,
     _cycle(test_app)
 
     assert store.get_task(task_id)["status"] == "completed"
+
+
+def test_plan_update_notice_renders_between_the_prefix_and_the_new_tail(db_env, test_app):
+    """The user asked for «План обновлён (N шагов).» and for every later status
+    message to follow the new plan; the plan message and the «Step N of M»
+    headers are rendered from the CURRENT plan, so only the notice is new."""
+    store = db_env
+    from app.routes.tasks import _render_messages
+
+    plan = {
+        "title": "t",
+        "steps": [
+            {"seq": 1, "goal": "analyse", "tool": "rlm"},
+            {"seq": 2, "goal": "draw 1", "tool": "image_gen"},
+            {"seq": 3, "goal": "draw 2", "tool": "image_gen"},
+        ],
+        "revisions": [{"upto": 1, "total": 3}],
+    }
+    task_id = _mk_task(store, step_plan=plan, next_step_index=1, minutes_ago=30)
+    store.add_step(task_id=task_id, seq=1, kind="subtask", goal="analyse", tool="rlm")
+    store.add_step(task_id=task_id, seq=2, kind="subtask", goal="draw 1", tool="image_gen")
+    store.add_step(task_id=task_id, seq=3, kind="subtask", goal="draw 2", tool="image_gen")
+    rows = {int(r["seq"]): r for r in store.get_task_steps(task_id)}
+    store.update_step(rows[1]["id"], status="passed", result="scenes: 1,2,3")
+    store.update_step(rows[2]["id"], status="passed", result="drawn")
+
+    task = store.get_task(task_id)
+    with test_app.test_request_context():
+        msgs = _render_messages(task)
+        # The conversation renders in the request language, so compare against
+        # the same localized strings the renderer used.
+        from flask_babel import gettext as _
+
+        expected_notice = _("Plan updated ({n} steps).").format(n=3)
+        expected_plan_head = _("Plan of {n} steps:").format(n=3)
+    kinds = [m["kind"] for m in msgs]
+    assert kinds == ["request", "plan", "subtask", "plan_update", "subtask"], (
+        "the notice sits between the executed prefix and the new tail"
+    )
+    notice = next(m for m in msgs if m["kind"] == "plan_update")
+    assert notice["content"] == expected_notice
+    plan_msg = next(m for m in msgs if m["kind"] == "plan")
+    assert expected_plan_head in plan_msg["content"]
+    assert plan_msg["total_steps"] == 3

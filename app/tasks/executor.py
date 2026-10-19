@@ -676,6 +676,42 @@ def _same_plan_tail(steps: list[dict] | None, idx: int, new_steps: list[dict]) -
     return all(_tail_signature(a) == _tail_signature(b) for a, b in zip(old, new_steps, strict=True))
 
 
+def _first_json_object(text: str) -> str | None:
+    """The first balanced JSON object in ``text`` (string-aware), or None.
+
+    The reply may carry prose — before or after the object — and that prose can
+    contain braces, so slicing from the first ``{`` to the LAST ``}`` is wrong
+    whenever a stray brace follows the object: the slice spans both and is
+    rejected as invalid JSON, silently dropping a valid rewrite. Scanning for
+    the matching brace (ignoring braces inside strings) is exact.
+    """
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        in_str = False
+        escaped = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        start = text.find("{", start + 1)
+    return None
+
+
 def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     """Fence-tolerant parse of the re-planner reply.
 
@@ -690,12 +726,13 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if fence:
         text = fence.group(1).strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end <= start:
+    candidate = _first_json_object(text)
+    if candidate is None:
         return None
     try:
-        data = json.loads(text[start : end + 1])
-    except (ValueError, TypeError):
+        data = json.loads(candidate)
+    except (ValueError, TypeError) as e:
+        logger.warning("re-planner: reply is not valid JSON (%s); object head=%r", e, candidate[:200])
         return None
     if not isinstance(data, dict):
         return None
@@ -711,6 +748,7 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
             return None
         tool = str(s.get("tool", ""))
         if tool not in known_tools:
+            logger.warning("re-planner: unknown tool %r in step %d — reply rejected", tool, i + 1)
             return None
         own_seq = prefix_len + i + 1
         steps.append(
@@ -1780,7 +1818,11 @@ class TaskExecutor:
         parsed = _parse_replan(raw, idx)
         if parsed is None:
             logger.warning(
-                "task %s: re-planner reply unusable (%d chars); raw head=%r", task_id, len(raw or ""), (raw or "")[:300]
+                "task %s: re-planner reply unusable (%d chars); head=%r tail=%r",
+                task_id,
+                len(raw or ""),
+                (raw or "")[:300],
+                (raw or "")[-300:],
             )
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
         if not parsed["changed"]:

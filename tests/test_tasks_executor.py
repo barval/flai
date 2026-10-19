@@ -3042,6 +3042,24 @@ def test_parse_replan_garbage_is_none():
     assert ex._parse_replan('{"changed": true}', 1) is None
 
 
+def test_parse_replan_finds_the_object_before_trailing_braces():
+    """The model often appends prose after the JSON — and the prose carries
+    braces. Slicing from the first «{» to the LAST «}» then spans both and the
+    reply is rejected as invalid JSON, silently dropping a valid rewrite (live
+    acceptance: a 4271-char plan with «непригодный» JSON was thrown away)."""
+    raw = '{"changed": true, "steps": [{"goal": "draw all", "tool": "image_gen"}]}\n\nПояснение: план {пример} готов.'
+    parsed = ex._parse_replan(raw, 2)
+    assert parsed is not None and parsed["changed"] is True
+    assert parsed["steps"][0]["tool"] == "image_gen"
+
+
+def test_parse_replan_uses_the_first_balanced_object():
+    """Two objects in one reply: the first one wins — the same first-to-last
+    slice would swallow both and fail to parse."""
+    raw = '{"changed": false}\n{"changed": true, "steps": [{"goal": "x", "tool": "llm"}]}'
+    assert ex._parse_replan(raw, 1) == {"changed": False, "steps": []}
+
+
 # ── plan correction: the review runs after every consumed step ───────────
 
 

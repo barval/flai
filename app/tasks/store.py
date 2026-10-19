@@ -212,3 +212,20 @@ def update_step(step_id: str, **fields: Any) -> dict:
         c.execute(f"UPDATE task_steps SET {sets} WHERE id = %s RETURNING *", (*vals, step_id))
         row = c.fetchone()
         return dict(row) if row else None
+
+
+def delete_pending_steps_after(task_id: str, seq: int) -> int:
+    """Delete the task's still-pending step rows beyond position ``seq``.
+
+    A plan rewrite replaces the remaining positions; the old rows must go with
+    it, because the executor resolves a step row **by seq** and would otherwise
+    reuse a superseded row's goal, tool and criteria. Terminal rows (anything
+    already run) are never touched — a rewrite is forward-only.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM task_steps WHERE task_id = %s AND seq > %s AND status = 'pending'",
+            (task_id, int(seq)),
+        )
+        return int(c.rowcount or 0)

@@ -220,6 +220,31 @@ def test_store_module_importable(test_app):
     assert hasattr(mod, "update_task")
 
 
+def test_delete_pending_steps_after_keeps_terminal_rows(test_app, fresh_db):
+    """A rewritten plan tail must not leave stale pending rows behind: the
+    executor reuses a row found by seq and would inherit the old step's goal."""
+    with test_app.app_context():
+        from app.tasks.executor import get_task_steps
+        from app.tasks.store import add_step, create_task, delete_pending_steps_after, get_task, update_step
+
+        db = fresh_db
+        task_id = create_task(user_id="tester", task_class=3, title="t", lang="ru", response_style="neutral")
+        try:
+            first = add_step(task_id=task_id, seq=1, kind="direct", goal="keep me", tool="llm")
+            second = add_step(task_id=task_id, seq=2, kind="direct", goal="drop me", tool="llm")
+            third = add_step(task_id=task_id, seq=3, kind="direct", goal="drop me too", tool="llm")
+            update_step(first, status="passed", result="done")
+
+            assert delete_pending_steps_after(task_id, 1) == 2
+            rows = {int(r["seq"]): r for r in get_task_steps(task_id)}
+            assert set(rows) == {1}, "only the terminal prefix row survives"
+            assert rows[1]["status"] == "passed"
+            assert get_task(task_id) is not None
+            assert second and third  # ids exist; they are simply gone from the table
+        finally:
+            _cleanup(db, task_id)
+
+
 def test_full_backup_includes_task_tables(test_app):
     """FULL_TABLES lists tasks and task_steps after the chat tables group."""
     from app.routes.backups import FULL_TABLES

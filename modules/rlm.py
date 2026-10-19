@@ -165,6 +165,24 @@ EMPTY_FINAL_NUDGE = {
     "from the gathered data and call final(answer) again — the text is required.",
 }
 
+# Appended when a python observation is cut to the truncation limit: without it
+# the actor reads the cut as the end of the text it was reading.
+TRUNCATED_NOTICE = {
+    "ru": "\n… [фрагмент обрезан: не показано ещё {omitted} символов — продолжай следующим срезом с этого места]",
+    "en": "\n… [truncated: {omitted} more characters not shown — continue with the next slice from here]",
+}
+
+
+def _truncate_observation(observation: str, limit: int, lang: str = "ru", *, notice: bool = True) -> str:
+    """Cut a tool observation to ``limit`` chars and say how much was dropped."""
+    text = observation or ""
+    if limit <= 0 or len(text) <= limit:
+        return text
+    if not notice:
+        return text[:limit]
+    notice_text = TRUNCATED_NOTICE.get(lang, TRUNCATED_NOTICE["en"]).format(omitted=len(text) - limit)
+    return text[:limit] + notice_text
+
 
 def _resource_step_budget(hw: Any | None) -> int:
     """Per-host step allowance from detected hardware (0 = no extra cap)."""
@@ -567,7 +585,7 @@ class RlmModule:
                                 continue
                             return RlmResult("", trace, step, error="empty final answer")
                         return RlmResult(final_answer, trace, step)
-                    observation = observation[:obs_trunc]
+                    observation = _truncate_observation(observation, obs_trunc, lang, notice=(name == "python"))
                     trace.append(RlmTraceStep(step, name, json.dumps(args)[:500], observation))
                     messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": observation})
                 # A non-final tool executed on the last step (or a leaked

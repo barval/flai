@@ -941,3 +941,37 @@ def test_rlm_prompt_documents_available_helpers(test_app):
         en = module.build_system_prompt("en")
         assert "re" in ru and "math" in ru and "lambda" in ru
         assert "re" in en and "math" in en and "lambda" in en
+
+
+@pytest.mark.unit
+def test_truncate_observation_marks_what_was_dropped():
+    """The actor must see that its own observation was cut: silently slicing a
+    tool result made it read the cut as the end of the document (live defect:
+    72K-char «Про Федота-стрельца» analysed to line ~1080 and reported
+    «Финал (Незавершенный в данном фрагменте)»)."""
+    from modules.rlm import _truncate_observation
+
+    long = "a" * 10_000
+    cut = _truncate_observation(long, 4000, "ru")
+    assert cut.startswith("a" * 4000)
+    assert "6000" in cut, "the notice must name the number of dropped characters"
+    assert cut != long[:4000], "the plain slice must not come back unchanged"
+
+
+@pytest.mark.unit
+def test_truncate_observation_keeps_short_observations_untouched():
+    from modules.rlm import _truncate_observation
+
+    assert _truncate_observation("short", 4000, "ru") == "short"
+
+
+@pytest.mark.unit
+def test_truncate_observation_localizes_and_can_stay_silent():
+    """Only a python slice continues «with the next slice»; an llm()/web_fetch()
+    answer has no continuation, so the caller turns the notice off."""
+    from modules.rlm import _truncate_observation
+
+    ru = _truncate_observation("x" * 100, 10, "ru")
+    en = _truncate_observation("x" * 100, 10, "en")
+    assert ru != en
+    assert _truncate_observation("x" * 100, 10, "ru", notice=False) == "x" * 10

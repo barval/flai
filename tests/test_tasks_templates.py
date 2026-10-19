@@ -4,7 +4,7 @@
 import re
 from pathlib import Path
 
-TEMPLATES = ("task_plan", "task_step", "task_checkpoint", "task_final")
+TEMPLATES = ("task_plan", "task_step", "task_checkpoint", "task_final", "task_replan")
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
@@ -42,6 +42,18 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "response_style",
         "current_time",
     },
+    "task_replan": {
+        "task_request",
+        "response_language",
+        "results_digest",
+        "user_answers",
+        "remaining_plan",
+        "capabilities_section",
+        "attachments_section",
+        "document_tool_rule",
+        "deep_analysis_note",
+        "current_time",
+    },
 }
 
 DUMMY_VALUES: dict[str, str] = {
@@ -57,7 +69,8 @@ DUMMY_VALUES: dict[str, str] = {
     "step_tool": "llm",
     "step_checkpoint": "The result contains the final number",
     "previous_results": "Step 1: done",
-    "user_answers": "",
+    "user_answers": "Q: Anything else?\nA: draw them all",
+    "remaining_plan": "3. [image_gen] Draw scene three",
     "step_result": "Got 12",
     "results_digest": "Step 1: done\nStep 2: got 12",
     "attachments_section": "Attached images: 2 (a.jpg, b.jpg).",

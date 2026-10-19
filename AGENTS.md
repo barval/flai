@@ -224,20 +224,23 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
 # Hardware Requirements
 FLAI has two deployment modes: **GPU mode** (NVIDIA, recommended, 8/12/16+ GB VRAM tiers, 16 GB+ RAM matching the tier table in README) and **CPU-only mode** (no GPU, 16 GB+ RAM, 12+ cores recommended; ~2.5–25× slower depending on the task). v11.4 lightweight CPU stack: gpt-oss-20b-mxfp4 (reasoning, native MXFP4) + Qwen3VL-4B (multimodal, ~2.5 GB + mmproj), context 8192. The GPU seed config auto-fits context windows to the hardware via `_autofit_context()` in `app/database.py` (reads GGUF metadata from disk: `arch_max_ctx`, file size, `expert_count`, `supports_mtp` + measured RAM/VRAM; tier goals 32768/32768 (24 GB), 32768/24576 (16 GB), 16384/16384 (8–12 GB), falling back to 32768/24576 when VRAM is unknown). The project automatically adapts to available VRAM (8/12/16+ GB tiers) and, on CPU, auto-degrades video to a format fitting both available RAM and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`; format = largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps whose estimated time fits). CPU image generation/editing likewise halve both sides of the resolution (`modules/sd_cpp.py`, ~4× fewer pixels) so diffusion finishes inside `SD_CPP_TIMEOUT` — previously it died with «Image generation timeout» around step 3/10 — and the user is notified of the reduced resolution via the `resize_notice` channel.
 
-# Test Runs — Host Memory Is a Hard Constraint
+# 🚫 Test Runs — Categorical Ban on RAM-Heavy Runs
 
-Launching any long, memory-heavy, or full (comprehensive) test suite requires the user's prior approval — ask and wait for an explicit "yes".
+**The host kills EVERY active opencode process as soon as system memory use (RAM + swap) exceeds 90 %.** A heavy run therefore does not merely slow the host down — it terminates this session mid-work. That kill is automatic, outside anyone's control, and it is not a warning: it is the end of the session.
 
-**The dev host is a single machine shared with the FLAI containers, the browser and the agent session. Exhausting RAM *and* swap freezes every service on it, not just the test run.** Treat memory as a budget you must watch, not a number you can assume.
+**Running a test suite whose peak RAM you cannot bound is categorically forbidden.** Not "discouraged", not "ask first, then do it anyway": forbidden. This holds no matter how small the change looks or how confident you are in it.
 
-- **NEVER run two pytest processes at the same time.** A `pytest` run builds a fresh Flask app per test through the `client`/`test_app` fixtures (`create_app()` → `RedisRequestQueue` worker threads, Qdrant client, events publisher), so a suite holds hundreds of app instances over its lifetime. Two concurrent suites are how the host hit 1 GiB available with 49/49 GiB of swap on 2026-09-30.
-- **A finished `pytest` summary is not a finished process.** A run can print its final line and stay resident (leaked non-daemon thread from `create_app()` teardown), so the next suite overlaps with a zombie. **Check `pgrep -c pytest` (must be `0`) before starting a new run**, and kill leftovers with `kill -9`.
-- **Watch memory before, during and after every suite:** `free -h`. Stop the run when available RAM drops below ~4 GiB or swap is more than half used.
-- **Prefer targeted runs.** `pytest -m unit` (~10 min) plus the suites covering what you changed is enough for a change. **Run ONLY the suites that cover the latest changes** — a full `pytest` (~22 min, ~1300 tests, hundreds of resident app instances) is a merge-gate, not a routine check:
-  - **Full run (with memory watched per the rules above) happens ONLY right before merging into the release branch** (currently `v12.6`), and only as a **single** process, with the host otherwise idle.
-  - In every other case run only the targeted tests of what you just changed (unit + the touched suites); DB-backed suites skip cleanly without PostgreSQL — CI covers them.
-- **Never background a long suite and then start another command that builds apps.** Do the poll (`tail` the log) instead of launching a second run.
-- **If the host does get exhausted:** `kill -9` the pytest pids first, then `free -h` to confirm recovery. A `SIGKILL`ed run leaves the working tree intact, so re-run the affected tests to confirm the state rather than assuming it is fine.
+Why it is absolute: a `pytest` run builds a fresh Flask app per test through the `client`/`test_app` fixtures (`create_app()` → `RedisRequestQueue` worker threads, Qdrant client, events publisher), so a multi-file suite holds hundreds of app instances over its lifetime (a two-file run was measured at 1.1 GiB available — one step from the watchdog). A `SIGKILL` from the memory watchdog hits *all* opencode processes at once.
+
+- **NEVER start a heavy run without an explicit, command-specific approval from the user.** A general "run the tests" is NOT approval for a comprehensive suite. Name the exact command, the collected test count, and why it cannot be narrower — then wait for a "yes".
+- **NEVER run the full `pytest` suite, `pytest -m unit` wholesale, or any multi-file suite as a routine check.** Those are merge-gate-scale runs; a merge gate is a decision the user makes, not a default.
+- **NEVER run two pytest processes at the same time.** Two concurrent suites are how the host hit 1 GiB available with 49/49 GiB of swap on 2026-09-30.
+- **NEVER background a suite and keep working.** The run keeps growing while you edit files and build more app instances, and you cannot watch its memory while you work.
+- **NEVER run load tests (`tests/load/`), benchmarks, or anything whose memory use you have not measured.**
+- **Default to the narrowest possible run:** one test file, or `::`/`-k` selections over exactly what changed — a handful of tests that finish in seconds. That is always the right first move.
+- **Before ANY pytest invocation, state and verify the budget:** `pgrep -c pytest` must be `0` (a finished run can stay resident as a leaked non-daemon thread), `free -h` must show ≥ 4 GiB available, and you must know the collected test count. If you cannot state the peak RAM of the command, do not run it.
+- **Stop immediately if available RAM drops below ~4 GiB or swap exceeds half used** — kill the pytest pids (`kill -9 <pid>`), then `free -h` to confirm recovery. A `SIGKILL`ed run leaves the working tree intact.
+- **DB-backed suites skip cleanly without PostgreSQL; CI covers the rest.** When in doubt, do not run it — say what you did not verify and let the user decide.
 
 # If You Encounter an Unknown Error
   1. **DO NOT try to fix it blindly or change the architecture.**

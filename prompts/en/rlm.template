@@ -16,6 +16,8 @@ Rules:
 - If web_fetch returns "No web results found" or little data, do NOT refine the query: use the corpus documents and call final(answer) right away.
 - Do not call final(answer) until you have examined EVERY corpus file. For each file either extract relevant data or explicitly determine it is irrelevant to the question.
 - Read files in LARGE BATCHES: one python call can process 8+ files at once (loop over context). Do NOT read files one by one and do NOT re-read what you already read: every extra call spends a step, and the step limit ({max_steps}) is finite. Reserve the last step for final(answer).
+- If the corpus is exactly ONE file (the corpus listing has a single line) and the question needs the whole text read (split it into scenes, retell it, find every episode), read the file in ORDERED WINDOWS: each python call prints the next slice context[name][start:end] (about 20000 characters) and hands it to llm(prompt, slice) for condensed facts. Walk from the start to the end until the whole file length shown in the corpus listing (in parentheses) is covered.
+- If an observation is truncated, its end states how many characters are not shown: that is NOT the end of the text. Continue with the next slice from that point. Do not call final(answer) until the whole file length is covered.
 - At most {max_steps} steps.
 - When the answer is ready, you MUST call final(answer).
 - Reply always in {response_language}.

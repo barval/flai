@@ -975,3 +975,30 @@ def test_truncate_observation_localizes_and_can_stay_silent():
     en = _truncate_observation("x" * 100, 10, "en")
     assert ru != en
     assert _truncate_observation("x" * 100, 10, "ru", notice=False) == "x" * 10
+
+
+@pytest.mark.unit
+def test_rlm_template_has_a_single_file_whole_read_rule():
+    """A one-file corpus must be readable end to end. The unconditional
+    «never read the whole corpus in one call» rule (right for a large multi-file
+    corpus) left the actor without a strategy for a single document and it
+    stopped at its own truncation point."""
+    from pathlib import Path
+
+    prompts = Path(__file__).resolve().parents[1] / "prompts"
+    for lang, marker in (("ru", "ОДИН файл"), ("en", "ONE file")):
+        src = (prompts / lang / "rlm.template").read_text(encoding="utf-8")
+        assert marker in src, f"rlm.template/{lang}: missing the single-file rule"
+        assert "llm(" in src, f"rlm.template/{lang}: the rule must name the llm() condensation call"
+        assert "final(answer)" in src, f"rlm.template/{lang}: the rule must gate final() on full coverage"
+
+
+@pytest.mark.unit
+def test_rlm_template_mentions_the_truncation_marker():
+    """The rule points at the marker so a cut observation is not read as the end."""
+    from pathlib import Path
+
+    prompts = Path(__file__).resolve().parents[1] / "prompts"
+    for lang in ("ru", "en"):
+        src = (prompts / lang / "rlm.template").read_text(encoding="utf-8").lower()
+        assert "обрезан" in src or "truncated" in src, f"rlm.template/{lang}: the marker is never explained"

@@ -932,6 +932,15 @@ class FakeRedis:
     def hdel(self, key, field):
         return self.hashes.get(key, {}).pop(field, None) is not None
 
+    def delete(self, key):
+        removed = self.hashes.pop(key, None) is not None
+        self.sorted_sets.pop(key, None)
+        self.expirations.pop(key, None)
+        return 1 if removed else 0
+
+    def zrem(self, key, member):
+        return self.sorted_sets.get(key, {}).pop(member, None) is not None
+
     def close(self):
         return None
 

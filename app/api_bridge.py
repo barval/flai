@@ -198,6 +198,24 @@ def get_api_task_message(login: str, session_id: str, message_id: int) -> dict[s
     return dict(row) if row else None
 
 
+def remove_api_task(login: str, task_id: str) -> bool:
+    """Drop one task from its owner registry (``DELETE /v1/flai/tasks/<id>``).
+
+    Refuses an unknown task or one owned by another caller, so a delete can
+    never touch a foreign entry. Returns whether the entry was removed.
+    """
+    metadata = get_api_task_owner(task_id)
+    if not metadata or metadata.get("login") != login:
+        return False
+    client = get_redis_client()
+    try:
+        client.delete(f"{API_TASK_KEY_PREFIX}{task_id}")
+        client.zrem(f"{API_TASKS_KEY_PREFIX}{login}", task_id)
+        return True
+    finally:
+        client.close()
+
+
 def list_api_tasks(login: str, limit: int = 20) -> list[dict[str, str]]:
     """List the most recently registered tasks belonging to one API owner."""
     client = get_redis_client()

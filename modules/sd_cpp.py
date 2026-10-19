@@ -406,8 +406,6 @@ class SdCppModule(TranslationMixin):
                 out_h = max(8, int(edit_prompt_data.get("height", self.default_height)) // 2)
             start_level = 3
 
-        rm.mark_sd_busy()
-
         self.logger.info(f"Sending edit request to sd-wrapper, offload_level={start_level}, timeout: {self.timeout}s")
         self.logger.info(f"sd.cpp edit prompt: '{edit_prompt_data.get('edit_prompt', '')[:100]}...'")
 
@@ -430,6 +428,7 @@ class SdCppModule(TranslationMixin):
             payload["preserve"] = edit_prompt_data["preserve"]
 
         try:
+            rm.mark_sd_busy()
             response = requests.post(
                 f"{self.wrapper_url.rstrip('/')}/v1/images/edits", json=payload, timeout=self.timeout
             )

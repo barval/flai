@@ -48,13 +48,13 @@ endpoint list and are kept in sync by `tests/test_api_docs.py`.
 | Identity and capabilities | `GET /v1/flai/me` | Shipped |
 | Speech synthesis | `POST /v1/audio/speech` | Shipped |
 | Audio transcription | `POST /v1/audio/transcriptions` | Shipped |
-| Task list/status/cancel | `/v1/flai/tasks*` | Shipped |
+| Task list/status/cancel/delete | `/v1/flai/tasks*` | Shipped |
 | Task media download | `GET /v1/flai/tasks/{task_id}/content` | Shipped |
 | Files and documents | `/v1/files*`, `/v1/flai/documents*` | Shipped |
 | Image generation/edits | `POST /v1/images/generations`, `POST /v1/images/edits` | Shipped |
 | Video generation | `POST /v1/videos`, `GET /v1/videos/{task_id}` | Shipped |
 | Deep analysis (RLM) | `POST /v1/flai/rlm` | Shipped |
-| Sessions and history | `/v1/flai/sessions*` | Shipped |
+| Sessions and history | `/v1/flai/sessions*` (list, create, read, delete) | Shipped |
 | Interactive reference | `/v1/docs`, `/v1/openapi.json` | Shipped |
 | Documents, deep analysis UI | Web UI only | Web UI |
 
@@ -295,8 +295,10 @@ curl http://localhost:5000/v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10 \
   answer also appears in the web UI thread for that session.
 - `status` moves through `queued` → `processing` → `completed` / `error` /
   `cancelled`; `result.response` holds the answer text.
-- Cancellation is `POST /v1/flai/tasks/{task_id}/cancel`. A chat task has no
-  generated file, so `/content` does not apply to it.
+- Cancellation is `POST /v1/flai/tasks/{task_id}/cancel` for a running **or still
+  queued** chat task; `DELETE /v1/flai/tasks/{task_id}` drops it from the
+  registry. A chat task has no generated file, so `/content` does not apply to
+  it.
 - No synchronous wait slot is taken: the request returns before the model runs,
   so this endpoint does not consume `API_MAX_CONCURRENT_WAITS`.
 
@@ -411,6 +413,10 @@ curl http://localhost:5000/v1/flai/tasks/your-task-id \
 # Request cancellation of an active task
 curl -X POST http://localhost:5000/v1/flai/tasks/your-task-id/cancel \
   -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+
+# Delete a task (cancels it while it is still active)
+curl -X DELETE http://localhost:5000/v1/flai/tasks/your-task-id \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
 ```
 
 - `GET /v1/flai/tasks` returns recent tasks for this API-key owner only.
@@ -426,16 +432,20 @@ curl -X POST http://localhost:5000/v1/flai/tasks/your-task-id/cancel \
   matches the parent. Conflicting or incomplete child metadata fails closed.
 - The task-list index is capped to the most recent 500 task IDs per API user;
   older task records still expire with `REDIS_RESULT_TTL`.
-- `POST /v1/flai/tasks/{task_id}/cancel` returns `{"status":"cancelling"}`
-  only for an active processing task. Completed, failed and still-queued tasks
-  return `409 task_not_cancellable` because the existing queue cannot remove a
-  queued item safely.
+- `POST /v1/flai/tasks/{task_id}/cancel` returns `{"status":"cancelling"}` for a
+  task that is processing **or still waiting in the queue**: a queued request is
+  dropped by the worker before it starts, so a chat or media job waiting for the
+  GPU can be stopped. Completed and failed tasks return
+  `409 task_not_cancellable`.
+- `DELETE /v1/flai/tasks/{task_id}` cancels the task while it is still active and
+  then drops its registry entry, so it disappears from the task list. A running
+  job would otherwise keep the GPU queue slot with nobody able to reach it.
 - Unknown or another user's task ID returns `404 task_not_found`, avoiding an
   ownership oracle.
 
 The task registry is stored in Redis for `REDIS_RESULT_TTL` seconds, matching
-queue result retention. Task list/status/cancel endpoints use the API owner's
-`API_RATE_LIMIT` budget.
+queue result retention. Task list/status/cancel/delete endpoints use the API
+owner's `API_RATE_LIMIT` budget.
 
 Example task response:
 
@@ -635,12 +645,20 @@ curl -X POST http://localhost:5000/v1/flai/sessions \
 # Read history (limit clamped to 1–200, offset >= 0)
 curl "http://localhost:5000/v1/flai/sessions/{session_id}/messages?limit=50&offset=0" \
   -H "Authorization: Bearer flai_..."
+
+# Delete a session (cancels its queued and in-flight requests first)
+curl -X DELETE http://localhost:5000/v1/flai/sessions/{session_id} \
+  -H "Authorization: Bearer flai_..."
 ```
 
 - List responses are `{"object": "list", "data": [{id, title, created_at}, ...]}`.
 - Message responses mirror the web API shape:
   `{"messages": [...], "limit", "offset", "has_more"}`; file payloads already
   stored on disk are redacted from `file_data` by the shared DB helper.
+- `DELETE /v1/flai/sessions/{session_id}` cancels the session's queued and
+  in-flight requests first, then removes the session with its messages and
+  stored files: a request left running keeps the GPU and the queue slot and would
+  write its answer into a session that no longer exists.
 - Foreign or unknown session ids return `404 session_not_found`.
 - `/v1` responses never set a cookie: API identity is request-local.
 
@@ -723,7 +741,7 @@ readable part is always the `code`.
 | 404 | `invalid_request_error` | `task_not_found` | Task ID is unknown or belongs to another API user |
 | 405 | `invalid_request_error` | `method_not_allowed` | Wrong HTTP method |
 | 408 | `server_error` | `task_timeout` | Task still running after `API_SYNC_MAX_WAIT`; it was **not** cancelled |
-| 409 | `invalid_request_error` | `task_not_cancellable` | Task is terminal or still queued |
+| 409 | `invalid_request_error` | `task_not_cancellable` | Task is terminal (completed or failed) |
 | 413 | `invalid_request_error` | `request_too_large` | Upload exceeds Flask `MAX_CONTENT_LENGTH` |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` | The key owner's request budget is spent |
 | 429 | `rate_limit_error` | `too_many_requests` | `API_MAX_CONCURRENT_WAITS` requests already waiting (`Retry-After: 1`) |

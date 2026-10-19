@@ -170,6 +170,9 @@ def _run_document_indexing(
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
+    # Set while a chat session is being deleted: its requests must not start.
+    SESSION_CANCEL_KEY_PREFIX = "session:cancelled:"
+
     def __init__(self, app, start_workers: bool = True):
         self.app = app
         self.logger = app.logger
@@ -879,6 +882,8 @@ class RedisRequestQueue:
         task_id = task.get("id")
         if not task_id:
             return
+        if self._drop_cancelled_task(task):
+            return
         publish_result = task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe")
 
         processing_ttl = max(
@@ -1149,19 +1154,32 @@ class RedisRequestQueue:
         response_time is stored in DB (for analytics) but intentionally omitted
         from the returned dict so the client does not render ⏱️/🚀/🤖 in the
         error message header.
+
+        A sub-task of a FLAI Task runs with the task id as its session, and nothing
+        ever reads a chat message written there — the task view renders steps.
+        Persisting one leaks an orphan ``messages`` row per failed step (15 found
+        live), so it is skipped for a task session.
         """
         from .db import save_message
+        from .tasks.store import get_task
 
         completion_time = get_current_time_in_timezone_for_db(self.app)
         prefix = "" if error.startswith("⚠️") else "⚠️ "
-        msg_id = save_message(
-            session_id,
-            "assistant",
-            prefix + error,
-            model_name="system",
-            response_time=str(process_time),
-            model_type="system",
-        )
+        msg_id = None
+        try:
+            is_task_session = session_id and get_task(str(session_id)) is not None
+        except Exception as e:  # noqa: BLE001 — persistence must not mask the error
+            self.app.logger.warning(f"task session lookup failed ({session_id}): {e}")
+            is_task_session = False
+        if not is_task_session:
+            msg_id = save_message(
+                session_id,
+                "assistant",
+                prefix + error,
+                model_name="system",
+                response_time=str(process_time),
+                model_type="system",
+            )
         return {
             "error": prefix + error,
             "session_id": session_id,
@@ -6718,14 +6736,150 @@ class RedisRequestQueue:
         if not exists:
             exists = self.redis.hexists(self.slow_processing_key, task_id)
         if not exists:
+            exists = self.redis.hexists(self.background_processing_key, task_id)
+        if not exists:
             exists = self.redis.hexists(self.crawl_processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.results_key, task_id)
+        if not exists:
+            exists = self._find_in_queue_lists(task_id)
         if not exists:
             return False
         ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 120
         self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
         self.app.logger.info(f"Task {task_id} marked as cancelled")
+        return True
+
+    def _find_in_queue_lists(self, task_id: str) -> bool:
+        """True when the request is still waiting in one of the queue lists.
+
+        The lookup used to scan only the processing hashes, so the ■ button
+        answered «Task not found» for a request that had not been dequeued yet;
+        the client swallows that error and the stop silently did nothing.
+        """
+        target = str(task_id)
+        for key in (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key):
+            try:
+                for raw in self.redis.lrange(key, 0, -1) or []:
+                    task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
+                    if task and str(task.get("id")) == target:
+                        return True
+            except Exception as e:  # noqa: BLE001 — a broken list must not break the cancel
+                self.app.logger.warning(f"queue list scan failed ({key}): {e}")
+        return False
+
+    def _iter_queue_tasks(self):
+        """Yield every request payload the queue machinery currently knows.
+
+        Sources: the four waiting lists and the four processing hashes. Used to
+        find the requests of one chat session, so an undecodable entry is skipped
+        rather than raising.
+        """
+        list_keys = (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key)
+        hash_keys = (
+            self.processing_key,
+            self.slow_processing_key,
+            self.background_processing_key,
+            self.crawl_processing_key,
+        )
+        for key in (*list_keys, *hash_keys):
+            try:
+                raw_values = self.redis.lrange(key, 0, -1) if key in list_keys else self.redis.hvals(key)
+                for raw in raw_values or []:
+                    task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
+                    if task:
+                        yield task
+            except Exception as e:  # noqa: BLE001 — one broken source must not hide the rest
+                self.app.logger.warning(f"queue scan failed ({key}): {e}")
+
+    def _tasks_of_session(self, session_id: str) -> list[dict[str, Any]]:
+        """Every queued/in-flight request belonging to one chat session."""
+        target = str(session_id)
+        return [task for task in self._iter_queue_tasks() if str(task.get("session_id") or "") == target]
+
+    def cancel_session_tasks(self, session_id: str) -> int:
+        """Cancel every queued/in-flight request of one chat session.
+
+        Deleting a chat used to cancel nothing at all: an ``rlm_analysis``
+        already running held the GPU and ``_gpu_lock`` for another 85 s, the
+        task created right after could not start (its gate requires a free GPU),
+        and the answer was written into the deleted session as an orphan
+        ``messages`` row. Returns the number of requests flagged (best effort).
+        """
+        if not session_id:
+            return 0
+        ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 120
+        flagged = 0
+        try:
+            # A requeue child of this chat is enqueued AFTER the delete and has no
+            # per-id flag yet — the session flag catches it at dequeue time.
+            self.redis.setex(f"{self.SESSION_CANCEL_KEY_PREFIX}{session_id}", ttl, "1")
+            for task in self._tasks_of_session(session_id):
+                task_id = str(task.get("id") or "")
+                if task_id:
+                    self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
+                    flagged += 1
+        except Exception as e:  # noqa: BLE001 — the delete itself must go on
+            self.app.logger.warning(f"session cancel failed ({session_id}): {e}")
+        if flagged:
+            self.app.logger.info(f"Session {session_id} cancelled: {flagged} request(s) flagged")
+        return flagged
+
+    def _is_session_cancelled(self, session_id: str) -> bool:
+        """Has the chat session been deleted? Its requests must not run."""
+        if not session_id:
+            return False
+        try:
+            return bool(self.redis.exists(f"{self.SESSION_CANCEL_KEY_PREFIX}{session_id}"))
+        except Exception as e:  # noqa: BLE001 — a Redis hiccup must not block work
+            self.app.logger.warning(f"session cancel check failed ({session_id}): {e}")
+            return False
+
+    def _drop_cancelled_task(self, task: dict[str, Any]) -> bool:
+        """Drop a request cancelled before it started; store a terminal result.
+
+        A request cancelled while still waiting (■ in the UI, a deleted chat)
+        used to run to completion: it held the GPU and the queue slot, and its
+        answer was written into a chat that may no longer exist. The client's
+        poll still terminates because a cancellation envelope is stored under the
+        queue id.
+        """
+        task_id = str(task.get("id") or "")
+        if not task_id:
+            return False
+        session_id = str(task.get("session_id") or "")
+        if not self._is_task_cancelled(task_id) and not self._is_session_cancelled(session_id):
+            return False
+        error_text = self.app.modules["base"]._("Task cancelled", lang=task.get("lang", "ru"))
+        try:
+            self.redis.hset(
+                self.results_key,
+                task_id,
+                self._serialize(
+                    {
+                        "status": "error",
+                        "error": error_text,
+                        "result": {"session_id": session_id, "cancelled": True},
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
+            self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
+        except Exception as e:  # noqa: BLE001 — the drop itself must not fail on Redis
+            self.app.logger.warning(f"cancellation result write failed ({task_id}): {e}")
+        self.app.logger.info(f"Task {task_id} dropped before processing (cancelled)")
+        user_id = task.get("user_id")
+        if user_id:
+            try:
+                pipe = self.redis.pipeline()
+                pipe.srem(f"{self.user_requests_key}:{user_id}", task_id)
+                pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
+                pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
+                pipe.execute()
+            except Exception as e:  # noqa: BLE001 — counters are best effort
+                self.app.logger.warning(f"cancelled task counter cleanup failed ({task_id}): {e}")
+        if task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe"):
+            self._publish_result_event(task, "error", {"error": error_text, "session_id": session_id})
         return True
 
     @staticmethod

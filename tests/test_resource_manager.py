@@ -834,3 +834,43 @@ class TestMeasureVideoVramPeak:
         with patch("app.database.upsert_vram_estimate", side_effect=Exception("DB down")):
             # Should not raise
             rm.measure_video_vram_peak("test")
+
+
+class TestStaleBusyFlags:
+    """A busy flag left behind by a crashed transaction must not block forever.
+
+    ``mark_sd_busy()``/``mark_video_busy()`` are raised before the module's own
+    timeout window; an exception in between (image-edit payload building, video
+    resolution selection) used to leave the flag raised for the life of the
+    process, and ``is_gpu_busy()`` — the FLAI Tasks gate and the watchdog check —
+    then blocked every queued task.
+    """
+
+    def test_a_stale_sd_flag_does_not_block_the_queue(self):
+        import time as _time
+
+        rm = ResourceManager()
+        rm._sd_busy = True
+        rm._sd_busy_since = _time.time() - (rm._busy_flag_limit("sd") + 60)
+
+        assert rm.is_gpu_busy() is False
+        assert rm._sd_busy is False
+
+    def test_a_fresh_sd_flag_still_blocks_the_queue(self):
+        import time as _time
+
+        rm = ResourceManager()
+        rm._sd_busy = True
+        rm._sd_busy_since = _time.time()
+
+        assert rm.is_gpu_busy() is True
+
+    def test_a_stale_video_flag_does_not_block_the_queue(self):
+        import time as _time
+
+        rm = ResourceManager()
+        rm._video_busy = True
+        rm._video_busy_since = _time.time() - (rm._busy_flag_limit("video") + 60)
+
+        assert rm.is_gpu_busy() is False
+        assert rm._video_busy is False

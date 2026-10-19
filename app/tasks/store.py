@@ -149,13 +149,19 @@ def get_tasks_by_user(user_id: str) -> list[dict]:
 
 
 def delete_task(task_id: str) -> None:
-    """Remove a task and its steps.
+    """Remove a task, its steps and the messages written under its own id.
 
     ``task_steps.task_id`` has ``ON DELETE CASCADE``; the explicit step delete
     is a safety net for databases without cascade enforcement.
+
+    A step sub-task error is persisted as a chat message whose ``session_id`` is
+    the task id (``_build_error_response``). Nothing reads those rows — the task
+    view renders steps — and without this delete they outlive the task as orphan
+    ``messages`` rows (15 found in a live database).
     """
     with get_db() as conn:
         c = conn.cursor()
+        c.execute("DELETE FROM messages WHERE session_id = %s", (task_id,))
         c.execute("DELETE FROM task_steps WHERE task_id = %s", (task_id,))
         c.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
 

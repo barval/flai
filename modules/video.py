@@ -392,8 +392,6 @@ class VideoModule(TranslationMixin):
                 f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
             )
 
-        rm.mark_video_busy()
-
         # Cap video resolution ONLY when VRAM is insufficient.
         # Default policy: 240 frames at 768×512 (10-sec video @ 24fps).
         # Cap to 120 frames at 512×512 only if:
@@ -430,6 +428,7 @@ class VideoModule(TranslationMixin):
         image_data, resized_info = resize_video_source_image(image_data)
 
         try:
+            rm.mark_video_busy()
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
                 "negative_prompt": prompt_data.get("negative_prompt", DEFAULT_VIDEO_NEGATIVE_PROMPT),

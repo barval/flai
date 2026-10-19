@@ -1124,6 +1124,22 @@ def validate_session_ownership(session_id: str, user_id: str) -> bool:
         return False
 
 
+def cancel_session_requests(session_id: str) -> int:
+    """Cancel the queued/in-flight requests of one chat session (best effort).
+
+    Called before the session rows are removed (web chat delete and public API
+    session delete): a request left running keeps the GPU and the queue slot, and
+    its answer lands in a chat that no longer exists.
+    """
+    if not session_id:
+        return 0
+    try:
+        return int(current_app.request_queue.cancel_session_tasks(session_id))
+    except Exception as e:  # noqa: BLE001 — the delete itself must go on
+        current_app.logger.warning(f"session cancel failed ({session_id}): {e}")
+        return 0
+
+
 def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
     """Check if user has exceeded upload storage quota. O(1) lookup.
 

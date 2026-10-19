@@ -33,6 +33,9 @@ KV_PER_TOKEN_MB: dict[str, float] = {
     "embedding": 0.05,
 }
 
+# Grace on top of a module's own timeout before its busy flag is abandoned.
+BUSY_FLAG_MARGIN_S = 120.0
+
 
 class HardwareInfo:
     """Detected hardware capabilities."""
@@ -630,9 +633,42 @@ class ResourceManager:
         The watchdog checks this before health-checking llama-swap models:
         a health check spawned during an ensure_vram_for wait would reload
         the very model being unloaded and starve the wait (VRAM race).
+
+        ``_sd_busy``/``_video_busy`` self-heal: both are raised before the
+        module's own timeout window, so a flag older than that window cannot be a
+        live transaction — it was left behind by a crash and would otherwise
+        block every queued task for the life of the process.
         """
         with self._lock:
+            self._expire_stale_busy_flags()
             return bool(self._sd_busy or self._video_busy or self._vram_wait_busy or self._rlm_busy)
+
+    def _busy_flag_limit(self, kind: str) -> float:
+        """Age after which a busy flag of ``kind`` («sd»/«video») is abandoned."""
+        if kind == "sd":
+            return self._env_timeout_s("SD_CPP_TIMEOUT", 900.0) + BUSY_FLAG_MARGIN_S
+        return self._env_timeout_s("LTX_VIDEO_TIMEOUT", 600.0) + BUSY_FLAG_MARGIN_S
+
+    @staticmethod
+    def _env_timeout_s(name: str, default: float) -> float:
+        """Read a timeout from the environment, falling back on a bad value."""
+        try:
+            return float(os.getenv(name, "") or default)
+        except (TypeError, ValueError):
+            return default
+
+    def _expire_stale_busy_flags(self) -> None:
+        """Clear SD/video busy flags left behind by a crashed transaction.
+
+        Called with ``self._lock`` held.
+        """
+        now = time.time()
+        if self._sd_busy and now - self._sd_busy_since > self._busy_flag_limit("sd"):
+            logger.warning("Stale SD busy flag cleared — the transaction never finished")
+            self._sd_busy = False
+        if self._video_busy and now - self._video_busy_since > self._busy_flag_limit("video"):
+            logger.warning("Stale video busy flag cleared — the transaction never finished")
+            self._video_busy = False
 
     # ── llama.cpp model management ──
 

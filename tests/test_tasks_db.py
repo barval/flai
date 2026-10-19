@@ -208,6 +208,31 @@ def test_delete_task_cascades_steps(test_app, fresh_db):
             _cleanup(fresh_db, task_id)
 
 
+def test_delete_task_removes_messages_written_under_its_id(test_app, fresh_db):
+    """A failed step of a FLAI Task leaves a chat message keyed by the task id.
+
+    Nothing reads those rows (the task view renders steps), so deleting the task
+    must delete them too — 15 orphans were found in a live database.
+    """
+    with test_app.app_context():
+        from app.db import save_message
+        from app.tasks.store import create_task, delete_task
+
+        task_id = create_task(user_id="tester", task_class=3, title="t", lang="ru", response_style="neutral")
+        try:
+            save_message(task_id, "assistant", "⚠️ step failed", model_name="system", model_type="system")
+            cur = fresh_db.cursor()
+            cur.execute("SELECT COUNT(*) AS cnt FROM messages WHERE session_id = %s", (task_id,))
+            assert cur.fetchone()["cnt"] == 1
+
+            delete_task(task_id)
+
+            cur.execute("SELECT COUNT(*) AS cnt FROM messages WHERE session_id = %s", (task_id,))
+            assert cur.fetchone()["cnt"] == 0
+        finally:
+            _cleanup(fresh_db, task_id)
+
+
 def test_store_module_importable(test_app):
     """The store module imports standalone (no DB needed for import)."""
     import importlib

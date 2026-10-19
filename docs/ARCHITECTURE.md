@@ -387,8 +387,9 @@ Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm
 ## Task Cancellation
 
 - **Client**: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.
-- **Server**: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL.
-- `_is_task_cancelled(task_id)` checked in every streaming loop iteration.
+- **Server**: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL. It finds the request in the four queue lists as well as the processing hashes, so a request that has not been dequeued yet is cancellable too.
+- `_is_task_cancelled(task_id)` checked in every streaming loop iteration, and once more **before** the work starts (`_process_single_task` → `_drop_cancelled_task`): a request cancelled while waiting used to run to completion and hold the GPU. A dropped request stores a localized cancellation envelope so the client's poll terminates.
+- **Deleted chat**: `POST /api/sessions/<id>/delete` calls `cancel_session_requests()` first — `cancel_session_tasks()` flags every queued/in-flight request of the session and sets `session:cancelled:<id>` for the children a running request requeues after the delete (`_process_single_task` drops a request whose session marker is set). Without it the request kept the GPU and the queue slot and wrote its answer into the deleted session.
 - **SSE event**: `stream_cancelled` → updates UI.
 - **Image gen/edit**: pre/post checks before blocking HTTP calls (`_call_wrapper()`, `generate_image_params()`).
 - **Video gen**: background cancel checker thread (`_start_cancel_checker()`) polls every 2s, restarts LTX container on detection. 8 cancel return points across 4 task types.

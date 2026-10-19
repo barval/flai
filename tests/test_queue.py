@@ -6,7 +6,7 @@ import hmac
 import inspect
 import json
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -38,6 +38,9 @@ class TestRedisRequestQueue:
         redis.hlen.return_value = 0
         redis.scard.return_value = 0
         redis.hincrby.return_value = 1
+        # Default: nothing is cancelled (a Mock exists() would be truthy and
+        # every task would look cancelled to the pre-processing guard).
+        redis.exists.return_value = 0
         pipe = Mock()
         pipe.hincrby.return_value = 1
         pipe.execute.return_value = [1, 1]
@@ -1025,3 +1028,204 @@ class TestWaitForVramDeadline:
 
         assert queue._wait_for_vram_full() is False
         assert 4.5 <= clock["t"] - 1000.0 <= 6.5
+
+
+@pytest.mark.unit
+class TestCancellationOfChatRequests:
+    """A deleted or stopped chat must stop consuming the GPU.
+
+    Live incident (2026-10-20 00:41–00:45 MSK): the user deleted a chat whose
+    ``rlm_analysis`` was already running; the request held the GPU and
+    ``_gpu_lock`` for another 85 s, the task created right after could not start
+    (its gate requires a free GPU), and the answer was written into the deleted
+    session — one orphan row in ``messages``. Deleting a chat cancelled nothing
+    at all, and a request still waiting in a queue list was not cancellable even
+    by the ■ button (``cancel_task`` only looked at the processing hashes).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        # MagicMock: _process_single_task enters app.app_context().
+        app = MagicMock()
+        app.config = {
+            "REDIS_URL": "redis://localhost:6379/0",
+            "SECRET_KEY": "test-secret-key",
+            "QUEUE_MAX_WAIT_TIME": 300,
+            "REDIS_RESULT_TTL": 3600,
+        }
+        app.logger = Mock()
+        base = Mock()
+        base._ = lambda message, lang="en", **kw: message  # noqa: ARG005
+        app.modules = {"base": base}
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.blpop.return_value = None
+        redis.llen.return_value = 0
+        redis.hlen.return_value = 0
+        redis.hincrby.return_value = 1
+        # Nothing is cancelled by default (a Mock exists() would be truthy and
+        # every task would look cancelled to the pre-processing guard).
+        redis.exists.return_value = 0
+        pipe = Mock()
+        pipe.hincrby.return_value = 1
+        pipe.execute.return_value = [1, 1]
+        redis.pipeline.return_value = pipe
+        return redis
+
+    @pytest.fixture
+    def queue_env(self, mock_app, mock_redis):
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._process_request = Mock(return_value={"session_id": "s1"})
+        queue._cleanup_vram_after_task = Mock()
+        return queue, mock_redis
+
+    @staticmethod
+    def _chat_task(task_id="t1", session_id="s1"):
+        return {
+            "id": task_id,
+            "user_id": "u1",
+            "session_id": session_id,
+            "type": "text",
+            "lang": "ru",
+            "timestamp": time.time(),
+        }
+
+    def test_cancel_task_finds_a_request_waiting_in_a_queue_list(self, queue_env):
+        """■ must work while the request is still queued — the old lookup only
+        scanned the processing hashes and answered 404 for a waiting request."""
+        queue, redis = queue_env
+        payload = queue._serialize(self._chat_task("q-1"))
+        redis.hexists.return_value = False
+        redis.lrange.side_effect = lambda key, start, end: [payload] if key == queue.slow_queue_key else []
+
+        assert queue.cancel_task("q-1") is True
+        redis.setex.assert_any_call("task:cancel:q-1", 300 + 120, "1")
+
+    def test_a_request_cancelled_while_queued_never_runs(self, queue_env):
+        """The flag must be honoured before the work starts, not only in stream."""
+        queue, redis = queue_env
+        redis.exists.side_effect = lambda key: 1 if key == "task:cancel:t1" else 0
+
+        queue._process_single_task(self._chat_task("t1"), "slow_processing_requests")
+
+        queue._process_request.assert_not_called()
+        assert redis.hset.call_args_list, "a cancellation envelope must be stored for the poller"
+        stored = redis.hset.call_args_list[0].args
+        assert (
+            "cancelled" in queue._deserialize(stored[2])["status"] or queue._deserialize(stored[2])["status"] == "error"
+        )
+
+    def test_cancel_session_tasks_flags_the_session_and_its_requests(self, queue_env):
+        """Deleting a chat has to reach BOTH the running request (per-id flag,
+        polled by the stream loops) and the waiting ones (queue lists)."""
+        queue, redis = queue_env
+        running = queue._serialize(self._chat_task("run-1", "s1"))
+        queued = [
+            queue._serialize(self._chat_task("q-1", "s1")),
+            queue._serialize(self._chat_task("q-2", "other")),
+        ]
+        redis.hvals.side_effect = lambda key: [running] if key == queue.slow_processing_key else []
+        redis.lrange.side_effect = lambda key, start, end: queued if key == queue.slow_queue_key else []
+
+        assert queue.cancel_session_tasks("s1") == 2
+
+        redis.setex.assert_any_call("session:cancelled:s1", 300 + 120, "1")
+        redis.setex.assert_any_call("task:cancel:run-1", 300 + 120, "1")
+        redis.setex.assert_any_call("task:cancel:q-1", 300 + 120, "1")
+        flagged = [c.args[0] for c in redis.setex.call_args_list]
+        assert "task:cancel:q-2" not in flagged, "another session's request must survive"
+
+    def test_a_request_of_a_deleted_chat_never_runs(self, queue_env):
+        """A requeued child of a deleted chat is enqueued AFTER the delete: only
+        the session flag can catch it, and it must be checked before the work."""
+        queue, redis = queue_env
+        redis.exists.side_effect = lambda key: 1 if key == "session:cancelled:s1" else 0
+
+        queue._process_single_task(self._chat_task("t2"), "slow_processing_requests")
+
+        queue._process_request.assert_not_called()
+
+    def test_an_uncancelled_request_runs_normally(self, queue_env):
+        """The guard must not touch live work."""
+        queue, redis = queue_env
+        redis.exists.side_effect = lambda key: 0
+
+        queue._process_single_task(self._chat_task("t3"), "slow_processing_requests")
+
+        queue._process_request.assert_called_once()
+
+
+@pytest.mark.unit
+class TestErrorMessagePersistence:
+    """A failed step of a FLAI Task must not become an orphan chat message.
+
+    The sub-task of a step runs with the task id as its queue session, so
+    ``_build_error_response`` used to persist «⚠️ …» into ``messages`` under that
+    id. Nothing reads those rows (the task view renders steps) and they were
+    never deleted — 15 orphans in a live database.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    def _queue(self):
+        from app.queue import RedisRequestQueue
+
+        app = MagicMock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        with patch("app.queue.redis.from_url", return_value=Mock()):
+            return RedisRequestQueue(app)
+
+    def test_a_task_step_error_is_not_persisted_as_a_chat_message(self):
+        queue = self._queue()
+        with patch("app.tasks.store.get_task", return_value={"id": "t1"}), patch("app.db.save_message") as save:
+            result = queue._build_error_response("t1", "boom", 1.0, "ru")
+
+        save.assert_not_called()
+        assert result["is_error"] is True
+        assert result["message_id"] is None
+        assert result["error"] == "⚠️ boom"
+
+    def test_a_chat_error_is_still_persisted(self):
+        queue = self._queue()
+        with patch("app.tasks.store.get_task", return_value=None), patch("app.db.save_message", return_value=7) as save:
+            result = queue._build_error_response("s1", "boom", 1.0, "ru")
+
+        save.assert_called_once()
+        assert result["message_id"] == 7
+
+
+@pytest.mark.unit
+class TestTaskStepErrorMessageNotPersistedGuards:
+    """The lookup must never break the error response itself."""
+
+    def test_a_failing_lookup_still_saves_the_message(self):
+        from app.queue import RedisRequestQueue
+
+        app = MagicMock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        with patch("app.queue.RedisRequestQueue.start_worker"), patch("app.queue.redis.from_url", return_value=Mock()):
+            queue = RedisRequestQueue(app)
+        with (
+            patch("app.tasks.store.get_task", side_effect=RuntimeError("db down")),
+            patch("app.db.save_message", return_value=3) as save,
+        ):
+            result = queue._build_error_response("s1", "boom", 1.0, "ru")
+
+        save.assert_called_once()
+        assert result["message_id"] == 3

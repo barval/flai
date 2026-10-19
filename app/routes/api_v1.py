@@ -38,6 +38,7 @@ from app.api_bridge import (
     normalize_chat_messages,
     parse_data_url,
     register_api_task,
+    remove_api_task,
     resolve_api_session,
     sanitize_api_task_result,
     serialize_chat_completion,
@@ -48,6 +49,7 @@ from app.api_bridge import (
 from app.api_tokens import touch_api_token, verify_api_token
 from app.routes.documents import validate_file
 from app.utils import (
+    cancel_session_requests,
     check_document_quota,
     check_upload_quota,
     convert_to_supported_format_if_needed,
@@ -367,7 +369,12 @@ def api_get_task(task_id: str):
 @api_token_required
 @limiter.limit(_api_rate_limit, key_func=_api_rate_key)
 def api_cancel_task(task_id: str):
-    """Cancel an owned active task; queued and terminal tasks are not cancellable."""
+    """Cancel an owned active task — queued or running; terminal ones are not.
+
+    A queued request is cancellable since ``cancel_task`` scans the queue lists
+    too: the worker drops it before it starts, so a chat or media job waiting for
+    the GPU can be stopped instead of running to completion.
+    """
     record = get_api_task_owner(task_id)
     if not record or record.get("login") != g.api_user["login"]:
         return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
@@ -377,15 +384,35 @@ def api_cancel_task(task_id: str):
     if result and result.get("status") in ("completed", "error"):
         return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
 
-    status = _task_pending_status(queue, g.api_user["login"], g.api_user["language"], task_id)
-    if status == "queued":
-        return api_error(409, "invalid_request_error", "task_not_cancellable", _("Queued tasks cannot be cancelled"))
     if not queue.cancel_task(task_id):
         return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
     result = queue.check_result(task_id)
     if result and result.get("status") in ("completed", "error"):
         return api_error(409, "invalid_request_error", "task_not_cancellable", _("Task is no longer cancellable"))
     return jsonify({"status": "cancelling", "task_id": task_id})
+
+
+@bp.route("/flai/tasks/<task_id>", methods=["DELETE"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_delete_task(task_id: str):
+    """Forget an owned task: cancel it while active, then drop its registry entry."""
+    record = get_api_task_owner(task_id)
+    if not record or record.get("login") != g.api_user["login"]:
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+
+    queue = cast(Any, current_app).request_queue
+    result = queue.check_result(task_id)
+    if not (result and result.get("status") in ("completed", "error")):
+        # A deleted task must not keep holding the GPU queue slot.
+        try:
+            queue.cancel_task(task_id)
+        except Exception as e:  # noqa: BLE001 — the delete itself must go on
+            current_app.logger.warning(f"task cancel before delete failed ({task_id}): {e}")
+
+    if not remove_api_task(g.api_user["login"], task_id):
+        return api_error(404, "invalid_request_error", "task_not_found", _("Task not found"))
+    return jsonify({"object": "task", "id": task_id, "deleted": True})
 
 
 @bp.route("/flai/tasks/<task_id>/content", methods=["GET"])
@@ -1615,3 +1642,24 @@ def api_session_messages(session_id: str):
     since = request.args.get("since")
     messages = db.get_session_messages(session_id, since=since, limit=limit, offset=offset)
     return jsonify({"messages": messages, "limit": limit, "offset": offset, "has_more": len(messages) >= limit})
+
+
+@bp.route("/flai/sessions/<session_id>", methods=["DELETE"])
+@api_token_required
+@limiter.limit(_api_rate_limit, key_func=_api_rate_key)
+def api_delete_session(session_id: str):
+    """Delete an owned session after cancelling its queued/in-flight requests.
+
+    The cancel comes first: a running request keeps the GPU and the queue slot,
+    and would write its answer into a session that no longer exists.
+    """
+    if not validate_session_ownership(session_id, g.api_user["login"]):
+        return api_error(404, "invalid_request_error", "session_not_found", _("Session not found"))
+
+    cancel_session_requests(session_id)
+    deleted = db.delete_session_and_messages(
+        session_id, g.api_user["login"], upload_folder=current_app.config["UPLOAD_FOLDER"]
+    )
+    if not deleted:
+        return api_error(404, "invalid_request_error", "session_not_found", _("Session not found"))
+    return jsonify({"object": "session", "id": session_id, "deleted": True})

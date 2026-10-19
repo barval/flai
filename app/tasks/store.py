@@ -229,3 +229,22 @@ def delete_pending_steps_after(task_id: str, seq: int) -> int:
             (task_id, int(seq)),
         )
         return int(c.rowcount or 0)
+
+
+def move_extra_steps_after(task_id: str, seq: int, base: int) -> int:
+    """Shift the task's terminal rows beyond ``seq`` above a grown plan.
+
+    The plan positions occupy the low ``seq`` range and the rows the runtime
+    appends (a clarifying answer, the final summary) live above them. A rewrite
+    that grows the tail would reuse a ``seq`` one of them already holds — and
+    the executor resolves a step row **by seq**, so the new step would take that
+    row and overwrite the user's answer. ``base + seq`` keeps the moved rows
+    above the new tail in their relative order.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE task_steps SET seq = %s + seq WHERE task_id = %s AND seq > %s AND status <> 'pending'",
+            (int(base), task_id, int(seq)),
+        )
+        return int(c.rowcount or 0)

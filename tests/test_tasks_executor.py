@@ -3310,3 +3310,51 @@ def test_plan_update_notice_renders_between_the_prefix_and_the_new_tail(db_env, 
     plan_msg = next(m for m in msgs if m["kind"] == "plan")
     assert expected_plan_head in plan_msg["content"]
     assert plan_msg["total_steps"] == 3
+
+
+def test_replan_never_overwrites_an_extra_step_row(db_env, test_app, gate_open, monkeypatch):
+    """The executed prefix holds the plan positions; the rows the runtime
+    appends (a clarifying answer, the final summary) live ABOVE them. A rewrite
+    that grows the tail must not reuse a `seq` one of them already holds:
+    `_step_row_for` resolves a plan position by `seq`, so the new step would
+    take the user's answer row and overwrite it (the live «Вечерняя сказка»
+    path — the plan was one question, the answer sat at the next seq)."""
+    store = db_env
+    plan = {"title": "t", "steps": [{"seq": 1, "goal": "which scenes?", "tool": "llm", "user_input_expected": True}]}
+    task_id = _mk_task(store, status="awaiting_user", step_plan=plan, minutes_ago=30)
+    store.add_step(task_id=task_id, seq=1, kind="question", goal="which scenes?", tool="llm")
+    store.add_user_input_step(task_id, question_seq=1, answer="draw them all")
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", _replan_once(_replan_reply({"goal": "elaborate scene 1", "tool": "llm"})))
+
+    _cycle(test_app)
+
+    rows = store.get_task_steps(task_id)
+    seqs = [int(r["seq"]) for r in rows]
+    assert len(seqs) == len(set(seqs)), f"a rewrite produced duplicate seq values: {seqs}"
+    answer = next(r for r in rows if r["kind"] == "user_input")
+    assert answer["result"] == "draw them all", "the user's answer must survive the plan rewrite"
+    assert answer["status"] == "passed"
+    new_step = next(r for r in rows if r["goal"] == "elaborate scene 1")
+    assert new_step["kind"] == "direct" and new_step["result"] == "step result text"
+
+
+def test_replan_echoing_the_same_tail_reports_no_change(db_env, test_app, gate_open, monkeypatch):
+    """Spec §8.4.5: a reply whose tail is field-wise identical to the current
+    remaining plan is a «no change» — no notice, no revision record, no row
+    churn (a re-planner that echoes the plan back must not look like a rewrite,
+    and its recreated rows would orphan `parent_step_id` links)."""
+    store = db_env
+    task_id = _mk_task(store, step_plan=_seed_plan(), minutes_ago=30)
+    monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final summary text")
+    monkeypatch.setattr(ex, "_run_replan", _replan_once(_replan_reply(*[dict(s) for s in _seed_plan()["steps"][1:]])))
+
+    _cycle(test_app)
+
+    t = store.get_task(task_id)
+    assert "revisions" not in (t["step_plan"] or {}), "an unchanged tail is not a plan update"
+    assert t["step_plan"]["replanned_upto"] == 2
+    assert t["status"] == "completed"
+    assert [s["goal"] for s in t["step_plan"]["steps"]] == ["Do first thing", "Do second thing"]

@@ -649,6 +649,33 @@ def _recent_results_digest(task_id: str, char_cap: int = 6000) -> str:
     return "\n".join(parts)[-char_cap:]
 
 
+def _tail_signature(step: dict) -> tuple[str, str, str, bool, int | None]:
+    """The comparable fields of one plan step (spec §8.4.5 field-wise compare)."""
+    source = step.get("source_step")
+    if isinstance(source, bool) or not source:
+        source = None
+    return (
+        str(step.get("goal") or ""),
+        str(step.get("tool") or ""),
+        str(step.get("checkpoint_criteria") or ""),
+        bool(step.get("user_input_expected")),
+        int(source) if source is not None else None,
+    )
+
+
+def _same_plan_tail(steps: list[dict] | None, idx: int, new_steps: list[dict]) -> bool:
+    """Is ``new_steps`` field-wise the same tail as the plan's ``steps[idx:]``?
+
+    A re-planner that echoes the plan back must read as «no change»: a rewrite
+    would add a revision notice, delete and recreate the pending rows (orphaning
+    their links) and burn a rewrite for nothing.
+    """
+    old = [s for s in (steps or [])[idx:] if isinstance(s, dict)]
+    if len(old) != len(new_steps):
+        return False
+    return all(_tail_signature(a) == _tail_signature(b) for a, b in zip(old, new_steps, strict=True))
+
+
 def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     """Fence-tolerant parse of the re-planner reply.
 
@@ -1688,9 +1715,13 @@ class TaskExecutor:
         merged = list(steps[:idx]) + list(new_steps)
         for pos, s in enumerate(merged):
             s["seq"] = pos + 1
-        from app.tasks.store import delete_pending_steps_after
+        from app.tasks.store import delete_pending_steps_after, move_extra_steps_after
 
         delete_pending_steps_after(task_id, idx)
+        # The runtime appends the clarifying answer / the final summary ABOVE the
+        # plan positions; move them out of the way of the grown tail first, or
+        # the new step would take the answer's row (it is resolved by seq).
+        move_extra_steps_after(task_id, idx, len(merged))
         self._create_plan_step_rows(task_id, new_steps, start_pos=idx, meta={})
         revisions = list(plan.get("revisions") or [])
         revisions.append({"upto": idx, "total": len(merged)})
@@ -1753,6 +1784,9 @@ class TaskExecutor:
             )
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
         if not parsed["changed"]:
+            return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+        if _same_plan_tail(self._plan_dict(task).get("steps"), idx, parsed["steps"]):
+            logger.info(f"task {task_id}: plan review returned the same tail — plan kept")
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
         return self._apply_replan(task, idx, parsed["steps"])
 

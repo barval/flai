@@ -65,6 +65,7 @@ from app.tasks.runner import (
     recall_slm_facts,
     run_checkpoint,
     run_direct_step,
+    run_media_checkpoint,
     wait_for_documents_indexed,
 )
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
@@ -639,6 +640,10 @@ def _results_digest(task_id: str, char_cap: int = 20000) -> str:
                 body = str(r.get("last_error") or "")[:500]
             parts.append(f"{label}: {body}" if body else label)
     return "\n".join(parts)[:char_cap]
+
+
+# Upper bound of the expected-content text handed to a media verifier.
+REFERENCE_MAX_CHARS = 12000
 
 
 def _recent_results_digest(task_id: str, char_cap: int = 10000) -> str:
@@ -1506,6 +1511,30 @@ class TaskExecutor:
         """
         media = self._prior_step_media(task_id, idx, source_seq=source_seq)
         return self._media_to_raw_base64(media) if media is not None else None
+
+    def _source_reference(self, task_id: str, row: dict, task: dict) -> str:
+        """What the produced artifact must show, for the media verifier.
+
+        The declared source step's content comes first (the reference the
+        planner cannot fabricate), then the step's own goal and criterion.
+        """
+        parts: list[str] = []
+        lang = task.get("lang") or "ru"
+        seq = int(row.get("seq") or 0)
+        # ``source_step`` is a PLAN field: the step row does not carry it.
+        plan_step = next(
+            (s for s in (task.get("step_plan") or {}).get("steps") or [] if int(s.get("seq") or 0) == seq),
+            {},
+        )
+        source_seq = _valid_source_step(plan_step.get("source_step"), seq)
+        source_text = self._source_step_text(task_id, source_seq, lang=lang).strip()
+        if source_text:
+            parts.append(source_text)
+        for key in ("goal", "checkpoint_criteria"):
+            value = str(row.get(key) or "").strip()
+            if value and not any(value in part for part in parts):
+                parts.append(value)
+        return "\n".join(parts)[:REFERENCE_MAX_CHARS]
 
     def _source_step_text(self, task_id: str, source_seq: int | None, lang: str = "ru") -> str:
         """The declared source step's content, as text.
@@ -2676,6 +2705,7 @@ class TaskExecutor:
         # a description of the produced picture (the verifier is a text-only
         # reasoning call — see _describe_step_image).
         checkpoint_input = result_text
+        image_note = ""
         if media.get("file_path"):
             # The artifact line is the bare file name (user preference: no
             # translatable sentence around it — a sentence once leaked English
@@ -2701,8 +2731,26 @@ class TaskExecutor:
         # (e.g. "file exists, non-empty, matches expectation"). A verifier
         # rejection fails the step (the task continues), matching the
         # attempts-exhausted semantics of a direct step.
+        # Universal artifact check (spec §10.3): a step type with an inspector,
+        # a produced artifact and an available expected reference is judged in a
+        # fixed order — the artifact against the expected content, then against
+        # the instruction the generator received. A type without an inspector
+        # (camera) or a failed description falls through to the criteria check.
+        inspector = get_inspector(str(row.get("tool") or ""))
         checkpoint: dict = {}
-        if str(step.get("checkpoint_criteria", "") or "").strip():
+        if inspector and media.get("file_path") and image_note:
+            reference = self._source_reference(task_id, row, task)
+            if reference:
+                checkpoint = run_media_checkpoint(
+                    self.app,
+                    step,
+                    expected_reference=reference,
+                    generation_prompt=str(merged_extra.get("backend_prompt") or ""),
+                    artifact_description=image_note,
+                    lang=task.get("lang") or "ru",
+                )
+                self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
+        if not checkpoint and str(step.get("checkpoint_criteria", "") or "").strip():
             checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
         if checkpoint and not checkpoint.get("verdict"):

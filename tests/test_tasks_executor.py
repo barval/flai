@@ -3518,3 +3518,207 @@ def test_media_context_leads_with_the_source_step_result(db_env, test_app, gate_
     assert "PART_SIX_DESCRIPTION" in context
     assert context.index("PART_SIX_DESCRIPTION") < 12000
     assert len(context) <= test_app.config["MEDIA_CONTEXT_CHARS"]
+
+
+# ── universal media verification: ordered artifact check ─────────────────
+
+
+def _drive_subtask(store, test_app, monkeypatch, plan, envelope, idx=0):
+    """Enqueue plan step ``idx`` and consume one result envelope."""
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), idx, store.get_task(task_id)["step_plan"]["steps"][idx])
+    row = next(r for r in store.get_task_steps(task_id) if int(r["seq"]) == idx + 1)
+    queue_id = row["extra"]["subtask_queue_id"]
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    executor._poll_subtask(store.get_task(task_id), idx, row, gate_open=True)
+    return task_id, executor
+
+
+def test_media_step_is_checked_even_with_an_empty_criterion(db_env, test_app, gate_open, monkeypatch):
+    """Every image artifact is verified — a content-free criterion (or none)
+    must not skip the check, or a wrong picture passes silently."""
+    store = db_env
+    plan = {
+        "title": "Media check",
+        "steps": [{"seq": 1, "goal": "Draw a boy in a forest", "tool": "image_gen", "checkpoint_criteria": ""}],
+    }
+    monkeypatch.setattr(ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("a boy walking", 0.1))
+    seen = []
+    monkeypatch.setattr(
+        ex,
+        "run_media_checkpoint",
+        lambda app, step, **kw: (seen.append(kw), {"verdict": True, "explanation": "ok", "exec_seconds": 0.1})[1],
+    )
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("criteria checkpoint ran"))
+    )
+
+    task_id, _ = _drive_subtask(
+        store,
+        test_app,
+        monkeypatch,
+        plan,
+        {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"},
+    )
+
+    assert len(seen) == 1, "the media check must run without a criterion"
+    assert seen[0]["expected_reference"] == "Draw a boy in a forest"
+    assert store.get_task_steps(task_id)[0]["status"] == "passed"
+
+
+def test_wrong_content_is_rejected_even_when_the_image_matches_its_own_prompt(db_env, test_app, gate_open, monkeypatch):
+    """The live failure: a step redrew part 1 from part 1's own prompt. The
+    picture matched its prompt but not the expected content — rejected."""
+    store = db_env
+    plan = {
+        "title": "Bound media",
+        "steps": [
+            {"seq": 1, "goal": "Split the story", "tool": "llm", "checkpoint_criteria": "parts listed"},
+            {
+                "seq": 2,
+                "goal": "Draw part six",
+                "tool": "image_gen",
+                "checkpoint_criteria": "",
+                "source_step": 1,
+            },
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    step_1 = store.add_step(task_id=task_id, seq=1, kind="direct", goal="Split the story", tool="llm")
+    store.update_step(step_1, status="passed", result="Part six: a boy and a mole walk through a tunnel")
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), 1, store.get_task(task_id)["step_plan"]["steps"][1])
+    row = next(r for r in store.get_task_steps(task_id) if int(r["seq"]) == 2)
+    queue_id = row["extra"]["subtask_queue_id"]
+    envelope = {
+        "status": "completed",
+        "response": "an image was generated",
+        "file_path": "x/y.png",
+        "backend_prompt": "a dense autumn forest at dusk",
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("a dense autumn forest at dusk", 0.1))
+    seen = []
+    monkeypatch.setattr(
+        ex,
+        "run_media_checkpoint",
+        lambda app, step, **kw: (
+            seen.append(kw),
+            {
+                "verdict": False,
+                "explanation": "the forest was drawn instead of the boy and the mole",
+                "exec_seconds": 0.1,
+            },
+        )[1],
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 1, row, gate_open=True)
+
+    assert seen[0]["generation_prompt"] == "a dense autumn forest at dusk"
+    assert "a boy and a mole" in seen[0]["expected_reference"]
+    step = next(r for r in store.get_task_steps(task_id) if int(r["seq"]) == 2)
+    assert step["status"] == "pending", "a rejected artifact re-opens the same step"
+    assert "forest" in step["extra"]["corrective_note"]
+
+
+def test_unregistered_step_type_is_not_checked(db_env, test_app, gate_open, monkeypatch):
+    """A camera step has an artifact but no inspector: no extra model call and
+    no media retry — its normal criterion checkpoint still runs."""
+    store = db_env
+    plan = {
+        "title": "Snapshot",
+        "steps": [
+            {"seq": 1, "goal": "Take a snapshot of the room", "tool": "camera", "checkpoint_criteria": "snapshot taken"}
+        ],
+    }
+    monkeypatch.setattr(
+        ex, "run_media_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("media check ran"))
+    )
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+    )
+
+    task_id, _ = _drive_subtask(
+        store,
+        test_app,
+        monkeypatch,
+        plan,
+        {
+            "status": "completed",
+            "response": "snapshot",
+            "file_path": "x/snap.jpg",
+            "file_name": "snap.jpg",
+            "file_type": "image/jpeg",
+        },
+    )
+
+    assert store.get_task_steps(task_id)[0]["status"] == "passed"
+
+
+def test_empty_artifact_description_skips_the_check(db_env, test_app, gate_open, monkeypatch):
+    """An unavailable description must not burn attempts: the step passes and
+    no media verdict is invented."""
+    store = db_env
+    plan = {
+        "title": "Media check",
+        "steps": [{"seq": 1, "goal": "Draw a boy", "tool": "image_gen", "checkpoint_criteria": ""}],
+    }
+    monkeypatch.setattr(ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("", 0.0))
+    monkeypatch.setattr(
+        ex, "run_media_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("media check ran"))
+    )
+
+    task_id, _ = _drive_subtask(
+        store,
+        test_app,
+        monkeypatch,
+        plan,
+        {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"},
+    )
+
+    assert store.get_task_steps(task_id)[0]["status"] == "passed"
+
+
+def test_source_reference_describes_an_artifact_only_source(db_env, test_app, monkeypatch):
+    """image_edit bound to an image-producing step: the source has no text, so
+    its artifact is described by the same inspector."""
+    store = db_env
+    plan = {
+        "title": "Edit",
+        "steps": [
+            {"seq": 1, "goal": "Draw a kite", "tool": "image_gen", "checkpoint_criteria": "drawn"},
+            {"seq": 2, "goal": "Make it red", "tool": "image_edit", "checkpoint_criteria": "", "source_step": 1},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    step_1 = store.add_step(task_id=task_id, seq=1, kind="media", goal="Draw a kite", tool="image_gen")
+    store.update_step(
+        step_1,
+        status="passed",
+        extra={"media": {"file_path": "s/kite.png", "file_type": "image/png"}},
+    )
+    monkeypatch.setattr(
+        ex,
+        "get_inspector",
+        lambda tool: lambda app, media, lang, preview_data="": ("a red kite over a field", 0.1),
+    )
+    executor = ex.TaskExecutor(app=test_app)
+
+    reference = executor._source_reference(
+        task_id,
+        {"seq": 2, "goal": "Make it red", "checkpoint_criteria": ""},
+        {
+            "lang": "ru",
+            "step_plan": {
+                "steps": [
+                    {"seq": 1, "tool": "image_gen", "source_step": None},
+                    {"seq": 2, "tool": "image_edit", "source_step": 1},
+                ]
+            },
+        },
+    )
+
+    assert "a red kite over a field" in reference

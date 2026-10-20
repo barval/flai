@@ -779,3 +779,63 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
         # real token totals, and report "no usage" as an empty dict.
         verdict["usage"] = totals if any(totals.values()) else {}
         return verdict
+
+
+def run_media_checkpoint(
+    app: Flask,
+    step: dict[str, Any],
+    *,
+    expected_reference: str,
+    generation_prompt: str,
+    artifact_description: str,
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Judge a produced artifact against the expected content and its generator prompt.
+
+    The order is fixed (spec §10.3): first the artifact against the expected
+    content resolved from the step's source, then against the instruction the
+    generator actually received. Returns the same payload as ``run_checkpoint``
+    (``verdict``/``explanation``/``exec_seconds``/``model_name``/``usage``).
+    """
+    from app.utils import format_prompt
+
+    start = time.monotonic()
+    account_id = f"task-media-checkpoint:{uuid.uuid4()}"
+    with app.app_context():
+        try:
+            from modules.base import response_language_name
+
+            base = app.modules.get("base")
+            if base is None or not hasattr(base, "call_llamacpp"):
+                raise RuntimeError("base module (llamacpp client) is unavailable")
+            params = {
+                "expected_reference": (expected_reference or "")[:CHECKPOINT_RESULT_MAX_CHARS],
+                "generation_prompt": generation_prompt or "prompt not reported by the generator",
+                "artifact_description": (artifact_description or "")[:CHECKPOINT_RESULT_MAX_CHARS],
+                "response_language": response_language_name(lang),
+            }
+            prompt = format_prompt("task_checkpoint_media.template", params, lang=lang)
+            if not prompt:
+                raise RuntimeError("task_checkpoint_media prompt template unavailable")
+            begin_usage_account(account_id)
+            reply = base.call_llamacpp(
+                [{"role": "user", "content": prompt}],
+                model_type="reasoning",
+                lang=lang,
+                temperature=0.2,
+            )
+            verdict = _parse_verdict(str(reply))
+        except Exception as e:
+            logger.error(f"run_media_checkpoint failed for step {step.get('id', '?')}: {e}")
+            verdict = {"verdict": False, "explanation": "checkpoint verification failed"}
+        finally:
+            usage = finish_usage_account(account_id) or {}
+        verdict["exec_seconds"] = round(time.monotonic() - start, 2)
+        config = get_model_config("reasoning") or {}
+        verdict["model_name"] = str(config.get("model_name") or "")
+        totals = {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
+        verdict["usage"] = totals if any(totals.values()) else {}
+        return verdict

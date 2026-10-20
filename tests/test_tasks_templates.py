@@ -4,7 +4,7 @@
 import re
 from pathlib import Path
 
-TEMPLATES = ("task_plan", "task_step", "task_checkpoint", "task_final", "task_replan")
+TEMPLATES = ("task_plan", "task_step", "task_checkpoint", "task_checkpoint_media", "task_final", "task_replan")
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 
@@ -33,6 +33,12 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "current_time",
     },
     "task_checkpoint": {"step_goal", "step_checkpoint", "step_result", "response_language"},
+    "task_checkpoint_media": {
+        "expected_reference",
+        "generation_prompt",
+        "artifact_description",
+        "response_language",
+    },
     "task_final": {
         "task_request",
         "plan",
@@ -72,6 +78,9 @@ DUMMY_VALUES: dict[str, str] = {
     "user_answers": "Q: Anything else?\nA: draw them all",
     "remaining_plan": "3. [image_gen] Draw scene three",
     "step_result": "Got 12",
+    "expected_reference": "Part six: a boy and a mole in a tunnel",
+    "generation_prompt": "a dense autumn forest at dusk",
+    "artifact_description": "a forest at dusk, no characters",
     "results_digest": "Step 1: done\nStep 2: got 12",
     "attachments_section": "Attached images: 2 (a.jpg, b.jpg).",
     "current_time": "15 October 2026, time 12:00:00 Thursday (UTC+3)",

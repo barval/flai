@@ -3131,7 +3131,28 @@ def _ensure_visual_bible(self, task: dict, idx: int, step: dict, gate_open: bool
                 self._add_budget(task_id, describe_seconds)
             if image_note:
                 checkpoint_input = result_text + "\n\n" + image_note
-        # Spec §4: a subtask result is verified like any other step result —
+        # Spec §4 continuity clause (Task 7): when a visual bible exists,
+        # the verifier must confirm continuity; appended transiently
+        # to the criteria passed to the checkpoint (NOT persisted into
+        # checkpoint_criteria in DB — it is computed here from the
+        # step's selected cards and then let the runner judge it).
+        if task.get("visual_bible") and isinstance(task.get("visual_bible"), dict):
+            cards = task.get("visual_bible", {})
+            selected_ids = set()
+            # Simple selection: cards whose aliases appear in the step goal
+            goal_text = (str(step.get("goal", "")) or "").lower()
+            for key in ("characters", "places", "props"):
+                for card in cards.get(key, []):
+                    if str(card.get("id", "")).lower() in goal_text or any(
+                        a.lower() in goal_text for a in card.get("aliases", [])
+                    ):
+                        selected_ids.add(str(card.get("id", "")))
+            if selected_ids:
+                continuity_criteria = "Continuity: the image must show the selected cards: " + ", ".join(sorted(selected_ids))
+            else:
+                continuity_criteria = "Continuity: the image must match the task's visual continuity sheet (same style and entities)."
+            # The clause is added to checkpoint_input for this verification only.
+            checkpoint_input += "\n\n" + continuity_criteria
         # a normal checkpoint runs against the step's checkpoint_criteria
         # (e.g. "file exists, non-empty, matches expectation"). A verifier
         # rejection fails the step (the task continues), matching the

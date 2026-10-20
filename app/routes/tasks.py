@@ -310,24 +310,32 @@ def _plan_update_message(task: dict, rev: dict) -> dict:
     """One «Plan updated (N steps).» service notice.
 
     Localized at render time (the plan message is too), so a language switch
-    re-renders the notice in the new language.
+    re-renders the notice in the new language. The notice carries the review
+    call's chat-style header (time, model, real tokens, duration) exactly like
+    a step message — the metadata is stored by ``_apply_replan`` under
+    ``step_plan.revision_meta`` keyed by the rewrite position.
     """
     total = int(rev.get("total") or 0)
+    upto = int(rev.get("upto") or 0)
+    plan = task.get("step_plan") if isinstance(task.get("step_plan"), dict) else {}
+    meta = ((plan.get("revision_meta") or {}).get(str(upto)) or {})
+    if not isinstance(meta, dict):
+        meta = {}
     return {
-        "id": f"{task['id']}:plan_update:{int(rev.get('upto') or 0)}",
+        "id": f"{task['id']}:plan_update:{upto}",
         "role": "assistant",
         "kind": "plan_update",
         "content": _("Plan updated ({n} steps).").format(n=total),
-        "seq": int(rev.get("upto") or 0),
+        "seq": upto,
         "total_steps": total,
         "status": "passed",
         "tool": "",
-        "exec_seconds": 0.0,
-        "model_name": "",
-        "model_type": "",
-        "usage": {},
+        "exec_seconds": float(meta.get("exec_seconds") or 0.0),
+        "model_name": str(meta.get("model_name") or ""),
+        "model_type": str(meta.get("model_type") or ""),
+        "usage": dict(meta.get("usage") or {}),
         "extra": {},
-        "created_at": None,
+        "created_at": meta.get("at") or _iso(task.get("updated_at")),
     }
 
 

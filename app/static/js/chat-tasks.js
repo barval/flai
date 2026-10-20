@@ -982,12 +982,15 @@ function renderTaskMessage(m, task) {
 }
 
 function splitServiceLine(kind, body) {
-    if (kind !== 'plan' && kind !== 'direct' && kind !== 'subtask') return null;
+    if (kind !== 'plan' && kind !== 'plan_update' && kind !== 'direct' && kind !== 'subtask') return null;
     const nl = body.indexOf('\n');
     const first = (nl === -1 ? body : body.slice(0, nl)).trim();
-    if (!first.endsWith(':')) return null;
+    // Step and plan headers end with ':', the «Plan updated (N steps).» notice
+    // is a full sentence — it is still a service line of the same shape.
+    if (kind !== 'plan_update' && !first.endsWith(':')) return null;
     const rest = nl === -1 ? '' : body.slice(nl + 1);
-    return { text: (kind === 'plan' ? '🗒️ ' : '⚙️ ') + first, rest };
+    const emoji = kind === 'plan' ? '🗒️ ' : (kind === 'plan_update' ? '🔄 ' : '⚙️ ');
+    return { text: emoji + first, rest };
 }
 
 // ---------------------------------------------------------------------------

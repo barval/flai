@@ -985,9 +985,22 @@ def _run_replan(app: Flask, prompt: str, cancel_check, lang: str, status_callbac
     """One reasoning-model call for the plan review (text only).
 
     Same JIT-loaded call as the planner; greedy decoding, because the answer is
-    a contract (a plan tail) and not prose. Tests patch this seam.
+    a contract (a plan tail) and not prose. Tests patch this seam. The call's
+    header metadata (model, real tokens, duration, time) is remembered
+    module-level for the «Plan updated» notice — the executor thread is the
+    only reviewer caller.
     """
-    text, _usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
+    global _LAST_REPLAN_META
+    start = time.time()
+    text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
+    config = get_model_config("reasoning") or {}
+    _LAST_REPLAN_META = {
+        "model_name": str(config.get("model_name") or ""),
+        "model_type": "reasoning",
+        "usage": {k: int(v) for k, v in (usage or {}).items() if isinstance(v, (int, float))},
+        "exec_seconds": round(time.time() - start, 1),
+        "at": _now_iso(),
+    }
     return text
 
 
@@ -1000,6 +1013,9 @@ def _run_planner_full(
     return runner._call_reasoning(
         app, prompt, cancel_check, lang=lang, temperature=temperature, status_callback=status_callback
     )
+
+
+_LAST_REPLAN_META: dict[str, Any] = {}
 
 
 def _planner_usage() -> dict[str, int]:
@@ -1882,7 +1898,7 @@ class TaskExecutor:
             return "cancelled"
         return None
 
-    def _apply_replan(self, task: dict, idx: int, new_steps: list[dict]) -> dict:
+    def _apply_replan(self, task: dict, idx: int, new_steps: list[dict], meta: dict | None = None) -> dict:
         """Replace the plan tail from ``idx`` on; forward-only.
 
         ``steps[:idx]`` is copied verbatim — an executed step is immutable.
@@ -1917,12 +1933,23 @@ class TaskExecutor:
         self._create_plan_step_rows(task_id, todo, start_pos=idx, meta={})
         revisions = list(plan.get("revisions") or [])
         revisions.append({"upto": idx, "total": len(merged)})
+        # Chat-style header of the notice, kept apart from the revisions list
+        # (that list is a positional contract; the UI never walks it for meta).
+        revision_meta = dict(plan.get("revision_meta") or {})
+        if meta:
+            revision_meta[str(idx)] = meta
         # Spec §6 replan safety: a rewrite that leaves pending generated-image
         # steps re-arms the sheet (new entities may exist that no card covers).
         pending_media = any(str(s.get("tool") or "") == "image_gen" for s in merged[idx:])
         update_task(
             task_id,
-            step_plan={**plan, "steps": merged, "replanned_upto": idx, "revisions": revisions},
+            step_plan={
+                **plan,
+                "steps": merged,
+                "replanned_upto": idx,
+                "revisions": revisions,
+                **({"revision_meta": revision_meta} if revision_meta else {}),
+            },
             **({"next_step_index": reopen_pos} if reopen_pos is not None else {}),
             **({"visual_bible_stale": True, "visual_bible_attempted": False} if pending_media else {}),
         )
@@ -2039,7 +2066,7 @@ class TaskExecutor:
         if _same_plan_tail(self._plan_dict(task).get("steps"), idx, parsed["steps"]):
             logger.info(f"task {task_id}: plan review returned the same tail — plan kept")
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
-        return self._apply_replan(task, idx, parsed["steps"])
+        return self._apply_replan(task, idx, parsed["steps"], meta=dict(_LAST_REPLAN_META))
 
     def _create_plan_step_rows(
         self, task_id: str, plan_steps: list[dict], start_pos: int = 0, meta: dict | None = None

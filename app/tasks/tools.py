@@ -46,6 +46,7 @@ TOOL_BADGES: dict[str, tuple[str, str]] = {
     "camera": ("📷", N_("Camera")),
     "crawl": ("🕸️", N_("Site study")),
     "rlm": ("🔬", N_("Deep analysis")),
+    "continuity": ("📐", N_("Visual continuity")),
     "image_gen": ("🖼️", N_("Image generation")),
     "image_edit": ("🎨", N_("Image editing")),
     "video_gen": ("🎬", N_("Video generation")),
@@ -131,6 +132,17 @@ CAPABILITIES: list[dict[str, str]] = [
         "label": N_("Deep analysis"),
         "description": N_("Multi-step deep analysis over selected documents, images and web pages."),
         "checkpoint_hint": N_("Name the documents and the question the analysis must answer."),
+    },
+    {
+        "id": "continuity",
+        "label": N_("Visual continuity"),
+        "description": N_(
+            "Extract the visual continuity sheet: one style plus the fixed look "
+            "of every character, place and prop named in the task, as one JSON "
+            "object. Plan it before the first image generation step when the "
+            "task produces several images."
+        ),
+        "checkpoint_hint": N_("Output the sheet as valid JSON."),
     },
     {
         "id": "image_gen",

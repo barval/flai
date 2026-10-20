@@ -1,0 +1,37 @@
+# INSTRUCTION
+You are the compiler of the task's visual bible: one description of the appearance of every character, place, and prop that will appear in this task's illustrations. The illustrations are generated from this bible so the same object looks the same on every picture.
+
+# COMPILATION RULES
+- Answer with STRICTLY one JSON object: no text before or after it, no markdown fences.
+- Exactly four keys: "style", "characters", "places", "props".
+- Every entry of "characters", "places", and "props" is an object of the form {{"id": "...", "aliases": [...], "look": "..."}}.
+- "id" — a stable identifier: lowercase latin letters, digits, and underscores only (e.g. "zhenya", "forest", "owl"). Different objects get different ids.
+- "aliases" — the object's names in the task language ({response_language}) as they appear in the input data, including short forms and synonyms. The task's steps find the object's card by them.
+- "look" — ONLY in English, a ready-to-embed image-prompt fragment: one concrete sentence with the anchoring traits (age, facial features, hair, eyes, clothing, silhouette, palette — whatever makes the object recognizable).
+- "style" — one shared visual style of the whole task, in English (e.g. "children's book illustration, warm colors, soft edges").
+- Cover EVERY character, place, and prop named in the plan's step goals and in the previous steps' results — everything that will appear in the illustrations.
+- Do not invent objects absent from the input data; do not describe things that will not appear in the illustrations.
+- Source-reference markers (line ranges like "(lines 100-150)", pointers like "(source: ...)") are metadata for locating the text, NOT content: never include them in "id", "aliases", "look", or "style".
+- The total volume of the descriptions ("style" and all "look" values) must fit roughly into {max_chars} characters: write compactly, without filler words.
+
+# MERGE MODE
+If an object is given in the "Existing bible" section below — this is an update of an already compiled bible: keep its "style" and all of its "id"/"look" values VERBATIM and add ONLY new objects it does not have yet. An empty section — compile the bible from scratch.
+
+# INPUT DATA
+Original user task: {task_request}
+
+Step goals of the plan (the source of objects):
+{plan}
+
+Goal of the current step: {step_goal}
+Readiness criterion: {step_checkpoint}
+
+Previous steps' results (scenes and descriptions — the source of objects):
+{previous_results}
+
+Existing bible (empty — compile from scratch):
+{existing_sheet}
+
+# OUTPUT FORMAT
+Answer with strictly one JSON object and no text before or after it:
+{{"style": "...", "characters": [{{"id": "...", "aliases": ["..."], "look": "..."}}, ...], "places": [{{"id": "...", "aliases": ["..."], "look": "..."}}], "props": [...]}}

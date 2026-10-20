@@ -271,6 +271,67 @@ def _run_llm_step(
     return text
 
 
+def _run_continuity_step(
+    app: Flask,
+    step: dict[str, Any],
+    context_digest: str,
+    cancel_check: Callable[[], bool],
+    lang: str,
+    task_request: str,
+    plan_text: str,
+) -> str:
+    """Extract the visual continuity sheet (tool ``continuity``) via the reasoning model.
+
+    Mirrors ``_run_llm_step``'s LLM plumbing (same reasoning-model call, no
+    GPU lock, cancel polled between chunks) with the dedicated
+    ``task_continuity`` template. The corpus is the task request plus the plan
+    goals and the previous step results, the latter two stripped of
+    source-reference markers (``sanitize_reference_markers``) so document
+    line-range artifacts never ride into the sheet. A merge extraction puts
+    the current sheet into ``step["extra"]["existing_sheet"]`` (the extraction
+    core's seam): the prompt then demands existing ids/looks kept verbatim,
+    new entities only, style unchanged.
+
+    The raw model output is returned UNTRUNCATED — the over-budget policy
+    (one corrective re-extraction, then accept whole) belongs to the
+    extraction core, never this level. Unparseable or invalid JSON raises
+    ``RuntimeError`` (→ ``status="error"``, ``checkpoint=None``).
+    """
+    from app.tasks.continuity import parse_bible, sanitize_reference_markers
+    from app.utils import format_prompt
+    from modules.base import response_language_name
+
+    step_extra = step.get("extra") or {}
+    existing = step_extra.get("existing_sheet")
+    existing_section = ""
+    if isinstance(existing, dict) and any(
+        existing.get(key) for key in ("style", "characters", "places", "props")
+    ):
+        existing_section = json.dumps(existing, ensure_ascii=False, indent=2)
+    params = {
+        "task_request": task_request,
+        "plan": sanitize_reference_markers(plan_text or ""),
+        "step_goal": step.get("goal", ""),
+        "step_checkpoint": step.get("checkpoint_criteria", ""),
+        "previous_results": sanitize_reference_markers(context_digest or ""),
+        "response_language": response_language_name(lang),
+        "max_chars": int(app.config.get("TASK_CONTINUITY_MAX_CHARS", 2000)),
+        "existing_sheet": existing_section,
+    }
+    prompt = format_prompt("task_continuity.template", params, lang=lang)
+    if not prompt:
+        raise RuntimeError("task_continuity prompt template unavailable")
+    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
+    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
+    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
+    if _is_error_text(text):
+        # A persistent LLM error surfaces as itself, not as a parse failure.
+        raise RuntimeError(text)
+    if parse_bible(text) is None:
+        raise RuntimeError("continuity sheet is not a valid JSON object")
+    return text
+
+
 # A task step that searches documents waits for the task's own attachments to
 # leave the indexing states. Chat parity: a chat answer over an attached
 # document is produced only after the document finished indexing
@@ -603,7 +664,7 @@ def run_direct_step(
     user_answers: str = "",
     doc_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Run ONE direct step (tool: llm | search | rag | history | calculate) and its checkpoint.
+    """Run ONE direct step (tool: llm | search | rag | history | calculate | continuity) and its checkpoint.
 
     Returns ``{"result": str, "exec_seconds": float,
     "status": "passed"|"failed"|"aborted"|"error",
@@ -642,13 +703,17 @@ def run_direct_step(
                 raw = _run_history_step(app, step, user_id, lang)
             elif tool == "calculate":
                 raw = _run_calculate_step(step)
+            elif tool == "continuity":
+                raw = _run_continuity_step(app, step, context_digest, cancel_check, lang, task_request, plan_text)
             else:
                 raise RuntimeError(f"unknown direct step tool: {tool}")
         except StepAborted:
             raise
         except Exception as e:
             err_text = str(e) or "tool error"
-            message = err_text if tool == "calculate" else ""
+            # calculate/continuity surface the failure reason (an unknown
+            # variable, an unparseable sheet) instead of a bare "tool error".
+            message = err_text if tool in ("calculate", "continuity") else ""
             logger.error(f"direct step {step.get('id', '?')} tool={tool} failed: {e}")
             return {
                 "result": message,
@@ -671,8 +736,9 @@ def run_direct_step(
             "status": "passed" if checkpoint.get("verdict") else "failed",
             "checkpoint": checkpoint,
         }
-        if tool == "llm":
-            # Chat-style header data (model + 🔢 tokens) for the conversation view.
+        if tool in ("llm", "continuity"):
+            # Chat-style header data (model + 🔢 tokens) for the conversation
+            # view: both tools stream the reasoning model themselves.
             config = get_model_config("reasoning") or {}
             payload["model_name"] = str(config.get("model_name") or "")
             payload["usage"] = dict(getattr(_last_call_usage, "value", {}) or {})

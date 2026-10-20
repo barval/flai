@@ -1563,6 +1563,10 @@ msgstr "Камера"
 msgid "Site study"
 msgstr "Изучение сайта"
 
+#: app/tasks/tools.py:49 app/tasks/tools.py:138
+msgid "Visual continuity"
+msgstr "Визуальная непрерывность"
+
 #: app/tasks/tools.py:48
 msgid "Image generation"
 msgstr "Генерация изображения"
@@ -3858,6 +3862,23 @@ msgstr "Многошаговый глубокий анализ по выбран
 #: app/tasks/tools.py
 msgid "Name the documents and the question the analysis must answer."
 msgstr "Назови документы и вопрос, на который должен ответить анализ."
+
+
+#: app/tasks/tools.py
+msgid ""
+"Extract the visual continuity sheet: one style plus the fixed look of every "
+"character, place and prop named in the task, as one JSON object. Plan it "
+"before the first image generation step when the task produces several images."
+msgstr ""
+"Извлекает визуальную библию задачи: единый стиль плюс неизменную внешность "
+"каждого персонажа, места и предмета, названных в задаче, одним JSON-объектом. "
+"Ставится перед первым шагом генерации изображений, если задача создаёт "
+"несколько изображений."
+
+
+#: app/tasks/tools.py
+msgid "Output the sheet as valid JSON."
+msgstr "Выведи библию как корректный JSON."
 
 
 #: app/tasks/tools.py

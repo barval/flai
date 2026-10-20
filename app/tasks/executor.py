@@ -1376,32 +1376,31 @@ class TaskExecutor:
 
     # ── Task run (spec §3 step loop) ──────────────────────────────────
 
-# Task 4 continuity guard (direct LLM extraction before first media step)
-# Called from _run_task media branch when visual_bible missing and not yet attempted.
-
-def _ensure_visual_bible(self, task: dict, idx: int, step: dict, gate_open: bool | None) -> None:
-    """Guard: extract continuity sheet before first image_gen step if needed."""
-    if not (self.app.config.get("TASK_CONTINUITY_ENABLED", True) and
-            str(step.get("tool", "")) in ("image_gen", "image_edit") and
-            str(task.get("visual_bible") or "{}") == "{}" and
-            not bool(task.get("visual_bible_attempted"))):
-        return
-    if sum(1 for s in (task.get("step_plan") or {}).get("steps", []) if s.get("tool") == "image_gen") < 2:
-        return  # only one media step — no continuity needed
-    # Call the extraction core (direct LLM step, no GPU lock)
-    try:
-        from app.tasks.continuity import run_continuity_extraction
-        result = run_continuity_extraction(self.app, task.get("id", ""), merge=False, lang=task.get("lang") or "ru")
-        if result.get("status") == "passed" and result.get("result"):
-            from app.tasks.store import update_task
-            update_task(task["id"], visual_bible=json.loads(str(result.get("result"))) if isinstance(result.get("result"), str) else result.get("result"))
-            # Clear stale/attempted; sheet now present
-            if task.get("visual_bible_stale"):
-                update_task(task["id"], visual_bible_stale=False)
-            self._publish_stream_event(task, "task_stage", {"stage": "continuity", "message": "Visual continuity sheet extracted"})
-    except Exception as e:
-        logger.warning("continuity guard extraction failed for %s: %s", task.get("id"), e)
-        update_task(task["id"], visual_bible_attempted=True)
+    # Task 4 continuity guard (direct LLM extraction before first media step)
+    # Called from _run_task media branch when visual_bible missing and not yet attempted.
+    def _ensure_visual_bible(self, task: dict, idx: int, step: dict, gate_open: bool | None = None) -> None:
+        """Guard: extract continuity sheet before first image_gen step if needed."""
+        if not (self.app.config.get("TASK_CONTINUITY_ENABLED", True) and
+                str(step.get("tool", "")) in ("image_gen", "image_edit") and
+                str(task.get("visual_bible") or "{}") == "{}" and
+                not bool(task.get("visual_bible_attempted"))):
+            return
+        if sum(1 for s in (task.get("step_plan") or {}).get("steps", []) if s.get("tool") == "image_gen") < 2:
+            return  # only one media step — no continuity needed
+        # Call the extraction core (direct LLM step, no GPU lock)
+        try:
+            from app.tasks.continuity import run_continuity_extraction
+            result = run_continuity_extraction(self.app, task.get("id", ""), merge=False, lang=task.get("lang") or "ru")
+            if result.get("status") == "passed" and result.get("result"):
+                from app.tasks.store import update_task
+                update_task(task["id"], visual_bible=json.loads(str(result.get("result"))) if isinstance(result.get("result"), str) else result.get("result"))
+                # Clear stale/attempted; sheet now present
+                if task.get("visual_bible_stale"):
+                    update_task(task["id"], visual_bible_stale=False)
+                self._publish_stream_event(task, "task_stage", {"stage": "continuity", "message": "Visual continuity sheet extracted"})
+        except Exception as e:
+            logger.warning("continuity guard extraction failed for %s: %s", task.get("id"), e)
+            update_task(task["id"], visual_bible_attempted=True)
 
     def _run_task(self, task: dict, gate_open: bool | None = None) -> None:
         """Run steps until a break condition (frozen / awaiting / subtask queued /

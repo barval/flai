@@ -295,6 +295,8 @@ const STAGE_LABEL_KEYS = {
     crawl_indexing: 'stage_crawl_indexing',
     making_plan: 'stage_making_plan',
     indexing_document: 'stage_indexing_document',
+    continuity: 'stage_continuity',
+    continuity_failed: 'stage_continuity_failed',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.

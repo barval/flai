@@ -294,6 +294,34 @@
     animation: progressPulse 1.5s ease-in-out infinite;
 }
 
+/* Read-only visual continuity block (spec §7): compact sheet right under the
+   status banner; title, style line and entity cards; a give-up notice when
+   the extraction failed. */
+.task-continuity {
+    background-color: #f0f7f5;
+    border: 1px solid #c8e0d8;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.78rem;
+    color: #2f6f5a;
+}
+
+.task-continuity-title {
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+}
+
+.task-continuity-body div,
+.task-continuity-note {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.task-continuity-note {
+    color: #a05a20;
+}
+
 /* Tasks-tab empty state (no task selected): centred hint in the window. */
 .task-empty-state {
     display: flex;

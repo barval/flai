@@ -1758,6 +1758,11 @@ class RedisRequestQueue:
         task_context = str((task.get("data") or {}).get("task_context") or "").strip()
         if task_context:
             edit_prompt = f"{edit_prompt}\n\nContext so far:\n{task_context}"
+        # Prompt hygiene (spec §9a): the same source-marker strip as image_gen
+        # (assembled text sanitized right before the prompt builder).
+        from app.tasks.continuity import sanitize_reference_markers
+
+        edit_prompt = sanitize_reference_markers(edit_prompt)
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(edit_prompt, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
@@ -1989,6 +1994,14 @@ class RedisRequestQueue:
         task_context = str((task.get("data") or {}).get("task_context") or "").strip()
         if task_context:
             generation_query = f"{generation_query}\n\nContext so far:\n{task_context}"
+        # Prompt hygiene (spec §9a): source-reference markers (document line
+        # ranges, «(источник: …)» citation stubs) left by the extractor reach
+        # the SD prompt as garbage text/CJK/digits. The sanitizer strips the
+        # markers from the ASSEMBLED query — scene numbering and quoted
+        # inscriptions (legitimate text content) survive.
+        from app.tasks.continuity import sanitize_reference_markers
+
+        generation_query = sanitize_reference_markers(generation_query)
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             generation_query, lang=lang, response_style=response_style
         )

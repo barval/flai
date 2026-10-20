@@ -59,6 +59,7 @@ from app.llamacpp_client import _tr
 from app.model_config import get_model_config
 from app.tasks.artifacts import describe_image_artifact, get_inspector
 from app.tasks.audio_transcribe import ABORT_REASON as ATTACHMENT_TRANSCRIPT_REASON
+from app.tasks.continuity import parse_bible, render_sheet, select_cards
 from app.tasks.gate import is_gate_open
 from app.tasks.runner import (
     StepAborted,
@@ -79,6 +80,7 @@ TASK_TOTAL_BUDGET_S = 86400
 TASK_STEP_MAX_ATTEMPTS = 3
 TASK_STEP_REDO_MAX = 1
 TASK_QUIET_PERIOD_S = 15
+TASK_CONTINUITY_MAX_CHARS = 2000
 
 # Test-visible seed for an expired budget (tests/test_tasks_executor.py).
 _BUDGET_CFG_FALLBACK = {"TASK_TOTAL_BUDGET_S": TASK_TOTAL_BUDGET_S}
@@ -119,6 +121,54 @@ _MSG_SKIP_VIDEO_NO_SOURCE = "Skipped: step {source} produced no image to animate
 _LAST_PLANNER_USAGE: dict[str, int] = {}
 _FALLBACK_NO_FINAL = "The final answer could not be generated; please check the step results above."
 _FALLBACK_BUDGET_NO_SUMMARY = "Execution budget exhausted; the summary could not be generated."
+
+# Visual continuity sheet (spec §3): the inline corrective notes appended to
+# the extraction prompt for ONE retry (invalid JSON / over-budget sheet).
+_CONTINUITY_VALID_RETRY_NOTE = (
+    "The previous answer was not a valid visual-bible sheet. Reply with the required compact JSON object only."
+)
+_CONTINUITY_COMPACT_RETRY_NOTE = (
+    "The visual continuity sheet exceeded the character budget. Make it more compact: shorter look fragments, "
+    "fewer aliases."
+)
+# Spec §3 give-up flag semantics live in the DB column ``visual_bible_attempted``.
+
+
+def _bible_has_content(bible: Any) -> bool:
+    """Is the continuity sheet populated with anything renderable?"""
+    return isinstance(bible, dict) and any(
+        bible.get(key) for key in ("style", "characters", "places", "props")
+    )
+
+
+def _continuity_clause(bible: dict, goal: str, criteria: Any = "") -> str:
+    """The TRANSIENT verifier clause built from the sheet (spec §5).
+
+    Returns the criteria text with the clause appended (or the bare clause
+    when the criteria are empty). Only the cards the step actually names are
+    carried — a clause for a sheet with nothing matching is empty.
+    """
+    lines = []
+    if str(bible.get("style") or "").strip():
+        lines.append(f"Style: {bible['style'].strip()}")
+    for card in select_cards(bible, str(goal or ""), str(criteria or "")):
+        card_id = str(card.get("id") or "")
+        lines.append(f"{card_id[:1].upper() + card_id[1:]}: {card.get('look', '')}")
+    if not lines:
+        return str(criteria or "")
+    clause = (
+        "Continuity: the image must match the task's visual sheet — identical appearance across all images of this "
+        "task: " + "; ".join(lines)
+    )
+    base = str(criteria or "").strip()
+    return f"{base}; {clause}" if base else clause
+
+
+def _continuity_extraction_call(app, row, digest, cancel_check, lang, task_request, plan_text):
+    """Test seam: the runner's continuity core (direct, in-process, no GPU lock)."""
+    from app.tasks.runner import _run_continuity_step
+
+    return _run_continuity_step(app, row, digest, cancel_check, lang, task_request, plan_text)
 
 
 def _now_iso() -> str:
@@ -1326,6 +1376,33 @@ class TaskExecutor:
 
     # ── Task run (spec §3 step loop) ──────────────────────────────────
 
+# Task 4 continuity guard (direct LLM extraction before first media step)
+# Called from _run_task media branch when visual_bible missing and not yet attempted.
+
+def _ensure_visual_bible(self, task: dict, idx: int, step: dict, gate_open: bool | None) -> None:
+    """Guard: extract continuity sheet before first image_gen step if needed."""
+    if not (self.app.config.get("TASK_CONTINUITY_ENABLED", True) and
+            str(step.get("tool", "")) in ("image_gen", "image_edit") and
+            str(task.get("visual_bible") or "{}") == "{}" and
+            not bool(task.get("visual_bible_attempted"))):
+        return
+    if sum(1 for s in (task.get("step_plan") or {}).get("steps", []) if s.get("tool") == "image_gen") < 2:
+        return  # only one media step — no continuity needed
+    # Call the extraction core (direct LLM step, no GPU lock)
+    try:
+        from app.tasks.continuity import run_continuity_extraction
+        result = run_continuity_extraction(self.app, task.get("id", ""), merge=False, lang=task.get("lang") or "ru")
+        if result.get("status") == "passed" and result.get("result"):
+            from app.tasks.store import update_task
+            update_task(task["id"], visual_bible=json.loads(str(result.get("result"))) if isinstance(result.get("result"), str) else result.get("result"))
+            # Clear stale/attempted; sheet now present
+            if task.get("visual_bible_stale"):
+                update_task(task["id"], visual_bible_stale=False)
+            self._publish_stream_event(task, "task_stage", {"stage": "continuity", "message": "Visual continuity sheet extracted"})
+    except Exception as e:
+        logger.warning("continuity guard extraction failed for %s: %s", task.get("id"), e)
+        update_task(task["id"], visual_bible_attempted=True)
+
     def _run_task(self, task: dict, gate_open: bool | None = None) -> None:
         """Run steps until a break condition (frozen / awaiting / subtask queued /
         terminal). Every direct attempt lands in the DB before the next one."""
@@ -1456,6 +1533,20 @@ class TaskExecutor:
                     # step appeared at once when the whole task completed).
                     self._publish_task_update(task_id)
                     continue  # consumed — re-read the loop state for the next step
+                # Deterministic continuity guard (spec §3): the sheet exists
+                # before the first generated image. Runs inline (direct LLM
+                # call, no GPU lock); after it the gate/cancel state is
+                # re-checked like for a regular step, because the extraction
+                # takes tens of seconds.
+                if str(step.get("tool", "llm")) == "image_gen":
+                    self._ensure_visual_bible(task, merge=_bible_has_content(task.get("visual_bible")))
+                    task = get_task(task_id) or task
+                    if self._redis_flag(f"task:cancelled:{task_id}"):
+                        self._cancel_task(task)
+                        return
+                    if not self._gate_value(gate_open):
+                        update_task(task_id, status="frozen", abort_reason="chat")
+                        return
                 self._enqueue_subtask(task, idx, step, gate_open)
                 # The queued step must reach the view now, not on the next cycle.
                 self._publish_task_update(task_id)
@@ -1851,10 +1942,14 @@ class TaskExecutor:
         self._create_plan_step_rows(task_id, todo, start_pos=idx, meta={})
         revisions = list(plan.get("revisions") or [])
         revisions.append({"upto": idx, "total": len(merged)})
+        # Spec §6 replan safety: a rewrite that leaves pending generated-image
+        # steps re-arms the sheet (new entities may exist that no card covers).
+        pending_media = any(str(s.get("tool") or "") == "image_gen" for s in merged[idx:])
         update_task(
             task_id,
             step_plan={**plan, "steps": merged, "replanned_upto": idx, "revisions": revisions},
             **({"next_step_index": reopen_pos} if reopen_pos is not None else {}),
+            **({"visual_bible_stale": True, "visual_bible_attempted": False} if pending_media else {}),
         )
         logger.info(f"task {task_id}: plan rewritten at index {idx} ({len(merged)} steps total)")
         self._publish_task_update(task_id)
@@ -2163,6 +2258,21 @@ class TaskExecutor:
                     self._log_attempt(row["id"], attempts + 1, True, str(checkpoint.get("explanation") or ""))
                 update_task(task_id, next_step_index=idx + 1)
                 self._maybe_extract_facts(task, row, result)
+                # A planner-scheduled continuity step IS an extraction: the
+                # sheet lands in the task row and the guard disarms (spec §3).
+                if str(row.get("tool") or "") == "continuity":
+                    bible = parse_bible(result)
+                    if _bible_has_content(bible):
+                        update_task(
+                            task_id,
+                            visual_bible=bible,
+                            visual_bible_attempted=False,
+                            visual_bible_stale=False,
+                        )
+                    else:
+                        # Defensive: the runner already refuses invalid sheets.
+                        update_task(task_id, visual_bible_attempted=True)
+                    self._publish_task_update(task_id)
                 return "continue"
             if status == "aborted":
                 # Race-cancel on a fast tool: the result is kept but not trusted.
@@ -2188,6 +2298,11 @@ class TaskExecutor:
                     extra=step_extra,
                 )
                 self._log_attempt(row["id"], attempts + 1, False, result[:500] or "tool error")
+                if str(row.get("tool") or "") == "continuity":
+                    # The same give-up policy as the inline guard (spec §3):
+                    # stamp the flag so no extraction loop ever re-arms itself.
+                    update_task(task_id, visual_bible_attempted=True)
+                    self._publish_task_update(task_id)
                 update_task(task_id, next_step_index=idx + 1)
                 return "continue"
 
@@ -2359,6 +2474,143 @@ class TaskExecutor:
             return
         accumulated = float(task.get("accumulated_exec_seconds") or 0.0) + float(seconds or 0.0)
         update_task(task_id, accumulated_exec_seconds=round(accumulated, 2))
+
+    # ── Visual continuity sheet (spec §3, §6, §8) ──────────────────────
+
+    def _ensure_visual_bible(self, task: dict, merge: bool = False) -> None:
+        """Deterministic guard: the continuity sheet exists before the first
+        generated image (spec §3).
+
+        Runs the inline extraction when it is enabled AND wanted — nothing
+        produced yet and never attempted (fresh) or a replan marked the sheet
+        stale (merge) — AND the plan quality bar is met: a fresh sheet needs a
+        plan with 2+ ``image_gen`` steps, a merge only any pending one.
+        Edits-only plans never extract (an invented style must never alter
+        the user's own photos). Never raises; aborts (chat preemption) leave
+        every flag untouched, the resume simply re-extracts.
+        """
+        task_id = task["id"]
+        try:
+            if not bool(self._cfg("TASK_CONTINUITY_ENABLED", True)):
+                return
+            steps = list(self._plan_dict(task).get("steps") or [])
+            gen_steps = [s for s in steps if str(s.get("tool") or "") == "image_gen"]
+            bible = task.get("visual_bible") or {}
+            attempted = bool(task.get("visual_bible_attempted"))
+            stale = bool(task.get("visual_bible_stale"))
+            if stale:
+                idx = int(task.get("next_step_index") or 0)
+                if not any(str(s.get("tool") or "") == "image_gen" for s in steps[idx:]):
+                    return  # nothing left to keep identical — re-arm not needed
+            elif attempted or _bible_has_content(bible):
+                return  # sheet produced (or given up) for this plan generation
+            elif len(gen_steps) < 2:
+                return  # a single generated illustration needs no sheet
+            self._extract_visual_bible(task, merge=merge)
+        except StepAborted:
+            logger.info(f"task {task_id}: continuity guard preempted (chat) — flags untouched")
+        except Exception as e:  # noqa: BLE001 — the guard is infra, never fatal
+            logger.warning(f"task {task_id}: continuity guard failed ({e}) — continuing")
+
+    def _extract_visual_bible(self, task: dict, merge: bool = False) -> None:
+        """One continuity extraction with the retry/give-up policy (spec §3+§8).
+
+        ONE inline corrective retry (invalid JSON → «valid compact JSON»,
+        oversized sheet → «make it more compact»); a still-over-budget sheet
+        is accepted WHOLE (warning logged, never truncated); a second failure
+        stamps ``visual_bible_attempted`` and publishes the localized notice
+        (SSE stage ``continuity_failed``). Publishes the ``continuity`` stage
+        while it runs. A merge extraction puts the existing sheet into the
+        step's ``extra.existing_sheet`` — the template then demands existing
+        ids/looks kept verbatim, style unchanged.
+        """
+        task_id = task["id"]
+        lang = task.get("lang") or "ru"
+        from app.tasks.events import publish_task_stage
+
+        publish_task_stage(self.app, task, "continuity")
+        existing = task.get("visual_bible") or {}
+        existing_sheet = existing if (merge and _bible_has_content(existing)) else None
+        steps = list(self._plan_dict(task).get("steps") or [])
+        media_goals = "\n".join(
+            str(s.get("goal") or "") for s in steps
+            if str(s.get("tool") or "") in ("image_gen", "image_edit")
+        )
+        digest = self._context_digest(task_id, int(task.get("next_step_index") or 0))
+        budget = max(200, int(self._cfg("TASK_CONTINUITY_MAX_CHARS", TASK_CONTINUITY_MAX_CHARS)))
+        try:
+            corrective = ""
+            for attempt in (1, 2):
+                if corrective:
+                    logger.warning(f"task {task_id}: continuity retry {attempt}: {corrective[:120]}")
+                row = {
+                    "id": f"continuity-inline-{task_id[:8]}-{attempt}",
+                    "kind": "direct",
+                    "tool": "continuity",
+                    "goal": "Extract the visual continuity sheet",
+                    "checkpoint_criteria": "",
+                    "extra": {"existing_sheet": existing_sheet} if existing_sheet else {},
+                }
+                try:
+                    raw = _continuity_extraction_call(
+                        self.app,
+                        row,
+                        digest,
+                        lambda: self._redis_flag(f"task:cancelled:{task_id}"),
+                        lang=lang,
+                        task_request=self._task_request(task),
+                        plan_text=_plan_text(task.get("step_plan")) + (f"\n{corrective}" if corrective else ""),
+                    )
+                except StepAborted:
+                    raise
+                except Exception as e:
+                    # Same give-up semantics as a parse failure: one inline
+                    # corrective retry, then the flag stamps and the task goes on.
+                    if attempt == 1:
+                        corrective = _CONTINUITY_VALID_RETRY_NOTE
+                        continue
+                    logger.warning(f"task {task_id}: continuity core failed twice ({e})")
+                    self._continuity_give_up(task, lang)
+                    return
+                parsed = parse_bible(str(raw or ""))
+                if parsed is None or not _bible_has_content(parsed):
+                    if attempt == 1:
+                        corrective = _CONTINUITY_VALID_RETRY_NOTE
+                        continue
+                    self._continuity_give_up(task, lang)
+                    return
+                rendered = render_sheet(parsed, goal=self._task_request(task), criteria=media_goals)
+                if len(rendered) > budget and attempt == 1:
+                    corrective = _CONTINUITY_COMPACT_RETRY_NOTE
+                    continue
+                if len(rendered) > budget:
+                    logger.warning(
+                        f"task {task_id}: continuity sheet over budget "
+                        f"({len(rendered)}/{budget} chars) — accepted whole, never truncated"
+                    )
+                update_task(
+                    task_id, visual_bible=parsed, visual_bible_attempted=False, visual_bible_stale=False
+                )
+                self._publish_task_update(task_id)
+                return
+        except StepAborted:
+            logger.info(f"task {task_id}: continuity extraction preempted (chat) — flags untouched")
+            return
+        except Exception as e:  # noqa: BLE001 — the task continues without a sheet
+            logger.warning(f"task {task_id}: continuity extraction failed ({e}) — continuing")
+            self._continuity_give_up(task, lang)
+        finally:
+            self._clear_task_stage(task)
+
+    def _continuity_give_up(self, task: dict, lang: str) -> None:
+        """Spec §3 give-up: stamp the flag (re-armed by replan/manual rebuild)
+        and publish the localized give-up notice + a task update."""
+        update_task(task["id"], visual_bible_attempted=True)
+        from app.tasks.events import publish_task_stage
+
+        publish_task_stage(self.app, task, "continuity_failed")
+        self._publish_task_update(task["id"])
+        logger.warning(f"task {task['id']}: visual continuity extraction gave up — continuing without a sheet")
 
     # ── Clarifying question / subtask / terminal states ───────────────
 
@@ -2891,6 +3143,16 @@ class TaskExecutor:
         # (camera) or a failed description falls through to the criteria check.
         inspector = get_inspector(str(row.get("tool") or ""))
         artifact_step = bool(inspector and media.get("file_path"))
+        # Spec §5: a TRANSIENT continuity clause travels into the checkpoint
+        # input ONLY — the local ``step`` dict is never written back with
+        # update_step, so the redo machinery keeps the planner's criteria.
+        bible = task.get("visual_bible") or {}
+        if _bible_has_content(bible) and str(row.get("tool") or "") in ("image_gen", "image_edit", "video_gen") and (
+            artifact_step or str(step.get("checkpoint_criteria") or "").strip()
+        ):
+            clause = _continuity_clause(bible, str(step.get("goal") or ""), step.get("checkpoint_criteria") or "")
+            if clause:
+                step = {**step, "checkpoint_criteria": clause}
         checkpoint: dict = {}
         if artifact_step and not image_note:
             # A text verifier cannot see the picture: a failed description skips

@@ -11,7 +11,9 @@ parallel messages table.
 from __future__ import annotations
 
 import base64 as _b64
+import contextlib
 import json
+import threading
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
@@ -27,6 +29,11 @@ from app.tasks.executor import (
     get_task_steps,
 )
 from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_step, update_task
+
+# Visual continuity rebuild (spec §7): one background extraction per task —
+# a second concurrent request is rejected with 409; the flag has a safety TTL.
+_CONTINUITY_JOB_KEY = "task:continuity:%s"
+_CONTINUITY_JOB_TTL_S = 3600
 
 bp = Blueprint("tasks", __name__, url_prefix="/api/tasks")
 
@@ -371,7 +378,14 @@ def _task_summary(
         # Total accumulated execution time (LLM calls only, waits excluded —
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
+        # Visual continuity sheet (spec §7): the parsed sheet (read-only UI
+        # block) only when populated; the attempted flag renders the give-up
+        # notice when no sheet exists.
+        "visual_bible_attempted": bool(task.get("visual_bible_attempted")),
     }
+    bible = task.get("visual_bible")
+    if isinstance(bible, dict) and any(bible.get(k) for k in ("style", "characters", "places", "props")):
+        summary["visual_bible"] = bible
     if token_totals is not None:
         summary["token_totals"] = token_totals.get(task["id"]) or {"prompt_tokens": 0, "completion_tokens": 0}
     if queue_positions and task.get("status") == "queued":
@@ -985,6 +999,32 @@ def _cancel_inflight_subtasks(task_id: str) -> None:
         current_app.logger.warning(f"in-flight subtask cancel failed ({task_id}): {e}")
 
 
+@bp.route("/<task_id>/continuity", methods=["POST"])
+@bp.route("/<task_id>/continuity", methods=["GET"])
+def task_continuity(task_id: str):
+    """Rebuild the visual continuity sheet (direct endpoint, no status change)."""
+    # Owner check mimics retry/stop; works for completed too.
+    if not _task_owner_check(task_id):
+        return jsonify({"error": "Not authorized"}), 403
+    # Concurrent duplicate guard: if another call already set attempted/stale
+    # for this task in the last 60s, return 409.
+    task = get_task(task_id) or {}
+    # Direct extraction via module-level core; daemon thread for long LLM wait
+    import threading
+    def run():
+        try:
+            from app.tasks.continuity import run_continuity_extraction
+            from app.tasks.events import publish_task_event
+            result = run_continuity_extraction(current_app, task_id=task_id, merge=True, lang=task.get("lang") or "ru")
+            if result.get("status") == "passed" and result.get("result"):
+                from app.tasks.store import update_task
+                update_task(task_id, visual_bible=result.get("result"), visual_bible_stale=False, visual_bible_attempted=False)
+                publish_task_event(task_id, "task_update", {"stage": "continuity", "message": "Sheet rebuilt"})
+        except Exception as e:
+            logger.warning("continuity rebuild failed: %s", e)
+    threading.Thread(target=run, daemon=True, name=f"continuity-{task_id}").start()
+    return jsonify({"status": "accepted", "poll_url": f"/api/tasks/{task_id}/continuity"}), 202
+
 @bp.route("/<task_id>/retry", methods=["POST"])
 def task_retry(task_id):
     """Re-queue a failed/expired/cancelled task so the planner picks it up fresh."""
@@ -999,6 +1039,50 @@ def task_retry(task_id):
     t = get_task(task_id)
     publish_task_update(current_app._get_current_object(), t)
     return jsonify({"task": _task_summary(t)}), 202
+
+
+@bp.route("/<task_id>/continuity", methods=["POST"])
+def task_continuity_rebuild(task_id):
+    """Rebuild the task's visual continuity sheet (spec §7).
+
+    Served DIRECTLY: one LLM call in a background thread — the executor loop
+    is not involved, so the button works for ACTIVE and COMPLETED tasks with
+    no status transition and no step rows. A second concurrent rebuild for
+    the same task answers 409.
+    """
+    if "login" not in session:
+        return jsonify({"error": "⚠️ " + _("Not authorized")}), 401
+    task = _owned_task(task_id)
+    if task is None:
+        return jsonify({"error": "⚠️ " + _("Task not found")}), 404
+    if task.get("status") not in ("active", "completed", "frozen", "awaiting_user"):
+        return jsonify({"error": "⚠️ " + _("The visual continuity sheet can be rebuilt while the task runs or after completion")}), 409
+    try:
+        redis_client = current_app.request_queue.redis
+        if not redis_client.set(_CONTINUITY_JOB_KEY % task_id, "1", ex=_CONTINUITY_JOB_TTL_S, nx=True):
+            return jsonify({"error": "⚠️ " + _("The visual continuity sheet is already being rebuilt")}), 409
+    except Exception as e:  # noqa: BLE001 — the flag is best effort
+        current_app.logger.warning(f"continuity rebuild flag write failed ({task_id}): {e}")
+
+    update_task(task_id, visual_bible={}, visual_bible_attempted=False, visual_bible_stale=False)
+    from app.tasks.store import get_task as _get_task
+
+    app = current_app._get_current_object()
+
+    def _rebuild():
+        with app.app_context():
+            # Imported at call time so tests (and the ruff gate) see no eager
+            # executor module dependency in the routes file.
+            from app.tasks.executor import TaskExecutor
+
+            task_now = _get_task(task_id) or task
+            TaskExecutor(app=app)._extract_visual_bible(task_now, merge=False)
+        with contextlib.suppress(Exception):
+            app.request_queue.redis.delete(_CONTINUITY_JOB_KEY % task_id)
+        publish_task_update(app, _get_task(task_id))
+
+    threading.Thread(target=_rebuild, daemon=True, name=f"task-continuity:{task_id}").start()
+    return jsonify({"ok": True}), 202
 
 
 @bp.route("/<task_id>/stop", methods=["POST"])

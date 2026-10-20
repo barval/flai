@@ -444,6 +444,14 @@
     border-color: #553d6b;
     color: #d2b4de;
 }
+.dark-theme .task-continuity {
+    background-color: #22332d;
+    border-color: #3d5a50;
+    color: #9ed3bd;
+}
+.dark-theme .task-continuity-note {
+    color: #e0a860;
+}
 .dark-theme .tasks-empty {
     color: #b0b0b0;
 }

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.6\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-16 16:59+0300\n"
+"POT-Creation-Date: 2026-10-20 19:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -34,7 +34,7 @@ msgstr "Authentication required."
 #: app/routes/admin.py:409 app/routes/admin.py:425 app/routes/admin.py:437
 #: app/routes/admin.py:462 app/routes/admin.py:508 app/routes/admin.py:1824
 #: app/routes/admin.py:1841 app/routes/admin.py:1871
-#: app/templates/admin.html:351 modules/video.py:495
+#: app/templates/admin.html:351 modules/video.py:499
 msgid "Internal server error"
 msgstr "Internal server error"
 
@@ -42,81 +42,81 @@ msgstr "Internal server error"
 msgid "Not found"
 msgstr "Not found"
 
-#: app/api_bridge.py:427 app/api_bridge.py:494 app/routes/api_v1.py:649
-#: app/routes/api_v1.py:1441
+#: app/api_bridge.py:445 app/api_bridge.py:512 app/routes/api_v1.py:676
+#: app/routes/api_v1.py:1468
 msgid "Only data: URLs are supported for image content parts"
 msgstr "Only data: URLs are supported for image content parts"
 
-#: app/api_bridge.py:431
+#: app/api_bridge.py:449
 msgid "Image data URL must be base64 encoded"
 msgstr "Image data URL must be base64 encoded"
 
-#: app/api_bridge.py:435
+#: app/api_bridge.py:453
 msgid "Only image content parts are supported"
 msgstr "Only image content parts are supported"
 
-#: app/api_bridge.py:439
+#: app/api_bridge.py:457
 msgid "Image data URL is empty"
 msgstr "Image data URL is empty"
 
-#: app/api_bridge.py:457
+#: app/api_bridge.py:475
 msgid "'messages' must be a non-empty array"
 msgstr "'messages' must be a non-empty array"
 
-#: app/api_bridge.py:464
+#: app/api_bridge.py:482
 msgid "Each entry of 'messages' must be an object"
 msgstr "Each entry of 'messages' must be an object"
 
-#: app/api_bridge.py:468
+#: app/api_bridge.py:486
 msgid "Each message needs a supported 'role'"
 msgstr "Each message needs a supported 'role'"
 
-#: app/api_bridge.py:478
+#: app/api_bridge.py:496
 msgid "Message content must be a string or an array of parts"
 msgstr "Message content must be a string or an array of parts"
 
-#: app/api_bridge.py:482
+#: app/api_bridge.py:500
 msgid "Each content part must be an object"
 msgstr "Each content part must be an object"
 
-#: app/api_bridge.py:490 app/routes/api_v1.py:639 app/routes/messages.py:144
-#: app/routes/tasks.py:81 app/templates/chat.html:206
+#: app/api_bridge.py:508 app/routes/api_v1.py:666 app/routes/messages.py:144
+#: app/routes/tasks.py:101 app/templates/chat.html:221
 msgid "max_images_reached"
 msgstr "Maximum {max} images per message"
 
-#: app/api_bridge.py:498
+#: app/api_bridge.py:516
 #, python-format
 msgid "Unsupported content part type: %s"
 msgstr "Unsupported content part type: %s"
 
-#: app/api_bridge.py:502
+#: app/api_bridge.py:520
 msgid "'messages' contains no text or image content"
 msgstr "'messages' contains no text or image content"
 
-#: app/api_bridge.py:677 app/api_bridge.py:687 app/api_bridge.py:721
-#: app/api_bridge.py:733 app/routes/api_v1.py:483 app/routes/api_v1.py:529
+#: app/api_bridge.py:695 app/api_bridge.py:705 app/api_bridge.py:739
+#: app/api_bridge.py:751 app/routes/api_v1.py:510 app/routes/api_v1.py:556
 #, python-format
 msgid "Task %s failed"
 msgstr "Task %s failed"
 
-#: app/api_bridge.py:725
+#: app/api_bridge.py:743
 #, python-format
 msgid "Task %s returned no result"
 msgstr "Task %s returned no result"
 
-#: app/api_bridge.py:736
+#: app/api_bridge.py:754
 #, python-format
 msgid "Task %s was requeued to %s without a follow-up"
 msgstr "Task %s was requeued to %s without a follow-up"
 
-#: app/api_bridge.py:1043
+#: app/api_bridge.py:1061
 #, python-format
 msgid "Task %s returned no vectors"
 msgstr "Task %s returned no vectors"
 
-#: app/db.py:215 app/db.py:243 app/routes/api_v1.py:1589
-#: app/routes/sessions.py:155 app/routes/sessions.py:223
-#: app/templates/chat.html:21 app/templates/chat.html:154
+#: app/db.py:215 app/db.py:243 app/routes/api_v1.py:1616
+#: app/routes/sessions.py:155 app/routes/sessions.py:228
+#: app/templates/chat.html:21 app/templates/chat.html:155
 msgid "New session"
 msgstr "New session"
 
@@ -162,7 +162,7 @@ msgstr ""
 " seconds and repeat the request."
 
 #: app/llamacpp_client.py:160 app/routes/admin.py:920 modules/sd_cpp.py:294
-#: modules/sd_cpp.py:475
+#: modules/sd_cpp.py:474
 #, python-brace-format
 msgid "HTTP error {status}"
 msgstr "HTTP error {status}"
@@ -199,8 +199,8 @@ msgstr "Could not connect to llama-server"
 #: app/llamacpp_client.py:1144 app/llamacpp_client.py:1421
 #: app/routes/admin.py:356 app/routes/admin.py:1015 app/routes/admin.py:1442
 #: app/routes/admin.py:1515 app/routes/admin.py:1670
-#: app/templates/admin.html:350 app/templates/chat.html:190 modules/cam.py:387
-#: modules/sd_cpp.py:304 modules/sd_cpp.py:487 modules/video.py:507
+#: app/templates/admin.html:350 app/templates/chat.html:205 modules/cam.py:387
+#: modules/sd_cpp.py:304 modules/sd_cpp.py:486 modules/video.py:511
 msgid "Error"
 msgstr "Error"
 
@@ -215,41 +215,46 @@ msgstr "Internal error: no response from model"
 #: app/llamacpp_client.py:1633 app/llamacpp_client.py:1666
 #: modules/multimodal.py:244 modules/multimodal.py:272
 #: modules/multimodal.py:421 modules/multimodal.py:470
-#: modules/multimodal.py:529 modules/multimodal.py:630
+#: modules/multimodal.py:529 modules/multimodal.py:641
 msgid "GPU memory unavailable. Please try again."
 msgstr "GPU memory unavailable. Please try again."
 
-#: app/queue.py:148 app/queue.py:6260 app/routes/admin.py:1702
+#: app/queue.py:148 app/queue.py:6489 app/routes/admin.py:1702
 msgid "RAG module unavailable"
 msgstr "RAG module unavailable"
 
-#: app/queue.py:902
+#: app/queue.py:907
 #, python-brace-format
 msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
 msgstr "Request cancelled - too long in queue ({queue_time:.1f}s)"
 
-#: app/queue.py:952 app/queue.py:5077 app/queue.py:5080 app/queue.py:5705
-#: app/queue.py:5822 app/tasks/audio_transcribe.py:200
-#: app/templates/chat.html:145
+#: app/queue.py:957 app/queue.py:5305 app/queue.py:5308 app/queue.py:5933
+#: app/queue.py:6050 app/tasks/audio_transcribe.py:200
+#: app/templates/chat.html:146
 msgid "Failed to recognize speech"
 msgstr "Failed to recognize speech"
 
-#: app/queue.py:1697 app/queue.py:1716 app/queue.py:1888 app/queue.py:1926
-#: app/queue.py:2821 app/queue.py:2862 app/queue.py:2996 app/queue.py:3065
+#: app/queue.py:1737 app/queue.py:1774 app/queue.py:1955 app/queue.py:2015
+#: app/queue.py:3023 app/queue.py:3064 app/queue.py:3218 app/queue.py:3287
+#: app/queue.py:6880
 msgid "Task cancelled"
 msgstr "Task cancelled"
 
 # GPU memory error messages
-#: app/queue.py:1702 app/queue.py:1893 app/queue.py:2797 app/queue.py:2973
+#: app/queue.py:1742 app/queue.py:1960 app/queue.py:2986 app/queue.py:3180
 #: modules/multimodal.py:310
 msgid "GPU memory unavailable. Try again in a moment."
 msgstr "GPU memory unavailable. Try again in a moment."
 
-#: app/queue.py:1741
+#: app/queue.py:1756 app/queue.py:1992 app/queue.py:3005 app/queue.py:3199
+msgid "Fix the stated problem and redo this step."
+msgstr "Fix the stated problem and redo this step."
+
+#: app/queue.py:1799
 msgid "Image editing failed"
 msgstr "Image editing failed"
 
-#: app/queue.py:1758 app/queue.py:1963
+#: app/queue.py:1816 app/queue.py:2052
 #, python-brace-format
 msgid ""
 "CPU mode: reduced resolution {new_w}×{new_h} (requested "
@@ -258,7 +263,7 @@ msgstr ""
 "CPU mode: reduced resolution {new_w}×{new_h} (requested "
 "{orig_w}×{orig_h})."
 
-#: app/queue.py:1776
+#: app/queue.py:1834
 #, python-brace-format
 msgid ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
@@ -267,71 +272,71 @@ msgstr ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
 "resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
 
-#: app/queue.py:1791
+#: app/queue.py:1849
 #, python-brace-format
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
 
-#: app/queue.py:1868 app/queue.py:1873 app/routes/api_v1.py:614
-#: app/routes/api_v1.py:617
+#: app/queue.py:1930 app/routes/api_v1.py:641 app/routes/api_v1.py:644
 msgid "Image generation module unavailable"
 msgstr "Image generation module unavailable"
 
-#: app/queue.py:1897 app/queue.py:2802 app/queue.py:2977
+#: app/queue.py:1964 app/queue.py:2991 app/queue.py:3184
 msgid "GPU memory check failed. Please try again."
 msgstr "GPU memory check failed. Please try again."
 
-#: app/queue.py:1914
+#: app/queue.py:1981
 msgid "Reference examples (draw something similar):"
 msgstr "Reference examples (draw something similar):"
 
-#: app/queue.py:1980 app/templates/chat.html:151
+#: app/queue.py:2069 app/templates/chat.html:152
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Image generated from request: {query}"
 
-#: app/queue.py:2044
+#: app/queue.py:2142
 msgid "Video request"
 msgstr "Video request"
 
-#: app/queue.py:2094
+#: app/queue.py:2192
 msgid "Image request"
 msgstr "Image request"
 
-#: app/queue.py:2142
+#: app/queue.py:2240
 msgid "Reasoning request"
 msgstr "Reasoning request"
 
 # stage label: the crawler is studying the site
-#: app/queue.py:2195
+#: app/queue.py:2293
 msgid "Studying the site…"
 msgstr "Studying the site…"
 
-#: app/queue.py:2247 app/tasks/tools.py:47 app/templates/chat.html:112
+#: app/queue.py:2345 app/tasks/tools.py:48 app/tasks/tools.py:132
+#: app/templates/chat.html:113
 msgid "Deep analysis"
 msgstr "Deep analysis"
 
-#: app/queue.py:2286
+#: app/queue.py:2384
 msgid "No documents selected for analysis"
 msgstr "No documents selected for analysis"
 
-#: app/queue.py:2325 app/queue.py:2348 app/queue.py:2394 app/queue.py:2631
+#: app/queue.py:2512 app/queue.py:2535 app/queue.py:2582 app/queue.py:2820
 msgid "Reasoning model unavailable: GPU memory check failed. Try again."
 msgstr "Reasoning model unavailable: GPU memory check failed. Try again."
 
-#: app/queue.py:2357 app/queue.py:2366
+#: app/queue.py:2544 app/queue.py:2553
 msgid "Unable to recognize the image for deep analysis"
 msgstr "Unable to recognize the image for deep analysis"
 
-#: app/queue.py:2369 app/queue.py:3478 app/routes/messages.py:481
+#: app/queue.py:2556 app/queue.py:3705 app/routes/messages.py:481
 msgid "Image"
 msgstr "Image"
 
-#: app/queue.py:2374
+#: app/queue.py:2561
 msgid "Selected documents contain no extractable text"
 msgstr "Selected documents contain no extractable text"
 
-#: app/queue.py:2383
+#: app/queue.py:2570
 #, python-brace-format
 msgid ""
 "The selected documents are too large for deep analysis (limit: {limit} "
@@ -340,7 +345,7 @@ msgstr ""
 "The selected documents are too large for deep analysis (limit: {limit} "
 "characters). Select fewer or smaller documents."
 
-#: app/queue.py:2434
+#: app/queue.py:2623
 msgid ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
@@ -348,11 +353,11 @@ msgstr ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
 
-#: app/queue.py:2437
+#: app/queue.py:2626
 msgid "Deep analysis: the model produced an empty answer."
 msgstr "Deep analysis: the model produced an empty answer."
 
-#: app/queue.py:2440
+#: app/queue.py:2629
 msgid ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
@@ -360,42 +365,42 @@ msgstr ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
 
-#: app/queue.py:2451 app/queue.py:2710
+#: app/queue.py:2640 app/queue.py:2899
 msgid "No response from reasoning model"
 msgstr "No response from reasoning model"
 
-#: app/queue.py:2519
+#: app/queue.py:2708
 msgid "horizontal"
 msgstr "horizontal"
 
-#: app/queue.py:2521
+#: app/queue.py:2710
 msgid "vertical"
 msgstr "vertical"
 
-#: app/queue.py:2523
+#: app/queue.py:2712
 msgid "square"
 msgstr "square"
 
-#: app/queue.py:2524
+#: app/queue.py:2713
 #, python-brace-format
 msgid "Aspect ratio: {width}×{height} ({orientation})"
 msgstr "Aspect ratio: {width}×{height} ({orientation})"
 
-#: app/queue.py:2598 app/queue.py:3675 app/queue.py:4295
-#: app/tasks/runner.py:303 modules/rag.py:421 modules/rag.py:481
+#: app/queue.py:2787 app/queue.py:3902 app/queue.py:4523
+#: app/tasks/runner.py:519 modules/rag.py:421 modules/rag.py:481
 msgid "Source"
 msgstr "Source"
 
-#: app/queue.py:2784 app/queue.py:2960 app/routes/api_v1.py:811
-#: app/routes/api_v1.py:814
+#: app/queue.py:2973 app/queue.py:3167 app/routes/api_v1.py:838
+#: app/routes/api_v1.py:841
 msgid "Video generation module unavailable"
 msgstr "Video generation module unavailable"
 
-#: app/queue.py:2834 app/queue.py:3006
+#: app/queue.py:3036 app/queue.py:3228
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "GPU memory unavailable after unloading LLM. Try again."
 
-#: app/queue.py:2869 app/queue.py:3072
+#: app/queue.py:3071 app/queue.py:3294
 msgid ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
@@ -403,21 +408,21 @@ msgstr ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
 
-#: app/queue.py:2890 app/queue.py:3116
+#: app/queue.py:3092 app/queue.py:3338
 #, python-brace-format
 msgid "Video generated from request: {query}"
 msgstr "Video generated from request: {query}"
 
-#: app/queue.py:2987 app/queue.py:3452 app/queue.py:5290 app/queue.py:5427
+#: app/queue.py:3209 app/queue.py:3679 app/queue.py:5518 app/queue.py:5655
 #: modules/multimodal.py:224 modules/multimodal.py:262
 #: modules/multimodal.py:292 modules/multimodal.py:326
 #: modules/multimodal.py:350 modules/multimodal.py:388
 #: modules/multimodal.py:442 modules/multimodal.py:507
-#: modules/multimodal.py:607
+#: modules/multimodal.py:618
 msgid "Multimodal model unavailable"
 msgstr "Multimodal model unavailable"
 
-#: app/queue.py:3025 app/queue.py:3103
+#: app/queue.py:3247 app/queue.py:3325
 #, python-brace-format
 msgid ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
@@ -426,22 +431,22 @@ msgstr ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
 "resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
 
-#: app/queue.py:3187 app/queue.py:3522
+#: app/queue.py:3414 app/queue.py:3749
 msgid "Camera module unavailable"
 msgstr "Camera module unavailable"
 
-#: app/queue.py:3197 app/queue.py:3374 app/queue.py:3534
-#: app/templates/chat.html:152
+#: app/queue.py:3424 app/queue.py:3601 app/queue.py:3761
+#: app/templates/chat.html:153
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Camera snapshot: {room_name}"
 
-#: app/queue.py:3336
+#: app/queue.py:3563
 #, python-brace-format
 msgid "Camera snapshot analysis: {question}"
 msgstr "Camera snapshot analysis: {question}"
 
-#: app/queue.py:3346
+#: app/queue.py:3573
 #, python-brace-format
 msgid ""
 "Describe what the camera snapshot of {room_name} shows and answer: "
@@ -450,28 +455,28 @@ msgstr ""
 "Describe what the camera snapshot of {room_name} shows and answer: "
 "{question}"
 
-#: app/queue.py:3356
+#: app/queue.py:3583
 #, python-brace-format
 msgid "Describe what the camera snapshot of {room_name} shows."
 msgstr "Describe what the camera snapshot of {room_name} shows."
 
-#: app/queue.py:3370 app/queue.py:3486 app/queue.py:5381
+#: app/queue.py:3597 app/queue.py:3713 app/queue.py:5609
 msgid "Failed to process image request. Please try again."
 msgstr "Failed to process image request. Please try again."
 
-#: app/queue.py:3439
+#: app/queue.py:3666
 msgid "No image in your message"
 msgstr "No image in your message"
 
-#: app/queue.py:3458
+#: app/queue.py:3685
 msgid "IMAGE FILE NAME"
 msgstr "IMAGE FILE NAME"
 
-#: app/queue.py:3765
+#: app/queue.py:3992
 msgid "Web search is not available"
 msgstr "Web search is not available"
 
-#: app/queue.py:3820
+#: app/queue.py:4047
 msgid ""
 "Search services are temporarily unavailable. Please try again in a few "
 "minutes."
@@ -479,85 +484,85 @@ msgstr ""
 "Search services are temporarily unavailable due to limits on external "
 "search engines. Please try your request again in a few minutes."
 
-#: app/queue.py:3831 app/queue.py:4107
+#: app/queue.py:4058 app/queue.py:4335
 msgid "Web search failed"
 msgstr "Web search failed"
 
-#: app/queue.py:4090
+#: app/queue.py:4318
 msgid "The site blocked automated access (anti-bot protection)"
 msgstr ""
 "The site refused automated access (anti-bot protection). Falling back to "
 "ordinary search."
 
-#: app/queue.py:4724 modules/base.py:666 modules/base.py:796
+#: app/queue.py:4952 modules/base.py:666 modules/base.py:796
 #: modules/base.py:855 modules/multimodal.py:228 modules/multimodal.py:260
 #: modules/multimodal.py:266 modules/multimodal.py:300
 #: modules/multimodal.py:331 modules/multimodal.py:355
 #: modules/multimodal.py:404 modules/multimodal.py:454
-#: modules/multimodal.py:519 modules/multimodal.py:619
+#: modules/multimodal.py:519 modules/multimodal.py:630
 msgid "Error loading prompt template"
 msgstr "Error loading prompt template"
 
-#: app/queue.py:4852
+#: app/queue.py:5080
 msgid "No response from chat model. Try rephrasing your request."
 msgstr "No response from chat model. Try rephrasing your request."
 
-#: app/queue.py:5028
+#: app/queue.py:5256
 msgid "Invalid embedding input"
 msgstr "Invalid embedding input"
 
-#: app/queue.py:5033
+#: app/queue.py:5261
 msgid "Embeddings are temporarily unavailable"
 msgstr "Embeddings are temporarily unavailable"
 
-#: app/queue.py:5044
+#: app/queue.py:5272
 msgid "Failed to compute embeddings"
 msgstr "Failed to compute embeddings"
 
-#: app/queue.py:5064
+#: app/queue.py:5292
 msgid "Invalid audio input"
 msgstr "Invalid audio input"
 
-#: app/queue.py:5069 app/queue.py:5686 app/queue.py:5777
-#: app/routes/api_v1.py:1135
+#: app/queue.py:5297 app/queue.py:5914 app/queue.py:6005
+#: app/routes/api_v1.py:1162
 msgid "Audio service unavailable"
 msgstr "Audio service unavailable"
 
-#: app/queue.py:5233
+#: app/queue.py:5461
 msgid "Unknown request type"
 msgstr "Unknown request type"
 
-#: app/queue.py:5337 app/queue.py:5540
+#: app/queue.py:5565 app/queue.py:5768
 msgid "Image editing request was empty"
 msgstr "Image editing request was empty"
 
-#: app/queue.py:5355 app/queue.py:5567
+#: app/queue.py:5583 app/queue.py:5795
 msgid "Video request was empty"
 msgstr "Video request was empty"
 
-#: app/queue.py:5371 app/queue.py:5592
+#: app/queue.py:5599 app/queue.py:5820
 msgid "Image generation request was empty"
 msgstr "Image generation request was empty"
 
-#: app/queue.py:5385 app/queue.py:5442
+#: app/queue.py:5613 app/queue.py:5670
 msgid "Invalid image"
 msgstr "Invalid image"
 
-#: app/queue.py:5723 app/queue.py:5812 app/routes/tasks.py:380
-#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:150
+#: app/queue.py:5951 app/queue.py:6040 app/routes/tasks.py:440
+#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:151
 msgid "Transcribed"
 msgstr "Transcribed"
 
-#: app/queue.py:5738 app/queue.py:5835 app/routes/messages.py:436
-#: app/templates/chat.html:146
+#: app/queue.py:5966 app/queue.py:6063 app/routes/messages.py:436
+#: app/templates/chat.html:147
 msgid "Voice request"
 msgstr "Voice request"
 
-#: app/queue.py:5922 app/routes/documents.py:242
+#: app/queue.py:6150 app/routes/documents.py:242
 msgid "No file provided"
 msgstr "No file provided"
 
-#: app/queue.py:5964
+#: app/queue.py:6193
 msgid ""
 "Could not index the attached document. It was saved to your Documents; "
 "try again later."
@@ -565,7 +570,7 @@ msgstr ""
 "Could not index the attached document. It was saved to your Documents; "
 "try again later."
 
-#: app/queue.py:6227
+#: app/queue.py:6457
 #, python-brace-format
 msgid ""
 "OCR time budget reached: recognized the first {pages} of {total} pages. "
@@ -574,7 +579,7 @@ msgstr ""
 "OCR time budget reached: recognized the first {pages} of {total} pages. "
 "They are being indexed now."
 
-#: app/queue.py:6428 app/templates/chat.html:153
+#: app/queue.py:6657 app/templates/chat.html:154
 msgid "Unknown session"
 msgstr "Unknown session"
 
@@ -625,7 +630,7 @@ msgstr "User not identified for document search"
 msgid "Document search error: {error}"
 msgstr "Document search error: {error}"
 
-#: app/tasks/runner.py:301 app/tools.py:475
+#: app/tasks/runner.py:517 app/tools.py:475
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
@@ -671,7 +676,7 @@ msgstr "Unknown tool: {tool}"
 msgid "Tool execution error: {error}"
 msgstr "Tool execution error: {error}"
 
-#: app/utils.py:1142
+#: app/utils.py:1163
 #, python-brace-format
 msgid ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
@@ -680,39 +685,39 @@ msgstr ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
 "files to free space."
 
-#: app/utils.py:1633
+#: app/utils.py:1654
 msgid "Image generation failed. Try again later."
 msgstr "Image generation failed. Try again later."
 
-#: app/utils.py:1634
+#: app/utils.py:1655
 msgid "Image generation produced empty output."
 msgstr "Image generation produced empty output."
 
-#: app/utils.py:1635
+#: app/utils.py:1656
 msgid "Image generation error. Check logs for details."
 msgstr "Image generation error. Check logs for details."
 
-#: app/utils.py:1636
+#: app/utils.py:1657
 msgid "Image editing failed. Try again later."
 msgstr "Image editing failed. Try again later."
 
-#: app/utils.py:1637
+#: app/utils.py:1658
 msgid "Image editing produced empty output."
 msgstr "Image editing produced empty output."
 
-#: app/utils.py:1638
+#: app/utils.py:1659
 msgid "No editing instructions provided."
 msgstr "No editing instructions provided."
 
-#: app/utils.py:1639
+#: app/utils.py:1660
 msgid "No source image provided."
 msgstr "No source image provided."
 
-#: app/utils.py:1645
+#: app/utils.py:1661
 msgid "Image generation timed out. Try again later."
 msgstr "Image generation timed out. Try again later."
 
-#: app/utils.py:1646
+#: app/utils.py:1662
 msgid "Image editing timed out. Try again later."
 msgstr "Image editing timed out. Try again later."
 
@@ -824,7 +829,7 @@ msgstr "No custom logo uploaded"
 msgid "No logo file uploaded"
 msgstr "No logo file uploaded"
 
-#: app/routes/admin.py:1997 app/routes/api_v1.py:691 app/routes/api_v1.py:1141
+#: app/routes/admin.py:1997 app/routes/api_v1.py:718 app/routes/api_v1.py:1168
 msgid "Uploaded file is empty"
 msgstr "Uploaded file is empty"
 
@@ -844,10 +849,10 @@ msgstr "Logo is too small (minimum 16x16)"
 msgid "Invalid image file"
 msgstr "Invalid image file"
 
-#: app/routes/admin.py:2073 app/routes/api_v1.py:600 app/routes/api_v1.py:762
-#: app/routes/api_v1.py:880 app/routes/api_v1.py:909 app/routes/api_v1.py:988
-#: app/routes/api_v1.py:1046 app/routes/api_v1.py:1422
-#: app/routes/api_v1.py:1579
+#: app/routes/admin.py:2073 app/routes/api_v1.py:627 app/routes/api_v1.py:789
+#: app/routes/api_v1.py:907 app/routes/api_v1.py:936 app/routes/api_v1.py:1015
+#: app/routes/api_v1.py:1073 app/routes/api_v1.py:1449
+#: app/routes/api_v1.py:1606
 msgid "Request body must be a JSON object"
 msgstr "Request body must be a JSON object"
 
@@ -873,12 +878,12 @@ msgstr "Both language variants are required"
 #: app/routes/sessions.py:86 app/routes/sessions.py:93
 #: app/routes/sessions.py:114 app/routes/sessions.py:130
 #: app/routes/sessions.py:148 app/routes/sessions.py:173
-#: app/routes/sessions.py:196 app/routes/sessions.py:208
-#: app/routes/tasks.py:573 app/routes/tasks.py:583 app/routes/tasks.py:616
-#: app/routes/tasks.py:701 app/routes/tasks.py:711 app/routes/tasks.py:882
-#: app/routes/tasks.py:897 app/routes/tasks.py:924 app/routes/tts.py:13
-#: app/templates/chat.html:143 modules/cam.py:411 modules/cam.py:417
-#: modules/cam.py:425 modules/cam.py:445
+#: app/routes/sessions.py:201 app/routes/sessions.py:213
+#: app/routes/tasks.py:653 app/routes/tasks.py:663 app/routes/tasks.py:681
+#: app/routes/tasks.py:727 app/routes/tasks.py:825 app/routes/tasks.py:835
+#: app/routes/tasks.py:1006 app/routes/tasks.py:1028 app/routes/tasks.py:1065
+#: app/routes/tasks.py:1092 app/routes/tts.py:13 app/templates/chat.html:144
+#: modules/cam.py:411 modules/cam.py:417 modules/cam.py:425 modules/cam.py:445
 msgid "Not authorized"
 msgstr "Not authorized"
 
@@ -898,162 +903,159 @@ msgstr "You already have a Tavily key. Delete it before adding a new one."
 msgid "Tavily rejected the API key. Please check it and try again."
 msgstr "Tavily rejected the API key. Please check it and try again."
 
-#: app/routes/api_v1.py:104
+#: app/routes/api_v1.py:106
 msgid "api_error_invalid_api_key"
 msgstr "Invalid API key"
 
-#: app/routes/api_v1.py:115
+#: app/routes/api_v1.py:117
 msgid "api_error_api_disabled"
 msgstr "API is disabled"
 
-#: app/routes/api_v1.py:203
+#: app/routes/api_v1.py:205
 msgid "api_error_too_many_requests"
 msgstr ""
 "Too many requests are already waiting for a result. Please retry in a "
 "second."
 
-#: app/routes/api_v1.py:252
+#: app/routes/api_v1.py:254
 msgid "api_error_rate_limited"
 msgstr "Rate limit reached. Wait a moment and try again."
 
-#: app/routes/api_v1.py:266
+#: app/routes/api_v1.py:268
 msgid "Method not allowed"
 msgstr "Method not allowed"
 
-#: app/routes/api_v1.py:274 app/routes/api_v1.py:1282
+#: app/routes/api_v1.py:276 app/routes/api_v1.py:1309
 msgid "Uploaded file is too large"
 msgstr "Uploaded file is too large"
 
-#: app/routes/api_v1.py:337
+#: app/routes/api_v1.py:339
 msgid "'limit' must be an integer"
 msgstr "'limit' must be an integer"
 
-#: app/routes/api_v1.py:360 app/routes/api_v1.py:373 app/routes/api_v1.py:398
-#: app/routes/api_v1.py:833 app/routes/messages.py:541 app/routes/tasks.py:619
-#: app/routes/tasks.py:704 app/routes/tasks.py:714 app/routes/tasks.py:885
-#: app/routes/tasks.py:900 app/routes/tasks.py:927
+#: app/routes/api_v1.py:362 app/routes/api_v1.py:380 app/routes/api_v1.py:402
+#: app/routes/api_v1.py:414 app/routes/api_v1.py:425 app/routes/api_v1.py:860
+#: app/routes/messages.py:541 app/routes/tasks.py:730 app/routes/tasks.py:828
+#: app/routes/tasks.py:838 app/routes/tasks.py:1009 app/routes/tasks.py:1031
+#: app/routes/tasks.py:1068 app/routes/tasks.py:1095
 msgid "Task not found"
 msgstr "Task not found"
 
-#: app/routes/api_v1.py:378 app/routes/api_v1.py:384 app/routes/api_v1.py:387
+#: app/routes/api_v1.py:385 app/routes/api_v1.py:388 app/routes/api_v1.py:391
 msgid "Task is no longer cancellable"
 msgstr "Task is no longer cancellable"
 
-#: app/routes/api_v1.py:382
-msgid "Queued tasks cannot be cancelled"
-msgstr "Queued tasks cannot be cancelled"
-
-#: app/routes/api_v1.py:412 app/routes/api_v1.py:421 app/routes/api_v1.py:430
-#: app/routes/api_v1.py:434 app/routes/api_v1.py:444
+#: app/routes/api_v1.py:439 app/routes/api_v1.py:448 app/routes/api_v1.py:457
+#: app/routes/api_v1.py:461 app/routes/api_v1.py:471
 msgid "Generated media not found"
 msgstr "Generated media not found"
 
-#: app/routes/api_v1.py:582 app/routes/api_v1.py:855
+#: app/routes/api_v1.py:609 app/routes/api_v1.py:882
 msgid "'metadata.session_id' must be a string"
 msgstr "'metadata.session_id' must be a string"
 
-#: app/routes/api_v1.py:586 app/routes/api_v1.py:859
+#: app/routes/api_v1.py:613 app/routes/api_v1.py:886
 msgid "'user' must be a string"
 msgstr "'user' must be a string"
 
-#: app/routes/api_v1.py:590 app/routes/api_v1.py:863
+#: app/routes/api_v1.py:617 app/routes/api_v1.py:890
 msgid "Chat session not found"
 msgstr "Chat session not found"
 
-#: app/routes/api_v1.py:603 app/routes/api_v1.py:677 app/routes/api_v1.py:765
+#: app/routes/api_v1.py:630 app/routes/api_v1.py:704 app/routes/api_v1.py:792
 msgid "'prompt' must be a non-empty string"
 msgstr "'prompt' must be a non-empty string"
 
-#: app/routes/api_v1.py:609
+#: app/routes/api_v1.py:636
 msgid "Only response_format 'url' is supported for asynchronous image generation"
 msgstr "Only response_format 'url' is supported for asynchronous image generation"
 
-#: app/routes/api_v1.py:631
+#: app/routes/api_v1.py:658
 msgid "'image_references' must be a list of image_url objects"
 msgstr ""
 
-#: app/routes/api_v1.py:683
+#: app/routes/api_v1.py:710
 msgid "Only response_format 'url' is supported for asynchronous image edits"
 msgstr "Only response_format 'url' is supported for asynchronous image edits"
 
-#: app/routes/api_v1.py:686
+#: app/routes/api_v1.py:713
 msgid "Missing 'image' upload"
 msgstr "Missing 'image' upload"
 
-#: app/routes/api_v1.py:694 app/routes/api_v1.py:723
+#: app/routes/api_v1.py:721 app/routes/api_v1.py:750
 msgid "Unsupported image format"
 msgstr "Unsupported image format"
 
-#: app/routes/api_v1.py:702 app/routes/api_v1.py:705
+#: app/routes/api_v1.py:729 app/routes/api_v1.py:732
 msgid "Image editing module unavailable"
 msgstr "Image editing module unavailable"
 
-#: app/routes/api_v1.py:734
+#: app/routes/api_v1.py:761
 msgid "'metadata' must be a JSON object"
 msgstr "'metadata' must be a JSON object"
 
-#: app/routes/api_v1.py:767
+#: app/routes/api_v1.py:794
 msgid "'model' must be a string"
 msgstr "'model' must be a string"
 
-#: app/routes/api_v1.py:782
+#: app/routes/api_v1.py:809
 msgid "Unsupported video generation options"
 msgstr "Unsupported video generation options"
 
-#: app/routes/api_v1.py:786
+#: app/routes/api_v1.py:813
 msgid "Video generation option is out of range"
 msgstr "Video generation option is out of range"
 
-#: app/routes/api_v1.py:790
+#: app/routes/api_v1.py:817
 msgid "Video dimensions must be multiples of 32"
 msgstr "Video dimensions must be multiples of 32"
 
-#: app/routes/api_v1.py:793
+#: app/routes/api_v1.py:820
 msgid "Unsupported video frame rate"
 msgstr "Unsupported video frame rate"
 
-#: app/routes/api_v1.py:805
+#: app/routes/api_v1.py:832
 msgid "Video output exceeds the supported size or duration"
 msgstr "Video output exceeds the supported size or duration"
 
-#: app/routes/api_v1.py:918
+#: app/routes/api_v1.py:945
 msgid "'stream' must be a boolean"
 msgstr "'stream' must be a boolean"
 
-#: app/routes/api_v1.py:952 app/routes/api_v1.py:1017 app/routes/api_v1.py:1156
+#: app/routes/api_v1.py:979 app/routes/api_v1.py:1044 app/routes/api_v1.py:1183
 #, python-format
 msgid "Task %s is still running and was not cancelled"
 msgstr "Task %s is still running and was not cancelled"
 
-#: app/routes/api_v1.py:996
+#: app/routes/api_v1.py:1023
 msgid "'input' must be a non-empty string or an array of non-empty strings"
 msgstr "'input' must be a non-empty string or an array of non-empty strings"
 
-#: app/routes/api_v1.py:1005
+#: app/routes/api_v1.py:1032
 msgid "'encoding_format' must be 'float' or 'base64'"
 msgstr "'encoding_format' must be 'float' or 'base64'"
 
-#: app/routes/api_v1.py:1050
+#: app/routes/api_v1.py:1077
 msgid "'input' must be a non-empty string"
 msgstr "'input' must be a non-empty string"
 
-#: app/routes/api_v1.py:1054
+#: app/routes/api_v1.py:1081
 msgid "'voice' must be a string"
 msgstr "'voice' must be a string"
 
-#: app/routes/api_v1.py:1058 app/routes/api_v1.py:1146 app/routes/auth.py:92
+#: app/routes/api_v1.py:1085 app/routes/api_v1.py:1173 app/routes/auth.py:92
 msgid "Invalid language"
 msgstr "Invalid language"
 
-#: app/routes/api_v1.py:1062 app/routes/auth.py:102
+#: app/routes/api_v1.py:1089 app/routes/auth.py:102
 msgid "Invalid voice gender"
 msgstr "Invalid voice gender"
 
-#: app/routes/api_v1.py:1066 app/routes/api_v1.py:1071 app/routes/tts.py:26
+#: app/routes/api_v1.py:1093 app/routes/api_v1.py:1098 app/routes/tts.py:26
 msgid "TTS service unavailable"
 msgstr "TTS service unavailable"
 
-#: app/routes/api_v1.py:1080
+#: app/routes/api_v1.py:1107
 #, python-brace-format
 msgid ""
 "The configured TTS backend produces {native_format}; requested: "
@@ -1062,78 +1064,79 @@ msgstr ""
 "The configured TTS backend produces {native_format}; requested: "
 "{requested_format}"
 
-#: app/routes/api_v1.py:1089 app/routes/api_v1.py:1091
-#: app/routes/api_v1.py:1095 app/routes/tts.py:30
+#: app/routes/api_v1.py:1116 app/routes/api_v1.py:1118
+#: app/routes/api_v1.py:1122 app/routes/tts.py:30
 msgid "TTS synthesis failed"
 msgstr "TTS synthesis failed"
 
-#: app/routes/api_v1.py:1118 app/routes/api_v1.py:1270
+#: app/routes/api_v1.py:1145 app/routes/api_v1.py:1297
 msgid "Missing 'file' field"
 msgstr "Missing 'file' field"
 
-#: app/routes/api_v1.py:1122 app/routes/api_v1.py:1273
+#: app/routes/api_v1.py:1149 app/routes/api_v1.py:1300
 #: app/routes/documents.py:245
 msgid "No file selected"
 msgstr "No file selected"
 
-#: app/routes/api_v1.py:1130
+#: app/routes/api_v1.py:1157
 msgid "'response_format' must be 'json' or 'text'; timestamps are not available"
 msgstr "'response_format' must be 'json' or 'text'; timestamps are not available"
 
-#: app/routes/api_v1.py:1137
+#: app/routes/api_v1.py:1164
 msgid "Unsupported audio format"
 msgstr "Unsupported audio format"
 
-#: app/routes/api_v1.py:1165
+#: app/routes/api_v1.py:1192
 msgid "Transcription produced no text"
 msgstr "Transcription produced no text"
 
-#: app/routes/api_v1.py:1200 app/routes/api_v1.py:1212
-#: app/routes/api_v1.py:1214 app/routes/api_v1.py:1475
+#: app/routes/api_v1.py:1227 app/routes/api_v1.py:1239
+#: app/routes/api_v1.py:1241 app/routes/api_v1.py:1502
 #: app/routes/documents.py:210 app/routes/documents.py:358
 #: app/routes/documents.py:388 app/routes/rlm.py:102
 msgid "Document not found"
 msgstr "Document not found"
 
-#: app/routes/api_v1.py:1278 app/routes/documents.py:66
+#: app/routes/api_v1.py:1305 app/routes/documents.py:66
 #: app/routes/documents.py:74 modules/multimodal.py:116
 msgid "Unsupported file type"
 msgstr "Unsupported file type"
 
-#: app/routes/api_v1.py:1317 app/routes/documents.py:312
-#: app/routes/model_hub.py:30 app/routes/tasks.py:146
+#: app/routes/api_v1.py:1344 app/routes/documents.py:312
+#: app/routes/model_hub.py:30 app/routes/tasks.py:166
 msgid "Invalid file path"
 msgstr "Invalid file path"
 
-#: app/routes/api_v1.py:1389 app/routes/rlm.py:24
+#: app/routes/api_v1.py:1416 app/routes/rlm.py:24
 msgid "Deep analysis is disabled"
 msgstr "Deep analysis is disabled"
 
-#: app/routes/api_v1.py:1427
+#: app/routes/api_v1.py:1454
 msgid "'question' must be a string"
 msgstr "'question' must be a string"
 
-#: app/routes/api_v1.py:1457 app/routes/api_v1.py:1466 app/routes/rlm.py:90
+#: app/routes/api_v1.py:1484 app/routes/api_v1.py:1493 app/routes/rlm.py:90
 #: app/routes/rlm.py:93
 msgid "Select at least one document and enter a question"
 msgstr "Select at least one document and enter a question"
 
-#: app/routes/api_v1.py:1460
+#: app/routes/api_v1.py:1487
 msgid "'doc_ids' must be a list of strings"
 msgstr "'doc_ids' must be a list of strings"
 
-#: app/routes/api_v1.py:1470 app/routes/api_v1.py:1607
+#: app/routes/api_v1.py:1497 app/routes/api_v1.py:1634
+#: app/routes/api_v1.py:1657 app/routes/api_v1.py:1664
 #: app/routes/messages.py:30 app/routes/rlm.py:97 app/routes/sessions.py:118
-#: app/routes/sessions.py:152 app/routes/sessions.py:199
-#: app/routes/sessions.py:215 app/templates/chat.html:158
+#: app/routes/sessions.py:152 app/routes/sessions.py:204
+#: app/routes/sessions.py:220 app/templates/chat.html:159
 msgid "Session not found"
 msgstr "Session not found"
 
-#: app/routes/api_v1.py:1582
+#: app/routes/api_v1.py:1609
 msgid "'title' must be a string"
 msgstr "'title' must be a string"
 
-#: app/routes/api_v1.py:1612
+#: app/routes/api_v1.py:1639
 msgid "'limit' and 'offset' must be integers"
 msgstr "'limit' and 'offset' must be integers"
 
@@ -1221,13 +1224,13 @@ msgid "No documents selected"
 msgstr "No documents selected"
 
 #: app/routes/documents.py:262 app/routes/messages.py:152
-#: app/routes/messages.py:189 app/routes/tasks.py:132 modules/multimodal.py:110
+#: app/routes/messages.py:189 app/routes/tasks.py:152 modules/multimodal.py:110
 #, python-brace-format
 msgid "Maximum file size {max_size} MB"
 msgstr "Maximum file size {max_size} MB"
 
 #: app/routes/documents.py:369 app/routes/documents.py:405
-#: app/templates/chat.html:157
+#: app/templates/chat.html:158
 msgid "Permission denied"
 msgstr "Permission denied"
 
@@ -1235,12 +1238,12 @@ msgstr "Permission denied"
 msgid "Multiple documents are not supported in one message"
 msgstr "Multiple documents are not supported in one message"
 
-#: app/routes/messages.py:201 app/routes/tasks.py:196
-#: app/templates/chat.html:207
+#: app/routes/messages.py:201 app/routes/tasks.py:216
+#: app/templates/chat.html:222
 msgid "max_audio_reached"
 msgstr "At most {max} audio items per message (a voice message counts as one)"
 
-#: app/routes/messages.py:213 app/templates/chat.html:144
+#: app/routes/messages.py:213 app/templates/chat.html:145
 msgid "Empty message"
 msgstr "Empty message"
 
@@ -1254,13 +1257,13 @@ msgid "The image has been reduced."
 msgstr "The image has been reduced."
 
 #: app/routes/messages.py:465 app/routes/messages.py:524
-#: app/templates/chat.html:148
+#: app/templates/chat.html:149
 #, python-brace-format
 msgid "Request queued (position {pos})"
 msgstr "Request queued (position {pos})"
 
 #: app/routes/messages.py:496 app/routes/messages.py:510
-#: app/templates/chat.html:233
+#: app/templates/chat.html:248
 msgid "Text request"
 msgstr "Text request"
 
@@ -1320,106 +1323,117 @@ msgstr ""
 msgid "Session not found or access denied"
 msgstr "Session not found or access denied"
 
-#: app/routes/sessions.py:183
+#: app/routes/sessions.py:188
 msgid "Permission denied or session not found"
 msgstr "Permission denied or session not found"
 
-#: app/routes/sessions.py:211 app/templates/chat.html:159
+#: app/routes/sessions.py:216 app/templates/chat.html:160
 msgid "No active session"
 msgstr "No active session"
 
-#: app/routes/tasks.py:78
+#: app/routes/tasks.py:98
 msgid "Only image files can be attached to a task"
 msgstr "Only image files can be attached to a task"
 
-#: app/routes/tasks.py:96 app/routes/tasks.py:219
+#: app/routes/tasks.py:116 app/routes/tasks.py:239
 msgid "Failed to save file"
 msgstr "Failed to save file"
 
-#: app/routes/tasks.py:205
+#: app/routes/tasks.py:225
 msgid "Only audio files can be attached to a task"
 msgstr "Only audio files can be attached to a task"
 
-#: app/routes/tasks.py:389
-#, python-brace-format
-msgid "Step {n} of {m}:"
-msgstr "Step {n} of {m}:"
-
-#: app/routes/tasks.py:431 app/routes/tasks.py:464
-#, python-brace-format
-msgid "Attached audio recordings: {names}"
-msgstr "Attached audio recordings: {names}"
-
-#: app/routes/tasks.py:452
-#, python-brace-format
-msgid "Attached images: {names}"
-msgstr "Attached images: {names}"
-
-#: app/routes/tasks.py:456
-#, python-brace-format
-msgid "Attached documents: {names}"
-msgstr "Attached documents: {names}"
-
-#: app/routes/tasks.py:520
-#, python-brace-format
-msgid "Plan of {n} steps:"
-msgstr "Plan of {n} steps:"
-
-#: app/routes/tasks.py:308
+#: app/routes/tasks.py:315
 #, python-brace-format
 msgid "Plan updated ({n} steps)."
 msgstr "Plan updated ({n} steps)."
 
+#: app/routes/tasks.py:449
+#, python-brace-format
+msgid "Step {n} of {m}:"
+msgstr "Step {n} of {m}:"
+
+#: app/routes/tasks.py:503 app/routes/tasks.py:536
+#, python-brace-format
+msgid "Attached audio recordings: {names}"
+msgstr "Attached audio recordings: {names}"
+
+#: app/routes/tasks.py:524
+#, python-brace-format
+msgid "Attached images: {names}"
+msgstr "Attached images: {names}"
+
+#: app/routes/tasks.py:528
+#, python-brace-format
+msgid "Attached documents: {names}"
+msgstr "Attached documents: {names}"
+
+#: app/routes/tasks.py:592
+#, python-brace-format
+msgid "Plan of {n} steps:"
+msgstr "Plan of {n} steps:"
+
 # Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
 # view
-#: app/routes/tasks.py:585
+#: app/routes/tasks.py:683
 msgid "Background tasks are disabled"
 msgstr "Background tasks are disabled"
 
-#: app/routes/tasks.py:621
+#: app/routes/tasks.py:732
 msgid "Task is not a draft"
 msgstr "Task is not a draft"
 
-#: app/routes/tasks.py:641
+#: app/routes/tasks.py:752
 msgid "Task request is empty"
 msgstr "Task request is empty"
 
-#: app/routes/tasks.py:736
+#: app/routes/tasks.py:860
 msgid "Answer is empty"
 msgstr "Answer is empty"
 
-#: app/routes/tasks.py:747
+#: app/routes/tasks.py:871
 msgid "Task is not awaiting an answer"
 msgstr "Task is not awaiting an answer"
 
-#: app/routes/tasks.py:776
+#: app/routes/tasks.py:900
 #, python-brace-format
 msgid "Image: {name}"
 msgstr "Image: {name}"
 
-#: app/routes/tasks.py:776
+#: app/routes/tasks.py:900
 msgid "[Image attached]"
 msgstr "[Image attached]"
 
-#: app/routes/tasks.py:887
+#: app/routes/tasks.py:1011
 msgid "Only failed, expired or cancelled tasks can be restarted"
 msgstr "Only failed, expired or cancelled tasks can be restarted"
+
+#: app/routes/tasks.py:1033
+msgid ""
+"The visual continuity sheet can be rebuilt while the task runs or after "
+"completion"
+msgstr ""
+
+#: app/routes/tasks.py:1037
+#, fuzzy
+msgid "The visual continuity sheet is already being rebuilt"
+msgstr "Rebuild the visual continuity sheet"
 
 #: app/routes/tts.py:17
 msgid "Missing text"
 msgstr "Missing text"
 
-#: app/tasks/answer_images.py:90 app/tasks/executor.py:_describe_step_image
+#: app/tasks/answer_images.py:90 app/tasks/artifacts.py:75
 #, python-brace-format
 msgid "{file_name} — image description"
 msgstr "{file_name} — image description"
 
-#: app/tasks/executor.py:_describe_step_image
+#: app/tasks/artifacts.py:77
 #, python-brace-format
 msgid "{file_name} — frame from the generated video"
 msgstr "{file_name} — frame from the generated video"
 
-#: app/tasks/executor.py:318 app/tasks/executor.py:1351
+#: app/tasks/executor.py:385 app/tasks/executor.py:1808
 msgid ""
 "the analysis contains the concrete data from the documents that answers "
 "the request"
@@ -1427,26 +1441,62 @@ msgstr ""
 "the analysis contains the concrete data from the documents that answers "
 "the request"
 
-#: app/tasks/executor.py:493
+#: app/tasks/executor.py:550
+#, fuzzy
+msgid "label"
+msgstr "Local"
+
+#: app/tasks/executor.py:550
+msgid "description"
+msgstr ""
+
+#: app/tasks/executor.py:551
+msgid "Checkpoint hint:"
+msgstr "Checkpoint hint:"
+
+#: app/tasks/executor.py:551
+#, fuzzy
+msgid "checkpoint_hint"
+msgstr "Checkpoint hint:"
+
+#: app/tasks/executor.py:554
+msgid "Available rooms:"
+msgstr "Available rooms:"
+
+#: app/tasks/executor.py:589
 #, python-brace-format
 msgid "Attached images: {count} ({names})."
 msgstr "Attached images: {count} ({names})."
 
-#: app/tasks/executor.py:510
+#: app/tasks/executor.py:606
 #, python-brace-format
 msgid "Attached documents: {count} ({names})."
 msgstr "Attached documents: {count} ({names})."
 
-#: app/tasks/executor.py:516
+#: app/tasks/executor.py:612
 #, python-brace-format
 msgid "Attached audio recordings: {count} ({names})."
 msgstr "Attached audio recordings: {count} ({names})."
 
-#: app/tasks/executor.py:521
+#: app/tasks/executor.py:617
 msgid "No files are attached to the task."
 msgstr "No files are attached to the task."
 
-#: app/tasks/executor.py:1263
+#: app/tasks/executor.py:658
+msgid ""
+"The user turned on 🔬 Deep Analysis: to find data in the user's documents,"
+" plan a step with tool \"rlm\" (multi-step deep analysis) over the "
+"attached documents (all of the user's documents when none are attached). "
+"Do NOT plan \"rag\" or \"llm\" steps for document search. Do not ask "
+"which documents to analyze."
+msgstr ""
+"The user turned on 🔬 Deep Analysis: to find data in the user's documents,"
+" plan a step with tool \"rlm\" (multi-step deep analysis) over the "
+"attached documents (all of the user's documents when none are attached). "
+"Do NOT plan \"rag\" or \"llm\" steps for document search. Do not ask "
+"which documents to analyze."
+
+#: app/tasks/executor.py:664
 msgid ""
 "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with "
 "tool \"rlm\" that deeply analyzes the attached documents (all of the "
@@ -1458,21 +1508,7 @@ msgstr ""
 "user's documents when none are attached) and answers the task request; do"
 " not ask which documents to analyze."
 
-#: app/tasks/executor.py:1279
-msgid ""
-"The user turned on 🔬 Deep Analysis: to find data in the user's documents, "
-"plan a step with tool \"rlm\" (multi-step deep analysis) over the "
-"attached documents (all of the user's documents when none are attached). "
-"Do NOT plan \"rag\" or \"llm\" steps for document search. Do not ask "
-"which documents to analyze."
-msgstr ""
-"The user turned on 🔬 Deep Analysis: to find data in the user's documents, "
-"plan a step with tool \"rlm\" (multi-step deep analysis) over the "
-"attached documents (all of the user's documents when none are attached). "
-"Do NOT plan \"rag\" or \"llm\" steps for document search. Do not ask "
-"which documents to analyze."
-
-#: app/tasks/executor.py:1292
+#: app/tasks/executor.py:671
 msgid ""
 "To find data in the user's documents, plan a step with tool \"rag\" "
 "(document search) followed by a step with tool \"llm\" that composes the "
@@ -1486,80 +1522,232 @@ msgstr ""
 "analyze: if documents are attached to the task — search them, otherwise "
 "search all of the user's documents."
 
-#: app/tasks/executor.py:1465
+#: app/tasks/executor.py:2140 app/tasks/executor.py:3159
 msgid "step attempts exhausted"
 msgstr "step attempts exhausted"
 
-#: app/queue.py
-msgid "Fix the stated problem and redo this step."
-msgstr "Fix the stated problem and redo this step."
-
-#: app/tasks/executor.py
-msgid "The step has no image to edit: no image is attached and no earlier step produced one."
-msgstr "The step has no image to edit: no image is attached and no earlier step produced one."
-
-#: app/tasks/executor.py
-#, python-brace-format
-msgid "Skipped: step {source} produced no image to edit."
-msgstr "Skipped: step {source} produced no image to edit."
-
-#: app/tasks/executor.py
-#, python-brace-format
-msgid "Skipped: step {source} produced no image to animate."
-msgstr "Skipped: step {source} produced no image to animate."
-
-#: app/tasks/executor.py:1999
+#: app/tasks/executor.py:2973
 msgid "Result of subtask expired while task was paused. Please restart the task."
 msgstr "Result of subtask expired while task was paused. Please restart the task."
 
-#: app/tasks/runner.py:371
+#: app/tasks/runner.py:587
 #, python-brace-format
 msgid "No previous conversations found on topic: {topic}"
 msgstr "No previous conversations found on topic: {topic}"
 
-#: app/tasks/tools.py:40
+#: app/tasks/tools.py:41 app/tasks/tools.py:64
 msgid "Web search"
 msgstr "Web search"
 
-#: app/tasks/tools.py:41
+#: app/tasks/tools.py:42 app/tasks/tools.py:70
 msgid "Document search"
 msgstr "Document search"
 
-#: app/tasks/tools.py:42
+#: app/tasks/tools.py:43 app/tasks/tools.py:79
 msgid "Conversation history"
 msgstr "Conversation history"
 
-#: app/tasks/tools.py:43
+#: app/tasks/tools.py:44 app/tasks/tools.py:89
 msgid "Image analysis"
 msgstr "Image analysis"
 
-#: app/tasks/tools.py:44
+#: app/tasks/tools.py:45 app/tasks/tools.py:126
 msgid "Calculator"
 msgstr "Calculator"
 
-#: app/tasks/tools.py:45
+#: app/tasks/tools.py:46 app/tasks/tools.py:105
 msgid "Camera"
 msgstr "Camera"
 
-#: app/tasks/tools.py:46
+#: app/tasks/tools.py:47 app/tasks/tools.py:116
 msgid "Site study"
 msgstr "Site study"
 
-#: app/tasks/tools.py:49 app/tasks/tools.py:138
+#: app/tasks/tools.py:49 app/tasks/tools.py:138 app/templates/chat.html:342
 msgid "Visual continuity"
 msgstr "Visual continuity"
 
-#: app/tasks/tools.py:48
+#: app/tasks/tools.py:50 app/tasks/tools.py:149
 msgid "Image generation"
 msgstr "Image generation"
 
-#: app/tasks/tools.py:49
+#: app/tasks/tools.py:51 app/tasks/tools.py:155
 msgid "Image editing"
 msgstr "Image editing"
 
-#: app/tasks/tools.py:50
+#: app/tasks/tools.py:52 app/tasks/tools.py:166
 msgid "Video generation"
 msgstr "Video generation"
+
+#: app/tasks/tools.py:58
+msgid "Reasoning model"
+msgstr "Reasoning model"
+
+#: app/tasks/tools.py:59
+msgid "Think, write, analyze, derive, write code without fresh internet data."
+msgstr "Think, write, analyze, derive, write code without fresh internet data."
+
+#: app/tasks/tools.py:60
+msgid "State the concrete artifact or answer the reasoning must produce."
+msgstr "State the concrete artifact or answer the reasoning must produce."
+
+#: app/tasks/tools.py:65
+msgid "Search the internet for fresh data (rates, news, current facts)."
+msgstr "Search the internet for fresh data (rates, news, current facts)."
+
+#: app/tasks/tools.py:66
+msgid "Name the fact or data the search must confirm."
+msgstr "Name the fact or data the search must confirm."
+
+#: app/tasks/tools.py:72
+msgid ""
+"Search the user's own documents and return the relevant fragments. Pair "
+"with a following llm step that composes the answer from them."
+msgstr ""
+"Search the user's own documents and return the relevant fragments. Pair "
+"with a following llm step that composes the answer from them."
+
+#: app/tasks/tools.py:75
+msgid "Name the data the search must find in the documents."
+msgstr "Name the data the search must find in the documents."
+
+#: app/tasks/tools.py:81
+msgid ""
+"Search the user's past conversations for a topic and return matching "
+"fragments (what was discussed earlier). Pair with a following llm step "
+"that composes the answer from them."
+msgstr ""
+"Search the user's past conversations for a topic and return matching "
+"fragments (what was discussed earlier). Pair with a following llm step "
+"that composes the answer from them."
+
+#: app/tasks/tools.py:85
+msgid "Name the topic the past conversation must contain."
+msgstr "Name the topic the past conversation must contain."
+
+#: app/tasks/tools.py:91
+msgid ""
+"Extract data from ONE image attached to the task with the multimodal "
+"model: a detailed description of everything visible plus all text on the "
+"image. It does not answer the task question — pair it with a following "
+"llm step that composes the answer from the extraction. To analyze several"
+" images, plan ONE step per image with that image's file name in the goal:"
+" the step reads only the image its goal names. Use only when images are "
+"attached to the task."
+msgstr ""
+"Extract data from ONE image attached to the task with the multimodal "
+"model: a detailed description of everything visible plus all text on the "
+"image. It does not answer the task question — pair it with a following "
+"llm step that composes the answer from the extraction. To analyze several"
+" images, plan ONE step per image with that image's file name in the goal:"
+" the step reads only the image its goal names. Use only when images are "
+"attached to the task."
+
+#: app/tasks/tools.py:100
+msgid ""
+"Name this image's file in the goal and require a detailed description "
+"plus all text on it."
+msgstr ""
+"Name this image's file in the goal and require a detailed description "
+"plus all text on it."
+
+#: app/tasks/tools.py:107
+msgid ""
+"Take a camera snapshot of one of the user's rooms and answer a question "
+"about what the camera sees (e.g. whether a cat is in the room). To "
+"compare several rooms, plan ONE step per room with the room name in the "
+"goal."
+msgstr ""
+"Take a camera snapshot of one of the user's rooms and answer a question "
+"about what the camera sees (e.g. whether a cat is in the room). To "
+"compare several rooms, plan ONE step per room with the room name in the "
+"goal."
+
+#: app/tasks/tools.py:112
+msgid "Name the room and the question the analysis must answer."
+msgstr "Name the room and the question the analysis must answer."
+
+#: app/tasks/tools.py:118
+msgid ""
+"Deeply study a website (it contains a URL): fetch its pages, index them "
+"as a document and answer questions about the site. Pair with a following "
+"llm step that composes the answer from the collected material."
+msgstr ""
+"Deeply study a website (it contains a URL): fetch its pages, index them "
+"as a document and answer questions about the site. Pair with a following "
+"llm step that composes the answer from the collected material."
+
+#: app/tasks/tools.py:122
+msgid "Name the site and the question the study must answer."
+msgstr "Name the site and the question the study must answer."
+
+#: app/tasks/tools.py:127
+msgid "Evaluate a math expression safely (arithmetic and math functions)."
+msgstr "Evaluate a math expression safely (arithmetic and math functions)."
+
+#: app/tasks/tools.py:128
+msgid "State the expression and its expected exact result."
+msgstr "State the expression and its expected exact result."
+
+#: app/tasks/tools.py:133
+msgid "Multi-step deep analysis over selected documents, images and web pages."
+msgstr "Multi-step deep analysis over selected documents, images and web pages."
+
+#: app/tasks/tools.py:134
+msgid "Name the documents and the question the analysis must answer."
+msgstr "Name the documents and the question the analysis must answer."
+
+#: app/tasks/tools.py:140
+msgid ""
+"Extract the visual continuity sheet: one style plus the fixed look of "
+"every character, place and prop named in the task, as one JSON object. "
+"Plan it before the first image generation step when the task produces "
+"several images."
+msgstr ""
+"Extract the visual continuity sheet: one style plus the fixed look of "
+"every character, place and prop named in the task, as one JSON object. "
+"Plan it before the first image generation step when the task produces "
+"several images."
+
+#: app/tasks/tools.py:145
+msgid "Output the sheet as valid JSON."
+msgstr "Output the sheet as valid JSON."
+
+#: app/tasks/tools.py:150
+msgid "Generate an image from a text prompt."
+msgstr "Generate an image from a text prompt."
+
+#: app/tasks/tools.py:151
+msgid "Describe the subject the generated image must show."
+msgstr "Describe the subject the generated image must show."
+
+#: app/tasks/tools.py:157
+msgid ""
+"Edit one image according to an instruction: the attached image the goal "
+"names (one step per image; the first attached one when the goal names "
+"none), or the artifact of an earlier step when its seq is set in "
+"\"source_step\" (no attachment edit). Without any source the step fails."
+msgstr ""
+"Edit one image according to an instruction: the attached image the goal "
+"names (one step per image; the first attached one when the goal names "
+"none), or the artifact of an earlier step when its seq is set in "
+"\"source_step\" (no attachment edit). Without any source the step fails."
+
+#: app/tasks/tools.py:162
+msgid "Name this image's file in the goal and the change that must be visible."
+msgstr "Name this image's file in the goal and the change that must be visible."
+
+#: app/tasks/tools.py:168
+msgid ""
+"Generate a short video from a text prompt; with \"source_step\" (or any "
+"earlier step-produced image) it animates that image instead."
+msgstr ""
+"Generate a short video from a text prompt; with \"source_step\" (or any "
+"earlier step-produced image) it animates that image instead."
+
+#: app/tasks/tools.py:171
+msgid "Describe the scene and motion the video must show."
+msgstr "Describe the scene and motion the video must show."
 
 #: app/templates/admin.html:5
 msgid "Admin Panel"
@@ -1651,13 +1839,13 @@ msgid "Class"
 msgstr "Class"
 
 #: app/templates/admin.html:57 app/templates/admin.html:367
-#: app/templates/chat.html:20 app/templates/chat.html:162
+#: app/templates/chat.html:20 app/templates/chat.html:163
 msgid "Sessions"
 msgstr "Sessions"
 
 # Tasks subsystem (v12.6): Tasks panel UI (chat.html, chat-tasks.js)
 #: app/templates/admin.html:58 app/templates/chat.html:15
-#: app/templates/chat.html:164
+#: app/templates/chat.html:165
 msgid "Tasks"
 msgstr "Tasks"
 
@@ -1670,7 +1858,7 @@ msgid "Incoming tokens"
 msgstr "Incoming tokens"
 
 #: app/templates/admin.html:61 app/templates/admin.html:368
-#: app/templates/chat.html:69 app/templates/chat.html:188
+#: app/templates/chat.html:69 app/templates/chat.html:203
 msgid "Messages"
 msgstr "Messages"
 
@@ -1679,7 +1867,7 @@ msgid "Files"
 msgstr "Files"
 
 #: app/templates/admin.html:63 app/templates/admin.html:370
-#: app/templates/chat.html:9 app/templates/chat.html:163
+#: app/templates/chat.html:9 app/templates/chat.html:164
 msgid "Documents"
 msgstr "Documents"
 
@@ -1751,7 +1939,7 @@ msgstr "Threshold (reasoning)"
 
 #: app/templates/admin.html:125 app/templates/admin.html:338
 #: app/templates/admin.html:356 app/templates/admin.html:430
-#: app/templates/chat.html:254
+#: app/templates/chat.html:269
 msgid "Save"
 msgstr "Save"
 
@@ -1948,7 +2136,7 @@ msgid "Leave all unchecked to deny access to all cameras."
 msgstr "Leave all unchecked to deny access to all cameras."
 
 #: app/templates/admin.html:320 app/templates/admin.html:374
-#: app/templates/chat.html:253
+#: app/templates/chat.html:268
 msgid "Create"
 msgstr "Create"
 
@@ -1970,7 +2158,7 @@ msgid "OK"
 msgstr "OK"
 
 #: app/templates/admin.html:357 app/templates/admin.html:529
-#: app/templates/chat.html:252
+#: app/templates/chat.html:267
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -1986,7 +2174,7 @@ msgstr "Delete"
 msgid "Delete user"
 msgstr "Delete user"
 
-#: app/templates/admin.html:382 app/templates/chat.html:210
+#: app/templates/admin.html:382 app/templates/chat.html:225
 msgid "unknown_error"
 msgstr "Unknown error"
 
@@ -2003,7 +2191,7 @@ msgid "Saved"
 msgstr "Saved"
 
 #: app/templates/admin.html:395 app/templates/chat.html:54
-#: app/templates/chat.html:161
+#: app/templates/chat.html:162
 msgid "Chat"
 msgstr "Chat"
 
@@ -2023,7 +2211,7 @@ msgstr "Embedding"
 msgid "-- Select model --"
 msgstr "-- Select model --"
 
-#: app/templates/admin.html:400 app/templates/chat.html:139
+#: app/templates/admin.html:400 app/templates/chat.html:140
 msgid "Loading..."
 msgstr "Loading..."
 
@@ -2597,44 +2785,44 @@ msgstr "Created"
 msgid "api_keys_col_last_used"
 msgstr "Last used"
 
-#: app/templates/base.html:160 app/templates/chat.html:229
+#: app/templates/base.html:160 app/templates/chat.html:244
 msgid "footer_about_hint"
 msgstr "About"
 
-#: app/templates/base.html:161 app/templates/chat.html:228
+#: app/templates/base.html:161 app/templates/chat.html:243
 msgid "footer_short_name"
 msgstr "FLAI"
 
-#: app/templates/base.html:169 app/templates/chat.html:94
-#: app/templates/chat.html:230
+#: app/templates/base.html:169 app/templates/chat.html:95
+#: app/templates/chat.html:245
 msgid "close_about"
 msgstr "Close"
 
-#: app/templates/base.html:171 app/templates/chat.html:226
+#: app/templates/base.html:171 app/templates/chat.html:241
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI)"
 
-#: app/templates/base.html:174 app/templates/chat.html:227
+#: app/templates/base.html:174 app/templates/chat.html:242
 msgid "footer_copyright"
 msgstr "(c) 2026 Valery Barsukov"
 
-#: app/templates/chat.html:10 app/templates/chat.html:242
+#: app/templates/chat.html:10 app/templates/chat.html:257
 msgid "New document"
 msgstr "New document"
 
-#: app/templates/chat.html:11 app/templates/chat.html:248
+#: app/templates/chat.html:11 app/templates/chat.html:263
 msgid "New folder"
 msgstr "New folder"
 
-#: app/templates/chat.html:16 app/templates/chat.html:165
+#: app/templates/chat.html:16 app/templates/chat.html:166
 msgid "New task"
 msgstr "New task"
 
-#: app/templates/chat.html:35 app/templates/chat.html:155
+#: app/templates/chat.html:35 app/templates/chat.html:156
 msgid "Delete session"
 msgstr "Delete session"
 
-#: app/templates/chat.html:54 app/templates/chat.html:166
+#: app/templates/chat.html:54 app/templates/chat.html:167
 msgid "Task"
 msgstr "Task"
 
@@ -2642,35 +2830,35 @@ msgstr "Task"
 msgid "Your requests / Total requests"
 msgstr "Your requests / Total requests"
 
-#: app/templates/chat.html:54 app/templates/chat.html:278
+#: app/templates/chat.html:54 app/templates/chat.html:293
 msgid "response_style_label"
 msgstr "Style"
 
-#: app/templates/chat.html:56 app/templates/chat.html:277
+#: app/templates/chat.html:56 app/templates/chat.html:292
 msgid "response_style_title"
 msgstr "Response style"
 
-#: app/templates/chat.html:61 app/templates/chat.html:279
+#: app/templates/chat.html:61 app/templates/chat.html:294
 msgid "response_style_neutral"
 msgstr "Neutral"
 
-#: app/templates/chat.html:62 app/templates/chat.html:280
+#: app/templates/chat.html:62 app/templates/chat.html:295
 msgid "response_style_academic"
 msgstr "Academic"
 
-#: app/templates/chat.html:63 app/templates/chat.html:281
+#: app/templates/chat.html:63 app/templates/chat.html:296
 msgid "response_style_professional"
 msgstr "Professional"
 
-#: app/templates/chat.html:64 app/templates/chat.html:282
+#: app/templates/chat.html:64 app/templates/chat.html:297
 msgid "response_style_friendly"
 msgstr "Friendly"
 
-#: app/templates/chat.html:65 app/templates/chat.html:283
+#: app/templates/chat.html:65 app/templates/chat.html:298
 msgid "response_style_funny"
 msgstr "Funny"
 
-#: app/templates/chat.html:70 app/templates/chat.html:169
+#: app/templates/chat.html:70 app/templates/chat.html:170
 msgid "Stop task"
 msgstr "Stop task"
 
@@ -2678,387 +2866,459 @@ msgstr "Stop task"
 msgid "Restart task"
 msgstr "Restart task"
 
-#: app/templates/chat.html:72 app/templates/chat.html:285
+#: app/templates/chat.html:72 app/templates/chat.html:344
+msgid "Rebuild the visual continuity sheet"
+msgstr "Rebuild the visual continuity sheet"
+
+#: app/templates/chat.html:73 app/templates/chat.html:300
 msgid "stop_generating"
 msgstr "Stop generating"
 
-#: app/templates/chat.html:73 app/templates/chat.html:160
+#: app/templates/chat.html:74 app/templates/chat.html:161
 msgid "Save as HTML"
 msgstr "Save as HTML"
 
-#: app/templates/chat.html:96 app/templates/chat.html:249
+#: app/templates/chat.html:97 app/templates/chat.html:264
 msgid "Enter folder name"
 msgstr "Enter folder name"
 
-#: app/templates/chat.html:112
+#: app/templates/chat.html:113
 msgid "Select documents"
 msgstr "Select documents"
 
-#: app/templates/chat.html:116
+#: app/templates/chat.html:117
 msgid "Enter message..."
 msgstr "Enter message..."
 
-#: app/templates/chat.html:117 app/templates/chat.html:234
+#: app/templates/chat.html:118 app/templates/chat.html:249
 msgid "Record voice message"
 msgstr "Record voice message"
 
-#: app/templates/chat.html:120 app/templates/chat.html:140
+#: app/templates/chat.html:121 app/templates/chat.html:141
 msgid "Send"
 msgstr "Send"
 
-#: app/templates/chat.html:141
+#: app/templates/chat.html:142
 msgid "Sending..."
 msgstr "Sending..."
 
-#: app/templates/chat.html:142
+#: app/templates/chat.html:143
 msgid "Recording..."
 msgstr "Recording..."
 
-#: app/templates/chat.html:147
+#: app/templates/chat.html:148
 msgid "Audio transcribed"
 msgstr "Audio transcribed"
 
-#: app/templates/chat.html:149
+#: app/templates/chat.html:150
 #, python-brace-format
 msgid "Speech recognized, request queued (position {pos})"
 msgstr "Speech recognized, request queued (position {pos})"
 
-#: app/templates/chat.html:156
+#: app/templates/chat.html:157
 #, python-brace-format
 msgid "Delete session {title} from {date}?"
 msgstr "Delete session {title} from {date}?"
 
-#: app/templates/chat.html:167
+#: app/templates/chat.html:168
 msgid "Task request"
 msgstr "Task request"
 
-#: app/templates/chat.html:168
+#: app/templates/chat.html:169
 msgid "Create task"
 msgstr "Create task"
 
-#: app/templates/chat.html:170
+#: app/templates/chat.html:171
 msgid "Delete task"
 msgstr "Delete task"
 
-#: app/templates/chat.html:171
+#: app/templates/chat.html:172
 #, python-brace-format
 msgid "Delete task {title} from {date}?"
 msgstr "Delete task {title} from {date}?"
 
-#: app/templates/chat.html:172
+#: app/templates/chat.html:173
 #, python-brace-format
 msgid "Running (step {n} of {m})"
 msgstr "Running (step {n} of {m})"
 
-#: app/templates/chat.html:173
+#: app/templates/chat.html:174
 msgid "Running"
 msgstr "Running"
 
-#: app/templates/chat.html:174
+#: app/templates/chat.html:175
 msgid "Frozen"
 msgstr "Frozen"
 
-#: app/templates/chat.html:175
+#: app/templates/chat.html:176
 msgid "Transcribing audio…"
 msgstr "Transcribing audio…"
 
-#: app/templates/chat.html:176
+#: app/templates/chat.html:177
 msgid "Completed"
 msgstr "Completed"
 
-#: app/templates/chat.html:177
+#: app/templates/chat.html:178
 msgid "Cancelled"
 msgstr "Cancelled"
 
-#: app/templates/chat.html:178
+#: app/templates/chat.html:179
 msgid "Failed"
 msgstr "Failed"
 
-#: app/templates/chat.html:179
+#: app/templates/chat.html:180
 msgid "Expired"
 msgstr "Expired"
 
-#: app/templates/chat.html:180
+#: app/templates/chat.html:181
 msgid "Awaiting answer"
 msgstr "Awaiting answer"
 
-#: app/templates/chat.html:181
+#: app/templates/chat.html:182
+msgid "Checked automatically"
+msgstr "Checked automatically"
+
+#: app/templates/chat.html:183
+#, python-brace-format
+msgid "Redone ×{n}"
+msgstr "Redone ×{n}"
+
+#: app/templates/chat.html:184
+#, python-brace-format
+msgid "Retrying (attempt {n} of {max})"
+msgstr "Retrying (attempt {n} of {max})"
+
+#: app/templates/chat.html:185
+#, python-brace-format
+msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
+msgstr "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
+
+#: app/templates/chat.html:186
+#, python-brace-format
+msgid "Redoing after the check (attempt {n} of {max})"
+msgstr "Redoing after the check (attempt {n} of {max})"
+
+#: app/templates/chat.html:187
+#, python-brace-format
+msgid "Redone after the check: {reason}"
+msgstr "Redone after the check: {reason}"
+
+#: app/templates/chat.html:188
+msgid "Not delivered"
+msgstr "Not delivered"
+
+#: app/templates/chat.html:189
+msgid "Skipped"
+msgstr "Skipped"
+
+#: app/templates/chat.html:190
+msgid "Interrupted"
+msgstr "Interrupted"
+
+#: app/templates/chat.html:191
+msgid "Not verified"
+msgstr "Not verified"
+
+#: app/templates/chat.html:192
+msgid "Check skipped: could not describe the image"
+msgstr "Check skipped: could not describe the image"
+
+#: app/templates/chat.html:193
+#, python-brace-format
+msgid "Verification attempts ({n})"
+msgstr "Verification attempts ({n})"
+
+#: app/templates/chat.html:194
+#, python-brace-format
+msgid "attempt {n}"
+msgstr "attempt {n}"
+
+#: app/templates/chat.html:195
+#, python-brace-format
+msgid "Accepted results: {n}"
+msgstr "Accepted results: {n}"
+
+#: app/templates/chat.html:196
+msgid "Not delivered:"
+msgstr "Not delivered:"
+
+#: app/templates/chat.html:197
 msgid "Answer the clarifying question…"
 msgstr "Answer the clarifying question…"
 
-#: app/templates/chat.html:182
+#: app/templates/chat.html:198
 msgid "Task is not awaiting an answer right now — status:"
 msgstr "Task is not awaiting an answer right now — status:"
 
-#: app/templates/chat.html:183
+#: app/templates/chat.html:199
 msgid "No tasks yet"
 msgstr "No tasks yet"
 
-#: app/templates/chat.html:184
+#: app/templates/chat.html:200
 msgid "Draft"
 msgstr "Draft"
 
-#: app/templates/chat.html:185
+#: app/templates/chat.html:201
 msgid "Draft — describe the task…"
 msgstr "Draft — describe the task…"
 
-#: app/templates/chat.html:186
+#: app/templates/chat.html:202
 msgid "No task selected — use «+» to create one"
 msgstr "No task selected — use «+» to create one"
 
-#: app/templates/chat.html:189
+#: app/templates/chat.html:204
 msgid "Your requests in queue / Total in queue"
 msgstr "Your requests in queue / Total in queue"
 
-#: app/templates/chat.html:191
+#: app/templates/chat.html:206
 msgid "Server error: received invalid response"
 msgstr "Server error: received invalid response"
 
-#: app/templates/chat.html:192
+#: app/templates/chat.html:207
 msgid "Warning"
 msgstr "Warning"
 
-#: app/templates/chat.html:193
+#: app/templates/chat.html:208
 msgid "Info"
 msgstr "Info"
 
-#: app/templates/chat.html:194
+#: app/templates/chat.html:209
 msgid "user"
 msgstr "User"
 
-#: app/templates/chat.html:195
+#: app/templates/chat.html:210
 msgid "session"
 msgstr "Session"
 
-#: app/templates/chat.html:196
+#: app/templates/chat.html:211
 msgid "saved_on"
 msgstr "Saved on"
 
-#: app/templates/chat.html:197
+#: app/templates/chat.html:212
 msgid "total_messages"
 msgstr "Total messages"
 
-#: app/templates/chat.html:198
+#: app/templates/chat.html:213
 msgid "speak"
 msgstr "Speak"
 
-#: app/templates/chat.html:199
+#: app/templates/chat.html:214
 msgid "stop"
 msgstr "Stop"
 
-#: app/templates/chat.html:200
+#: app/templates/chat.html:215
 msgid "download_image"
 msgstr "Download image"
 
-#: app/templates/chat.html:201
+#: app/templates/chat.html:216
 msgid "download_audio"
 msgstr "Download audio"
 
-#: app/templates/chat.html:202
+#: app/templates/chat.html:217
 msgid "download_video"
 msgstr "Download video"
 
-#: app/templates/chat.html:203
+#: app/templates/chat.html:218
 msgid "click_to_enlarge"
 msgstr "Click to enlarge"
 
-#: app/templates/chat.html:204
+#: app/templates/chat.html:219
 msgid "image"
 msgstr "image"
 
-#: app/templates/chat.html:205
+#: app/templates/chat.html:220
 msgid "enter_message_or_file"
 msgstr "Enter a message or attach a file"
 
-#: app/templates/chat.html:208
+#: app/templates/chat.html:223
 msgid "remove_file"
 msgstr "Remove attachment"
 
-#: app/templates/chat.html:209
+#: app/templates/chat.html:224
 msgid "request_timeout"
 msgstr "Request timeout. Check request status."
 
-#: app/templates/chat.html:211
+#: app/templates/chat.html:226
 msgid "copied"
 msgstr "Copied!"
 
-#: app/templates/chat.html:212
+#: app/templates/chat.html:227
 msgid "copy_code"
 msgstr "Copy code"
 
-#: app/templates/chat.html:213
+#: app/templates/chat.html:228
 msgid "copy_failed"
 msgstr "Copy failed"
 
-#: app/templates/chat.html:214
+#: app/templates/chat.html:229
 msgid "copy_text"
 msgstr "Copy text"
 
-#: app/templates/chat.html:215
+#: app/templates/chat.html:230
 msgid "open_html"
 msgstr "Open HTML page"
 
-#: app/templates/chat.html:216
+#: app/templates/chat.html:231
 msgid "open_html_unavailable"
 msgstr ""
 "Preview is unavailable for this message. Save the code to a file and open"
 " it in a browser."
 
-#: app/templates/chat.html:217
+#: app/templates/chat.html:232
 msgid "processing"
 msgstr "processing"
 
-#: app/templates/chat.html:218
+#: app/templates/chat.html:233
 msgid "queued"
 msgstr "queued"
 
-#: app/templates/chat.html:219
+#: app/templates/chat.html:234
 msgid "new_response"
 msgstr "new response"
 
-#: app/templates/chat.html:220
+#: app/templates/chat.html:235
 msgid "browser_no_audio_support"
 msgstr "Your browser does not support audio recording"
 
-#: app/templates/chat.html:221
+#: app/templates/chat.html:236
 msgid "secure_context_required"
 msgstr ""
 "Voice recording requires a secure connection (HTTPS). Try opening the "
 "site via HTTPS or localhost."
 
-#: app/templates/chat.html:222
+#: app/templates/chat.html:237
 msgid "microphone_access_denied"
 msgstr "Could not access microphone."
 
-#: app/templates/chat.html:223
+#: app/templates/chat.html:238
 msgid "no_active_session_save"
 msgstr "No active session to save"
 
-#: app/templates/chat.html:224
+#: app/templates/chat.html:239
 msgid "saved_chat"
 msgstr "Saved chat"
 
-#: app/templates/chat.html:225
+#: app/templates/chat.html:240
 msgid "no_messages_to_save"
 msgstr "No messages to save"
 
-#: app/templates/chat.html:231
+#: app/templates/chat.html:246
 msgid "footer_not_configured"
 msgstr "Footer not configured"
 
-#: app/templates/chat.html:232
+#: app/templates/chat.html:247
 msgid "footer_load_error"
 msgstr "Error loading footer"
 
-#: app/templates/chat.html:235
+#: app/templates/chat.html:250
 msgid "seconds_suffix"
 msgstr " s"
 
-#: app/templates/chat.html:236
+#: app/templates/chat.html:251
 msgid "tps_suffix"
 msgstr " tok/s"
 
-#: app/templates/chat.html:237
+#: app/templates/chat.html:252
 msgid "tokens_unit"
 msgstr "tok"
 
-#: app/templates/chat.html:238
+#: app/templates/chat.html:253
 msgid "byte_abbr"
 msgstr "B"
 
-#: app/templates/chat.html:239
+#: app/templates/chat.html:254
 msgid "kb_abbr"
 msgstr "KB"
 
-#: app/templates/chat.html:240
+#: app/templates/chat.html:255
 msgid "mb_abbr"
 msgstr "MB"
 
-#: app/templates/chat.html:241
+#: app/templates/chat.html:256
 msgid "gb_abbr"
 msgstr "GB"
 
-#: app/templates/chat.html:243
+#: app/templates/chat.html:258
 msgid "Delete document"
 msgstr "Delete document"
 
-#: app/templates/chat.html:244
+#: app/templates/chat.html:259
 #, python-brace-format
 msgid "Delete document \"{filename}\"?"
 msgstr "Delete document \"{filename}\"?"
 
-#: app/templates/chat.html:245
+#: app/templates/chat.html:260
 msgid "Upload document"
 msgstr "Upload document"
 
-#: app/templates/chat.html:246
+#: app/templates/chat.html:261
 msgid "Document uploaded"
 msgstr "Document uploaded"
 
-#: app/templates/chat.html:247
+#: app/templates/chat.html:262
 msgid "Document upload failed"
 msgstr "Document upload failed"
 
-#: app/templates/chat.html:250
+#: app/templates/chat.html:265
 msgid "Create folder"
 msgstr "Create folder"
 
-#: app/templates/chat.html:251 app/templates/chat.html:255
+#: app/templates/chat.html:266 app/templates/chat.html:270
 msgid "Rename folder"
 msgstr "Rename folder"
 
-#: app/templates/chat.html:256
+#: app/templates/chat.html:271
 msgid "Delete folder"
 msgstr "Delete folder"
 
-#: app/templates/chat.html:257
+#: app/templates/chat.html:272
 msgid "Move to folder"
 msgstr "Move to folder"
 
-#: app/templates/chat.html:258
+#: app/templates/chat.html:273
 msgid "Clear selection"
 msgstr "Clear selection"
 
-#: app/templates/chat.html:259
+#: app/templates/chat.html:274
 msgid "Move to root"
 msgstr "Move to root"
 
-#: app/templates/chat.html:260
+#: app/templates/chat.html:275
 msgid "Delete selected documents"
 msgstr "Delete selected documents"
 
-#: app/templates/chat.html:261
+#: app/templates/chat.html:276
 #, python-brace-format
 msgid "Delete {count} selected documents ({size})?"
 msgstr "Delete {count} selected documents ({size})?"
 
-#: app/templates/chat.html:262
+#: app/templates/chat.html:277
 msgid "Failed to delete some documents"
 msgstr "Failed to delete some documents"
 
-#: app/templates/chat.html:263
+#: app/templates/chat.html:278
 #, python-brace-format
 msgid "Selected: {count} ({size})"
 msgstr "Selected: {count} ({size})"
 
-#: app/templates/chat.html:264
+#: app/templates/chat.html:279
 msgid "Select all documents in folder"
 msgstr "Select all documents in folder"
 
-#: app/templates/chat.html:265
+#: app/templates/chat.html:280
 msgid "Select for moving"
 msgstr "Select for moving"
 
-#: app/templates/chat.html:266
+#: app/templates/chat.html:281
 msgid "Select for deep analysis"
 msgstr "Select for deep analysis"
 
-#: app/templates/chat.html:267
+#: app/templates/chat.html:282
 #, python-brace-format
 msgid "Delete folder \"{name}\"?"
 msgstr "Delete folder \"{name}\"?"
 
-#: app/templates/chat.html:268
+#: app/templates/chat.html:283
 #, python-brace-format
 msgid ""
 "This will also delete {count} documents ({size}) inside the folder. "
@@ -3067,212 +3327,235 @@ msgstr ""
 "This will also delete {count} documents ({size}) inside the folder. "
 "Continue?"
 
-#: app/templates/chat.html:269
+#: app/templates/chat.html:284
 msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 msgstr "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 
-#: app/templates/chat.html:270
+#: app/templates/chat.html:285
 msgid "minutes_abbr"
 msgstr "min"
 
-#: app/templates/chat.html:271
+#: app/templates/chat.html:286
 msgid "status_pending"
 msgstr "Pending indexing"
 
-#: app/templates/chat.html:272
+#: app/templates/chat.html:287
 msgid "status_indexing"
 msgstr "Indexing in progress"
 
-#: app/templates/chat.html:273
+#: app/templates/chat.html:288
 msgid "status_indexed"
 msgstr "Indexed"
 
-#: app/templates/chat.html:274
+#: app/templates/chat.html:289
 msgid "status_failed"
 msgstr "Indexing failed"
 
-#: app/templates/chat.html:275
+#: app/templates/chat.html:290
 msgid "status_unknown"
 msgstr "Not indexed"
 
-#: app/templates/chat.html:276
+#: app/templates/chat.html:291
 msgid "transcribing"
 msgstr "Transcribing..."
 
-#: app/templates/chat.html:284
+#: app/templates/chat.html:299
 msgid "generating"
 msgstr "Generating..."
 
-#: app/templates/chat.html:286
+#: app/templates/chat.html:301
 msgid "cancelling"
 msgstr "Cancelling..."
 
-#: app/templates/chat.html:287
+#: app/templates/chat.html:302
 msgid "cancelled"
 msgstr "Cancelled"
 
-#: app/templates/chat.html:288
+#: app/templates/chat.html:303
 msgid "tool_get_current_time"
 msgstr "Getting time..."
 
-#: app/templates/chat.html:289
+#: app/templates/chat.html:304
 msgid "tool_calculator"
 msgstr "Calculating..."
 
-#: app/templates/chat.html:290
+#: app/templates/chat.html:305
 msgid "tool_time_calc"
 msgstr "Calculating date..."
 
-#: app/templates/chat.html:291
+#: app/templates/chat.html:306
 msgid "tool_web_search"
 msgstr "Searching the web..."
 
-#: app/templates/chat.html:292
+#: app/templates/chat.html:307
 msgid "tool_rag_search"
 msgstr "Searching documents..."
 
-#: app/templates/chat.html:293
+#: app/templates/chat.html:308
 msgid "tool_camera_snapshot"
 msgstr "Getting snapshot..."
 
-#: app/templates/chat.html:294
+#: app/templates/chat.html:309
 msgid "tool_read_page"
 msgstr "Reading the page..."
 
-#: app/templates/chat.html:295
+#: app/templates/chat.html:310
 msgid "Preparing resources..."
 msgstr "⏳ Preparing resources..."
 
-#: app/templates/chat.html:296 app/templates/chat.html:297
+#: app/templates/chat.html:311 app/templates/chat.html:312
 msgid "Analyzing request..."
 msgstr "🔍 Analyzing request..."
 
-#: app/templates/chat.html:298
+#: app/templates/chat.html:313
 msgid "Analyzing image..."
 msgstr "🔍 Analyzing image..."
 
-#: app/templates/chat.html:299
+#: app/templates/chat.html:314
 msgid "Analyzing prompt..."
 msgstr "🔍 Analyzing prompt..."
 
-#: app/templates/chat.html:300
+#: app/templates/chat.html:315
 msgid "Generating video..."
 msgstr "🎬 Generating video..."
 
-#: app/templates/chat.html:301
+#: app/templates/chat.html:316
 msgid "Generating image..."
 msgstr "🎨 Generating image..."
 
-#: app/templates/chat.html:302
+#: app/templates/chat.html:317
 msgid "Editing image..."
 msgstr "✏️ Editing image..."
 
-#: app/templates/chat.html:303
+#: app/templates/chat.html:318
 msgid "Loading reasoning model..."
 msgstr "🧠 Loading reasoning model..."
 
-#: app/templates/chat.html:304
+#: app/templates/chat.html:319
 msgid "Thinking..."
 msgstr "🤔 Thinking..."
 
-#: app/templates/chat.html:305
+#: app/templates/chat.html:320
 msgid "Searching documents..."
 msgstr "📚 Searching documents..."
 
-#: app/templates/chat.html:306 app/templates/chat.html:310
+#: app/templates/chat.html:321 app/templates/chat.html:325
 #, python-format
 msgid "Found %s fragments, preparing the answer..."
 msgstr "Found %s fragments, preparing the answer..."
 
-#: app/templates/chat.html:307
+#: app/templates/chat.html:322
 msgid "Searching the web..."
 msgstr "🌐 Searching the web..."
 
-#: app/templates/chat.html:308
+#: app/templates/chat.html:323
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Found %s results, preparing the answer..."
 
-#: app/templates/chat.html:309
+#: app/templates/chat.html:324
 msgid "Searching your conversation history..."
 msgstr "🗨 Searching your conversation history..."
 
-#: app/templates/chat.html:311
+#: app/templates/chat.html:326
 msgid "Getting time..."
 msgstr "🕐 Getting time..."
 
-#: app/templates/chat.html:312
+#: app/templates/chat.html:327
 msgid "Calculating..."
 msgstr "🔢 Calculating..."
 
-#: app/templates/chat.html:313
+#: app/templates/chat.html:328
 msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
-#: app/templates/chat.html:314
+#: app/templates/chat.html:329
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Deep analysis: reading documents"
 
-#: app/templates/chat.html:315
+#: app/templates/chat.html:330
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Deep analysis: phase %s"
 
-#: app/templates/chat.html:316
+#: app/templates/chat.html:331
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Deep analysis: searching the web"
 
-#: app/templates/chat.html:317
+#: app/templates/chat.html:332
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:318
+#: app/templates/chat.html:333
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Deep analysis: composing the answer"
 
-#: app/templates/chat.html:319
+#: app/templates/chat.html:334
 msgid "Starting web crawl..."
 msgstr "🕸️ Starting web crawl..."
 
-#: app/templates/chat.html:320
+#: app/templates/chat.html:335
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Crawling page %s..."
 
-#: app/templates/chat.html:321
+#: app/templates/chat.html:336
 msgid "Indexing crawled content..."
 msgstr "🕸️ Indexing crawled content..."
 
-#: app/templates/chat.html:322
+#: app/templates/chat.html:337
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Deep analysis (%s steps)"
 
-#: app/templates/chat.html:323
+#: app/templates/chat.html:338
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:324
+#: app/templates/chat.html:339
 msgid "Making the plan..."
 msgstr "Making the plan..."
 
-#: app/templates/chat.html:325
+#: app/templates/chat.html:340
+msgid "Extracting the visual continuity sheet..."
+msgstr "📐 Extracting the visual continuity sheet..."
+
+#: app/templates/chat.html:341 app/templates/chat.html:346
+msgid "Could not build the visual continuity sheet — images continue without it."
+msgstr "⚠️ Could not build the visual continuity sheet — images continue without it."
+"⚠️ Could not build the visual continuity sheet — images continue without "
+"it."
+
+#: app/templates/chat.html:343
+msgid "Style"
+msgstr "Style"
+
+#: app/templates/chat.html:345
+msgid "Rebuilding the visual continuity sheet..."
+msgstr "📐 Rebuilding the visual continuity sheet..."
+
+#: app/templates/chat.html:347
+#, fuzzy
+msgid "Creating index for document..."
+msgstr "📚 Searching documents..."
+
+#: app/templates/chat.html:348
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:326
+#: app/templates/chat.html:349
 msgid "Step"
 msgstr "Step"
 
-#: app/templates/chat.html:327
+#: app/templates/chat.html:350
 msgid "minute_abbr"
 msgstr "m"
 
-#: app/templates/chat.html:328
+#: app/templates/chat.html:351
 msgid "second_abbr"
 msgstr "s"
 
-#: app/templates/chat.html:329
+#: app/templates/chat.html:352
 msgid "timer_zero"
 msgstr "0s"
 
@@ -3353,20 +3636,20 @@ msgstr "Image generation timeout ({timeout}s)"
 msgid "Could not connect to sd-wrapper"
 msgstr "Could not connect to sd-wrapper"
 
-#: modules/sd_cpp.py:451
+#: modules/sd_cpp.py:450
 msgid "Edit result has no image data."
 msgstr "Edit result has no image data."
 
-#: modules/sd_cpp.py:472
+#: modules/sd_cpp.py:471
 msgid "Edit returned no image."
 msgstr "Edit returned no image."
 
-#: modules/sd_cpp.py:481
+#: modules/sd_cpp.py:480
 #, python-brace-format
 msgid "Editing timeout ({timeout}s)"
 msgstr "Editing timeout ({timeout}s)"
 
-#: modules/sd_cpp.py:484
+#: modules/sd_cpp.py:483
 msgid "Could not connect to editor."
 msgstr "Could not connect to editor."
 
@@ -3405,7 +3688,7 @@ msgstr ""
 "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s)"
 " even at the lowest resolution."
 
-#: modules/video.py:368 modules/video.py:378
+#: modules/video.py:372 modules/video.py:382
 #, python-brace-format
 msgid ""
 "Video generation requires GPU; available VRAM ({free} MB) is below safe "
@@ -3414,21 +3697,21 @@ msgstr ""
 "Video generation requires GPU; available VRAM ({free} MB) is below safe "
 "threshold ({need} MB). Please try again later or simplify the request."
 
-#: modules/video.py:464
+#: modules/video.py:467
 msgid "ltx-wrapper returned no video data"
 msgstr "ltx-wrapper returned no video data"
 
-#: modules/video.py:496
+#: modules/video.py:500
 #, python-brace-format
 msgid "Video generation failed: {error}"
 msgstr "Video generation failed: {error}"
 
-#: modules/video.py:501
+#: modules/video.py:505
 #, python-brace-format
 msgid "Video generation timeout ({timeout}s)"
 msgstr "Video generation timeout ({timeout}s)"
 
-#: modules/video.py:504
+#: modules/video.py:508
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
 
@@ -3717,217 +4000,49 @@ msgstr "Could not connect to video generation service"
 #~ msgid "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
 #~ msgstr "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
 
+#~ msgid "Queued tasks cannot be cancelled"
+#~ msgstr "Queued tasks cannot be cancelled"
+
+#~ msgid ""
+#~ "The step has no image to edit: "
+#~ "no image is attached and no "
+#~ "earlier step produced one."
+#~ msgstr ""
+#~ "The step has no image to edit: "
+#~ "no image is attached and no "
+#~ "earlier step produced one."
+
+#~ msgid "Skipped: step {source} produced no image to edit."
+#~ msgstr "Skipped: step {source} produced no image to edit."
+
+#~ msgid "Skipped: step {source} produced no image to animate."
+#~ msgstr "Skipped: step {source} produced no image to animate."
+
 # Tasks subsystem (v12.6): planning failures and terminal fallbacks
-msgid "Task could not be planned: the plan template is unavailable."
-msgstr "Task could not be planned: the plan template is unavailable."
+#~ msgid "Task could not be planned: the plan template is unavailable."
+#~ msgstr "Task could not be planned: the plan template is unavailable."
+
+#~ msgid ""
+#~ "Task could not be planned: the "
+#~ "planner returned an unreadable plan. "
+#~ "Please try again."
+#~ msgstr ""
+#~ "Task could not be planned: the "
+#~ "planner returned an unreadable plan. "
+#~ "Please try again."
+
+#~ msgid ""
+#~ "The final answer could not be "
+#~ "generated; please check the step results"
+#~ " above."
+#~ msgstr ""
+#~ "The final answer could not be "
+#~ "generated; please check the step results"
+#~ " above."
+
+#~ msgid "Execution budget exhausted; the summary could not be generated."
+#~ msgstr "Execution budget exhausted; the summary could not be generated."
+
+#~ msgid "stage_indexing_document"
+#~ msgstr "Creating index for document..."
 
-msgid "Task could not be planned: the planner returned an unreadable plan. Please try again."
-msgstr "Task could not be planned: the planner returned an unreadable plan. Please try again."
-
-msgid "The final answer could not be generated; please check the step results above."
-msgstr "The final answer could not be generated; please check the step results above."
-
-msgid "Execution budget exhausted; the summary could not be generated."
-msgstr "Execution budget exhausted; the summary could not be generated."
-
-
-
-
-msgid "stage_indexing_document"
-msgstr "Creating index for document..."
-
-
-#: app/tasks/tools.py
-msgid "Reasoning model"
-msgstr "Reasoning model"
-
-
-#: app/tasks/tools.py
-msgid "Think, write, analyze, derive, write code without fresh internet data."
-msgstr "Think, write, analyze, derive, write code without fresh internet data."
-
-
-#: app/tasks/tools.py
-msgid "State the concrete artifact or answer the reasoning must produce."
-msgstr "State the concrete artifact or answer the reasoning must produce."
-
-
-#: app/tasks/tools.py
-msgid "Search the internet for fresh data (rates, news, current facts)."
-msgstr "Search the internet for fresh data (rates, news, current facts)."
-
-
-#: app/tasks/tools.py
-msgid "Name the fact or data the search must confirm."
-msgstr "Name the fact or data the search must confirm."
-
-
-#: app/tasks/tools.py
-msgid "Search the user's own documents and return the relevant fragments. Pair with a following llm step that composes the answer from them."
-msgstr "Search the user's own documents and return the relevant fragments. Pair with a following llm step that composes the answer from them."
-
-
-#: app/tasks/tools.py
-msgid "Name the data the search must find in the documents."
-msgstr "Name the data the search must find in the documents."
-
-
-#: app/tasks/tools.py
-msgid "Search the user's past conversations for a topic and return matching fragments (what was discussed earlier). Pair with a following llm step that composes the answer from them."
-msgstr "Search the user's past conversations for a topic and return matching fragments (what was discussed earlier). Pair with a following llm step that composes the answer from them."
-
-
-#: app/tasks/tools.py
-msgid "Name the topic the past conversation must contain."
-msgstr "Name the topic the past conversation must contain."
-
-
-#: app/tasks/tools.py
-msgid "Extract data from ONE image attached to the task with the multimodal model: a detailed description of everything visible plus all text on the image. It does not answer the task question — pair it with a following llm step that composes the answer from the extraction. To analyze several images, plan ONE step per image with that image's file name in the goal: the step reads only the image its goal names. Use only when images are attached to the task."
-msgstr "Extract data from ONE image attached to the task with the multimodal model: a detailed description of everything visible plus all text on the image. It does not answer the task question — pair it with a following llm step that composes the answer from the extraction. To analyze several images, plan ONE step per image with that image's file name in the goal: the step reads only the image its goal names. Use only when images are attached to the task."
-
-
-#: app/tasks/tools.py
-msgid "Name this image's file in the goal and require a detailed description plus all text on it."
-msgstr "Name this image's file in the goal and require a detailed description plus all text on it."
-
-
-#: app/tasks/tools.py
-msgid "Take a camera snapshot of one of the user's rooms and answer a question about what the camera sees (e.g. whether a cat is in the room). To compare several rooms, plan ONE step per room with the room name in the goal."
-msgstr "Take a camera snapshot of one of the user's rooms and answer a question about what the camera sees (e.g. whether a cat is in the room). To compare several rooms, plan ONE step per room with the room name in the goal."
-
-
-#: app/tasks/tools.py
-msgid "Name the room and the question the analysis must answer."
-msgstr "Name the room and the question the analysis must answer."
-
-
-#: app/tasks/tools.py
-msgid "Deeply study a website (it contains a URL): fetch its pages, index them as a document and answer questions about the site. Pair with a following llm step that composes the answer from the collected material."
-msgstr "Deeply study a website (it contains a URL): fetch its pages, index them as a document and answer questions about the site. Pair with a following llm step that composes the answer from the collected material."
-
-
-#: app/tasks/tools.py
-msgid "Name the site and the question the study must answer."
-msgstr "Name the site and the question the study must answer."
-
-
-#: app/tasks/tools.py
-msgid "Evaluate a math expression safely (arithmetic and math functions)."
-msgstr "Evaluate a math expression safely (arithmetic and math functions)."
-
-
-#: app/tasks/tools.py
-msgid "State the expression and its expected exact result."
-msgstr "State the expression and its expected exact result."
-
-
-#: app/tasks/tools.py
-msgid "Multi-step deep analysis over selected documents, images and web pages."
-msgstr "Multi-step deep analysis over selected documents, images and web pages."
-
-
-#: app/tasks/tools.py
-msgid "Name the documents and the question the analysis must answer."
-msgstr "Name the documents and the question the analysis must answer."
-
-
-#: app/tasks/tools.py
-msgid ""
-"Extract the visual continuity sheet: one style plus the fixed look of every "
-"character, place and prop named in the task, as one JSON object. Plan it "
-"before the first image generation step when the task produces several images."
-msgstr ""
-"Extract the visual continuity sheet: one style plus the fixed look of every "
-"character, place and prop named in the task, as one JSON object. Plan it "
-"before the first image generation step when the task produces several images."
-
-
-#: app/tasks/tools.py
-msgid "Output the sheet as valid JSON."
-msgstr "Output the sheet as valid JSON."
-
-
-#: app/tasks/tools.py
-msgid "Generate an image from a text prompt."
-msgstr "Generate an image from a text prompt."
-
-
-#: app/tasks/tools.py
-msgid "Describe the subject the generated image must show."
-msgstr "Describe the subject the generated image must show."
-
-
-#: app/tasks/tools.py
-msgid "Edit one image according to an instruction: the attached image the goal names (one step per image; the first attached one when the goal names none), or the artifact of an earlier step when its seq is set in \"source_step\" (no attachment edit). Without any source the step fails."
-msgstr "Edit one image according to an instruction: the attached image the goal names (one step per image; the first attached one when the goal names none), or the artifact of an earlier step when its seq is set in \"source_step\" (no attachment edit). Without any source the step fails."
-
-
-#: app/tasks/tools.py
-msgid "Name this image's file in the goal and the change that must be visible."
-msgstr "Name this image's file in the goal and the change that must be visible."
-
-
-#: app/tasks/tools.py
-msgid "Generate a short video from a text prompt; with \"source_step\" (or any earlier step-produced image) it animates that image instead."
-msgstr "Generate a short video from a text prompt; with \"source_step\" (or any earlier step-produced image) it animates that image instead."
-
-
-#: app/tasks/tools.py
-msgid "Describe the scene and motion the video must show."
-msgstr "Describe the scene and motion the video must show."
-
-
-#: app/tasks/executor.py
-msgid "Checkpoint hint:"
-msgstr "Checkpoint hint:"
-
-
-#: app/tasks/executor.py
-msgid "Available rooms:"
-msgstr "Available rooms:"
-
-msgid "Checked automatically"
-msgstr "Checked automatically"
-
-msgid "Redone ×{n}"
-msgstr "Redone ×{n}"
-
-msgid "Retrying (attempt {n} of {max})"
-msgstr "Retrying (attempt {n} of {max})"
-
-msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
-msgstr "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
-
-msgid "Redoing after the check (attempt {n} of {max})"
-msgstr "Redoing after the check (attempt {n} of {max})"
-
-msgid "Redone after the check: {reason}"
-msgstr "Redone after the check: {reason}"
-
-msgid "Not delivered"
-msgstr "Not delivered"
-
-msgid "Skipped"
-msgstr "Skipped"
-
-msgid "Interrupted"
-msgstr "Interrupted"
-
-msgid "Not verified"
-msgstr "Not verified"
-
-msgid "Check skipped: could not describe the image"
-msgstr "Check skipped: could not describe the image"
-
-msgid "Verification attempts ({n})"
-msgstr "Verification attempts ({n})"
-
-msgid "attempt {n}"
-msgstr "attempt {n}"
-
-msgid "Accepted results: {n}"
-msgstr "Accepted results: {n}"
-
-msgid "Not delivered:"
-msgstr "Not delivered:"

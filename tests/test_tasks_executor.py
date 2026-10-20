@@ -859,21 +859,23 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     envelope = {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"}
     monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
     checks = []
+    monkeypatch.setattr(
+        ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("x/y.png — image description\na cat", 0.1)
+    )
 
-    def _fake_checkpoint(app, step, result, lang="ru"):
-        checks.append({"step": step, "result": result, "lang": lang})
+    def _fake_checkpoint(app, step, **kwargs):
+        checks.append({"step": step, **kwargs})
         return {"verdict": False, "explanation": "wrong subject", "exec_seconds": 0.3}
 
-    monkeypatch.setattr(ex, "run_checkpoint", _fake_checkpoint)
+    monkeypatch.setattr(ex, "run_media_checkpoint", _fake_checkpoint)
 
     outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
 
     assert outcome == "done"
     assert len(checks) == 1
-    assert "an image was generated" in checks[0]["result"]
-    # The saved artifact is named for the verifier (file_path rides the
-    # envelope; the artifact line is appended even without a file_name).
-    assert "x/y.png" in checks[0]["result"]
+    # The saved artifact is named for the verifier: the description label
+    # carries the file name even without a file_name in the envelope.
+    assert "x/y.png" in checks[0]["artifact_description"]
     assert checks[0]["step"]["checkpoint_criteria"] == "image matches the request"
     step = store.get_task_steps(task_id)[0]
     assert step["status"] == "pending", "a rejected verification re-opens the same step"
@@ -904,7 +906,12 @@ def test_subtask_checkpoint_rejection_fails_after_attempts_are_exhausted(db_env,
         executor, "_peek_subtask_result", lambda qid: envelope if qid == row["extra"]["subtask_queue_id"] else None
     )
     monkeypatch.setattr(
-        ex, "run_checkpoint", lambda *a, **k: {"verdict": False, "explanation": "wrong subject", "exec_seconds": 0.3}
+        ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("x/y.png — image description\na cat", 0.1)
+    )
+    monkeypatch.setattr(
+        ex,
+        "run_media_checkpoint",
+        lambda *a, **k: {"verdict": False, "explanation": "wrong subject", "exec_seconds": 0.3},
     )
 
     outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
@@ -935,8 +942,11 @@ def test_subtask_retry_reenqueues_with_the_mismatch_in_the_prompt(db_env, test_a
     recorded = _Q()
     monkeypatch.setattr(ex, "_get_request_queue", lambda: recorded)
     monkeypatch.setattr(
+        ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("x/y.png — image description\na cat", 0.1)
+    )
+    monkeypatch.setattr(
         ex,
-        "run_checkpoint",
+        "run_media_checkpoint",
         lambda *a, **k: {"verdict": False, "explanation": "the astronaut is cropped", "exec_seconds": 0.3},
     )
     executor = ex.TaskExecutor(app=test_app)
@@ -979,7 +989,10 @@ def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open,
     envelope = {"status": "completed", "response": "done", "file_path": "a/b.png", "file_name": "b.png"}
     monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
     monkeypatch.setattr(
-        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.2}
+        ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("b.png — image description\na cat", 0.1)
+    )
+    monkeypatch.setattr(
+        ex, "run_media_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.2}
     )
 
     executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
@@ -2336,17 +2349,23 @@ def test_subtask_checkpoint_verdict_sees_media_artifact(db_env, test_app, gate_o
     monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
     checks = []
 
-    def _fake_checkpoint(app, step, result, lang="ru"):
-        checks.append({"step": step, "result": result, "lang": lang})
+    monkeypatch.setattr(
+        ex.TaskExecutor,
+        "_describe_step_image",
+        lambda *a, **k: ("winter.png — image description\na winter field", 0.1),
+    )
+
+    def _fake_checkpoint(app, step, **kwargs):
+        checks.append({"step": step, **kwargs})
         return {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
 
-    monkeypatch.setattr(ex, "run_checkpoint", _fake_checkpoint)
+    monkeypatch.setattr(ex, "run_media_checkpoint", _fake_checkpoint)
 
     outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
 
     assert outcome == "done"
     assert len(checks) == 1
-    assert "winter.png" in checks[0]["result"], "the artifact file name reaches the verifier"
+    assert "winter.png" in checks[0]["artifact_description"], "the artifact file name reaches the verifier"
     step_row = store.get_task_steps(task_id)[0]
     assert step_row["status"] == "passed"
     os.remove(src_path)
@@ -2441,16 +2460,19 @@ def test_subtask_checkpoint_verdict_sees_the_artifact_line_of_a_media_step(db_en
     monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
     checks = []
     monkeypatch.setattr(
+        ex.TaskExecutor,
+        "_describe_step_image",
+        lambda *a, **k: ("gen.png — image description\nan image", 0.1),
+    )
+    monkeypatch.setattr(
         ex,
-        "run_checkpoint",
-        lambda app, step, result, lang="ru": (
-            checks.append({"result": result}) or {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
-        ),
+        "run_media_checkpoint",
+        lambda app, step, **kw: checks.append(kw) or {"verdict": True, "explanation": "ok", "exec_seconds": 0.1},
     )
 
     executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
 
-    assert checks and "gen.png" in checks[0]["result"], "the bare name reaches the verifier"
+    assert checks and "gen.png" in checks[0]["artifact_description"], "the bare name reaches the verifier"
 
 
 def test_rlm_subtask_waits_for_attached_documents_then_enqueues(db_env, test_app, gate_open, monkeypatch):
@@ -3549,7 +3571,10 @@ def test_media_step_is_checked_even_with_an_empty_criterion(db_env, test_app, ga
     monkeypatch.setattr(
         ex,
         "run_media_checkpoint",
-        lambda app, step, **kw: (seen.append(kw), {"verdict": True, "explanation": "ok", "exec_seconds": 0.1})[1],
+        lambda app, step, **kw: (
+            seen.append((step, kw)),
+            {"verdict": True, "explanation": "ok", "exec_seconds": 0.1},
+        )[1],
     )
     monkeypatch.setattr(
         ex, "run_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("criteria checkpoint ran"))
@@ -3564,7 +3589,9 @@ def test_media_step_is_checked_even_with_an_empty_criterion(db_env, test_app, ga
     )
 
     assert len(seen) == 1, "the media check must run without a criterion"
-    assert seen[0]["expected_reference"] == "Draw a boy in a forest"
+    # No source binding: the reference is empty and the goal names what to draw.
+    assert seen[0][1]["expected_reference"] == ""
+    assert seen[0][0]["goal"] == "Draw a boy in a forest"
     assert store.get_task_steps(task_id)[0]["status"] == "passed"
 
 
@@ -3659,16 +3686,19 @@ def test_unregistered_step_type_is_not_checked(db_env, test_app, gate_open, monk
 
 
 def test_empty_artifact_description_skips_the_check(db_env, test_app, gate_open, monkeypatch):
-    """An unavailable description must not burn attempts: the step passes and
-    no media verdict is invented."""
+    """An unavailable description must not burn attempts: no media verdict and
+    no generic criteria check either (a text verifier cannot see the picture)."""
     store = db_env
     plan = {
         "title": "Media check",
-        "steps": [{"seq": 1, "goal": "Draw a boy", "tool": "image_gen", "checkpoint_criteria": ""}],
+        "steps": [{"seq": 1, "goal": "Draw a boy", "tool": "image_gen", "checkpoint_criteria": "a boy is visible"}],
     }
     monkeypatch.setattr(ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("", 0.0))
     monkeypatch.setattr(
         ex, "run_media_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("media check ran"))
+    )
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: (_ for _ in ()).throw(AssertionError("criteria check ran"))
     )
 
     task_id, _ = _drive_subtask(
@@ -3679,12 +3709,15 @@ def test_empty_artifact_description_skips_the_check(db_env, test_app, gate_open,
         {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"},
     )
 
-    assert store.get_task_steps(task_id)[0]["status"] == "passed"
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "passed"
+    assert step["extra"]["artifact_note"] == "description unavailable"
 
 
 def test_source_reference_describes_an_artifact_only_source(db_env, test_app, monkeypatch):
-    """image_edit bound to an image-producing step: the source has no text, so
-    its artifact is described by the same inspector."""
+    """image_edit bound to an image-producing step: the source's short result is
+    its own prompt echo, so the reference is the description of the produced
+    image (what is actually drawn), not that echo."""
     store = db_env
     plan = {
         "title": "Edit",
@@ -3698,6 +3731,7 @@ def test_source_reference_describes_an_artifact_only_source(db_env, test_app, mo
     store.update_step(
         step_1,
         status="passed",
+        result="Draw a kite\nkite.png",
         extra={"media": {"file_path": "s/kite.png", "file_type": "image/png"}},
     )
     monkeypatch.setattr(
@@ -3710,15 +3744,85 @@ def test_source_reference_describes_an_artifact_only_source(db_env, test_app, mo
     reference = executor._source_reference(
         task_id,
         {"seq": 2, "goal": "Make it red", "checkpoint_criteria": ""},
-        {
-            "lang": "ru",
-            "step_plan": {
-                "steps": [
-                    {"seq": 1, "tool": "image_gen", "source_step": None},
-                    {"seq": 2, "tool": "image_edit", "source_step": 1},
-                ]
-            },
-        },
+        {"lang": "ru", "step_plan": plan},
     )
 
     assert "a red kite over a field" in reference
+    assert "Draw a kite" not in reference
+
+
+def test_source_reference_tolerates_a_legacy_plan_list(db_env, test_app):
+    """A legacy plan stored as a bare list must not raise inside the executor."""
+    store = db_env
+    task_id = _mk_task(store)
+    step_1 = store.add_step(task_id=task_id, seq=1, kind="direct", goal="Split the story", tool="llm")
+    store.update_step(step_1, status="passed", result="Part six: a boy and a mole in a tunnel")
+    executor = ex.TaskExecutor(app=test_app)
+
+    reference = executor._source_reference(
+        task_id,
+        {"seq": 2, "goal": "Draw part six", "checkpoint_criteria": ""},
+        {"lang": "ru", "step_plan": [{"seq": 1, "tool": "llm"}, {"seq": 2, "tool": "image_gen", "source_step": 1}]},
+    )
+
+    assert "a boy and a mole" in reference
+
+
+def test_media_checkpoint_prompt_keeps_the_goal_for_a_long_source(test_app, monkeypatch):
+    """The step's own goal and criterion reach the verifier even when the source
+    result is long: they name the ONE part under check."""
+    from app.tasks.runner import run_media_checkpoint
+
+    captured = {}
+
+    def _fake_call(messages, **kwargs):
+        captured["prompt"] = messages[0]["content"]
+        return '{"verdict": true, "explanation": "ok"}'
+
+    monkeypatch.setattr(test_app.modules["base"], "call_llamacpp", _fake_call)
+
+    run_media_checkpoint(
+        test_app,
+        {"goal": "Draw part nine: the boy and the mole in the tunnel", "checkpoint_criteria": "the mole is visible"},
+        expected_reference="PART_ONE " * 1200,
+        generation_prompt="",
+        artifact_description="a forest at dusk",
+        lang="ru",
+    )
+
+    assert "the boy and the mole in the tunnel" in captured["prompt"]
+    assert "the mole is visible" in captured["prompt"]
+    assert "not reported" not in captured["prompt"]
+
+
+def test_rejected_artifact_is_replaced_by_the_passing_retry(db_env, test_app, gate_open, monkeypatch):
+    """A rejected artifact is not what the step keeps: the passing retry's file
+    is stored and the corrective note is dropped."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Draw a cat", "tool": "image_gen", "checkpoint_criteria": ""}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    monkeypatch.setattr(ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("a ginger cat", 0.1))
+    verdicts = [
+        {"verdict": False, "explanation": "a dog was drawn instead of the cat", "exec_seconds": 0.1},
+        {"verdict": True, "explanation": "matches", "exec_seconds": 0.1},
+    ]
+    monkeypatch.setattr(ex, "run_media_checkpoint", lambda *a, **k: verdicts.pop(0))
+
+    for attempt, path in enumerate(("x/first.png", "x/second.png")):
+        executor._enqueue_subtask(store.get_task(task_id), 0, store.get_task(task_id)["step_plan"]["steps"][0])
+        row = store.get_task_steps(task_id)[0]
+        envelope = {"status": "completed", "response": "an image was generated", "file_path": path}
+        monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid, e=envelope: e)
+        executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+        if attempt == 0:
+            assert store.get_task_steps(task_id)[0]["status"] == "pending"
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "passed"
+    assert step["extra"]["media"]["file_path"] == "x/second.png"
+    assert "corrective_note" not in step["extra"]

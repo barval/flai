@@ -1513,36 +1513,39 @@ class TaskExecutor:
         return self._media_to_raw_base64(media) if media is not None else None
 
     def _source_reference(self, task_id: str, row: dict, task: dict) -> str:
-        """What the produced artifact must show, for the media verifier.
+        """The expected content of a media step: its declared source step's result.
 
-        The declared source step's content comes first (the reference the
-        planner cannot fabricate), then the step's own goal and criterion.
+        A source that produced an artifact is described by its inspector (what
+        is actually drawn); a text source contributes its text. The step's own
+        goal and criterion travel to the verifier as separate fields, so a long
+        multi-part source can never truncate them away.
         """
-        parts: list[str] = []
-        lang = task.get("lang") or "ru"
         seq = int(row.get("seq") or 0)
         # ``source_step`` is a PLAN field: the step row does not carry it.
+        plan = self._plan_dict(task)
         plan_step = next(
-            (s for s in (task.get("step_plan") or {}).get("steps") or [] if int(s.get("seq") or 0) == seq),
+            (s for s in plan.get("steps") or [] if int(s.get("seq") or 0) == seq),
             {},
         )
         source_seq = _valid_source_step(plan_step.get("source_step"), seq)
-        source_text = self._source_step_text(task_id, source_seq, lang=lang).strip()
-        if source_text:
-            parts.append(source_text)
-        for key in ("goal", "checkpoint_criteria"):
-            value = str(row.get(key) or "").strip()
-            if value and not any(value in part for part in parts):
-                parts.append(value)
-        return "\n".join(parts)[:REFERENCE_MAX_CHARS]
+        text = self._source_step_text(task_id, source_seq, lang=task.get("lang") or "ru", prefer_artifact=True)
+        return text.strip()[:REFERENCE_MAX_CHARS]
 
-    def _source_step_text(self, task_id: str, source_seq: int | None, lang: str = "ru") -> str:
+    def _source_step_text(
+        self,
+        task_id: str,
+        source_seq: int | None,
+        lang: str = "ru",
+        prefer_artifact: bool = False,
+    ) -> str:
         """The declared source step's content, as text.
 
-        A media step names the step it materializes (``source_step``); its
+        A media step names the step it materializes (``source_step``). Its
         content is that step's result text, or — when the source produced only
-        an artifact — the inspector's description of that artifact. "" when
-        nothing is available, so the caller falls back to the plain digest.
+        an artifact — the inspector's description of that artifact. With
+        ``prefer_artifact`` the description wins even when the source also has a
+        result (a media step's stored result is its own prompt echo, not what is
+        actually drawn). "" when nothing is available.
         """
         if source_seq is None:
             return ""
@@ -1551,16 +1554,25 @@ class TaskExecutor:
             if int(r.get("seq") or 0) != source_seq:
                 continue
             text = str(r.get("result") or "").strip()
-            if text:
-                return text[:cap]
             media = (r.get("extra") or {}).get("media") or {}
             inspector = get_inspector(str(r.get("tool") or ""))
-            if inspector and media.get("file_path"):
-                description, seconds = inspector(self.app, media, lang, preview_data="")
-                if seconds:
-                    self._add_budget(task_id, seconds)
-                return description[:cap]
+            describable = bool(inspector and media.get("file_path"))
+            if prefer_artifact and describable:
+                description = self._describe_source_artifact(task_id, inspector, media, lang)
+                if description:
+                    return description[:cap]
+            if text:
+                return text[:cap]
+            if describable:
+                return self._describe_source_artifact(task_id, inspector, media, lang)[:cap]
         return ""
+
+    def _describe_source_artifact(self, task_id: str, inspector, media: dict, lang: str) -> str:
+        """Describe a source step's artifact and charge the verifier budget."""
+        description, seconds = inspector(self.app, media, lang, preview_data="")
+        if seconds:
+            self._add_budget(task_id, seconds)
+        return str(description or "").strip()
 
     def _describe_step_image(self, media: dict, lang: str, preview_data: str = "") -> tuple[str, float]:
         """Describe a media step's produced artifact for the checkpoint verifier.
@@ -2737,10 +2749,17 @@ class TaskExecutor:
         # the instruction the generator received. A type without an inspector
         # (camera) or a failed description falls through to the criteria check.
         inspector = get_inspector(str(row.get("tool") or ""))
+        artifact_step = bool(inspector and media.get("file_path"))
         checkpoint: dict = {}
-        if inspector and media.get("file_path") and image_note:
+        if artifact_step and not image_note:
+            # A text verifier cannot see the picture: a failed description skips
+            # the check instead of failing the step or burning an attempt.
+            merged_extra["artifact_note"] = "description unavailable"
+            logger.warning(f"task {task_id} step {idx + 1}: artifact description unavailable — check skipped")
+        elif artifact_step:
             reference = self._source_reference(task_id, row, task)
-            if reference:
+            goal = str(row.get("goal") or "").strip()
+            if reference or goal:
                 checkpoint = run_media_checkpoint(
                     self.app,
                     step,
@@ -2750,7 +2769,7 @@ class TaskExecutor:
                     lang=task.get("lang") or "ru",
                 )
                 self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
-        if not checkpoint and str(step.get("checkpoint_criteria", "") or "").strip():
+        if not artifact_step and str(step.get("checkpoint_criteria", "") or "").strip():
             checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
         if checkpoint and not checkpoint.get("verdict"):

@@ -35,6 +35,8 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
     "task_checkpoint": {"step_goal", "step_checkpoint", "step_result", "response_language"},
     "task_checkpoint_media": {
         "expected_reference",
+        "step_goal",
+        "step_checkpoint",
         "generation_prompt",
         "artifact_description",
         "response_language",

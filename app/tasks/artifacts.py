@@ -63,7 +63,9 @@ def describe_image_artifact(app: Any, media: dict, lang: str, preview_data: str 
     finally:
         finish_usage_account(account_id)
     seconds = round(time.monotonic() - start, 2)
-    if not description:
+    # An unavailable/error reply is not a description: report it as missing so
+    # the verifier is skipped instead of judging the picture by an error text.
+    if not description or str(description).lstrip().startswith("⚠️"):
         return "", seconds
     from flask_babel import force_locale
     from flask_babel import gettext as _

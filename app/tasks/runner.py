@@ -41,6 +41,9 @@ logger = logging.getLogger(__name__)
 # The verifier prompt keeps the step result bounded — a huge intermediate
 # result would waste the reasoning window on repeated context.
 CHECKPOINT_RESULT_MAX_CHARS = 8000
+# A media reference may be a whole multi-part plan; the step's own goal and
+# criterion are rendered as separate fields and never truncated away.
+MEDIA_REFERENCE_MAX_CHARS = 16000
 
 # Real token usage of the LAST _call_reasoning on this thread (executor
 # threads run one step at a time): _run_llm_step stashes it, run_direct_step
@@ -809,8 +812,10 @@ def run_media_checkpoint(
             if base is None or not hasattr(base, "call_llamacpp"):
                 raise RuntimeError("base module (llamacpp client) is unavailable")
             params = {
-                "expected_reference": (expected_reference or "")[:CHECKPOINT_RESULT_MAX_CHARS],
-                "generation_prompt": generation_prompt or "prompt not reported by the generator",
+                "expected_reference": (expected_reference or "")[:MEDIA_REFERENCE_MAX_CHARS],
+                "step_goal": str((step or {}).get("goal") or "")[:CHECKPOINT_RESULT_MAX_CHARS],
+                "step_checkpoint": str((step or {}).get("checkpoint_criteria") or "")[:CHECKPOINT_RESULT_MAX_CHARS],
+                "generation_prompt": (generation_prompt or "")[:CHECKPOINT_RESULT_MAX_CHARS],
                 "artifact_description": (artifact_description or "")[:CHECKPOINT_RESULT_MAX_CHARS],
                 "response_language": response_language_name(lang),
             }

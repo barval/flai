@@ -228,7 +228,7 @@ class CamModule(TranslationMixin):
         """Get room name for the given code.
 
         Uses the first form from name_forms stored in the DB
-        (e.g. 'Гостиная' for code 'gos').
+        (e.g. 'Living room' for code 'gos').
         """
         return self.room_names.get(room_code, f"room '{room_code}'")
 
@@ -241,7 +241,7 @@ class CamModule(TranslationMixin):
            or the query contained in a stored form.
         3. Token-level prefix match: each query token against each stored
            form (longest common prefix ≥ 4 chars). Resolves Russian
-           declensions the substring pass misses («кухни» vs «кухня») —
+           declensions the substring pass misses ("kukhni" vs "kukhnya") —
            task-planner goals are full sentences naming the room.
         """
         room_name_lower = room_name.lower().strip()

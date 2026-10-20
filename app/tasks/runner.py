@@ -531,7 +531,7 @@ def _run_calculate_step(step: dict[str, Any]) -> Any:
     """Calculator runner via the capabilities registry (raw value out).
 
     The planner should put the bare expression in the goal; when prose slips
-    in («Вычислите результат выражения 2 + 2 * 2») the expression is extracted
+    in ("calculate the expression 2 + 2 * 2") the expression is extracted
     from the text before safe_eval — a prose goal is a SyntaxError otherwise.
     A variable name the calculator does not know (planner-drift like
     ``(rate_eur + rate_usd) / 2``) raises a readable error instead of the

@@ -91,8 +91,8 @@ class TestCamModule:
     def test_get_room_code_declined_genitive(self, cam_module):
         """Token-level prefix match resolves declensions substring matching misses.
 
-        Task-planner goals are full sentences naming the room («Сделайте снимок
-        кухни…»); the genitive «кухни» contains neither stored form («кухня»…).
+        Task-planner goals are full sentences naming the room ("Take a snapshot
+        of the kitchen…"); the genitive "kukhni" contains neither stored form ("kukhnya"…).
         """
         assert cam_module.get_room_code("Сделайте снимок кухни и проверьте наличие кошки.") == "kuh"
         assert cam_module.get_room_code("Сделайте снимок спальни и проверьте наличие кошки.") == "spa"

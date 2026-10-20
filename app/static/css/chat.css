@@ -306,7 +306,7 @@
     padding: 1rem;
 }
 
-/* Service lines in task messages («🗒️ План из N шагов:», «⚙️ Шаг N из M:»):
+/* Service lines in task messages ("🗒️ Plan of N steps:", "⚙️ Step N of M:"):
    their own line, italic, muted — visually distinct from the body. */
 .task-msg-service {
     font-style: italic;
@@ -510,7 +510,7 @@
     color: #f28b82;
 }
 
-/* The transcript of an audio attached to a task («🎤 Распознано (name): …»):
+/* The transcript of an audio attached to a task («🎤 Transcribed (name): …»):
    the chat shows it as its own message in the regular reading font — here it
    keeps the chat's prefix but NOT the italic service-line font, a long
    transcript would be unreadable. */
@@ -666,7 +666,7 @@
     border-radius: 6px;
     padding: 0.45rem 0.6rem;
     margin-bottom: 0.6rem;
-    /* One line, always: the label shrinks («Выделено:»), the buttons keep
+    /* One line, always: the label shrinks ("Selected:"), the buttons keep
        their size — wrapping squeezed the buttons onto two rows on mobile. */
     flex-wrap: nowrap;
     white-space: nowrap;
@@ -960,10 +960,10 @@
 .chat-header h2 {
     color: #2c3e50;
     margin: 0;
-    /* Same size as the tab headers («Документы», «Задачи», «Сеансы»): the
+    /* Same size as the tab headers ("Documents", "Tasks", "Sessions"): the
        header row reads as part of the same chrome, not as a page title. */
     font-size: 1rem;
-    /* The header row («Чат 📊 0/0 | Стиль: …» / «Задача 📊 …») is exactly as
+    /* The header row («Chat 📊 0/0 | Style: …» / «Task 📊 …») is exactly as
        tall as its tallest button (the 💾 save button): the h2 line-height
        would otherwise inflate the bar. */
     line-height: 1.1;
@@ -1588,7 +1588,7 @@ video {
     .header-tabs {
         display: flex;
         width: 100%;
-        /* Same height as the footer bar («ПЛИИ v12.6», min-height 30px):
+        /* Same height as the footer bar ("FLAI v12.6", min-height 30px):
            the two bars frame the panel symmetrically. */
         height: 30px;
     }
@@ -1597,7 +1597,7 @@ video {
         flex: 1;
         /* Height is owned by .header-tabs (30px) — vertical padding only
            centers the content inside it. Horizontal gaps around the tab
-           titles («Документы», «Задачи», «Сеансы») are halved. */
+           titles ("Documents", "Tasks", "Sessions") are halved. */
         padding: 0 0.15rem;
         min-height: 0;
     }

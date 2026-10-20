@@ -1,9 +1,9 @@
 # app/routes/tasks.py
-"""Internal API for the Tasks (Задачи) subsystem (v12.6, spec §5).
+"""Internal API for the Tasks subsystem (v12.6, spec §5).
 
 Owner-scoped like sessions: a task belongs to the login stored in its
 ``user_id``; the admin flag widens access. The conversation is rendered from
-``task_steps`` (the user request, the plan, each step with its «Шаг N из M:»
+``task_steps`` (the user request, the plan, each step with its "Step N of M:"
 header, clarifying questions/answers and the final answer) — there is no
 parallel messages table.
 """
@@ -417,7 +417,7 @@ def _tool_badge(tool: Any) -> str:
 def _transcript_block(entry: dict) -> dict:
     """One audio attachment's transcript as a conversation block.
 
-    The label reuses the chat's «🎤 Распознано:» wording plus the file name (a
+    The label reuses the chat's "🎤 Transcribed:" wording plus the file name (a
     task may carry several recordings); the client renders it in the regular
     reading font — a long transcript in the italic service line would be
     unreadable.
@@ -839,7 +839,7 @@ def task_answer(task_id):
         # A voice-only answer is valid: the transcript is appended to the
         # user_input step by the background thread (the task freezes meanwhile).
         # Log what the client actually sent — a cached pre-fix page posts the
-        # draft field "request" to /answer, which used to answer «Ответ пуст».
+        # draft field "request" to /answer, which used to answer "The answer is empty".
         current_app.logger.warning(
             f"task answer empty: form keys={sorted(request.form.keys() if hasattr(request, 'form') else [])}"
         )

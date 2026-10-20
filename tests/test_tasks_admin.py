@@ -1,9 +1,9 @@
 # tests/test_tasks_admin.py
-"""Admin Users tab: the Tasks count column (v12.6, spec §5 «Admin → Users»).
+"""Admin Users tab: the Tasks count column (v12.6, spec §5 "Admin → Users").
 
 The users payload gains ``tasks_count`` (COUNT over the tasks table by
 user_id = login, same shape as sessions_count); the Users table gains a
-localized «Задачи» column right after Sessions. Classes 3/4/5 stay hidden —
+localized "Tasks" column right after Sessions. Classes 3/4/5 stay hidden —
 the admin class editor keeps offering only the user-facing 0/1/2.
 """
 

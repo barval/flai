@@ -51,12 +51,12 @@
                 {% endif %}
                 <div class="language-switcher">
                     <select id="language-select" onchange="switchLanguage(this.value)">
-                        <option value="ru" data-short="Ру" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
+                        <option value="ru" data-short="Ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Russian</option>
                         <option value="en" data-short="En" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
                     </select>
-                    <button type="button" class="lang-toggle" id="lang-toggle" hidden>Ру ▾</button>
+                    <button type="button" class="lang-toggle" id="lang-toggle" hidden>Ru ▾</button>
                     <div class="lang-menu" id="lang-menu" hidden>
-                        <button type="button" class="lang-option" data-lang="ru" {% if session.get('language') == 'ru' %}data-selected="1"{% endif %}>Русский</button>
+                        <button type="button" class="lang-option" data-lang="ru" {% if session.get('language') == 'ru' %}data-selected="1"{% endif %}>Russian</button>
                         <button type="button" class="lang-option" data-lang="en" {% if session.get('language') == 'en' %}data-selected="1"{% endif %}>English</button>
                     </div>
                 </div>
@@ -133,12 +133,12 @@
         {% else %}
         <div class="language-switcher ml-auto">
             <select id="language-select" onchange="switchLanguage(this.value)">
-                <option value="ru" data-short="Ру" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
+                <option value="ru" data-short="Ru" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Russian</option>
                 <option value="en" data-short="En" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
             </select>
-            <button type="button" class="lang-toggle" id="lang-toggle-guest" hidden>Ру ▾</button>
+            <button type="button" class="lang-toggle" id="lang-toggle-guest" hidden>Ru ▾</button>
             <div class="lang-menu" id="lang-menu-guest" hidden>
-                <button type="button" class="lang-option" data-lang="ru" {% if session.get('language', 'ru') == 'ru' %}data-selected="1"{% endif %}>Русский</button>
+                <button type="button" class="lang-option" data-lang="ru" {% if session.get('language', 'ru') == 'ru' %}data-selected="1"{% endif %}>Russian</button>
                 <button type="button" class="lang-option" data-lang="en" {% if session.get('language', 'ru') == 'en' %}data-selected="1"{% endif %}>English</button>
             </div>
         </div>

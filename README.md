@@ -9,7 +9,7 @@
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
-[English](README.md) | [Русский](README-ru.md)
+[English](README.md) | [Russian](README-ru.md)
 </div>
 
 ## TL;DR
@@ -42,7 +42,7 @@
 
 Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
-| Topic | English | Русский |
+| Topic | English | Russian |
 |-------|---------|---------|
 | Architecture, queue, GPU lock, data flow | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE-ru.md](docs/ARCHITECTURE-ru.md) |
 | VRAM accounting, context auto-fit, hardware | [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md) | [VRAM_MANAGEMENT-ru.md](docs/VRAM_MANAGEMENT-ru.md) |
@@ -73,6 +73,9 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 ## 🆕 What's New in v12.6
 
 - **Background Tasks (Tasks)** — a new section (the left-column tab between Documents and Sessions): long-running jobs decomposed into checkpointed steps and executed at lower priority than chat, preempted by any chat request; chat never waits for a task. The task renders as a chat-like conversation (plan → per-step results → clarifying questions → final answer) with live statuses on the shared SSE stream. One task runs globally; a 24 h pure-execution budget produces a final summary on expiry; everything survives restarts (`tasks` + `task_steps` in PostgreSQL). Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`. Details → [docs/TASKS.md](docs/TASKS.md) / [docs/TASKS-ru.md](docs/TASKS-ru.md).
+
+- **Verified media in tasks** — every picture a task produces is judged against the content it illustrates; a mismatch sends the step back with the verifier's reason instead of silently accepting the wrong image, and a redo stays inside its own step (the plan never grows a duplicate). Each step shows what was checked, why it was redone and which attempts were rejected; the final answer lists only the accepted results, with a separate line for what was not delivered. Details → [docs/TASKS.md](docs/TASKS.md).
+- **Stop and delete now really free the GPU** — a deleted chat or a stopped task no longer leaves its model resident, and stopping/deleting works through the public `/v1` API as well.
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 

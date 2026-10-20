@@ -947,8 +947,8 @@ def test_rlm_prompt_documents_available_helpers(test_app):
 def test_truncate_observation_marks_what_was_dropped():
     """The actor must see that its own observation was cut: silently slicing a
     tool result made it read the cut as the end of the document (live defect:
-    72K-char «Про Федота-стрельца» analysed to line ~1080 and reported
-    «Финал (Незавершенный в данном фрагменте)»)."""
+    72K-char "About Fedot the Archer" analysed to line ~1080 and reported
+    "Ending (unfinished in this fragment)")."""
     from modules.rlm import _truncate_observation
 
     long = "a" * 10_000

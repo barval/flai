@@ -332,7 +332,7 @@ def test_hub_search_renders_fits_directly():
 
 
 def test_hub_recalc_status_ticks_elapsed_seconds():
-    """The fit-calculation status must tick elapsed seconds ('(N сек)') while
+    """The fit-calculation status must tick elapsed seconds ('(N s)') while
     shown — mirroring the chat phase timers — and stop when the calc finishes."""
     hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
 
@@ -341,7 +341,7 @@ def test_hub_recalc_status_ticks_elapsed_seconds():
     assert re.search(r"function _stopRecalcTimer\b", hub_src)
     assert re.search(r"clearInterval\s*\(\s*recalcTimer\s*\)", hub_src)
     # The recalc path starts a 1-second interval that rewrites the status text
-    # with a seconds suffix ('(5 сек)'), localized via the existing hub_seconds key.
+    # with a seconds suffix ('(5 s)'), localized via the existing hub_seconds key.
     recalc_body = hub_src[hub_src.index("function recalcFits") :]
     assert "setInterval(" in recalc_body
     assert re.search(r"recalcStatus\.textContent\s*=\s*[^;]*\([^;]*secs[^;]*suffix", recalc_body)
@@ -384,7 +384,7 @@ def test_hub_numbers_locale_formatting_and_ceil():
 
 
 def test_hub_column_header_and_sticky_layout():
-    """The column header (Размер/Наименование/Оценка/Загрузка) must sit above
+    """The column header (Size/Name/Score/Load) must sit above
     the results, and everything above the list must stay fixed while only
     #hub-results scrolls."""
     admin_template = (JS_DIR.parent.parent / "templates" / "admin.html").read_text(encoding="utf-8")
@@ -542,7 +542,7 @@ def test_hub_installed_badge_and_delete_button():
 
 
 def test_hub_offline_banner_on_reachability():
-    """UT-остров: an unreachable HF must show a banner pointing to the manual
+    """UT island: an unreachable HF must show a banner pointing to the manual
     .gguf upload path instead of a generic error."""
     hub_src = (JS_DIR / "admin-modelHub.js").read_text(encoding="utf-8")
     models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")

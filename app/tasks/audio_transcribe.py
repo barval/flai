@@ -15,8 +15,8 @@ Where the transcript lands (and why the task waits):
 
 * request phase — the executor's request accessor (``executor._request_text``)
   appends the request transcripts for the planner AND every step, so a task
-  dictated by voice is planned from the dictated text and «проанализируй
-  аудиозапись …» works. A dictated task also takes its title from the
+  dictated by voice is planned from the dictated text, and asking to analyze
+  the recording works. A dictated task also takes its title from the
   transcript when the request carried no text.
 * answer phase — the transcript is appended to the ``user_input`` step the
   answer created (the ``answer_images`` contract).

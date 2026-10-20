@@ -133,7 +133,7 @@ def test_templates_do_not_use_skills_section():
 def test_plan_template_has_current_time_and_attachments():
     """The planner must SEE the current date/time and the task's attachments:
     a calendar question routed to web search because the prompt had no date,
-    and 4 attached images still got a «Прикрепите изображения…» question
+    and 4 attached images still got an "Attach the images…" question
     because the prompt never named them."""
     for lang in ("ru", "en"):
         src = _load("task_plan", lang)

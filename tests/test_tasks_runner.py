@@ -51,7 +51,7 @@ def test_llm_error_string_is_error(test_app):
 
 
 def test_gpu_busy_error_is_waited_out_not_returned(test_app):
-    """«Память GPU недоступна» means the GPU is busy, not that the step failed.
+    """ "GPU memory unavailable" means the GPU is busy, not that the step failed.
 
     The call must wait and retry instead of handing the error text to the
     caller: the re-planner read that 40-char error as its reply and silently
@@ -519,7 +519,7 @@ def test_tool_step_header_uses_verifier_meta(test_app):
 
 
 def test_calculate_prose_goal_extracts_expression(test_app):
-    """A prose goal («Вычислите результат выражения 2 + 2 * 2.») does not kill
+    """A prose goal ("calculate the expression 2 + 2 * 2") does not kill
     the step: the bare expression is extracted from the text and evaluated."""
     with patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()):
         out = run_direct_step(

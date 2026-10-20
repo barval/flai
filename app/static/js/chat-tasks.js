@@ -1,5 +1,5 @@
 // app/static/js/chat-tasks.js
-// Tasks (Задачи) panel and task conversation view (v12.6, spec §5).
+// Tasks panel and task conversation view (v12.6, spec §5).
 //
 // The whole subsystem runs as low-priority background tasks: one active task
 // globally, executed in checkpointed steps, answering clarifying questions
@@ -36,7 +36,7 @@ let tasksListReloadTimer = null;
 let taskOrigPlaceholder = null;
 
 // True when the Tasks tab is open in the main window but no task is selected:
-// the empty task state (title «Задача», no input) instead of the chat.
+// the empty task state (title "Task", no input) instead of the chat.
 let tasksViewEmpty = false;
 
 // The last task opened in the main window. Unlike the task VIEW (which is
@@ -228,7 +228,7 @@ function taskStatusLine(task) {
     }
     if (status === 'frozen') {
         // Whisper is transcribing an attached request/answer audio: «frozen»
-        // alone («Приостановлено») reads like the chat paused the task.
+        // alone ("Paused") reads like the chat paused the task.
         if (task.abort_reason === 'audio_transcript') return '🎤 ' + t('task_status_transcribing');
         return '⏸ ' + t('task_status_frozen');
     }
@@ -309,7 +309,7 @@ function restoreTasksView() {
     });
 }
 
-// The main window shows the task empty state (title «Задача», hint, no input)
+// The main window shows the task empty state (title "Task", hint, no input)
 // instead of the chat. Only reached when a task cannot be created or the list
 // cannot be loaded — the normal empty list creates its first task.
 function enterTasksEmptyState() {
@@ -496,7 +496,7 @@ function renderTaskConversation(payload) {
 }
 
 // Chat-style "waiting for your answer" status: pulsing element + a per-second
-// elapsed counter («⏳ Ожидаю ответа (5 с)...»), like the chat stage labels.
+// elapsed counter ("⏳ Waiting for the answer (5 s)..."), like the chat stage labels.
 function startAwaitTimer(taskId, el) {
     stopAwaitTimer();
     taskAwaitStartedAt = Date.now();
@@ -526,8 +526,8 @@ function stopAwaitTimer() {
     taskAwaitStartedAt = null;
 }
 
-// Live plan-phase stage («🧠 Загружаю модель рассуждений... (5 с)» →
-// «🧠 Составляю план... (12 с)»): the SSE task_stage event re-paints the
+// Live plan-phase stage ("🧠 Loading the reasoning model... (5 s)" →
+// "🧠 Making the plan... (12 s)"): the SSE task_stage event re-paints the
 // banner without a server round-trip, the timer ticks the elapsed seconds.
 function startStageTimer(taskId, el) {
     stopStageTimer();
@@ -848,7 +848,7 @@ function renderTaskMessage(m, task) {
     }
     div.appendChild(header);
 
-    // Service lines («План из N шагов:», «Шаг N из M:») render as their own
+    // Service lines ("Plan of N steps:", "Step N of M:") render as their own
     // italic muted line with an emoji, separate from the message body.
     const mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
         ? m.extra.media_all
@@ -897,7 +897,7 @@ function renderTaskMessage(m, task) {
     }
     // Validation chip + reason + attempt log, for every step type alike.
     div.appendChild(buildStepValidation(m));
-    // Style search-result headers («[Результат поиска 1: Title]») as inline
+    // Style search-result headers ("[Search result 1: Title]") as inline
     // spans — they stay with their own result content (url + text) instead of
     // being extracted to a separate pile. A block-level span wraps the heading
     // line so it renders on its own row; DOMPurify keeps harmless <span> tags.
@@ -992,7 +992,7 @@ function splitServiceLine(kind, body) {
 // Task mode (header + input state)
 // ---------------------------------------------------------------------------
 
-// active=true shows the «Задача» title and the ■ Stop button and turns the
+// active=true shows the "Task" title and the ■ Stop button and turns the
 // message input into the clarifying-question answer box. task=null is the
 // empty tasks view: title shown, input hidden.
 function setTaskMode(active, task) {
@@ -1165,11 +1165,11 @@ function sendTaskInput() {
                 renderTasksList();
                 setTaskMode(true, tasksData[window.currentTaskId]);
                 // The draft's conversation is already on screen with the draft
-                // banner («📝 Черновик») and no body — setTaskMode only touches
+                // banner ("📝 Draft") and no body — setTaskMode only touches
                 // the input. Reload so the banner turns into the submitted
                 // status and the request message appears; without it the window
                 // kept looking like the draft until the user switched away and
-                // back (the list already said «⏳ В очереди»).
+                // back (the list already said "⏳ Queued").
                 scheduleTaskReload(window.currentTaskId);
             })
             .catch(err => {

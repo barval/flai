@@ -3,7 +3,7 @@
 
 The snapshot itself must ride the result envelope as media refs (chat parity:
 the task view renders the image), the multimodal question must be framed as
-analysis (a raw planner goal like «Сделайте снимок…» misroutes the image
+analysis (a raw planner goal like "Take a snapshot…" misroutes the image
 classifier to a router marker), and router markers echoed by the model must
 never reach the step text.
 """

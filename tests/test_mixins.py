@@ -4,7 +4,7 @@
 The helper used to default ``lang`` to the literal "ru" and wrap the lookup in
 a NESTED app context, which dropped the caller's ``force_locale`` — so every
 call site inside ``with force_locale(lang)`` rendered Russian regardless of the
-user profile (live defect: «🎤 Распознано:» shown in an English profile).
+user profile (live defect: "🎤 Transcribed:" shown in an English profile).
 These tests pin the resolution order: explicit lang > ambient locale > "ru".
 """
 

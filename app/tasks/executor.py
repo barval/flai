@@ -2551,7 +2551,7 @@ class TaskExecutor:
         # work is handed to the queue — ``_poll_subtask`` only stamps it on the
         # first poll, which the closed gate can delay by minutes: the result was
         # already waiting and a 2-minute RLM run was billed as ~0.02 s
-        # (live: a 146 s task showed «⏱️ 9 с»).
+        # (live: a 146 s task showed "⏱️ 9 s").
         # Publish stage immediately so the Tasks view shows a ticking counter
         # even while the slow worker might be busy with other work.
         from app.tasks.events import publish_task_stage

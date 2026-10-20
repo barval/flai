@@ -19,7 +19,7 @@
     }
 
     // Chat-style live status while the GET /api-keys/tavily round-trip is in
-    // flight («Обновляется информация (N с)…»): pulsing + elapsed seconds.
+    // flight («Updating information (N s)…»): pulsing + elapsed seconds.
     // Without it the panel first showed the add-key form, then re-rendered to
     // the saved-key branch a few seconds later (a visible flicker).
     let refreshTimer = null;

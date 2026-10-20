@@ -626,7 +626,7 @@ function onStreamToken(data) {
     let indicatorSpan = null;
 
     if (!streamMsg) {
-        // Remove task-progress indicator ("Загружаю модель...") once
+        // Remove task-progress indicator ("Loading the model...") once
         // the first stream_token arrives — the model is now responding.
         _removeProgressElement(data.task_id);
 

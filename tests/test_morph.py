@@ -15,7 +15,7 @@ class TestGenerateRoomNameForms:
         assert len(forms) == 2  # accs deduplicated
 
     def test_prihozhaya(self):
-        """Feminine noun on -ая — 3 distinct forms."""
+        """Feminine noun ending in "-aya" — 3 distinct forms."""
         forms = generate_room_name_forms("прихожая")
         assert forms == ["прихожая", "прихожую", "прихожей"]
 
@@ -27,7 +27,7 @@ class TestGenerateRoomNameForms:
         assert len(forms) == 2
 
     def test_spalnya(self):
-        """Feminine noun on -ня — 3 distinct forms."""
+        """Feminine noun ending in "-nya" — 3 distinct forms."""
         forms = generate_room_name_forms("спальня")
         assert forms == ["спальня", "спальню", "спальне"]
 
@@ -49,12 +49,12 @@ class TestGenerateRoomNameForms:
         assert "детского" not in forms
 
     def test_gostinaya(self):
-        """Feminine noun on -ая — 3 distinct forms."""
+        """Feminine noun ending in "-aya" — 3 distinct forms."""
         forms = generate_room_name_forms("гостиная")
         assert forms == ["гостиная", "гостиную", "гостиной"]
 
     def test_kuhnya(self):
-        """Feminine noun on -я — 3 distinct forms."""
+        """Feminine noun ending in "-ya" — 3 distinct forms."""
         forms = generate_room_name_forms("кухня")
         assert forms == ["кухня", "кухню", "кухне"]
 

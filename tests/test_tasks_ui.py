@@ -1,5 +1,5 @@
 # tests/test_tasks_ui.py
-"""Tasks (Задачи) frontend checks: tab order, panel, conversation view,
+"""Tasks frontend checks: tab order, panel, conversation view,
 stop/answer/delete flows and the SSE dispatch.
 
 Structural tests over the shipped JS/HTML/CSS (no live browser), mirroring
@@ -205,8 +205,8 @@ class TestTasksFrontendLogic:
     def test_draft_submit_reloads_the_conversation(self):
         """Submitting the draft must re-render the task window.
 
-        Without the reload the window kept the draft banner («📝 Черновик»)
-        and an empty body while the list already said «⏳ В очереди»; the
+        Without the reload the window kept the draft banner ("📝 Draft")
+        and an empty body while the list already said "⏳ Queued"; the
         content only appeared after switching to another task and back.
         """
         start = CHAT_TASKS.index("function sendTaskInput")
@@ -336,7 +336,7 @@ class TestReviewGuards:
         assert "padding: 0 0.15rem" in block
 
     def test_mobile_header_bar_hugs_save_button(self):
-        """The «Чат/Задача 📊 …» bar hugs the save button's bottom edge with a
+        """The "Chat/Task 📊 …" bar hugs the save button's bottom edge with a
         top allowance (5px): smaller tops clipped the glyph tops."""
         block = self._css_media_block(CHAT_CSS, anchor="    .chat-header {")
         assert "padding: 7px 0 0;" in block
@@ -345,7 +345,7 @@ class TestReviewGuards:
         assert "align-self: flex-end" in CHAT_CSS[idx : idx + 120]
 
     def test_mobile_controls_row_hugs_send_button(self):
-        """The «Глубокий анализ / 🎤 / 📎 / Отправить» row stretches every
+        """The "Deep analysis / 🎤 / 📎 / Send" row stretches every
         control edge-to-edge with the Send button and has NO vertical gaps:
         the chat/task output window starts right above the row, the message
         input right below it. Selectors carry .chat-container because the
@@ -372,7 +372,7 @@ class TestReviewGuards:
         assert "gap: 0.25rem" in self._block(media, ".message-header {", "}")
 
     def test_header_row_matches_tab_font_and_half_divider_gaps(self):
-        """The «Чат/Задача 📊 … | Стиль: …» row uses the tab headers' font size
+        """The "Chat/Task 📊 … | Style: …" row uses the tab headers' font size
         (desktop 1rem / mobile 0.85rem) and the divider gaps are half the old
         two-nbsp padding (user request)."""
         assert "font-size: 1rem" in self._block(CHAT_CSS, ".chat-header h2 {", "}")
@@ -442,7 +442,7 @@ class TestReviewGuards:
 
     def test_audio_attachments_ride_with_task_send(self):
         """Voice and audio reach a task like they do in chat (user request:
-        «вставка любых типов вложений в задачи должна быть как и в чате»): the
+        "any attachment type must work in tasks exactly as in chat"): the
         microphone blob and every audio chip are collected and shipped as
         'audio' parts the server transcribes into the task's context."""
         helper = self._function_block(CHAT_TASKS, "function taskAudioFiles(")
@@ -481,7 +481,7 @@ class TestReviewGuards:
     def test_deleting_the_open_task_stays_in_tasks_view(self):
         """Deleting the open task opens another task (or the empty state) — the
         main window must never fall back to the chat session (user request:
-        «после её удаления в окне задач должна открыться другая задача»)."""
+        "after deleting it, another task must open in the task window")."""
         helper = self._function_block(CHAT_TASKS, "function replaceClosedTask(")
         assert "closeTaskView(true)" in helper
         assert "Object.values(tasksData)" in helper
@@ -683,7 +683,7 @@ class TestReviewGuards:
 
     def test_step_media_rendered_chat_style(self):
         """Camera snapshots / generated media in a step's extra render as chat
-        image blocks after the text body (user: «сами снимки не выводятся»)."""
+        image blocks after the text body (user: "the snapshots themselves are not shown")."""
         block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
         assert "extra.media" in block
         assert "image-container" in block and "attached-image" in block
@@ -700,15 +700,15 @@ class TestReviewGuards:
         assert "forEach" in block, "media blocks render in a loop"
 
     def test_service_lines_styled_separately(self):
-        """«План из N шагов:» / «Шаг N из M:» are their own italic line."""
+        """ "Plan of N steps:" / "Step N of M:" are their own italic line."""
         assert "splitServiceLine" in CHAT_TASKS and "task-msg-service" in CHAT_TASKS
         assert "task-msg-service" in CHAT_CSS
         assert "font-style: italic" in CHAT_CSS
 
     def test_service_line_split_is_language_agnostic(self):
         """The split keys on the shape (a first line ending with ':'), never on
-        the localized wording: hardcoding «Шаг N из M:» once left the plan line
-        («План из 1 шагов:» — ends with a colon, not a digit) unstyled."""
+        the localized wording: hardcoding "Step N of M:" once left the plan line
+        ("Plan of 1 steps:" — ends with a colon, not a digit) unstyled."""
         block = self._function_block(CHAT_TASKS, "function splitServiceLine(")
         assert "endsWith(':')" in block
         assert "🗒️" in block and "⚙️" in block, "plan and step emojis"
@@ -754,7 +754,7 @@ class TestReviewGuards:
     def test_answer_submit_sends_answer_field(self):
         """The clarifying-question answer is submitted in the 'answer' field —
         the /answer route reads data['answer'] and answers 'Answer is empty'
-        (⚠️ Ответ пуст) when it is missing. A regression here silently breaks
+        ("⚠️ The answer is empty") when it is missing. A regression here silently breaks
         every task answer."""
         # The answer branch must POST field 'answer' (not 'request').
         answer_post = CHAT_TASKS[CHAT_TASKS.index("/answer', {") :]

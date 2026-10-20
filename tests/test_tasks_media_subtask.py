@@ -1,5 +1,5 @@
 # tests/test_tasks_media_subtask.py
-"""Tasks (Задачи) media sub-task parity.
+"""Tasks media sub-task parity.
 
 Regression cover for the four defects reported on a running task:
   * a media tool's queue ``task_type`` must exist in ``_process_request``'s

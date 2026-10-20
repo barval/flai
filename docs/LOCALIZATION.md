@@ -13,7 +13,7 @@ This document describes the localization system, Flask-Babel usage, and rules fo
 - All **code comments** and **log messages** must be in English.
 - All **user-facing messages** (UI, notifications, errors) must use the selected user language (i18n).
 - Always keep translation files (`messages.po`) up-to-date and complete.
-- For Russian, only three files may contain Russian: `deploy-ru.sh`, `README-ru.md`, and `LICENSE-ru` (all other repo files use English only).
+- **Code and English documentation are English only, tests included.** Russian appears only as localized content (`prompts/ru/*`, `translations/ru/*`, `README-ru.md`, `docs/*-ru.md`, `LICENSE-ru`, `CONTRIBUTING-ru.md`, `deploy-ru.sh`) or as *data* for Russian-language processing (regexes, word lists, month names, stop words, Russian test fixtures for morphology, SLM and search). Comments, docstrings, test names and English documents never contain Cyrillic — describe a Russian label in English instead.
 - **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
 - **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`.
 

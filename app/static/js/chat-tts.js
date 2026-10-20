@@ -50,7 +50,8 @@ function setTTSButtonState(button, state) {
 /**
  * Split text into sentences for chunked TTS synthesis.
  * Splits on sentence boundaries (.!? followed by space or end of string).
- * Preserves abbreviations like "г.", "т.д." by using negative lookahead.
+ * Preserves Russian abbreviations (such as the ones for "year" and "etc.")
+ * by using negative lookahead.
  */
 function splitIntoSentences(text) {
     // Common abbreviations that shouldn't split on

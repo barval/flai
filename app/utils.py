@@ -1695,7 +1695,7 @@ def clean_markdown_for_tts(text: str) -> str:
     # 8. Italic *...*
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     # 8b. Strip orphaned ** adjacent to letters
-    #     (survives after sentence-split fragments like **НН. / РУ**)
+    #     (survives after sentence-split fragments such as "**AB. / CD**")
     text = re.sub(r"(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])", "", text)
     # 9. Underline-bold __...__ (word-boundary guarded)
     text = re.sub(r"\b__(.+?)__\b", r"\1", text)

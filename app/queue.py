@@ -1214,48 +1214,48 @@ class RedisRequestQueue:
         error_prefixes = (
             # GPU memory errors (en + ru)
             "GPU memory ",  # "GPU memory unavailable..."
-            "Память GPU ",  # ru: "Память GPU недоступна..."
-            "Проверка памяти GPU",  # ru: "Проверка памяти GPU не удалась"
+            "Память GPU ",  # RU error: "GPU memory unavailable..."
+            "Проверка памяти GPU",  # RU error: "GPU memory check failed"
             # Timeout (en + ru)
             "Timeout (",  # "Timeout (300s) when calling..."
-            "Таймаут (",  # ru: "Таймаут (300с) при вызове..."
+            "Таймаут (",  # RU error: "Timeout (300 s) during a call..."
             # Connection errors (en + ru)
             "Could not connect",  # "Could not connect to llama-server/swap"
-            "Не удалось подключиться",  # ru
+            "Не удалось подключиться",  # RU error
             # Service availability (en + ru)
             "Service temporarily unavailable",  # circuit breaker
-            "Сервис временно недоступен",  # ru
+            "Сервис временно недоступен",  # RU error
             # Model configuration (en + ru)
             "Model configuration missing",
             "Model for ",  # "Model for chat not configured"
-            "Модель для ",  # ru
-            "не настроена",  # ru: "Модель для chat не настроена"
+            "Модель для ",  # RU error prefix
+            "не настроена",  # RU error: "Model for chat is not configured"
             # Generic errors (en + ru)
             "Error: ",  # "Error: <exception>" (en, note trailing space)
-            "Ошибка: ",  # ru: "Ошибка: <exception>" (note trailing space)
+            "Ошибка: ",  # RU error: "Error: <exception>" (note the trailing space)
             "Internal error:",  # "Internal error: no response from model"
-            "Внутренняя ошибка:",  # ru
+            "Внутренняя ошибка:",  # RU error
             "HTTP error",  # "HTTP error 400" (en)
-            "Ошибка HTTP",  # ru
+            "Ошибка HTTP",  # RU error
             # Request errors (en + ru)
             "Request too long",  # "Request too long, please simplify"
-            "Запрос слишком длинный",  # ru
+            "Запрос слишком длинный",  # RU error
             "Request cancelled",  # "Request cancelled - too long in queue"
-            "Запрос отменён",  # ru
+            "Запрос отменён",  # RU error
             # Model response errors (en + ru)
             "Model returned empty response",
-            "Модель вернула пустой ответ",  # ru
+            "Модель вернула пустой ответ",  # RU error
             # Reasoning errors (en + ru)
             "Reasoning model unavailable:",  # "Reasoning model unavailable: GPU memory..."
-            "Модель рассуждения недоступна:",  # ru
+            "Модель рассуждения недоступна:",  # RU error prefix
             "Reasoning failed:",  # "Reasoning failed: GPU memory exhausted..."
-            "Рассуждение не удалось:",  # ru
+            "Рассуждение не удалось:",  # RU error prefix
             # Video generation errors (en + ru)
             "Video generation failed:",  # "Video generation failed: GPU memory..."
-            "Генерация видео не удалась:",  # ru
+            "Генерация видео не удалась:",  # RU error prefix
             # Prompt template errors (en + ru)
             "Error loading prompt template",
-            "Ошибка загрузки шаблона промпта",  # ru
+            "Ошибка загрузки шаблона промпта",  # RU error
             # CUDA OOM (from llama.cpp directly, not translated)
             "CUDA out of memory",
             # llama-swap specific (Go binary, not translated)
@@ -2323,7 +2323,7 @@ class RedisRequestQueue:
         image, ``images=[{data,type,name}, …]``; the legacy single-image
         arguments are still accepted and prepended); the slow worker describes
         each with the multimodal model and adds the descriptions to the
-        analysis corpus as documents named 'Изображение (name)'.
+        analysis corpus as documents named "Image (name)".
         """
         request_data: dict[str, Any] = {
             "type": "rlm_analysis",
@@ -2502,7 +2502,7 @@ class RedisRequestQueue:
             )
 
         # Attached image: describe it with the multimodal model and treat the
-        # description as a corpus document named 'Изображение (file)'.
+        # description as a corpus document named "Image (file)".
         rlm_images: list[dict[str, Any]] = []
         if request_data.get("images"):
             rlm_images = [p for p in request_data["images"] if p.get("data")]
@@ -2682,7 +2682,7 @@ class RedisRequestQueue:
 
     def _image_aspect_line(self, image_data: str, lang: str) -> str:
         """Localized real-size line for a reference image, e.g.
-        «Формат: 768×1024 (вертикальный)». Empty string when the size is unknown."""
+        The size hint (e.g. "Format: 768x1024 (portrait)"). Empty string when the size is unknown."""
         dimensions = get_image_dimensions(image_data)
         if not dimensions:
             return ""
@@ -3542,7 +3542,7 @@ class RedisRequestQueue:
                 response_style=str(data.get("response_style") or "neutral"),
             )
 
-        # Analysis framing, never the raw planner goal («Сделайте снимок…»
+        # Analysis framing, never the raw planner goal ("Take a snapshot…"
         # reads as an image-generation request and the multimodal classifier
         # answers with a router marker like [-IMAGE-EDIT-]).
         if question:

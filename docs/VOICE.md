@@ -49,7 +49,7 @@ bash services/kokoro/download-model.sh
 | RAM during active sessions | ~500 MB (all 4 voices cached) | ~3–5.5 GB (RUAccent + model in worker; peak during long phrases) |
 | Russian quality | Good (WER 4.38%) | Higher (WER 2.50%, studio actors) |
 | Russian voices | `dmitri` (male), `irina` (female) | `dima` (male), `sveta` (female) |
-| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, ё restoration, akanye, orthoepy |
+| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, yo restoration, akanye, orthoepy |
 | First phrase (fresh container) | ~0.8 s | **~2 s** — a background warmup (one full ru synthesis) runs right after container start (`KOKORO_WARMUP_G2P=1`, default on) |
 | Subsequent phrases (same session) | ~0.7–0.8 s | RU ~1.1 s |
 | First RU phrase after idle | none — voices stay cached | Depends on `KOKORO_G2P_IDLE_TIMEOUT` (default 300 s): after it expires without a Russian request the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM, and the next Russian phrase reloads it (~10–11.5 s). Set `0` to never unload (always warm, +3.1 GB RAM permanently). EN is not affected. |

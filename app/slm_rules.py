@@ -273,7 +273,7 @@ def extract_facts(
         return []
 
     # Extract facts from the USER's query, not the model's response
-    # User statements about themselves ("я работаю программистом") contain real facts.
+    # User statements about themselves ("I work as a programmer") contain real facts.
     sentences = _split_sentences(query)
     if not sentences:
         return []

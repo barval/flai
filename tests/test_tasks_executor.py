@@ -1251,7 +1251,7 @@ def test_awaiting_task_does_not_republish_each_cycle(db_env, test_app, gate_open
 
 def test_publish_fires_on_status_transition(db_env, test_app, gate_open, monkeypatch):
     """A real transition (active → awaiting_user) publishes: the plan-phase
-    pre-publish (panel switches to «Составляю план…») plus the awaiting
+    pre-publish (the panel switches to "Making the plan…") plus the awaiting
     transition — 2 publishes for a one-question plan."""
     store = db_env
     plan = {
@@ -1567,7 +1567,7 @@ def test_step_image_is_described_for_the_checkpoint(test_app, tmp_path):
     mm.describe_image_for_rlm.assert_called_once()
     assert mm.describe_image_for_rlm.call_args.kwargs["lang"] == "ru"
 
-    # У видео без кадра описания нет (обратная совместимость).
+    # A video without a frame has no description (backwards compatibility).
     with test_app.app_context():
         assert executor._describe_step_image({"file_path": "sess1/clip.mp4", "file_type": "video/mp4"}, "ru") == (
             "",
@@ -1886,7 +1886,7 @@ def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monke
 
 def test_plan_phase_prompt_lists_attached_images(db_env, test_app, gate_open, monkeypatch):
     """The planner prompt names the attached images — a vision/llm plan over
-    them needs no user_input question like «Прикрепите изображения…» (bug: 4
+    them needs no user_input question like "Attach the images…" (bug: 4
     images were attached and the planner still asked to attach them)."""
     store = db_env
     from app.tasks.store import update_task as _ut
@@ -1918,7 +1918,7 @@ def test_plan_phase_prompt_lists_attached_images(db_env, test_app, gate_open, mo
 
 def test_plan_phase_prompt_carries_current_time(db_env, test_app, gate_open, monkeypatch):
     """The planner prompt carries the current date/time — a calendar question
-    («сколько дней до понедельника») needs no web search (bug: the planner
+    ("how many days until Monday") needs no web search (bug: the planner
     routed it to search because the prompt had no date)."""
     store = db_env
     _mk_task(store)
@@ -2286,7 +2286,7 @@ def test_video_gen_source_step_yields_that_steps_artifact(db_env, test_app, gate
 def test_frozen_resume_clears_abort_reason(db_env, test_app, gate_open, monkeypatch):
     """Resuming a frozen task clears ``abort_reason`` — a completed task that
     was once frozen by a chat request must not keep carrying ``abort_reason=
-    'chat'`` (bug: the list showed stale «выполняется»-ish state from the
+    'chat'`` (bug: the list showed a stale "running"-ish state from the
     leftover reason)."""
     store = db_env
     task_id = _mk_task(store, status="frozen", step_plan=_seed_plan(), minutes_ago=30)
@@ -2306,7 +2306,7 @@ def test_frozen_resume_clears_abort_reason(db_env, test_app, gate_open, monkeypa
 def test_subtask_checkpoint_verdict_sees_media_artifact(db_env, test_app, gate_open, monkeypatch):
     """The verifier's input mentions the saved media artifact (file name and
     type) — a media step whose artifact exists must not be rejected with
-    «текстовая инструкция вместо файла» just because the artifact was never
+    "a text instruction instead of a file" just because the artifact was never
     named in the checkpoint text."""
     import os
 
@@ -2435,8 +2435,8 @@ def test_video_preview_frame_reaches_the_checkpoint_from_the_result_wrapper(db_e
 
 def test_subtask_checkpoint_verdict_sees_the_artifact_line_of_a_media_step(db_env, test_app, gate_open, monkeypatch):
     """The bare file name of the artifact reaches the verifier: a media step
-    whose artifact exists must not be rejected with «текстовая инструкция
-    вместо файла» just because the artifact was never named in the input.
+    whose artifact exists must not be rejected with "a text instruction
+    instead of a file" just because the artifact was never named in the input.
 
     (Kept as a separate pass-case: the artifact line is now the file name
     alone, which is still enough for a "file exists" criteria.)"""
@@ -2648,7 +2648,7 @@ def test_enqueue_subtask_image_edit_sends_raw_base64(db_env, test_app, gate_open
 
 def test_enqueue_subtask_image_edit_falls_back_to_prior_step_artifact(db_env, test_app, gate_open, monkeypatch):
     """An edit step with NO attached images edits the artifact a prior step
-    produced (live defect: step 2 «измени полученное изображение» failed with
+    produced (live defect: step 2 "edit the received image" failed with
     "no source image attached" although step 1 had just generated one)."""
     import json as _json
     import os
@@ -2848,7 +2848,7 @@ def test_request_text_without_audio_is_untouched():
 # ``tasks.accumulated_exec_seconds``, which ``_add_budget`` accumulates. Three
 # phases did work that never reached it: the enqueued sub-task's GPU run (the
 # clock started at the first POLL, which the closed gate can delay by minutes —
-# live: a 146 s task showed «⏱️ 9 с»), the planner call, and the final summary.
+# live: a 146 s task showed "⏱️ 9 s"), the planner call, and the final summary.
 
 
 def test_subtask_budget_clock_starts_at_enqueue(db_env, test_app, monkeypatch):
@@ -3095,9 +3095,9 @@ def test_parse_replan_garbage_is_none():
 
 def test_parse_replan_finds_the_object_before_trailing_braces():
     """The model often appends prose after the JSON — and the prose carries
-    braces. Slicing from the first «{» to the LAST «}» then spans both and the
+    braces. Slicing from the first "{" to the LAST "}" then spans both and the
     reply is rejected as invalid JSON, silently dropping a valid rewrite (live
-    acceptance: a 4271-char plan with «непригодный» JSON was thrown away)."""
+    acceptance: a 4271-char plan with unusable JSON was thrown away)."""
     raw = '{"changed": true, "steps": [{"goal": "draw all", "tool": "image_gen"}]}\n\nПояснение: план {пример} готов.'
     parsed = ex._parse_replan(raw, 2)
     assert parsed is not None and parsed["changed"] is True
@@ -3223,8 +3223,8 @@ def test_replan_empty_tail_finalizes_the_task(db_env, test_app, gate_open, monke
 
 
 def test_replan_runs_after_the_last_step_when_the_user_answered(db_env, test_app, gate_open, monkeypatch):
-    """«Вечерняя сказка»: the plan was one clarifying question and NO
-    illustration steps. The user's answer «нарисуй все» is the new fact that
+    """ "Evening fairy tale": the plan was one clarifying question and NO
+    illustration steps. The user's answer "draw them all" is the new fact that
     must grow the plan — even though the plan is already exhausted."""
     store = db_env
     plan = {"title": "t", "steps": [{"seq": 1, "goal": "which scenes?", "tool": "llm", "user_input_expected": True}]}
@@ -3338,7 +3338,7 @@ def test_replan_soft_failure_keeps_the_task_running(db_env, test_app, gate_open,
 
 
 def test_plan_update_notice_renders_between_the_prefix_and_the_new_tail(db_env, test_app):
-    """The user asked for «План обновлён (N шагов).» and for every later status
+    """The user asked for "Plan updated (N steps)." and for every later status
     message to follow the new plan; the plan message and the «Step N of M»
     headers are rendered from the CURRENT plan, so only the notice is new."""
     store = db_env
@@ -3386,7 +3386,7 @@ def test_replan_never_overwrites_an_extra_step_row(db_env, test_app, gate_open, 
     appends (a clarifying answer, the final summary) live ABOVE them. A rewrite
     that grows the tail must not reuse a `seq` one of them already holds:
     `_step_row_for` resolves a plan position by `seq`, so the new step would
-    take the user's answer row and overwrite it (the live «Вечерняя сказка»
+    take the user's answer row and overwrite it (the live "Evening fairy tale"
     path — the plan was one question, the answer sat at the next seq)."""
     store = db_env
     plan = {"title": "t", "steps": [{"seq": 1, "goal": "which scenes?", "tool": "llm", "user_input_expected": True}]}

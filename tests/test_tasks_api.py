@@ -457,7 +457,7 @@ class TestTasksApi:
 
     def test_answer_accepts_draft_field_fallback(self, tasks_env, client):
         """/answer accepts the draft field 'request' as a fallback: a cached
-        pre-fix page posts 'request' to /answer and used to get «Ответ пуст»."""
+        pre-fix page posts 'request' to /answer and used to get "The answer is empty"."""
         from app.tasks.store import add_step, update_step
 
         plan = {

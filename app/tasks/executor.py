@@ -57,7 +57,7 @@ from flask import Flask
 from app.database import get_db
 from app.llamacpp_client import _tr
 from app.model_config import get_model_config
-from app.tasks.artifacts import describe_image_artifact
+from app.tasks.artifacts import describe_image_artifact, get_inspector
 from app.tasks.audio_transcribe import ABORT_REASON as ATTACHMENT_TRANSCRIPT_REASON
 from app.tasks.gate import is_gate_open
 from app.tasks.runner import (
@@ -1507,6 +1507,32 @@ class TaskExecutor:
         media = self._prior_step_media(task_id, idx, source_seq=source_seq)
         return self._media_to_raw_base64(media) if media is not None else None
 
+    def _source_step_text(self, task_id: str, source_seq: int | None, lang: str = "ru") -> str:
+        """The declared source step's content, as text.
+
+        A media step names the step it materializes (``source_step``); its
+        content is that step's result text, or — when the source produced only
+        an artifact — the inspector's description of that artifact. "" when
+        nothing is available, so the caller falls back to the plain digest.
+        """
+        if source_seq is None:
+            return ""
+        cap = int(self.app.config.get("MEDIA_CONTEXT_CHARS") or 16000)
+        for r in get_task_steps(task_id):
+            if int(r.get("seq") or 0) != source_seq:
+                continue
+            text = str(r.get("result") or "").strip()
+            if text:
+                return text[:cap]
+            media = (r.get("extra") or {}).get("media") or {}
+            inspector = get_inspector(str(r.get("tool") or ""))
+            if inspector and media.get("file_path"):
+                description, seconds = inspector(self.app, media, lang, preview_data="")
+                if seconds:
+                    self._add_budget(task_id, seconds)
+                return description[:cap]
+        return ""
+
     def _describe_step_image(self, media: dict, lang: str, preview_data: str = "") -> tuple[str, float]:
         """Describe a media step's produced artifact for the checkpoint verifier.
 
@@ -2106,7 +2132,14 @@ class TaskExecutor:
         update_task(task_id, next_step_index=idx + 1)
         self._publish_task_update(task_id)
 
-    def _context_digest(self, task_id: str, upto_idx: int, corrective_note: str = "", char_cap: int = 16000) -> str:
+    def _context_digest(
+        self,
+        task_id: str,
+        upto_idx: int,
+        corrective_note: str = "",
+        char_cap: int = 16000,
+        skip_seqs: set[int] | None = None,
+    ) -> str:
         """Previous step results as the running context for the next step.
 
         ``corrective_note`` (I2): the checkpoint mismatch of the just-rejected
@@ -2115,6 +2148,8 @@ class TaskExecutor:
         parts = []
         for r in get_task_steps(task_id):
             if int(r["seq"]) > upto_idx:
+                continue
+            if skip_seqs and int(r["seq"]) in skip_seqs:
                 continue
             if r["kind"] in ("question", "user_input", "final", "plan"):
                 continue
@@ -2210,9 +2245,17 @@ class TaskExecutor:
         # (e.g. the searched course value, the generated image description)
         # to produce the correct output — without it image_gen draws "USD"
         # instead of "83,62" because it never saw the search result.
-        previous = self._context_digest(task_id, idx)
-        if previous.strip():
-            request_data["task_context"] = previous[:4000]
+        cap = int(self.app.config.get("MEDIA_CONTEXT_CHARS") or 16000)
+        source_text = self._source_step_text(task_id, source_step, lang=lang)[: max(0, cap - 4000)]
+        previous = self._context_digest(
+            task_id,
+            idx,
+            char_cap=max(0, cap - len(source_text)),
+            skip_seqs={source_step} if (source_text and source_step is not None) else None,
+        )
+        context = "\n\n".join(p for p in (source_text, previous) if p.strip())[:cap]
+        if context:
+            request_data["task_context"] = context
         # Corrective retry: the previous attempt of THIS step was rejected by
         # the verifier — carry its reason into the media prompt so the generator
         # fixes the stated problem instead of repeating the rejected artifact.

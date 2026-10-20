@@ -3491,3 +3491,30 @@ def test_subtask_result_keeps_the_backend_prompt(db_env, test_app, gate_open, mo
     step = store.get_task_steps(task_id)[0]
     assert step["extra"]["backend_prompt"] == "a ginger cat"
     assert step["extra"]["backend_params"] == {"steps": 8}
+
+
+def test_media_context_leads_with_the_source_step_result(db_env, test_app, gate_open, monkeypatch):
+    """The generator sees the producer's own text even when the digest budget
+    would have pushed it out: the later parts of a long plan never reached SD,
+    so those steps redrew the first part."""
+    store = db_env
+    plan = {
+        "title": "Bound media",
+        "steps": [
+            {"seq": 1, "goal": "Split the document", "tool": "llm", "checkpoint_criteria": "parts listed"},
+            {"seq": 2, "goal": "Draw part six", "tool": "image_gen", "checkpoint_criteria": "drawn", "source_step": 1},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    step_1 = store.add_step(task_id=task_id, seq=1, kind="direct", goal="Split the document", tool="llm")
+    store.update_step(step_1, status="passed", result="A" * 6000 + "PART_SIX_DESCRIPTION")
+    queue = _RecordingQ()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
+    executor = ex.TaskExecutor(app=test_app)
+
+    executor._enqueue_subtask(store.get_task(task_id), 1, store.get_task(task_id)["step_plan"]["steps"][1])
+
+    context = queue.calls[0]["request_data"]["task_context"]
+    assert "PART_SIX_DESCRIPTION" in context
+    assert context.index("PART_SIX_DESCRIPTION") < 12000
+    assert len(context) <= test_app.config["MEDIA_CONTEXT_CHARS"]

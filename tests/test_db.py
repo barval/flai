@@ -48,6 +48,31 @@ def test_get_user_documents_returns_recognition_and_embedding_models(test_app):
 
 
 @pytest.mark.integration
+def test_visual_bible_columns_roundtrip(test_app):
+    """visual_bible columns persist and parse back (jsonb dict + booleans)."""
+    from app.tasks import store
+
+    with test_app.app_context():
+        task_id = store.create_task(
+            user_id=generate_unique_name("vb_user"),
+            task_class=5,
+            title=generate_unique_name("vb_task"),
+            lang="en",
+            response_style="neutral",
+        )
+        store.update_task(
+            task_id,
+            visual_bible={"style": "watercolor"},
+            visual_bible_attempted=True,
+            visual_bible_stale=True,
+        )
+        row = store.get_task(task_id)
+        assert row["visual_bible"] == {"style": "watercolor"}
+        assert row["visual_bible_attempted"] is True
+        assert row["visual_bible_stale"] is True
+
+
+@pytest.mark.integration
 class TestDatabase:
     """Test database operations."""
 

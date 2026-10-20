@@ -169,6 +169,10 @@ def load_config(app):
     # with TASK_POLL_INTERVAL_S=1; exhausted+dead ⇒ step failed, task continues).
     app.config["TASK_SUBTASK_POLL_CYCLES"] = int(os.getenv("TASK_SUBTASK_POLL_CYCLES", "10"))
 
+    # Visual continuity sheet: on/off switch and the sheet's char budget.
+    app.config["TASK_CONTINUITY_ENABLED"] = os.getenv("TASK_CONTINUITY_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["TASK_CONTINUITY_MAX_CHARS"] = int(os.getenv("TASK_CONTINUITY_MAX_CHARS", "2000"))
+
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
     app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))

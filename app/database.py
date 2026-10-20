@@ -694,6 +694,16 @@ def _init_postgresql():
             -- UPLOAD_FOLDER/<login>/. The transcript is task CONTEXT (like an
             -- image description), never a Documents-panel document.
             audio JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Visual continuity sheet (v12.6):
+            --  visual_bible          — the style/continuity sheet the planner
+            --    keeps across attempts of THIS task ({} = none yet);
+            --  visual_bible_attempted — the sheet was produced at least once
+            --    (even if empty/plain, so we do not retry forever);
+            --  visual_bible_stale     — the sheet no longer matches the plan
+            --    (a rewrite invalidated it) and should be regenerated.
+            visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb,
+            visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE,
+            visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             started_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
@@ -709,6 +719,9 @@ def _init_postgresql():
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("""
         CREATE TABLE IF NOT EXISTS task_steps (
             id UUID PRIMARY KEY,

@@ -2605,7 +2605,12 @@ class TaskExecutor:
             value = stored.get(key) if key in stored else result_data.get(key)
             if value:
                 meta[key] = value
-        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta}
+        backend: dict = {}
+        for key in ("backend_prompt", "backend_params"):
+            value = stored.get(key) if key in stored else result_data.get(key)
+            if value:
+                backend[key] = value
+        merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta, **backend}
 
         if is_error:
             if media or meta:

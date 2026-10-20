@@ -3458,3 +3458,36 @@ def test_artifact_inspectors_are_registered_per_step_type():
     assert get_inspector("image_edit") is describe_image_artifact
     assert get_inspector("camera") is None
     assert get_inspector("vision") is None
+
+
+def test_subtask_result_keeps_the_backend_prompt(db_env, test_app, gate_open, monkeypatch):
+    """The generation prompt reported by the queue is stored on the step, so the
+    media verifier can compare the picture with what the backend was told."""
+    store = db_env
+    plan = {
+        "title": "Media task",
+        "steps": [{"seq": 1, "goal": "Make an image", "tool": "image_gen", "checkpoint_criteria": "matches"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, store.get_task(task_id)["step_plan"]["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    queue_id = row["extra"]["subtask_queue_id"]
+    envelope = {
+        "status": "completed",
+        "response": "an image was generated",
+        "file_path": "x/y.png",
+        "backend_prompt": "a ginger cat",
+        "backend_params": {"steps": 8},
+    }
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: envelope if qid == queue_id else None)
+    monkeypatch.setattr(
+        ex, "run_checkpoint", lambda *a, **k: {"verdict": True, "explanation": "ok", "exec_seconds": 0.1}
+    )
+
+    executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["extra"]["backend_prompt"] == "a ginger cat"
+    assert step["extra"]["backend_params"] == {"steps": 8}

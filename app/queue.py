@@ -1331,6 +1331,7 @@ class RedisRequestQueue:
         file_path: str | None,
         media: dict[str, Any],
         meta: dict[str, Any] | None = None,
+        backend: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Result envelope for a Tasks-subsystem step (media / RLM), else None.
 
@@ -1359,6 +1360,11 @@ class RedisRequestQueue:
                 envelope["preview_data"] = preview
         if meta:
             envelope.update(meta)
+        if backend:
+            # What the backend was told (spec Part C): the verifier compares the
+            # produced artifact with this exact instruction.
+            envelope["backend_prompt"] = str(backend.get("prompt") or "")
+            envelope["backend_params"] = dict(backend.get("params") or {})
         return envelope
 
     @staticmethod
@@ -1878,6 +1884,10 @@ class RedisRequestQueue:
             file_path,
             image_result,
             meta=self._subtask_model_meta("flux-2-klein-4b", "image_edit", with_usage=True),
+            backend={
+                "prompt": str(edit_data.get("prompt") or ""),
+                "params": {k: v for k, v in edit_data.items() if k != "prompt"},
+            },
         )
         if subtask_result is not None:
             return subtask_result
@@ -2078,6 +2088,10 @@ class RedisRequestQueue:
             file_path,
             image_result,
             meta=self._subtask_model_meta(sd_model, "image_gen", with_usage=True),
+            backend={
+                "prompt": str(prompt_data.get("prompt") or ""),
+                "params": {k: v for k, v in prompt_data.items() if k != "prompt"},
+            },
         )
         if subtask_result is not None:
             return subtask_result

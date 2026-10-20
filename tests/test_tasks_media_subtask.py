@@ -334,6 +334,8 @@ class TestImageGenSubtaskResult:
             "file_size": 4242,
             "model_name": "z_image_turbo",
             "model_type": "image_gen",
+            "backend_prompt": "a cat",
+            "backend_params": {},
         }
         assert saved["session_id"] == task["id"], "the file lands in the task's own folder"
         queue._save_and_respond.assert_not_called()
@@ -417,3 +419,19 @@ class TestImageGenSubtaskResult:
 
         assert result == {"status": "completed", "response": "saved"}
         queue._save_and_respond.assert_called_once()
+
+
+def test_envelope_carries_the_backend_prompt_and_params():
+    """A task step's envelope reports the instruction its generator actually
+    received: the verifier compares the picture with it (spec Part C)."""
+    queue = _make_queue()
+    envelope = queue._subtask_envelope(
+        _subtask_task(),
+        "task-1",
+        "image generated",
+        "sess1/cat.png",
+        {"file_name": "cat.png", "file_type": "image/png"},
+        backend={"prompt": "a ginger cat on a windowsill", "params": {"steps": 8, "width": 1024}},
+    )
+    assert envelope["backend_prompt"] == "a ginger cat on a windowsill"
+    assert envelope["backend_params"] == {"steps": 8, "width": 1024}

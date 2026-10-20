@@ -294,33 +294,7 @@
     animation: progressPulse 1.5s ease-in-out infinite;
 }
 
-/* Read-only visual continuity block (spec §7): compact sheet right under the
-   status banner; title, style line and entity cards; a give-up notice when
-   the extraction failed. */
-.task-continuity {
-    background-color: #f0f7f5;
-    border: 1px solid #c8e0d8;
-    border-radius: 6px;
-    padding: 0.4rem 0.6rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.78rem;
-    color: #2f6f5a;
-}
 
-.task-continuity-title {
-    font-weight: 600;
-    margin-bottom: 0.2rem;
-}
-
-.task-continuity-body div,
-.task-continuity-note {
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.task-continuity-note {
-    color: #a05a20;
-}
 
 /* Tasks-tab empty state (no task selected): centred hint in the window. */
 .task-empty-state {
@@ -2257,30 +2231,4 @@ video {
     color: #aaa;
 }
 
-/* Task 8 — Continuity visual sheet block */
-.task-continuity-block {
-    border-left: 3px solid #e8a317;
-    background: #fffdf5;
-    padding: 0.6rem 0.8rem;
-    margin: 0.25rem 0;
-    border-radius: 0.3rem;
-    font-size: 0.85rem;
-}
-.task-continuity-block h4 {
-    margin: 0 0 0.25rem 0;
-    font-weight: 600;
-    color: #b8860b;
-}
-.task-continuity-block .sheet-card {
-    margin: 0.15rem 0;
-    padding: 0.15rem 0.25rem;
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 0.2rem;
-}
-.task-continuity-block button.rebuild-btn {
-    margin-top: 0.3rem;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-}
+

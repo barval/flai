@@ -4090,5 +4090,3 @@ msgstr "Не удалось подключиться к сервису гене�
 msgid "Visual continuity"
 msgstr "Визуальная непрерывность"
 
-msgid "Rebuild"
-msgstr "Пересобрать"

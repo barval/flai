@@ -69,7 +69,6 @@
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
                 <button id="stop-task-button" class="cancel-stream-header" title="{{ _('Stop task') }}">■</button>
                 <button id="retry-task-button" class="cancel-stream-header" title="{{ _('Restart task') }}" style="display:none">🔄</button>
-                <button id="rebuild-continuity-button" class="cancel-stream-header" title="{{ _('Rebuild the visual continuity sheet') }}" style="display:none">📐</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
@@ -339,11 +338,6 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_making_plan': {{ _('Making the plan...')|tojson }},
     'stage_continuity': {{ _('Extracting the visual continuity sheet...')|tojson }},
     'stage_continuity_failed': {{ _('Could not build the visual continuity sheet — images continue without it.')|tojson }},
-    'visual_continuity': {{ _('Visual continuity')|tojson }},
-    'visual_continuity_style': {{ _('Style')|tojson }},
-    'rebuild_continuity': {{ _('Rebuild the visual continuity sheet')|tojson }},
-    'rebuilding_continuity': {{ _('Rebuilding the visual continuity sheet...')|tojson }},
-    'continuity_sheet_failed': {{ _('Could not build the visual continuity sheet — images continue without it.')|tojson }},
     'stage_indexing_document': {{ _('Creating index for document...')|tojson }},
     'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
     'step': {{ _('Step')|tojson }},

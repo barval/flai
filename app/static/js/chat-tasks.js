@@ -85,24 +85,6 @@ let taskStageTimerTaskId = null;
 // is its second "mode" (like IS_RELOADING). When the view closes
 // (leaveTasksView/closeTaskView) both flags are cleared BEFORE the chat
 // reload is requested, so the restore path renders normally.
-function renderTaskContinuityBlock(task, lang) {
-    const block = document.createElement('div');
-    block.className = 'task-continuity-block';
-    const b = task.visual_bible || {};
-    block.innerHTML = '<h4>' + (lang === 'ru' ? 'Визуальная непрерывность' : 'Visual continuity') + '</h4>' +
-        '<div class="sheet-style">' + (b.style ? 'Style: ' + b.style : '') + '</div>' +
-        '<div class="sheet-cards">' + ((b.characters || []).map(function(c){return '<div class="sheet-card"><b>'+(c.id||'')+':</b> '+(c.look||'')+'</div>';}).join('')) + '</div>' +
-        '<button class="rebuild-btn" onclick="rebuildContinuity(\''+(task.id||'')+'\')">'+(lang==='ru'?'Пересобрать':'Rebuild')+'</button>';
-    return block;
-}
-function rebuildContinuity(taskId) {
-    if (!taskId) return;
-    fetch('/api/tasks/'+taskId+'/continuity',{method:'POST',headers:{'Content-Type':'application/json'}})
-        .then(function(r){return r.json();})
-        .then(function(d){alert((d.status||'')+' — '+(d.message||''));})
-        .catch(function(e){console.error('rebuild failed',e);});
-}
-
 function isTaskViewActive() {
     return Boolean(window.currentTaskId) || tasksViewEmpty;
 }
@@ -454,63 +436,6 @@ function scheduleTasksListReload() {
     }, 400);
 }
 
-// Read-only visual continuity block (spec §7, variant A): the sheet title,
-// the one style line and the entity cards. Hidden while no sheet exists; when
-// the give-up flag is stamped and nothing was built, the localized notice
-// shows instead. The 📐 Rebuild button (header) re-runs the extraction.
-function renderContinuityBlock(task) {
-    const bible = task && task.visual_bible;
-    const hasCards = bible && (bible.style || (bible.characters || []).length ||
-                               (bible.places || []).length || (bible.props || []).length);
-    if (!hasCards && !task.visual_bible_attempted) return null;
-    const box = document.createElement('div');
-    box.className = 'task-continuity';
-    const title = document.createElement('div');
-    title.className = 'task-continuity-title';
-    title.textContent = '📐 ' + t('visual_continuity');
-    box.appendChild(title);
-    if (hasCards) {
-        const body = document.createElement('div');
-        body.className = 'task-continuity-body';
-        if (bible.style) body.appendChild(Object.assign(document.createElement('div'), { textContent: `${t('visual_continuity_style')}: ${bible.style}` }));
-        for (const group of ['characters', 'places', 'props']) {
-            for (const card of (bible[group] || [])) {
-                if (!card || !card.id) continue;
-                const name = card.id.slice(0, 1).toUpperCase() + card.id.slice(1);
-                body.appendChild(Object.assign(document.createElement('div'),
-                    { textContent: `${name}: ${card.look || ''}` }));
-            }
-        }
-        box.appendChild(body);
-    } else if (task.visual_bible_attempted) {
-        box.appendChild(Object.assign(document.createElement('div'), {
-            className: 'task-continuity-note',
-            textContent: '⚠️ ' + t('continuity_sheet_failed'),
-        }));
-    }
-    return box;
-}
-
-// 📐 Rebuild: POST the direct rebuild endpoint (one background LLM call — the
-// executor loop is not involved, no status transition). Works for active and
-// completed tasks; 409 while another rebuild is already running.
-function rebuildCurrentTask() {
-    if (!window.currentTaskId) return;
-    fetchWithCSRF('/api/tasks/' + encodeURIComponent(window.currentTaskId) + '/continuity', { method: 'POST' })
-        .then(res => res.json().catch(() => ({})))
-        .then(data => {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-            alert(t('rebuilding_continuity'));
-            // The finished extraction arrives as a task_update SSE event; the
-            // freshness probe below covers missed events without polling.
-            setTimeout(() => { if (window.currentTaskId) scheduleTaskReload(window.currentTaskId); }, 4000);
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
-}
-
 function renderTaskConversation(payload) {
     const task = payload.task || {};
     const messages = payload.messages || [];
@@ -521,7 +446,6 @@ function renderTaskConversation(payload) {
     // redundant SSE-triggered reload must not flicker the window).
     const payloadJson = JSON.stringify([
         task.status, task.next_step_index, messages,
-        task.visual_bible || null, task.visual_bible_attempted || false,
     ]);
     if (payloadJson === lastTaskPayloadJson) {
         setTaskMode(true, task);
@@ -558,9 +482,6 @@ function renderTaskConversation(payload) {
         banner.textContent = taskStatusLine(task);
     }
     container.appendChild(banner);
-
-    const continuity = renderContinuityBlock(task);
-    if (continuity) container.appendChild(continuity);
 
     messages.forEach(m => {
         container.appendChild(renderTaskMessage(m, task));
@@ -1100,10 +1021,6 @@ function setTaskMode(active, task) {
     // Retry button visible on failed/expired/cancelled terminal tasks.
     const canRetry = task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed';
     if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';
-    // 📐 Rebuild: the visual continuity sheet is rebuilt in any real task view
-    // (running or completed), never in the chat/empty contexts or a draft.
-    const rebuildBtn = document.getElementById('rebuild-continuity-button');
-    if (rebuildBtn) rebuildBtn.style.display = active && task && task.status !== 'draft' ? 'inline-flex' : 'none';
 
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-button');
@@ -1476,10 +1393,6 @@ function initTasksView() {
     const retryBtn = document.getElementById('retry-task-button');
     if (retryBtn) {
         retryBtn.addEventListener('click', retryCurrentTask);
-    }
-    const rebuildBtn = document.getElementById('rebuild-continuity-button');
-    if (rebuildBtn) {
-        rebuildBtn.addEventListener('click', rebuildCurrentTask);
     }
     // Initial load: fills the tab counter even before the first switch and
     // restores the open-task state after a page reload is not needed (views

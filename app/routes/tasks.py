@@ -293,6 +293,11 @@ def _plan_steps(task: dict) -> list[dict]:
     return [s for s in (steps or []) if isinstance(s, dict)]
 
 
+def _visible_plan_steps(task: dict) -> list[dict]:
+    """Plan steps shown to the user: the internal continuity extraction is hidden."""
+    return [s for s in _plan_steps(task) if str(s.get("tool") or "") != "continuity"]
+
+
 def _plan_revisions(task: dict) -> list[dict]:
     """Recorded plan rewrites (see TaskExecutor._apply_replan), oldest first."""
     plan = task.get("step_plan")
@@ -362,7 +367,7 @@ def _task_summary(
         "status": task.get("status"),
         "task_class": task.get("task_class"),
         "next_step_index": task.get("next_step_index") or 0,
-        "total_steps": len(_plan_steps(task)),
+        "total_steps": len(_visible_plan_steps(task)),
         "created_at": _iso(task.get("created_at")),
         "started_at": _iso(task.get("started_at")),
         "completed_at": _iso(task.get("completed_at")),
@@ -378,14 +383,7 @@ def _task_summary(
         # Total accumulated execution time (LLM calls only, waits excluded —
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
-        # Visual continuity sheet (spec §7): the parsed sheet (read-only UI
-        # block) only when populated; the attempted flag renders the give-up
-        # notice when no sheet exists.
-        "visual_bible_attempted": bool(task.get("visual_bible_attempted")),
     }
-    bible = task.get("visual_bible")
-    if isinstance(bible, dict) and any(bible.get(k) for k in ("style", "characters", "places", "props")):
-        summary["visual_bible"] = bible
     if token_totals is not None:
         summary["token_totals"] = token_totals.get(task["id"]) or {"prompt_tokens": 0, "completion_tokens": 0}
     if queue_positions and task.get("status") == "queued":
@@ -508,8 +506,18 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
 
 def _render_messages(task: dict) -> list[dict]:
     """The full task conversation from ``task_steps`` + the plan payload."""
-    plan_steps = _plan_steps(task)
+    raw_plan_steps = _plan_steps(task)
+    plan_steps = _visible_plan_steps(task)
     total = len(plan_steps)
+    # Plan positions are 1-based and include the hidden continuity extraction:
+    # map them onto the visible numbering so «Step N of M» stays gapless.
+    seq_map: dict[int, int] = {}
+    visible_pos = 0
+    for raw_pos, plan_step in enumerate(raw_plan_steps, start=1):
+        if str(plan_step.get("tool") or "") == "continuity":
+            continue
+        visible_pos += 1
+        seq_map[raw_pos] = visible_pos
     messages: list[dict] = []
     request_text = _task_request(task)
     if request_text:
@@ -635,11 +643,24 @@ def _render_messages(task: dict) -> list[dict]:
     # A plan rewrite is anchored to the step that triggered it (rank 4 = after
     # that step's own render ranks 0..3), so the notice lands between the
     # executed prefix and the new tail.
-    entries: list[tuple[tuple[int, int], dict]] = [
-        (_chrono_key(row), _step_message(row, total, answer_audio.get(str(row["id"]))))
-        for row in steps
-        if not (row.get("status") == "pending" and not str(row.get("result") or "").strip())
-    ]
+    entries: list[tuple[tuple[int, int], dict]] = []
+    for row in steps:
+        if str(row.get("tool") or "") == "continuity":
+            continue  # internal extraction — never a user-visible step
+        if row.get("status") == "pending" and not str(row.get("result") or "").strip():
+            continue
+        raw_seq = int(row.get("seq") or 0)
+        display_seq = seq_map.get(raw_seq, raw_seq)
+        entries.append(
+            (
+                _chrono_key(row),
+                _step_message(
+                    {**row, "seq": display_seq},
+                    total,
+                    answer_audio.get(str(row["id"])),
+                ),
+            )
+        )
     for rev in _plan_revisions(task):
         entries.append(((int(rev.get("upto") or 0), 4), _plan_update_message(task, rev)))
     for _key, msg in sorted(entries, key=lambda e: e[0]):
@@ -998,32 +1019,6 @@ def _cancel_inflight_subtasks(task_id: str) -> None:
     except Exception as e:  # noqa: BLE001 — the cancel is best effort
         current_app.logger.warning(f"in-flight subtask cancel failed ({task_id}): {e}")
 
-
-@bp.route("/<task_id>/continuity", methods=["POST"])
-@bp.route("/<task_id>/continuity", methods=["GET"])
-def task_continuity(task_id: str):
-    """Rebuild the visual continuity sheet (direct endpoint, no status change)."""
-    # Owner check mimics retry/stop; works for completed too.
-    if not _task_owner_check(task_id):
-        return jsonify({"error": "Not authorized"}), 403
-    # Concurrent duplicate guard: if another call already set attempted/stale
-    # for this task in the last 60s, return 409.
-    task = get_task(task_id) or {}
-    # Direct extraction via module-level core; daemon thread for long LLM wait
-    import threading
-    def run():
-        try:
-            from app.tasks.continuity import run_continuity_extraction
-            from app.tasks.events import publish_task_event
-            result = run_continuity_extraction(current_app, task_id=task_id, merge=True, lang=task.get("lang") or "ru")
-            if result.get("status") == "passed" and result.get("result"):
-                from app.tasks.store import update_task
-                update_task(task_id, visual_bible=result.get("result"), visual_bible_stale=False, visual_bible_attempted=False)
-                publish_task_event(task_id, "task_update", {"stage": "continuity", "message": "Sheet rebuilt"})
-        except Exception as e:
-            logger.warning("continuity rebuild failed: %s", e)
-    threading.Thread(target=run, daemon=True, name=f"continuity-{task_id}").start()
-    return jsonify({"status": "accepted", "poll_url": f"/api/tasks/{task_id}/continuity"}), 202
 
 @bp.route("/<task_id>/retry", methods=["POST"])
 def task_retry(task_id):

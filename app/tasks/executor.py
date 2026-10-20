@@ -546,6 +546,8 @@ def _capabilities_section(
                 continue  # deep-analysis ON → hide RAG, the planner must use rlm
             if cap["id"] == "rlm" and not deep_analysis:
                 continue  # deep-analysis OFF → hide rlm
+            if cap["id"] == "continuity":
+                continue  # internal guard mechanism — never a planner step
             lines.append(
                 f"- {cap['id']} ({_(cap['label'])}): {_(cap['description'])} "
                 f"{_('Checkpoint hint:')} {_(cap['checkpoint_hint'])}"
@@ -1375,32 +1377,6 @@ class TaskExecutor:
             update_task(t["id"], status="queued", abort_reason="preempted")
 
     # ── Task run (spec §3 step loop) ──────────────────────────────────
-
-    # Task 4 continuity guard (direct LLM extraction before first media step)
-    # Called from _run_task media branch when visual_bible missing and not yet attempted.
-    def _ensure_visual_bible(self, task: dict, idx: int, step: dict, gate_open: bool | None = None) -> None:
-        """Guard: extract continuity sheet before first image_gen step if needed."""
-        if not (self.app.config.get("TASK_CONTINUITY_ENABLED", True) and
-                str(step.get("tool", "")) in ("image_gen", "image_edit") and
-                str(task.get("visual_bible") or "{}") == "{}" and
-                not bool(task.get("visual_bible_attempted"))):
-            return
-        if sum(1 for s in (task.get("step_plan") or {}).get("steps", []) if s.get("tool") == "image_gen") < 2:
-            return  # only one media step — no continuity needed
-        # Call the extraction core (direct LLM step, no GPU lock)
-        try:
-            from app.tasks.continuity import run_continuity_extraction
-            result = run_continuity_extraction(self.app, task.get("id", ""), merge=False, lang=task.get("lang") or "ru")
-            if result.get("status") == "passed" and result.get("result"):
-                from app.tasks.store import update_task
-                update_task(task["id"], visual_bible=json.loads(str(result.get("result"))) if isinstance(result.get("result"), str) else result.get("result"))
-                # Clear stale/attempted; sheet now present
-                if task.get("visual_bible_stale"):
-                    update_task(task["id"], visual_bible_stale=False)
-                self._publish_stream_event(task, "task_stage", {"stage": "continuity", "message": "Visual continuity sheet extracted"})
-        except Exception as e:
-            logger.warning("continuity guard extraction failed for %s: %s", task.get("id"), e)
-            update_task(task["id"], visual_bible_attempted=True)
 
     def _run_task(self, task: dict, gate_open: bool | None = None) -> None:
         """Run steps until a break condition (frozen / awaiting / subtask queued /
@@ -2689,6 +2665,16 @@ class TaskExecutor:
         context = "\n\n".join(p for p in (source_text, previous) if p.strip())[:cap]
         if context:
             request_data["task_context"] = context
+        # Visual continuity: hand the rendered sheet to the media handler so the
+        # image prompt keeps every generated scene identical (style + cards).
+        if tool in ("image_gen", "image_edit"):
+            bible = task.get("visual_bible") or {}
+            if _bible_has_content(bible):
+                from app.tasks.continuity import render_sheet
+
+                request_data["visual_bible"] = render_sheet(
+                    bible, goal, str(step.get("checkpoint_criteria") or "")
+                )
         # Corrective retry: the previous attempt of THIS step was rejected by
         # the verifier — carry its reason into the media prompt so the generator
         # fixes the stated problem instead of repeating the rejected artifact.

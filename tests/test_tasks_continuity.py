@@ -806,8 +806,11 @@ def test_stage_labels_registered_in_events_js():
     assert "continuity: 'stage_continuity'" in events_js
     chat_html = (_ROOT / "app/templates/chat.html").read_text(encoding="utf-8")
     assert "'stage_continuity': {{ _('Extracting the visual continuity sheet...')|tojson }}" in chat_html
+    # The continuity sheet is an internal mechanism: no rebuild button, no
+    # sheet block and no plan step are ever rendered in the task view.
+    assert "rebuild-continuity-button" not in chat_html
     tasks_js = (_ROOT / "app/static/js/chat-tasks.js").read_text(encoding="utf-8")
-    assert "/continuity" in tasks_js, "the rebuild action POSTs the continuity endpoint"
-    assert "visual_continuity" in tasks_js, "the task view renders the continuity block title"
+    assert "renderContinuityBlock" not in tasks_js
+    assert "rebuildCurrentTask" not in tasks_js
     chat_css = (_ROOT / "app/static/css/chat.css").read_text(encoding="utf-8")
-    assert ".task-continuity" in chat_css
+    assert ".task-continuity" not in chat_css

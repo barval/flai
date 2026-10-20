@@ -1758,6 +1758,9 @@ class RedisRequestQueue:
         task_context = str((task.get("data") or {}).get("task_context") or "").strip()
         if task_context:
             edit_prompt = f"{edit_prompt}\n\nContext so far:\n{task_context}"
+        continuity_sheet = str((task.get("data") or {}).get("visual_bible") or "").strip()
+        if continuity_sheet:
+            edit_prompt = f"{continuity_sheet}\n\n{edit_prompt}"
         # Prompt hygiene (spec §9a): the same source-marker strip as image_gen
         # (assembled text sanitized right before the prompt builder).
         from app.tasks.continuity import sanitize_reference_markers
@@ -1992,11 +1995,13 @@ class RedisRequestQueue:
                 corrective_label = _tr("Fix the stated problem and redo this step.", lang)
             generation_query = f"{generation_query}\n\n{corrective_note}. {corrective_label}"
         task_context = str((task.get("data") or {}).get("task_context") or "").strip()
-        # Continuity sheet injection (Task 5) — must come before context digest,
-        # never truncated, must survive even when task_context is empty.
-        continuity_sheet = str((request_data or {}).get("visual_bible") or "").strip()
+        if task_context:
+            generation_query = f"{generation_query}\n\nContext so far:\n{task_context}"
+        # Continuity sheet injection (Task 5) — rendered by the executor and
+        # carried in the queued request's ``data``; already includes its header.
+        continuity_sheet = str((task.get("data") or {}).get("visual_bible") or "").strip()
         if continuity_sheet:
-            generation_query = f"CONTINUITY (mandatory for this task, keep identical across all images):\n{continuity_sheet}\n\n{generation_query}"
+            generation_query = f"{continuity_sheet}\n\n{generation_query}"
         # Prompt hygiene (spec §9a): source-reference markers (document line
         # ranges, «(источник: …)» citation stubs) left by the extractor reach
         # the SD prompt as garbage text/CJK/digits. The sanitizer strips the

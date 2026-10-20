@@ -151,6 +151,13 @@ def load_config(app):
     app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
     app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
+    # Plan-correction guardrails: a review may not rewrite the plan forever,
+    # the plan may not grow without bound, and a passing step only triggers a
+    # review every N steps (a failed/skipped step and a fresh user answer always
+    # trigger one). The 24 h budget stays the final ceiling.
+    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", "8"))
+    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", "40"))
+    app.config["TASK_REPLAN_EVERY_N"] = int(os.getenv("TASK_REPLAN_EVERY_N", "3"))
     # A plan review that repeats the failed step's goal verbatim re-opens that
     # step instead of adding a duplicate plan position; this caps the re-opens.
     app.config["TASK_STEP_REDO_MAX"] = int(os.getenv("TASK_STEP_REDO_MAX", "1"))

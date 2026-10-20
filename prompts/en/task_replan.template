@@ -14,7 +14,7 @@ You are a task-plan reviewer. Do not execute the steps yourself — decide wheth
 - If continuing needs data from the user, add a step with "user_input_expected": true and the EXACT question in goal.
 {deep_analysis_note}
 {document_tool_rule}
-- If the remaining steps hold 2+ "image_gen" steps over text/a document and NO "continuity" step remains — add one immediately after the last executed step (the visual bible must be extracted BEFORE the first new illustration). Do not add it when it already ran, for a single picture, or for tasks over the user's own photos only ("image_edit").
+- Required field "reason": name the CONCRETE fact from the step results that requires a plan change. If there is no such fact — answer {{"changed": false}}.
 
 # INPUT
 User request: {task_request}
@@ -39,5 +39,5 @@ Available capabilities (the id is the only allowed value of tool):
 # ANSWER FORMAT
 Answer with exactly one JSON object and no text before or after it.
 If nothing needs to change: {{"changed": false}}
-If something needs to change: {{"changed": true, "steps": [{{"goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}
+If something needs to change: {{"changed": true, "reason": "the concrete fact from the results", "steps": [{{"goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}
 The "steps" field holds the FULL new list of remaining steps in order. An empty list is valid — it means no remaining work.

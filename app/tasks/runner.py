@@ -783,6 +783,14 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
     else:
         return {"verdict": False, "explanation": "unparseable checkpoint reply"}
     parsed = {"verdict": verdict, "explanation": str(data.get("explanation", ""))}
+    # Severity lets the caller accept an artifact on minor differences only
+    # (style/lighting/small details) instead of regenerating it.
+    severity = str(data.get("severity") or "").strip().lower()
+    if severity in ("none", "minor", "critical"):
+        parsed["severity"] = severity
+    mismatches = data.get("mismatches")
+    if isinstance(mismatches, list):
+        parsed["mismatches"] = [m for m in mismatches if isinstance(m, dict)][:20]
     # Third verdict: user data missing — the question goes to the user and the
     # step re-runs with the answer. Only honored on a failed verdict (the
     # templates emit it as verdict=false + needs_user_input=true).

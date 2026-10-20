@@ -1710,6 +1710,32 @@ class RedisRequestQueue:
 
     # ── Task handlers extracted from _process_request ──
 
+    def _ensure_prompt_entities(self, task: dict | None, prompt_data: dict | None) -> dict | None:
+        """Keep continuity entities in the final SD prompt.
+
+        The multimodal prompt builder rephrases free text and can drop a named
+        character or prop; the executor carries the sheet in ``data``, so the
+        selected cards whose look is missing are appended before diffusion.
+        """
+        if not isinstance(prompt_data, dict):
+            return prompt_data
+        data = (task or {}).get("data") or {}
+        bible = data.get("visual_bible_data")
+        if not isinstance(bible, dict):
+            return prompt_data
+        prompt = str(prompt_data.get("prompt") or "")
+        if not prompt:
+            return prompt_data
+        from app.tasks.continuity import ensure_entities_in_prompt
+
+        prompt_data["prompt"] = ensure_entities_in_prompt(
+            prompt,
+            bible,
+            str(data.get("visual_bible_goal") or ""),
+            str(data.get("visual_bible_criteria") or ""),
+        )
+        return prompt_data
+
     def _process_image_edit_task(
         self,
         message_text: str,
@@ -1770,6 +1796,7 @@ class RedisRequestQueue:
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+        edit_data = self._ensure_prompt_entities(task, edit_data)
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
@@ -2016,6 +2043,7 @@ class RedisRequestQueue:
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+        prompt_data = self._ensure_prompt_entities(task, prompt_data)
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")

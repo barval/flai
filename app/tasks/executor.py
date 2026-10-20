@@ -766,13 +766,19 @@ def _recent_results_digest(task_id: str, char_cap: int = 10000) -> str:
     return "\n".join(parts)[-char_cap:]
 
 
-def _tail_signature(step: dict) -> tuple[str, str, str, bool, int | None]:
-    """The comparable fields of one plan step (spec §8.4.5 field-wise compare)."""
+def _tail_signature(step: dict) -> tuple[frozenset[str], str, str, bool, int | None]:
+    """The comparable fields of one plan step (spec §8.4.5 field-wise compare).
+
+    The goal is compared by lemma set, so a paraphrase of the same step («draw
+    scene 3» / «drawing scene 3») reads as «no change» instead of a rewrite.
+    """
+    from app.tasks.continuity import goal_signature
+
     source = step.get("source_step")
     if isinstance(source, bool) or not source:
         source = None
     return (
-        str(step.get("goal") or ""),
+        goal_signature(step.get("goal")),
         str(step.get("tool") or ""),
         str(step.get("checkpoint_criteria") or ""),
         bool(step.get("user_input_expected")),
@@ -858,12 +864,22 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     raw_steps = data.get("steps")
     if not isinstance(raw_steps, list):
         return None
-    known_tools = {str(c.get("id") or "") for c in get_capabilities()}
+    # The continuity extraction is an internal guard, never a planner step —
+    # even though it stays in the tool registry for the runner/tests.
+    known_tools = {str(c.get("id") or "") for c in get_capabilities()} - {"continuity"}
+    reason = str(data.get("reason") or "").strip()
+    if not reason:
+        # The template makes the field mandatory; a forgetful model must not
+        # freeze a genuinely needed correction, so record it and apply.
+        logger.warning("re-planner: changed=true without a reason — applying with 'unspecified'")
+        reason = "unspecified"
     steps = []
     for i, s in enumerate(raw_steps):
         if not isinstance(s, dict):
             return None
         tool = str(s.get("tool", ""))
+        if tool == "continuity":
+            continue  # internal guard — silently dropped, never a plan step
         if tool not in known_tools:
             logger.warning("re-planner: unknown tool %r in step %d — reply rejected", tool, i + 1)
             return None
@@ -878,7 +894,15 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
                 "source_step": _valid_source_step(s.get("source_step"), own_seq),
             }
         )
-    return {"changed": True, "steps": steps}
+    # A dropped continuity step must not leave a gap: plan positions are
+    # 1-based and resolved by seq, so renumber and drop now-invalid bindings.
+    for pos, entry in enumerate(steps):
+        entry["seq"] = prefix_len + pos + 1
+    for entry in steps:
+        src = entry.get("source_step")
+        if src is not None and not (1 <= src < entry["seq"]):
+            entry["source_step"] = None
+    return {"changed": True, "steps": steps, "reason": reason}
 
 
 def _parse_plan(raw: str) -> dict | None:
@@ -905,15 +929,24 @@ def _parse_plan(raw: str) -> dict | None:
     raw_steps = data.get("steps")
     if not isinstance(raw_steps, list) or not raw_steps:
         return None
+    from app.tasks.tools import get_capabilities
+
+    known_tools = {str(c.get("id") or "") for c in get_capabilities()} - {"continuity"}
     steps = []
     for i, s in enumerate(raw_steps):
         if not isinstance(s, dict):
             continue
         seq = i + 1
+        tool = str(s.get("tool", "llm"))
+        if tool == "continuity":
+            continue  # internal guard — silently dropped, never a plan step
+        if tool not in known_tools:
+            logger.warning("planner: unknown tool %r in step %d — plan rejected", tool, i + 1)
+            return None
         entry = {
             "seq": seq,
             "goal": str(s.get("goal", "")),
-            "tool": str(s.get("tool", "llm")),
+            "tool": tool,
             "checkpoint_criteria": str(s.get("checkpoint_criteria", "")),
             "user_input_expected": bool(s.get("user_input_expected", False)),
             "source_step": _valid_source_step(s.get("source_step"), seq),
@@ -921,6 +954,12 @@ def _parse_plan(raw: str) -> dict | None:
         steps.append(entry)
     if not steps:
         return None
+    for pos, entry in enumerate(steps):
+        entry["seq"] = pos + 1
+    for entry in steps:
+        src = entry.get("source_step")
+        if src is not None and not (1 <= src < entry["seq"]):
+            entry["source_step"] = None
     return {"title": str(data.get("title", "")), "steps": steps}
 
 
@@ -1450,6 +1489,15 @@ class TaskExecutor:
             idx = int(task.get("next_step_index") or 0)
 
             replanned = int(plan.get("replanned_upto") or 0) if isinstance(plan, dict) else 0
+            if idx > replanned and not self._review_due(task, idx, replanned):
+                # No new fact since the last review: skip the model call and
+                # advance the marker, so a long plan is not re-reviewed after
+                # every single passing step.
+                plan_dict = self._plan_dict(task)
+                task = update_task(task_id, step_plan={**plan_dict, "replanned_upto": idx}) or task
+                plan = task.get("step_plan") or {}
+                steps = plan.get("steps", []) if isinstance(plan, dict) else plan
+                replanned = idx
             if idx > replanned:
                 # A step was consumed since the last review: the remaining plan
                 # may need to change. Runs BEFORE the finalize check on purpose —
@@ -1662,7 +1710,17 @@ class TaskExecutor:
         )
         source_seq = _valid_source_step(plan_step.get("source_step"), seq)
         text = self._source_step_text(task_id, source_seq, lang=task.get("lang") or "ru", prefer_artifact=True)
-        return text.strip()[:REFERENCE_MAX_CHARS]
+        # The step draws ONE part of a possibly multi-part source: hand the
+        # verifier the fragment the goal/criteria name, not every scene.
+        from app.tasks.continuity import select_relevant_fragment
+
+        fragment = select_relevant_fragment(
+            text,
+            str(row.get("goal") or ""),
+            str(row.get("checkpoint_criteria") or ""),
+            cap=REFERENCE_MAX_CHARS,
+        )
+        return fragment.strip()
 
     def _source_step_text(
         self,
@@ -1885,6 +1943,31 @@ class TaskExecutor:
             "current_time": get_current_time_in_timezone(self.app) or "",
         }
 
+    def _review_due(self, task: dict, idx: int, replanned: int) -> bool:
+        """Does the consumed step justify a plan review?
+
+        A failed/skipped step and a fresh user answer always do, and so does an
+        exhausted plan (it may still grow). An ordinary passing step only every
+        ``TASK_REPLAN_EVERY_N`` steps — reviewing after every step was the main
+        source of endless «Plan updated» notices.
+        """
+        plan = task.get("step_plan") if isinstance(task.get("step_plan"), dict) else {}
+        steps = plan.get("steps") or []
+        if idx >= len(steps):
+            return True
+        last = next((r for r in get_task_steps(task["id"]) if int(r.get("seq") or 0) == idx), None)
+        if last is not None and (
+            last.get("status") in ("failed", "skipped")
+            or last.get("kind") in ("question", "user_input")
+            # Information-producing steps are the ones that discover new work
+            # (scenes, facts, sources) — review them every time. Media steps
+            # only materialize an already-known part, so they use the counter.
+            or str(last.get("tool") or "") in ("llm", "rlm", "rag", "search", "crawl", "history")
+        ):
+            return True
+        every = max(1, int(self._cfg("TASK_REPLAN_EVERY_N", 3)))
+        return (idx - replanned) >= every
+
     def _step_start_blocked(self, task: dict, gate_open: bool | None = None) -> str | None:
         """The same three guards a step start gets, for the plan review."""
         task_id = task["id"]
@@ -1920,6 +2003,34 @@ class TaskExecutor:
                 reopen_pos = self._reopen_redo(row, todo[0])
             # Either way the reviewer's duplicate is never a new plan position.
             todo = todo[1:]
+        # A paraphrase is not new work: drop any step that repeats an executed
+        # one (same tool + same lemma set), and any duplicate inside the tail.
+        # Without this a reviewer that keeps re-describing a finished scene
+        # grew the plan and regenerated the same pictures.
+        from app.tasks.continuity import goal_signature
+
+        seen = {(goal_signature(s.get("goal")), str(s.get("tool") or "")) for s in steps[:idx]}
+        deduped: list[dict] = []
+        for s in todo:
+            key = (goal_signature(s.get("goal")), str(s.get("tool") or ""))
+            if key in seen:
+                logger.info("task %s: replan dropped a duplicate of an executed step: %s", task_id, s.get("goal"))
+                continue
+            seen.add(key)
+            deduped.append(s)
+        todo = deduped
+        if not todo and reopen_pos is None:
+            logger.info("task %s: replan produced no new steps — plan kept", task_id)
+            return update_task(task_id, step_plan={**plan, "replanned_upto": idx}) or task
+        max_steps = int(self._cfg("TASK_MAX_STEPS", 40))
+        if len(steps[:idx]) + len(todo) > max_steps:
+            logger.warning(
+                "task %s: replan would grow the plan to %d steps (limit %d) — plan kept",
+                task_id,
+                len(steps[:idx]) + len(todo),
+                max_steps,
+            )
+            return update_task(task_id, step_plan={**plan, "replanned_upto": idx}) or task
         merged = list(steps[:idx]) + todo
         for pos, s in enumerate(merged):
             s["seq"] = pos + 1
@@ -2021,6 +2132,16 @@ class TaskExecutor:
         """
         task_id = task["id"]
         lang = task.get("lang") or "ru"
+        revisions = list(self._plan_dict(task).get("revisions") or [])
+        max_revisions = int(self._cfg("TASK_MAX_REVISIONS", 8))
+        if len(revisions) >= max_revisions:
+            logger.info(
+                "task %s: plan revision limit reached (%d/%d) — review skipped, plan frozen",
+                task_id,
+                len(revisions),
+                max_revisions,
+            )
+            return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
         params = self._replan_params(task, idx, lang)
         from app.utils import format_prompt
 
@@ -2066,6 +2187,11 @@ class TaskExecutor:
         if _same_plan_tail(self._plan_dict(task).get("steps"), idx, parsed["steps"]):
             logger.info(f"task {task_id}: plan review returned the same tail — plan kept")
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+        logger.info(
+            "task %s: plan review accepted (reason: %s)",
+            task_id,
+            str(parsed.get("reason") or "")[:200],
+        )
         return self._apply_replan(task, idx, parsed["steps"], meta=dict(_LAST_REPLAN_META))
 
     def _create_plan_step_rows(
@@ -2702,6 +2828,11 @@ class TaskExecutor:
                 request_data["visual_bible"] = render_sheet(
                     bible, goal, str(step.get("checkpoint_criteria") or "")
                 )
+                # Structured copy for the post-build check: the prompt builder
+                # may drop an entity while rephrasing the free-text request.
+                request_data["visual_bible_data"] = bible
+                request_data["visual_bible_goal"] = goal
+                request_data["visual_bible_criteria"] = str(step.get("checkpoint_criteria") or "")
         # Corrective retry: the previous attempt of THIS step was rejected by
         # the verifier — carry its reason into the media prompt so the generator
         # fixes the stated problem instead of repeating the rejected artifact.
@@ -3143,28 +3274,9 @@ class TaskExecutor:
                 self._add_budget(task_id, describe_seconds)
             if image_note:
                 checkpoint_input = result_text + "\n\n" + image_note
-        # Spec §4 continuity clause (Task 7): when a visual bible exists,
-        # the verifier must confirm continuity; appended transiently
-        # to the criteria passed to the checkpoint (NOT persisted into
-        # checkpoint_criteria in DB — it is computed here from the
-        # step's selected cards and then let the runner judge it).
-        if task.get("visual_bible") and isinstance(task.get("visual_bible"), dict):
-            cards = task.get("visual_bible", {})
-            selected_ids = set()
-            # Simple selection: cards whose aliases appear in the step goal
-            goal_text = (str(step.get("goal", "")) or "").lower()
-            for key in ("characters", "places", "props"):
-                for card in cards.get(key, []):
-                    if str(card.get("id", "")).lower() in goal_text or any(
-                        a.lower() in goal_text for a in card.get("aliases", [])
-                    ):
-                        selected_ids.add(str(card.get("id", "")))
-            if selected_ids:
-                continuity_criteria = "Continuity: the image must show the selected cards: " + ", ".join(sorted(selected_ids))
-            else:
-                continuity_criteria = "Continuity: the image must match the task's visual continuity sheet (same style and entities)."
-            # The clause is added to checkpoint_input for this verification only.
-            checkpoint_input += "\n\n" + continuity_criteria
+        # The continuity clause is added below (transient, by the cards the
+        # step actually names). No generic «match the whole sheet» fallback:
+        # it demanded entities the scene never contained and caused rewrites.
         # a normal checkpoint runs against the step's checkpoint_criteria
         # (e.g. "file exists, non-empty, matches expectation"). A verifier
         # rejection fails the step (the task continues), matching the
@@ -3208,47 +3320,70 @@ class TaskExecutor:
         if not artifact_step and str(step.get("checkpoint_criteria", "") or "").strip():
             checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
+        if checkpoint and not checkpoint.get("verdict") and checkpoint.get("severity") == "minor":
+            # Minor differences (style, lighting, small details) are not worth
+            # another diffusion run — accept the picture, keep the note.
+            logger.info(f"task {task_id} step {idx + 1}: minor differences accepted without a retry")
+            merged_extra["artifact_note"] = "minor differences accepted"
+            checkpoint = {**checkpoint, "verdict": True}
         if checkpoint and not checkpoint.get("verdict"):
             reason = str(checkpoint.get("explanation", ""))
             attempts = int(row.get("attempts") or 0)
             max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
-            if attempts < max_attempts:
-                # Corrective retry of the SAME step (mirrors a direct step): the
-                # step stays open, the rejected artifact is kept in extra and the
-                # mismatch is left for the next attempt's prompt — the task never
-                # carries a rejected artifact into the following steps. The poll
-                # budget restarts with the new attempt.
-                update_step(
+            # Anti-loop: the same rejection after a corrective retry means the
+            # note did not change anything — another diffusion run would repeat
+            # it. Accept the artifact (with the reason recorded) instead.
+            from app.tasks.continuity import goal_signature
+
+            previous_reason = str((row.get("extra") or {}).get("corrective_note") or "")
+            repeated = bool(reason and previous_reason) and goal_signature(reason) == goal_signature(previous_reason)
+            if repeated and attempts < max_attempts:
+                logger.warning(
+                    f"task {task_id} step {idx + 1}: the same rejection repeated "
+                    f"(attempt {attempts}/{max_attempts}) — accepting the artifact instead of regenerating"
+                )
+                merged_extra["artifact_note"] = "repeated rejection accepted"
+                checkpoint = {**checkpoint, "verdict": True, "explanation": reason}
+            if not repeated:
+                if attempts < max_attempts:
+                    # Corrective retry of the SAME step (mirrors a direct step):
+                    # the step stays open, the rejected artifact is kept in extra
+                    # and the mismatch is left for the next attempt's prompt — the
+                    # task never carries a rejected artifact into the following
+                    # steps. The poll budget restarts with the new attempt.
+                    update_step(
+                        row["id"],
+                        status="pending",
+                        result=result_text,
+                        extra={**merged_extra, "corrective_note": reason, "subtask_polls": 0},
+                    )
+                    self._log_attempt(row["id"], attempts, False, reason)
+                    logger.warning(
+                        f"task {task_id} step {idx + 1}: subtask checkpoint rejected "
+                        f"(attempt {attempts}/{max_attempts}) — retrying with the mismatch in the prompt"
+                    )
+                    return "done"
+                last_error = _tr("step attempts exhausted", task.get("lang") or "ru")
+                if reason:
+                    last_error += f": {reason[:300]}"
+                self._end_step(
+                    task_id,
                     row["id"],
-                    status="pending",
+                    status="failed",
+                    exec_seconds=elapsed,
                     result=result_text,
-                    extra={**merged_extra, "corrective_note": reason, "subtask_polls": 0},
+                    last_error=last_error,
+                    checkpoint_result=reason,
+                    checkpoint_verdict=False,
+                    extra=merged_extra,
                 )
                 self._log_attempt(row["id"], attempts, False, reason)
+                self._clear_task_stage(task)
                 logger.warning(
-                    f"task {task_id} step {idx + 1}: subtask checkpoint rejected "
-                    f"(attempt {attempts}/{max_attempts}) — retrying with the mismatch in the prompt"
+                    f"task {task_id} step {idx + 1}: subtask checkpoint rejected — attempts spent, continuing"
                 )
+                update_task(task_id, next_step_index=idx + 1)
                 return "done"
-            last_error = _tr("step attempts exhausted", task.get("lang") or "ru")
-            if reason:
-                last_error += f": {reason[:300]}"
-            self._end_step(
-                task_id,
-                row["id"],
-                status="failed",
-                exec_seconds=elapsed,
-                result=result_text,
-                last_error=last_error,
-                checkpoint_result=reason,
-                checkpoint_verdict=False,
-                extra=merged_extra,
-            )
-            self._log_attempt(row["id"], attempts, False, reason)
-            self._clear_task_stage(task)
-            logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — attempts spent, continuing")
-            update_task(task_id, next_step_index=idx + 1)
-            return "done"
         self._end_step(
             task_id,
             row["id"],

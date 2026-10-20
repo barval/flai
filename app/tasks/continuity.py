@@ -172,19 +172,110 @@ _SPACE_BEFORE_PUNCT_RE = re.compile(r" +([,.;:!?])")
 def render_sheet(bible: dict, goal: str = "", criteria: str = "") -> str:
     """Render the compact continuity sheet for an image-generation prompt.
 
-    Format: the fixed header, then ``Style: <style>`` (only when non-empty),
-    then one ``<Id>: <look>`` line per card selected over ``goal``/``criteria``
-    (nothing selected → style-only output). The caller applies the token budget.
+    Format: the fixed header, ``Style: <style>`` (only when non-empty), then
+    one grouped line per entity class — ``Characters:`` / ``Places:`` /
+    ``Props:`` — with the cards selected over ``goal``/``criteria``. The
+    grouping keeps entities from being lost inside one flat list; nothing
+    selected → style-only output. The caller applies the token budget.
     """
     lines = ["CONTINUITY (mandatory for this task, keep identical across all images):"]
     style = bible.get("style") or ""
     if style.strip():
         lines.append(f"Style: {style.strip()}")
-    for card in select_cards(bible, goal, criteria):
-        card_id = card['id']
-        display_id = card_id[:1].upper() + card_id[1:]
-        lines.append(f"{display_id}: {card.get('look', '')}")
+    selected = select_cards(bible, goal, criteria)
+    selected_ids = {str(c.get("id") or "") for c in selected}
+    for key, label in (("characters", "Characters"), ("places", "Places"), ("props", "Props")):
+        cards = [c for c in bible.get(key, []) if str(c.get("id") or "") in selected_ids]
+        if not cards:
+            continue
+        parts = []
+        for card in cards:
+            display_id = str(card.get("id") or "")
+            display_id = display_id[:1].upper() + display_id[1:]
+            parts.append(f"{display_id}: {card.get('look', '')}")
+        lines.append(f"{label}: " + "; ".join(parts))
     return "\n".join(lines)
+
+
+def goal_signature(text: str) -> frozenset[str]:
+    """Comparable word-lemma set of a plan goal (order/punctuation ignored).
+
+    Used to treat a paraphrase («Нарисуй сцену 3» / «Нарисовать сцену 3») as
+    the same plan step instead of a new one.
+    """
+    tokens = re.findall(r"\w+", str(text or "").lower(), re.UNICODE)
+    if not tokens:
+        return frozenset()
+    morph = _get_morph()
+    forms: set[str] = set()
+    for token in tokens:
+        forms |= _normal_forms(morph, token)
+    return frozenset(forms)
+
+
+def select_relevant_fragment(text: str, query: str = "", criteria: str = "", cap: int = 4000) -> str:
+    """The part of a long source result that the step's goal/criteria name.
+
+    The verifier used to receive the whole multi-part source (up to 12k chars)
+    while the step drew ONE part, so it judged the picture against the other
+    scenes too. Paragraphs are ranked by lemma overlap with goal+criteria and
+    the best ones are returned up to ``cap``; no overlap falls back to the head.
+    """
+    body = str(text or "").strip()
+    if not body:
+        return ""
+    query_sig = goal_signature(" ".join(filter(None, (query, criteria))))
+    if not query_sig:
+        return body[:cap]
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    if len(paragraphs) <= 1:
+        return body[:cap]
+    scored = []
+    for index, paragraph in enumerate(paragraphs):
+        overlap = len(goal_signature(paragraph) & query_sig)
+        if overlap:
+            scored.append((overlap, index, paragraph))
+    if not scored:
+        return body[:cap]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    chosen: list[tuple[int, str]] = []
+    used = 0
+    for _score, index, paragraph in scored:
+        if chosen and used + len(paragraph) + 2 > cap:
+            continue
+        chosen.append((index, paragraph))
+        used += len(paragraph) + 2
+        if used >= cap:
+            break
+    chosen.sort(key=lambda item: item[0])
+    return "\n\n".join(p for _i, p in chosen)[:cap]
+
+
+def ensure_entities_in_prompt(prompt: str, bible: dict, goal: str = "", criteria: str = "") -> str:
+    """Append the look of selected cards missing from the generated SD prompt.
+
+    The prompt builder rephrases the free-text request and can drop a named
+    character/prop. The check is deterministic: a card whose id and aliases are
+    all absent from the prompt gets its ``look`` appended, so the diffusion
+    model still sees the entity.
+    """
+    text = str(prompt or "")
+    if not text.strip():
+        return text
+    lowered = text.lower()
+    additions = []
+    for card in select_cards(bible, goal, criteria):
+        card_id = str(card.get("id") or "").strip()
+        aliases = [str(a) for a in (card.get("aliases") or []) if str(a).strip()]
+        candidates = ([card_id] if card_id else []) + aliases
+        if any(candidate.lower() in lowered for candidate in candidates if candidate):
+            continue
+        look = str(card.get("look") or "").strip()
+        if look:
+            additions.append(look)
+    if not additions:
+        return text
+    return text.rstrip().rstrip(",") + ", " + ", ".join(additions)
 
 
 

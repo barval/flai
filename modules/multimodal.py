@@ -285,14 +285,21 @@ class MultimodalModule(TranslationMixin):
             results.append((data, description, error))
         return results
 
-    def describe_image_for_rlm(self, image_data: str, lang: str = "ru") -> tuple[str | None, str | None]:
+    def describe_image_for_rlm(
+        self, image_data: str, lang: str = "ru", template: str = "rlm_image.template"
+    ) -> tuple[str | None, str | None]:
         """Produce a maximally detailed text description of an image for the RLM
-        deep-analysis pipeline. The description is treated as a corpus document."""
+        deep-analysis pipeline. The description is treated as a corpus document.
+
+        ``template`` lets the task verifier request the structured content
+        description (``task_describe_image.template``) instead of the RLM one
+        while keeping this single multimodal call path.
+        """
         if not self.check_availability():
             return None, self._("Multimodal model unavailable", lang)
 
         prompt = format_prompt(
-            "rlm_image.template",
+            template,
             {"response_language": response_language_name(lang)},
             lang=lang,
         )

@@ -59,7 +59,9 @@ def describe_image_artifact(app: Any, media: dict, lang: str, preview_data: str 
 
     begin_usage_account(account_id)
     try:
-        description, _error = mm.describe_image_for_rlm(image_b64, lang=lang)
+        description, _error = mm.describe_image_for_rlm(
+            image_b64, lang=lang, template="task_describe_image.template"
+        )
     finally:
         finish_usage_account(account_id)
     seconds = round(time.monotonic() - start, 2)

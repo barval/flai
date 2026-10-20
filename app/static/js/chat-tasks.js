@@ -85,6 +85,24 @@ let taskStageTimerTaskId = null;
 // is its second "mode" (like IS_RELOADING). When the view closes
 // (leaveTasksView/closeTaskView) both flags are cleared BEFORE the chat
 // reload is requested, so the restore path renders normally.
+function renderTaskContinuityBlock(task, lang) {
+    const block = document.createElement('div');
+    block.className = 'task-continuity-block';
+    const b = task.visual_bible || {};
+    block.innerHTML = '<h4>' + (lang === 'ru' ? 'Визуальная непрерывность' : 'Visual continuity') + '</h4>' +
+        '<div class="sheet-style">' + (b.style ? 'Style: ' + b.style : '') + '</div>' +
+        '<div class="sheet-cards">' + ((b.characters || []).map(function(c){return '<div class="sheet-card"><b>'+(c.id||'')+':</b> '+(c.look||'')+'</div>';}).join('')) + '</div>' +
+        '<button class="rebuild-btn" onclick="rebuildContinuity(\''+(task.id||'')+'\')">'+(lang==='ru'?'Пересобрать':'Rebuild')+'</button>';
+    return block;
+}
+function rebuildContinuity(taskId) {
+    if (!taskId) return;
+    fetch('/api/tasks/'+taskId+'/continuity',{method:'POST',headers:{'Content-Type':'application/json'}})
+        .then(function(r){return r.json();})
+        .then(function(d){alert((d.status||'')+' — '+(d.message||''));})
+        .catch(function(e){console.error('rebuild failed',e);});
+}
+
 function isTaskViewActive() {
     return Boolean(window.currentTaskId) || tasksViewEmpty;
 }

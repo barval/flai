@@ -312,7 +312,8 @@ footer {
     cursor: pointer;
 }
 
-/* Mobile custom dropdown: closed toggle "Ru ▾", menu lists full names */
+/* Mobile custom dropdown: closed toggle shows the native short label,
+   the menu lists the native full names */
 .lang-toggle {
     display: inline-flex;
     align-items: center;

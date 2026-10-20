@@ -57,6 +57,7 @@ from flask import Flask
 from app.database import get_db
 from app.llamacpp_client import _tr
 from app.model_config import get_model_config
+from app.tasks.artifacts import describe_image_artifact
 from app.tasks.audio_transcribe import ABORT_REASON as ATTACHMENT_TRANSCRIPT_REASON
 from app.tasks.gate import is_gate_open
 from app.tasks.runner import (
@@ -1509,68 +1510,12 @@ class TaskExecutor:
     def _describe_step_image(self, media: dict, lang: str, preview_data: str = "") -> tuple[str, float]:
         """Describe a media step's produced artifact for the checkpoint verifier.
 
-        The verifier call is text-only (the reasoning model), so a step whose
-        criterion is about what is VISIBLE was rejected with "the result
-        provides no image or its description" although the image/video existed.
-        The artifact is described with the multimodal model and the description
-        is appended to the verifier INPUT only — the step's stored result keeps
-        the short "goal + file name" form rendered in the task view.
-
-        For a ``video/mp4`` without a poster frame the description is empty
-        (the step is verified as before); when the wrapper provides a JPEG
-        preview of the generated clip the middle frame is described instead.
-
-        Returns ``(text, seconds)``; the text is "" for a non-image artifact
-        without a preview, or an unavailable/empty description.
+        The verifier call is text-only (the reasoning model), so a picture has
+        to become text first. The inspector itself lives in the artifact
+        registry (``app.tasks.artifacts``), keyed by step type, so a new
+        artifact type is a registry entry rather than a branch here.
         """
-        is_image = str(media.get("file_type") or "").startswith("image/")
-        if not is_image and not preview_data:
-            return "", 0.0
-        file_name = str(media.get("file_name") or media.get("file_path", ""))
-        mm = self.app.modules.get("multimodal")
-        if mm is None or not getattr(mm, "available", False):
-            return "", 0.0
-        if is_image:
-            rel = str(media.get("file_path") or "")
-            upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
-            if not rel or not upload_folder:
-                return "", 0.0
-            path = os.path.realpath(os.path.join(upload_folder, rel))
-            if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
-                return "", 0.0
-            start = time.monotonic()
-            try:
-                with open(path, "rb") as fh:
-                    image_b64 = base64.b64encode(fh.read()).decode("ascii")
-            except OSError as e:
-                logger.warning(f"step image unread for the checkpoint ({rel}): {e}")
-                return "", 0.0
-            account_id = f"task-step-image:{os.path.basename(path)}"
-            from_file = True
-        else:
-            image_b64 = preview_data
-            account_id = f"task-step-video-frame:{file_name}"
-            start = time.monotonic()
-            from_file = False
-        from app.utils import begin_usage_account, finish_usage_account
-
-        begin_usage_account(account_id)
-        try:
-            description, _error = mm.describe_image_for_rlm(image_b64, lang=lang)
-        finally:
-            finish_usage_account(account_id)
-        seconds = round(time.monotonic() - start, 2)
-        if not description:
-            return "", seconds
-        from flask_babel import force_locale
-        from flask_babel import gettext as _
-
-        with force_locale(lang):
-            if from_file:
-                label = _("{file_name} — image description").format(file_name=file_name)
-            else:
-                label = _("{file_name} — frame from the generated video").format(file_name=file_name)
-        return f"{label}\n{description}", seconds
+        return describe_image_artifact(self.app, media, lang, preview_data)
 
     def _camera_rooms(self, task: dict) -> list[str]:
         """The user's accessible camera room names (empty when cameras are off)."""

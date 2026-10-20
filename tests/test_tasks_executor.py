@@ -3444,3 +3444,17 @@ def test_recent_results_digest_keeps_a_long_step_result(db_env):
     digest = ex._recent_results_digest(task_id)
 
     assert "PART_FIVE_DESCRIPTION" in digest
+
+
+# ── universal media verification: artifact inspector registry ────────────
+
+
+def test_artifact_inspectors_are_registered_per_step_type():
+    """Media handling is a registry lookup, not a tool-name branch: image step
+    types are inspected, camera/vision are not (no false retries)."""
+    from app.tasks.artifacts import describe_image_artifact, get_inspector
+
+    assert get_inspector("image_gen") is describe_image_artifact
+    assert get_inspector("image_edit") is describe_image_artifact
+    assert get_inspector("camera") is None
+    assert get_inspector("vision") is None

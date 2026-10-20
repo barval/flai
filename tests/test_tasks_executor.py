@@ -3402,3 +3402,45 @@ def test_replan_echoing_the_same_tail_reports_no_change(db_env, test_app, gate_o
     assert t["step_plan"]["replanned_upto"] == 2
     assert t["status"] == "completed"
     assert [s["goal"] for s in t["step_plan"]["steps"]] == ["Do first thing", "Do second thing"]
+
+
+# ── universal media verification: context budgets ────────────────────────
+
+
+def test_context_digest_keeps_a_long_step_result(db_env, test_app):
+    """A producer result longer than the old 3000-char prefix still reaches the
+    next step: the per-part descriptions of a long plan were silently cut away,
+    so every later media step lost its source content."""
+    store = db_env
+    plan = {
+        "title": "Long producer",
+        "steps": [
+            {"seq": 1, "goal": "Split the document", "tool": "llm", "checkpoint_criteria": "parts listed"},
+            {"seq": 2, "goal": "Draw part six", "tool": "image_gen", "checkpoint_criteria": "part six drawn"},
+        ],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    step_id = store.add_step(task_id=task_id, seq=1, kind="direct", goal="Split the document", tool="llm")
+    store.update_step(step_id, status="passed", result="A" * 4000 + "PART_SIX_DESCRIPTION")
+    executor = ex.TaskExecutor(app=test_app)
+
+    digest = executor._context_digest(task_id, 1)
+
+    assert "PART_SIX_DESCRIPTION" in digest
+
+
+def test_recent_results_digest_keeps_a_long_step_result(db_env):
+    """The re-planner sees each step's content beyond the old 2000-char cut, so
+    it can name a part's content instead of writing «step N succeeded»."""
+    store = db_env
+    plan = {
+        "title": "Long producer",
+        "steps": [{"seq": 1, "goal": "Split the document", "tool": "llm", "checkpoint_criteria": "parts listed"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    step_id = store.add_step(task_id=task_id, seq=1, kind="direct", goal="Split the document", tool="llm")
+    store.update_step(step_id, status="passed", result="A" * 2500 + "PART_FIVE_DESCRIPTION")
+
+    digest = ex._recent_results_digest(task_id)
+
+    assert "PART_FIVE_DESCRIPTION" in digest

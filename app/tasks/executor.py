@@ -640,7 +640,7 @@ def _results_digest(task_id: str, char_cap: int = 20000) -> str:
     return "\n".join(parts)[:char_cap]
 
 
-def _recent_results_digest(task_id: str, char_cap: int = 6000) -> str:
+def _recent_results_digest(task_id: str, char_cap: int = 10000) -> str:
     """Tail-weighted step results for the plan review.
 
     ``_results_digest`` keeps the FIRST ``char_cap`` characters — on a task that
@@ -650,7 +650,7 @@ def _recent_results_digest(task_id: str, char_cap: int = 6000) -> str:
     for r in get_task_steps(task_id):
         if r["kind"] in ("question", "user_input", "final", "plan_update"):
             continue
-        body = (r["result"] or "")[:2000]
+        body = (r["result"] or "")[:4000]
         if not body and r["status"] == "skipped":
             body = str(r.get("last_error") or "")[:300]
         parts.append(f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']} → {r['status']}: {body}")
@@ -2161,7 +2161,7 @@ class TaskExecutor:
         update_task(task_id, next_step_index=idx + 1)
         self._publish_task_update(task_id)
 
-    def _context_digest(self, task_id: str, upto_idx: int, corrective_note: str = "", char_cap: int = 12000) -> str:
+    def _context_digest(self, task_id: str, upto_idx: int, corrective_note: str = "", char_cap: int = 16000) -> str:
         """Previous step results as the running context for the next step.
 
         ``corrective_note`` (I2): the checkpoint mismatch of the just-rejected
@@ -2174,7 +2174,7 @@ class TaskExecutor:
             if r["kind"] in ("question", "user_input", "final", "plan"):
                 continue
             if r["status"] in ("passed", "failed", "interrupted", "skipped"):
-                body = (r["result"] or "")[:3000]
+                body = (r["result"] or "")[:8000]
                 if r["status"] == "skipped":
                     body = f"[skipped: {r.get('last_error') or 'source image missing'}]"
                 elif r["status"] == "failed":

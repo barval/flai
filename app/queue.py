@@ -1992,8 +1992,15 @@ class RedisRequestQueue:
                 corrective_label = _tr("Fix the stated problem and redo this step.", lang)
             generation_query = f"{generation_query}\n\n{corrective_note}. {corrective_label}"
         task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+        # Continuity sheet from the visual bible (Task 4 / 5): inject if present.
+        continuity_sheet = str((request_data or {}).get("visual_bible") or "").strip()
         if task_context:
             generation_query = f"{generation_query}\n\nContext so far:\n{task_context}"
+        # Continuity block must come before Context so far (the sheet is
+        # authoritative; context is supplementary). Insert after context only
+        # when sheet is present; never drop the sheet under budget pressure.
+        if continuity_sheet:
+            generation_query = f"CONTINUITY (mandatory for this task, keep identical across all images):\n{continuity_sheet}\n\n{generation_query}"
         # Prompt hygiene (spec §9a): source-reference markers (document line
         # ranges, «(источник: …)» citation stubs) left by the extractor reach
         # the SD prompt as garbage text/CJK/digits. The sanitizer strips the

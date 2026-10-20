@@ -1554,17 +1554,16 @@ class TaskExecutor:
             if int(r.get("seq") or 0) != source_seq:
                 continue
             text = str(r.get("result") or "").strip()
+            if text and not prefer_artifact:
+                return text[:cap]
             media = (r.get("extra") or {}).get("media") or {}
             inspector = get_inspector(str(r.get("tool") or ""))
-            describable = bool(inspector and media.get("file_path"))
-            if prefer_artifact and describable:
+            description = ""
+            if inspector and media.get("file_path"):
                 description = self._describe_source_artifact(task_id, inspector, media, lang)
-                if description:
-                    return description[:cap]
-            if text:
-                return text[:cap]
-            if describable:
-                return self._describe_source_artifact(task_id, inspector, media, lang)[:cap]
+            if description:
+                return description[:cap]
+            return text[:cap]
         return ""
 
     def _describe_source_artifact(self, task_id: str, inspector, media: dict, lang: str) -> str:

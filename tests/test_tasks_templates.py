@@ -228,3 +228,17 @@ def test_replan_template_requires_the_source_content_in_a_media_goal():
         src = _load("task_replan", lang).lower()
         marker = "описание этой части" if lang == "ru" else "description of that part"
         assert marker in src, f"task_replan/{lang}: missing the source-content rule"
+
+
+def test_media_checkpoint_template_handles_an_empty_reference_and_an_edit():
+    """Two normal cases must not be judged as failures: a media step with no
+    source binding (empty reference) and an edit step whose goal is to CHANGE
+    the reference image — otherwise a correct artifact is rejected three times."""
+    for lang in ("ru", "en"):
+        src = _load("task_checkpoint_media", lang).lower()
+        if lang == "ru":
+            assert "раздел эталона пуст" in src
+            assert "изменить эталон" in src
+        else:
+            assert "reference section is empty" in src
+            assert "requires changing the reference" in src

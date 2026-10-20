@@ -204,3 +204,25 @@ def test_checkpoint_template_accepts_a_media_description():
         src = _load("task_checkpoint", lang)
         marker = "описание содержимого файла" if lang == "ru" else "description of the file's content"
         assert marker in src, f"task_checkpoint/{lang}: missing the media-description rule"
+
+
+def test_plan_template_requires_the_source_content_in_a_media_goal():
+    """A media step that illustrates part of an earlier result must carry that
+    part's complete description into goal and name concrete expected content in
+    its criterion — a content-free goal/criterion made every later image a copy
+    of the first one (the verifier had nothing to check)."""
+    for lang in ("ru", "en"):
+        src = _load("task_plan", lang).lower()
+        marker = "описание этой части" if lang == "ru" else "description of that part"
+        assert marker in src, f"task_plan/{lang}: missing the source-content rule"
+        assert "source_step" in src
+        assert "checkpoint_criteria" in src
+
+
+def test_replan_template_requires_the_source_content_in_a_media_goal():
+    """The re-planner rewrites the remaining tail from a truncated digest; it
+    must copy the planned part's description into the new goal too."""
+    for lang in ("ru", "en"):
+        src = _load("task_replan", lang).lower()
+        marker = "описание этой части" if lang == "ru" else "description of that part"
+        assert marker in src, f"task_replan/{lang}: missing the source-content rule"

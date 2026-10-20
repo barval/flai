@@ -591,6 +591,184 @@ function onTaskStage(data) {
     }
 }
 
+// Validation state of one step: a compact chip, the reason of the last
+// rejection and a collapsed per-attempt log. Deliberately type-agnostic — an
+// image step, a search step and a tool step are described by the same data
+// (status + attempts + log), so a new step type needs no new rendering.
+function buildStepValidation(m) {
+    const frag = document.createDocumentFragment();
+    // Only a plan step has a validation state: the plan, a question and the
+    // final answer are not verified.
+    if (m.kind !== 'direct' && m.kind !== 'subtask') return frag;
+    const attempts = Number(m.attempts) || 0;
+    const max = Number(m.attempts_max) || 3;
+    const log = Array.isArray(m.attempts_log) ? m.attempts_log.filter(Boolean) : [];
+    const rejected = log.filter(function(e) { return e.ok === false; });
+    const lastReject = rejected.length ? String(rejected[rejected.length - 1].reason || '') : '';
+    const status = String(m.status || '');
+    let emoji = '';
+    let label = '';
+    let cls = '';
+    let reason = '';
+
+    if (status === 'failed') {
+        emoji = '✖️';
+        label = t('task_step_failed');
+        cls = 'failed';
+        reason = String(m.failure_reason || '');
+    } else if (status === 'skipped') {
+        emoji = '⏭';
+        label = t('task_step_skipped');
+        cls = 'skipped';
+        reason = String(m.failure_reason || '');
+    } else if (status === 'interrupted') {
+        emoji = '⏸';
+        label = t('task_step_interrupted');
+        cls = 'interrupted';
+    } else if (m.artifact_note) {
+        // The artifact could not be described, so the check was skipped — the
+        // user must know the step was not verified (it did not fail).
+        emoji = '⚠️';
+        label = t('task_step_unchecked');
+        cls = 'unchecked';
+        reason = t('task_step_unchecked_reason');
+    } else if (status === 'running' || status === 'pending' || status === 'subtask_queued') {
+        if (attempts > 1) {
+            emoji = '🔁';
+            label = formatString(t('task_step_retrying_short'), { n: attempts, max: max });
+            cls = 'retrying';
+            const note = String((m.extra && m.extra.corrective_note) || '');
+            reason = note
+                ? formatString(t('task_step_retrying'), { reason: note, n: attempts, max: max })
+                : formatString(t('task_step_retrying_generic'), { n: attempts, max: max });
+        }
+    } else if (status === 'passed') {
+        if (attempts > 1) {
+            emoji = '🔁';
+            label = formatString(t('task_step_rewritten'), { n: attempts });
+            cls = 'rewritten';
+            if (lastReject) reason = formatString(t('task_step_rewritten_reason'), { reason: lastReject });
+        } else if (m.checkpoint_verdict === true) {
+            emoji = '✅';
+            label = t('task_step_checked');
+            cls = 'checked';
+        }
+    }
+    if (!label) return frag;
+
+    const row = document.createElement('div');
+    row.className = 'task-step-validation';
+    const chip = document.createElement('span');
+    chip.className = 'task-step-chip ' + cls;
+    chip.textContent = emoji + ' ' + label;
+    row.appendChild(chip);
+    if (reason) {
+        const reasonEl = document.createElement('div');
+        reasonEl.className = 'task-step-reason';
+        reasonEl.textContent = reason;
+        row.appendChild(reasonEl);
+    }
+    frag.appendChild(row);
+
+    if (log.length > 1) {
+        const details = document.createElement('details');
+        details.className = 'task-step-log';
+        const summary = document.createElement('summary');
+        summary.textContent = formatString(t('task_step_attempts'), { n: log.length });
+        details.appendChild(summary);
+        log.forEach(function(entry, i) {
+            const line = document.createElement('div');
+            line.className = 'task-step-log-line';
+            const n = Number(entry.n) || i + 1;
+            const why = String(entry.reason || '').trim();
+            line.textContent = (entry.ok ? '✅ ' : '✖️ ') + formatString(t('task_step_attempt'), { n: n }) +
+                (why ? ' — ' + why : '');
+            details.appendChild(line);
+        });
+        frag.appendChild(details);
+    }
+    return frag;
+}
+
+// Accepted results under the final answer: one card per produced file, one row
+// per text result, a single footnote for what was not delivered. Driven by the
+// server's `final_items` / `final_failures` (a passed step that produced
+// something), so it works for any task shape — no «scene → image» rule here.
+function appendFinalResults(div, m) {
+    const extra = m.extra || {};
+    const items = Array.isArray(extra.final_items) ? extra.final_items.filter(Boolean) : [];
+    const failures = Array.isArray(extra.final_failures) ? extra.final_failures.filter(Boolean) : [];
+    if (!items.length && !failures.length) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'task-final-results';
+    if (items.length) {
+        const title = document.createElement('div');
+        title.className = 'task-final-title';
+        title.textContent = '📦 ' + formatString(t('task_final_items'), { n: items.length });
+        wrap.appendChild(title);
+
+        const mediaItems = items.filter(function(it) { return it.file_path; });
+        if (mediaItems.length) {
+            const grid = document.createElement('div');
+            grid.className = 'task-final-grid';
+            mediaItems.forEach(function(it, i) {
+                const card = document.createElement('div');
+                card.className = 'task-final-card';
+                const img = document.createElement('img');
+                img.src = '/api/files/' + it.file_path;
+                img.className = 'attached-image';
+                img.loading = 'lazy';
+                img.alt = it.file_name || t('image');
+                img.title = t('click_to_enlarge');
+                img.onclick = function() { openImageModal(img.src, it.file_name || t('image')); };
+                card.appendChild(img);
+                const cap = document.createElement('div');
+                cap.className = 'task-final-caption';
+                const capText = document.createElement('span');
+                capText.textContent = (i + 1) + '. ' + String(it.goal || it.file_name || '');
+                cap.appendChild(capText);
+                const dl = document.createElement('a');
+                dl.href = '/api/files/' + it.file_path;
+                dl.download = it.file_name || 'file';
+                dl.className = 'download-link-inline';
+                dl.title = t('download_image');
+                dl.textContent = '⬇️';
+                dl.onclick = function(e) { e.stopPropagation(); };
+                cap.appendChild(dl);
+                card.appendChild(cap);
+                if (Number(it.attempts) > 1) {
+                    const badge = document.createElement('div');
+                    badge.className = 'task-final-badge';
+                    badge.textContent = '🔁 ' + formatString(t('task_step_rewritten'), { n: Number(it.attempts) });
+                    card.appendChild(badge);
+                }
+                grid.appendChild(card);
+            });
+            wrap.appendChild(grid);
+        }
+
+        items.filter(function(it) { return !it.file_path; }).forEach(function(it) {
+            const row = document.createElement('div');
+            row.className = 'task-final-row';
+            row.textContent = it.seq + '. ' + String(it.goal || '') + (it.summary ? ' — ' + it.summary : '');
+            wrap.appendChild(row);
+        });
+    }
+    if (failures.length) {
+        const shown = failures.slice(0, 5).map(function(it) {
+            const why = String(it.reason || '').trim();
+            return '#' + it.seq + ' ' + String(it.goal || '').slice(0, 80) + (why ? ' — ' + why : '');
+        });
+        if (failures.length > 5) shown.push('…');
+        const f = document.createElement('div');
+        f.className = 'task-final-failures';
+        f.textContent = '✖️ ' + t('task_final_failures') + ' ' + shown.join('; ');
+        wrap.appendChild(f);
+    }
+    div.appendChild(wrap);
+}
+
 function renderTaskMessage(m, task) {
     const div = document.createElement('div');
     const isUser = m.role === 'user';
@@ -717,6 +895,8 @@ function renderTaskMessage(m, task) {
             div.appendChild(toolSvc);
         }
     }
+    // Validation chip + reason + attempt log, for every step type alike.
+    div.appendChild(buildStepValidation(m));
     // Style search-result headers («[Результат поиска 1: Title]») as inline
     // spans — they stay with their own result content (url + text) instead of
     // being extracted to a separate pile. A block-level span wraps the heading
@@ -724,6 +904,7 @@ function renderTaskMessage(m, task) {
     body = body.replace(/^\[([^\]]+)\]\n/gm, '<span class="task-search-header">[$1]</span>\n');
     content.innerHTML = DOMPurify.sanitize(marked.parse(body));
     div.appendChild(content);
+    if (m.kind === 'final') appendFinalResults(div, m);
     // name per line (the server joins them) — each renders as a service line,
     // the same font as the plan line; the 📎 marks the block like 🗒️/⚙️ mark
     // the plan and step lines.

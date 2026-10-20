@@ -843,3 +843,57 @@ class TestTaskStagePayload:
 
     def test_cleared_stage_carries_no_count(self, monkeypatch):
         assert self._publish(monkeypatch, None) == [("valery", "task_stage", {"task_id": "t1", "stage": ""})]
+
+
+class TestStepValidationAndFinalResults:
+    """A+ D1: every step explains its validation state, the final answer lists
+    the accepted results (data-driven, no per-domain rule)."""
+
+    def test_step_validation_is_rendered_for_every_step(self):
+        assert "buildStepValidation(m)" in CHAT_TASKS
+        assert "task-step-chip" in CHAT_TASKS
+        assert "attempts_log" in CHAT_TASKS
+
+    def test_final_results_section_uses_the_server_data(self):
+        assert "appendFinalResults(div, m)" in CHAT_TASKS
+        assert "final_items" in CHAT_TASKS
+        assert "final_failures" in CHAT_TASKS
+
+    def test_step_message_serializes_the_validation_state(self):
+        for field in (
+            '"attempts":',
+            '"attempts_max":',
+            '"attempts_log":',
+            '"failure_reason":',
+            '"artifact_note":',
+            '"checkpoint_verdict":',
+        ):
+            assert field in ROUTES_TASKS, f"{field} missing from _step_message"
+
+    def test_validation_and_result_css_exists(self):
+        for cls in (
+            ".task-step-chip",
+            ".task-step-reason",
+            ".task-step-log",
+            ".task-final-grid",
+            ".task-final-failures",
+        ):
+            assert cls in CHAT_CSS, f"{cls} missing from chat.css"
+        assert ".dark-theme .task-step-chip" in CHAT_CSS
+
+    def test_validation_msgids_resolve_in_both_catalogs(self):
+        expected = {
+            "Checked automatically": "Проверено",
+            "Verification attempts ({n})": "Попытки",
+            "Accepted results: {n}": "Итог",
+            "Not delivered:": "Не удалось",
+        }
+        for msgid, ru_part in expected.items():
+            for lang in ("ru", "en"):
+                mo = ROOT / "translations" / lang / "LC_MESSAGES" / "messages.mo"
+                with mo.open("rb") as fh:
+                    resolved = gettext.GNUTranslations(fh).gettext(msgid)
+                if lang == "en":
+                    assert resolved == msgid
+                else:
+                    assert ru_part in resolved, (msgid, resolved)

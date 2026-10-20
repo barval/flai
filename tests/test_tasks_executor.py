@@ -3041,7 +3041,10 @@ def test_results_digest_reports_a_skipped_step_with_its_reason(db_env, test_app)
     )
 
     digest = ex._results_digest(task_id)
-    assert "→ skipped" in digest
+    # A skipped step is never presented as a result: it lands in the closing
+    # not-delivered list with its reason, so the answer can explain the gap.
+    assert "Not delivered" in digest
+    assert "Создай видео" in digest
     assert "Пропущено" in digest, "the reason travels with the step"
 
 
@@ -3826,3 +3829,202 @@ def test_rejected_artifact_is_replaced_by_the_passing_retry(db_env, test_app, ga
     assert step["status"] == "passed"
     assert step["extra"]["media"]["file_path"] == "x/second.png"
     assert "corrective_note" not in step["extra"]
+
+
+def test_attempts_log_records_each_verdict_for_the_ui(db_env, test_app):
+    """Every verdict lands in ``extra.attempts_log`` (chip + reason in the task
+    view): a redo must be explainable after the step was accepted."""
+    store = db_env
+    task_id = _mk_task(store, step_plan={"steps": [{"goal": "Draw it", "tool": "image_gen"}]})
+    step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw it", tool="image_gen")
+    executor = ex.TaskExecutor(app=test_app)
+
+    executor._log_attempt(step_id, 1, False, "no owl on the branch")
+    executor._log_attempt(step_id, 2, False, "the owl is cropped")
+    executor._log_attempt(step_id, 3, True, "matches")
+
+    log = store.get_step(step_id)["extra"]["attempts_log"]
+    assert [e["n"] for e in log] == [1, 2, 3]
+    assert [e["ok"] for e in log] == [False, False, True]
+    assert log[0]["reason"] == "no owl on the branch"
+
+
+def test_attempts_log_keeps_the_newest_entries(db_env, test_app):
+    store = db_env
+    task_id = _mk_task(store, step_plan={"steps": [{"goal": "Draw it", "tool": "image_gen"}]})
+    step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw it", tool="image_gen")
+    executor = ex.TaskExecutor(app=test_app)
+
+    for n in range(1, ex.ATTEMPTS_LOG_MAX + 4):
+        executor._log_attempt(step_id, n, False, f"reason {n}")
+
+    log = store.get_step(step_id)["extra"]["attempts_log"]
+    assert len(log) == ex.ATTEMPTS_LOG_MAX
+    assert log[-1]["n"] == ex.ATTEMPTS_LOG_MAX + 3
+
+
+def test_final_extras_keeps_only_accepted_steps_and_names_the_failures(db_env):
+    """The final answer's UI section is data-driven: a passed step with a file
+    becomes a card, a passed text step a row, a failed step only a footnote."""
+    store = db_env
+    task_id = _mk_task(store, step_plan={"steps": [{"goal": "seed", "tool": "image_gen"}]})
+
+    drawn = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw scene one", tool="image_gen")
+    store.update_step(
+        drawn,
+        status="passed",
+        attempts=2,
+        result="done",
+        extra={"media": {"file_path": "t/1.png", "file_name": "1.png", "file_type": "image/png"}},
+    )
+    broken = store.add_step(task_id=task_id, seq=2, kind="subtask", goal="Draw scene two", tool="image_gen")
+    store.update_step(broken, status="failed", attempts=3, last_error="⚠️ image module unavailable")
+    text = store.add_step(task_id=task_id, seq=3, kind="direct", goal="Summarise the story", tool="llm")
+    store.update_step(text, status="passed", result="A short story about owls")
+
+    extras = ex._final_extras(task_id)
+
+    assert [i["seq"] for i in extras["final_items"]] == [1, 3]
+    assert extras["final_items"][0]["file_name"] == "1.png"
+    assert extras["final_items"][0]["attempts"] == 2
+    assert "owls" in extras["final_items"][1]["summary"]
+    assert [f["seq"] for f in extras["final_failures"]] == [2]
+    assert "image module unavailable" in extras["final_failures"][0]["reason"]
+
+    # A one-step task's summary IS the step's result: the text row would repeat
+    # the answer verbatim, so it is dropped when the answer already carries it.
+    deduped = ex._final_extras(task_id, "A short story about owls")
+    assert [i["seq"] for i in deduped["final_items"]] == [1], "the text row repeating the answer is dropped"
+
+
+def test_results_digest_reports_a_rejected_attempt_as_not_delivered(db_env):
+    """A rejected attempt is not a result: the summary must not present it as
+    something the user received, only say that it was not delivered."""
+    store = db_env
+    task_id = _mk_task(store, step_plan={"steps": [{"goal": "seed", "tool": "image_gen"}]})
+
+    good = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Draw the fox", tool="image_gen")
+    store.update_step(good, status="passed", result="ACCEPTED PICTURE")
+    bad = store.add_step(task_id=task_id, seq=2, kind="subtask", goal="Draw the wolf", tool="image_gen")
+    store.update_step(bad, status="failed", result="REJECTED PICTURE", last_error="the wolf is missing")
+
+    digest = ex._results_digest(task_id)
+
+    assert "ACCEPTED PICTURE" in digest
+    assert "REJECTED PICTURE" not in digest
+    assert "Not delivered" in digest and "the wolf is missing" in digest
+
+
+def _seed_replan_task(store, third_goal="Assemble the album"):
+    plan = {
+        "steps": [
+            {"goal": "Draw scene one", "tool": "image_gen"},
+            {"goal": "Draw scene two", "tool": "image_gen"},
+            {"goal": third_goal, "tool": "llm"},
+        ]
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    for i, s in enumerate(plan["steps"], start=1):
+        sid = store.add_step(task_id=task_id, seq=i, kind="subtask", goal=s["goal"], tool=s["tool"])
+        store.update_step(sid, status="failed" if i == 1 else "pending", attempts=3 if i == 1 else 0)
+    store.update_task(task_id, next_step_index=1)
+    return task_id, plan
+
+
+def test_replan_reopens_the_failed_step_instead_of_adding_a_duplicate(db_env, test_app):
+    """A reviewer redo («repeat the goal verbatim») re-opens the SAME row: the
+    plan keeps one position and the attempt budget does not restart silently."""
+    store = db_env
+    task_id, plan = _seed_replan_task(store)
+    executor = ex.TaskExecutor(app=test_app)
+
+    task = executor._apply_replan(
+        store.get_task(task_id),
+        1,
+        [{"goal": "Draw scene one", "tool": "image_gen", "checkpoint_criteria": "a fox on a log"}],
+    )
+
+    row = next(r for r in store.get_task_steps(task_id) if r["seq"] == 1)
+    assert row["status"] == "pending", "the failed row is re-opened, not shadowed by a new one"
+    assert row["attempts"] == 0
+    assert row["extra"]["redos"] == 1
+    assert row["checkpoint_criteria"] == "a fox on a log", "the reviewer's refinement lands on the same row"
+    assert len(task["step_plan"]["steps"]) == 1, "the redo is not a second plan position"
+    assert task["next_step_index"] == 0, "execution resumes at the re-opened step"
+
+
+def test_replan_still_adds_a_genuinely_different_step(db_env, test_app):
+    store = db_env
+    task_id, _ = _seed_replan_task(store)
+    executor = ex.TaskExecutor(app=test_app)
+
+    task = executor._apply_replan(
+        store.get_task(task_id),
+        1,
+        [{"goal": "Draw scene two", "tool": "image_gen"}],
+    )
+
+    assert len(task["step_plan"]["steps"]) == 2
+    assert task["next_step_index"] == 1
+    new_row = next(r for r in store.get_task_steps(task_id) if r["seq"] == 2)
+    assert new_row["goal"] == "Draw scene two" and new_row["status"] == "pending"
+    failed = next(r for r in store.get_task_steps(task_id) if r["seq"] == 1)
+    assert failed["status"] == "failed", "an unrelated new step never re-opens the failed row"
+
+
+def test_replan_drops_the_repeated_step_when_the_redo_budget_is_spent(db_env, test_app, monkeypatch):
+    """A step that keeps failing must end failed — and never come back as a
+    duplicate position just because the reviewer repeated its goal again."""
+    store = db_env
+    task_id, _ = _seed_replan_task(store)
+    failed = next(r for r in store.get_task_steps(task_id) if r["seq"] == 1)
+    store.update_step(failed["id"], extra={"redos": ex.TASK_STEP_REDO_MAX})
+    executor = ex.TaskExecutor(app=test_app)
+
+    task = executor._apply_replan(
+        store.get_task(task_id),
+        1,
+        [{"goal": "Draw scene one", "tool": "image_gen"}],
+    )
+
+    row = next(r for r in store.get_task_steps(task_id) if r["seq"] == 1)
+    assert row["status"] == "failed"
+    assert row["extra"]["redos"] == ex.TASK_STEP_REDO_MAX
+    assert len(task["step_plan"]["steps"]) == 1, "the duplicate is dropped, the plan does not grow"
+
+
+def test_subtask_retry_logs_the_rejection_for_the_task_view(db_env, test_app, gate_open, monkeypatch):
+    """The rejected attempt is recorded before the retry, so the task view can
+    explain a redraw even when the next attempt passes."""
+    store = db_env
+    plan = _media_plan("image_gen", goal="Make an image")
+    plan["steps"][0]["checkpoint_criteria"] = "image matches the request"
+    task_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=30)
+
+    class _Q(_RecordingQ):
+        def add_request(self, **kwargs):
+            super().add_request(**kwargs)
+            return f"sub-queue-id-{len(self.calls)}", {}
+
+    recorded = _Q()
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: recorded)
+    monkeypatch.setattr(
+        ex.TaskExecutor, "_describe_step_image", lambda *a, **k: ("x/y.png — image description\na cat", 0.1)
+    )
+    monkeypatch.setattr(
+        ex,
+        "run_media_checkpoint",
+        lambda *a, **k: {"verdict": False, "explanation": "the astronaut is cropped", "exec_seconds": 0.3},
+    )
+    executor = ex.TaskExecutor(app=test_app)
+    executor._peek_subtask_result = lambda qid: (
+        {"status": "completed", "response": "an image", "file_path": "x/y.png"} if qid == "sub-queue-id-1" else None
+    )
+
+    executor._process_one_cycle(gate_open=True)
+    executor._process_one_cycle(gate_open=True)
+
+    log = store.get_task_steps(task_id)[0]["extra"]["attempts_log"]
+    assert log, "the rejection is persisted"
+    assert log[-1]["ok"] is False
+    assert "astronaut is cropped" in log[-1]["reason"]

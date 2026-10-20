@@ -78,6 +78,7 @@ TASKS_ENABLED=1                 # Executor kill switch (0 stops picking up new t
 TASK_QUIET_PERIOD_S=15          # Sliding quiet window: a task step is preempted when any chat request arrives after this many quiet seconds
 TASK_TOTAL_BUDGET_S=86400       # Pure execution budget per task (seconds); on expiry the task finishes with a final summary
 TASK_STEP_MAX_ATTEMPTS=3        # Step attempts including corrective checkpoint retries, then the step is failed
+TASK_STEP_REDO_MAX=1            # Plan-review re-opens of a failed step (a verbatim repeated goal); 0 disables
 TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
 TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check
 TASK_SUBTASK_ALIVE_UNKNOWN_MAX=3 # Cycles a failed liveness probe may hold a step before it is failed anyway

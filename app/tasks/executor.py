@@ -77,6 +77,7 @@ logger = logging.getLogger(__name__)
 TASK_POLL_INTERVAL_S = 1.0
 TASK_TOTAL_BUDGET_S = 86400
 TASK_STEP_MAX_ATTEMPTS = 3
+TASK_STEP_REDO_MAX = 1
 TASK_QUIET_PERIOD_S = 15
 
 # Test-visible seed for an expired budget (tests/test_tasks_executor.py).
@@ -625,25 +626,75 @@ def _document_tool_rule_and_note(task: dict, lang: str) -> tuple[str, str]:
         return document_tool_rule, ""
 
 
-def _results_digest(task_id: str, char_cap: int = 20000) -> str:
-    """All step results (the final-answer / summary corpus)."""
-    parts = []
+def _results_digest(task_id: str, char_cap: int = 40000) -> str:
+    """The accepted step results (the final-answer corpus).
+
+    Only ``passed`` steps are described as results: a rejected attempt is not
+    something the user received. The failures travel as a separate closing
+    line so the answer can explain what was not delivered without retelling
+    every redraw.
+    """
+    parts: list[str] = []
+    failures: list[str] = []
     for r in get_task_steps(task_id):
-        if r["kind"] in ("question", "user_input", "final"):
+        if r["kind"] in ("question", "user_input", "final", "plan_update"):
             continue
-        if r["status"] in ("passed", "failed", "interrupted", "subtask_queued", "skipped"):
-            label = f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']} → {r['status']}"
-            # A skipped step has no result of its own; its reason is what lets
-            # the final answer explain that the step never ran.
+        label = f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']}"
+        if r["status"] == "passed":
             body = (r["result"] or "")[:3000]
-            if not body and r["status"] == "skipped":
-                body = str(r.get("last_error") or "")[:500]
             parts.append(f"{label}: {body}" if body else label)
+        elif r["status"] in ("failed", "skipped"):
+            reason = str(r.get("last_error") or r.get("checkpoint_result") or "")[:500]
+            failures.append(f"{label} → {reason}" if reason else f"{label} → {r['status']}")
+    if failures:
+        parts.append("Not delivered (never describe these as results):\n" + "\n".join(failures))
     return "\n".join(parts)[:char_cap]
+
+
+def _final_extras(task_id: str, answer_text: str = "") -> dict[str, Any]:
+    """Accepted results for the final answer's UI section (data-driven).
+
+    The rule is «a passed step that produced something», not «a scene has an
+    image»: a media artifact becomes a card, a text result becomes a list item,
+    and the failures become one footnote. Any task shape therefore gets the
+    same presentation without a domain-specific branch.
+
+    ``answer_text`` is the final answer itself: a one-step task's summary IS
+    that step's result, so the text item would repeat the answer verbatim.
+    """
+    items: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    answer_norm = " ".join(str(answer_text or "").split())
+    for r in get_task_steps(task_id):
+        if r["kind"] in ("question", "user_input", "final", "plan_update"):
+            continue
+        goal = str(r.get("goal") or "").strip()
+        if r["status"] == "passed":
+            media = (r.get("extra") or {}).get("media") or {}
+            entry: dict[str, Any] = {"seq": int(r["seq"]), "goal": goal, "attempts": int(r.get("attempts") or 0)}
+            if media.get("file_path"):
+                entry.update({k: media.get(k) for k in ("file_path", "file_name", "file_type")})
+            else:
+                entry["summary"] = " ".join(str(r.get("result") or "").split())[:300]
+                if entry["summary"] and entry["summary"] in answer_norm:
+                    continue
+            items.append(entry)
+        elif r["status"] in ("failed", "skipped"):
+            failures.append(
+                {
+                    "seq": int(r["seq"]),
+                    "goal": goal,
+                    "reason": str(r.get("last_error") or r.get("checkpoint_result") or "")[:300],
+                }
+            )
+    return {"final_items": items, "final_failures": failures}
 
 
 # Upper bound of the expected-content text handed to a media verifier.
 REFERENCE_MAX_CHARS = 12000
+
+# How many verification attempts a step keeps for the task view's log.
+ATTEMPTS_LOG_MAX = 10
 
 
 def _recent_results_digest(task_id: str, char_cap: int = 10000) -> str:
@@ -1769,11 +1820,25 @@ class TaskExecutor:
         """Replace the plan tail from ``idx`` on; forward-only.
 
         ``steps[:idx]`` is copied verbatim — an executed step is immutable.
+
+        A redo of the just-consumed step is NOT a new plan position: the
+        reviewer repeats the goal word for word and the existing row is
+        re-opened. Appending a duplicate made the plan carry the same goal
+        twice and reset the attempt budget of a fresh row (a scene could be
+        generated six times through two «steps»).
         """
         task_id = task["id"]
         plan = self._plan_dict(task)
         steps = list(plan.get("steps") or [])
-        merged = list(steps[:idx]) + list(new_steps)
+        todo = list(new_steps)
+        reopen_pos: int | None = None
+        if idx > 0 and idx - 1 < len(steps) and todo and self._is_redo_of(steps[idx - 1], todo[0]):
+            row = next((r for r in get_task_steps(task_id) if int(r["seq"]) == idx), None)
+            if row and row.get("status") in ("failed", "skipped"):
+                reopen_pos = self._reopen_redo(row, todo[0])
+            # Either way the reviewer's duplicate is never a new plan position.
+            todo = todo[1:]
+        merged = list(steps[:idx]) + todo
         for pos, s in enumerate(merged):
             s["seq"] = pos + 1
         from app.tasks.store import delete_pending_steps_after, move_extra_steps_after
@@ -1783,16 +1848,67 @@ class TaskExecutor:
         # plan positions; move them out of the way of the grown tail first, or
         # the new step would take the answer's row (it is resolved by seq).
         move_extra_steps_after(task_id, idx, len(merged))
-        self._create_plan_step_rows(task_id, new_steps, start_pos=idx, meta={})
+        self._create_plan_step_rows(task_id, todo, start_pos=idx, meta={})
         revisions = list(plan.get("revisions") or [])
         revisions.append({"upto": idx, "total": len(merged)})
         update_task(
             task_id,
             step_plan={**plan, "steps": merged, "replanned_upto": idx, "revisions": revisions},
+            **({"next_step_index": reopen_pos} if reopen_pos is not None else {}),
         )
         logger.info(f"task {task_id}: plan rewritten at index {idx} ({len(merged)} steps total)")
         self._publish_task_update(task_id)
         return get_task(task_id) or task
+
+    @staticmethod
+    def _is_redo_of(prev: dict | None, cand: dict) -> bool:
+        """Is ``cand`` the reviewer's redo of the just-executed plan step?
+
+        Exact normalized goal + the same tool: the reviewer is told to repeat a
+        redo's goal word for word, so a paraphrase is a different step and is
+        never folded into the previous one.
+        """
+        if not isinstance(prev, dict) or not isinstance(cand, dict):
+            return False
+
+        def norm(text: Any) -> str:
+            return " ".join(str(text or "").split()).casefold()
+
+        prev_goal = norm(prev.get("goal"))
+        return (
+            bool(prev_goal)
+            and prev_goal == norm(cand.get("goal"))
+            and str(prev.get("tool") or "") == str(cand.get("tool") or "")
+        )
+
+    def _reopen_redo(self, row: dict, cand: dict) -> int | None:
+        """Re-open the failed row for a redo (no new plan position).
+
+        Returns the plan position to resume from (``seq - 1``), or None when
+        the redo budget is spent — a step that keeps failing must end failed
+        rather than loop for ever behind a flat plan.
+        """
+        extra = dict(row.get("extra") or {})
+        redos = int(extra.get("redos") or 0)
+        redo_max = int(self._cfg("TASK_STEP_REDO_MAX", TASK_STEP_REDO_MAX))
+        if redos >= redo_max:
+            logger.warning(
+                f"task step {row.get('seq')}: redo budget spent ({redos}/{redo_max}) — the repeated step is dropped"
+            )
+            return None
+        extra["redos"] = redos + 1
+        update_step(
+            row["id"],
+            status="pending",
+            result="",
+            last_error="",
+            attempts=0,
+            goal=str(cand.get("goal") or row.get("goal") or ""),
+            checkpoint_criteria=str(cand.get("checkpoint_criteria") or row.get("checkpoint_criteria") or ""),
+            extra=extra,
+        )
+        logger.info(f"task step {row.get('seq')}: redo of a failed step re-opened (redo {redos + 1}/{redo_max})")
+        return int(row["seq"]) - 1
 
     def _plan_dict(self, task: dict) -> dict:
         """The task's step_plan as a dict (tolerant of the legacy list form)."""
@@ -2043,6 +2159,8 @@ class TaskExecutor:
                     checkpoint_result=str(checkpoint.get("explanation", "")),
                     checkpoint_verdict=bool(checkpoint.get("verdict")),
                 )
+                if checkpoint:
+                    self._log_attempt(row["id"], attempts + 1, True, str(checkpoint.get("explanation") or ""))
                 update_task(task_id, next_step_index=idx + 1)
                 self._maybe_extract_facts(task, row, result)
                 return "continue"
@@ -2069,6 +2187,7 @@ class TaskExecutor:
                     exec_seconds=elapsed,
                     extra=step_extra,
                 )
+                self._log_attempt(row["id"], attempts + 1, False, result[:500] or "tool error")
                 update_task(task_id, next_step_index=idx + 1)
                 return "continue"
 
@@ -2117,6 +2236,7 @@ class TaskExecutor:
                 checkpoint_verdict=False,
             )
             corrective_note = str(checkpoint.get("explanation") or "")
+            self._log_attempt(row["id"], attempts + 1, False, corrective_note)
             logger.info(
                 f"task {task_id} step {idx + 1} checkpoint rejected (attempt {attempts + 1}/{max_attempts})"
                 f" — retrying with the mismatch in context"
@@ -2143,6 +2263,28 @@ class TaskExecutor:
 
         if task:
             publish_task_stage(self.app, task, None)
+
+    def _log_attempt(self, step_id: str, attempt: int, ok: bool, reason: str = "") -> None:
+        """Record one verification attempt in the step's ``extra`` (UI log).
+
+        Re-reads the row so a caller that just rewrote ``extra`` (a media
+        retry merges media + note in one write) cannot lose the log. The log is
+        what lets the task view explain, after the step was accepted, why the
+        picture was redrawn — otherwise only the last reason survives.
+        """
+        row = get_step(step_id) or {}
+        extra = dict(row.get("extra") or {})
+        log = [e for e in (extra.get("attempts_log") or []) if isinstance(e, dict)]
+        log.append(
+            {
+                "n": int(attempt or 0),
+                "ok": bool(ok),
+                "reason": str(reason or "")[:500],
+                "at": _now_iso(),
+            }
+        )
+        extra["attempts_log"] = log[-ATTEMPTS_LOG_MAX:]
+        update_step(step_id, extra=extra)
 
     def _end_step(self, task_id: str, step_id: str, status: str, **fields: Any) -> None:
         """Close a step attempt: persist the final row state and retract the
@@ -2787,6 +2929,7 @@ class TaskExecutor:
                     result=result_text,
                     extra={**merged_extra, "corrective_note": reason, "subtask_polls": 0},
                 )
+                self._log_attempt(row["id"], attempts, False, reason)
                 logger.warning(
                     f"task {task_id} step {idx + 1}: subtask checkpoint rejected "
                     f"(attempt {attempts}/{max_attempts}) — retrying with the mismatch in the prompt"
@@ -2806,6 +2949,7 @@ class TaskExecutor:
                 checkpoint_verdict=False,
                 extra=merged_extra,
             )
+            self._log_attempt(row["id"], attempts, False, reason)
             self._clear_task_stage(task)
             logger.warning(f"task {task_id} step {idx + 1}: subtask checkpoint rejected — attempts spent, continuing")
             update_task(task_id, next_step_index=idx + 1)
@@ -2821,6 +2965,8 @@ class TaskExecutor:
         )
         self._clear_task_stage(task)
         update_step(row["id"], extra=merged_extra)
+        if checkpoint:
+            self._log_attempt(row["id"], int(row.get("attempts") or 1), True, str(checkpoint.get("explanation") or ""))
         logger.info(f"task {task_id} step {idx + 1}: subtask completed ({queue_id})")
         update_task(task_id, next_step_index=idx + 1)
         return "done"
@@ -2886,9 +3032,11 @@ class TaskExecutor:
         last_step = _last_meaningful_step(task_id)
         if last_step and _results_match(text, str(last_step.get("result") or "")):
             text = str(last_step.get("result") or "")
-            final_meta = dict(last_step.get("extra") or {})  # reuse the step's header meta
+            # Reuse the step's header meta; its media is NOT reused — the
+            # artifact belongs to the result card below, not to the answer.
+            final_meta = {k: v for k, v in dict(last_step.get("extra") or {}).items() if k != "media"}
         self._clear_running_step(task_id)
-        add_final_step(task_id, text, meta=final_meta)
+        add_final_step(task_id, text, meta={**final_meta, **_final_extras(task_id, text)})
         self._extract_facts_text(task, text)
         update_task(task_id, status="completed", completed_at=_now_iso())
         logger.info(f"task {task_id} completed")
@@ -2908,7 +3056,7 @@ class TaskExecutor:
 
             text = f"⚠️ {_tr(_FALLBACK_BUDGET_NO_SUMMARY, lang=lang)}"
         self._clear_running_step(task_id)
-        add_final_step(task_id, text, meta=final_meta)
+        add_final_step(task_id, text, meta={**final_meta, **_final_extras(task_id, text)})
         self._extract_facts_text(task, text)
         update_task(task_id, status="expired", abort_reason="budget_expired", completed_at=_now_iso())
         logger.info(f"task {task_id} expired (budget) — final summary recorded")

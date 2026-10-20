@@ -451,6 +451,7 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         content = body
     else:  # user_input / final / plan — no step header
         content = body
+    extra = row.get("extra") or {}
     msg = {
         "id": row.get("id"),
         "role": "user" if kind == "user_input" else "assistant",
@@ -460,12 +461,22 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         "seq": seq,
         "total_steps": total,
         "status": row.get("status"),
+        # Validation state for the step line: how many attempts the step took,
+        # why the last one was rejected and what happened per attempt. The task
+        # view renders a chip + the reason, so a redrawn picture is explained
+        # instead of silently replacing the previous one.
+        "attempts": int(row.get("attempts") or 0),
+        "attempts_max": int(current_app.config.get("TASK_STEP_MAX_ATTEMPTS") or 3),
+        "attempts_log": [e for e in (extra.get("attempts_log") or []) if isinstance(e, dict)],
+        "failure_reason": str(row.get("last_error") or row.get("checkpoint_result") or ""),
+        "checkpoint_verdict": row.get("checkpoint_verdict"),
+        "artifact_note": str(extra.get("artifact_note") or ""),
         "tool": row.get("tool") or "",
         "exec_seconds": float(row.get("exec_seconds") or 0.0),
-        "model_name": (row.get("extra") or {}).get("model_name", ""),
-        "model_type": (row.get("extra") or {}).get("model_type", ""),
-        "usage": (row.get("extra") or {}).get("usage") or {},
-        "extra": row.get("extra") or {},
+        "model_name": extra.get("model_name", ""),
+        "model_type": extra.get("model_type", ""),
+        "usage": extra.get("usage") or {},
+        "extra": extra,
         # task_steps has no created_at: a step's timestamp is when it started
         # running (a queued step with no timestamp renders without a date).
         "created_at": _iso(row.get("started_at") or row.get("finished_at")),

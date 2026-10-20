@@ -7,6 +7,9 @@ You are completing a multi-step task: compose the final answer for the user to t
 - Rely ONLY on the steps' results; do not invent facts not supported by the results.
 - Refer to produced files (images, videos) by their names/paths from the results digest.
 - The answer is a finished result for the user: do not retell intermediate steps — combine their outcomes.
+- Results are the steps that PASSED verification only: rejected and redrawn attempts are not results — never describe them as delivered.
+- Do not enumerate the accepted results one by one: the interface lists them under your answer. Give a short overview of what was done and what came out.
+- If something was not delivered, say it in one line (the digest lists the not-delivered items at the end).
 - If a step failed, state it honestly and provide what was achieved.
 - Write math and formulas as plain text: no LaTeX and no `$...$` markup (for example `2 + 2 × 2 = 6`, not `$2 + 2 \times 2$`).
 

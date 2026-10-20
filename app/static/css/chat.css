@@ -320,6 +320,196 @@
     color: #d2b4de;
 }
 
+/* Step validation state (Tasks): a compact chip, the reason of the last
+   rejection and a collapsed per-attempt log. The same shape describes every
+   step type — the data (status + attempts + log) is what differs. */
+.task-step-validation {
+    margin: 0.2rem 0 0.35rem;
+}
+
+.task-step-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid #d5dbe3;
+    color: #5a6a7a;
+    background: #f6f8fa;
+    white-space: nowrap;
+}
+
+.task-step-chip.checked {
+    color: #1e7b45;
+    border-color: #b7e1c6;
+    background: #eefaf3;
+}
+
+.task-step-chip.rewritten {
+    color: #1f5f9e;
+    border-color: #bcd6ef;
+    background: #eef5fd;
+}
+
+.task-step-chip.retrying,
+.task-step-chip.unchecked {
+    color: #8a5a00;
+    border-color: #f0d9a8;
+    background: #fdf6e8;
+}
+
+.task-step-chip.failed {
+    color: #b3261e;
+    border-color: #f2c2bf;
+    background: #fdeeee;
+}
+
+.task-step-chip.skipped,
+.task-step-chip.interrupted {
+    color: #6b6b6b;
+    border-color: #dcdcdc;
+    background: #f4f4f4;
+}
+
+.task-step-reason {
+    margin-top: 0.2rem;
+    font-size: 0.8rem;
+    color: #7a4a00;
+    white-space: pre-wrap;
+}
+
+.task-step-log {
+    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    color: #5a6a7a;
+}
+
+.task-step-log summary {
+    cursor: pointer;
+}
+
+.task-step-log-line {
+    margin: 0.1rem 0 0 0.9rem;
+}
+
+/* Accepted results under the final answer. */
+.task-final-results {
+    margin-top: 0.6rem;
+}
+
+.task-final-title {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.task-final-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.6rem;
+}
+
+.task-final-card {
+    border: 1px solid #e2e6ea;
+    border-radius: 8px;
+    padding: 0.35rem;
+    background: #fafbfc;
+}
+
+.task-final-card .attached-image {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+}
+
+.task-final-caption {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: #33414f;
+}
+
+.task-final-caption span {
+    flex: 1;
+}
+
+.task-final-badge {
+    font-size: 0.72rem;
+    color: #1f5f9e;
+    margin-top: 0.15rem;
+}
+
+.task-final-row {
+    font-size: 0.85rem;
+    margin: 0.15rem 0;
+}
+
+.task-final-failures {
+    margin-top: 0.45rem;
+    font-size: 0.8rem;
+    color: #b3261e;
+}
+
+.dark-theme .task-step-chip {
+    border-color: #3a4652;
+    background: #26303a;
+    color: #b9c4cf;
+}
+
+.dark-theme .task-step-chip.checked {
+    color: #7fd6a4;
+    border-color: #2f5c44;
+    background: #1e3327;
+}
+
+.dark-theme .task-step-chip.rewritten {
+    color: #8ec2f2;
+    border-color: #2f4a66;
+    background: #1c2b3c;
+}
+
+.dark-theme .task-step-chip.retrying,
+.dark-theme .task-step-chip.unchecked {
+    color: #e5c07b;
+    border-color: #5c4a2a;
+    background: #332a1a;
+}
+
+.dark-theme .task-step-chip.failed {
+    color: #f28b82;
+    border-color: #6b3a36;
+    background: #3a2220;
+}
+
+.dark-theme .task-step-chip.skipped,
+.dark-theme .task-step-chip.interrupted {
+    color: #a9b2bb;
+    border-color: #3d444c;
+    background: #2a2f35;
+}
+
+.dark-theme .task-step-reason {
+    color: #e5c07b;
+}
+
+.dark-theme .task-step-log {
+    color: #a9b2bb;
+}
+
+.dark-theme .task-final-card {
+    border-color: #3a4652;
+    background: #232b33;
+}
+
+.dark-theme .task-final-caption {
+    color: #c8d2dc;
+}
+
+.dark-theme .task-final-failures {
+    color: #f28b82;
+}
+
 /* The transcript of an audio attached to a task («🎤 Распознано (name): …»):
    the chat shows it as its own message in the regular reading font — here it
    keeps the chat's prefix but NOT the italic service-line font, a long

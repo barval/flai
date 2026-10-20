@@ -36,6 +36,10 @@ _STEP_FIELDS = {
     "status",
     "result",
     "prompt",
+    # A redo re-opens the failed row with the reviewer's refined wording
+    # (the plan review may sharpen the goal/criterion of the same step).
+    "goal",
+    "checkpoint_criteria",
     "checkpoint_result",
     "checkpoint_verdict",
     "attempts",

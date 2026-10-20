@@ -3898,3 +3898,48 @@ msgstr "Критерий готовности:"
 #: app/tasks/executor.py
 msgid "Available rooms:"
 msgstr "Доступные комнаты:"
+
+msgid "Checked automatically"
+msgstr "Проверено автоматически"
+
+msgid "Redone ×{n}"
+msgstr "Переделано ×{n}"
+
+msgid "Retrying (attempt {n} of {max})"
+msgstr "Переделываю (попытка {n} из {max})"
+
+msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
+msgstr "Автопроверка не пройдена: {reason}. Переделываю (попытка {n} из {max})"
+
+msgid "Redoing after the check (attempt {n} of {max})"
+msgstr "Переделываю после замечания проверки (попытка {n} из {max})"
+
+msgid "Redone after the check: {reason}"
+msgstr "Переделано после проверки: {reason}"
+
+msgid "Not delivered"
+msgstr "Не выполнено"
+
+msgid "Skipped"
+msgstr "Пропущено"
+
+msgid "Interrupted"
+msgstr "Прервано"
+
+msgid "Not verified"
+msgstr "Без проверки"
+
+msgid "Check skipped: could not describe the image"
+msgstr "Проверка пропущена: не удалось описать изображение"
+
+msgid "Verification attempts ({n})"
+msgstr "Попытки проверки ({n})"
+
+msgid "attempt {n}"
+msgstr "попытка {n}"
+
+msgid "Accepted results: {n}"
+msgstr "Итог: {n}"
+
+msgid "Not delivered:"
+msgstr "Не удалось:"

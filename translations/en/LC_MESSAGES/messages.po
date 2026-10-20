@@ -3866,3 +3866,48 @@ msgstr "Checkpoint hint:"
 #: app/tasks/executor.py
 msgid "Available rooms:"
 msgstr "Available rooms:"
+
+msgid "Checked automatically"
+msgstr "Checked automatically"
+
+msgid "Redone ×{n}"
+msgstr "Redone ×{n}"
+
+msgid "Retrying (attempt {n} of {max})"
+msgstr "Retrying (attempt {n} of {max})"
+
+msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
+msgstr "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
+
+msgid "Redoing after the check (attempt {n} of {max})"
+msgstr "Redoing after the check (attempt {n} of {max})"
+
+msgid "Redone after the check: {reason}"
+msgstr "Redone after the check: {reason}"
+
+msgid "Not delivered"
+msgstr "Not delivered"
+
+msgid "Skipped"
+msgstr "Skipped"
+
+msgid "Interrupted"
+msgstr "Interrupted"
+
+msgid "Not verified"
+msgstr "Not verified"
+
+msgid "Check skipped: could not describe the image"
+msgstr "Check skipped: could not describe the image"
+
+msgid "Verification attempts ({n})"
+msgstr "Verification attempts ({n})"
+
+msgid "attempt {n}"
+msgstr "attempt {n}"
+
+msgid "Accepted results: {n}"
+msgstr "Accepted results: {n}"
+
+msgid "Not delivered:"
+msgstr "Not delivered:"

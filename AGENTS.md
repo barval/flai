@@ -158,6 +158,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Fix branches** must reference the main branch they target. Example: `fix/v12.1-chat-duplicate-render-round2`.
   - **Feature branches** must reference the main branch they target. Example: `features/v8.0-rag-classic-and-reranker`.
   - Fixes and features are merged into the current main branch (the one designated by the user) **only with the user's approval**.
+  - **Commit messages are English only.** Russian is allowed only for proper nouns (the localized brand name) and verbatim quoted user-facing strings; the subject and the body are otherwise written in English. `.githooks/commit-msg` enforces this — enable it once per clone with `git config core.hooksPath .githooks`. History is never rewritten to retro-fit old messages: the rule applies to commits made from now on.
   - **NEVER make commits unless explicitly asked.**
   - Always ask before using `git add`, `git commit`, `git push`, `git tag`, or `git revert`.
   - Reverting commits without user permission is also forbidden.

@@ -307,6 +307,7 @@ const STAGE_COUNTER_KEYS = {
     rlm_step: 'stage_rlm_step',
     crawl_page: 'stage_crawl_page',
     indexing_document: 'stage_indexing_document',
+    continuity: 'stage_continuity',
 };
 
 function getStageLabel(stage, count) {

@@ -4087,3 +4087,8 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ msgid "stage_indexing_document"
 #~ msgstr "Создаю индекс для документа..."
 
+msgid "Visual continuity"
+msgstr "Визуальная непрерывность"
+
+msgid "Rebuild"
+msgstr "Пересобрать"

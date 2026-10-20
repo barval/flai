@@ -4046,3 +4046,8 @@ msgstr "Could not connect to video generation service"
 #~ msgid "stage_indexing_document"
 #~ msgstr "Creating index for document..."
 
+msgid "Visual continuity"
+msgstr "Visual continuity"
+
+msgid "Rebuild"
+msgstr "Rebuild"

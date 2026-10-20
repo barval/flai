@@ -392,11 +392,40 @@ def _task_summary(
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
     }
-    if token_totals is not None:
-        summary["token_totals"] = token_totals.get(task["id"]) or {"prompt_tokens": 0, "completion_tokens": 0}
+    base_totals = (
+        token_totals.get(task["id"]) if token_totals is not None else None
+    ) or {"prompt_tokens": 0, "completion_tokens": 0}
+    summary["token_totals"] = _add_plan_usage(task, base_totals)
     if queue_positions and task.get("status") == "queued":
         summary["queue_position"] = queue_positions.get(str(task["id"]), 0)
     return summary
+
+
+def _add_plan_usage(task: dict, totals: dict[str, int]) -> dict[str, int]:
+    """Add the planner and every plan-review call to the step totals.
+
+    Those calls are not ``task_steps`` rows: the planner stores its usage in
+    ``step_plan.plan_meta`` and each accepted rewrite in
+    ``step_plan.revision_meta``, so a step-only sum under-reported the task.
+    """
+    plan = task.get("step_plan") if isinstance(task.get("step_plan"), dict) else {}
+    metas = [plan.get("plan_meta")]
+    revision_meta = plan.get("revision_meta")
+    if isinstance(revision_meta, dict):
+        metas.extend(revision_meta.values())
+    result = {
+        "prompt_tokens": int(totals.get("prompt_tokens") or 0),
+        "completion_tokens": int(totals.get("completion_tokens") or 0),
+    }
+    for meta in metas:
+        if not isinstance(meta, dict):
+            continue
+        usage = meta.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        result["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
+        result["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+    return result
 
 
 def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
@@ -408,8 +437,26 @@ def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
         c.execute(
             """
             SELECT task_id,
-                   COALESCE(SUM((extra->'usage'->>'prompt_tokens')::bigint), 0) AS p,
-                   COALESCE(SUM((extra->'usage'->>'completion_tokens')::bigint), 0) AS c
+                   COALESCE(SUM(
+                       COALESCE(
+                           (extra->'usage_total'->>'prompt_tokens')::bigint,
+                           (extra->'usage'->>'prompt_tokens')::bigint, 0
+                       )
+                       + COALESCE(
+                           (extra->'checkpoint_usage_total'->>'prompt_tokens')::bigint,
+                           (extra->'checkpoint_usage'->>'prompt_tokens')::bigint, 0
+                       )
+                   ), 0) AS p,
+                   COALESCE(SUM(
+                       COALESCE(
+                           (extra->'usage_total'->>'completion_tokens')::bigint,
+                           (extra->'usage'->>'completion_tokens')::bigint, 0
+                       )
+                       + COALESCE(
+                           (extra->'checkpoint_usage_total'->>'completion_tokens')::bigint,
+                           (extra->'checkpoint_usage'->>'completion_tokens')::bigint, 0
+                       )
+                   ), 0) AS c
             FROM task_steps WHERE task_id::text = ANY(%s) GROUP BY task_id
             """,
             (task_ids,),

@@ -226,12 +226,56 @@ def get_users():
                         (SELECT COUNT(*) FROM api_tokens
                          WHERE login = %s AND revoked_at IS NULL) as api_keys_count,
                         (SELECT COUNT(*) FROM tasks
-                         WHERE user_id = %s) as tasks_count
+                         WHERE user_id = %s) as tasks_count,
+                        (SELECT COALESCE(SUM(
+                            COALESCE((ts.extra->'usage_total'->>'prompt_tokens')::bigint,
+                                     (ts.extra->'usage'->>'prompt_tokens')::bigint, 0)
+                          + COALESCE((ts.extra->'checkpoint_usage_total'->>'prompt_tokens')::bigint,
+                                     (ts.extra->'checkpoint_usage'->>'prompt_tokens')::bigint, 0)
+                         ), 0)
+                         FROM task_steps ts JOIN tasks t2 ON ts.task_id = t2.id
+                         WHERE t2.user_id = %s) as task_outgoing,
+                        (SELECT COALESCE(SUM(
+                            COALESCE((ts.extra->'usage_total'->>'completion_tokens')::bigint,
+                                     (ts.extra->'usage'->>'completion_tokens')::bigint, 0)
+                          + COALESCE((ts.extra->'checkpoint_usage_total'->>'completion_tokens')::bigint,
+                                     (ts.extra->'checkpoint_usage'->>'completion_tokens')::bigint, 0)
+                         ), 0)
+                         FROM task_steps ts JOIN tasks t2 ON ts.task_id = t2.id
+                         WHERE t2.user_id = %s) as task_incoming,
+                        (SELECT COALESCE(SUM(COALESCE((u.usage->>'prompt_tokens')::bigint, 0)), 0)
+                         FROM tasks t3
+                         CROSS JOIN LATERAL (
+                             SELECT t3.step_plan->'plan_meta'->'usage' AS usage
+                             UNION ALL
+                             SELECT rev.value->'usage'
+                             FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
+                         ) u
+                         WHERE t3.user_id = %s) as plan_outgoing,
+                        (SELECT COALESCE(SUM(COALESCE((u.usage->>'completion_tokens')::bigint, 0)), 0)
+                         FROM tasks t3
+                         CROSS JOIN LATERAL (
+                             SELECT t3.step_plan->'plan_meta'->'usage' AS usage
+                             UNION ALL
+                             SELECT rev.value->'usage'
+                             FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
+                         ) u
+                         WHERE t3.user_id = %s) as plan_incoming
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = %s
                 """,
-                    (u["login"], u["login"], u["login"], u["login"], u["login"]),
+                    (
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                    ),
                 )
                 stats = c.fetchone()
 
@@ -239,8 +283,18 @@ def get_users():
                 u_dict["sessions_count"] = stats["sessions"] if stats else 0
                 u_dict["tasks_count"] = stats["tasks_count"] if stats else 0
                 u_dict["messages_count"] = stats["messages"] if stats else 0
-                u_dict["outgoing_tokens"] = stats["outgoing_tokens"] if stats else 0
-                u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0
+                # Chat + task steps (incl. checkpoints and retries) + planner /
+                # plan reviews: the Users tab shows the user's whole LLM spend.
+                u_dict["outgoing_tokens"] = (
+                    (stats["outgoing_tokens"] or 0)
+                    + (stats["task_outgoing"] or 0)
+                    + (stats["plan_outgoing"] or 0)
+                ) if stats else 0
+                u_dict["incoming_tokens"] = (
+                    (stats["incoming_tokens"] or 0)
+                    + (stats["task_incoming"] or 0)
+                    + (stats["plan_incoming"] or 0)
+                ) if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0

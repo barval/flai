@@ -134,6 +134,18 @@ _CONTINUITY_COMPACT_RETRY_NOTE = (
 # Spec §3 give-up flag semantics live in the DB column ``visual_bible_attempted``.
 
 
+def _merge_usage(total: Any, current: Any) -> dict[str, int] | None:
+    """Sum two token-usage dicts (``None`` when both are empty)."""
+    t = total if isinstance(total, dict) else {}
+    c = current if isinstance(current, dict) else {}
+    if not t and not c:
+        return None
+    return {
+        "prompt_tokens": int(t.get("prompt_tokens") or 0) + int(c.get("prompt_tokens") or 0),
+        "completion_tokens": int(t.get("completion_tokens") or 0) + int(c.get("completion_tokens") or 0),
+    }
+
+
 def _bible_has_content(bible: Any) -> bool:
     """Is the continuity sheet populated with anything renderable?"""
     return isinstance(bible, dict) and any(
@@ -2363,6 +2375,23 @@ class TaskExecutor:
                     "completion_tokens": int(outcome["usage"].get("completion_tokens") or 0),
                 }
             checkpoint = outcome.get("checkpoint") or {}
+            # The verifier is a separate model call: keep its tokens on the step
+            # (the header total sums usage + checkpoint_usage).
+            if checkpoint.get("usage"):
+                step_extra["checkpoint_usage"] = {
+                    "prompt_tokens": int(checkpoint["usage"].get("prompt_tokens") or 0),
+                    "completion_tokens": int(checkpoint["usage"].get("completion_tokens") or 0),
+                }
+            # A corrective retry spends another call: keep the sum across all
+            # attempts of this step so the task total never loses them.
+            previous_extra = row.get("extra") or {}
+            for usage_key in ("usage", "checkpoint_usage"):
+                total = _merge_usage(
+                    previous_extra.get(f"{usage_key}_total") or previous_extra.get(usage_key),
+                    step_extra.get(usage_key),
+                )
+                if total:
+                    step_extra[f"{usage_key}_total"] = total
             self._add_budget(task_id, elapsed + float(checkpoint.get("exec_seconds") or 0.0))
             # The step's displayed duration covers the tool/step call AND its
             # checkpoint verification, so the header's ⏱️/🚀 match the
@@ -3288,6 +3317,17 @@ class TaskExecutor:
         # (camera) or a failed description falls through to the criteria check.
         inspector = get_inspector(str(row.get("tool") or ""))
         artifact_step = bool(inspector and media.get("file_path"))
+        # A corrective retry spends another call: keep the sum across all
+        # attempts of this step so the task/administrator totals never lose
+        # the rejected generations and their checkpoints.
+        previous_extra = row.get("extra") or {}
+        for usage_key in ("usage", "checkpoint_usage"):
+            total = _merge_usage(
+                previous_extra.get(f"{usage_key}_total") or previous_extra.get(usage_key),
+                merged_extra.get(usage_key),
+            )
+            if total:
+                merged_extra[f"{usage_key}_total"] = total
         # Spec §5: a TRANSIENT continuity clause travels into the checkpoint
         # input ONLY — the local ``step`` dict is never written back with
         # update_step, so the redo machinery keeps the planner's criteria.
@@ -3317,9 +3357,19 @@ class TaskExecutor:
                     lang=task.get("lang") or "ru",
                 )
                 self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
+                if checkpoint.get("usage"):
+                    merged_extra["checkpoint_usage"] = {
+                        "prompt_tokens": int(checkpoint["usage"].get("prompt_tokens") or 0),
+                        "completion_tokens": int(checkpoint["usage"].get("completion_tokens") or 0),
+                    }
         if not artifact_step and str(step.get("checkpoint_criteria", "") or "").strip():
             checkpoint = run_checkpoint(self.app, step, checkpoint_input, lang=task.get("lang") or "ru")
             self._add_budget(task_id, float(checkpoint.get("exec_seconds") or 0.0))
+            if checkpoint.get("usage"):
+                merged_extra["checkpoint_usage"] = {
+                    "prompt_tokens": int(checkpoint["usage"].get("prompt_tokens") or 0),
+                    "completion_tokens": int(checkpoint["usage"].get("completion_tokens") or 0),
+                }
         if checkpoint and not checkpoint.get("verdict") and checkpoint.get("severity") == "minor":
             # Minor differences (style, lighting, small details) are not worth
             # another diffusion run — accept the picture, keep the note.

@@ -36,6 +36,36 @@ def test_select_cards_no_match_returns_empty():
                         "её появление") == []
 
 
+def test_select_cards_matches_multi_word_alias_lemma():
+    # Russian strings are test data (declined multi-word alias).
+    bible = {"style": "s", "characters": [], "places": [],
+             "props": [{"id": "hut", "aliases": ["Баба Яга"], "look": "old witch"}]}
+    assert select_cards(bible, "Нарисуй Бабу Ягу у избушки")[0]["id"] == "hut"
+
+
+def test_select_cards_multi_word_alias_requires_all_tokens():
+    bible = {"style": "s", "characters": [], "places": [],
+             "props": [{"id": "hut", "aliases": ["Баба Яга"], "look": "old witch"}]}
+    assert select_cards(bible, "Яга ушла") == []
+
+
+def test_select_cards_multi_word_alias_case_insensitive():
+    bible = {"style": "s", "characters": [], "places": [],
+             "props": [{"id": "hut", "aliases": ["Баба Яга"], "look": "old witch"}]}
+    assert select_cards(bible, "бabay- нет, а вот БАБА ЯГА летит")[0]["id"] == "hut"
+
+
+def test_sanitizer_removes_citation_up_to_200_chars():
+    payload = "источник: " + "x" * 190
+    assert sanitize_reference_markers(f"Сцена 8 ({payload}) нарисована") == "Сцена 8 нарисована"
+
+
+def test_sanitizer_keeps_oversized_citation_payload():
+    payload = "источник: " + "x" * 201
+    text = f"Сцена 8 ({payload})"
+    assert sanitize_reference_markers(text) == text
+
+
 def test_render_sheet_shape():
     text = render_sheet({"style": "storybook, warm colors",
                          "characters": [{"id": "zhenya", "aliases": ["Женя"], "look": "boy, freckles"}],

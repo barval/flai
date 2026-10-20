@@ -5,7 +5,8 @@ No Flask app, no DB, no LLM calls — deterministic text processing only:
 
 - ``parse_bible``: extract and schema-validate the continuity sheet from LLM prose.
 - ``select_cards``: match continuity cards against arbitrary texts (substring,
-  then lemma via pymorphy3, case-insensitive).
+  then lemma via pymorphy3, case-insensitive; multi-word aliases match
+  word-wise by lemma).
 - ``render_sheet``: compact text sheet injected into image-generation prompts.
 - ``sanitize_reference_markers``: strip source-reference artifacts (line ranges,
   source pointers) left by the extractor, keeping scene numbering and quotes.
@@ -23,7 +24,7 @@ _CARD_KEYS = ("characters", "places", "props")
 # "(){}" pair behind; the follow-up pattern deletes it together with any space
 # before it (so "Scene 8 ():" becomes "Scene 8:").
 _PAREN_MARKER_RE = re.compile(
-    r"\((?:строк\w*|lines?|источник|source)[^)]{0,80}\)", re.IGNORECASE)
+    r"\((?:строк\w*|lines?|источник|source)[^)]{0,200}\)", re.IGNORECASE)
 _EMPTY_PARENS_RE = re.compile(r"\s*\(\s*\)\s*")
 _BARE_MARKER_RE = re.compile(
     r"(?:\bстрок\w*|\blines?\b|стр\.)\s*~?\s*\d+(?:\s*[–—-]\s*~?\s*\d+)?",
@@ -35,8 +36,9 @@ def sanitize_reference_markers(text: str) -> str:
     """Remove source-reference artifacts (line ranges, source pointers).
 
     Strips parenthesized or bare markers like ``(строки ~540–621)``,
-    ``(lines 100-150)``, ``строка 42``, ``line ~7``, ``стр. 3``,
-    ``(источник: ...)`` / ``(source: ...)``; keeps scene numbering and quoted
+    ``(lines 100-150)``, ``строка 42``, ``line ~7``, ``стр. 3``;
+    citation payloads up to 200 chars inside ``(источник: ...)`` /
+    ``(source: ...)`` are removed. Keeps scene numbering and quoted
     phrases; removes an enclosing orphan parenthesis pair left empty and
     collapses doubled spaces. Applied repeatedly until the text is stable.
     """
@@ -101,13 +103,18 @@ def select_cards(bible: dict, *texts: str) -> list[dict]:
 
     Matching is case-insensitive: a fast substring pass first, then a lemma
     pass via pymorphy3 («Разговор сов» matches alias «сова» through the
-    analyzer's normal forms). Deduplicates by card id.
+    analyzer's normal forms). Multi-word aliases match word-wise: every
+    alias word's normal forms must be present among the text-token lemmas
+    (set containment over all parses, contiguity not required), so
+    «Нарисуй Бабу Ягу» matches alias «Баба Яга». Deduplicates by card id.
     """
     joined = " ".join(filter(None, texts)).lower()
     if not joined.strip():
         return []
     tokens = re.findall(r"\w+", joined, re.UNICODE)
     morph = _get_morph()
+    token_forms = [_normal_forms(morph, t) for t in tokens]
+    text_lemmas: set[str] = set().union(*token_forms) if token_forms else set()
 
     selected: list[dict] = []
     seen: set[str] = set()
@@ -116,28 +123,32 @@ def select_cards(bible: dict, *texts: str) -> list[dict]:
             card_id = card.get("id")
             if not isinstance(card_id, str) or card_id in seen:
                 continue
-            if _card_matches(card, joined, tokens, morph):
+            if _card_matches(card, joined, token_forms, text_lemmas, morph):
                 seen.add(card_id)
                 selected.append(card)
     return selected
 
 
-def _card_matches(card: dict, joined: str, tokens: list[str], morph) -> bool:
+def _card_matches(card: dict, joined: str, token_forms: list[set[str]],
+                  text_lemmas: set[str], morph) -> bool:
     """Check whether any alias (or the card id) occurs in the joined text."""
     candidates = list(card.get("aliases") or []) + [card.get("id")]
-    alias_lemmas: list[str] = []
+    alias_lemmas: set[str] = set()
     for candidate in candidates:
         if not isinstance(candidate, str) or not candidate.strip():
             continue
         lowered = candidate.strip().lower()
         if lowered in joined:
             return True
-        alias_lemmas.extend(_normal_forms(morph, lowered))
-    for token in tokens:
-        token_lemmas = _normal_forms(morph, token)
-        if token in alias_lemmas or token_lemmas & set(alias_lemmas):
-            return True
-    return False
+        words = re.findall(r"\w+", lowered, re.UNICODE)
+        if len(words) > 1:
+            # Multi-word alias: every word's lemma must be present among the
+            # text-token lemmas (case handled by the lowered join above).
+            if all(_normal_forms(morph, w) & text_lemmas for w in words):
+                return True
+        else:
+            alias_lemmas |= _normal_forms(morph, lowered)
+    return any(forms & alias_lemmas for forms in token_forms)
 
 
 def _normal_forms(morph, word: str) -> set[str]:

@@ -3067,6 +3067,9 @@ msgstr "Проверка пропущена: не удалось описать 
 msgid "Verification attempts ({n})"
 msgstr "Попытки проверки ({n})"
 
+msgid "Best of {n} attempts"
+msgstr "Лучшее из {n} попыток"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

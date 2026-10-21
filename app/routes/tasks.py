@@ -538,6 +538,8 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         "failure_reason": str(row.get("last_error") or row.get("checkpoint_result") or ""),
         "checkpoint_verdict": row.get("checkpoint_verdict"),
         "artifact_note": str(extra.get("artifact_note") or ""),
+        "best_effort": bool(extra.get("best_effort")),
+        "best_effort_count": int(extra.get("best_effort_count") or 0),
         "tool": row.get("tool") or "",
         "exec_seconds": float(row.get("exec_seconds") or 0.0),
         "model_name": extra.get("model_name", ""),

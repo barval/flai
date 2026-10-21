@@ -1726,7 +1726,7 @@ class TaskExecutor:
             **extra,
             "media": winner_media,
             "best_effort": True,
-            "artifact_note": "best effort",
+            "best_effort_count": len(candidates),
         }
         self._end_step(
             task_id,
@@ -3386,6 +3386,13 @@ class TaskExecutor:
         step and the task continues.
         """
         task = get_task(task_id) or {}
+        # Re-read the row: the poller may hand over the copy from before the
+        # enqueue, which still says the previous attempt kind (a repair edit
+        # was recorded as a generation).
+        fresh_row = get_step(row["id"]) if row.get("id") else None
+        if fresh_row:
+            row = fresh_row
+        current_kind = str((row.get("extra") or {}).get("current_kind") or "gen")
         step = {
             "goal": row.get("goal", ""),
             "checkpoint_criteria": row.get("checkpoint_criteria", ""),
@@ -3437,6 +3444,11 @@ class TaskExecutor:
 
         response_text = str(stored.get("response") or result_data.get("response") or "")
         result_text = response_text or "done"
+        if current_kind == "repair":
+            # The media envelope echoes the technical repair instruction (with
+            # the English prompt). Never show it as the step body — the step
+            # keeps its own localized goal.
+            result_text = str(row.get("goal") or "") or "done"
         # What the verifier sees: the shown result plus, for an image artifact,
         # a description of the produced picture (the verifier is a text-only
         # reasoning call — see _describe_step_image).
@@ -3531,7 +3543,6 @@ class TaskExecutor:
                 }
         # Every produced artifact is kept: the fallback pick needs ALL attempts,
         # not only the last (the last one is not always the closest).
-        current_kind = str(previous_extra.get("current_kind") or "gen")
         generations_used = int(previous_extra.get("generations_used") or 0)
         repairs_used = int(previous_extra.get("repairs_used") or 0)
         if current_kind == "repair":

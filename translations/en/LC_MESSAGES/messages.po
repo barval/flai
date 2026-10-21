@@ -3028,6 +3028,9 @@ msgstr "Check skipped: could not describe the image"
 msgid "Verification attempts ({n})"
 msgstr "Verification attempts ({n})"
 
+msgid "Best of {n} attempts"
+msgstr "Best of {n} attempts"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

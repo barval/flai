@@ -820,15 +820,18 @@ def test_stage_labels_registered_in_events_js():
 def test_ensure_style_forces_the_sheet_style_and_drops_photorealistic():
     """The prompt builder may drop the style; the sheet's style is mandatory.
 
-    A non-photoreal style also removes the old fixed «photorealistic» tag,
-    which used to override a requested children's-book/watercolor style.
+    A non-photoreal style is put FIRST (a trailing style is ignored), gets the
+    medium cues, and removes the realism tags that pull it toward photography.
     """
     from app.tasks.continuity import ensure_style_in_prompt
 
     bible = {"style": "children's book illustration, warm watercolor tones"}
     result = ensure_style_in_prompt("A cat on a rug, photorealistic, high detail, sharp focus.", bible)
     assert "photorealistic" not in result.lower()
-    assert result.endswith("children's book illustration, warm watercolor tones")
+    assert "high detail" not in result.lower() and "sharp focus" not in result.lower()
+    assert result.startswith(
+        "2D, hand-drawn, flat colors, clean outlines, children's book illustration, warm watercolor tones."
+    )
 
 
 @pytest.mark.unit
@@ -837,8 +840,8 @@ def test_ensure_style_keeps_photorealistic_for_a_photo_style():
 
     bible = {"style": "photorealistic, natural light"}
     result = ensure_style_in_prompt("A cat on a rug, photorealistic, sharp focus.", bible)
+    assert result.startswith("photorealistic, natural light.")
     assert "photorealistic" in result.lower()
-    assert result.count("photorealistic") >= 1
 
 
 @pytest.mark.unit
@@ -848,3 +851,15 @@ def test_ensure_style_does_not_duplicate_an_exact_style():
     style = "children's book illustration"
     result = ensure_style_in_prompt("A cat, " + style, {"style": style})
     assert result.lower().count(style) == 1
+
+
+@pytest.mark.unit
+def test_ensure_style_does_not_force_2d_on_a_3d_style():
+    """A 3D-cartoon series must not receive the 2D/hand-drawn illustration cues."""
+    from app.tasks.continuity import ensure_style_in_prompt
+
+    style = "3D cartoon render, soft plastic shapes"
+    result = ensure_style_in_prompt("A cat, high detail, sharp focus.", {"style": style})
+    assert result.startswith(style + ".")
+    assert "2D" not in result
+    assert "hand-drawn" not in result

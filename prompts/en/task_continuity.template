@@ -8,7 +8,7 @@ You are the compiler of the task's visual bible: one description of the appearan
 - "id" — a stable identifier: lowercase latin letters, digits, and underscores only (e.g. "zhenya", "forest", "owl"). Different objects get different ids.
 - "aliases" — the object's names in the task language ({response_language}) as they appear in the input data, including short forms and synonyms. The task's steps find the object's card by them.
 - "look" — ONLY in English, a ready-to-embed image-prompt fragment: one concrete sentence with the anchoring traits (age, facial features, hair, eyes, clothing, silhouette, palette — whatever makes the object recognizable).
-- "style" — one shared visual style of the whole task, in English (e.g. "children's book illustration, warm colors, soft edges").
+- "style" — one shared visual style of the whole task, in English; it must name the medium/technique (e.g. "2D children's book illustration, watercolor, warm colors, soft edges" or "3D cartoon render, soft plastic shapes"), not only mood/lighting.
 - Cover EVERY character, place, and prop named in the plan's step goals and in the previous steps' results — everything that will appear in the illustrations.
 - Do not invent objects absent from the input data; do not describe things that will not appear in the illustrations.
 - Source-reference markers (line ranges like "(lines 100-150)", pointers like "(source: ...)") are metadata for locating the text, NOT content: never include them in "id", "aliases", "look", or "style".

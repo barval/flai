@@ -292,35 +292,56 @@ def select_relevant_fragment(text: str, query: str = "", criteria: str = "", cap
 
 
 _STYLE_PHOTO_RE = re.compile(r"photo|realis", re.IGNORECASE)
-_PHOTOREAL_TAG_RE = re.compile(
-    r"(?:,\s*)?\bphotorealistic(?:\s+(?:style|render|look|image|photo|picture))?\b",
+_STYLE_ILLUSTRATION_RE = re.compile(
+    r"illustration|watercol|painting|drawing|cartoon|sketch|anime|comic|"
+    r"стил|акварел|рисун|мульт|комикс|скетч",
+    re.IGNORECASE,
+)
+_STYLE_3D_RE = re.compile(r"\b3d\b|three[- ]dimensional|render|blender|octane", re.IGNORECASE)
+# Tags that push a diffusion model toward photography/3D. They are removed
+# when the continuity sheet asks for an illustration/watercolor style.
+_REALISM_TAGS_RE = re.compile(
+    r"(?:,\s*)?\b(?:photorealistic|photoreal|high detail|sharp focus|masterpiece|"
+    r"ultra[- ]detailed|hyperrealistic|hyper-realistic|8k)\b",
     re.IGNORECASE,
 )
 
 
 def ensure_style_in_prompt(prompt: str, bible: dict) -> str:
-    """Force the continuity sheet's style into the final SD prompt.
+    """Put the continuity sheet's style FIRST in the final SD prompt.
 
     The multimodal prompt builder paraphrases the request and can drop the
-    style entirely; the sheet's style is mandatory for a unified series. A
-    non-photoreal style also drops the fixed ``photorealistic`` quality tag —
-    otherwise it overrides a requested children's-book/watercolor style.
+    style; a trailing style is also routinely ignored by the diffusion model.
+    A non-photoreal style removes the fixed realism tags (``photorealistic``,
+    ``high detail``, ``sharp focus``, ``masterpiece``), which otherwise pull a
+    children's-book/watercolor series toward photography/3D, and prefixes the
+    medium cues (2D, hand-drawn, flat colors, clean outlines).
     """
-    text = str(prompt or "")
+    text = str(prompt or "").strip()
     style = str((bible or {}).get("style") or "").strip()
-    if not text.strip() or not style:
+    if not text or not style:
         return text
-    if not _STYLE_PHOTO_RE.search(style):
-        text = _PHOTOREAL_TAG_RE.sub("", text)
+    cues: list[str] = []
+    if _STYLE_PHOTO_RE.search(style):
+        prefix = style
+    else:
+        text = _REALISM_TAGS_RE.sub("", text)
         text = re.sub(r"\s{2,}", " ", text).strip(" ,")
-    missing = [
-        part.strip()
-        for part in style.split(",")
-        if part.strip() and part.strip().lower() not in text.lower()
-    ]
-    if missing:
-        text = text.rstrip().rstrip(",") + ", " + ", ".join(missing)
-    return text
+        if _STYLE_ILLUSTRATION_RE.search(style) and not _STYLE_3D_RE.search(style):
+            for cue in ("2D", "hand-drawn", "flat colors", "clean outlines"):
+                if cue.lower() not in style.lower() and cue.lower() not in text.lower():
+                    cues.append(cue)
+        prefix = ", ".join([*cues, style]) if cues else style
+    if text.lower().startswith(style.lower()):
+        # Style already leads the prompt; only add the missing medium cues.
+        return ", ".join([*cues, text]) if cues else text
+    # A style sitting later in the prompt is moved to the head (models weight
+    # the beginning much more strongly than the tail).
+    lowered = text.lower()
+    if style.lower() in lowered:
+        text = re.sub(re.escape(style), "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s{2,}", " ", text).strip(" ,.")
+    return f"{prefix}. {text}" if text else prefix
 
 
 def ensure_entities_in_prompt(prompt: str, bible: dict, goal: str = "", criteria: str = "") -> str:

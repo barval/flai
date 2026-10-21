@@ -254,6 +254,8 @@ def test_media_templates_count_limbs_and_flag_anatomical_anomalies():
         if lang == "ru":
             assert "конечности" in desc and "лишних" in desc
             assert "анатомические аномалии" in check and "лапа" in check
+            assert "фотография вместо рисунка" in check
         else:
             assert "limbs" in desc and "extra, missing or duplicated" in desc
             assert "anatomical anomalies" in check and "paw" in check
+            assert "photograph instead of a drawing" in check

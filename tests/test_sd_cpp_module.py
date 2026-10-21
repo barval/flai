@@ -253,3 +253,35 @@ def test_wrapper_generation_guard_leaves_room_and_fires_before_the_client_timeou
     cuda_default = int(match.group(1))
     assert cuda_default == 600
     assert cuda_default < 900, "the wrapper's guard must fire before FLAI's SD_CPP_TIMEOUT"
+
+
+@pytest.mark.unit
+def test_match_tone_pulls_a_lightened_edit_back_to_the_source():
+    """Flux.2 Klein lightens/flattens edits; the luminance match restores the
+    source exposure and contrast (full strength here for an exact check)."""
+    from PIL import Image, ImageStat
+
+    from modules.sd_cpp import _match_tone
+
+    src = Image.new("RGB", (256, 1))
+    src.putdata([(x, x, x) for x in range(256)])
+    edited = Image.new("RGB", (256, 1))
+    edited.putdata([(min(255, x + 40),) * 3 for x in range(256)])
+
+    corrected = _match_tone(src, edited, strength=1.0)
+    src_y = ImageStat.Stat(src.convert("YCbCr"))
+    out_y = ImageStat.Stat(corrected.convert("YCbCr"))
+    assert abs(out_y.mean[0] - src_y.mean[0]) <= 2
+    assert abs(out_y.stddev[0] - src_y.stddev[0]) <= 2
+
+
+@pytest.mark.unit
+def test_chat_tone_change_detection():
+    """A requested brightness/colour change must win over tone matching."""
+    from app.queue import _EDIT_TONE_CHANGE_RE
+
+    assert not _EDIT_TONE_CHANGE_RE.search("добавь шляпу")
+    assert not _EDIT_TONE_CHANGE_RE.search("remove the cup")
+    assert _EDIT_TONE_CHANGE_RE.search("сделай ярче")
+    assert _EDIT_TONE_CHANGE_RE.search("make it brighter")
+    assert _EDIT_TONE_CHANGE_RE.search("black and white")

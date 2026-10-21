@@ -19,6 +19,50 @@ from app.mixins import TranslationMixin
 from modules.base import wait_for_service
 
 
+def _tone_scale(source_std: float, edited_std: float) -> float:
+    """Per-channel contrast ratio, bounded so a flat area cannot explode."""
+    if edited_std <= 1e-6:
+        return 1.0
+    return max(0.5, min(2.0, source_std / edited_std))
+
+
+def _tone_lut(scale: float, offset: float) -> list[int]:
+    return [max(0, min(255, int(round(scale * value + offset)))) for value in range(256)]
+
+
+def _match_tone(source, edited, strength: float = 1.0):
+    """Gently restore an edited image's exposure/contrast to its source.
+
+    Flux.2 Klein drifts globally lighter and flatter (live measurement: mean
+    RGB 151/119/122 → 187/159/151, contrast 47/46/56 → 42/45/43). A repair or
+    polish edit must keep the source's lighting, so the luminance channel is
+    pulled back to the source (``strength`` 1.0 = full correction). Only a
+    significant drift is corrected; colours are untouched.
+    """
+    from PIL import Image, ImageStat
+
+    edited = edited.convert("RGB")
+    source = source.convert("RGB")
+    if edited.size != source.size:
+        edited = edited.resize(source.size, Image.Resampling.LANCZOS)
+    src_y = source.convert("YCbCr")
+    out_y = edited.convert("YCbCr")
+    src_stat = ImageStat.Stat(src_y)
+    out_stat = ImageStat.Stat(out_y)
+    src_mean, src_std = src_stat.mean[0], src_stat.stddev[0]
+    out_mean, out_std = out_stat.mean[0], out_stat.stddev[0]
+    drift = out_mean - src_mean
+    contrast_ratio = out_std / src_std if src_std > 1e-6 else 1.0
+    if abs(drift) < 6 and contrast_ratio >= 0.9:
+        return edited
+    target_mean = out_mean + (src_mean - out_mean) * max(0.0, min(1.0, strength))
+    target_std = out_std + (src_std - out_std) * max(0.0, min(1.0, strength))
+    scale = _tone_scale(target_std, out_std)
+    offset = target_mean - out_mean * scale
+    y, cb, cr = out_y.split()
+    return Image.merge("YCbCr", (y.point(_tone_lut(scale, offset)), cb, cr)).convert("RGB")
+
+
 class SdCppModule(TranslationMixin):
     """Module for image generation via stable-diffusion.cpp sd-wrapper."""
 
@@ -409,6 +453,14 @@ class SdCppModule(TranslationMixin):
         self.logger.info(f"Sending edit request to sd-wrapper, offload_level={start_level}, timeout: {self.timeout}s")
         self.logger.info(f"sd.cpp edit prompt: '{edit_prompt_data.get('edit_prompt', '')[:100]}...'")
 
+        # Exactly the source sent to the model (after resize/JPEG), used to
+        # restore exposure/contrast after the model's global tone drift.
+        source_img = None
+        try:
+            source_img = Image.open(BytesIO(base64.b64decode(image_base64))).convert("RGB")
+        except Exception as e:
+            self.logger.warning(f"Edit: tone-match source decode failed: {e}")
+
         payload = {
             "edit_prompt": edit_prompt_data.get("edit_prompt", ""),
             "image_data": image_base64,
@@ -451,6 +503,17 @@ class SdCppModule(TranslationMixin):
 
                     file_size_bytes = int((len(image_data) * 3) / 4)
                     filename = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_edit.png"
+
+                    if edit_prompt_data.get("tone_match") and source_img is not None:
+                        try:
+                            edited_img = Image.open(BytesIO(base64.b64decode(image_data))).convert("RGB")
+                            corrected = _match_tone(source_img, edited_img)
+                            buf = BytesIO()
+                            corrected.save(buf, format="PNG")
+                            image_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+                            file_size_bytes = len(buf.getvalue())
+                        except Exception as e:
+                            self.logger.warning(f"Edit: tone matching skipped: {e}")
 
                     return {
                         "success": True,

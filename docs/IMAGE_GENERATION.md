@@ -31,6 +31,8 @@ Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remo
 
 Source images for editing are automatically resized to **1024px** on the longest side to avoid OOM on 16GB GPUs. A system notice shows the original vs resized dimensions if downscaled.
 
+**Tone matching.** Flux.2 Klein tends to return a lighter, flatter image (measured on live edits: luminance 128 → 166, contrast 44 → 42). After every task repair/polish edit and every chat edit that does not explicitly ask to change lighting/colour, `_match_tone()` measures the source and result luminance (YCbCr Y mean/std) and, when the drift exceeds 6 levels or contrast drops below 90 % of the source, pulls the edited image fully back to the source exposure/contrast. Only the luminance channel is corrected, so colours and an intentionally changed style survive; a request like «make it brighter», «darker» or «black and white» skips the correction.
+
 Editing uses separate model files and runs independently from generation — no conflict between the two.
 
 ## Descriptions for task illustrations (visual continuity)

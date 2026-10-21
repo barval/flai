@@ -47,6 +47,16 @@ from .utils import (
     save_uploaded_file,
 )
 
+# A chat edit that explicitly asks to change the picture's lighting or colour
+# must not be tone-matched back to the source; every other chat edit is.
+_EDIT_TONE_CHANGE_RE = re.compile(
+    r"(?:ярч|темн|светл|контраст|насыщ|освещ|экспозиц|оттен|тепле|холодн|"
+    r"ч[её]рно-?\s*бел|монохром|black\s+and\s+white|"
+    r"bright|dark|light|contrast|saturat|exposure|colou?r|tone|warm|cool|hue|shade|"
+    r"monochrome|grayscale)\w*",
+    re.IGNORECASE,
+)
+
 
 def _parse_remember_json(llm_response: str) -> list[str]:
     """Parse remember response JSON: {"confirmed": true, "facts": [...]}"""
@@ -1819,6 +1829,16 @@ class RedisRequestQueue:
             except (TypeError, ValueError):
                 strength = 0.42
             edit_data["strength"] = min(0.5, max(0.35, strength))
+        if isinstance(edit_data, dict):
+            data = (task or {}).get("data") or {}
+            if data.get("repair"):
+                # Repair/polish edits must keep the source's exposure/contrast;
+                # sd_cpp corrects the model's global lightening after the run.
+                edit_data["tone_match"] = True
+            elif not _EDIT_TONE_CHANGE_RE.search(message_text or ""):
+                # Chat edit: preserve the source look unless the user explicitly
+                # asks to change lighting/colour (then the requested change wins).
+                edit_data["tone_match"] = True
         edit_data = self._ensure_prompt_entities(task, edit_data)
         if isinstance(edit_data, dict) and not explicit_text:
             edit_data = self._append_no_text_clause(edit_data, "edit_prompt")

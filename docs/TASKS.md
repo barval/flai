@@ -42,6 +42,8 @@ A media step receives the declared `source_step`'s own result first (up to 12 00
 
 Anatomical anomalies are always critical: the image description counts the visible paws/hands/legs of every person and animal, and an extra, missing or duplicated limb fails the step even when the reference does not mention it.
 
+Every repair/polish edit is tone-matched back to its source after the model run (YCbCr Y mean/std, full correction) so a Flux edit cannot lighten or flatten the series; explicit lighting/colour changes are left alone.
+
 **Polish of an accepted image.** A passing verdict with only `minor` mismatches (wrong style, lighting, a small detail) used to keep the picture as is. The executor now schedules **one** corrective edit for it (`polish_used`, image artifacts only, never video/RLM): the minor mismatches become the edit instruction, and a style mismatch is sent as a change — the old style is removed from `preserve`, the continuity-sheet style becomes the target. The polished image is verified again; if it passes it is kept, and if it is rejected no new generation cycle starts — every candidate is ranked with the accepted one first (then score/severity) and the best is kept with the usual best-of note. `polish_used` makes the polish a one-time step per image.
 
 ### Visual continuity (internal)

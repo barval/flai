@@ -3244,6 +3244,7 @@ class TaskExecutor:
             )
             request_data["file_type"] = str(loaded.get("file_type") or "image/png")
             request_data["repair"] = True
+            request_data["tone_match"] = True
             request_data["text"] = repair_text
             request_data["prompt"] = repair_text
             request_data["repair_preserve"] = preserve

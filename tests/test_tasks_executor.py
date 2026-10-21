@@ -4153,3 +4153,36 @@ def test_continuity_clause_omits_style_when_style_lock_is_false():
     """A varied-style task must not tell the verifier that one style is mandatory."""
     bible = {"style": "children's book illustration", "style_lock": False, "characters": [], "places": [], "props": []}
     assert "Style:" not in ex._continuity_clause(bible, "draw a scene", "criterion")
+
+
+def test_prune_candidates_keeps_winner_and_releases_storage(tmp_path, monkeypatch):
+    """Only the displayed artifact survives; losing candidates free their quota."""
+    from types import SimpleNamespace
+
+    released = []
+    monkeypatch.setattr("app.db.update_user_storage", lambda user_id, delta: released.append((user_id, delta)))
+
+    task_id = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    folder = tmp_path / task_id
+    folder.mkdir()
+    (folder / "winner.png").write_bytes(b"w" * 30)
+    (folder / "loser1.png").write_bytes(b"a" * 10)
+    (folder / "loser2.png").write_bytes(b"b" * 20)
+
+    executor = ex.TaskExecutor(app=SimpleNamespace(config={"UPLOAD_FOLDER": str(tmp_path)}))
+    winner = {"file_path": f"{task_id}/winner.png", "file_size": 30}
+    extra = {
+        "candidates": [
+            {"file_path": f"{task_id}/loser1.png", "file_size": 10},
+            winner,
+            {"file_path": f"{task_id}/loser2.png", "file_size": 20},
+        ]
+    }
+
+    executor._prune_candidates(extra, winner, "u1")
+
+    assert extra["candidates"] == [winner]
+    assert (folder / "winner.png").exists()
+    assert not (folder / "loser1.png").exists()
+    assert not (folder / "loser2.png").exists()
+    assert released == [("u1", -10), ("u1", -20)]

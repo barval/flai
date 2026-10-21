@@ -849,3 +849,19 @@ class TestTasksApiI18n:
                 content = fh.read()
             for msgid in new_msgids:
                 assert f'msgid "{msgid}"' in content, f"{msgid} missing from {catalog}"
+
+
+def test_delete_task_files_releases_storage(test_app, monkeypatch):
+    """Deleting a task removes its upload directory and credits the owner."""
+    from app.routes import tasks as tasks_route
+
+    released = []
+    monkeypatch.setattr(tasks_route, "remove_uploaded_dir", lambda task_id, folder: 42)
+    monkeypatch.setattr(
+        tasks_route, "update_user_storage", lambda user_id, delta: released.append((user_id, delta))
+    )
+
+    with test_app.app_context():
+        tasks_route._delete_task_files({"id": "0f8fad5b-d9cb-469f-a165-70867728950e", "user_id": "alice"})
+
+    assert released == [("alice", -42)]

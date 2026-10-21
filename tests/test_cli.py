@@ -152,3 +152,24 @@ class TestCleanupUploadsTaskMedia:
             c = conn.cursor()
             c.execute("DELETE FROM task_steps")
             c.execute("DELETE FROM tasks")
+
+
+def test_storage_by_owner_sums_owned_dirs_and_skips_deleted(tmp_path):
+    """Quota recalculation counts only files that remain in owned directories."""
+    from app.cli import _storage_by_owner
+
+    owned = tmp_path / "aaaa"
+    owned.mkdir()
+    (owned / "keep.png").write_bytes(b"x" * 10)
+    (owned / "gone.png").write_bytes(b"y" * 5)
+    unknown = tmp_path / "bbbb"
+    unknown.mkdir()
+    (unknown / "orphan.png").write_bytes(b"z" * 3)
+
+    usage, unknown_dirs, unknown_bytes = _storage_by_owner(
+        str(tmp_path), {"aaaa": "alice"}, exclude={"aaaa/gone.png"}
+    )
+
+    assert usage == {"alice": 10}
+    assert unknown_dirs == 1
+    assert unknown_bytes == 3

@@ -1841,6 +1841,10 @@ msgstr "База файлов"
 msgid "Documents DB"
 msgstr "База документов"
 
+#: app/templates/admin.html:58
+msgid "Storage"
+msgstr "Хранилище"
+
 #: app/templates/admin.html:52 app/templates/admin.html:182
 #: app/templates/admin.html:362 app/templates/admin.html:500
 msgid "Status"

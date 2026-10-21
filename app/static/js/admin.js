@@ -130,6 +130,14 @@ function loadUsers() {
             classSelect.addEventListener('change', () => updateUserField(user.login, 'service_class', parseInt(classSelect.value)));
             classCell.appendChild(classSelect);
             row.appendChild(classCell);
+            const storageCell = document.createElement('td');
+            const storageUsedMb = (user.storage_used || 0) / (1024 * 1024);
+            const storageLimitMb = user.storage_limit_mb || 500;
+            storageCell.textContent = `${storageUsedMb.toFixed(1)} / ${storageLimitMb} ${t('mb')}`;
+            if (storageUsedMb >= storageLimitMb) {
+                storageCell.classList.add('storage-over-quota');
+            }
+            row.appendChild(storageCell);
             const sessionsCell = document.createElement('td');
             sessionsCell.textContent = user.sessions_count;
             row.appendChild(sessionsCell);

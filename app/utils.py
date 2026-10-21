@@ -674,6 +674,47 @@ def save_uploaded_file(
         return None
 
 
+def remove_uploaded_dir(session_id: str, upload_folder: str) -> int:
+    """Remove a session/task upload directory and return the freed byte count.
+
+    Task artifacts live in ``<upload_folder>/<task_id>/`` because the executor
+    queues every media subtask with the task id as its session id. Deleting the
+    task rows alone left those files (and their quota share) behind forever.
+    The helper is strictly contained inside ``upload_folder`` and never follows
+    symlinks.
+    """
+    if not session_id or ".." in session_id or "/" in session_id or "\\" in session_id:
+        return 0
+    try:
+        uuid.UUID(session_id, version=4)
+    except ValueError:
+        return 0
+    if not upload_folder:
+        return 0
+
+    base = os.path.realpath(upload_folder)
+    target = os.path.realpath(os.path.join(base, session_id))
+    if not target.startswith(base + os.sep) or not os.path.isdir(target):
+        return 0
+
+    freed = 0
+    for root, dirs, files in os.walk(target, topdown=False):
+        for name in files:
+            path = os.path.join(root, name)
+            try:
+                size = os.path.getsize(path)
+                os.remove(path)
+                freed += size
+            except OSError as e:
+                current_app.logger.warning(f"could not remove upload file {path}: {e}")
+        for name in dirs:
+            with contextlib.suppress(OSError):
+                os.rmdir(os.path.join(root, name))
+    with contextlib.suppress(OSError):
+        os.rmdir(target)
+    return freed
+
+
 def extract_text_from_file(file_path: str) -> str | None:
     """Extract text from a file (PDF, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB) and convert to Markdown."""
     ext = os.path.splitext(file_path)[1].lower()

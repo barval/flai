@@ -13,6 +13,7 @@ from app.utils import (
     extract_text_from_file,
     format_prompt,
     remove_gguf_cache_entries,
+    remove_uploaded_dir,
     resize_image_if_needed,
 )
 
@@ -200,6 +201,36 @@ def test_convert_to_supported_format_invalid_data_returns_original():
     assert not converted
     assert new_data == "not-valid-base64!!!"
     assert new_type == "image/jpeg"
+
+
+@pytest.mark.unit
+def test_remove_uploaded_dir_returns_freed_bytes(tmp_path):
+    """Deleting a task/session upload dir removes nested files and reports their size."""
+    session_id = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    folder = tmp_path / session_id
+    folder.mkdir()
+    (folder / "a.png").write_bytes(b"x" * 10)
+    (folder / "b.png").write_bytes(b"y" * 20)
+    nested = folder / "nested"
+    nested.mkdir()
+    (nested / "c.bin").write_bytes(b"z" * 5)
+
+    freed = remove_uploaded_dir(session_id, str(tmp_path))
+
+    assert freed == 35
+    assert not folder.exists()
+
+
+@pytest.mark.unit
+def test_remove_uploaded_dir_rejects_outside_paths(tmp_path):
+    """A non-UUID or traversal id must never delete anything."""
+    outside = tmp_path.parent / "outside"
+    outside.mkdir(exist_ok=True)
+    (outside / "keep.txt").write_bytes(b"keep")
+
+    assert remove_uploaded_dir("../outside", str(tmp_path)) == 0
+    assert remove_uploaded_dir("clitest", str(tmp_path)) == 0
+    assert (outside / "keep.txt").exists()
 
 
 @pytest.mark.unit

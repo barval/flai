@@ -1814,8 +1814,12 @@ class TaskExecutor:
         except OSError:
             return None
 
-    def _delete_media_file(self, media: dict) -> None:
-        """Best-effort removal of a losing candidate (strictly inside the upload folder)."""
+    def _delete_media_file(self, media: dict, user_id: str | None = None) -> None:
+        """Best-effort removal of a losing candidate (strictly inside the upload folder).
+
+        The file was counted against the user's storage quota when it was saved;
+        removing it here releases exactly the same number of bytes.
+        """
         rel = str(media.get("file_path") or "")
         upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
         if not rel or not upload_folder:
@@ -1825,9 +1829,40 @@ class TaskExecutor:
             return
         try:
             if os.path.isfile(path):
+                size = int(media.get("file_size") or 0)
+                if size <= 0:
+                    size = os.path.getsize(path)
                 os.remove(path)
+                if user_id and size:
+                    from app.db import update_user_storage
+
+                    update_user_storage(user_id, -size)
         except OSError as e:
             logger.warning(f"could not remove losing candidate {rel}: {e}")
+
+    def _prune_candidates(self, extra: dict, keep: dict | None, user_id: str | None = None) -> None:
+        """Delete every stored candidate except the chosen artifact.
+
+        Candidates accumulated on disk across retries; only the winner is
+        displayed, so keeping the losers permanently burned the user's upload
+        quota. The list in ``extra`` keeps the winner for best-effort metadata.
+        """
+        keep_path = str((keep or {}).get("file_path") or "")
+        deleted: set[str] = set()
+        kept: dict | None = None
+        for candidate in extra.get("candidates") or []:
+            if not isinstance(candidate, dict):
+                continue
+            path = str(candidate.get("file_path") or "")
+            if keep_path and path == keep_path and kept is None:
+                kept = candidate
+                continue
+            if path and path in deleted:
+                continue
+            if path:
+                deleted.add(path)
+            self._delete_media_file(candidate, user_id)
+        extra["candidates"] = [kept] if kept else []
 
     def _finish_best_effort(
         self,
@@ -1856,9 +1891,6 @@ class TaskExecutor:
             update_task(task_id, next_step_index=idx + 1)
             return
         winner = max(candidates, key=_candidate_key)
-        for candidate in candidates:
-            if candidate is not winner:
-                self._delete_media_file(candidate)
         winner_media = {
             key: winner[key]
             for key in ("file_path", "file_name", "file_type", "file_size")
@@ -1874,6 +1906,7 @@ class TaskExecutor:
             # instead of calling it «best of N attempts».
             "best_effort_accepted": bool(winner.get("verdict")),
         }
+        self._prune_candidates(merged, winner, task.get("user_id"))
         self._end_step(
             task_id,
             row["id"],
@@ -3882,6 +3915,8 @@ class TaskExecutor:
                 # All generations and repairs are spent: keep the closest one.
                 self._finish_best_effort(task, row, idx, elapsed, result_text, merged_extra)
                 return "done"
+        if media.get("file_path"):
+            self._prune_candidates(merged_extra, media, task.get("user_id"))
         self._end_step(
             task_id,
             row["id"],

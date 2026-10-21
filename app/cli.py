@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import os
 
@@ -24,11 +25,86 @@ def set_admin_password(password):
         click.echo("Admin created.")
 
 
+def _upload_owners(cursor) -> dict[str, str]:
+    """Map every session/task upload directory to its owning login."""
+    owners: dict[str, str] = {}
+    cursor.execute("SELECT id, user_id FROM chat_sessions")
+    for row in cursor.fetchall():
+        if row.get("user_id"):
+            owners[str(row["id"])] = str(row["user_id"])
+    cursor.execute("SELECT id::text AS id, user_id FROM tasks")
+    for row in cursor.fetchall():
+        if row.get("user_id"):
+            owners[str(row["id"])] = str(row["user_id"])
+    return owners
+
+
+def _storage_by_owner(
+    upload_folder: str, owners: dict[str, str], exclude: set[str] | None = None
+) -> tuple[dict[str, int], int, int]:
+    """Sum the files of every owned upload directory, ignoring symlinked dirs."""
+    usage: dict[str, int] = {}
+    unknown_dirs = 0
+    unknown_bytes = 0
+    excluded = exclude or set()
+    for name in os.listdir(upload_folder):
+        path = os.path.join(upload_folder, name)
+        if not os.path.isdir(path) or os.path.islink(path):
+            continue
+        size = 0
+        for root, _dirs, files in os.walk(path):
+            for filename in files:
+                full = os.path.join(root, filename)
+                if os.path.relpath(full, upload_folder) in excluded:
+                    continue
+                with contextlib.suppress(OSError):
+                    size += os.path.getsize(full)
+        owner = owners.get(name)
+        if owner:
+            usage[owner] = usage.get(owner, 0) + size
+        elif size:
+            unknown_dirs += 1
+            unknown_bytes += size
+    return usage, unknown_dirs, unknown_bytes
+
+
+def _recalculate_storage(upload_folder: str, owners: dict[str, str]) -> dict[str, int]:
+    """Rebuild user_storage from the files that actually remain on disk.
+
+    Counters were never decreased when an upload directory was deleted outside
+    session deletion (a deleted task, or cleanup-uploads itself), so a user
+    could stay over quota with an empty account. Recomputing from disk repairs
+    that historical drift; live paths always update the counter incrementally.
+    """
+    from app.database import get_db
+
+    usage, unknown_dirs, unknown_bytes = _storage_by_owner(upload_folder, owners)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT user_id FROM user_storage")
+        known = {str(row["user_id"]) for row in c.fetchall()}
+        for user_id in sorted(set(usage) | known):
+            c.execute(
+                """
+                INSERT INTO user_storage (user_id, used_bytes)
+                VALUES (%s, %s)
+                ON CONFLICT(user_id) DO UPDATE SET used_bytes = EXCLUDED.used_bytes
+                """,
+                (user_id, int(usage.get(user_id, 0))),
+            )
+    if unknown_dirs:
+        click.echo(
+            f"WARNING: {unknown_dirs} upload directories have no owner in the DB "
+            f"({unknown_bytes} bytes) — their quota cannot be attributed."
+        )
+    return usage
+
+
 @click.command("cleanup-uploads")
 @click.option("--dry-run", is_flag=True, help="Only list orphans, do not delete")
 @with_appcontext
 def cleanup_uploads(dry_run):
-    """Remove orphaned files from uploads/ not referenced in messages table."""
+    """Remove orphaned files from uploads/ and rebuild the storage counters."""
     from app.database import get_db
 
     upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
@@ -77,18 +153,58 @@ def cleanup_uploads(dry_run):
                 media = extra.get("media") or {}
                 if isinstance(media, dict) and media.get("file_path"):
                     db_files.add(media["file_path"])
+                # Candidates of an in-flight step are still live: the retry loop
+                # edits them and the best-of fallback ranks them.
+                for candidate in extra.get("candidates") or []:
+                    if isinstance(candidate, dict) and candidate.get("file_path"):
+                        db_files.add(candidate["file_path"])
         except Exception:
             # The tasks tables may not exist in legacy DBs — cleanup still runs.
             pass
 
+        # Images and audio attached to a task live in the same task directory
+        # but are referenced only from the tasks row, not from a step.
+        try:
+            c.execute("SELECT images, audio FROM tasks")
+            for row in c.fetchall():
+                for key in ("images", "audio"):
+                    items = row[key] or []
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        if isinstance(item, dict) and item.get("file_path"):
+                            db_files.add(item["file_path"])
+        except Exception:
+            # Legacy DBs without these JSONB columns — cleanup still runs.
+            pass
+
     click.echo(f"Files referenced in DB: {len(db_files)}")
+
+    # A task that is still queued/running writes new artifacts between this
+    # scan and the walk below. Its directory is live work, not an orphan: skip
+    # it entirely instead of racing the executor (the quota still counts it).
+    protected_dirs: set[str] = set()
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id::text AS id FROM tasks "
+                "WHERE status NOT IN ('completed', 'failed', 'expired', 'cancelled')"
+            )
+            protected_dirs = {str(row["id"]) for row in c.fetchall()}
+    except Exception:
+        # Legacy DBs without the tasks table — nothing to protect.
+        protected_dirs = set()
 
     # Walk upload dir and find orphans
     deleted_files = 0
     deleted_bytes = 0
+    deleted_rels: set[str] = set()
     for session_dir in os.listdir(upload_folder):
         session_path = os.path.join(upload_folder, session_dir)
         if not os.path.isdir(session_path):
+            continue
+        if session_dir in protected_dirs:
             continue
         for fname in os.listdir(session_path):
             fpath = os.path.join(session_dir, fname)
@@ -98,6 +214,7 @@ def cleanup_uploads(dry_run):
             if fpath not in db_files:
                 fsize = os.path.getsize(full)
                 click.echo(f"  ORPHAN {fpath} ({fsize} bytes)")
+                deleted_rels.add(fpath)
                 if not dry_run:
                     os.remove(full)
                 deleted_files += 1
@@ -107,6 +224,8 @@ def cleanup_uploads(dry_run):
     empty_dirs = 0
     for session_dir in os.listdir(upload_folder):
         session_path = os.path.join(upload_folder, session_dir)
+        if session_dir in protected_dirs:
+            continue
         if os.path.isdir(session_path) and not os.listdir(session_path):
             click.echo(f"  EMPTY DIR {session_dir}/")
             if not dry_run:
@@ -116,6 +235,22 @@ def cleanup_uploads(dry_run):
     click.echo(f"\nDeleted {deleted_files} orphan files ({deleted_bytes} bytes), {empty_dirs} empty dirs")
     if dry_run:
         click.echo("(dry-run, no changes made)")
+
+    # Rebuild the quota counters from what actually remains. Cleanup used to
+    # delete files without touching user_storage, so an emptied account stayed
+    # over quota forever.
+    with get_db() as conn:
+        owners = _upload_owners(conn.cursor())
+    if dry_run:
+        usage, _unknown_dirs, _unknown_bytes = _storage_by_owner(upload_folder, owners, exclude=deleted_rels)
+        click.echo("Storage after cleanup (preview):")
+        for user_id, used in sorted(usage.items()):
+            click.echo(f"  {user_id}: {used / (1024 * 1024):.1f} MB")
+    else:
+        usage = _recalculate_storage(upload_folder, owners)
+        click.echo("Storage recalculated:")
+        for user_id, used in sorted(usage.items()):
+            click.echo(f"  {user_id}: {used / (1024 * 1024):.1f} MB")
 
 
 @click.command("migrate-messages-format")

@@ -58,6 +58,36 @@ def get_folder_size_bytes(folder_path: str) -> int:
     return total_size
 
 
+def _database_sizes() -> tuple[int, int]:
+    """Return the PostgreSQL storage of the user and chat tables, in bytes.
+
+    PostgreSQL is one database, so the legacy «User DB» / «Chat DB» labels are
+    mapped to the tables that belong to each area. ``to_regclass`` keeps a
+    legacy schema without one of the tables from failing the whole panel.
+    """
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT
+                    COALESCE(pg_total_relation_size(to_regclass('users')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('user_sessions')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('user_storage')), 0) AS user_db_size,
+                    COALESCE(pg_total_relation_size(to_regclass('chat_sessions')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('messages')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('session_visits')), 0) AS chat_db_size
+                """
+            )
+            row = c.fetchone()
+            if not row:
+                return 0, 0
+            return int(row["user_db_size"] or 0), int(row["chat_db_size"] or 0)
+    except Exception as e:
+        logger.warning(f"Could not measure PostgreSQL table sizes: {e}")
+        return 0, 0
+
+
 def _slm_fact_counts() -> dict[str, int]:
     """Return per-profile active fact counts from the SLM daemon DB.
 
@@ -131,8 +161,9 @@ def admin_panel():
     except Exception as e:
         logger.warning(f"Failed to load camera rooms for admin panel: {e}")
 
-    # PostgreSQL size is tracked on the server, not accessible from app container
-    user_db_size = 0
+    # PostgreSQL table sizes for the legacy «User DB» / «Chat DB» labels; the
+    # folder sizes below are the real bytes of the uploads/documents trees.
+    user_db_size, chat_db_size = _database_sizes()
     uploads_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
@@ -179,7 +210,7 @@ def admin_panel():
         rooms=rooms,
         camera_rooms=camera_rooms,
         camera_enabled=current_app.config.get("CAMERA_ENABLED", False),
-        chat_db_size=0,
+        chat_db_size=chat_db_size,
         user_db_size=user_db_size,
         files_db_size=files_db_size,
         documents_db_size=documents_db_size,
@@ -260,12 +291,16 @@ def get_users():
                              SELECT rev.value->'usage'
                              FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
                          ) u
-                         WHERE t3.user_id = %s) as plan_incoming
+                         WHERE t3.user_id = %s) as plan_incoming,
+                        (SELECT COALESCE(used_bytes, 0)
+                         FROM user_storage
+                         WHERE user_id = %s) as storage_used
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = %s
                 """,
                     (
+                        u["login"],
                         u["login"],
                         u["login"],
                         u["login"],
@@ -298,6 +333,8 @@ def get_users():
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
+                u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
+                u_dict["storage_limit_mb"] = current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)
 
                 # The raw Tavily key must never reach the admin payload.
                 u_dict["has_tavily_key"] = bool(u_dict.pop("tavily_api_key", None))
@@ -496,8 +533,7 @@ def delete_user_account(login):
 def get_stats():
     """Return current sizes of databases and folders in bytes."""
     try:
-        chat_db_size = 0
-        user_db_size = 0
+        user_db_size, chat_db_size = _database_sizes()
         uploads_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
         files_db_size = get_folder_size_bytes(uploads_folder)
         documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")

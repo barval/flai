@@ -573,6 +573,24 @@ async function sendMessage() {
                     return;
                 }
 
+                // A JSON error (upload quota, size cap, too many images) carries
+                // {error: "..."}. The success branches below ignore it, so the
+                // user saw a sent message with no answer and no status at all.
+                if (!response.ok || data.error) {
+                    const rawError = (typeof data.error === 'string' && data.error.trim())
+                        ? data.error.trim()
+                        : t('unknown_error');
+                    const errorText = rawError.startsWith('⚠️') ? rawError : '⚠️ ' + rawError;
+                    originalDisplayMessage('assistant', errorText, null, null, null, null,
+                        new Date().toISOString(), 0, 'system');
+                    // The server never saved this message: remove the optimistic
+                    // element so it cannot suppress later user-message echoes.
+                    const orphan = document.querySelector(`.user-message[data-temp-id="temp-${timestamp}"]`);
+                    if (orphan) orphan.remove();
+                    setLocalTranscribing(currentSessionId, false);
+                    return;
+                }
+
                 if (window.IS_RELOADING) return;
                 
                 dlog('Server response:', data);

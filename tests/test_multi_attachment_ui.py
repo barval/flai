@@ -198,3 +198,13 @@ class TestNoCyrillicInJs:
 
         cyr = [ln for ln in CHAT_MESSAGES.split("\n") if re.search(r"[А-Яа-яЁё]", ln)]
         assert cyr == [], cyr[:3]
+
+
+class TestSendJsonErrors:
+    def test_json_error_is_rendered_and_optimistic_message_removed(self):
+        """A quota/size rejection ({error: ...}) must reach the chat and drop
+        the unsaved optimistic message instead of failing silently."""
+        assert "if (!response.ok || data.error)" in CHAT_INIT
+        assert "data.error.trim()" in CHAT_INIT
+        assert "rawError.startsWith('⚠️')" in CHAT_INIT
+        assert 'orphan.remove()' in CHAT_INIT

@@ -1812,6 +1812,10 @@ msgstr "Files DB"
 msgid "Documents DB"
 msgstr "Documents DB"
 
+#: app/templates/admin.html:58
+msgid "Storage"
+msgstr "Storage"
+
 #: app/templates/admin.html:52 app/templates/admin.html:182
 #: app/templates/admin.html:362 app/templates/admin.html:500
 msgid "Status"

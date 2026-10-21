@@ -21,6 +21,7 @@ from flask_babel import force_locale
 from flask_babel import gettext as _
 
 from app.database import get_db
+from app.db import update_user_storage
 from app.tasks.events import publish_task_update
 from app.tasks.executor import (
     add_user_input_step,
@@ -29,6 +30,7 @@ from app.tasks.executor import (
     get_task_steps,
 )
 from app.tasks.store import create_task, delete_task, get_task, get_tasks_by_user, update_step, update_task
+from app.utils import remove_uploaded_dir
 
 # Visual continuity rebuild (spec §7): one background extraction per task —
 # a second concurrent request is rejected with 409; the flag has a safety TTL.
@@ -1194,6 +1196,24 @@ def task_stop(task_id):
     return jsonify({"ok": True, "status": task.get("status")})
 
 
+def _delete_task_files(task: dict) -> None:
+    """Remove the task's upload directory and release its storage quota.
+
+    Task media is stored under ``uploads/<task_id>/``. Deleting only the DB
+    rows made the artifacts permanent orphans (and kept the quota spent).
+    """
+    task_id = str(task.get("id") or "")
+    user_id = str(task.get("user_id") or "")
+    upload_folder = str(current_app.config.get("UPLOAD_FOLDER") or "")
+    if not task_id or not upload_folder:
+        return
+    freed = remove_uploaded_dir(task_id, upload_folder)
+    if freed:
+        if user_id:
+            update_user_storage(user_id, -freed)
+        current_app.logger.info(f"task {task_id}: removed {freed} bytes of artifacts")
+
+
 @bp.route("/<task_id>/delete", methods=["POST"])
 def task_delete(task_id):
     if "login" not in session:
@@ -1213,6 +1233,7 @@ def task_delete(task_id):
     # an in-flight one is cancelled explicitly (it holds the GPU queue).
     _cancel_inflight_subtasks(task_id)
     delete_task(task_id)
+    _delete_task_files(task)
     publish_task_update(
         current_app._get_current_object(),
         {"id": task["id"], "user_id": task["user_id"], "status": "deleted"},

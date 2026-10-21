@@ -1501,6 +1501,16 @@ video {
     color: #c0392b !important;
 }
 
+#retry-task-button {
+    background-color: #3498db;
+    color: white;
+    min-width: 100px;
+}
+
+#retry-task-button:hover {
+    background-color: #2980b9;
+}
+
 #attach-file-button {
     background-color: #f1f1f1;
     color: #333;
@@ -1808,13 +1818,18 @@ video {
 
     .rlm-controls #voice-record-button,
     .rlm-controls #attach-file-button,
-    .rlm-controls #send-button {
+    .rlm-controls #send-button,
+    .rlm-controls #retry-task-button {
         padding: 0.4rem 0.5rem;
         min-width: 40px;
         flex-shrink: 0;
     }
 
     #send-button {
+        min-width: 0;
+    }
+
+    #retry-task-button {
         min-width: 0;
     }
 

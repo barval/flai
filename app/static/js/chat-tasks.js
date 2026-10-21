@@ -1027,17 +1027,25 @@ function setTaskMode(active, task) {
     // not leave the stream cancel button visible alongside stop-task-button.
     const cancelStream = document.getElementById('cancel-stream-header');
     if (cancelStream) cancelStream.style.display = showStop ? 'none' : '';
-    // Retry button visible on failed/expired/cancelled terminal tasks.
-    const canRetry = task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed';
+    // A stopped task's Restart button replaces the Send button in the input
+    // row — it must not sit next to the 💾 in the header row.
+    const canRetry = !!(task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed');
     if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';
 
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-button');
+    if (sendBtn) sendBtn.style.display = active && canRetry ? 'none' : '';
+    const voiceBtn = document.getElementById('voice-record-button');
+    const attachBtn = document.getElementById('attach-file-button');
+    const rlmLabel = document.getElementById('rlm-toggle-label');
     if (!input) return;
     if (!active) {
         input.readOnly = false;
         input.placeholder = taskOrigPlaceholder || t('enter_message_or_file');
         if (sendBtn) sendBtn.disabled = false;
+        if (voiceBtn) voiceBtn.style.display = '';
+        if (attachBtn) attachBtn.style.display = '';
+        if (rlmLabel) rlmLabel.style.display = '';
         return;
     }
     if (taskOrigPlaceholder === null) taskOrigPlaceholder = input.placeholder;
@@ -1046,6 +1054,9 @@ function setTaskMode(active, task) {
         input.readOnly = true;
         input.placeholder = t('task_empty_state');
         if (sendBtn) sendBtn.disabled = true;
+        if (voiceBtn) voiceBtn.style.display = 'none';
+        if (attachBtn) attachBtn.style.display = 'none';
+        if (rlmLabel) rlmLabel.style.display = 'none';
         return;
     }
     const awaiting = task.status === 'awaiting_user';
@@ -1059,6 +1070,13 @@ function setTaskMode(active, task) {
     // The send button doubles as the answer submit (and the draft request
     // submit); a running task has no input to accept.
     if (sendBtn) sendBtn.disabled = !awaiting && !draft;
+    // Microphone, paperclip and the 🔬 toggle only make sense while a task is
+    // being created (draft) or its clarifying question is being answered; a
+    // running or finished task accepts no new submission options.
+    const allowSubmitControls = draft || awaiting;
+    if (voiceBtn) voiceBtn.style.display = allowSubmitControls ? '' : 'none';
+    if (attachBtn) attachBtn.style.display = allowSubmitControls ? '' : 'none';
+    if (rlmLabel) rlmLabel.style.display = allowSubmitControls ? '' : 'none';
 }
 
 // ---------------------------------------------------------------------------

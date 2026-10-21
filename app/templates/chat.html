@@ -68,7 +68,6 @@
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
                 <button id="stop-task-button" class="cancel-stream-header" title="{{ _('Stop task') }}">■</button>
-                <button id="retry-task-button" class="cancel-stream-header" title="{{ _('Restart task') }}" style="display:none">🔄</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
                 <button id="save-document-button" class="save-chat-button" title="{{ _('Save') }}" style="display:none">💾</button>
@@ -113,7 +112,7 @@
 
         <!-- Message input area -->
         <div class="rlm-controls">
-            <label title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
+            <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
             <select id="rlm-docs" multiple hidden></select>
         </div>
         <div class="message-input">
@@ -122,6 +121,7 @@
             <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" multiple class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
+            <button id="retry-task-button" title="{{ _('Restart task') }}" style="display:none">🔄 {{ _('Restart task') }}</button>
         </div>
     </div>
 </div>

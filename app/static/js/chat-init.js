@@ -1010,6 +1010,7 @@ function relocateChatControls(mobile) {
     const voice = document.getElementById('voice-record-button');
     const attach = document.getElementById('attach-file-button');
     const send = document.getElementById('send-button');
+    const retry = document.getElementById('retry-task-button');
     const rlmRow = document.querySelector('.rlm-controls');
     const inputRow = document.querySelector('.message-input');
     if (!voice || !attach || !send || !rlmRow || !inputRow) return;
@@ -1022,6 +1023,7 @@ function relocateChatControls(mobile) {
         rlmRow.appendChild(voice);
         rlmRow.appendChild(attach);
         rlmRow.appendChild(send);
+        if (retry) rlmRow.appendChild(retry);
     } else {
         if (voice.dataset.location !== 'rlm') return;
         delete voice.dataset.location;
@@ -1031,6 +1033,7 @@ function relocateChatControls(mobile) {
         inputRow.appendChild(voice);
         inputRow.appendChild(attach);
         inputRow.appendChild(send);
+        if (retry) inputRow.appendChild(retry);
     }
 }
 

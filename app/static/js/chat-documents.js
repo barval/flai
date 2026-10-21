@@ -852,8 +852,7 @@ function setPreviewMode(active, name) {
         if (saveChat) saveChat.style.display = 'none';
         if (saveDocument) saveDocument.style.display = 'inline-flex';
         if (stopTask) stopTask.style.display = 'none';
-        if (retryTask) retryTask.style.display = 'none';
-        if (cancelStream) cancelStream.style.display = 'none';
+        if (retryTask) retryTask.style.display = 'none';        if (cancelStream) cancelStream.style.display = 'none';
         if (messages) messages.classList.add('hidden');
         if (preview) preview.classList.remove('hidden');
         if (rlmControls) rlmControls.style.display = 'none';
@@ -874,7 +873,7 @@ function setPreviewMode(active, name) {
         if (saveChat) saveChat.style.display = '';
         if (saveDocument) saveDocument.style.display = 'none';
         if (stopTask) stopTask.style.display = '';
-        if (retryTask) retryTask.style.display = '';
+        if (retryTask) retryTask.style.display = 'none';
         if (cancelStream) cancelStream.style.display = '';
         if (messages) messages.classList.remove('hidden');
         if (preview) {

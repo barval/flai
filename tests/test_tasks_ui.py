@@ -392,6 +392,21 @@ class TestReviewGuards:
         # showStop is `active && !stopped` (the button swap precondition).
         assert "saveBtn.style.display = showStop ? 'none' : ''" in block
 
+    def test_restart_replaces_send_and_hides_attachments(self):
+        """A stopped task swaps the Send button for Restart in the input row
+        (not next to the header's 💾); microphone, paperclip and the Deep
+        analysis toggle are offered only while a task is being created or its
+        question is answered."""
+        start = CHAT_HTML.index('<div class="message-input">')
+        input_row = CHAT_HTML[start:CHAT_HTML.index('</div>', start)]
+        assert 'id="retry-task-button"' in input_row
+        block = self._function_block(CHAT_TASKS, "function setTaskMode(")
+        assert "sendBtn.style.display = active && canRetry ? 'none' : ''" in block
+        assert "allowSubmitControls = draft || awaiting" in block
+        assert "voiceBtn.style.display = allowSubmitControls ? '' : 'none'" in block
+        assert "attachBtn.style.display = allowSubmitControls ? '' : 'none'" in block
+        assert "rlmLabel.style.display = allowSubmitControls ? '' : 'none'" in block
+
     def test_documents_ride_with_task_send(self):
         """The shared Documents-panel selection is snapshotted into the task
         request/answer (the same #rlm-docs multi-select the chat reads)."""

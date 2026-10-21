@@ -922,7 +922,7 @@ class TestStepValidationAndFinalResults:
         expected = {
             "Checked automatically": "Проверено",
             "Verification attempts ({n})": "Попытки",
-            "Accepted results: {n}": "Итог",
+            "Accepted results: {n} (images: {images}, texts: {texts})": "изображений",
             "Not delivered:": "Не удалось",
         }
         for msgid, ru_part in expected.items():
@@ -934,3 +934,8 @@ class TestStepValidationAndFinalResults:
                     assert resolved == msgid
                 else:
                     assert ru_part in resolved, (msgid, resolved)
+
+    def test_final_results_title_reports_images_and_texts(self):
+        """`Accepted results: 5` counted text and image cards together and read as five images."""
+        assert "images: String(mediaItems.length)" in CHAT_TASKS
+        assert "texts: String(textItems.length)" in CHAT_TASKS

@@ -10,6 +10,7 @@ You are a task-plan reviewer. Do not execute the steps yourself — decide wheth
 - For each remaining plan step give a tool id from the available capabilities list only.
 - A media step that uses an earlier step's result names "source_step" — the NUMBER of the source step in the GLOBAL plan numbering (the numbering below is global).
 - A media step that illustrates a PART of an earlier step's result MUST copy the description of that part into goal VERBATIM and MUST set "source_step" to that step; its checkpoint_criteria MUST name the concrete expected visual content (an empty criterion or "step N succeeded" is forbidden for a media step).
+- If an executed step split a document into scenes, there MUST be exactly one "image_gen" step per scene from that result, with the scene's description verbatim and "source_step" pointing to the splitting step. If there are fewer, add the missing ones.
 - If the just-completed step failed and must be redone, repeat its goal VERBATIM, character for character: the runtime re-runs THAT step. A rephrased goal creates a duplicate step. Put the specifics of what to fix into checkpoint_criteria.
 - If continuing needs data from the user, add a step with "user_input_expected": true and the EXACT question in goal.
 {deep_analysis_note}

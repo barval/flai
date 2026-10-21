@@ -1065,6 +1065,7 @@ def test_subtask_result_checkpoint_pass_keeps_media(db_env, test_app, gate_open,
     assert step["checkpoint_verdict"] is True
     assert step["extra"]["media"]["file_path"] == "a/b.png"
     assert step["extra"]["media"]["file_name"] == "b.png"
+    assert step["result"] == "done", "the file name belongs to the verifier, not the visible body"
 
 
 def test_subtask_envelope_meta_lands_in_step_extra(db_env, test_app, gate_open, monkeypatch):
@@ -4186,3 +4187,55 @@ def test_prune_candidates_keeps_winner_and_releases_storage(tmp_path, monkeypatc
     assert not (folder / "loser1.png").exists()
     assert not (folder / "loser2.png").exists()
     assert released == [("u1", -10), ("u1", -20)]
+
+
+def test_media_step_body_never_shows_the_artifact_file_name():
+    """The file name is verifier metadata, not part of the user-facing step body.
+
+    A rejected polish attempt used to leave its own name in the result text;
+    the accepted image is kept in ``extra.media``. Showing the rejected name in
+    the body made the text disagree with the card under it.
+    """
+    visible, checkpoint = ex._artifact_result_text(
+        "Draw the second scene",
+        {"file_path": "task/1.png", "file_name": "2026-10-21_14-11-47_edit.png"},
+    )
+
+    assert visible == "Draw the second scene"
+    assert checkpoint == "Draw the second scene\n2026-10-21_14-11-47_edit.png"
+
+
+def test_media_step_body_is_unchanged_without_an_artifact():
+    """A step without a produced file keeps its text for both audiences."""
+    visible, checkpoint = ex._artifact_result_text("plain result", {})
+
+    assert visible == "plain result"
+    assert checkpoint == "plain result"
+
+
+def test_task_plan_template_requires_rlm_for_document_scene_splitting():
+    """A document-wide scene split must read the PDF, not a prior digest."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    ru = (root / "prompts/ru/task_plan.template").read_text(encoding="utf-8")
+    en = (root / "prompts/en/task_plan.template").read_text(encoding="utf-8")
+
+    assert "разбить документ на сцены" in ru
+    assert '"rlm"' in ru
+    assert "ВСЕ сцены" in ru
+    assert "split a document into scenes" in en
+    assert '"rlm"' in en
+    assert "ALL scenes" in en
+
+
+def test_task_replan_template_requires_one_image_step_per_scene():
+    """The reviewer must materialize every scene the split step found."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    ru = (root / "prompts/ru/task_replan.template").read_text(encoding="utf-8")
+    en = (root / "prompts/en/task_replan.template").read_text(encoding="utf-8")
+
+    assert 'ровно один шаг "image_gen"' in ru
+    assert 'exactly one "image_gen" step' in en

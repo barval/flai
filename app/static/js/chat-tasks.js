@@ -712,13 +712,18 @@ function appendFinalResults(div, m) {
 
     const wrap = document.createElement('div');
     wrap.className = 'task-final-results';
+    const mediaItems = items.filter(function(it) { return it.file_path; });
+    const textItems = items.filter(function(it) { return !it.file_path; });
     if (items.length) {
         const title = document.createElement('div');
         title.className = 'task-final-title';
-        title.textContent = '📦 ' + formatString(t('task_final_items'), { n: items.length });
+        title.textContent = '📦 ' + formatString(t('task_final_items'), {
+            n: items.length,
+            images: String(mediaItems.length),
+            texts: String(textItems.length),
+        });
         wrap.appendChild(title);
 
-        const mediaItems = items.filter(function(it) { return it.file_path; });
         if (mediaItems.length) {
             const grid = document.createElement('div');
             grid.className = 'task-final-grid';
@@ -758,7 +763,7 @@ function appendFinalResults(div, m) {
             wrap.appendChild(grid);
         }
 
-        items.filter(function(it) { return !it.file_path; }).forEach(function(it) {
+        textItems.forEach(function(it) {
             const row = document.createElement('div');
             row.className = 'task-final-row';
             row.textContent = it.seq + '. ' + String(it.goal || '') + (it.summary ? ' — ' + it.summary : '');

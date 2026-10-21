@@ -251,6 +251,20 @@ def _clean_step_result(text: str) -> str:
     return strip_leaked_tool_text(text) or text
 
 
+def _artifact_result_text(result_text: str, media: dict) -> tuple[str, str]:
+    """Split a media step's body into the visible text and the verifier input.
+
+    The bare artifact file name is metadata for the verifier only. It is not
+    part of the user-facing body: the image card already identifies the file,
+    and a rejected polish attempt must never leave its own file name in the
+    step when the accepted generation is the artifact kept in ``extra.media``.
+    """
+    if not media.get("file_path"):
+        return result_text, result_text
+    artifact_name = str(media.get("file_name") or media["file_path"])
+    return result_text, result_text + "\n" + artifact_name
+
+
 def _bible_has_content(bible: Any) -> bool:
     """Is the continuity sheet populated with anything renderable?"""
     return isinstance(bible, dict) and any(
@@ -3696,22 +3710,17 @@ class TaskExecutor:
             # the English prompt). Never show it as the step body — the step
             # keeps its own localized goal.
             result_text = str(row.get("goal") or "") or "done"
-        # What the verifier sees: the shown result plus, for an image artifact,
-        # a description of the produced picture (the verifier is a text-only
+        # The verifier input is the step body plus, for an image artifact, a
+        # description of the produced picture (the verifier is a text-only
         # reasoning call — see _describe_step_image).
-        checkpoint_input = result_text
+        result_text, checkpoint_input = _artifact_result_text(result_text, media)
         image_note = ""
         if media.get("file_path"):
-            # The artifact line is the bare file name (user preference: no
-            # translatable sentence around it — a sentence once leaked English
-            # when the gettext call ran outside an app context).
-            artifact_name = str(media.get("file_name") or media["file_path"])
-            result_text = result_text + "\n" + artifact_name
             # The artifact name ALWAYS reaches the verifier (a media step whose
             # description could not be produced must still be checkable against
-            # "the file exists" — checkpoint_input used to keep the original
-            # text here, so the verifier saw only a repeat of the goal).
-            checkpoint_input = result_text
+            # "the file exists"). It stays out of the visible body: the image
+            # card identifies the kept artifact, and a rejected polish name
+            # must not replace it in the text.
             image_note, describe_seconds = self._describe_step_image(
                 media,
                 task.get("lang") or "ru",
@@ -3720,7 +3729,7 @@ class TaskExecutor:
             if describe_seconds:
                 self._add_budget(task_id, describe_seconds)
             if image_note:
-                checkpoint_input = result_text + "\n\n" + image_note
+                checkpoint_input = checkpoint_input + "\n\n" + image_note
         # The continuity clause is added below (transient, by the cards the
         # step actually names). No generic «match the whole sheet» fallback:
         # it demanded entities the scene never contained and caused rewrites.

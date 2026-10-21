@@ -3114,8 +3114,8 @@ msgstr "попытка {n}"
 
 #: app/templates/chat.html:195
 #, python-brace-format
-msgid "Accepted results: {n}"
-msgstr "Итог: {n}"
+msgid "Accepted results: {n} (images: {images}, texts: {texts})"
+msgstr "Итог: {n} (изображений: {images}, текстов: {texts})"
 
 #: app/templates/chat.html:196
 msgid "Not delivered:"

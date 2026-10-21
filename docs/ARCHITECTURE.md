@@ -69,6 +69,9 @@ Strictly sequential — only one GPU task runs at a time.
 - **Errors are silently logged** — both `_process_fact_extraction()` and `_process_fact_merge()` are wrapped in try/except so failures never leak to users via SSE.
 - They are added directly to `slow_queue_key` via `redis.rpush()` without going through `add_request()`.
 
+### Visual continuity for task images
+A task with two or more `image_gen` steps extracts an internal continuity sheet before the first generated image (`prompts/{ru,en}/task_continuity.template`) and stores it in `tasks.visual_bible`. `render_sheet` injects the style and the entities named by each step into the generation prompt, `ensure_entities_in_prompt` keeps them in the final SD prompt, and the verifier checks the same cards. The sheet is a guard, never a plan step. Details → `docs/TASKS.md`, `docs/IMAGE_GENERATION.md`.
+
 ### Task Signing
 Tasks are HMAC-signed JSON to prevent tampering.
 

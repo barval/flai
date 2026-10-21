@@ -31,6 +31,12 @@ Source images for editing are automatically resized to **1024px** on the longest
 
 Editing uses separate model files and runs independently from generation — no conflict between the two.
 
+## Descriptions for task illustrations (visual continuity)
+
+A task that plans two or more `image_gen` steps first builds an internal **visual continuity sheet** (`tasks.visual_bible`): one style plus the fixed look of every character, place and prop named in the request. It is extracted by one reasoning call (`prompts/{ru,en}/task_continuity.template`) before the first generated image; `look` is **English only** (one concrete sentence with the identifying features), `aliases` are in the task language, `id` is lowercase Latin letters, digits and underscores. An edit-only task never extracts it.
+
+For each scene `render_sheet` selects the cards named by the step goal and criterion (case-insensitive substring, then pymorphy3 lemmas; a multi-word alias matches word-wise) and prepends a block with `Style:` and grouped `Characters:` / `Places:` / `Props:` lines to the generation query. The multimodal prompt builder (`create_image_z_image_turbo.template`) turns that query into the final SD prompt (`[subject] + [action] + [setting] + [style] + [lighting] + [composition] + [quality]`); `ensure_entities_in_prompt` then appends the look of any selected card missing from that prompt, so a rephrasing cannot drop an entity. A replan with pending images marks the sheet stale and merges it (existing ids/looks kept verbatim). Extraction retries, repair edits and the best-effort candidate pick are described in `docs/TASKS.md`.
+
 ## stable-diffusion.cpp Build
 
 The `sd_cpp` service is **built from source** during first `docker compose up`:

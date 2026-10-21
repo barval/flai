@@ -81,6 +81,7 @@ TASK_STEP_MAX_ATTEMPTS=3        # Попыток на шаг с учётом к�
 TASK_MAX_REVISIONS=8            # Принятых перезаписей плана на задачу; затем план окончателен
 TASK_MAX_STEPS=40               # Жёсткий предел длины плана
 TASK_REPLAN_EVERY_N=3           # Обычных успешных медиашагов между проверками плана (провалы/ответы проверяются всегда)
+TASK_STEP_MAX_REPAIRS=3         # Редактирований после попыток генерации (локальные дефекты); затем остаётся лучший кандидат
 TASK_STEP_REDO_MAX=1            # Plan-review re-opens of a failed step (a verbatim repeated goal); 0 disables
 TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
 TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check

@@ -1723,12 +1723,13 @@ class RedisRequestQueue:
         bible = data.get("visual_bible_data")
         if not isinstance(bible, dict):
             return prompt_data
-        prompt = str(prompt_data.get("prompt") or "")
+        key = "prompt" if "prompt" in prompt_data else "edit_prompt"
+        prompt = str(prompt_data.get(key) or "")
         if not prompt:
             return prompt_data
         from app.tasks.continuity import ensure_entities_in_prompt
 
-        prompt_data["prompt"] = ensure_entities_in_prompt(
+        prompt_data[key] = ensure_entities_in_prompt(
             prompt,
             bible,
             str(data.get("visual_bible_goal") or ""),
@@ -1796,6 +1797,14 @@ class RedisRequestQueue:
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+        # Repair mode: keep the edit local (low strength) so the rest of the
+        # illustration survives; a full-strength edit would redraw the scene.
+        if bool((task.get("data") or {}).get("repair")) and isinstance(edit_data, dict):
+            try:
+                strength = float(edit_data.get("strength") or 0.42)
+            except (TypeError, ValueError):
+                strength = 0.42
+            edit_data["strength"] = min(0.5, max(0.35, strength))
         edit_data = self._ensure_prompt_entities(task, edit_data)
 
         if task and self._is_task_cancelled(task["id"]):

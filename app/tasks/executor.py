@@ -146,6 +146,16 @@ def _merge_usage(total: Any, current: Any) -> dict[str, int] | None:
     }
 
 
+def _candidate_key(candidate: dict) -> tuple[int, int, int, int]:
+    """Rank one failed candidate (higher is better, the last attempt wins ties)."""
+    score = candidate.get("score")
+    numeric = int(score) if isinstance(score, (int, float)) else -1
+    mismatches = candidate.get("mismatches") or []
+    critical = sum(1 for m in mismatches if isinstance(m, dict) and str(m.get("severity")).lower() == "critical")
+    minor = sum(1 for m in mismatches if isinstance(m, dict) and str(m.get("severity")).lower() == "minor")
+    return (numeric, -critical, -minor, int(candidate.get("attempt") or 0))
+
+
 def _bible_has_content(bible: Any) -> bool:
     """Is the continuity sheet populated with anything renderable?"""
     return isinstance(bible, dict) and any(
@@ -1645,6 +1655,99 @@ class TaskExecutor:
                 logger.warning(f"task {task.get('id')}: attached image unread ({rel}): {e}")
         return parts
 
+    def _read_media_bytes(self, media: dict) -> dict | None:
+        """Re-read a stored media dict from disk (``_bytes`` filled, None on failure)."""
+        rel = str(media.get("file_path") or "")
+        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+        if not rel or not upload_folder:
+            return None
+        path = os.path.realpath(os.path.join(upload_folder, rel))
+        if not path.startswith(os.path.realpath(upload_folder) + os.sep) or not os.path.isfile(path):
+            return None
+        try:
+            with open(path, "rb") as fh:
+                loaded = dict(media)
+                loaded["_bytes"] = fh.read()
+                return loaded
+        except OSError:
+            return None
+
+    def _delete_media_file(self, media: dict) -> None:
+        """Best-effort removal of a losing candidate (strictly inside the upload folder)."""
+        rel = str(media.get("file_path") or "")
+        upload_folder = str(self.app.config.get("UPLOAD_FOLDER") or "")
+        if not rel or not upload_folder:
+            return
+        path = os.path.realpath(os.path.join(upload_folder, rel))
+        if not path.startswith(os.path.realpath(upload_folder) + os.sep):
+            return
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError as e:
+            logger.warning(f"could not remove losing candidate {rel}: {e}")
+
+    def _finish_best_effort(
+        self,
+        task: dict,
+        row: dict,
+        idx: int,
+        elapsed: float,
+        result_text: str,
+        extra: dict,
+    ) -> None:
+        """All attempts failed: keep the candidate closest to the task (best effort)."""
+        task_id = task["id"]
+        candidates = [
+            c for c in (extra.get("candidates") or [])
+            if isinstance(c, dict) and c.get("file_path")
+        ]
+        if not candidates:
+            self._end_step(
+                task_id,
+                row["id"],
+                status="failed",
+                exec_seconds=elapsed,
+                last_error="all image attempts failed",
+            )
+            self._clear_task_stage(task)
+            update_task(task_id, next_step_index=idx + 1)
+            return
+        winner = max(candidates, key=_candidate_key)
+        for candidate in candidates:
+            if candidate is not winner:
+                self._delete_media_file(candidate)
+        winner_media = {
+            key: winner[key]
+            for key in ("file_path", "file_name", "file_type", "file_size")
+            if winner.get(key)
+        }
+        merged = {
+            **extra,
+            "media": winner_media,
+            "best_effort": True,
+            "artifact_note": "best effort",
+        }
+        self._end_step(
+            task_id,
+            row["id"],
+            status="passed",
+            exec_seconds=elapsed,
+            result=result_text,
+            checkpoint_result=str(winner.get("explanation") or ""),
+            checkpoint_verdict=False,
+            extra=merged,
+        )
+        self._clear_task_stage(task)
+        logger.info(
+            "task %s step %d: all attempts failed — keeping the best candidate (score=%s, %d total)",
+            task_id,
+            idx + 1,
+            winner.get("score"),
+            len(candidates),
+        )
+        update_task(task_id, next_step_index=idx + 1)
+
     def _prior_step_media(self, task_id: str, idx: int, source_seq: int | None = None) -> dict | None:
         """The ``extra.media`` artifact of ONE prior step (an image file).
 
@@ -2808,6 +2911,22 @@ class TaskExecutor:
             return False
         return True
 
+    def _repair_preserve(self, task: dict, step: dict, goal: str) -> str:
+        """What a repair edit must keep untouched (scene, style, named entities)."""
+        parts = [f"the scene: {goal}"]
+        bible = task.get("visual_bible") or {}
+        if _bible_has_content(bible):
+            from app.tasks.continuity import select_cards
+
+            style = str(bible.get("style") or "").strip()
+            if style:
+                parts.append(f"style: {style}")
+            for card in select_cards(bible, goal, str(step.get("checkpoint_criteria") or "")):
+                look = str(card.get("look") or "").strip()
+                if look:
+                    parts.append(look)
+        return "; ".join(parts)[:800]
+
     def _enqueue_subtask(self, task: dict, idx: int, step: dict, gate_open: bool | None = None) -> None:
         """Media/RLM subtask → the existing request queue with the task tag.
 
@@ -2816,6 +2935,12 @@ class TaskExecutor:
         task_id = task["id"]
         tool = str(step.get("tool", ""))
         row = self._step_row_for(task_id, idx, step)
+        row_extra = row.get("extra") or {}
+        repair = row_extra.get("pending_action") == "repair"
+        if repair:
+            # The same plan step runs an edit of its own current artifact
+            # before the next generation attempt.
+            tool = "image_edit"
         task_type = _SUBTASK_TYPE.get(tool, "image_gen")
         goal = str(step.get("goal", ""))
         lang = task.get("lang") or "ru"
@@ -2869,7 +2994,8 @@ class TaskExecutor:
         # the media handlers append it to the model prompt themselves, while
         # text stays the clean step goal — putting it into text leaked it into
         # the step's visible result (the media envelope echoes `query`).
-        corrective_note = str((row.get("extra") or {}).get("corrective_note") or "").strip()
+        # Repair already carries the defect in ``text`` — do not append it twice.
+        corrective_note = "" if repair else str((row.get("extra") or {}).get("corrective_note") or "").strip()
         if corrective_note:
             request_data["corrective_note"] = corrective_note[:1000]
         if tool == "rlm":
@@ -2910,7 +3036,35 @@ class TaskExecutor:
             # the same joint multimodal call the chat image path uses.
             request_data["images"] = self._task_image_parts(task)
             request_data["task_question"] = str(task.get("title") or step.get("goal") or "")
-        if tool == "image_edit":
+        if tool == "image_edit" and repair:
+            # Repair mode: edit the step's OWN current artifact before another
+            # generation attempt. The defect comes from the verifier.
+            source = row_extra.get("repair_source")
+            loaded = self._read_media_bytes(source) if isinstance(source, dict) else None
+            if loaded is None:
+                logger.warning(f"task {task_id} step {idx + 1}: repair source unreadable — failing the step")
+                self._end_step(task_id, row["id"], status="failed", last_error="repair source unavailable")
+                update_task(task_id, next_step_index=idx + 1)
+                self._publish_task_update(task_id)
+                return
+            reason = str(row_extra.get("corrective_note") or "").strip()
+            preserve = self._repair_preserve(task, step, goal)
+            repair_text = (
+                "Repair this illustration. "
+                f"Defect to fix: {reason or 'a visual defect'}. "
+                f"Preserve exactly: {preserve}. "
+                "Change only the defect; keep the composition, lighting and illustration style unchanged."
+            )
+            request_data["file_data"] = self._media_to_raw_base64(loaded)
+            request_data["file_name"] = os.path.basename(str(loaded.get("file_path") or "")) or str(
+                loaded.get("file_name") or ""
+            )
+            request_data["file_type"] = str(loaded.get("file_type") or "image/png")
+            request_data["repair"] = True
+            request_data["text"] = repair_text
+            request_data["prompt"] = repair_text
+            request_data["repair_preserve"] = preserve
+        elif tool == "image_edit":
             # The source to edit is, in order: the attached image the step goal
             # names (one step per image, like vision — the planner puts that
             # image's file name into the goal); any attached image (the first —
@@ -2996,6 +3150,11 @@ class TaskExecutor:
             status="subtask_queued",
             started_at=_now_iso(),
             attempts=int(row.get("attempts") or 0) + 1,
+            extra={
+                **row_extra,
+                "current_kind": "repair" if repair else "gen",
+                "pending_action": None,
+            },
         )
         try:
             queue = _get_request_queue()
@@ -3370,22 +3529,46 @@ class TaskExecutor:
                     "prompt_tokens": int(checkpoint["usage"].get("prompt_tokens") or 0),
                     "completion_tokens": int(checkpoint["usage"].get("completion_tokens") or 0),
                 }
-        if checkpoint and not checkpoint.get("verdict") and checkpoint.get("severity") == "minor":
-            # Minor differences (style, lighting, small details) are not worth
-            # another diffusion run — accept the picture, keep the note.
-            logger.info(f"task {task_id} step {idx + 1}: minor differences accepted without a retry")
-            merged_extra["artifact_note"] = "minor differences accepted"
-            checkpoint = {**checkpoint, "verdict": True}
+        # Every produced artifact is kept: the fallback pick needs ALL attempts,
+        # not only the last (the last one is not always the closest).
+        current_kind = str(previous_extra.get("current_kind") or "gen")
+        generations_used = int(previous_extra.get("generations_used") or 0)
+        repairs_used = int(previous_extra.get("repairs_used") or 0)
+        if current_kind == "repair":
+            repairs_used += 1
+            merged_extra["repairs_used"] = repairs_used
+        else:
+            generations_used += 1
+            merged_extra["generations_used"] = generations_used
+        if media.get("file_path"):
+            merged_extra["candidates"] = [
+                *(previous_extra.get("candidates") or []),
+                {
+                    "file_path": media.get("file_path"),
+                    "file_name": media.get("file_name"),
+                    "file_type": media.get("file_type"),
+                    "file_size": media.get("file_size"),
+                    "kind": current_kind,
+                    "attempt": int(row.get("attempts") or 0),
+                    "verdict": checkpoint.get("verdict") if checkpoint else None,
+                    "severity": checkpoint.get("severity") if checkpoint else None,
+                    "repairable": bool(checkpoint.get("repairable")) if checkpoint else False,
+                    "score": checkpoint.get("score") if checkpoint else None,
+                    "explanation": str(checkpoint.get("explanation") or "") if checkpoint else "",
+                    "mismatches": (checkpoint.get("mismatches") or []) if checkpoint else [],
+                    "at": _now_iso(),
+                },
+            ]
+        max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
+        max_repairs = int(self._cfg("TASK_STEP_MAX_REPAIRS", 3))
         if checkpoint and not checkpoint.get("verdict"):
             reason = str(checkpoint.get("explanation", ""))
             attempts = int(row.get("attempts") or 0)
-            max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
             # Anti-loop: the same rejection after a corrective retry means the
-            # note did not change anything — another diffusion run would repeat
-            # it. Accept the artifact (with the reason recorded) instead.
+            # note did not change anything — another run would repeat it.
             from app.tasks.continuity import goal_signature
 
-            previous_reason = str((row.get("extra") or {}).get("corrective_note") or "")
+            previous_reason = str(previous_extra.get("corrective_note") or "")
             repeated = bool(reason and previous_reason) and goal_signature(reason) == goal_signature(previous_reason)
             if repeated and attempts < max_attempts:
                 logger.warning(
@@ -3395,44 +3578,54 @@ class TaskExecutor:
                 merged_extra["artifact_note"] = "repeated rejection accepted"
                 checkpoint = {**checkpoint, "verdict": True, "explanation": reason}
             if not repeated:
-                if attempts < max_attempts:
-                    # Corrective retry of the SAME step (mirrors a direct step):
-                    # the step stays open, the rejected artifact is kept in extra
-                    # and the mismatch is left for the next attempt's prompt — the
-                    # task never carries a rejected artifact into the following
-                    # steps. The poll budget restarts with the new attempt.
+                repairable = bool(checkpoint.get("repairable"))
+                if current_kind == "gen" and repairable and repairs_used < max_repairs:
+                    action = "repair"
+                elif generations_used < max_attempts:
+                    action = "gen"
+                else:
+                    action = "best"
+                if action == "repair":
+                    # A local defect: one edit of THIS artifact before the next
+                    # generation (cheaper than a full diffusion run).
                     update_step(
                         row["id"],
                         status="pending",
                         result=result_text,
-                        extra={**merged_extra, "corrective_note": reason, "subtask_polls": 0},
+                        extra={
+                            **merged_extra,
+                            "pending_action": "repair",
+                            "repair_source": media,
+                            "corrective_note": reason,
+                            "subtask_polls": 0,
+                        },
+                    )
+                    self._log_attempt(row["id"], attempts, False, reason)
+                    logger.info(
+                        f"task {task_id} step {idx + 1}: repairable defect — scheduling edit "
+                        f"({repairs_used}/{max_repairs}) before the next generation"
+                    )
+                    return "done"
+                if action == "gen":
+                    update_step(
+                        row["id"],
+                        status="pending",
+                        result=result_text,
+                        extra={
+                            **merged_extra,
+                            "pending_action": "gen",
+                            "corrective_note": reason,
+                            "subtask_polls": 0,
+                        },
                     )
                     self._log_attempt(row["id"], attempts, False, reason)
                     logger.warning(
                         f"task {task_id} step {idx + 1}: subtask checkpoint rejected "
-                        f"(attempt {attempts}/{max_attempts}) — retrying with the mismatch in the prompt"
+                        f"(generation {generations_used}/{max_attempts}) — retrying with the mismatch in the prompt"
                     )
                     return "done"
-                last_error = _tr("step attempts exhausted", task.get("lang") or "ru")
-                if reason:
-                    last_error += f": {reason[:300]}"
-                self._end_step(
-                    task_id,
-                    row["id"],
-                    status="failed",
-                    exec_seconds=elapsed,
-                    result=result_text,
-                    last_error=last_error,
-                    checkpoint_result=reason,
-                    checkpoint_verdict=False,
-                    extra=merged_extra,
-                )
-                self._log_attempt(row["id"], attempts, False, reason)
-                self._clear_task_stage(task)
-                logger.warning(
-                    f"task {task_id} step {idx + 1}: subtask checkpoint rejected — attempts spent, continuing"
-                )
-                update_task(task_id, next_step_index=idx + 1)
+                # All generations and repairs are spent: keep the closest one.
+                self._finish_best_effort(task, row, idx, elapsed, result_text, merged_extra)
                 return "done"
         self._end_step(
             task_id,

@@ -81,6 +81,7 @@ TASK_STEP_MAX_ATTEMPTS=3        # Step attempts including corrective checkpoint 
 TASK_MAX_REVISIONS=8            # Accepted plan rewrites per task; then the plan is final
 TASK_MAX_STEPS=40               # Hard ceiling on the plan length
 TASK_REPLAN_EVERY_N=3           # Ordinary passing media steps between plan reviews (failures/answers always review)
+TASK_STEP_MAX_REPAIRS=3         # Image edits after generation attempts (local defects); then the best candidate is kept
 TASK_STEP_REDO_MAX=1            # Plan-review re-opens of a failed step (a verbatim repeated goal); 0 disables
 TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
 TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check

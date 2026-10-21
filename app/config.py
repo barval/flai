@@ -158,6 +158,9 @@ def load_config(app):
     app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", "8"))
     app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", "40"))
     app.config["TASK_REPLAN_EVERY_N"] = int(os.getenv("TASK_REPLAN_EVERY_N", "3"))
+    # Media repair: one image edit after every generation attempt (3 + 3 by
+    # default) before the best-effort pick of the closest candidate.
+    app.config["TASK_STEP_MAX_REPAIRS"] = int(os.getenv("TASK_STEP_MAX_REPAIRS", "3"))
     # A plan review that repeats the failed step's goal verbatim re-opens that
     # step instead of adding a duplicate plan position; this caps the re-opens.
     app.config["TASK_STEP_REDO_MAX"] = int(os.getenv("TASK_STEP_REDO_MAX", "1"))

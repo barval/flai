@@ -174,11 +174,16 @@ _POLISH_STYLE_TERMS = (
     "painting",
     "drawing",
     "cartoon",
+    "3d",
+    "render",
     "стил",
     "акварел",
     "иллюстрац",
     "рисун",
     "фотореал",
+    "рендер",
+    "объемн",
+    "объёмн",
 )
 
 
@@ -261,7 +266,7 @@ def _continuity_clause(bible: dict, goal: str, criteria: Any = "") -> str:
     carried — a clause for a sheet with nothing matching is empty.
     """
     lines = []
-    if str(bible.get("style") or "").strip():
+    if str(bible.get("style") or "").strip() and bible.get("style_lock", True):
         lines.append(f"Style: {bible['style'].strip()}")
     for card in select_cards(bible, str(goal or ""), str(criteria or "")):
         card_id = str(card.get("id") or "")
@@ -3089,7 +3094,7 @@ class TaskExecutor:
             from app.tasks.continuity import select_cards
 
             style = str(bible.get("style") or "").strip()
-            if style and include_style:
+            if style and include_style and bible.get("style_lock", True):
                 parts.append(f"style: {style}")
             for card in select_cards(bible, goal, str(step.get("checkpoint_criteria") or "")):
                 look = str(card.get("look") or "").strip()
@@ -3218,9 +3223,12 @@ class TaskExecutor:
                 self._publish_task_update(task_id)
                 return
             reason = str(row_extra.get("corrective_note") or "").strip()
-            style_polish = bool(row_extra.get("polish_style"))
+            bible = task.get("visual_bible") or {}
+            style_target = str(bible.get("style") or "").strip()
+            style_polish = bool(row_extra.get("polish_style")) and bool(style_target) and bool(
+                bible.get("style_lock", True)
+            )
             preserve = self._repair_preserve(task, step, goal, include_style=not style_polish)
-            style_target = str((task.get("visual_bible") or {}).get("style") or "").strip()
             if style_polish:
                 # The target style is the change, not something to preserve —
                 # the old (wrong) style must not survive the edit.

@@ -839,9 +839,11 @@ def test_ensure_style_keeps_photorealistic_for_a_photo_style():
     from app.tasks.continuity import ensure_style_in_prompt
 
     bible = {"style": "photorealistic, natural light"}
-    result = ensure_style_in_prompt("A cat on a rug, photorealistic, sharp focus.", bible)
+    result = ensure_style_in_prompt("A cat on a rug, photorealistic, high detail, sharp focus.", bible)
     assert result.startswith("photorealistic, natural light.")
     assert "photorealistic" in result.lower()
+    assert "2D" not in result and "hand-drawn" not in result
+    assert "high detail" in result and "sharp focus" in result
 
 
 @pytest.mark.unit
@@ -859,7 +861,37 @@ def test_ensure_style_does_not_force_2d_on_a_3d_style():
     from app.tasks.continuity import ensure_style_in_prompt
 
     style = "3D cartoon render, soft plastic shapes"
-    result = ensure_style_in_prompt("A cat, high detail, sharp focus.", {"style": style})
+    result = ensure_style_in_prompt("A cat, photorealistic, high detail, sharp focus, masterpiece.", {"style": style})
     assert result.startswith(style + ".")
     assert "2D" not in result
     assert "hand-drawn" not in result
+    assert "photorealistic" not in result.lower()
+    # 3D keeps the detail/sharpness quality tags; only photorealism is removed.
+    assert "high detail" in result and "sharp focus" in result
+
+
+@pytest.mark.unit
+def test_style_lock_false_disables_style_enforcement():
+    """A task that explicitly asks for different styles must keep them.
+
+    The sheet reports style_lock=false with an empty style; the prompt builder
+    and the continuity renderer must then leave the style alone.
+    """
+    from app.tasks.continuity import ensure_style_in_prompt, parse_bible
+
+    sheet = parse_bible(
+        '{"style": "", "style_lock": false, "characters": [], "places": [], "props": []}'
+    )
+    assert sheet is not None and sheet["style_lock"] is False
+    prompt = "A cat, photorealistic, high detail, sharp focus"
+    assert ensure_style_in_prompt(prompt, sheet) == prompt
+    locked = render_sheet({"style": "children's book illustration", "style_lock": False})
+    assert "Style:" not in locked
+
+
+@pytest.mark.unit
+def test_style_lock_missing_defaults_to_true():
+    from app.tasks.continuity import parse_bible
+
+    sheet = parse_bible('{"style": "watercolor", "characters": [], "places": [], "props": []}')
+    assert sheet is not None and sheet["style_lock"] is True

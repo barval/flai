@@ -99,7 +99,8 @@ def parse_bible(raw: str) -> dict | None:
     """Extract a continuity sheet from LLM prose containing a JSON object.
 
     Uses the JSON-from-prose slicing pattern of the replan path (first ``{``
-    ... last ``}``) and validates the schema: ``style`` is a string and
+    ... last ``}``) and validates the schema: ``style`` is a string,
+    ``style_lock`` is a boolean (default true for old sheets) and
     ``characters``/``places``/``props`` are lists of ``{id, aliases, look}``.
     Returns the schema-normalized dict, or None when no valid sheet is found.
     """
@@ -115,6 +116,10 @@ def parse_bible(raw: str) -> dict | None:
     style = data.get("style")
     if not isinstance(style, str):
         style = ""
+    style_lock = data.get("style_lock")
+    if not isinstance(style_lock, bool):
+        # Sheets written before the field existed keep the unified-style default.
+        style_lock = True
     cards: dict[str, list] = {}
     for key in _CARD_KEYS:
         entries: list = []
@@ -135,7 +140,7 @@ def parse_bible(raw: str) -> dict | None:
                     look = ""
                 entries.append({"id": card_id, "aliases": aliases, "look": look})
         cards[key] = entries
-    return {"style": style, **cards}
+    return {"style": style, "style_lock": style_lock, **cards}
 
 
 def select_cards(bible: dict, *texts: str) -> list[dict]:
@@ -220,7 +225,7 @@ def render_sheet(bible: dict, goal: str = "", criteria: str = "") -> str:
     """
     lines = ["CONTINUITY (mandatory for this task, keep identical across all images):"]
     style = bible.get("style") or ""
-    if style.strip():
+    if style.strip() and bible.get("style_lock", True):
         lines.append(f"Style: {style.strip()}")
     selected = select_cards(bible, goal, criteria)
     selected_ids = {str(c.get("id") or "") for c in selected}
@@ -298,6 +303,10 @@ _STYLE_ILLUSTRATION_RE = re.compile(
     re.IGNORECASE,
 )
 _STYLE_3D_RE = re.compile(r"\b3d\b|three[- ]dimensional|render|blender|octane", re.IGNORECASE)
+_PHOTOREAL_TAG_RE = re.compile(
+    r"(?:,\s*)?\bphotorealistic(?:\s+(?:style|render|look|image|photo|picture))?\b",
+    re.IGNORECASE,
+)
 # Tags that push a diffusion model toward photography/3D. They are removed
 # when the continuity sheet asks for an illustration/watercolor style.
 _REALISM_TAGS_RE = re.compile(
@@ -312,22 +321,31 @@ def ensure_style_in_prompt(prompt: str, bible: dict) -> str:
 
     The multimodal prompt builder paraphrases the request and can drop the
     style; a trailing style is also routinely ignored by the diffusion model.
-    A non-photoreal style removes the fixed realism tags (``photorealistic``,
-    ``high detail``, ``sharp focus``, ``masterpiece``), which otherwise pull a
-    children's-book/watercolor series toward photography/3D, and prefixes the
-    medium cues (2D, hand-drawn, flat colors, clean outlines).
+    A 2D illustration style removes the fixed realism tags (``photorealistic``,
+    ``high detail``, ``sharp focus``, ``masterpiece``) and prefixes the medium
+    cues (2D, hand-drawn, flat colors, clean outlines). A photorealistic or 3D
+    style is left alone: no 2D cues, and only ``photorealistic`` is removed
+    from a non-photo 3D style; the detail/sharpness tags stay.
     """
     text = str(prompt or "").strip()
     style = str((bible or {}).get("style") or "").strip()
-    if not text or not style:
+    if not text or not style or not (bible or {}).get("style_lock", True):
         return text
     cues: list[str] = []
-    if _STYLE_PHOTO_RE.search(style):
+    is_photo = bool(_STYLE_PHOTO_RE.search(style))
+    is_3d = bool(_STYLE_3D_RE.search(style))
+    is_2d_illustration = bool(_STYLE_ILLUSTRATION_RE.search(style)) and not is_3d
+    if is_photo:
         prefix = style
     else:
-        text = _REALISM_TAGS_RE.sub("", text)
+        # A photorealistic tag always contradicts a non-photo style; the
+        # detail/sharpness/masterpiece tags are removed only for 2D
+        # illustrations, where they pull the picture toward photography.
+        text = _PHOTOREAL_TAG_RE.sub("", text)
+        if is_2d_illustration:
+            text = _REALISM_TAGS_RE.sub("", text)
         text = re.sub(r"\s{2,}", " ", text).strip(" ,")
-        if _STYLE_ILLUSTRATION_RE.search(style) and not _STYLE_3D_RE.search(style):
+        if is_2d_illustration:
             for cue in ("2D", "hand-drawn", "flat colors", "clean outlines"):
                 if cue.lower() not in style.lower() and cue.lower() not in text.lower():
                     cues.append(cue)

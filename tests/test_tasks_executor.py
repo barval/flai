@@ -4147,3 +4147,9 @@ def test_clean_step_result_strips_leaked_rlm_markup():
     leaked = 'Answer text.\n\n<tool_call>\n<function=final>\nanswer="Answer text."'
     assert ex._clean_step_result(leaked).strip() == "Answer text."
     assert ex._clean_step_result("plain answer") == "plain answer"
+
+
+def test_continuity_clause_omits_style_when_style_lock_is_false():
+    """A varied-style task must not tell the verifier that one style is mandatory."""
+    bible = {"style": "children's book illustration", "style_lock": False, "characters": [], "places": [], "props": []}
+    assert "Style:" not in ex._continuity_clause(bible, "draw a scene", "criterion")

@@ -255,7 +255,19 @@ def test_media_templates_count_limbs_and_flag_anatomical_anomalies():
             assert "конечности" in desc and "лишних" in desc
             assert "анатомические аномалии" in check and "лапа" in check
             assert "фотография вместо рисунка" in check
+            assert "2d вместо 3d" in check and "3d вместо 2d" in check
+            assert "если лист называет фотореализм" in check
         else:
             assert "limbs" in desc and "extra, missing or duplicated" in desc
             assert "anatomical anomalies" in check and "paw" in check
             assert "photograph instead of a drawing" in check
+            assert "2d instead of 3d" in check and "3d instead of 2d" in check
+            assert "when the sheet names photorealism" in check
+
+
+def test_continuity_template_supports_style_variety():
+    """The sheet schema must expose style_lock so an explicit
+    «different styles» request can disable the unified-style enforcement."""
+    for lang in ("ru", "en"):
+        src = _load("task_continuity", lang)
+        assert '"style_lock"' in src

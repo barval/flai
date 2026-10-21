@@ -352,6 +352,24 @@ def get_running_step(task_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def get_in_flight_subtask(task_id: str) -> dict | None:
+    """The queued/running media subtask row of a task, if any.
+
+    A media step hands its work to the request queue and then waits for the
+    result. That work is the task's own GPU/queue activity: the scheduler gate
+    must not read it as chat preemption and freeze the task while it runs.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT * FROM task_steps WHERE task_id = %s "
+            "AND status IN ('subtask_queued', 'subtask_running') ORDER BY seq DESC LIMIT 1",
+            (task_id,),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
 def get_all_running_steps() -> list[dict]:
     """Every step row a dead process left in flight (restart-marker sweep).
 
@@ -1332,12 +1350,31 @@ class TaskExecutor:
             raise RuntimeError("TaskExecutor has no app bound")
 
         if not self._gate_value(gate_open):
+            # A task parked as «frozen» while its own media subtask is still in
+            # flight was mislabelled by the old gate (the subtask itself keeps
+            # the GPU busy). Restore the honest active status — the subtask
+            # continues and chat preemption is signalled by its cancel flag.
+            for t in get_tasks_by_status("frozen"):
+                if t.get("abort_reason") in ("answer_images", ATTACHMENT_TRANSCRIPT_REASON):
+                    continue
+                if get_in_flight_subtask(t["id"]) is not None:
+                    update_task(t["id"], status="active", abort_reason=None)
+                    self._publish_task_update(t["id"])
             # Gate closed: freeze the active task (only if it was active), then
             # sleep — a queued task is simply not started on a closed gate. A
             # running step is interrupted ONLY when this process owns it
             # (self._current_step_id); a row left running by a previous process
             # already got its restart marker and is left alone here.
             for t in get_tasks_by_status("active"):
+                if get_in_flight_subtask(t["id"]) is not None:
+                    # The task is waiting for its own queued/running media
+                    # subtask. That work (RLM holds is_gpu_busy for its whole
+                    # run) closes the gate by itself — freezing here painted a
+                    # running task as «Frozen» and hid the step's progress.
+                    # Chat preemption is signalled separately as a per-step
+                    # cancel flag, so the subtask keeps running/stops on its
+                    # own and the task resumes polling when the gate reopens.
+                    continue
                 running = get_running_step(t["id"])
                 if running and self._current_step_id == running["id"]:
                     self._current_step_id = None
@@ -1564,8 +1601,20 @@ class TaskExecutor:
                 self._budget_expired(task)
                 return
 
-            # Per-step gate (spec §2 point 2: the gate is checked before each step).
-            if not self._gate_value(gate_open):
+            step = steps[idx]
+            subtask_row = None
+            if str(step.get("tool", "llm")) in _SUBTASK_TOOLS:
+                subtask_row = self._step_row_for(task_id, idx, step)
+                if subtask_row["status"] not in ("subtask_queued", "subtask_running"):
+                    subtask_row = None
+
+            # Per-step gate (spec §2 point 2): it guards STARTING work. A media
+            # subtask that is already queued/running IS the task's own GPU/queue
+            # work — RLM keeps is_gpu_busy() true for its whole run — so the
+            # gate would freeze the task and the poll below would abort the very
+            # subtask it is waiting for. Chat preemption of an in-flight subtask
+            # arrives as the per-step cancel flag raised by the queue hook.
+            if subtask_row is None and not self._gate_value(gate_open):
                 update_task(task_id, status="frozen", abort_reason="chat")
                 return
 
@@ -1574,7 +1623,6 @@ class TaskExecutor:
                 self._cancel_task(task)
                 return
 
-            step = steps[idx]
             if step.get("user_input_expected"):
                 self._ask_user(task, idx, step)
                 return  # slot freed
@@ -1585,9 +1633,8 @@ class TaskExecutor:
             # cycle to the executor loop (which re-checks gate/deferred/answers
             # and resumes polling), while "done" advances past the consumed step.
             if str(step.get("tool", "llm")) in _SUBTASK_TOOLS:
-                row = self._step_row_for(task_id, idx, step)
-                if row["status"] in ("subtask_queued", "subtask_running"):
-                    if self._poll_subtask(task, idx, row, gate_open=gate_open) in ("stop", "hold"):
+                if subtask_row is not None:
+                    if self._poll_subtask(task, idx, subtask_row, gate_open=gate_open) in ("stop", "hold"):
                         return  # interrupted (frozen) or still running — release the cycle
                     # Consumed — publish so the finished step lands in the
                     # conversation view immediately (previously every subtask
@@ -3298,12 +3345,12 @@ class TaskExecutor:
             # left the view silent until the result landed.
             self._publish_task_update(task_id)
 
-        # Chat abort: the hook raised our cancel flag mid-subtask.
+        # Chat abort: the hook raised our cancel flag mid-subtask. The scheduler
+        # gate is NOT consulted here — the subtask itself is what keeps the GPU
+        # busy (RLM marks it for its whole run), so a closed gate would abort
+        # the very work this poll is waiting for. A real chat request already
+        # raised the per-step cancel flag above.
         if self._redis_flag(f"{CANCEL_KEY_PREFIX}{row['id']}"):
-            return self._abort_subtask(task_id, idx, row, queue_id, reason="chat")
-
-        # Gate closed mid-poll: chat took over — same interrupted path.
-        if not self._gate_value(gate_open):
             return self._abort_subtask(task_id, idx, row, queue_id, reason="chat")
 
         stored = self._peek_subtask_result(queue_id)

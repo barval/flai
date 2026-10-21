@@ -634,6 +634,69 @@ def test_gate_closed_does_not_touch_foreign_running_step(db_env, test_app, monke
     assert t["status"] == "frozen" and t["abort_reason"] == "chat"
 
 
+def test_gate_closed_does_not_freeze_task_waiting_on_own_subtask(db_env, test_app):
+    """An active task waiting for its own media/RLM subtask stays active.
+
+    The subtask itself closes the gate (RLM keeps ``is_gpu_busy()`` true for
+    its whole run), so the old freeze painted a running deep analysis as
+    «Frozen» one second after the step was queued.
+    """
+    store = db_env
+    plan = {"title": "Deep analysis", "steps": [{"seq": 1, "goal": "Analyze", "tool": "rlm"}]}
+    task_id = _mk_task(store, status="active", step_plan=plan, minutes_ago=30)
+    step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Analyze", tool="rlm")
+    store.update_step(step_id, status="subtask_running")
+
+    _cycle(test_app, gate=False)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "active", "the task's own GPU work is not chat preemption"
+    assert t["abort_reason"] is None
+
+
+def test_gate_closed_unfreezes_a_task_mislabelled_by_the_old_gate(db_env, test_app):
+    """A frozen task whose own subtask is still in flight returns to active.
+
+    Existing rows frozen before the fix (a live RLM task showed «Приостановлено»
+    for the whole analysis) must not stay mislabelled after a restart.
+    """
+    store = db_env
+    plan = {"title": "Deep analysis", "steps": [{"seq": 1, "goal": "Analyze", "tool": "rlm"}]}
+    task_id = _mk_task(store, status="frozen", step_plan=plan, minutes_ago=30)
+    store.update_task(task_id, status="frozen", abort_reason="chat")
+    step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="Analyze", tool="rlm")
+    store.update_step(step_id, status="subtask_queued")
+
+    _cycle(test_app, gate=False)
+
+    t = store.get_task(task_id)
+    assert t["status"] == "active"
+    assert t["abort_reason"] is None
+
+
+def test_poll_subtask_ignores_gate_closed_by_its_own_work(db_env, test_app, monkeypatch):
+    """Polling an in-flight subtask never consults the scheduler gate.
+
+    That subtask is what keeps the GPU busy, so a closed gate would abort the
+    very work the poll is waiting for. A real chat request is handled by the
+    per-step cancel flag, which is checked before the result peek.
+    """
+    store = db_env
+    plan = {"title": "Deep analysis", "steps": [{"seq": 1, "goal": "Analyze", "tool": "rlm"}]}
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    monkeypatch.setattr(executor, "_peek_subtask_result", lambda qid: None)
+
+    outcome = executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=False)
+
+    assert outcome == "hold"
+    assert store.get_task_steps(task_id)[0]["status"] == "subtask_running"
+    assert store.get_task(task_id)["status"] == "active"
+
+
 # ── 11. mid-step abort trigger (C1) ──────────────────────────────────────
 
 

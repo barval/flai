@@ -1,0 +1,8 @@
+# PLAN AUDIT
+An independent audit rejected the previous plan:
+{reason}
+
+Previous plan:
+{plan}
+
+Rebuild the plan: every step that enumerates ALL items of a document (scenes, chapters, sections, list entries, requirements, characters, etc.) must read the document — use "rlm" when available, otherwise put a "rag" step before the "llm" step. In goal and checkpoint_criteria demand ALL items, numbered, with no reduction to "key" items. Give every item that needs an action its own step with the item's description verbatim and "source_step" pointing to the enumeration step. Keep the rest of the plan where it is correct.

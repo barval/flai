@@ -4213,29 +4213,172 @@ def test_media_step_body_is_unchanged_without_an_artifact():
     assert checkpoint == "plain result"
 
 
-def test_task_plan_template_requires_rlm_for_document_scene_splitting():
-    """A document-wide scene split must read the PDF, not a prior digest."""
+def test_task_plan_template_requires_rlm_for_document_enumerations():
+    """A document-wide enumeration must read the source, not a prior digest."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     ru = (root / "prompts/ru/task_plan.template").read_text(encoding="utf-8")
     en = (root / "prompts/en/task_plan.template").read_text(encoding="utf-8")
 
-    assert "разбить документ на сцены" in ru
+    assert "перечислить ВСЕ элементы источника" in ru
     assert '"rlm"' in ru
-    assert "ВСЕ сцены" in ru
-    assert "split a document into scenes" in en
+    assert "ВСЕ элементы" in ru
+    assert "enumerating ALL items of a source" in en
     assert '"rlm"' in en
-    assert "ALL scenes" in en
+    assert "ALL items" in en
 
 
-def test_task_replan_template_requires_one_image_step_per_scene():
-    """The reviewer must materialize every scene the split step found."""
+def test_task_replan_template_requires_one_action_step_per_enumerated_item():
+    """The reviewer must materialize every enumerated item that needs an action."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     ru = (root / "prompts/ru/task_replan.template").read_text(encoding="utf-8")
     en = (root / "prompts/en/task_replan.template").read_text(encoding="utf-8")
 
-    assert 'ровно один шаг "image_gen"' in ru
-    assert 'exactly one "image_gen" step' in en
+    assert 'ровно один шаг с этим действием' in ru
+    assert "exactly one action step" in en
+
+
+def test_plan_needs_audit_for_a_document_plan_with_an_llm_step():
+    """An attached document plus an llm step is the risky combination."""
+    task = {"doc_ids": ["doc-1"]}
+    plan = {"steps": [{"tool": "llm", "goal": "list every section"}]}
+
+    assert ex._plan_needs_audit(task, plan) is True
+
+
+def test_plan_needs_audit_detects_document_steps_without_attachments():
+    """A rag/rlm step means the task works with documents even without doc_ids."""
+    plan = {
+        "steps": [
+            {"tool": "rag", "goal": "find the document"},
+            {"tool": "llm", "goal": "list every section"},
+        ]
+    }
+
+    assert ex._plan_needs_audit({"doc_ids": []}, plan) is True
+
+
+def test_plan_needs_audit_skips_plans_outside_document_work():
+    """No audit call for a plain llm task or an image-only plan."""
+    assert ex._plan_needs_audit({"doc_ids": []}, {"steps": [{"tool": "llm", "goal": "write code"}]}) is False
+    assert ex._plan_needs_audit({"doc_ids": ["doc-1"]}, {"steps": [{"tool": "image_gen", "goal": "draw"}]}) is False
+
+
+def test_parse_plan_audit_accepts_valid_and_invalid_verdicts():
+    assert ex._parse_plan_audit('{"valid": true}') == {"valid": True, "reason": ""}
+
+    verdict = ex._parse_plan_audit('thinking… {"valid": false, "reason": "step 2 uses llm"} done')
+    assert verdict == {"valid": False, "reason": "step 2 uses llm"}
+
+
+def test_parse_plan_audit_rejects_unusable_replies():
+    assert ex._parse_plan_audit("not json") is None
+    assert ex._parse_plan_audit('{"valid": "yes"}') is None
+    assert ex._parse_plan_audit('{"reason": "no verdict"}') is None
+
+
+def test_plan_audit_templates_render(test_app):
+    """Both audit templates load and every placeholder is supplied."""
+    from app.utils import format_prompt
+
+    params = {
+        "task_request": "task",
+        "attachments_section": "doc.pdf",
+        "capabilities_section": "- rlm: read the document",
+        "document_tool_rule": "rule",
+        "response_language": "Russian",
+        "plan_text": "1. [llm] list all",
+        "current_time": "now",
+    }
+    with test_app.app_context():
+        for lang in ("ru", "en"):
+            prompt = format_prompt("task_plan_audit.template", params, lang=lang)
+            assert prompt and "valid" in prompt, f"audit template missing for {lang}"
+        retry = format_prompt(
+            "task_plan_audit_retry.template", {"reason": "step 1 reads a digest", "plan": "1. [llm] list"}, lang="ru"
+        )
+        assert retry and "step 1 reads a digest" in retry
+
+
+def test_plan_audit_rebuilds_an_llm_enumeration_plan(test_app, monkeypatch):
+    """An invalid audit feeds its reason to one planner retry and keeps the new plan."""
+    calls: list[str] = []
+
+    def fake_format(template, params, lang):
+        return f"TEMPLATE={template}\nPARAMS={params}"
+
+    def fake_full(app, prompt, cancel_check, lang, temperature=None, status_callback=None):
+        calls.append(prompt)
+        if "task_plan_audit.template" in prompt:
+            return '{"valid": false, "reason": "Step 1 uses llm for the whole document"}', {
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+            }
+        if "task_plan.template" in prompt:
+            return (
+                '{"title": "p", "steps": ['
+                '{"seq": 1, "goal": "list all sections", "tool": "rlm", "checkpoint_criteria": "all sections"},'
+                '{"seq": 2, "goal": "translate section 1", "tool": "llm", "checkpoint_criteria": "section 1"}'
+                "]}",
+                {"prompt_tokens": 200, "completion_tokens": 20},
+            )
+        return "", {}
+
+    monkeypatch.setattr("app.utils.format_prompt", fake_format)
+    monkeypatch.setattr(ex, "_run_planner_full", fake_full)
+    executor = ex.TaskExecutor(app=test_app)
+    task = {
+        "id": "task-audit",
+        "doc_ids": ["doc-1"],
+        "title": "Split the document into all sections",
+        "lang": "ru",
+        "images": [],
+        "audio": [],
+        "deep_analysis": True,
+        "user_id": "u1",
+    }
+    plan = {"steps": [{"seq": 1, "goal": "list all sections", "tool": "llm", "checkpoint_criteria": "all sections"}]}
+
+    new_plan, meta = executor._audit_plan_if_needed(
+        task, plan, {"task_request": "split", "plan_audit_section": ""}, lambda: False, "ru"
+    )
+
+    assert len(calls) == 2, "one audit call and one planner retry"
+    assert new_plan["steps"][0]["tool"] == "rlm"
+    assert new_plan["steps"][0]["checkpoint_criteria"] == "all sections"
+    assert meta["valid"] is False and meta["retried"] is True
+    assert meta["usage"] == {"prompt_tokens": 300, "completion_tokens": 30}
+
+
+def test_plan_audit_is_skipped_without_document_work(test_app, monkeypatch):
+    """No extra model call for a plain llm task."""
+    called: list[str] = []
+    monkeypatch.setattr(ex, "_run_planner_full", lambda *a, **k: called.append("called") or ("", {}))
+    executor = ex.TaskExecutor(app=test_app)
+    plan = {"steps": [{"tool": "llm", "goal": "write code"}]}
+
+    result, meta = executor._audit_plan_if_needed({"id": "task"}, plan, {}, lambda: False, "ru")
+
+    assert result is plan
+    assert meta is None
+    assert not called
+
+
+def test_plan_audit_failure_keeps_the_plan(test_app, monkeypatch):
+    """An auditor transport error is advisory: the task keeps its plan."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(ex, "_run_planner_full", boom)
+    executor = ex.TaskExecutor(app=test_app)
+    task = {"id": "task-audit-fail", "doc_ids": ["doc-1"], "title": "list all sections", "lang": "ru"}
+    plan = {"steps": [{"tool": "llm", "goal": "list all sections"}]}
+
+    result, meta = executor._audit_plan_if_needed(task, plan, {"task_request": "x"}, lambda: False, "ru")
+
+    assert result is plan
+    assert meta["valid"] is None
+    assert "model unavailable" in meta["reason"]

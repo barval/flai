@@ -1112,6 +1112,61 @@ def _parse_plan(raw: str) -> dict | None:
     return {"title": str(data.get("title", "")), "steps": steps}
 
 
+def _plan_needs_audit(task: dict, plan: dict) -> bool:
+    """Does a plan need the pre-flight enumeration audit?
+
+    The audit is limited to plans that touch documents and contain an ``llm``
+    step. ``llm`` cannot read a document, so it is the one tool that can
+    silently enumerate a digest instead of the source. A plan that already
+    reads the document with ``rlm``/``rag`` still needs the audit for its
+    ``llm`` synthesis step; the auditor distinguishes "compose from a result"
+    (valid) from "enumerate the document itself" (invalid).
+    """
+    steps = [s for s in (plan.get("steps") or []) if isinstance(s, dict)]
+    if not any(str(s.get("tool") or "") == "llm" for s in steps):
+        return False
+    if task.get("doc_ids"):
+        return True
+    return any(str(s.get("tool") or "") in ("rag", "rlm") for s in steps)
+
+
+def _render_plan_for_audit(plan: dict) -> str:
+    """Numbered plan with criteria and source bindings for the auditor prompt."""
+    lines = []
+    for i, step in enumerate(plan.get("steps") or [], 1):
+        if not isinstance(step, dict):
+            continue
+        lines.append(f"{i}. [{step.get('tool', 'llm')}] {step.get('goal', '')}")
+        criteria = str(step.get("checkpoint_criteria") or "").strip()
+        if criteria:
+            lines.append(f"   criterion: {criteria}")
+        source = step.get("source_step")
+        if source:
+            lines.append(f"   source_step: {source}")
+    return "\n".join(lines)
+
+
+def _parse_plan_audit(raw: str) -> dict | None:
+    """Parse the audit reply → {valid, reason}; None when it is unusable.
+
+    The audit is advisory: the caller keeps the plan on None, so a noisy
+    reasoning reply can never block a task.
+    """
+    from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
+
+    text = _strip_thinking_tags(_strip_generic_reasoning(raw or "")).strip()
+    obj = _first_json_object(text)
+    if obj is None:
+        return None
+    try:
+        data = json.loads(obj)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("valid"), bool):
+        return None
+    return {"valid": data["valid"], "reason": str(data.get("reason") or "")[:1000]}
+
+
 def _last_meaningful_step(task_id: str) -> dict | None:
     """The last non-trivial step row (for the final-summary dedup)."""
     rows = [r for r in get_task_steps(task_id) if r.get("kind") in ("direct", "subtask")]
@@ -2119,6 +2174,136 @@ class TaskExecutor:
             logger.warning(f"camera rooms not resolved for task {task.get('id')}: {e}")
             return []
 
+    def _audit_plan_if_needed(
+        self,
+        task: dict,
+        plan: dict,
+        planner_params: dict[str, str],
+        cancel_check,
+        lang: str,
+        status_callback=None,
+    ) -> tuple[dict, dict | None]:
+        """Pre-flight audit: an ``llm`` enumeration step must not replace the source.
+
+        Runs only for document plans with an ``llm`` step (see
+        ``_plan_needs_audit``). A failed or unparsable audit is advisory — the
+        plan proceeds. An invalid audit re-runs the planner once with the
+        auditor's reason; a still-unusable retry keeps the original plan. One
+        extra reasoning call per audited plan; the retry is spent only on a
+        real violation.
+        """
+        if not _plan_needs_audit(task, plan):
+            return plan, None
+        task_id = task.get("id") or ""
+        from app.utils import format_prompt
+
+        audit_params = {
+            "task_request": _request_text(task),
+            "attachments_section": _attachments_section(task, lang),
+            "capabilities_section": _capabilities_section(
+                deep_analysis=bool(task.get("deep_analysis")),
+                camera_rooms=self._camera_rooms(task),
+                has_images=bool(task.get("images")),
+                lang=lang,
+            ),
+            "document_tool_rule": _document_tool_rule_and_note(task, lang)[0],
+            "response_language": _response_language_name(lang),
+            "plan_text": _render_plan_for_audit(plan),
+            "current_time": get_current_time_in_timezone(self.app) or "",
+        }
+        with self.app.app_context():
+            prompt = format_prompt("task_plan_audit.template", audit_params, lang=lang)
+        if not prompt:
+            logger.warning(f"task {task_id}: plan audit template unavailable — plan kept")
+            return plan, None
+
+        start = time.monotonic()
+        try:
+            raw, usage = _run_planner_full(
+                self.app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback
+            )
+        except StepAborted:
+            raise
+        except Exception as e:
+            logger.warning(f"task {task_id}: plan audit call failed ({e}) — plan kept")
+            return plan, {
+                "exec_seconds": round(time.monotonic() - start, 2),
+                "valid": None,
+                "reason": str(e)[:300],
+            }
+        audit_seconds = round(time.monotonic() - start, 2)
+        verdict = _parse_plan_audit(raw)
+        if verdict is None:
+            logger.warning(f"task {task_id}: plan audit reply unusable — plan kept")
+            return plan, {"usage": usage, "exec_seconds": audit_seconds, "valid": None, "reason": "audit reply unusable"}
+        if verdict["valid"]:
+            logger.info(f"task {task_id}: plan audit passed")
+            return plan, {"usage": usage, "exec_seconds": audit_seconds, "valid": True, "reason": ""}
+
+        reason = verdict.get("reason") or "the plan enumerates document items without reading the document"
+        logger.info(f"task {task_id}: plan audit rejected the plan: {reason[:300]}")
+        with self.app.app_context():
+            audit_section = (
+                format_prompt(
+                    "task_plan_audit_retry.template",
+                    {"reason": reason, "plan": _render_plan_for_audit(plan)},
+                    lang=lang,
+                )
+                or ""
+            )
+            retry_prompt = format_prompt(
+                "task_plan.template",
+                {**planner_params, "plan_audit_section": audit_section},
+                lang=lang,
+            )
+        if not retry_prompt:
+            return plan, {
+                "usage": usage,
+                "exec_seconds": audit_seconds,
+                "valid": False,
+                "reason": reason,
+                "retried": False,
+            }
+
+        retry_start = time.monotonic()
+        try:
+            raw2, usage2 = _run_planner_full(
+                self.app, retry_prompt, cancel_check, lang, temperature=0, status_callback=status_callback
+            )
+        except StepAborted:
+            raise
+        except Exception as e:
+            logger.warning(f"task {task_id}: audited planner retry failed ({e}) — original plan kept")
+            return plan, {
+                "usage": usage,
+                "exec_seconds": audit_seconds + round(time.monotonic() - retry_start, 2),
+                "valid": False,
+                "reason": reason,
+                "retried": False,
+            }
+        retry_seconds = round(time.monotonic() - retry_start, 2)
+        retry_plan = _parse_plan(raw2)
+        merged_usage = _merge_usage(usage, usage2)
+        if retry_plan is None:
+            logger.warning(f"task {task_id}: audited planner retry unparseable — original plan kept")
+            return plan, {
+                "usage": merged_usage,
+                "exec_seconds": audit_seconds + retry_seconds,
+                "valid": False,
+                "reason": reason,
+                "retried": False,
+            }
+        logger.info(
+            f"task {task_id}: plan audit rewrite accepted ({len(retry_plan.get('steps') or [])} steps)"
+        )
+        return retry_plan, {
+            "usage": merged_usage,
+            "exec_seconds": audit_seconds + retry_seconds,
+            "valid": False,
+            "reason": reason,
+            "retried": True,
+        }
+
     def _run_plan_phase(self, task: dict) -> str:
         """Planner call → parse → step rows. Returns "ok" or "failed"."""
         task_id = task["id"]
@@ -2140,6 +2325,7 @@ class TaskExecutor:
             "document_tool_rule": document_tool_rule,
             "current_time": get_current_time_in_timezone(self.app) or "",
             "attachments_section": attachments,
+            "plan_audit_section": "",
         }
         from app.utils import format_prompt
 
@@ -2177,6 +2363,21 @@ class TaskExecutor:
                 # One retry before giving up (transient planner noise); the
                 # model is already loaded and the header shows the LAST call's
                 # totals (each attempt re-bills the prompt).
+            audit_meta = None
+            if plan is not None:
+                try:
+                    plan, audit_meta = self._audit_plan_if_needed(
+                        task, plan, params, cancel_check, lang, _on_model_loaded
+                    )
+                except StepAborted:
+                    raise
+                except Exception as e:
+                    # The audit is advisory: an unexpected auditor failure must
+                    # never block a task whose plan is otherwise usable.
+                    logger.warning(f"task {task_id}: plan audit skipped after an error ({e})")
+                    audit_meta = None
+                if audit_meta and audit_meta.get("usage"):
+                    usage = _merge_usage(usage, audit_meta["usage"]) or usage
             planner_meta = {
                 "exec_seconds": round(time.monotonic() - start, 2),
                 "usage": {
@@ -2184,6 +2385,12 @@ class TaskExecutor:
                     "completion_tokens": int(usage.get("completion_tokens") or 0),
                 },
             }
+            if audit_meta:
+                planner_meta["audit"] = {
+                    "valid": audit_meta.get("valid"),
+                    "reason": str(audit_meta.get("reason") or "")[:500],
+                    "retried": bool(audit_meta.get("retried")),
+                }
         finally:
             publish_task_stage(self.app, task, None)
         # The planner is a real model call (tens of seconds on a JIT load); its

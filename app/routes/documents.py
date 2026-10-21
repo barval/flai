@@ -1,7 +1,11 @@
 # app/routes/documents.py
 import contextlib
+import io
 import mimetypes
 import os
+import re
+import subprocess
+import tempfile
 import uuid
 
 import magic
@@ -11,6 +15,12 @@ from flask_babel import gettext as _
 from app import db
 
 bp = Blueprint("documents", __name__, url_prefix="/api")
+
+# Mobile browsers (Chrome for Android in particular) cannot render a PDF in an
+# <iframe> and show «This content is blocked» instead. The PDF preview therefore
+# renders pages to JPEG server-side for narrow screens; this is the page cap.
+PREVIEW_PDF_MAX_PAGES = 30
+PREVIEW_PDF_SCALE = 1400
 
 # Mapping of MIME types to allowed extensions
 ALLOWED_MIME_TYPES = {
@@ -405,13 +415,27 @@ def _owned_document_file(doc_id: str):
     return doc, file_path, None
 
 
+def _pdf_page_count(file_path: str) -> int:
+    """Page count from ``pdfinfo``; 0 when the file cannot be read."""
+    try:
+        result = subprocess.run(["pdfinfo", file_path], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        current_app.logger.warning(f"PDF page count failed ({file_path}): {e}")
+        return 0
+    match = re.search(r"^Pages:\s+(\d+)\s*$", result.stdout, re.MULTILINE)
+    if result.returncode != 0 or not match:
+        return 0
+    return int(match.group(1))
+
+
 @bp.route("/documents/<doc_id>/preview", methods=["GET"])
 def api_document_preview(doc_id):
     """Preview metadata/text for the Documents panel.
 
     PDF and images are returned as a URL served inline by
     ``/documents/<id>/preview/file``; office formats are converted to text
-    (``extracted: true``); plain text is returned as is.
+    (``extracted: true``); plain text is returned as is. PDFs additionally
+    report their page count so the UI can render page images on mobile.
     """
     doc, file_path, error = _owned_document_file(doc_id)
     if error:
@@ -423,8 +447,14 @@ def api_document_preview(doc_id):
                         "url": f"/api/documents/{doc_id}/preview/file"})
         return jsonify(payload)
     if ext == ".pdf":
-        payload.update({"kind": "binary", "mime": "application/pdf",
-                        "url": f"/api/documents/{doc_id}/preview/file"})
+        payload.update({
+            "kind": "pdf",
+            "mime": "application/pdf",
+            "pages": _pdf_page_count(file_path),
+            "max_pages": PREVIEW_PDF_MAX_PAGES,
+            "url": f"/api/documents/{doc_id}/preview/file",
+            "page_url": f"/api/documents/{doc_id}/preview/pdf-page/",
+        })
         return jsonify(payload)
     if ext in _PREVIEW_TEXT_EXTS:
         try:
@@ -471,6 +501,66 @@ def api_document_preview_file(doc_id):
     response.headers["X-Own-CSP"] = "1"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+    return response
+
+
+@bp.route("/documents/<doc_id>/preview/pdf-page/<int:page>", methods=["GET"])
+def api_document_preview_pdf_page(doc_id, page):
+    """Render one PDF page as JPEG for the mobile preview (no PDF plugin).
+
+    Chrome for Android cannot display a PDF inside an iframe; page images give
+    the same read-only preview on a phone without a download or an external
+    viewer. Only the first ``PREVIEW_PDF_MAX_PAGES`` pages are available.
+    """
+    doc, file_path, error = _owned_document_file(doc_id)
+    if error:
+        return error
+    ext = os.path.splitext(doc["file_path"])[1].lower()
+    if ext != ".pdf":
+        return jsonify({"error": _("Preview is not available for this format")}), 415
+    if page < 1 or page > PREVIEW_PDF_MAX_PAGES:
+        return jsonify({"error": _("Page not found")}), 404
+    pages = _pdf_page_count(file_path)
+    if not pages or page > pages:
+        return jsonify({"error": _("Page not found")}), 404
+    try:
+        with tempfile.TemporaryDirectory(prefix="flai-pdf-preview-") as temp_dir:
+            prefix = os.path.join(temp_dir, "page")
+            result = subprocess.run(
+                [
+                    "pdftoppm",
+                    "-f",
+                    str(page),
+                    "-l",
+                    str(page),
+                    "-singlefile",
+                    "-jpeg",
+                    "-scale-to",
+                    str(PREVIEW_PDF_SCALE),
+                    file_path,
+                    prefix,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            page_path = f"{prefix}.jpg"
+            if result.returncode != 0 or not os.path.exists(page_path):
+                detail = result.stderr.strip() or f"failed to render page {page}"
+                current_app.logger.warning(f"PDF preview page rendering failed ({doc_id}): {detail}")
+                return jsonify({"error": _("Could not render the page")}), 500
+            with open(page_path, "rb") as fh:
+                data = fh.read()
+    except (OSError, subprocess.SubprocessError) as e:
+        current_app.logger.warning(f"PDF preview page rendering failed ({doc_id}): {e}")
+        return jsonify({"error": _("Could not render the page")}), 500
+    response = send_file(
+        io.BytesIO(data),
+        mimetype="image/jpeg",
+        as_attachment=False,
+        download_name=f"{os.path.splitext(doc['filename'])[0]}-{page}.jpg",
+    )
+    response.headers["Cache-Control"] = "private, max-age=3600"
     return response
 
 

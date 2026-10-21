@@ -3046,6 +3046,18 @@ msgstr "Preview is truncated"
 msgid "Could not load the document preview"
 msgstr "Could not load the document preview"
 
+msgid "Open PDF"
+msgstr "Open PDF"
+
+msgid "Showing the first {n} pages"
+msgstr "Showing the first {n} pages"
+
+msgid "Could not render the page"
+msgstr "Could not render the page"
+
+msgid "Page not found"
+msgstr "Page not found"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

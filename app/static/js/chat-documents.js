@@ -855,7 +855,8 @@ function setPreviewMode(active, name) {
         if (saveChat) saveChat.style.display = 'none';
         if (saveDocument) saveDocument.style.display = 'inline-flex';
         if (stopTask) stopTask.style.display = 'none';
-        if (retryTask) retryTask.style.display = 'none';        if (cancelStream) cancelStream.style.display = 'none';
+        if (retryTask) retryTask.style.display = 'none';
+        if (cancelStream) cancelStream.style.display = 'none';
         if (messages) messages.classList.add('hidden');
         if (preview) preview.classList.remove('hidden');
         if (rlmControls) rlmControls.style.display = 'none';
@@ -894,6 +895,13 @@ function closeDocumentPreview() {
     previewDocName = '';
     setPreviewMode(false, '');
 }
+
+// The header buttons belong to the preview while a document is open; the chat
+// stream callbacks must not re-show the chat 💾 next to the preview's own 💾.
+function isDocumentPreviewActive() {
+    return !!previewDocId;
+}
+window.isDocumentPreviewActive = isDocumentPreviewActive;
 
 function openDocumentPreview(docId, docName) {
     if (!docId) return;
@@ -942,6 +950,52 @@ function renderDocumentPreview(data) {
         pre.className = 'document-preview-text';
         pre.textContent = data.text || '';
         box.appendChild(pre);
+    } else if (data.kind === 'pdf') {
+        const openLink = document.createElement('a');
+        openLink.className = 'document-preview-open';
+        openLink.href = data.url;
+        openLink.target = '_blank';
+        openLink.rel = 'noopener';
+        openLink.textContent = '↗ ' + t('document_open_pdf');
+        box.appendChild(openLink);
+        const pages = Number(data.pages) || 0;
+        const maxPages = Number(data.max_pages) || pages;
+        const mobile = typeof window.isMobileViewport === 'function' && window.isMobileViewport();
+        if (mobile) {
+            // Chrome for Android cannot render a PDF in an iframe (it shows
+            // «This content is blocked»); the server renders page images.
+            if (pages > 0) {
+                const pagesBox = document.createElement('div');
+                pagesBox.className = 'document-preview-pages';
+                const last = Math.min(pages, maxPages);
+                for (let n = 1; n <= last; n += 1) {
+                    const pageImg = document.createElement('img');
+                    pageImg.className = 'document-preview-page';
+                    pageImg.loading = 'lazy';
+                    pageImg.src = (data.page_url || '') + n;
+                    pageImg.alt = (data.filename || '') + ' — ' + n;
+                    pagesBox.appendChild(pageImg);
+                }
+                box.appendChild(pagesBox);
+                if (pages > last) {
+                    const note = document.createElement('div');
+                    note.className = 'document-preview-note';
+                    note.textContent = 'ℹ️ ' + formatString(t('document_preview_pages_capped'), { n: last });
+                    box.appendChild(note);
+                }
+            } else {
+                const note = document.createElement('div');
+                note.className = 'document-preview-note';
+                note.textContent = t('document_preview_unavailable');
+                box.appendChild(note);
+            }
+        } else {
+            const frame = document.createElement('iframe');
+            frame.className = 'document-preview-frame';
+            frame.src = data.url;
+            frame.title = data.filename || '';
+            box.appendChild(frame);
+        }
     } else if (data.kind === 'binary' && data.url) {
         if (String(data.mime || '').startsWith('image/')) {
             const img = document.createElement('img');

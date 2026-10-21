@@ -73,9 +73,9 @@ API: `GET /api/documents` now returns `{folders, documents}`, where each folder 
 
 Click a document card in the Documents tab to open it in the main window (the chat/task window switches to a read-only preview). The header shows «Preview: <file name>» (truncated with an ellipsis when long) in the same style as the chat/task headers; the «Messages» counter is hidden and the only action is 💾 **Save**, which downloads the original file with its current name. Switching to another tab (or pressing Escape) restores the chat/task window.
 
-- **PDF and images** are served inline (`/api/documents/<id>/preview/file`) and rendered by the browser (`<iframe>` / `<img>`).
+- **PDF and images** are served inline (`/api/documents/<id>/preview/file`) and rendered by the browser (`<iframe>` / `<img>`). On phones (≤ 768 px) the PDF iframe is replaced by **server-rendered page images** (`pdftoppm` → JPEG, `/api/documents/<id>/preview/pdf-page/<n>`, the first `PREVIEW_PDF_MAX_PAGES` = 30 pages, with a «Showing the first N pages» note) plus an «Open PDF» link — Chrome for Android cannot display a PDF inside an iframe and shows «This content is blocked» instead.
 - **Plain text** (`.txt`, `.md`, `.csv`, `.json`) is shown as-is.
 - **DOCX, ODT, RTF, EPUB** are converted to text (`extract_text_from_file`) and labelled **«Extracted text»** — the original formatting is not reproduced.
 - A format without a preview gets a localized «Preview is not available for this format» note. Text previews are capped at 200 000 characters with a «Preview is truncated» note.
 
-Both preview endpoints are owner-scoped and use the same `realpath` containment check as the download route; only PDF/images are served inline (never HTML).
+All preview endpoints are owner-scoped and use the same `realpath` containment check as the download route; only PDF/images are served inline (never HTML).

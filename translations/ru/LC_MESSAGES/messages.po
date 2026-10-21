@@ -3085,6 +3085,18 @@ msgstr "Предпросмотр обрезан"
 msgid "Could not load the document preview"
 msgstr "Не удалось загрузить предпросмотр документа"
 
+msgid "Open PDF"
+msgstr "Открыть PDF"
+
+msgid "Showing the first {n} pages"
+msgstr "Показаны первые {n} страниц"
+
+msgid "Could not render the page"
+msgstr "Не удалось отобразить страницу"
+
+msgid "Page not found"
+msgstr "Страница не найдена"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

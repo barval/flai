@@ -898,17 +898,19 @@ REFERENCE_MAX_CHARS = 12000
 ATTEMPTS_LOG_MAX = 10
 
 
-def _recent_results_digest(task_id: str, char_cap: int = 10000) -> str:
+def _recent_results_digest(task_id: str, char_cap: int = 16000) -> str:
     """Tail-weighted step results for the plan review.
 
     ``_results_digest`` keeps the FIRST ``char_cap`` characters — on a task that
     runs for hours that hides exactly the freshest facts the review is about.
+    Each step may use the whole budget: a 4000-char per-step cut once ended a
+    15-scene list exactly at scene 8, so the reviewer added only 8 image steps.
     """
     parts = []
     for r in get_task_steps(task_id):
         if r["kind"] in ("question", "user_input", "final", "plan_update"):
             continue
-        body = (r["result"] or "")[:4000]
+        body = (r["result"] or "")[:char_cap]
         if not body and r["status"] == "skipped":
             body = str(r.get("last_error") or "")[:300]
         parts.append(f"Step {r['seq']} [{r['tool'] or r['kind']}] {r['goal']} → {r['status']}: {body}")

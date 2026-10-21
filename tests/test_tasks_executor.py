@@ -3535,6 +3535,34 @@ def test_recent_results_digest_keeps_a_long_step_result(db_env):
     assert "PART_FIVE_DESCRIPTION" in digest
 
 
+def test_recent_results_digest_keeps_every_item_of_a_long_enumeration(monkeypatch):
+    """A 15-scene result is not cut at 4000 chars: the reviewer must see scene 15.
+
+    The live task had 15 scenes (7638 chars); the old per-step 4000-char cap
+    ended exactly at scene 8, so the reviewer added only 8 image steps.
+    """
+    result = "".join(f"### СЦЕНА {i}\n" + ("visual scene description " * 30) + "\n" for i in range(1, 16))
+    result += "SCENE_15_MARKER"
+    assert len(result) > 7000
+
+    rows = [
+        {
+            "kind": "direct",
+            "status": "passed",
+            "seq": 1,
+            "tool": "rlm",
+            "goal": "extract every scene",
+            "result": result,
+        }
+    ]
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: rows)
+
+    digest = ex._recent_results_digest("task-long-enumeration")
+
+    assert "SCENE_15_MARKER" in digest
+    assert digest.count("### СЦЕНА") == 15
+
+
 # ── universal media verification: artifact inspector registry ────────────
 
 

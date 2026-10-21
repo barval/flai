@@ -265,6 +265,70 @@ def _artifact_result_text(result_text: str, media: dict) -> tuple[str, str]:
     return result_text, result_text + "\n" + artifact_name
 
 
+_FOREIGN_TAIL_FILE_RE = re.compile(
+    r"\.(?:png|jpe?g|webp|gif|bmp|tiff?|svg|mp4|mov|avi|mkv|webm|pdf|txt|md|json|ya?ml|csv|xlsx?|docx?|pptx?|zip|py|js|css|html?)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_foreign_style_tail(text: str, lang: str) -> str:
+    """Remove a trailing foreign-language style paragraph from a media goal.
+
+    The planner sometimes appends an English image-prompt sentence to a Russian
+    scene goal (and the reverse in an English profile). The style is already
+    applied by the image pipeline, so the paragraph is redundant. Only a
+    standalone trailing paragraph is removed; URLs, paths, file names and
+    mixed-language lines are preserved.
+    """
+    if lang not in ("ru", "en"):
+        return text
+    target = re.compile(r"[\u0400-\u04FF]") if lang == "ru" else re.compile(r"[A-Za-z]")
+    foreign = re.compile(r"[A-Za-z]") if lang == "ru" else re.compile(r"[\u0400-\u04FF]")
+    foreign_words = re.compile(r"[A-Za-z]{2,}") if lang == "ru" else re.compile(r"[А-Яа-яЁё]{2,}")
+    paragraphs = re.split(r"\n\s*\n", text.strip())
+    removed = False
+    while paragraphs:
+        last = paragraphs[-1].strip()
+        if not last:
+            paragraphs.pop()
+            continue
+        if target.search(last) or not foreign.search(last):
+            break
+        if "://" in last or "www." in last.lower() or "/" in last or "\\" in last:
+            break
+        if _FOREIGN_TAIL_FILE_RE.search(last):
+            break
+        if len(foreign_words.findall(last)) < 4:
+            break
+        paragraphs.pop()
+        removed = True
+    if not removed:
+        return text
+    cleaned = "\n\n".join(p.strip() for p in paragraphs if p.strip()).strip()
+    return cleaned or text
+
+
+def _sanitize_media_plan_goals(plan: dict, lang: str) -> dict:
+    """Strip foreign style tails from image/video goals in a plan (in place).
+
+    Only media goals are touched: crawl/search/rag goals can legitimately name
+    URLs, and an llm goal is ordinary answer text. File names, paths and mixed
+    lines inside a media goal are protected by ``_strip_foreign_style_tail``.
+    """
+    if lang not in ("ru", "en"):
+        return plan
+    for step in plan.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        if str(step.get("tool") or "") not in ("image_gen", "image_edit", "video_gen"):
+            continue
+        goal = str(step.get("goal") or "")
+        cleaned = _strip_foreign_style_tail(goal, lang)
+        if cleaned != goal:
+            step["goal"] = cleaned
+    return plan
+
+
 def _bible_has_content(bible: Any) -> bool:
     """Is the continuity sheet populated with anything renderable?"""
     return isinstance(bible, dict) and any(
@@ -2380,6 +2444,8 @@ class TaskExecutor:
                     audit_meta = None
                 if audit_meta and audit_meta.get("usage"):
                     usage = _merge_usage(usage, audit_meta["usage"]) or usage
+            if plan is not None:
+                plan = _sanitize_media_plan_goals(plan, lang)
             planner_meta = {
                 "exec_seconds": round(time.monotonic() - start, 2),
                 "usage": {
@@ -2724,6 +2790,8 @@ class TaskExecutor:
                 (raw or "")[-300:],
             )
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
+        if parsed.get("changed"):
+            parsed["steps"] = _sanitize_media_plan_goals({"steps": parsed["steps"]}, lang)["steps"]
         if not parsed["changed"]:
             return update_task(task_id, step_plan={**self._plan_dict(task), "replanned_upto": idx}) or task
         if _same_plan_tail(self._plan_dict(task).get("steps"), idx, parsed["steps"]):

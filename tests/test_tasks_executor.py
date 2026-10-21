@@ -3563,6 +3563,66 @@ def test_recent_results_digest_keeps_every_item_of_a_long_enumeration(monkeypatc
     assert digest.count("### СЦЕНА") == 15
 
 
+def test_strip_foreign_style_tail_removes_an_english_style_paragraph():
+    """A Russian media goal keeps its scene but loses the English style line."""
+    goal = (
+        "**Сцена 1. Царский дворец**\n"
+        "Царь ставит задачу Федоту.\n\n"
+        "Illustration in the unified style of classic Russian folklore art."
+    )
+
+    assert ex._strip_foreign_style_tail(goal, "ru") == (
+        "**Сцена 1. Царский дворец**\nЦарь ставит задачу Федоту."
+    )
+
+
+def test_strip_foreign_style_tail_removes_a_russian_style_paragraph_from_english():
+    """The cleanup is symmetric: an English profile loses a Russian style tail."""
+    goal = "Scene 1. The palace\n\nThe Tsar gives Fedot a task.\n\nИллюстрация в едином стиле классического фольклора."
+
+    assert ex._strip_foreign_style_tail(goal, "en") == "Scene 1. The palace\n\nThe Tsar gives Fedot a task."
+
+
+def test_strip_foreign_style_tail_keeps_urls_files_and_mixed_lines():
+    """URLs, file names and mixed-language lines are never removed."""
+    with_url = "Нарисуй сцену по ссылке https://example.com/scene"
+    with_file = "Отредактируй изображение\n\nphoto.jpg"
+    mixed = "Нарисуй сцену с NASA\n\nНовая строка с NASA и русским текстом"
+
+    assert ex._strip_foreign_style_tail(with_url, "ru") == with_url
+    assert ex._strip_foreign_style_tail(with_file, "ru") == with_file
+    assert ex._strip_foreign_style_tail(mixed, "ru") == mixed
+
+
+def test_strip_foreign_style_tail_never_empties_a_goal():
+    """A goal written entirely in the wrong language is left for the prompt rule."""
+    goal = "Illustration in the unified style of classic Russian folklore art."
+
+    assert ex._strip_foreign_style_tail(goal, "ru") == goal
+
+
+def test_sanitize_media_plan_goals_only_touches_media_steps():
+    """Only image/video goals are cleaned; crawl and llm goals keep their text."""
+    english_tail = "\n\nIllustration in the unified style of classic Russian folklore art."
+    plan = {
+        "steps": [
+            {"seq": 1, "tool": "image_gen", "goal": "Сцена 1" + english_tail},
+            {"seq": 2, "tool": "image_edit", "goal": "Правка" + english_tail},
+            {"seq": 3, "tool": "video_gen", "goal": "Видео" + english_tail},
+            {"seq": 4, "tool": "crawl", "goal": "https://example.com/scene"},
+            {"seq": 5, "tool": "llm", "goal": "Ответ" + english_tail},
+        ]
+    }
+
+    cleaned = ex._sanitize_media_plan_goals(plan, "ru")
+
+    assert cleaned["steps"][0]["goal"] == "Сцена 1"
+    assert cleaned["steps"][1]["goal"] == "Правка"
+    assert cleaned["steps"][2]["goal"] == "Видео"
+    assert cleaned["steps"][3]["goal"] == "https://example.com/scene"
+    assert cleaned["steps"][4]["goal"] == "Ответ" + english_tail
+
+
 # ── universal media verification: artifact inspector registry ────────────
 
 
@@ -4267,6 +4327,21 @@ def test_task_replan_template_requires_one_action_step_per_enumerated_item():
 
     assert 'ровно один шаг с этим действием' in ru
     assert "exactly one action step" in en
+
+
+def test_task_templates_forbid_foreign_style_tails_in_goals():
+    """Both planner and reviewer are told not to append English style prompts."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for path in ("prompts/ru/task_plan.template", "prompts/ru/task_replan.template"):
+        text = (root / path).read_text(encoding="utf-8")
+        assert "Не смешивай языки в goal" in text
+        assert "Illustration in the unified style" in text
+    for path in ("prompts/en/task_plan.template", "prompts/en/task_replan.template"):
+        text = (root / path).read_text(encoding="utf-8")
+        assert "Never mix languages inside a goal" in text
+        assert "Illustration in the unified style" in text
 
 
 def test_plan_needs_audit_for_a_document_plan_with_an_llm_step():

@@ -20,6 +20,8 @@ SD_MODEL_TYPE=z_image_turbo
 
 An image-attached chat message such as *«draw something similar»* is classified by the multimodal model into a dedicated `[-IMAGE-]` option (create a NEW similar image, distinct from `[-IMAGE-EDIT-]`), and the two image-chat handlers route it straight to generation with the attached examples.
 
+**Quoted dialogue is not lettering.** Scene text often carries dialogue («Не добуду куропатку — беспременно быть войне», `"I will return by morning"`). Before the prompt builder, `strip_speech_for_image()` removes such quotes (and the `saying …` clause) unless the request explicitly asks for an inscription/sign/text; the final SD prompt then gets a positive `clean illustration without any text, letters, numbers, captions or watermarks` clause. The same rule is in both prompt templates. Without it the diffusion model tried to paint the quote and produced unreadable mixed-script lettering.
+
 ## Image Editing (Flux.2 Klein 4B)
 
 Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:

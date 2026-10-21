@@ -3187,11 +3187,17 @@ class TaskExecutor:
         # (the first poll of a retry subtask that inherited 13+ polls would
         # immediately exceed TASK_SUBTASK_POLL_CYCLES and the worker hadn't
         # even dequeued the new request → "subtask result expired").
+        # Re-read the row: ``row`` was captured BEFORE the enqueue update that
+        # set ``current_kind`` and cleared ``pending_action``. Merging the old
+        # copy here silently reverted both, so a repair edit was consumed as a
+        # generation and its English repair prompt reached the step body.
+        fresh_row = get_step(row["id"]) or row
+        fresh_extra = fresh_row.get("extra") or {}
         merged_extra = {
-            **{k: v for k, v in (row.get("extra") or {}).items() if k not in ("subtask_polls", "corrective_note")},
+            **{k: v for k, v in fresh_extra.items() if k not in ("subtask_polls", "corrective_note")},
             "subtask_queue_id": subtask_queue_id,
         }
-        old_id = (row.get("extra") or {}).get("subtask_queue_id")
+        old_id = fresh_extra.get("subtask_queue_id")
         if old_id and str(old_id) != str(subtask_queue_id):
             merged_extra.setdefault("superseded_queue_ids", []).append(old_id)
             try:

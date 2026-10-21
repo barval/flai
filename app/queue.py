@@ -1710,6 +1710,16 @@ class RedisRequestQueue:
 
     # ── Task handlers extracted from _process_request ──
 
+    def _append_no_text_clause(self, prompt_data: dict, key: str = "prompt") -> dict:
+        """Keep lettering out unless the request explicitly asked for it."""
+        prompt = str(prompt_data.get(key) or "").rstrip()
+        if prompt and "without any text" not in prompt.lower():
+            prompt_data[key] = (
+                prompt
+                + ", clean illustration without any text, letters, numbers, captions or watermarks"
+            )
+        return prompt_data
+
     def _ensure_prompt_entities(self, task: dict | None, prompt_data: dict | None) -> dict | None:
         """Keep continuity entities in the final SD prompt.
 
@@ -1790,9 +1800,12 @@ class RedisRequestQueue:
             edit_prompt = f"{continuity_sheet}\n\n{edit_prompt}"
         # Prompt hygiene (spec §9a): the same source-marker strip as image_gen
         # (assembled text sanitized right before the prompt builder).
-        from app.tasks.continuity import sanitize_reference_markers
+        from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
 
         edit_prompt = sanitize_reference_markers(edit_prompt)
+        explicit_text = wants_text_in_image(edit_prompt)
+        if not explicit_text:
+            edit_prompt = strip_speech_for_image(edit_prompt)
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(edit_prompt, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
@@ -1806,6 +1819,8 @@ class RedisRequestQueue:
                 strength = 0.42
             edit_data["strength"] = min(0.5, max(0.35, strength))
         edit_data = self._ensure_prompt_entities(task, edit_data)
+        if isinstance(edit_data, dict) and not explicit_text:
+            edit_data = self._append_no_text_clause(edit_data, "edit_prompt")
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
@@ -2043,9 +2058,12 @@ class RedisRequestQueue:
         # the SD prompt as garbage text/CJK/digits. The sanitizer strips the
         # markers from the ASSEMBLED query — scene numbering and quoted
         # inscriptions (legitimate text content) survive.
-        from app.tasks.continuity import sanitize_reference_markers
+        from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
 
         generation_query = sanitize_reference_markers(generation_query)
+        explicit_text = wants_text_in_image(generation_query)
+        if not explicit_text:
+            generation_query = strip_speech_for_image(generation_query)
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             generation_query, lang=lang, response_style=response_style
         )
@@ -2053,6 +2071,8 @@ class RedisRequestQueue:
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
         prompt_data = self._ensure_prompt_entities(task, prompt_data)
+        if isinstance(prompt_data, dict) and not explicit_text:
+            prompt_data = self._append_no_text_clause(prompt_data, "prompt")
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")

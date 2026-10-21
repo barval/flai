@@ -55,6 +55,46 @@ def sanitize_reference_markers(text: str) -> str:
     return result.strip()
 
 
+# Quoted dialogue in a scene description («Не добуду куропатку…», "I will…")
+# is narrative content, not an instruction to letter the picture. The
+# diffusion model otherwise tries to render it and produces gibberish.
+_TEXT_REQUEST_RE = re.compile(
+    r"\b(?:надпис\w*|вывеск\w*|подпис\w*|текст\w*|шрифт\w*|inscription|lettering|caption|"
+    r"sign|text|logo|watermark)\b",
+    re.IGNORECASE,
+)
+_SPEECH_VERB_RE = re.compile(
+    r"\b(?:saying|says|said|tells?|asks?|говорит|сказал[аи]?|молвит|приговаривает|спрашивает)\b"
+    r"[^.!?«\"“]{0,30}[«\"“].*?[»\"”]",
+    re.IGNORECASE | re.DOTALL,
+)
+_QUOTED_RE = re.compile(r"[«\"“][^«»\"“”]{4,}[»\"”]", re.DOTALL)
+
+
+def wants_text_in_image(text: str) -> bool:
+    """Does the request explicitly ask for an inscription/sign/lettering?"""
+    return bool(_TEXT_REQUEST_RE.search(str(text or "")))
+
+
+def strip_speech_for_image(text: str) -> str:
+    """Drop quoted dialogue from an image prompt unless text was requested.
+
+    Keeps the scene narration, removes ``saying "…"`` / ``говорит «…»`` and
+    the remaining quoted fragments of four or more characters. Applied before
+    the multimodal prompt builder, so the final SD prompt never carries a
+    quote the model would try to letter.
+    """
+    source = str(text or "")
+    if not source.strip() or wants_text_in_image(source):
+        return source
+    result = _SPEECH_VERB_RE.sub(" ", source)
+    result = _QUOTED_RE.sub(" ", result)
+    result = re.sub(r"\s{2,}", " ", result)
+    result = re.sub(r"\s+([.,;:!?])", r"\1", result)
+    result = re.sub(r"[:;,-]\s*([.!?])", r"\1", result)
+    return result.strip(" .,;:—-")
+
+
 def parse_bible(raw: str) -> dict | None:
     """Extract a continuity sheet from LLM prose containing a JSON object.
 

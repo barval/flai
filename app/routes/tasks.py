@@ -499,6 +499,12 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
     seq = int(row.get("seq") or 0)
     kind = row.get("kind") or "direct"
     body = str(row.get("result") or "")
+    if "<tool_call" in body.lower() or "<function=" in body.lower():
+        # Display safety net for rows stored before the leak parser learned
+        # the unclosed final(answer="…") shape.
+        from modules.rlm import strip_leaked_tool_text
+
+        body = strip_leaked_tool_text(body) or body
     header = _("Step {n} of {m}:").format(n=seq, m=total)
     # A tool-produced step names its tool on its own line above the answer; the
     # client renders it as a second italic service line, same font as the step

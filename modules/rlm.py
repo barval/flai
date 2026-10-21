@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -20,11 +21,79 @@ from modules.base import response_language_name
 # <parameter=KEY>VALUE</parameter>
 # ...
 # </function>
-_LEAKED_TOOL_CALL_RE = re.compile(
-    r"<function=(?P<name>\w+)\s*>\s*(?P<params>[\s\S]*?)</function>",
-)
+# The block is also seen as <tool_call><function=final>\nanswer="..." with no
+# closing tag at all — the parser must still recover the call and strip it.
+_LEAKED_FUNCTION_START_RE = re.compile(r"<function=(?P<name>\w+)\s*>", re.IGNORECASE)
 
 _LEAKED_PARAM_RE = re.compile(r"<parameter=(?P<key>\w+)\s*>(?P<value>[\s\S]*?)</parameter>")
+
+# Inline arguments: final(answer="..."), python(code="..."). Only quoted
+# assignments are treated as a leak so normal prose mentioning final(answer)
+# stays untouched.
+_LEAKED_ASSIGN_RE = re.compile(r'(?P<key>\w+)\s*=\s*"(?P<value>(?:[^"\\]|\\.)*)"')
+
+_LEAKED_WRAPPER_RE = re.compile(r"</?tool_call>", re.IGNORECASE)
+
+_LEAKED_TAIL_RE = re.compile(r"<(?:tool_call|function=\w+)[\s\S]*$", re.IGNORECASE)
+
+
+def _leaked_function_blocks(text: str) -> list[tuple[int, int, str, str]]:
+    """(start, end, name, body) for every printed <function=…> block.
+
+    ``end`` covers a closing ``</function>``/``</tool_call>`` when present and
+    the rest of the text otherwise — the unclosed tail is a real Qwen3.6
+    output shape, so it must not survive into the answer.
+    """
+    starts = list(_LEAKED_FUNCTION_START_RE.finditer(text))
+    blocks: list[tuple[int, int, str, str]] = []
+    for i, match in enumerate(starts):
+        body_start = match.end()
+        limit = starts[i + 1].start() if i + 1 < len(starts) else len(text)
+        segment = text[body_start:limit]
+        close = segment.find("</function>")
+        if close != -1:
+            body = segment[:close]
+            end = body_start + close + len("</function>")
+        else:
+            tool_close = segment.find("</tool_call>")
+            if tool_close != -1:
+                body = segment[:tool_close]
+                end = body_start + tool_close + len("</tool_call>")
+            else:
+                body = segment
+                end = len(text)
+        blocks.append((match.start(), end, match.group("name"), body))
+    return blocks
+
+
+def _leaked_args(body: str) -> dict[str, str]:
+    """Parameters from a leaked block: XML <parameter> or key="value" form."""
+    args: dict[str, str] = {}
+    for pm in _LEAKED_PARAM_RE.finditer(body):
+        args[pm.group("key")] = pm.group("value")
+    if not args:
+        for am in _LEAKED_ASSIGN_RE.finditer(body):
+            value = am.group("value")
+            with contextlib.suppress(TypeError, ValueError):
+                value = json.loads(f'"{value}"')
+            args[am.group("key")] = value
+    return args
+
+
+def _leaked_final_answer(calls: list[dict[str, Any]]) -> str:
+    """The answer carried by a leaked final call, or an empty string."""
+    for call in calls:
+        func = call.get("function", {})
+        if func.get("name") != "final":
+            continue
+        try:
+            args = json.loads(func.get("arguments", "{}"))
+        except (TypeError, ValueError):
+            continue
+        answer = str(args.get("answer") or "").strip()
+        if answer:
+            return answer
+    return ""
 
 
 def parse_leaked_tool_calls(text: str) -> tuple[list[dict[str, Any]], str]:
@@ -37,16 +106,13 @@ def parse_leaked_tool_calls(text: str) -> tuple[list[dict[str, Any]], str]:
     are parsed as {"answer": ...} from the block body.
     """
     calls: list[dict[str, Any]] = []
-    for idx, match in enumerate(_LEAKED_TOOL_CALL_RE.finditer(text)):
-        name = match.group("name")
-        params_raw = match.group("params")
-        args: dict[str, Any] = {}
-        for pm in _LEAKED_PARAM_RE.finditer(params_raw):
-            args[pm.group("key")] = pm.group("value")
+    blocks = _leaked_function_blocks(text)
+    for idx, (_start, _end, name, body) in enumerate(blocks):
+        args = _leaked_args(body)
         if not args:
-            body = params_raw.strip()
-            if body:
-                args = {"answer": body} if name == "final" else {"code": body}
+            body_text = body.strip()
+            if body_text:
+                args = {"answer": body_text} if name == "final" else {"code": body_text}
         if args:
             calls.append(
                 {
@@ -54,8 +120,28 @@ def parse_leaked_tool_calls(text: str) -> tuple[list[dict[str, Any]], str]:
                     "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
                 }
             )
-    remaining = _LEAKED_TOOL_CALL_RE.sub("", text)
+    remaining = text
+    for start, end, _name, _body in reversed(blocks):
+        remaining = remaining[:start] + remaining[end:]
+    # Orphan closing tags / wrapper remnants and a still-unparseable tail must
+    # never reach the user as an «answer».
+    remaining = re.sub(r"</tool_call>\s*\"?", "", remaining)
+    remaining = re.sub(r"</?parameter>|</?function>", "", remaining)
+    remaining = _LEAKED_WRAPPER_RE.sub("", remaining)
+    remaining = _LEAKED_TAIL_RE.sub("", remaining)
     return calls, remaining
+
+
+def strip_leaked_tool_text(text: str) -> str:
+    """The user-visible text with any leaked tool-call markup removed.
+
+    Used as a display safety net for task steps already stored before the
+    parser learned the unclosed ``answer="…"`` shape: the printed answer wins,
+    or the leaked final's answer when that is all the model produced.
+    """
+    calls, remaining = parse_leaked_tool_calls(text)
+    cleaned = remaining.strip()
+    return cleaned or _leaked_final_answer(calls)
 
 
 RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -506,8 +592,19 @@ class RlmModule:
                     # showing raw internal dialogue to the user.
                     leaked, remaining = parse_leaked_tool_calls(content)
                     if leaked:
+                        prefix = remaining.strip()
+                        leaked_answer = _leaked_final_answer(leaked)
+                        if (
+                            leaked_answer
+                            and len(prefix) >= 80
+                            and leaked_answer.startswith(prefix[:80])
+                        ):
+                            # The model printed its answer, then repeated it as
+                            # a leaked final call. The first copy is complete;
+                            # executing the duplicate would only add noise.
+                            return RlmResult(prefix, trace, step)
                         tool_calls = leaked
-                        content = remaining.strip()
+                        content = prefix
                 if not tool_calls:
                     if content.strip():
                         return RlmResult(content.strip(), trace, step)
@@ -612,17 +709,12 @@ class RlmModule:
                         finalize_calls, remaining = parse_leaked_tool_calls(content)
                         content = remaining.strip()
                     if finalize_calls:
-                        for tc in finalize_calls:
-                            func = tc.get("function", {})
-                            if func.get("name") != "final":
-                                continue
-                            try:
-                                args = json.loads(func.get("arguments", "{}"))
-                            except json.JSONDecodeError:
-                                args = {}
-                            answer = str(args.get("answer", "")).strip()
-                            if answer:
-                                return RlmResult(answer, trace, step)
+                        answer = _leaked_final_answer(finalize_calls)
+                        prefix = content.strip()
+                        if answer and len(prefix) >= 80 and answer.startswith(prefix[:80]):
+                            return RlmResult(prefix, trace, step)
+                        if answer:
+                            return RlmResult(answer, trace, step)
                     if content.strip():
                         return RlmResult(content.strip(), trace, step)
                     return RlmResult("", trace, step, error="step limit reached")

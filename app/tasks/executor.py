@@ -220,6 +220,15 @@ def _is_style_polish(checkpoint: dict) -> bool:
     return any(term in text for term in _POLISH_STYLE_TERMS)
 
 
+def _clean_step_result(text: str) -> str:
+    """Step result text without leaked tool-call markup (RLM final(answer="…"))."""
+    if "<tool_call" not in text.lower() and "<function=" not in text.lower():
+        return text
+    from modules.rlm import strip_leaked_tool_text
+
+    return strip_leaked_tool_text(text) or text
+
+
 def _bible_has_content(bible: Any) -> bool:
     """Is the continuity sheet populated with anything renderable?"""
     return isinstance(bible, dict) and any(
@@ -1995,7 +2004,7 @@ class TaskExecutor:
         for r in get_task_steps(task_id):
             if int(r.get("seq") or 0) != source_seq:
                 continue
-            text = str(r.get("result") or "").strip()
+            text = _clean_step_result(str(r.get("result") or "").strip())
             if text and not prefer_artifact:
                 return text[:cap]
             media = (r.get("extra") or {}).get("media") or {}
@@ -2847,7 +2856,7 @@ class TaskExecutor:
             if r["kind"] in ("question", "user_input", "final", "plan"):
                 continue
             if r["status"] in ("passed", "failed", "interrupted", "skipped"):
-                body = (r["result"] or "")[:8000]
+                body = _clean_step_result(r["result"] or "")[:8000]
                 if r["status"] == "skipped":
                     body = f"[skipped: {r.get('last_error') or 'source image missing'}]"
                 elif r["status"] == "failed":

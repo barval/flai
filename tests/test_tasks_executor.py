@@ -4137,3 +4137,11 @@ def test_should_polish_only_an_accepted_image_with_minor_defects():
     assert check(None, {"tool": "video_gen"}, accepted_minor, {}, "gen", media) is False
     assert check(None, row, accepted_minor, {}, "repair", media) is False
     assert check(None, row, accepted_minor, {}, "gen", {"file_path": "x.mp4", "file_type": "video/mp4"}) is False
+
+
+def test_clean_step_result_strips_leaked_rlm_markup():
+    """Stored RLM results from before the parser fix are cleaned for context
+    and display, while ordinary text is untouched."""
+    leaked = 'Answer text.\n\n<tool_call>\n<function=final>\nanswer="Answer text."'
+    assert ex._clean_step_result(leaked).strip() == "Answer text."
+    assert ex._clean_step_result("plain answer") == "plain answer"

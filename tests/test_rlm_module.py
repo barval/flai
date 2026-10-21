@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult, _RlmBroker
+from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult, _RlmBroker, parse_leaked_tool_calls
 
 
 @pytest.mark.unit
@@ -931,6 +931,42 @@ def test_run_plain_text_without_leak_is_untouched(test_app):
             is_cancelled=lambda: False,
         )
     assert result.answer == "The corpus defines context and final(answer) semantics."
+
+
+@pytest.mark.unit
+def test_parse_leaked_tool_calls_recovers_an_unclosed_answer_block():
+    """Qwen3.6 printed <tool_call><function=final>\\nanswer="…" with no closing
+    tags; the call must be recovered and the tail stripped from the answer."""
+    text = 'Полный ответ.\n\n<tool_call>\n<function=final>\nanswer="Полный ответ."'
+    calls, remaining = parse_leaked_tool_calls(text)
+    assert calls[0]["function"]["name"] == "final"
+    assert json.loads(calls[0]["function"]["arguments"])["answer"] == "Полный ответ."
+    assert "<tool_call>" not in remaining
+    assert "answer=" not in remaining
+    assert remaining.strip() == "Полный ответ."
+
+
+@pytest.mark.unit
+def test_run_duplicate_leaked_final_keeps_the_printed_answer(test_app):
+    """The model printed the answer and then repeated it as a leaked final;
+    the duplicate must not append its raw answer="…" markup to the step."""
+    answer = "## Глубокий анализ\n" + "Содержательный вывод по документу. " * 10
+    content = answer + '\n\n<tool_call>\n<function=final>\nanswer="' + answer + '"'
+    module, _ = _make_module([{"content": content}])
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 2
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="ru",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == answer.strip()
+    assert "answer=" not in result.answer
 
 
 @pytest.mark.unit

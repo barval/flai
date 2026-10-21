@@ -1031,6 +1031,72 @@
     min-height: 0;
 }
 
+/* Document preview (Documents tab): the main window shows one file. */
+.preview-title-text {
+    display: inline-block;
+    max-width: 45vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.document-preview {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    background-color: white;
+}
+
+.document-preview-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 60vh;
+    border: 0;
+}
+
+.document-preview-image {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 220px);
+    margin: 0 auto;
+}
+
+.document-preview-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.document-preview-note {
+    margin: 0.25rem 0 0.6rem;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: #8e44ad;
+}
+
+.dark-theme .document-preview {
+    background-color: #1e1e1e;
+    border-color: #444;
+}
+
+@media (max-width: 768px) {
+    .preview-title-text {
+        max-width: 38vw;
+    }
+    .document-preview-frame {
+        min-height: 55vh;
+    }
+}
+
 /* ===== MESSAGES ===== */
 .user-message,
 .assistant-message,

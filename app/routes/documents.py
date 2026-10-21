@@ -379,6 +379,101 @@ def api_get_document(doc_id):
     return send_file(file_path, mimetype=mimetype, as_attachment=True, download_name=doc["filename"])
 
 
+PREVIEW_MAX_CHARS = 200_000
+_PREVIEW_TEXT_EXTS = {".txt", ".md", ".csv", ".json"}
+_PREVIEW_EXTRACTED_EXTS = {".pdf", ".docx", ".odt", ".rtf", ".epub"}
+_PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
+
+
+def _owned_document_file(doc_id: str):
+    """Resolve an owned document to a safe on-disk path (or an error response)."""
+    if "login" not in session:
+        return None, None, (jsonify({"error": _("Not authorized")}), 401)
+    doc = db.get_document(doc_id, session["login"])
+    if not doc:
+        return None, None, (jsonify({"error": _("Document not found")}), 404)
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    file_path = os.path.join(documents_folder, doc["file_path"])
+    real_file_path = os.path.realpath(file_path)
+    real_documents_folder = os.path.realpath(documents_folder)
+    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
+        current_app.logger.warning(f"Path traversal attempt blocked: {doc['file_path']}")
+        return None, None, (jsonify({"error": _("Permission denied")}), 403)
+    if not os.path.exists(file_path):
+        current_app.logger.error(f"Document file not found: {file_path}")
+        return None, None, (jsonify({"error": _("File not found")}), 404)
+    return doc, file_path, None
+
+
+@bp.route("/documents/<doc_id>/preview", methods=["GET"])
+def api_document_preview(doc_id):
+    """Preview metadata/text for the Documents panel.
+
+    PDF and images are returned as a URL served inline by
+    ``/documents/<id>/preview/file``; office formats are converted to text
+    (``extracted: true``); plain text is returned as is.
+    """
+    doc, file_path, error = _owned_document_file(doc_id)
+    if error:
+        return error
+    ext = os.path.splitext(doc["file_path"])[1].lower()
+    payload = {"filename": doc["filename"], "ext": ext, "extracted": False, "truncated": False}
+    if ext in _PREVIEW_IMAGE_EXTS:
+        payload.update({"kind": "binary", "mime": mimetypes.guess_type(file_path)[0] or "image/png",
+                        "url": f"/api/documents/{doc_id}/preview/file"})
+        return jsonify(payload)
+    if ext == ".pdf":
+        payload.update({"kind": "binary", "mime": "application/pdf",
+                        "url": f"/api/documents/{doc_id}/preview/file"})
+        return jsonify(payload)
+    if ext in _PREVIEW_TEXT_EXTS:
+        try:
+            with open(file_path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read(PREVIEW_MAX_CHARS + 1)
+        except OSError as e:
+            current_app.logger.warning(f"Document preview read failed ({doc_id}): {e}")
+            return jsonify({"error": _("Could not read the document")}), 500
+        truncated = len(text) > PREVIEW_MAX_CHARS
+        payload.update({"kind": "text", "text": text[:PREVIEW_MAX_CHARS], "truncated": truncated})
+        return jsonify(payload)
+    if ext in _PREVIEW_EXTRACTED_EXTS and ext != ".pdf":
+        from app.utils import extract_text_from_file
+
+        text = extract_text_from_file(file_path) or ""
+        truncated = len(text) > PREVIEW_MAX_CHARS
+        if not text.strip():
+            payload.update({"kind": "unsupported"})
+        else:
+            payload.update({"kind": "text", "text": text[:PREVIEW_MAX_CHARS],
+                            "extracted": True, "truncated": truncated})
+        return jsonify(payload)
+    payload.update({"kind": "unsupported"})
+    return jsonify(payload)
+
+
+@bp.route("/documents/<doc_id>/preview/file", methods=["GET"])
+def api_document_preview_file(doc_id):
+    """Serve a PDF/image inline for the preview iframe (never HTML)."""
+    doc, file_path, error = _owned_document_file(doc_id)
+    if error:
+        return error
+    ext = os.path.splitext(doc["file_path"])[1].lower()
+    if ext == ".pdf":
+        mimetype = "application/pdf"
+    elif ext in _PREVIEW_IMAGE_EXTS:
+        mimetype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    else:
+        return jsonify({"error": _("Preview is not available for this format")}), 415
+    response = send_file(file_path, mimetype=mimetype, as_attachment=False, download_name=doc["filename"])
+    # The global after_request sets frame-ancestors 'none' + X-Frame-Options:
+    # DENY, which would block the same-origin preview iframe. The marker keeps
+    # those headers off this response only.
+    response.headers["X-Own-CSP"] = "1"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+    return response
+
+
 @bp.route("/documents/<doc_id>", methods=["DELETE"])
 def api_delete_document(doc_id):
     if "login" not in session:

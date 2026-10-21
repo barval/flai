@@ -3031,6 +3031,21 @@ msgstr "Verification attempts ({n})"
 msgid "Best of {n} attempts"
 msgstr "Best of {n} attempts"
 
+msgid "Preview: {name}"
+msgstr "Preview: {name}"
+
+msgid "Extracted text"
+msgstr "Extracted text"
+
+msgid "Preview is not available for this format"
+msgstr "Preview is not available for this format"
+
+msgid "Preview is truncated"
+msgstr "Preview is truncated"
+
+msgid "Could not load the document preview"
+msgstr "Could not load the document preview"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

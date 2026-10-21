@@ -3070,6 +3070,21 @@ msgstr "Попытки проверки ({n})"
 msgid "Best of {n} attempts"
 msgstr "Лучшее из {n} попыток"
 
+msgid "Preview: {name}"
+msgstr "Предпросмотр: {name}"
+
+msgid "Extracted text"
+msgstr "Извлечённый текст"
+
+msgid "Preview is not available for this format"
+msgstr "Предпросмотр для этого формата недоступен"
+
+msgid "Preview is truncated"
+msgstr "Предпросмотр обрезан"
+
+msgid "Could not load the document preview"
+msgstr "Не удалось загрузить предпросмотр документа"
+
 #: app/templates/chat.html:194
 #, python-brace-format
 msgid "attempt {n}"

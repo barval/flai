@@ -68,3 +68,14 @@ Single-level folders (no nesting) keep the Documents panel tidy.
 - **One selection set for moves and Deep Analysis** — the checkboxes are the single document picker. With the 🔬 toggle on, checking a document marks it for the RLM corpus (green frame + check mark); with the toggle off the same checkboxes drive the move bar. The pick mirrors into the analysis set in both modes, so un-checking a folder also clears the green highlight of its documents; switching the toggle off clears the corpus instantly, and turning it back on re-derives it from the current checkboxes.
 
 API: `GET /api/documents` now returns `{folders, documents}`, where each folder carries `id`, `name`, `created_at`, `count` and `size`; `POST /api/document-folders` (create), `PATCH /api/document-folders/<id>` (rename), `DELETE /api/document-folders/<id>` (cascade, returns `deleted_documents`/`deleted_size`), `PATCH /api/documents/<doc_id>/folder` (move one; `folder_id: null` moves to the root) and `POST /api/documents/move` (`{doc_ids, folder_id}`) for bulk moves. Document uploads accept an optional `folder_id` form field, validated against ownership.
+
+## 7. Document preview
+
+Click a document card in the Documents tab to open it in the main window (the chat/task window switches to a read-only preview). The header shows «Preview: <file name>» (truncated with an ellipsis when long) in the same style as the chat/task headers; the «Messages» counter is hidden and the only action is 💾 **Save**, which downloads the original file with its current name. Switching to another tab (or pressing Escape) restores the chat/task window.
+
+- **PDF and images** are served inline (`/api/documents/<id>/preview/file`) and rendered by the browser (`<iframe>` / `<img>`).
+- **Plain text** (`.txt`, `.md`, `.csv`, `.json`) is shown as-is.
+- **DOCX, ODT, RTF, EPUB** are converted to text (`extract_text_from_file`) and labelled **«Extracted text»** — the original formatting is not reproduced.
+- A format without a preview gets a localized «Preview is not available for this format» note. Text previews are capped at 200 000 characters with a «Preview is truncated» note.
+
+Both preview endpoints are owner-scoped and use the same `realpath` containment check as the download route; only PDF/images are served inline (never HTML).

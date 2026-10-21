@@ -10,6 +10,8 @@ let documentQueuePositions = {};
 let selectedDocIds = new Set(); // documents checked for bulk operations
 let activeFolderPicker = null; // open folder picker menu element
 let draggedDocId = null;
+let previewDocId = null; // document open in the main-window preview
+let previewDocName = '';
 
 // Documents selected for the RLM "Deep analysis" toggle. Clicking a
 // document in the sidebar list toggles it; the choice is mirrored into
@@ -19,6 +21,9 @@ let rlmSelectedDocs = new Set();
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
     const view = currentView;
+    // The preview lives in the main window and belongs to the Documents tab:
+    // any other tab (or a task/session) restores the chat/task window.
+    if (view !== 'documents') closeDocumentPreview();
     // The Tasks tab owns the main window too: the empty task state when no
     // task is selected (chat-tasks.js), the task conversation otherwise.
     // Leaving the tab restores the chat conversation.
@@ -410,6 +415,14 @@ function updateRlmToggleCount() {
 }
 
 function attachDocumentEventHandlers() {
+    // A click on the document card (not on the checkbox or the action buttons)
+    // opens the read-only preview in the main window.
+    document.querySelectorAll('.document-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            if (e.target.closest('.document-checkbox, .document-actions, button, input, label')) return;
+            openDocumentPreview(this.dataset.documentId, this.dataset.documentName || '');
+        });
+    });
     document.querySelectorAll('.delete-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -799,6 +812,162 @@ function showFolderPicker(anchor, onPick) {
     setTimeout(() => document.addEventListener('click', onDocumentClick), 0);
     document.addEventListener('keydown', onKeyDown);
 }
+
+// ---------------------------------------------------------------------------
+// Document preview (main window, Documents tab)
+// ---------------------------------------------------------------------------
+
+function setPreviewMode(active, name) {
+    const chatTitle = document.getElementById('chat-title-text');
+    const taskTitle = document.getElementById('task-title-text');
+    const previewTitle = document.getElementById('preview-title-text');
+    const contextInfo = document.getElementById('context-info');
+    const statusCounter = document.getElementById('status-counter');
+    const styleLabel = document.querySelector('.response-style-label');
+    const styleDropdown = document.querySelector('.response-style-dropdown');
+    const divider = document.querySelector('.header-divider');
+    const saveChat = document.getElementById('save-chat-button');
+    const saveDocument = document.getElementById('save-document-button');
+    const stopTask = document.getElementById('stop-task-button');
+    const retryTask = document.getElementById('retry-task-button');
+    const cancelStream = document.getElementById('cancel-stream-header');
+    const messages = document.getElementById('chat-messages');
+    const preview = document.getElementById('document-preview');
+    const rlmControls = document.querySelector('.rlm-controls');
+    const inputArea = document.querySelector('.message-input');
+
+    if (active) {
+        if (chatTitle) chatTitle.classList.add('hidden');
+        if (taskTitle) taskTitle.classList.add('hidden');
+        if (previewTitle) {
+            previewTitle.classList.remove('hidden');
+            previewTitle.textContent = formatString(t('document_preview_title'), { name });
+            previewTitle.title = name;
+        }
+        if (contextInfo) contextInfo.style.display = 'none';
+        if (statusCounter) statusCounter.style.display = 'none';
+        if (styleLabel) styleLabel.style.display = 'none';
+        if (styleDropdown) styleDropdown.style.display = 'none';
+        if (divider) divider.style.display = 'none';
+        if (saveChat) saveChat.style.display = 'none';
+        if (saveDocument) saveDocument.style.display = 'inline-flex';
+        if (stopTask) stopTask.style.display = 'none';
+        if (retryTask) retryTask.style.display = 'none';
+        if (cancelStream) cancelStream.style.display = 'none';
+        if (messages) messages.classList.add('hidden');
+        if (preview) preview.classList.remove('hidden');
+        if (rlmControls) rlmControls.style.display = 'none';
+        if (inputArea) inputArea.style.display = 'none';
+    } else {
+        if (chatTitle) chatTitle.classList.remove('hidden');
+        if (taskTitle) taskTitle.classList.add('hidden');
+        if (previewTitle) {
+            previewTitle.classList.add('hidden');
+            previewTitle.textContent = '';
+            previewTitle.title = '';
+        }
+        if (contextInfo) contextInfo.style.display = '';
+        if (statusCounter) statusCounter.style.display = '';
+        if (styleLabel) styleLabel.style.display = '';
+        if (styleDropdown) styleDropdown.style.display = '';
+        if (divider) divider.style.display = '';
+        if (saveChat) saveChat.style.display = '';
+        if (saveDocument) saveDocument.style.display = 'none';
+        if (stopTask) stopTask.style.display = '';
+        if (retryTask) retryTask.style.display = '';
+        if (cancelStream) cancelStream.style.display = '';
+        if (messages) messages.classList.remove('hidden');
+        if (preview) {
+            preview.classList.add('hidden');
+            preview.innerHTML = '';
+        }
+        if (rlmControls) rlmControls.style.display = '';
+        if (inputArea) inputArea.style.display = '';
+    }
+}
+
+function closeDocumentPreview() {
+    if (!previewDocId) return;
+    previewDocId = null;
+    previewDocName = '';
+    setPreviewMode(false, '');
+}
+
+function openDocumentPreview(docId, docName) {
+    if (!docId) return;
+    // The preview is its own main-window mode; a task view must release it.
+    if (typeof closeTaskView === 'function') closeTaskView(true);
+    const sidebar = document.querySelector('.sessions-sidebar');
+    if (sidebar) sidebar.classList.remove('panel-open');
+    previewDocId = docId;
+    previewDocName = docName;
+    setPreviewMode(true, docName);
+    const saveButton = document.getElementById('save-document-button');
+    if (saveButton) {
+        saveButton.onclick = function() {
+            if (previewDocId) window.location.href = '/api/documents/' + encodeURIComponent(previewDocId);
+        };
+    }
+    const box = document.getElementById('document-preview');
+    if (box) box.textContent = '…';
+    fetch('/api/documents/' + encodeURIComponent(docId) + '/preview')
+        .then(res => res.json().catch(() => ({})))
+        .then(data => {
+            if (!previewDocId || previewDocId !== docId) return; // another doc opened meanwhile
+            renderDocumentPreview(data);
+        })
+        .catch(err => {
+            if (box) box.textContent = t('document_preview_failed') + ': ' + err.message;
+        });
+}
+
+function renderDocumentPreview(data) {
+    const box = document.getElementById('document-preview');
+    if (!box) return;
+    box.innerHTML = '';
+    if (data.error) {
+        box.textContent = data.error;
+        return;
+    }
+    if (data.kind === 'text') {
+        if (data.extracted) {
+            const note = document.createElement('div');
+            note.className = 'document-preview-note';
+            note.textContent = 'ℹ️ ' + t('document_extracted_text');
+            box.appendChild(note);
+        }
+        const pre = document.createElement('pre');
+        pre.className = 'document-preview-text';
+        pre.textContent = data.text || '';
+        box.appendChild(pre);
+    } else if (data.kind === 'binary' && data.url) {
+        if (String(data.mime || '').startsWith('image/')) {
+            const img = document.createElement('img');
+            img.className = 'document-preview-image';
+            img.src = data.url;
+            img.alt = data.filename || '';
+            box.appendChild(img);
+        } else {
+            const frame = document.createElement('iframe');
+            frame.className = 'document-preview-frame';
+            frame.src = data.url;
+            frame.title = data.filename || '';
+            box.appendChild(frame);
+        }
+    } else {
+        box.textContent = t('document_preview_unavailable');
+    }
+    if (data.truncated) {
+        const note = document.createElement('div');
+        note.className = 'document-preview-note';
+        note.textContent = 'ℹ️ ' + t('document_preview_truncated');
+        box.appendChild(note);
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && previewDocId) closeDocumentPreview();
+});
 
 function attachDocumentDragAndDrop() {
     document.removeEventListener('dragstart', onDocumentDragStart);

@@ -51,7 +51,7 @@
 
     <div class="chat-main">
         <div class="chat-header">
-            <h2><span id="chat-title-text">{{ _('Chat') }}</span><span id="task-title-text" class="task-title-text hidden">{{ _('Task') }}</span> <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;<span class="header-divider">|</span>&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
+            <h2><span id="chat-title-text">{{ _('Chat') }}</span><span id="task-title-text" class="task-title-text hidden">{{ _('Task') }}</span><span id="preview-title-text" class="task-title-text preview-title-text hidden"></span> <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;<span class="header-divider">|</span>&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
                 <div class="response-style-dropdown">
                     <button class="response-style-btn" id="response-style-btn" title="{{ _('response_style_title') }}">
                         {% set style_icons = {'neutral': '🤖', 'academic': '🎓', 'professional': '💼', 'friendly': '😊', 'funny': '😂'} %}
@@ -71,11 +71,15 @@
                 <button id="retry-task-button" class="cancel-stream-header" title="{{ _('Restart task') }}" style="display:none">🔄</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
+                <button id="save-document-button" class="save-chat-button" title="{{ _('Save') }}" style="display:none">💾</button>
             </div>
         </div>
 
         <!-- Chat messages area -->
         <div class="chat-messages" id="chat-messages"></div>
+
+        <!-- Document preview (Documents tab) -->
+        <div id="document-preview" class="document-preview hidden"></div>
 
         <!-- File preview container (shown when files are attached) -->
         <div id="file-preview-container" class="hidden"></div>
@@ -191,6 +195,11 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'task_step_unchecked_reason': {{ _("Check skipped: could not describe the image")|tojson }},
     'task_step_attempts': {{ _("Verification attempts ({n})")|tojson }},
     'task_step_best_effort': {{ _("Best of {n} attempts")|tojson }},
+    'document_preview_title': {{ _("Preview: {name}")|tojson }},
+    'document_extracted_text': {{ _("Extracted text")|tojson }},
+    'document_preview_unavailable': {{ _("Preview is not available for this format")|tojson }},
+    'document_preview_truncated': {{ _("Preview is truncated")|tojson }},
+    'document_preview_failed': {{ _("Could not load the document preview")|tojson }},
     'task_step_attempt': {{ _("attempt {n}")|tojson }},
     'task_final_items': {{ _("Accepted results: {n}")|tojson }},
     'task_final_failures': {{ _("Not delivered:")|tojson }},

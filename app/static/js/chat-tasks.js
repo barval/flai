@@ -880,6 +880,7 @@ function renderTaskMessage(m, task) {
     }
     const content = document.createElement('div');
     content.className = 'message-content';
+    if (isUser) content.classList.add('task-user-content');
     const serviceLine = splitServiceLine(m.kind, body);
     if (serviceLine) {
         body = serviceLine.rest;
@@ -905,12 +906,20 @@ function renderTaskMessage(m, task) {
     }
     // Validation chip + reason + attempt log, for every step type alike.
     div.appendChild(buildStepValidation(m));
-    // Style search-result headers ("[Search result 1: Title]") as inline
-    // spans — they stay with their own result content (url + text) instead of
-    // being extracted to a separate pile. A block-level span wraps the heading
-    // line so it renders on its own row; DOMPurify keeps harmless <span> tags.
-    body = body.replace(/^\[([^\]]+)\]\n/gm, '<span class="task-search-header">[$1]</span>\n');
-    content.innerHTML = DOMPurify.sanitize(marked.parse(body));
+    if (isUser) {
+        // A user request is plain text, never markdown: «1) …» is a numbered
+        // item the user typed, not an ordered list. Markdown rendering turned
+        // it into «1.» (a list marker outside the selectable text).
+        content.textContent = body;
+    } else {
+        // Style search-result headers ("[Search result 1: Title]") as inline
+        // spans — they stay with their own result content (url + text) instead
+        // of being extracted to a separate pile. A block-level span wraps the
+        // heading line so it renders on its own row; DOMPurify keeps harmless
+        // <span> tags.
+        body = body.replace(/^\[([^\]]+)\]\n/gm, '<span class="task-search-header">[$1]</span>\n');
+        content.innerHTML = DOMPurify.sanitize(marked.parse(body));
+    }
     div.appendChild(content);
     if (m.kind === 'final') appendFinalResults(div, m);
     // name per line (the server joins them) — each renders as a service line,

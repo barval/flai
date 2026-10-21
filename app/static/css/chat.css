@@ -1034,11 +1034,21 @@
 /* Document preview (Documents tab): the main window shows one file. */
 .preview-title-text {
     display: inline-block;
-    max-width: 45vw;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: bottom;
+}
+
+/* Preview mode: the file name owns every pixel up to the 💾 button. */
+body.document-preview-mode .chat-header h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+body.document-preview-mode .context-info-container {
+    flex-shrink: 0;
 }
 
 .document-preview {
@@ -1119,11 +1129,6 @@
 }
 
 @media (max-width: 768px) {
-    .preview-title-text {
-        /* Preview mode hides the counter/style chrome: the title owns the row
-           next to the single 💾 instead of the old 38vw slice. */
-        max-width: 60vw;
-    }
     .document-preview-frame {
         min-height: 55vh;
     }
@@ -1174,6 +1179,13 @@
 .message-content {
     line-height: 1.7;
     position: relative;
+}
+
+/* Task user requests are plain text: keep the user's own line breaks and
+   literal «1)» numbering (markdown turned it into an unselectable list marker). */
+.task-user-content {
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* ── Streaming UI ──────────────────────────────────── */

@@ -33,5 +33,7 @@ def test_mobile_preview_uses_page_images_instead_of_an_iframe():
 def test_preview_owns_the_header_while_a_document_is_open():
     assert "window.isDocumentPreviewActive = isDocumentPreviewActive" in JS
     assert EVENTS.count("if (typeof window.isDocumentPreviewActive === 'function'") == 2
-    # The title gets the row next to the single 💾 on a phone.
-    assert "max-width: 60vw" in CSS
+    assert "document.body.classList.add('document-preview-mode')" in JS
+    # The title gets every pixel up to the 💾 button on desktop and mobile.
+    assert "body.document-preview-mode .chat-header h2" in CSS
+    assert "flex: 1 1 auto" in CSS

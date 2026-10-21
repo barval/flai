@@ -840,6 +840,7 @@ function setPreviewMode(active, name) {
     const inputArea = document.querySelector('.message-input');
 
     if (active) {
+        document.body.classList.add('document-preview-mode');
         if (chatTitle) chatTitle.classList.add('hidden');
         if (taskTitle) taskTitle.classList.add('hidden');
         if (previewTitle) {
@@ -862,6 +863,7 @@ function setPreviewMode(active, name) {
         if (rlmControls) rlmControls.style.display = 'none';
         if (inputArea) inputArea.style.display = 'none';
     } else {
+        document.body.classList.remove('document-preview-mode');
         if (chatTitle) chatTitle.classList.remove('hidden');
         if (taskTitle) taskTitle.classList.add('hidden');
         if (previewTitle) {

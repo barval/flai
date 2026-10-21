@@ -644,6 +644,16 @@ class TestReviewGuards:
         assert "tts-button" in block and "copy-message-button" in block
         assert "tps_suffix" in block and "seconds_suffix" in block
 
+    def test_user_request_is_plain_text(self):
+        """A task request is not markdown: «1) …» must stay the user's own
+        numbering (marked.parse turned it into an unselectable «1.» list
+        marker). Assistant bodies still go through markdown + DOMPurify."""
+        block = self._function_block(CHAT_TASKS, "function renderTaskMessage(")
+        assert "if (isUser)" in block
+        assert "content.textContent = body" in block
+        assert "content.innerHTML = DOMPurify.sanitize(marked.parse(body))" in block
+        assert ".task-user-content" in CHAT_CSS
+
     def test_style_emoji_needs_a_model(self):
         """The style emoji (🤖 neutral) must NOT hang in a step header that has
         no model (a camera error before any LLM call): it renders only when the

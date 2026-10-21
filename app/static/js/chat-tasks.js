@@ -1031,10 +1031,17 @@ function setTaskMode(active, task) {
     // row — it must not sit next to the 💾 in the header row.
     const canRetry = !!(task && TASK_TERMINAL_STATUSES.has(task.status) && task.status !== 'completed');
     if (retryBtn) retryBtn.style.display = active && canRetry ? 'inline-flex' : 'none';
+    const awaiting = !!(task && task.status === 'awaiting_user');
+    const draft = !!(task && task.status === 'draft');
 
     const input = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-button');
-    if (sendBtn) sendBtn.style.display = active && canRetry ? 'none' : '';
+    // Send is only meaningful for a draft request or an answer to a
+    // clarifying question. A running/finished task accepts neither, so the
+    // button is hidden instead of sitting there greyed out (or, in the dark
+    // theme, misleadingly blue) while the task executes.
+    const showSend = !active || awaiting || draft;
+    if (sendBtn) sendBtn.style.display = showSend ? '' : 'none';
     const voiceBtn = document.getElementById('voice-record-button');
     const attachBtn = document.getElementById('attach-file-button');
     const rlmLabel = document.getElementById('rlm-toggle-label');
@@ -1059,8 +1066,6 @@ function setTaskMode(active, task) {
         if (rlmLabel) rlmLabel.style.display = 'none';
         return;
     }
-    const awaiting = task.status === 'awaiting_user';
-    const draft = task.status === 'draft';
     input.readOnly = !awaiting && !draft;
     input.placeholder = draft
         ? t('task_draft_placeholder')

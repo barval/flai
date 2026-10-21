@@ -147,6 +147,11 @@
 .dark-theme #send-button:hover {
     background-color: #2980b9;
 }
+.dark-theme #send-button:disabled {
+    background-color: #95a5a6;
+    color: white;
+    cursor: not-allowed;
+}
 .dark-theme #attach-file-button {
     background-color: #3a3a3a;
     color: #ecf0f1;

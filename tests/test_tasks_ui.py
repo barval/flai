@@ -394,18 +394,22 @@ class TestReviewGuards:
 
     def test_restart_replaces_send_and_hides_attachments(self):
         """A stopped task swaps the Send button for Restart in the input row
-        (not next to the header's 💾); microphone, paperclip and the Deep
-        analysis toggle are offered only while a task is being created or its
-        question is answered."""
+        (not next to the header's 💾); Send itself exists only for a draft or
+        an answer, and microphone, paperclip and the Deep analysis toggle are
+        offered in the same two states."""
         start = CHAT_HTML.index('<div class="message-input">')
         input_row = CHAT_HTML[start:CHAT_HTML.index('</div>', start)]
         assert 'id="retry-task-button"' in input_row
         block = self._function_block(CHAT_TASKS, "function setTaskMode(")
-        assert "sendBtn.style.display = active && canRetry ? 'none' : ''" in block
+        assert "showSend = !active || awaiting || draft" in block
+        assert "sendBtn.style.display = showSend ? '' : 'none'" in block
         assert "allowSubmitControls = draft || awaiting" in block
         assert "voiceBtn.style.display = allowSubmitControls ? '' : 'none'" in block
         assert "attachBtn.style.display = allowSubmitControls ? '' : 'none'" in block
         assert "rlmLabel.style.display = allowSubmitControls ? '' : 'none'" in block
+        # The dark theme used to repaint a disabled Send blue (same specificity,
+        # later stylesheet), so «disabled» never looked disabled.
+        assert ".dark-theme #send-button:disabled" in DARK_CSS
 
     def test_documents_ride_with_task_send(self):
         """The shared Documents-panel selection is snapshotted into the task

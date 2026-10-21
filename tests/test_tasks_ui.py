@@ -623,6 +623,14 @@ class TestReviewGuards:
         # A remembered task deleted meanwhile is forgotten, not restored forever.
         assert "forgetTaskId" in self._function_block(CHAT_TASKS, "function loadTasksFromServer(")
 
+    def test_documents_tab_keeps_the_open_task(self):
+        """The Documents tab is a sidebar view: switching to it must not leave
+        the task and reload the chat in the main window. Only the Sessions tab
+        restores the chat conversation."""
+        block = self._function_block(CHAT_DOCS, "function applyCurrentView(")
+        assert "view === 'sessions' && typeof isTaskViewActive" in block
+        assert "else if (typeof isTaskViewActive === 'function' && isTaskViewActive())" not in block
+
     def test_chat_style_message_headers(self):
         """Task messages carry the chat header shape: model, ⏱️, 🔢, 🚀,
         TTS + copy buttons (user request: same format as chat messages)."""

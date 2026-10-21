@@ -26,7 +26,10 @@ function applyCurrentView() {
     if (view !== 'documents') closeDocumentPreview();
     // The Tasks tab owns the main window too: the empty task state when no
     // task is selected (chat-tasks.js), the task conversation otherwise.
-    // Leaving the tab restores the chat conversation.
+    // Only the Sessions tab restores the chat conversation — the Documents
+    // tab is a sidebar view, so the main window keeps whatever was open
+    // (an active task stays open, a chat stays the chat) until a document
+    // is clicked.
     if (typeof enterTasksEmptyState === 'function' && typeof leaveTasksView === 'function') {
         if (view === 'tasks') {
             if (!window.currentTaskId) {
@@ -35,7 +38,7 @@ function applyCurrentView() {
                 if (typeof restoreTasksView === 'function') restoreTasksView();
                 else enterTasksEmptyState();
             }
-        } else if (typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+        } else if (view === 'sessions' && typeof isTaskViewActive === 'function' && isTaskViewActive()) {
             leaveTasksView();
         }
     }

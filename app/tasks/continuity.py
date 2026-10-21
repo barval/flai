@@ -291,6 +291,38 @@ def select_relevant_fragment(text: str, query: str = "", criteria: str = "", cap
     return "\n\n".join(p for _i, p in chosen)[:cap]
 
 
+_STYLE_PHOTO_RE = re.compile(r"photo|realis", re.IGNORECASE)
+_PHOTOREAL_TAG_RE = re.compile(
+    r"(?:,\s*)?\bphotorealistic(?:\s+(?:style|render|look|image|photo|picture))?\b",
+    re.IGNORECASE,
+)
+
+
+def ensure_style_in_prompt(prompt: str, bible: dict) -> str:
+    """Force the continuity sheet's style into the final SD prompt.
+
+    The multimodal prompt builder paraphrases the request and can drop the
+    style entirely; the sheet's style is mandatory for a unified series. A
+    non-photoreal style also drops the fixed ``photorealistic`` quality tag —
+    otherwise it overrides a requested children's-book/watercolor style.
+    """
+    text = str(prompt or "")
+    style = str((bible or {}).get("style") or "").strip()
+    if not text.strip() or not style:
+        return text
+    if not _STYLE_PHOTO_RE.search(style):
+        text = _PHOTOREAL_TAG_RE.sub("", text)
+        text = re.sub(r"\s{2,}", " ", text).strip(" ,")
+    missing = [
+        part.strip()
+        for part in style.split(",")
+        if part.strip() and part.strip().lower() not in text.lower()
+    ]
+    if missing:
+        text = text.rstrip().rstrip(",") + ", " + ", ".join(missing)
+    return text
+
+
 def ensure_entities_in_prompt(prompt: str, bible: dict, goal: str = "", criteria: str = "") -> str:
     """Append the look of selected cards missing from the generated SD prompt.
 

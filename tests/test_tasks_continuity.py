@@ -814,3 +814,37 @@ def test_stage_labels_registered_in_events_js():
     assert "rebuildCurrentTask" not in tasks_js
     chat_css = (_ROOT / "app/static/css/chat.css").read_text(encoding="utf-8")
     assert ".task-continuity" not in chat_css
+
+
+@pytest.mark.unit
+def test_ensure_style_forces_the_sheet_style_and_drops_photorealistic():
+    """The prompt builder may drop the style; the sheet's style is mandatory.
+
+    A non-photoreal style also removes the old fixed «photorealistic» tag,
+    which used to override a requested children's-book/watercolor style.
+    """
+    from app.tasks.continuity import ensure_style_in_prompt
+
+    bible = {"style": "children's book illustration, warm watercolor tones"}
+    result = ensure_style_in_prompt("A cat on a rug, photorealistic, high detail, sharp focus.", bible)
+    assert "photorealistic" not in result.lower()
+    assert result.endswith("children's book illustration, warm watercolor tones")
+
+
+@pytest.mark.unit
+def test_ensure_style_keeps_photorealistic_for_a_photo_style():
+    from app.tasks.continuity import ensure_style_in_prompt
+
+    bible = {"style": "photorealistic, natural light"}
+    result = ensure_style_in_prompt("A cat on a rug, photorealistic, sharp focus.", bible)
+    assert "photorealistic" in result.lower()
+    assert result.count("photorealistic") >= 1
+
+
+@pytest.mark.unit
+def test_ensure_style_does_not_duplicate_an_exact_style():
+    from app.tasks.continuity import ensure_style_in_prompt
+
+    style = "children's book illustration"
+    result = ensure_style_in_prompt("A cat, " + style, {"style": style})
+    assert result.lower().count(style) == 1

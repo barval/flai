@@ -4091,3 +4091,49 @@ def test_subtask_retry_logs_the_rejection_for_the_task_view(db_env, test_app, ga
     assert log, "the rejection is persisted"
     assert log[-1]["ok"] is False
     assert "astronaut is cropped" in log[-1]["reason"]
+
+
+def test_polish_note_and_style_detection():
+    """An accepted image with a minor style mismatch becomes a polish order."""
+    checkpoint = {
+        "verdict": True,
+        "severity": "minor",
+        "mismatches": [
+            {
+                "entity": "style",
+                "expected": "children's book illustration",
+                "seen": "photorealistic photo",
+                "severity": "minor",
+            }
+        ],
+    }
+    assert ex._is_style_polish(checkpoint) is True
+    note = ex._polish_note(checkpoint)
+    assert "children's book illustration" in note
+    assert "photorealistic" in note
+
+
+def test_candidate_key_prefers_an_accepted_artifact_over_a_later_rejected_one():
+    """A rejected polish must not replace the image the validator accepted."""
+    accepted = {"verdict": True, "score": 60, "attempt": 1}
+    rejected = {"verdict": False, "score": 90, "attempt": 2}
+    assert ex._candidate_key(accepted) > ex._candidate_key(rejected)
+
+
+def test_should_polish_only_an_accepted_image_with_minor_defects():
+    """One polish edit is scheduled only for an accepted image with minor
+    mismatches, and only once."""
+    accepted_minor = {
+        "verdict": True,
+        "severity": "minor",
+        "mismatches": [{"entity": "style", "expected": "watercolor", "seen": "photo", "severity": "minor"}],
+    }
+    row = {"tool": "image_gen"}
+    media = {"file_path": "x.png", "file_type": "image/png"}
+    check = ex.TaskExecutor._should_polish_accepted
+    assert check(None, row, accepted_minor, {}, "gen", media) is True
+    assert check(None, row, {"verdict": True, "severity": "none", "mismatches": []}, {}, "gen", media) is False
+    assert check(None, row, accepted_minor, {"polish_used": True}, "gen", media) is False
+    assert check(None, {"tool": "video_gen"}, accepted_minor, {}, "gen", media) is False
+    assert check(None, row, accepted_minor, {}, "repair", media) is False
+    assert check(None, row, accepted_minor, {}, "gen", {"file_path": "x.mp4", "file_type": "video/mp4"}) is False

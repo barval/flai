@@ -1737,7 +1737,7 @@ class RedisRequestQueue:
         prompt = str(prompt_data.get(key) or "")
         if not prompt:
             return prompt_data
-        from app.tasks.continuity import ensure_entities_in_prompt
+        from app.tasks.continuity import ensure_entities_in_prompt, ensure_style_in_prompt
 
         prompt_data[key] = ensure_entities_in_prompt(
             prompt,
@@ -1745,6 +1745,7 @@ class RedisRequestQueue:
             str(data.get("visual_bible_goal") or ""),
             str(data.get("visual_bible_criteria") or ""),
         )
+        prompt_data[key] = ensure_style_in_prompt(prompt_data[key], bible)
         return prompt_data
 
     def _process_image_edit_task(

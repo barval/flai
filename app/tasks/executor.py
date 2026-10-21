@@ -146,14 +146,78 @@ def _merge_usage(total: Any, current: Any) -> dict[str, int] | None:
     }
 
 
-def _candidate_key(candidate: dict) -> tuple[int, int, int, int]:
-    """Rank one failed candidate (higher is better, the last attempt wins ties)."""
+def _candidate_key(candidate: dict) -> tuple[int, int, int, int, int]:
+    """Rank one candidate (higher is better; an accepted one outranks a rejected one).
+
+    Verdict comes first: when a polish edit of an already-accepted image is
+    rejected, the original accepted artifact must not lose to the rejected one
+    merely because the latter is later. Among rejected candidates the previous
+    score/severity rules apply.
+    """
+    accepted = int(bool(candidate.get("verdict")))
     score = candidate.get("score")
     numeric = int(score) if isinstance(score, (int, float)) else -1
     mismatches = candidate.get("mismatches") or []
     critical = sum(1 for m in mismatches if isinstance(m, dict) and str(m.get("severity")).lower() == "critical")
     minor = sum(1 for m in mismatches if isinstance(m, dict) and str(m.get("severity")).lower() == "minor")
-    return (numeric, -critical, -minor, int(candidate.get("attempt") or 0))
+    return (accepted, numeric, -critical, -minor, int(candidate.get("attempt") or 0))
+
+
+# A style mismatch is a global defect: a polish edit must change the style, so
+# the old style cannot sit in the edit's «preserve» list.
+_POLISH_STYLE_TERMS = (
+    "style",
+    "watercolor",
+    "watercolour",
+    "illustration",
+    "photoreal",
+    "painting",
+    "drawing",
+    "cartoon",
+    "стил",
+    "акварел",
+    "иллюстрац",
+    "рисун",
+    "фотореал",
+)
+
+
+def _minor_mismatches(checkpoint: dict) -> list[dict]:
+    """The verifier's minor mismatches (style, lighting, small details)."""
+    return [
+        m for m in (checkpoint.get("mismatches") or [])
+        if isinstance(m, dict) and str(m.get("severity") or "").lower() == "minor"
+    ]
+
+
+def _polish_note(checkpoint: dict) -> str:
+    """Instruction for the one corrective edit after an accepted image."""
+    details = []
+    for mismatch in _minor_mismatches(checkpoint)[:8]:
+        entity = str(mismatch.get("entity") or "").strip()
+        expected = str(mismatch.get("expected") or "").strip()
+        seen = str(mismatch.get("seen") or "").strip()
+        if not (expected or seen):
+            continue
+        prefix = f"{entity}: " if entity else ""
+        details.append(f"{prefix}expected {expected}; seen {seen}".strip())
+    if details:
+        return (
+            "Polish this illustration. Correct these minor defects without changing the scene or "
+            "composition: " + "; ".join(details)
+        )
+    explanation = str(checkpoint.get("explanation") or "").strip() or "minor style or detail drift"
+    return "Polish this illustration. Correct the minor defects noted by the check: " + explanation
+
+
+def _is_style_polish(checkpoint: dict) -> bool:
+    """Does the minor mismatch concern the style (rather than a small detail)?"""
+    text = " ".join(
+        str(mismatch.get(field) or "")
+        for mismatch in _minor_mismatches(checkpoint)
+        for field in ("entity", "expected", "seen")
+    ).lower()
+    return any(term in text for term in _POLISH_STYLE_TERMS)
 
 
 def _bible_has_content(bible: Any) -> bool:
@@ -1782,7 +1846,7 @@ class TaskExecutor:
             exec_seconds=elapsed,
             result=result_text,
             checkpoint_result=str(winner.get("explanation") or ""),
-            checkpoint_verdict=False,
+            checkpoint_verdict=bool(winner.get("verdict")),
             extra=merged,
         )
         self._clear_task_stage(task)
@@ -1794,6 +1858,31 @@ class TaskExecutor:
             len(candidates),
         )
         update_task(task_id, next_step_index=idx + 1)
+
+    def _should_polish_accepted(
+        self,
+        row: dict,
+        checkpoint: dict,
+        previous_extra: dict,
+        current_kind: str,
+        media: dict,
+    ) -> bool:
+        """One corrective edit after an image the validator already accepted.
+
+        Minor style/lighting/detail mismatches used to be only recorded: the
+        step passed and the picture was kept. A single polish edit is worth
+        trying, then the best of all candidates wins if it is rejected.
+        """
+        if current_kind != "gen" or previous_extra.get("polish_used"):
+            return False
+        if str(row.get("tool") or "") not in ("image_gen", "image_edit"):
+            return False
+        if not media.get("file_path") or not str(media.get("file_type") or "").startswith("image/"):
+            return False
+        if checkpoint.get("verdict") is not True:
+            return False
+        severity = str(checkpoint.get("severity") or "").lower()
+        return severity == "minor" or bool(_minor_mismatches(checkpoint))
 
     def _prior_step_media(self, task_id: str, idx: int, source_seq: int | None = None) -> dict | None:
         """The ``extra.media`` artifact of ONE prior step (an image file).
@@ -2958,15 +3047,19 @@ class TaskExecutor:
             return False
         return True
 
-    def _repair_preserve(self, task: dict, step: dict, goal: str) -> str:
-        """What a repair edit must keep untouched (scene, style, named entities)."""
+    def _repair_preserve(self, task: dict, step: dict, goal: str, include_style: bool = True) -> str:
+        """What a repair edit must keep untouched (scene, style, named entities).
+
+        ``include_style=False`` is used by a style polish: the target style is
+        the change, so it must not be listed among the elements to preserve.
+        """
         parts = [f"the scene: {goal}"]
         bible = task.get("visual_bible") or {}
         if _bible_has_content(bible):
             from app.tasks.continuity import select_cards
 
             style = str(bible.get("style") or "").strip()
-            if style:
+            if style and include_style:
                 parts.append(f"style: {style}")
             for card in select_cards(bible, goal, str(step.get("checkpoint_criteria") or "")):
                 look = str(card.get("look") or "").strip()
@@ -3095,13 +3188,26 @@ class TaskExecutor:
                 self._publish_task_update(task_id)
                 return
             reason = str(row_extra.get("corrective_note") or "").strip()
-            preserve = self._repair_preserve(task, step, goal)
-            repair_text = (
-                "Repair this illustration. "
-                f"Defect to fix: {reason or 'a visual defect'}. "
-                f"Preserve exactly: {preserve}. "
-                "Change only the defect; keep the composition, lighting and illustration style unchanged."
-            )
+            style_polish = bool(row_extra.get("polish_style"))
+            preserve = self._repair_preserve(task, step, goal, include_style=not style_polish)
+            style_target = str((task.get("visual_bible") or {}).get("style") or "").strip()
+            if style_polish:
+                # The target style is the change, not something to preserve —
+                # the old (wrong) style must not survive the edit.
+                repair_text = (
+                    f"Polish this illustration. Apply the target style exactly: {style_target or 'the task style'}. "
+                    f"Defect to fix: {reason or 'the style does not match the task'}. "
+                    f"Preserve exactly: {preserve}. "
+                    "Keep the composition and all depicted subjects unchanged."
+                )
+            else:
+                prefix = "Polish" if row_extra.get("polish_used") else "Repair"
+                repair_text = (
+                    f"{prefix} this illustration. "
+                    f"Defect to fix: {reason or 'a visual defect'}. "
+                    f"Preserve exactly: {preserve}. "
+                    "Change only the defect; keep the composition, lighting and illustration style unchanged."
+                )
             request_data["file_data"] = self._media_to_raw_base64(loaded)
             request_data["file_name"] = os.path.basename(str(loaded.get("file_path") or "")) or str(
                 loaded.get("file_name") or ""
@@ -3389,6 +3495,13 @@ class TaskExecutor:
             return "hold"
         from app.llamacpp_client import _tr
 
+        if extra.get("polish_used") and str(extra.get("current_kind") or "") == "repair":
+            # The optional polish result expired; the accepted original is
+            # still the best artifact and must not be lost.
+            self._finish_best_effort(
+                task, row, idx, self._subtask_seconds(row), str(row.get("goal") or ""), extra
+            )
+            return "done"
         lang = task.get("lang") or "ru"
         self._end_step(
             task_id,
@@ -3481,6 +3594,15 @@ class TaskExecutor:
         merged_extra = {**(row.get("extra") or {}), "subtask_queue_id": queue_id, "media": media, **meta, **backend}
 
         if is_error:
+            row_extra = row.get("extra") or {}
+            if row_extra.get("polish_used") and current_kind == "repair":
+                # The polish edit is optional: its failure must not discard the
+                # image the validator already accepted. Keep the best candidate.
+                logger.warning(
+                    f"task {task_id} step {idx + 1}: polish edit failed ({error_text[:120]}) — keeping the best candidate"
+                )
+                self._finish_best_effort(task, row, idx, elapsed, str(row.get("goal") or ""), merged_extra)
+                return "done"
             if media or meta:
                 update_step(row["id"], extra=merged_extra)
             self._end_step(
@@ -3625,7 +3747,37 @@ class TaskExecutor:
             ]
         max_attempts = int(self._cfg("TASK_STEP_MAX_ATTEMPTS", TASK_STEP_MAX_ATTEMPTS))
         max_repairs = int(self._cfg("TASK_STEP_MAX_REPAIRS", 3))
+        if checkpoint and self._should_polish_accepted(row, checkpoint, previous_extra, current_kind, media):
+            # The validator accepted the picture but named minor defects (wrong
+            # style, lighting, a small detail). One corrective edit is worth a
+            # try; if it is rejected below, the best of ALL candidates wins.
+            note = _polish_note(checkpoint)
+            update_step(
+                row["id"],
+                status="pending",
+                result=result_text,
+                extra={
+                    **merged_extra,
+                    "pending_action": "repair",
+                    "repair_source": media,
+                    "corrective_note": note,
+                    "polish_used": True,
+                    "polish_style": _is_style_polish(checkpoint),
+                    "subtask_polls": 0,
+                },
+            )
+            self._log_attempt(row["id"], int(row.get("attempts") or 0), True, note)
+            logger.info(
+                f"task {task_id} step {idx + 1}: accepted with minor defects — scheduling one polish edit"
+            )
+            return "done"
         if checkpoint and not checkpoint.get("verdict"):
+            if previous_extra.get("polish_used") and current_kind == "repair":
+                logger.info(
+                    f"task {task_id} step {idx + 1}: polish edit rejected — keeping the best of all candidates"
+                )
+                self._finish_best_effort(task, row, idx, elapsed, result_text, merged_extra)
+                return "done"
             reason = str(checkpoint.get("explanation", ""))
             attempts = int(row.get("attempts") or 0)
             # Anti-loop: the same rejection after a corrective retry means the

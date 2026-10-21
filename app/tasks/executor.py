@@ -190,24 +190,41 @@ def _minor_mismatches(checkpoint: dict) -> list[dict]:
     ]
 
 
-def _polish_note(checkpoint: dict) -> str:
-    """Instruction for the one corrective edit after an accepted image."""
+def _polish_note(checkpoint: dict, lang: str = "ru") -> str:
+    """Localized instruction for the one corrective edit after an accepted image.
+
+    The note is shown in the step's verification log and sent to the edit
+    prompt, so it must be in the task language — the verifier's ``expected`` /
+    ``seen`` fields already are.
+    """
+    russian = (lang or "ru").lower().startswith("ru")
     details = []
     for mismatch in _minor_mismatches(checkpoint)[:8]:
-        entity = str(mismatch.get("entity") or "").strip()
         expected = str(mismatch.get("expected") or "").strip()
         seen = str(mismatch.get("seen") or "").strip()
         if not (expected or seen):
             continue
-        prefix = f"{entity}: " if entity else ""
-        details.append(f"{prefix}expected {expected}; seen {seen}".strip())
+        if russian:
+            bits = []
+            if expected:
+                bits.append(f"ожидалось «{expected}»")
+            if seen:
+                bits.append(f"получено «{seen}»")
+        else:
+            bits = []
+            if expected:
+                bits.append(f"expected «{expected}»")
+            if seen:
+                bits.append(f"seen «{seen}»")
+        if bits:
+            details.append(", ".join(bits))
+    prefix = "Мелкие недочёты: " if russian else "Minor defects: "
     if details:
-        return (
-            "Polish this illustration. Correct these minor defects without changing the scene or "
-            "composition: " + "; ".join(details)
-        )
-    explanation = str(checkpoint.get("explanation") or "").strip() or "minor style or detail drift"
-    return "Polish this illustration. Correct the minor defects noted by the check: " + explanation
+        return prefix + "; ".join(details)
+    explanation = str(checkpoint.get("explanation") or "").strip()
+    if explanation:
+        return prefix + explanation
+    return prefix + ("мелкие расхождения стиля или деталей" if russian else "minor style or detail drift")
 
 
 def _is_style_polish(checkpoint: dict) -> bool:
@@ -1847,6 +1864,10 @@ class TaskExecutor:
             "media": winner_media,
             "best_effort": True,
             "best_effort_count": len(candidates),
+            # The winner may be the image the validator had already accepted
+            # (the optional polish was rejected). The UI labels that honestly
+            # instead of calling it «best of N attempts».
+            "best_effort_accepted": bool(winner.get("verdict")),
         }
         self._end_step(
             task_id,
@@ -3760,7 +3781,7 @@ class TaskExecutor:
             # The validator accepted the picture but named minor defects (wrong
             # style, lighting, a small detail). One corrective edit is worth a
             # try; if it is rejected below, the best of ALL candidates wins.
-            note = _polish_note(checkpoint)
+            note = _polish_note(checkpoint, task.get("lang") or "ru")
             update_step(
                 row["id"],
                 status="pending",

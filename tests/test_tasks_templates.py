@@ -242,3 +242,18 @@ def test_media_checkpoint_template_handles_an_empty_reference_and_an_edit():
         else:
             assert "reference section is empty" in src
             assert "requires changing the reference" in src
+
+
+def test_media_templates_count_limbs_and_flag_anatomical_anomalies():
+    """A live image had an extra paw but the verifier only listed minor style
+    mismatches: the description must count limbs and the checkpoint must treat
+    an extra/missing limb as critical even when the reference is silent."""
+    for lang in ("ru", "en"):
+        desc = _load("task_describe_image", lang).lower()
+        check = _load("task_checkpoint_media", lang).lower()
+        if lang == "ru":
+            assert "конечности" in desc and "лишних" in desc
+            assert "анатомические аномалии" in check and "лапа" in check
+        else:
+            assert "limbs" in desc and "extra, missing or duplicated" in desc
+            assert "anatomical anomalies" in check and "paw" in check

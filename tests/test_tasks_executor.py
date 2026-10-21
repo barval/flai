@@ -4108,9 +4108,11 @@ def test_polish_note_and_style_detection():
         ],
     }
     assert ex._is_style_polish(checkpoint) is True
-    note = ex._polish_note(checkpoint)
+    note = ex._polish_note(checkpoint, "ru")
     assert "children's book illustration" in note
     assert "photorealistic" in note
+    assert "ожидалось" in note and "получено" in note
+    assert "Minor defects" not in note
 
 
 def test_candidate_key_prefers_an_accepted_artifact_over_a_later_rejected_one():

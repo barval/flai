@@ -3070,6 +3070,12 @@ msgstr "Попытки проверки ({n})"
 msgid "Best of {n} attempts"
 msgstr "Лучшее из {n} попыток"
 
+msgid "Kept the accepted image"
+msgstr "Оставлено принятое изображение"
+
+msgid "Minor defects corrected by a follow-up edit."
+msgstr "Мелкие недочёты исправлены повторным редактированием."
+
 msgid "Preview: {name}"
 msgstr "Предпросмотр: {name}"
 

@@ -3031,6 +3031,12 @@ msgstr "Verification attempts ({n})"
 msgid "Best of {n} attempts"
 msgstr "Best of {n} attempts"
 
+msgid "Kept the accepted image"
+msgstr "Kept the accepted image"
+
+msgid "Minor defects corrected by a follow-up edit."
+msgstr "Minor defects corrected by a follow-up edit."
+
 msgid "Preview: {name}"
 msgstr "Preview: {name}"
 

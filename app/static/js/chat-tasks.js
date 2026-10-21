@@ -631,7 +631,9 @@ function buildStepValidation(m) {
         // Every attempt failed, so the closest candidate was kept — a normal
         // success with a best-effort note, not a skipped verification.
         emoji = '🏅';
-        label = formatString(t('task_step_best_effort'), { n: Number(m.best_effort_count) || 0 });
+        label = m.best_effort_accepted
+            ? t('task_step_kept_accepted')
+            : formatString(t('task_step_best_effort'), { n: Number(m.best_effort_count) || 0 });
         cls = 'rewritten';
     } else if (m.artifact_note) {
         // The artifact could not be described, so the check was skipped — the

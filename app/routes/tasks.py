@@ -494,6 +494,19 @@ def _transcript_block(entry: dict) -> dict:
     return {"label": label, "text": str(entry.get("transcript") or "").strip()}
 
 
+def _localized_attempt_reason(reason: Any) -> str:
+    """Hide the technical English polish/repair instruction from old rows.
+
+    New attempts store a localized «Мелкие недочёты: …» note; rows written
+    before that fix still carry the model-facing English sentence, which must
+    not appear in the verification log.
+    """
+    text = str(reason or "")
+    if text.startswith(("Polish this illustration.", "Repair this illustration.")):
+        return _("Minor defects corrected by a follow-up edit.")
+    return text
+
+
 def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None) -> dict:
     """One task_steps row as a conversation message."""
     seq = int(row.get("seq") or 0)
@@ -540,12 +553,23 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         # instead of silently replacing the previous one.
         "attempts": int(row.get("attempts") or 0),
         "attempts_max": int(current_app.config.get("TASK_STEP_MAX_ATTEMPTS") or 3),
-        "attempts_log": [e for e in (extra.get("attempts_log") or []) if isinstance(e, dict)],
+        "attempts_log": [
+            {**entry, "reason": _localized_attempt_reason(entry.get("reason"))}
+            for entry in (extra.get("attempts_log") or [])
+            if isinstance(entry, dict)
+        ],
         "failure_reason": str(row.get("last_error") or row.get("checkpoint_result") or ""),
         "checkpoint_verdict": row.get("checkpoint_verdict"),
         "artifact_note": str(extra.get("artifact_note") or ""),
         "best_effort": bool(extra.get("best_effort")),
         "best_effort_count": int(extra.get("best_effort_count") or 0),
+        # Older rows predate the explicit flag: their winner was an accepted
+        # artifact exactly when checkpoint_verdict is true.
+        "best_effort_accepted": bool(
+            extra.get("best_effort_accepted")
+            if "best_effort_accepted" in extra
+            else row.get("checkpoint_verdict") is True
+        ),
         "tool": row.get("tool") or "",
         "exec_seconds": float(row.get("exec_seconds") or 0.0),
         "model_name": extra.get("model_name", ""),

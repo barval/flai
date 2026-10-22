@@ -268,6 +268,42 @@ _FOREIGN_TAIL_FILE_RE = re.compile(
 )
 
 
+def _strip_foreign_prefix(text: str, lang: str) -> str:
+    """Drop a leading foreign-language instruction from a media goal.
+
+    The plan reviewer sometimes opens a Russian scene goal with an English
+    action phrase («Generate illustration for scene 1: …»). Only the segment
+    before the first colon is removed, and only when it is foreign (three or
+    more words), the rest of the line is in the target language, and the head
+    is not a URL, a path or an address. A native colon («Сцена 1: …») and a
+    wholly foreign goal are left untouched.
+    """
+    if lang not in ("ru", "en"):
+        return text
+    match = re.match(r"^([^\n:]{1,120}):[ \t]*", text)
+    if not match:
+        return text
+    head = match.group(1).strip()
+    rest = text[match.end() :].lstrip()
+    if not rest:
+        return text
+    if any(marker in head for marker in ("://", "www.", "/", "\\", "@")):
+        return text
+    if lang == "ru":
+        foreign, target = re.compile(r"[A-Za-z]"), re.compile(r"[\u0400-\u04FF]")
+        foreign_words = re.compile(r"[A-Za-z]{2,}")
+    else:
+        foreign, target = re.compile(r"[\u0400-\u04FF]"), re.compile(r"[A-Za-z]")
+        foreign_words = re.compile(r"[А-Яа-яЁё]{2,}")
+    if not foreign.search(head) or target.search(head):
+        return text
+    if len(foreign_words.findall(head)) < 3:
+        return text
+    if not target.search(rest):
+        return text
+    return rest
+
+
 def _strip_foreign_style_tail(text: str, lang: str) -> str:
     """Remove a trailing foreign-language style paragraph from a media goal.
 
@@ -275,10 +311,12 @@ def _strip_foreign_style_tail(text: str, lang: str) -> str:
     scene goal (and the reverse in an English profile). The style is already
     applied by the image pipeline, so the paragraph is redundant. Only a
     standalone trailing paragraph is removed; URLs, paths, file names and
-    mixed-language lines are preserved.
+    mixed-language lines are preserved. A leading foreign instruction before
+    the scene is removed by ``_strip_foreign_prefix``.
     """
     if lang not in ("ru", "en"):
         return text
+    text = _strip_foreign_prefix(text, lang)
     target = re.compile(r"[\u0400-\u04FF]") if lang == "ru" else re.compile(r"[A-Za-z]")
     foreign = re.compile(r"[A-Za-z]") if lang == "ru" else re.compile(r"[\u0400-\u04FF]")
     foreign_words = re.compile(r"[A-Za-z]{2,}") if lang == "ru" else re.compile(r"[А-Яа-яЁё]{2,}")

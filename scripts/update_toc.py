@@ -17,13 +17,20 @@ DEFAULT_FILES = ("README.md", "README-ru.md")
 
 
 def slug(text: str) -> str:
-    """Approximate the GitHub heading anchor for a heading text."""
+    """Approximate the GitHub/Gitea heading anchor for a heading text.
+
+    Both renderers drop every character outside letters, digits, ``_`` and
+    ``-``, then turn each remaining space into a hyphen. Spaces are *not*
+    collapsed: a removed ``&`` leaves two spaces, and two spaces become two
+    hyphens (``Types of Requests & Search Mechanisms`` ->
+    ``types-of-requests--search-mechanisms``).
+    """
     text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"[*_~]", "", text)
     text = text.strip().lower()
-    text = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE)
-    return re.sub(r"\s+", "-", text)
+    text = re.sub(r"[^\w -]", "", text, flags=re.UNICODE)
+    return text.replace(" ", "-")
 
 
 def entries(lines: list[str]) -> list[tuple[str, str]]:

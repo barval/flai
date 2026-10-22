@@ -195,3 +195,15 @@ gunicorn -c gunicorn_config.py wsgi:app   # production: 1 worker, 900s timeout
 ## Documentation
 
 Readme-level documentation is user-facing and translated. Code-level documentation is English-only. See [../AGENTS.md](../AGENTS.md) rule 6.
+
+### README table of contents
+
+`scripts/update_toc.py` regenerates the table of contents in both READMEs from their `##` headings. Run it after renaming, adding or removing a section.
+
+Anchors follow the GitHub/Gitea rule, which is easy to get wrong by hand:
+
+- every character except letters, digits, `_` and `-` is dropped — an emoji leaves its following space behind, so the anchor starts with a hyphen;
+- each remaining space becomes one hyphen, and spaces are never collapsed: the `&` removed from `Types of Requests & Search Mechanisms` leaves two spaces, so the anchor is `-types-of-requests--search-mechanisms`, not `-types-of-requests-search-mechanisms`;
+- the text is lowercased first and is never truncated.
+
+Hand-written anchors have broken this TOC more than once. Never type an anchor by hand: regenerate the TOC, then open the rendered README and confirm the link resolves.

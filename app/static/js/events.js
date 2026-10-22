@@ -58,6 +58,11 @@ function startSseReconcile() {
 }
 
 function _showHeaderCancelButton(taskId) {
+    // Do not touch the header buttons when a background task is active:
+    // setTaskMode owns that slot and shows stop-task-button instead.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
+    // The document preview owns the header (its own 💾 and title).
+    if (typeof window.isDocumentPreviewActive === 'function' && window.isDocumentPreviewActive()) return;
     var saveBtn = document.getElementById('save-chat-button');
     var cancelBtn = document.getElementById('cancel-stream-header');
     if (saveBtn) saveBtn.style.display = 'none';
@@ -71,6 +76,10 @@ function _showHeaderCancelButton(taskId) {
 }
 
 function _hideHeaderCancelButton() {
+    // Do not touch header buttons when a background task is active.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
+    // The document preview owns the header (its own 💾 and title).
+    if (typeof window.isDocumentPreviewActive === 'function' && window.isDocumentPreviewActive()) return;
     var saveBtn = document.getElementById('save-chat-button');
     var cancelBtn = document.getElementById('cancel-stream-header');
     if (cancelBtn) {
@@ -196,6 +205,16 @@ function handleEvent(event) {
                 loadDocuments(false);
             }
             break;
+        case 'task_update':
+            if (typeof onTaskUpdate === 'function') {
+                onTaskUpdate(event.data);
+            }
+            break;
+        case 'task_stage':
+            if (typeof onTaskStage === 'function') {
+                onTaskStage(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }
@@ -206,6 +225,7 @@ function handleEvent(event) {
 function onCameraImage(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (data.message_id && displayedMessageIds.has(data.message_id)) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return; // message persisted; reloads with the session
     dlog('onCameraImage:', data.message_id);
     window.displayMessage('assistant', data.response, null,
         data.file_type || null, data.file_name || null, data.file_path || null,
@@ -237,6 +257,7 @@ function getToolLabel(toolName) {
 
 function onToolCall(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onToolCall:', data.tool_name);
     _updateProgressElement(data.task_id, data.session_id, getToolLabel(data.tool_name));
 }
@@ -276,6 +297,10 @@ const STAGE_LABEL_KEYS = {
     crawl_start: 'stage_crawl_start',
     crawl_page: 'stage_crawl_page',
     crawl_indexing: 'stage_crawl_indexing',
+    making_plan: 'stage_making_plan',
+    indexing_document: 'stage_indexing_document',
+    continuity: 'stage_continuity',
+    continuity_failed: 'stage_continuity_failed',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
@@ -285,6 +310,8 @@ const STAGE_COUNTER_KEYS = {
     searching_history: 'stage_history_found',
     rlm_step: 'stage_rlm_step',
     crawl_page: 'stage_crawl_page',
+    indexing_document: 'stage_indexing_document',
+    continuity: 'stage_continuity',
 };
 
 function getStageLabel(stage, count) {
@@ -300,6 +327,7 @@ function getStageLabel(stage, count) {
 function onTaskProgress(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.stage) return;
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     dlog('onTaskProgress:', data.stage);
 
     _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count || data.pages));
@@ -374,6 +402,8 @@ function _removeProgressElement(taskId) {
 function onVideoStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
+    // In task view, we want the progress bar to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onVideoStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -403,6 +433,8 @@ function onVideoStep(data) {
 function onImageStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || data.total === undefined) return;
+    // In task view, we want the progress bar to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onImageStep:', data.step, '/', data.total);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -437,6 +469,8 @@ function onImageStep(data) {
 function onImagePreview(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.task_id || !data.image_b64) return;
+    // In task view, we want the preview to appear in the conversation pane
+    // (session_id === currentTaskId guarantees this event is for the open task)
     dlog('onImagePreview:', data.task_id, 'step:', data.step);
 
     const chatMessages = document.getElementById('chat-messages');
@@ -494,6 +528,10 @@ const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered
 
 function _stripGenericReasoning(text) {
     if (!text || text.length < 50) return text;
+    // A serialized reply — a JSON plan/verdict, a fenced code block — is never
+    // chain-of-thought: a marker phrase inside it ("Analyze attached images…")
+    // must not truncate the payload.
+    if (/^\s*(?:\{|\[|```)/.test(text)) return text;
     const matches = text.match(_REASONING_MARKERS_RE);
     if (matches && matches.length >= 2) {
         // Find the last marker and return text after it
@@ -582,6 +620,11 @@ function onStreamToken(data) {
 
     // Only update DOM for active session
     if (data.session_id !== currentSessionId) return;
+    // Task conversation is open in the main window — the stream is persisted
+    // (sessionStorage above) and rendered by loadMessages after the view
+    // closes; appending its tokens into the task view would interleave two
+    // conversations in one container.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
 
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
@@ -590,7 +633,7 @@ function onStreamToken(data) {
     let indicatorSpan = null;
 
     if (!streamMsg) {
-        // Remove task-progress indicator ("Загружаю модель...") once
+        // Remove task-progress indicator ("Loading the model...") once
         // the first stream_token arrives — the model is now responding.
         _removeProgressElement(data.task_id);
 
@@ -675,6 +718,9 @@ function _clearStreamFromSessionStorage(taskId) {
 
 function restoreStreamingFromSessionStorage() {
     if (!currentSessionId) return;
+    // The Tasks tab owns the main window (task view or empty state) — do not
+    // paint streaming chat elements into it.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     const keysToRemove = [];
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
@@ -922,8 +968,9 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                         timeSpan.textContent = ' | ⏱️ ' + duration + langSuffix + ' |';
                         newHeader.appendChild(timeSpan);
 
-                        // Token usage counters (input ↓ / output ↑) — between the
-                        // ⏱️ time and 🚀 tps segments of the header.
+                        // Token usage counters (▲ outgoing requests / ▼
+                        // incoming answers) — between the ⏱️ time and 🚀 tps
+                        // segments of the header.
                         var tokenHTML = tokenStatsHTML(result.prompt_tokens, result.completion_tokens);
                         if (tokenHTML) {
                             var tokenHolder = document.createElement('span');
@@ -1068,6 +1115,12 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
         scrollToBottom(chatMessages);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
+        // Task view open: skip the DOM render (message persisted; reloads with
+        // the session) — without this guard the streamed chat answer would be
+        // appended into the open task conversation.
+        if (typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+            return;
+        }
         // Fallback: create the message via displayMessage
             window.displayMessage('assistant', data.result.response, null, null, null, null,
                 data.result.assistant_timestamp || new Date().toISOString(),
@@ -1196,7 +1249,8 @@ function handleCompletedResult(result, expectedSessionId) {
 
     // Error result
     if (result.error) {
-        if (resultSessionId === currentSessionId) {
+        if (resultSessionId === currentSessionId
+            && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
             // Error headers intentionally get no ⏱️/🚀/🤖 - pass null for
             // responseTime and modelName='system'.
             window.displayMessage('assistant', result.error, null, null, null, null,
@@ -1237,7 +1291,8 @@ function handleCompletedResult(result, expectedSessionId) {
                 modelUsed = result.gen_model;
             }
 
-            if (resultSessionId === currentSessionId) {
+            if (resultSessionId === currentSessionId
+                && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
                 window.displayMessage('assistant', result.response, result.file_data,
                     result.file_type, result.file_name, result.file_path,
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
@@ -1267,7 +1322,8 @@ function handleCompletedResult(result, expectedSessionId) {
 }
 
 function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
-    if (resultSessionId === currentSessionId) {
+    if (resultSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         if (!result.transcribed_message_id || !displayedMessageIds.has(result.transcribed_message_id)) {
             const transcribedText = result.transcribed_text || '(empty transcription)';
             var transcribedContent = JSON.stringify({prefix: '🎤 ' + t('transcribed') + ': ', text: transcribedText});
@@ -1341,7 +1397,8 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
 
 function handleCameraResult(result, resultSessionId) {
     const cameraSessionId = result.session_id || resultSessionId;
-    if (cameraSessionId === currentSessionId) {
+    if (cameraSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         for (const msg of result.messages) {
             if (msg.message_id && displayedMessageIds.has(msg.message_id)) continue;
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
@@ -1360,7 +1417,8 @@ function handleCameraResult(result, resultSessionId) {
 
 function handleErrorResult(data, expectedSessionId) {
     const errorSessionId = data.result?.session_id || expectedSessionId;
-    if (errorSessionId === currentSessionId) {
+    if (errorSessionId === currentSessionId
+        && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
         const errorMsg = data.result?.error || data.error || t('unknown_error');
         window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
             new Date().toISOString(), null, 'system', null, null, null, null, null, null, null, null, 'system');
@@ -1384,6 +1442,15 @@ function clearSessionQueue(sessionId) {
 function onMessageNew(data) {
     if (!data || !data.session_id || !data.message_id) return;
     dlog('onMessageNew: session', data.session_id, 'msg', data.message_id, 'role', data.role);
+
+    // Task conversation is open in the main window: the message is already
+    // persisted, so skip only the render (counters/indicators below still run
+    // for the other-session branch; for the current session the message
+    // reloads with loadMessages when the task view closes).
+    if (data.session_id === currentSessionId
+        && typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+        return;
+    }
 
     // Skip if message is for a different session or already displayed
     if (data.session_id !== currentSessionId) {
@@ -1517,6 +1584,9 @@ function onMessageNew(data) {
 // -- Progress restore after reconnect / page reload ------------------
 
 async function restoreTaskProgress() {
+    // The Tasks tab owns the main window (task view or empty state) — chat
+    // progress bars must not be restored into it.
+    if (typeof isTaskViewActive === 'function' && isTaskViewActive()) return;
     for (const [taskId, info] of Object.entries(pendingRequestIds)) {
         if (info.sessionId !== currentSessionId) continue;
         if (info._progressRestored) continue;

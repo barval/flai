@@ -141,3 +141,40 @@ class TestNewSessionMarksPreviousVisited:
             "api_new_session did not mark the previous session as visited — "
             "regression: unread envelope reappears on a read session"
         )
+
+
+@pytest.mark.integration
+class TestSessionDeleteCancelsRequests:
+    """Deleting a chat must release the GPU its own requests hold (v12.6).
+
+    Live incident (2026-10-20 00:41 MSK): the chat was deleted while its
+    ``rlm_analysis`` was already running. The request kept the GPU and the queue
+    slot for another 85 s, the FLAI task created right after could not start
+    (its gate requires a free GPU), and the answer was written into the deleted
+    session as an orphan row in ``messages``. Deleting a chat cancelled nothing.
+    """
+
+    def test_deleting_a_chat_cancels_its_requests(self, client, test_app):
+        from unittest.mock import Mock
+
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login
+
+            if not get_user_by_login("cancelowner"):
+                create_user("cancelowner", "pass123", "Cancel Owner")
+        client.post("/login", data={"login": "cancelowner", "password": "pass123"})
+        session_id = client.post("/api/sessions/new").get_json()["id"]
+
+        cancelled: list[str] = []
+        queue = test_app.request_queue
+        queue.cancel_session_tasks = Mock(side_effect=lambda sid: cancelled.append(sid) or 1)  # type: ignore[method-assign]
+        try:
+            response = client.post(f"/api/sessions/{session_id}/delete")
+        finally:
+            del queue.cancel_session_tasks
+
+        assert response.status_code == 200
+        assert cancelled == [session_id], (
+            "api_delete_session did not cancel the chat's queued/in-flight requests — "
+            "a running request keeps the GPU and writes into the deleted session"
+        )

@@ -151,6 +151,10 @@
 #users-table tr.user-inactive td {
     background-color: inherit;
 }
+#users-table td.storage-over-quota {
+    color: #e74c3c;
+    font-weight: 600;
+}
 
 /* Camera permission checkboxes */
 .camera-checkboxes {

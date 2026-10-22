@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: FLAI API
-  version: 12.5.0
+  version: 12.6.0
   description: |
     **FLAI is a capability router, not a model server.** A chat request is
     persisted and queued exactly like a web message, so the LLM router — not
@@ -660,16 +660,44 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '503': {$ref: '#/components/responses/ApiDisabled'}
 
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      description: |
+        Cancels the task while it is still active, then drops its registry entry
+        so it disappears from `GET /v1/flai/tasks`. A running job would otherwise
+        keep the GPU queue slot with nobody able to reach it. An unknown or
+        another user's id is `404 task_not_found`.
+      operationId: deleteTask
+      parameters:
+        - {$ref: '#/components/parameters/TaskId'}
+      responses:
+        '200':
+          description: Task deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: flai.task}
+                  id: {type: string}
+                  deleted: {type: boolean, example: true}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/TaskNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
   /v1/flai/tasks/{task_id}/cancel:
     post:
       tags: [Tasks]
       summary: Cancel an active task
       description: |
-        Returns `{"status": "cancelling"}` only for a task that is already
-        processing. Completed, failed and still-queued tasks return
-        `409 task_not_cancellable`, because the existing queue cannot remove a
-        queued item safely. An unknown or another user's id is
-        `404 task_not_found`, so there is no ownership oracle.
+        Returns `{"status": "cancelling"}` for a task that is processing or still
+        waiting in the queue: a queued request is dropped by the worker before it
+        starts, so a chat or media job waiting for the GPU can be stopped.
+        Completed and failed tasks return `409 task_not_cancellable`. An unknown
+        or another user's id is `404 task_not_found`, so there is no ownership
+        oracle.
       operationId: cancelTask
       parameters:
         - {$ref: '#/components/parameters/TaskId'}
@@ -1115,6 +1143,38 @@ paths:
                   offset: {type: integer}
                   has_more: {type: boolean}
         '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/SessionNotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ApiDisabled'}
+
+  /v1/flai/sessions/{session_id}:
+    delete:
+      tags: [Sessions]
+      summary: Delete a session
+      description: |
+        Cancels the session's queued and in-flight requests first, then removes
+        the session with its messages and stored files. A request left running
+        keeps the GPU and the queue slot and would write its answer into a session
+        that no longer exists. A foreign or unknown session is
+        `404 session_not_found`.
+      operationId: deleteSession
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Session deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: {type: string, example: flai.session}
+                  id: {type: string}
+                  deleted: {type: boolean, example: true}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/SessionNotFound'}
         '429': {$ref: '#/components/responses/RateLimited'}

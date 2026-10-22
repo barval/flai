@@ -5,9 +5,11 @@ const originalDisplayMessage = displayMessage;
 
 // ===== Multi-attachment helpers =====
 // attachedFiles[] carries every attachment except the legacy single-slot pair
-// (one image + optional voice blob). Images may also be many; documents,
-// audio and voice stay single per message.
+// (one image + optional voice blob). Images and audio may be many — up to
+// MAX_CHAT_IMAGES queued files and MAX_CHAT_AUDIO audio items in total (a
+// recorded voice counts as one audio item); a document stays single.
 const MAX_CHAT_IMAGES = window.FLAI_MAX_CHAT_IMAGES || 4;
+const MAX_CHAT_AUDIO = window.FLAI_MAX_CHAT_AUDIO || 4;
 
 function isImageFile(f) {
     return !!f && !!f.type && f.type.startsWith('image/');
@@ -104,15 +106,41 @@ function renderAttachmentChips() {
 function addAttachedFile(file) {
     if (!file) return;
     if (attachedFiles.length >= MAX_CHAT_IMAGES) {
-        if (typeof showToast === 'function') {
-            showToast(t('max_images_reached').replace('{max}', String(MAX_CHAT_IMAGES)));
-        } else {
-            alert(t('max_images_reached').replace('{max}', String(MAX_CHAT_IMAGES)));
-        }
+        showAttachmentToast(t('max_images_reached').replace('{max}', String(MAX_CHAT_IMAGES)));
+        return;
+    }
+    // Audio items are capped separately and a recorded voice counts as one:
+    // 1 voice + 3 audio files, or 4 audio files.
+    if (isAudioTypeFile(file) && audioAttachmentCount() + (hasRecordedVoice() ? 1 : 0) >= MAX_CHAT_AUDIO) {
+        showAttachmentToast(t('max_audio_reached').replace('{max}', String(MAX_CHAT_AUDIO)));
         return;
     }
     attachedFiles.push(file);
     renderAttachmentChips();
+}
+
+// Toast when the page provides one, alert otherwise.
+function showAttachmentToast(message) {
+    if (typeof showToast === 'function') {
+        showToast(message);
+    } else {
+        alert(message);
+    }
+}
+
+// Audio files already queued (the multi queue plus the legacy single slot).
+function audioAttachmentCount() {
+    let count = (typeof attachedFiles !== 'undefined' ? attachedFiles : []).filter(isAudioTypeFile).length;
+    if (typeof attachedFile !== 'undefined' && attachedFile && isAudioTypeFile(attachedFile)) count += 1;
+    return count;
+}
+
+// A recorded voice is the fourth audio item when three files are attached.
+function hasRecordedVoice() {
+    return (
+        (typeof attachedVoiceBlob !== 'undefined' && !!attachedVoiceBlob) ||
+        (typeof isVoiceRecorded !== 'undefined' && !!isVoiceRecorded)
+    );
 }
 
 function clearAllAttachments() {
@@ -293,6 +321,14 @@ async function sendMessage() {
     // FIX: Always reset isSending flag at the start
     if (isSending) {
         dlog('Send already in progress, ignoring duplicate');
+        return;
+    }
+    // Tasks tab owns the main window: a task conversation routes the input
+    // to the task flow; the empty state has no input at all (read-only).
+    if (typeof window.isTaskViewActive === 'function' && window.isTaskViewActive()) {
+        if (window.currentTaskId && typeof window.sendTaskInput === 'function') {
+            window.sendTaskInput();
+        }
         return;
     }
     const rlmToggle = document.getElementById('rlm-toggle');
@@ -534,6 +570,24 @@ async function sendMessage() {
                 if (data.session_expired) {
                     dwarn('Session expired — redirecting to login');
                     window.location.href = '/login';
+                    return;
+                }
+
+                // A JSON error (upload quota, size cap, too many images) carries
+                // {error: "..."}. The success branches below ignore it, so the
+                // user saw a sent message with no answer and no status at all.
+                if (!response.ok || data.error) {
+                    const rawError = (typeof data.error === 'string' && data.error.trim())
+                        ? data.error.trim()
+                        : t('unknown_error');
+                    const errorText = rawError.startsWith('⚠️') ? rawError : '⚠️ ' + rawError;
+                    originalDisplayMessage('assistant', errorText, null, null, null, null,
+                        new Date().toISOString(), 0, 'system');
+                    // The server never saved this message: remove the optimistic
+                    // element so it cannot suppress later user-message echoes.
+                    const orphan = document.querySelector(`.user-message[data-temp-id="temp-${timestamp}"]`);
+                    if (orphan) orphan.remove();
+                    setLocalTranscribing(currentSessionId, false);
                     return;
                 }
 
@@ -974,6 +1028,7 @@ function relocateChatControls(mobile) {
     const voice = document.getElementById('voice-record-button');
     const attach = document.getElementById('attach-file-button');
     const send = document.getElementById('send-button');
+    const retry = document.getElementById('retry-task-button');
     const rlmRow = document.querySelector('.rlm-controls');
     const inputRow = document.querySelector('.message-input');
     if (!voice || !attach || !send || !rlmRow || !inputRow) return;
@@ -986,6 +1041,7 @@ function relocateChatControls(mobile) {
         rlmRow.appendChild(voice);
         rlmRow.appendChild(attach);
         rlmRow.appendChild(send);
+        if (retry) rlmRow.appendChild(retry);
     } else {
         if (voice.dataset.location !== 'rlm') return;
         delete voice.dataset.location;
@@ -995,6 +1051,7 @@ function relocateChatControls(mobile) {
         inputRow.appendChild(voice);
         inputRow.appendChild(attach);
         inputRow.appendChild(send);
+        if (retry) inputRow.appendChild(retry);
     }
 }
 

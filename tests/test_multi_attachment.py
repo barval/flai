@@ -413,7 +413,7 @@ class TestDocChatTask:
         captured = {}
         monkeypatch.setattr(
             "app.queue._run_document_indexing",
-            lambda app, doc_id, file_path, user_id, indexing_started_at, publish: (True, "ok", "m", True),
+            lambda app, doc_id, file_path, user_id, indexing_started_at, publish, **kwargs: (True, "ok", "m", True),
         )
         import app.queue as qmod
 
@@ -468,7 +468,12 @@ class TestDocChatTask:
         monkeypatch.setattr(
             qmod,
             "_run_document_indexing",
-            lambda app, doc_id, file_path, user_id, indexing_started_at, publish: (False, "Indexing failed", "", False),
+            lambda app, doc_id, file_path, user_id, indexing_started_at, publish, **kwargs: (
+                False,
+                "Indexing failed",
+                "",
+                False,
+            ),
         )
 
         task = {

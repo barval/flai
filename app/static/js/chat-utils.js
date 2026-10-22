@@ -31,9 +31,11 @@ function decodeHtmlEntities(text) {
 }
 
 // Build the token-counter header segment shown between the ⏱️ duration and
-// the 🚀 tps sections. Format: "🔢 (▲output ▼input) tok". Returns an HTML
-// string or '' when no data is available. Shared by chat-messages.js (history
-// render) and events.js (live finalize).
+// the 🚀 tps sections. Format: "🔢 (▲prompt ▼completion) tok" — ▲ first is
+// the user's OUTGOING request (everything sent to the model: text, images,
+// video frames, documents), ▼ second is the model's INCOMING answer (what
+// the user receives). Returns an HTML string or '' when no data is available.
+// Shared by chat-messages.js (history render) and events.js (live finalize).
 function tokenStatsHTML(promptTokens, completionTokens) {
     const prompt = parseInt(promptTokens, 10);
     const completion = parseInt(completionTokens, 10);
@@ -43,14 +45,15 @@ function tokenStatsHTML(promptTokens, completionTokens) {
     const output = fmt(completion);
     const input = fmt(prompt);
     return ' <span class="text-muted token-stats">🔢 (' +
-        (output === null ? '' : '▲' + output) +
-        (output !== null && input !== null ? ' ' : '') +
-        (input === null ? '' : '▼' + input) +
+        (input === null ? '' : '▲' + input) +
+        (input !== null && output !== null ? ' ' : '') +
+        (output === null ? '' : '▼' + output) +
         ') ' + t('tokens_unit') + ' |</span>';
 }
 
 // Build the per-session token-total segment for the session-list card.
-// Format: "[↑out ↓in]" (↑ = completion/out, ↓ = prompt/in) with the same
+// Format: "[▲request ▼answer]" (▲ = prompt/the user's outgoing requests,
+// ▼ = completion/the model's incoming answers) with the same
 // thousands separators as tokenStatsHTML. Returns '' when both totals are 0
 // (sessions with no messages yet hide the block entirely).
 function sessionTokenStatsHTML(promptTotal, completionTotal) {
@@ -58,7 +61,7 @@ function sessionTokenStatsHTML(promptTotal, completionTotal) {
     const completion = parseInt(completionTotal, 10) || 0;
     if (!prompt && !completion) return '';
     const fmt = (n) => n.toLocaleString();
-    return ' [<span class="text-muted token-stats">▲' + fmt(completion) + ' ▼' + fmt(prompt) + '</span>]';
+    return ' [<span class="text-muted token-stats">▲' + fmt(prompt) + ' ▼' + fmt(completion) + '</span>]';
 }
 
 // Accumulate the token totals of a freshly completed response into the local

@@ -460,6 +460,21 @@ def run_inference(
     video_np = images[0].permute(1, 2, 3, 0).cpu().float().numpy()
     video_np = (video_np * 255).clip(0, 255).astype(np.uint8)
 
+    # Build a poster frame (middle frame as JPEG) for the task-step checkpoint
+    # verifier — a text-only reasoning call that cannot read the mp4, and the
+    # web container has no ffmpeg to extract a frame there.
+    try:
+        _mid = video_np[len(video_np) // 2]
+        _pil = Image.fromarray(_mid)
+        _max_preview = 640
+        if max(_pil.size) > _max_preview:
+            _pil.thumbnail((_max_preview, _max_preview), Image.LANCZOS)
+        _buf = BytesIO()
+        _pil.save(_buf, format="JPEG", quality=85)
+        _preview_data = base64.b64encode(_buf.getvalue()).decode("ascii")
+    except Exception:
+        _preview_data = ""
+
     tmp_path = tempfile.mktemp(suffix=".mp4")
     try:
         with imageio.get_writer(
@@ -483,6 +498,7 @@ def run_inference(
         "padded_width": width_padded,
         "padded_frames": num_frames_padded,
         "device": DEVICE,
+        "preview_data": _preview_data,
     }
 
     return mp4_bytes, seed, metadata
@@ -574,7 +590,18 @@ def unload_pipeline():
         except Exception as e:
             logger.warning(f"VRAM query during unload failed: {e}")
     logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
-    return jsonify({"status": "ok", "freed": True, "free_mb": free_mem // 1024**2})
+    # Recycle the gunicorn worker to release the CUDA context (~3 GB) that
+    # torch.empty_cache() cannot free.  Without this, the next LLM/planning
+    # step finds only ~12.5 GB free on a 16 GB GPU and the reasoning model
+    # (Qwen3.6-35B-A3B-UD-Q2_K_XL, need 13.7 GB) fails with "GPU memory
+    # unavailable".  The gunicorn master creates a fresh worker immediately.
+    import os
+    import sys
+
+    logger.info("recycling gunicorn worker to reclaim CUDA context")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 @app.route("/v1/video/generations", methods=["POST"])
@@ -632,6 +659,7 @@ def generate_video():
                 "generation_time": gen_time,
                 "seed": actual_seed,
                 "metadata": meta,
+                "preview_data": meta.get("preview_data", ""),
             }
         )
 

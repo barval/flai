@@ -365,7 +365,9 @@ class TestApiTaskRoutes:
         assert response.status_code == 200
         assert response.get_json() == {"status": "cancelling", "task_id": "active"}
 
-    def test_queued_task_is_not_claimed_cancelled(self, test_app, task_tokens, task_redis, monkeypatch):
+    def test_queued_task_can_be_cancelled(self, test_app, task_tokens, task_redis, monkeypatch):
+        """A request waiting in the queue is cancellable since cancel_task scans
+        the queue lists: the worker drops it before it starts."""
         from app.api_bridge import register_api_task
 
         owner, _ = task_tokens
@@ -380,8 +382,8 @@ class TestApiTaskRoutes:
         )
         monkeypatch.setattr(test_app.request_queue.redis, "hexists", lambda *a: False)
         response = test_app.test_client().post("/v1/flai/tasks/queued/cancel", headers=auth(owner))
-        assert response.status_code == 409
-        assert response.get_json()["error"]["code"] == "task_not_cancellable"
+        assert response.status_code == 200
+        assert response.get_json() == {"status": "cancelling", "task_id": "queued"}
 
     def test_terminal_task_is_not_cancellable(self, test_app, task_tokens, task_redis, monkeypatch):
         from app.api_bridge import register_api_task
@@ -414,6 +416,57 @@ class TestApiTaskRoutes:
     def test_cancel_unknown_task_returns_404(self, test_app, task_tokens, task_redis):
         response = test_app.test_client().post("/v1/flai/tasks/unknown/cancel", headers=auth(task_tokens[0]))
         assert response.status_code == 404
+
+    def test_delete_cancels_an_active_task_then_forgets_it(self, test_app, task_tokens, task_redis, monkeypatch):
+        """Delete must stop the work too: a forgotten job left running holds the
+        GPU queue slot and nobody can reach it any more."""
+        from app.api_bridge import register_api_task
+
+        owner, _ = task_tokens
+        with test_app.app_context():
+            register_api_task({"login": "taskowner"}, "gone", "s1", "/v1/videos")
+        cancel = Mock(return_value=True)
+        monkeypatch.setattr(test_app.request_queue, "cancel_task", cancel)
+        monkeypatch.setattr(test_app.request_queue, "check_result", lambda task_id: None)
+
+        response = test_app.test_client().delete("/v1/flai/tasks/gone", headers=auth(owner))
+
+        assert response.status_code == 200
+        assert response.get_json() == {"object": "task", "id": "gone", "deleted": True}
+        cancel.assert_called_once_with("gone")
+        assert "api:task:gone" not in task_redis.hashes
+        assert "gone" not in task_redis.sorted_sets.get("api:tasks:taskowner", {})
+
+    def test_delete_of_a_finished_task_does_not_cancel_it(self, test_app, task_tokens, task_redis, monkeypatch):
+        from app.api_bridge import register_api_task
+
+        owner, _ = task_tokens
+        with test_app.app_context():
+            register_api_task({"login": "taskowner"}, "done2", "s1", "/v1/images")
+        cancel = Mock(return_value=True)
+        monkeypatch.setattr(test_app.request_queue, "cancel_task", cancel)
+        monkeypatch.setattr(test_app.request_queue, "check_result", lambda task_id: {"status": "completed"})
+
+        response = test_app.test_client().delete("/v1/flai/tasks/done2", headers=auth(owner))
+
+        assert response.status_code == 200
+        cancel.assert_not_called()
+        assert "api:task:done2" not in task_redis.hashes
+
+    def test_delete_of_a_foreign_task_is_refused_and_kept(self, test_app, task_tokens, task_redis, monkeypatch):
+        from app.api_bridge import register_api_task
+
+        owner, _ = task_tokens
+        with test_app.app_context():
+            register_api_task({"login": "otherowner"}, "foreign2", "s2", "/v1/videos")
+        cancel = Mock(return_value=True)
+        monkeypatch.setattr(test_app.request_queue, "cancel_task", cancel)
+
+        response = test_app.test_client().delete("/v1/flai/tasks/foreign2", headers=auth(owner))
+
+        assert response.status_code == 404
+        cancel.assert_not_called()
+        assert "api:task:foreign2" in task_redis.hashes
 
 
 @pytest.mark.unit

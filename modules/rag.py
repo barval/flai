@@ -261,12 +261,17 @@ class RagModule:
         top_k: int | None = None,
         file_coverage: bool = False,
         coverage_max_files: int = 6,
+        doc_ids: list[str] | None = None,
     ) -> tuple[list[dict], list[float]]:
         """
         Search for relevant chunks based on query.
         Returns tuple of (chunk_dicts with metadata, scores).
 
         Simplified: single direct query to Qdrant.
+
+        When ``doc_ids`` is a non-empty list, the search is scoped to those
+        documents only (the caller attached them to the request) and the
+        file-coverage pass is limited to the same scope.
 
         When ``file_coverage`` is True and at least one indexed document of the
         user is missing from the semantic top-k, the best chunk of each missing
@@ -278,6 +283,7 @@ class RagModule:
         if not self.check_availability():
             return [], []
         top_k = top_k or self.top_k
+        scope = [str(d) for d in (doc_ids or []) if d]
 
         # Get embedding directly from query
         query_emb = self._get_embedding(query)
@@ -286,13 +292,16 @@ class RagModule:
             return [], []
 
         collection_name = self._get_collection_name(user_id)
+        must: list[models.FieldCondition] = [
+            models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))
+        ]
+        if scope:
+            must.append(models.FieldCondition(key="doc_id", match=models.MatchAny(any=scope)))
         try:
             result = self.qdrant_client.query_points(
                 collection_name=collection_name,
                 query=query_emb,
-                query_filter=models.Filter(
-                    must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
-                ),
+                query_filter=models.Filter(must=must),
                 limit=top_k,
             )
             search_result = result.points
@@ -309,6 +318,8 @@ class RagModule:
             try:
                 covered = {c.get("doc_id") for c in chunks if c.get("doc_id")}
                 docs = get_user_documents(user_id) or []
+                if scope:
+                    docs = [d for d in docs if str(d.get("id")) in set(scope)]
                 missing = [
                     d["id"]
                     for d in docs

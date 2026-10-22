@@ -264,6 +264,10 @@ function attachSessionEventHandlers() {
 }
 
 function createNewSession() {
+    // A new chat session also leaves any open task view.
+    if (typeof window.closeTaskView === 'function' && window.currentTaskId) {
+        window.closeTaskView(true);
+    }
     fetchWithCSRF('/api/sessions/new', { method: 'POST' })
         .then(res => {
             if (!res.ok) {
@@ -364,6 +368,12 @@ function switchSession(sessionId) {
     if (!sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
+    }
+
+    // Leave any open task view: the main window goes back to chat mode and
+    // the session switch loads its own messages (silent = no reload here).
+    if (typeof window.closeTaskView === 'function' && window.currentTaskId) {
+        window.closeTaskView(true);
     }
 
     // Don't switch if already on this session

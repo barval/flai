@@ -8,6 +8,8 @@ import pytest
 from app.api_tokens import create_api_token, revoke_api_token
 from app.tavily_keys import set_tavily_key
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
 def admin_client(client, test_app):
@@ -121,3 +123,17 @@ class TestAdminTavilyUsage:
             payload = admin_client.get("/admin/api/users/tavily-usage").get_data(as_text=True)
 
         assert "tvly-abcdefgh12345678" not in payload
+
+
+@pytest.mark.unit
+def test_storage_column_precedes_sessions_and_renders_quota():
+    """The Users tab shows upload usage right before the Sessions counter."""
+    from pathlib import Path
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    js = Path("app/static/js/admin.js").read_text(encoding="utf-8")
+    css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
+
+    assert html.index('data-sort="storage_used"') < html.index('data-sort="sessions_count"')
+    assert "user.storage_used" in js and "user.storage_limit_mb" in js
+    assert "storage-over-quota" in js and "storage-over-quota" in css

@@ -6,20 +6,19 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 🔄 In Progress
 
-- **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver
-- **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
-  - CPU-only mode for the full stack
-  - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
-  - Unified Docker Compose with per-platform profiles and env-driven deploy scripts
+- **Skills engine** — named capability bundles that extend the Tasks capabilities registry (`app/tasks/tools.py`): a skill appears as one more step tool without storage changes (the seam is already in place; see [TASKS.md](TASKS.md))
 - **Advanced RAG** — metadata filtering, hybrid search
-- **Mobile-responsive UI optimizations**
+- **Advanced queue prioritization** — weighting and anti-starvation for the existing user classes (0/1/2) and task classes (3/4/5)
+- **Admin panel expansion** — run more administration from the UI: monitoring, and moving most `.env` variables into the admin panel
+  - **User activity analytics** — per-user activity (tokens, sessions, tasks)
 
 ## 📅 Planned
 
 - Plugin architecture for custom modules
 - Multi-GPU support
-- Advanced queue prioritization
-- User activity analytics
+- **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
+  - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
+  - Unified Docker Compose with per-platform profiles and env-driven deploy scripts
 
 ## Documented behaviour worth knowing
 

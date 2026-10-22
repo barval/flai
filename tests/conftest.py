@@ -26,6 +26,22 @@ if _USE_MOCK_DB:
 
 from app import create_app
 
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip database-backed tests while the in-memory mock stands in for PostgreSQL.
+
+    The mock answers the SQL patterns a handful of tests need. A query that gains
+    a column (admin stats, task usage, visual bible) then returns a row without
+    that key and the test fails on the mock, not on the product. CI always sets
+    DATABASE_URL, where these tests run against a real database.
+    """
+    if not _USE_MOCK_DB:
+        return
+    skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
+    for item in items:
+        if "requires_db" in item.keywords:
+            item.add_marker(skip)
+
 # ── Helpers: mock external services ────────────────────────────────────
 
 
@@ -46,6 +62,12 @@ def stop_app_background_threads(flask_app: Any) -> None:
         from app.tasks.health_monitor import stop_watchdog
 
         stop_watchdog(flask_app, timeout=3)
+    with contextlib.suppress(Exception):
+        from app.tasks import executor as tasks_executor
+
+        tasks_executor.stop_task_executor(timeout=2)
+        with tasks_executor._executor_lock:
+            tasks_executor._EXECUTOR = None
 
 
 def create_mock_redis():
@@ -238,8 +260,8 @@ class _MockDatabase:
                     {
                         "sessions": len(user_sessions),
                         "messages": len(user_messages),
-                        "outgoing_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
-                        "incoming_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
+                        "outgoing_tokens": sum(int(m.get("prompt_tokens") or 0) for m in user_messages),
+                        "incoming_tokens": sum(int(m.get("completion_tokens") or 0) for m in user_messages),
                         "documents_count": 0,
                         "files_count": len({m.get("file_path") for m in user_messages if m.get("file_path")}),
                         "api_keys_count": active_keys,
@@ -926,6 +948,15 @@ class FakeRedis:
     def hdel(self, key, field):
         return self.hashes.get(key, {}).pop(field, None) is not None
 
+    def delete(self, key):
+        removed = self.hashes.pop(key, None) is not None
+        self.sorted_sets.pop(key, None)
+        self.expirations.pop(key, None)
+        return 1 if removed else 0
+
+    def zrem(self, key, member):
+        return self.sorted_sets.get(key, {}).pop(member, None) is not None
+
     def close(self):
         return None
 
@@ -938,6 +969,17 @@ def task_redis(monkeypatch):
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────
+
+
+def _is_test_database() -> bool:
+    """Whether ``DATABASE_URL`` points at a dedicated test database.
+
+    The destructive teardown TRUNCATE below is only allowed against a database
+    whose name ends with ``_test``, so a run with a live ``DATABASE_URL`` can
+    never wipe production data.
+    """
+    db_name = os.environ.get("DATABASE_URL", "").rsplit("/", 1)[-1].split("?")[0]
+    return db_name.endswith("_test")
 
 
 @pytest.fixture(scope="function")
@@ -1005,8 +1047,9 @@ def test_app():
         # Teardown: stop the per-app watcher threads (see helper above)
         stop_app_background_threads(flask_app)
 
-        # Teardown: clean real DB between tests to prevent cross-test pollution
-        if not _USE_MOCK_DB:
+        # Teardown: clean real DB between tests to prevent cross-test pollution.
+        # Guarded so a live database (non ``*_test``) is never truncated.
+        if not _USE_MOCK_DB and _is_test_database():
             try:
                 from app.database import get_db
 
@@ -1016,7 +1059,7 @@ def test_app():
                         "TRUNCATE TABLE api_tokens, branding_settings, camera_rooms, "
                         "chat_sessions, document_folders, documents, gguf_models_cache, "
                         "messages, model_configs, model_vram_estimates, session_visits, "
-                        "slm_import_progress, user_sessions, user_storage, users "
+                        "slm_import_progress, task_steps, tasks, user_sessions, user_storage, users "
                         "RESTART IDENTITY CASCADE"
                     )
             except Exception:

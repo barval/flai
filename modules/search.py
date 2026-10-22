@@ -50,7 +50,7 @@ _EN_MONTHS = {
 _DECIMAL_AMOUNT_RE = re.compile(r"[€£$¥₽]?\s?\d[\d\s,]*[.,]\d+")
 
 # Relative date words → day offset. Most specific word first so that
-# "позавчера" / "day before yesterday" match before "вчера" / "yesterday".
+# Longest-first: the "day before yesterday" pattern is matched before "yesterday".
 _RELATIVE_DATE_HINTS: dict[str, list[tuple[re.Pattern[str], int]]] = {
     "ru": [
         (re.compile(r"\bпозавчера\b", re.IGNORECASE), -2),

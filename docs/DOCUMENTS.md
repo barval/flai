@@ -54,7 +54,7 @@ For deep, multi-step work across a document set — comparisons, totals, structu
 
 A document can be attached directly to a chat message (the same 📎 button, PDF/DOC/DOCX/TXT/ODT/RTF/CSV/JSON/EPUB up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.
 
-Chat attachments (images, and the attached document) are stored on disk under the session's upload folder; their paths live in the message record, so every image stays visible after a page reload. Deleting a session unlinks all files referenced by its messages — including every attached image, not just the first one — and subtracts their sizes from the user's storage quota. The `flask cleanup-uploads` command collects references from the same two sources, so it never deletes files of live sessions.
+Chat attachments (images, and the attached document) are stored on disk under the session's upload folder; their paths live in the message record, so every image stays visible after a page reload. Deleting a session unlinks all files referenced by its messages — including every attached image, not just the first one — and subtracts their sizes from the user's storage quota. The `flask cleanup-uploads` command collects references from the same two sources, so it never deletes files of live sessions, and after deleting orphans it rebuilds every user's `user_storage` counter from the files that remain (a counter that was never decreased outside session deletion could keep an empty account over quota).
 
 ## 6. Organize documents in folders
 
@@ -68,3 +68,14 @@ Single-level folders (no nesting) keep the Documents panel tidy.
 - **One selection set for moves and Deep Analysis** — the checkboxes are the single document picker. With the 🔬 toggle on, checking a document marks it for the RLM corpus (green frame + check mark); with the toggle off the same checkboxes drive the move bar. The pick mirrors into the analysis set in both modes, so un-checking a folder also clears the green highlight of its documents; switching the toggle off clears the corpus instantly, and turning it back on re-derives it from the current checkboxes.
 
 API: `GET /api/documents` now returns `{folders, documents}`, where each folder carries `id`, `name`, `created_at`, `count` and `size`; `POST /api/document-folders` (create), `PATCH /api/document-folders/<id>` (rename), `DELETE /api/document-folders/<id>` (cascade, returns `deleted_documents`/`deleted_size`), `PATCH /api/documents/<doc_id>/folder` (move one; `folder_id: null` moves to the root) and `POST /api/documents/move` (`{doc_ids, folder_id}`) for bulk moves. Document uploads accept an optional `folder_id` form field, validated against ownership.
+
+## 7. Document preview
+
+Click a document card in the Documents tab to open it in the main window (the chat/task window switches to a read-only preview). The header shows «Preview: <file name>» (truncated with an ellipsis when long) in the same style as the chat/task headers; the «Messages» counter is hidden and the only action is 💾 **Save**, which downloads the original file with its current name. Switching to another tab (or pressing Escape) restores the chat/task window.
+
+- **PDF and images** are served inline (`/api/documents/<id>/preview/file`) and rendered by the browser (`<iframe>` / `<img>`). On phones (≤ 768 px) the PDF iframe is replaced by **server-rendered page images** (`pdftoppm` → JPEG, `/api/documents/<id>/preview/pdf-page/<n>`, the first `PREVIEW_PDF_MAX_PAGES` = 30 pages, with a «Showing the first N pages» note) plus an «Open PDF» link — Chrome for Android cannot display a PDF inside an iframe and shows «This content is blocked» instead.
+- **Plain text** (`.txt`, `.md`, `.csv`, `.json`) is shown as-is.
+- **DOCX, ODT, RTF, EPUB** are converted to text (`extract_text_from_file`) and labelled **«Extracted text»** — the original formatting is not reproduced.
+- A format without a preview gets a localized «Preview is not available for this format» note. Text previews are capped at 200 000 characters with a «Preview is truncated» note.
+
+All preview endpoints are owner-scoped and use the same `realpath` containment check as the download route; only PDF/images are served inline (never HTML).

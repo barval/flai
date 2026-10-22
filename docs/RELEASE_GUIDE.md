@@ -1,6 +1,10 @@
-# Release Guide — FLAI v12.5
+# Release Guide — FLAI v12.6
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
+
+The agent skill `opening-flai-release` performs the opening step (cutting the branch from the previous release branch, renaming every current-version marker, emptying What's New); its entry point is [`.opencode/skills/opening-flai-release/SKILL.md`](../.opencode/skills/opening-flai-release/SKILL.md).
+
+The agent skill `preparing-flai-release` automates the mechanical checks in this guide (release-branch merge status, translation parity and compilation, documentation heading parity). Its entry point is [`.opencode/skills/preparing-flai-release/SKILL.md`](../.opencode/skills/preparing-flai-release/SKILL.md); the helper scripts live in `scripts/` next to it.
 
 > **v10.0 release steps:** Version bump from 9.2 to 10.0 (pyproject.toml, deploy scripts, docs, metrics, `.po` footers). Removed standalone chat model (Qwen3-4B-Instruct) — multimodal model (Qwen3VL-8B-Instruct) is now the single chat/router/vision model. Updated deploy scripts to download multimodal instead of chat. Removed chat from llama-swap config (`ttl=0` for multimodal, `preload: on_startup`). Removed chat card from admin panel. Updated test fixtures: `chat` → `multimodal` in all module-type assertions. DB self-healing: `DELETE FROM model_configs WHERE module = 'chat'` at startup.
 
@@ -16,32 +20,25 @@ When releasing a new version, update these files **in order**:
 
 - Located in the Architecture section (under `### What's New in vX.X`)
 - List only the **most impactful changes** from the new version
-- Format: `| **Feature name** | Brief description |`
+- Keep the current bullet-list format used by the READMEs: `- **Feature name** — brief description`. Do not switch to a table.
 - Keep entries concise (1-2 lines per feature)
 
-### 2. README.md and README-ru.md — "Roadmap → Completed" section
-
-- Located at the bottom of the Roadmap section (under `### ✅ Completed`)
-- Add **only the most significant new features, major changes, and critical bug fixes**
-- Do NOT add minor fixes, test changes, or internal refactoring
-- Format: `- **Feature name** — brief description`
-
-### 3. AGENTS.md — version section
+### 2. AGENTS.md — version section
 
 - Update the version title in `# AGENTS.md — FLAI vX.Y`
 - Document technical details of new features (architecture, algorithms, parameters)
 - Update the "Known issues" section — move fixed items to the version section
 - Move historical details to `CHANGELOG.md` or `docs/` files
 
-### 4. CHANGELOG.md
+### 3. CHANGELOG.md
 
 - Add a new section for the version
 - Include all significant changes, bug fixes, and migration notes
 - See `CHANGELOG.md` template below
 
-### 5. Git: release branch + push
+### 4. Git: release branch + push
 
-Since v10.0 every release lives on its own **version branch** (`vX.Y`), not a tag (tags only exist up to v9.3):
+Since v10.0 every release lives on its own **version branch** (`vX.Y`). Release tags are not created by default; the existing `release-vX.Y` tags are historical. Do not create a tag without explicit approval:
 
 ```bash
 git checkout -b vX.Y                      # branch from the previous release branch
@@ -70,7 +67,7 @@ When releasing a new version:
   - `docs/*.md`: version in titles and change notes
 
 ### 2. Update "What's New" section in both READMEs:
-  - Add new features to the table
+  - Replace the section with this release's features (a bullet list, not a table)
   - Remove features that are no longer new
   - Keep entries concise (1-2 lines per feature)
 
@@ -103,7 +100,7 @@ When updating README.md and README-ru.md, follow the rules in `docs/LOCALIZATION
 
 Sections to update:
   1. **Features list** (`### ✨ Features`) — add new features, remove deprecated ones
-  2. **What's New table** (`### What's New in vX.X`) — update version number and add new features
+  2. **What's New list** (`### What's New in vX.X`) — update version number and add new features
   3. **Core Components table** (`### Core Components`) — add/remove services, update ports
   4. **Hardware Tiers** (``### Hardware Tiers`) — update VRAM/RAM requirements if changed
   5. **Model Benchmarks** (`### Model Benchmarks`) — add new models, update performance data

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult, _RlmBroker
+from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult, _RlmBroker, parse_leaked_tool_calls
 
 
 @pytest.mark.unit
@@ -418,6 +418,67 @@ def test_run_error_string_response_is_error(test_app):
         )
     assert result.answer == ""
     assert result.error == "⚠️ Service temporarily unavailable"
+
+
+@pytest.mark.unit
+def test_run_empty_final_answer_nudged_once(test_app):
+    """final() with an empty answer is nudged once; the retry answers."""
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+        {
+            "content": "",
+            "tool_calls": [{"id": "2", "function": {"name": "final", "arguments": json.dumps({"answer": "42"})}}],
+        },
+    ]
+    module, llamacpp = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "42"
+    assert result.error == ""
+    # The nudge message must have reached the model on the second call.
+    nudge_seen = any("EMPTY" in str(m.get("content", "")) or "EMPTY" in str(m) for m in llamacpp.calls[1]["messages"])
+    assert nudge_seen
+
+
+@pytest.mark.unit
+def test_run_empty_final_answer_twice_fails(test_app):
+    """Two empty finals → the run fails with «empty final answer»."""
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+        {
+            "content": "",
+            "tool_calls": [{"id": "2", "function": {"name": "final", "arguments": json.dumps({"answer": ""})}}],
+        },
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == ""
+    assert result.error == "empty final answer"
 
 
 @pytest.mark.unit
@@ -873,6 +934,42 @@ def test_run_plain_text_without_leak_is_untouched(test_app):
 
 
 @pytest.mark.unit
+def test_parse_leaked_tool_calls_recovers_an_unclosed_answer_block():
+    """Qwen3.6 printed <tool_call><function=final>\\nanswer="…" with no closing
+    tags; the call must be recovered and the tail stripped from the answer."""
+    text = 'Полный ответ.\n\n<tool_call>\n<function=final>\nanswer="Полный ответ."'
+    calls, remaining = parse_leaked_tool_calls(text)
+    assert calls[0]["function"]["name"] == "final"
+    assert json.loads(calls[0]["function"]["arguments"])["answer"] == "Полный ответ."
+    assert "<tool_call>" not in remaining
+    assert "answer=" not in remaining
+    assert remaining.strip() == "Полный ответ."
+
+
+@pytest.mark.unit
+def test_run_duplicate_leaked_final_keeps_the_printed_answer(test_app):
+    """The model printed the answer and then repeated it as a leaked final;
+    the duplicate must not append its raw answer="…" markup to the step."""
+    answer = "## Глубокий анализ\n" + "Содержательный вывод по документу. " * 10
+    content = answer + '\n\n<tool_call>\n<function=final>\nanswer="' + answer + '"'
+    module, _ = _make_module([{"content": content}])
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 2
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="ru",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == answer.strip()
+    assert "answer=" not in result.answer
+
+
+@pytest.mark.unit
 def test_rlm_prompt_documents_available_helpers(test_app):
     with test_app.app_context():
         module = RlmModule.__new__(RlmModule)
@@ -880,3 +977,64 @@ def test_rlm_prompt_documents_available_helpers(test_app):
         en = module.build_system_prompt("en")
         assert "re" in ru and "math" in ru and "lambda" in ru
         assert "re" in en and "math" in en and "lambda" in en
+
+
+@pytest.mark.unit
+def test_truncate_observation_marks_what_was_dropped():
+    """The actor must see that its own observation was cut: silently slicing a
+    tool result made it read the cut as the end of the document (live defect:
+    72K-char "About Fedot the Archer" analysed to line ~1080 and reported
+    "Ending (unfinished in this fragment)")."""
+    from modules.rlm import _truncate_observation
+
+    long = "a" * 10_000
+    cut = _truncate_observation(long, 4000, "ru")
+    assert cut.startswith("a" * 4000)
+    assert "6000" in cut, "the notice must name the number of dropped characters"
+    assert cut != long[:4000], "the plain slice must not come back unchanged"
+
+
+@pytest.mark.unit
+def test_truncate_observation_keeps_short_observations_untouched():
+    from modules.rlm import _truncate_observation
+
+    assert _truncate_observation("short", 4000, "ru") == "short"
+
+
+@pytest.mark.unit
+def test_truncate_observation_localizes_and_can_stay_silent():
+    """Only a python slice continues «with the next slice»; an llm()/web_fetch()
+    answer has no continuation, so the caller turns the notice off."""
+    from modules.rlm import _truncate_observation
+
+    ru = _truncate_observation("x" * 100, 10, "ru")
+    en = _truncate_observation("x" * 100, 10, "en")
+    assert ru != en
+    assert _truncate_observation("x" * 100, 10, "ru", notice=False) == "x" * 10
+
+
+@pytest.mark.unit
+def test_rlm_template_has_a_single_file_whole_read_rule():
+    """A one-file corpus must be readable end to end. The unconditional
+    «never read the whole corpus in one call» rule (right for a large multi-file
+    corpus) left the actor without a strategy for a single document and it
+    stopped at its own truncation point."""
+    from pathlib import Path
+
+    prompts = Path(__file__).resolve().parents[1] / "prompts"
+    for lang, marker in (("ru", "ОДИН файл"), ("en", "ONE file")):
+        src = (prompts / lang / "rlm.template").read_text(encoding="utf-8")
+        assert marker in src, f"rlm.template/{lang}: missing the single-file rule"
+        assert "llm(" in src, f"rlm.template/{lang}: the rule must name the llm() condensation call"
+        assert "final(answer)" in src, f"rlm.template/{lang}: the rule must gate final() on full coverage"
+
+
+@pytest.mark.unit
+def test_rlm_template_mentions_the_truncation_marker():
+    """The rule points at the marker so a cut observation is not read as the end."""
+    from pathlib import Path
+
+    prompts = Path(__file__).resolve().parents[1] / "prompts"
+    for lang in ("ru", "en"):
+        src = (prompts / lang / "rlm.template").read_text(encoding="utf-8").lower()
+        assert "обрезан" in src or "truncated" in src, f"rlm.template/{lang}: the marker is never explained"

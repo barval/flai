@@ -111,13 +111,13 @@ def send_message():
     file_type = None
     file_name = None
     voice_record = False
-    file_size_bytes = 0
     voice_file_data = None
     voice_file_type = None
     voice_file_name = None
     # Multi-attachment: every "file" part in order (frontend sends the legacy
     # single slot first, then the multi-queue).
     extra_images: list[dict[str, str | None]] = []
+    audio_parts: list[dict[str, str | int]] = []
     doc_part: dict[str, str | None] | None = None
 
     if request.content_type and "multipart/form-data" in request.content_type:
@@ -145,12 +145,17 @@ def send_message():
                     return jsonify({"error": error_text}), 400
                 extra_images.append({"data": part_data, "type": part_type, "name": part_name, "size": part_size})
             elif current_app.modules["audio"].is_audio_file(part_type, part_name):
-                # audio keeps the legacy single-slot semantics
+                # Per-part size check: an oversized audio file must not slip
+                # through because another attachment of the message is small.
+                limit_mb = current_app.config["MAX_AUDIO_SIZE_MB"]
+                if part_size > limit_mb * 1024 * 1024:
+                    return jsonify({"error": _("Maximum file size {max_size} MB").format(max_size=limit_mb)}), 400
+                audio_parts.append({"data": part_data, "type": part_type, "name": part_name, "size": part_size})
+                # The first audio keeps the legacy single-slot semantics
                 if file_data is None:
                     file_data = part_data
                     file_type = part_type
                     file_name = part_name
-                    file_size_bytes = part_size
             else:
                 # document (PDF/DOCX/...) — one per message
                 if doc_part is not None:
@@ -168,7 +173,6 @@ def send_message():
             file_data = first["data"]
             file_type = first["type"]
             file_name = first["name"]
-            file_size_bytes = first["size"]
 
         voice_record = request.form.get("voice_record") == "true"
 
@@ -180,9 +184,22 @@ def send_message():
             vfile = request.files["voice"]
             if vfile and vfile.filename:
                 vbytes = vfile.read()
+                limit_mb = current_app.config["MAX_VOICE_SIZE_MB"]
+                if len(vbytes) > limit_mb * 1024 * 1024:
+                    return jsonify({"error": _("Maximum file size {max_size} MB").format(max_size=limit_mb)}), 400
                 voice_file_data = base64.b64encode(vbytes).decode("utf-8")
                 voice_file_type = vfile.content_type or mimetypes.guess_type(vfile.filename)[0] or "audio/webm"
                 voice_file_name = vfile.filename
+
+        # One voice message plus audio files, this many audio items in total:
+        # beyond the cap the message is refused instead of silently dropping a
+        # file, and every transcript would be attributed to the wrong audio.
+        max_chat_audio = current_app.config.get("MAX_CHAT_AUDIO", 4)
+        if len(audio_parts) + (1 if voice_file_data else 0) > max_chat_audio:
+            lang_hdr = session.get("language", "ru")
+            with force_locale(lang_hdr):
+                error_text = _("max_audio_reached").format(max=max_chat_audio)
+            return jsonify({"error": error_text}), 400
     else:
         try:
             data = request.get_json()
@@ -198,18 +215,17 @@ def send_message():
     response_style = session.get("response_style", "neutral")
 
     request_type = "text"
-    if doc_part is not None:
+    if audio_parts or voice_file_data:
+        # Audio first: every audio item is transcribed in order and the
+        # transcripts become the question. A document or an image attached to
+        # the same message is carried along and answered in the same chain.
+        request_type = "audio"
+    elif doc_part is not None:
         # Document attached in chat: index it into RAG first, then answer the
         # question over it (images, if any, provide the visual context).
         request_type = "doc_chat"
-    elif file_data and file_type:
-        if file_type.startswith("image/"):
-            request_type = "audio" if voice_file_data else "image"
-        elif current_app.modules["audio"].is_audio_file(file_type, file_name):
-            request_type = "audio"
-    elif voice_file_data:
-        # Voice file is in "voice" field only (no "file" field or "file" is not image)
-        request_type = "audio"
+    elif file_data and file_type and file_type.startswith("image/"):
+        request_type = "image"
 
     resize_notice = None
     resize_notice_id = None
@@ -276,6 +292,17 @@ def send_message():
             user_id=user_id,
         )
 
+    # Every further audio part is saved the same way: with only the first one on
+    # disk, audio 2..N existed in no history at all.
+    for part in audio_parts[1:]:
+        part["path"] = save_uploaded_file(
+            file_data=part["data"],
+            filename=part["name"],
+            session_id=session_id,
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            user_id=user_id,
+        )
+
     # An uploaded audio file is saved like an image so a session with audio
     # attachments opens without shipping its base64 payload; the saved file
     # becomes the row-level primary attachment.
@@ -303,13 +330,6 @@ def send_message():
         if not file_path:
             file_path = doc_part["path"]
 
-    if request_type == "audio":
-        limit_mb = current_app.config["MAX_VOICE_SIZE_MB"] if voice_record else current_app.config["MAX_AUDIO_SIZE_MB"]
-        # When image + voice, check voice file size (not image)
-        audio_size = len(base64.b64decode(voice_file_data)) if voice_file_data else file_size_bytes
-        if audio_size > limit_mb * 1024 * 1024:
-            return jsonify({"error": _("Maximum file size {max_size} MB").format(max_size=limit_mb)}), 400
-
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
@@ -334,6 +354,15 @@ def send_message():
         user_content.append(
             {
                 "type": "image",
+                "file_type": part["type"],
+                "file_name": part["name"],
+                "file_path": part["path"],
+            }
+        )
+    for part in audio_parts[1:]:
+        user_content.append(
+            {
+                "type": "audio",
                 "file_type": part["type"],
                 "file_name": part["name"],
                 "file_path": part["path"],
@@ -367,41 +396,52 @@ def send_message():
     if request_type == "audio":
         current_app.logger.info("send_message: audio detected, queueing transcription task")
 
-        # Determine which file is audio and which is image. Two attachment
-        # layouts exist: the image in the legacy single slot (file_data) with
-        # the voice in "voice", or — the v12.4 multi-attachment flow — the
-        # voice in the legacy slot (file_data) with the image in the multi
-        # "file" parts (extra_images). Pair them whichever way they came.
-        audio_file_data = voice_file_data or file_data
-        audio_file_type = voice_file_type or file_type
-        audio_file_name = voice_file_name or file_name
+        # Every audio item, the voice recording first (it is the spoken
+        # question), then the audio files in attachment order. The legacy flat
+        # fields carry the first item so an older payload shape keeps working.
+        audios: list[dict[str, str]] = []
+        if voice_file_data:
+            audios.append({"data": voice_file_data, "type": voice_file_type, "name": voice_file_name})
+        audios.extend({"data": p["data"], "type": p["type"], "name": p["name"]} for p in audio_parts)
+        first_audio = audios[0] if audios else {}
+
+        # An image attached to a spoken question is its visual context. The
+        # primary one is the legacy-slot image when that slot holds an image,
+        # else the first queued image — audio bytes are never mistaken for an
+        # image (a voice recording next to an audio file used to do that).
         img_data = None
         img_type = None
         img_name = None
         extra_img_parts: list[dict[str, str | None]] = []
-        if voice_file_data:
-            # Voice in "voice", image (if any) in the legacy slot
+        if file_data and file_type and file_type.startswith("image/"):
             img_data = file_data
             img_type = file_type
             img_name = file_name
-        elif file_data and file_type and file_type.startswith("audio/"):
-            # Voice in the legacy slot: the image came from the multi queue
-            if extra_images:
-                first_img = extra_images[0]
-                img_data = first_img["data"]
-                img_type = first_img["type"]
-                img_name = first_img["name"]
-                extra_img_parts = extra_images[1:]
+            extra_img_parts = list(extra_images)
+        elif extra_images:
+            first_img = extra_images[0]
+            img_data = first_img["data"]
+            img_type = first_img["type"]
+            img_name = first_img["name"]
+            extra_img_parts = extra_images[1:]
 
         request_data = {
             "type": "transcribe_audio",
-            "file_data": audio_file_data,
-            "file_type": audio_file_type,
-            "file_name": audio_file_name,
+            "audios": audios,
+            "text": message_text,
+            "file_data": first_audio.get("data"),
+            "file_type": first_audio.get("type"),
+            "file_name": first_audio.get("name"),
             "voice_record": voice_record,
-            "preview": (message_text[:50] + "...") if message_text else (audio_file_name or _("Voice request")),
+            "preview": (message_text[:50] + "...") if message_text else (first_audio.get("name") or _("Voice request")),
             "response_style": response_style,
         }
+        if doc_part is not None:
+            # A document attached next to audio is indexed by the doc_chat
+            # worker once the transcripts are in.
+            request_data["doc_file_data"] = doc_part["data"]
+            request_data["doc_file_type"] = doc_part["type"]
+            request_data["doc_file_name"] = doc_part["name"]
         # Pass image data for combined processing (voice → text + image → multimodal)
         if img_data:
             request_data["image_data"] = img_data

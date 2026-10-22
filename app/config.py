@@ -10,7 +10,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "12.5"
+APP_VERSION = "12.6"
 
 
 def load_config(app):
@@ -35,6 +35,9 @@ def load_config(app):
     # automatically when empty; see app/platform_detect.py
     app.config["FLAI_PLATFORM"] = os.getenv("FLAI_PLATFORM", "")
     app.config["LLAMA_SWAP_URL"] = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+    # How long ensure_vram_for waits for a busy GPU before it gives up
+    # (one 12 GB load/unload cycle can outlive a 15 s deadline).
+    app.config["VRAM_WAIT_TIMEOUT_S"] = int(os.getenv("VRAM_WAIT_TIMEOUT_S", "120"))
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config["SD_MODEL_TYPE"] = os.getenv("SD_MODEL_TYPE", "z_image_turbo")
     app.config["SD_EDIT_MODEL_TYPE"] = os.getenv("SD_EDIT_MODEL_TYPE", "flux-2-klein-4b")
@@ -65,6 +68,9 @@ def load_config(app):
     # downscaled to this long side first — 4 images × ~1–4K vision tokens must
     # fit small context windows too.
     app.config["MAX_CHAT_IMAGES"] = int(os.getenv("MAX_CHAT_IMAGES", 4))
+    # Audio attachments of one chat message or task: a voice message plus audio
+    # files, this many audio items in total (1 voice + 3 files, or 4 files).
+    app.config["MAX_CHAT_AUDIO"] = int(os.getenv("MAX_CHAT_AUDIO", 4))
     app.config["MAX_IMAGE_SIZE_MULTI"] = int(os.getenv("MAX_IMAGE_SIZE_MULTI", 1024))
 
     # Document upload settings
@@ -138,6 +144,44 @@ def load_config(app):
     app.config["CRAWL_MAX_PAGE_CHARS"] = int(os.getenv("CRAWL_MAX_PAGE_CHARS", 50000))
     app.config["CRAWL_MAX_TOTAL_CHARS"] = int(os.getenv("CRAWL_MAX_TOTAL_CHARS", 1000000))
     app.config["CRAWL_CONCURRENCY"] = int(os.getenv("CRAWL_CONCURRENCY", 2))
+
+    # Tasks subsystem: sliding quiet window after chat activity, 24 h
+    # pure-execution budget, step retry attempts, executor poll interval.
+    app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
+    app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
+    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
+    # Plan-correction guardrails: a review may not rewrite the plan forever,
+    # the plan may not grow without bound, and a passing step only triggers a
+    # review every N steps (a failed/skipped step and a fresh user answer always
+    # trigger one). The 24 h budget stays the final ceiling.
+    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", "8"))
+    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", "40"))
+    app.config["TASK_REPLAN_EVERY_N"] = int(os.getenv("TASK_REPLAN_EVERY_N", "3"))
+    # Media repair: one image edit after every generation attempt (3 + 3 by
+    # default) before the best-effort pick of the closest candidate.
+    app.config["TASK_STEP_MAX_REPAIRS"] = int(os.getenv("TASK_STEP_MAX_REPAIRS", "3"))
+    # A plan review that repeats the failed step's goal verbatim re-opens that
+    # step instead of adding a duplicate plan position; this caps the re-opens.
+    app.config["TASK_STEP_REDO_MAX"] = int(os.getenv("TASK_STEP_REDO_MAX", "1"))
+    # Media steps: total characters of the context handed to the generator.
+    # The declared source step gets the leading share (cap - 4000).
+    app.config["MEDIA_CONTEXT_CHARS"] = int(os.getenv("MEDIA_CONTEXT_CHARS", "16000"))
+    app.config["TASK_POLL_INTERVAL_S"] = int(os.getenv("TASK_POLL_INTERVAL_S", "1"))
+    # How many executor cycles a subtask's failed liveness probe may hold the
+    # step before it is failed anyway (a broken queue must not wedge a task).
+    app.config["TASK_SUBTASK_ALIVE_UNKNOWN_MAX"] = int(os.getenv("TASK_SUBTASK_ALIVE_UNKNOWN_MAX", "3"))
+    # How long ONE direct step may wait for a busy GPU before it gives up
+    # (the step retries with backoff inside this budget, see runner._call_reasoning).
+    app.config["TASK_VRAM_WAIT_S"] = int(os.getenv("TASK_VRAM_WAIT_S", "600"))
+    # How many executor cycles a subtask result may stay absent before the
+    # poller checks whether its queue worker is still alive (default 10 = 10 s
+    # with TASK_POLL_INTERVAL_S=1; exhausted+dead ⇒ step failed, task continues).
+    app.config["TASK_SUBTASK_POLL_CYCLES"] = int(os.getenv("TASK_SUBTASK_POLL_CYCLES", "10"))
+
+    # Visual continuity sheet: on/off switch and the sheet's char budget.
+    app.config["TASK_CONTINUITY_ENABLED"] = os.getenv("TASK_CONTINUITY_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["TASK_CONTINUITY_MAX_CHARS"] = int(os.getenv("TASK_CONTINUITY_MAX_CHARS", "2000"))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))

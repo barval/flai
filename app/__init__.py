@@ -346,6 +346,15 @@ def create_app():
     # Initialize Redis queue (workers only in server processes, never in CLI)
     app.request_queue = RedisRequestQueue(app, start_workers=not _is_cli_process())
 
+    # Background Tasks executor: one daemon thread, server processes only
+    if app.config.get("TASKS_ENABLED") and not _is_cli_process():
+        try:
+            from app.tasks.executor import get_task_executor
+
+            get_task_executor(app).start()
+        except Exception as e:
+            app.logger.warning(f"Could not start tasks executor: {e}")
+
     # Initialize events publisher (Redis pub/sub for SSE)
     init_events_publisher(app)
 
@@ -364,6 +373,7 @@ def create_app():
         queue,
         rlm,
         sessions,
+        tasks,
         tts,
     )
 
@@ -381,6 +391,7 @@ def create_app():
     app.register_blueprint(events.bp)
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
+    app.register_blueprint(tasks.bp)
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)
@@ -472,7 +483,9 @@ def create_app():
             app.logger.warning(f"Invalid filename format: {filename}")
             abort(400)
         session_id = parts[0]
-        # Verify that the session belongs to the current user
+        # Verify that the session belongs to the current user. Task media
+        # (camera snapshots, generated images) live under the TASK id folder —
+        # the tasks table is the second ownership source (same owner check).
         from .database import get_db
 
         with get_db() as conn:
@@ -480,8 +493,11 @@ def create_app():
             c.execute("SELECT user_id FROM chat_sessions WHERE id = %s", (session_id,))
             row = c.fetchone()
             if not row or row["user_id"] != session["login"]:
-                app.logger.warning(f"User {session['login']} tried to access session {session_id}")
-                abort(403)
+                c.execute("SELECT user_id FROM tasks WHERE id = %s", (session_id,))
+                task_row = c.fetchone()
+                if not task_row or task_row["user_id"] != session["login"]:
+                    app.logger.warning(f"User {session['login']} tried to access session {session_id}")
+                    abort(403)
         # Send file
         try:
             if not os.path.exists(safe_path):

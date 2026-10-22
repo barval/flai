@@ -95,17 +95,20 @@
 }
 
 .sessions-list,
-.documents-list {
+.documents-list,
+.tasks-list {
     padding: 0.5rem;
     overflow-y: auto;
     flex: 1;
 }
 
-.documents-list {
+.documents-list,
+.tasks-list {
     display: none;
 }
 
-.documents-list.active {
+.documents-list.active,
+.tasks-list.active {
     display: block;
 }
 
@@ -114,7 +117,8 @@
 }
 
 .session-item,
-.document-item {
+.document-item,
+.task-item {
     background-color: white;
     border: 1px solid #ddd;
     border-radius: 6px;
@@ -127,13 +131,15 @@
 }
 
 .session-item:hover,
-.document-item:hover {
+.document-item:hover,
+.task-item:hover {
     background-color: #e6f2ff;
     border-color: #3498db;
 }
 
 .session-item.active,
-.document-item.active {
+.document-item.active,
+.task-item.active {
     background-color: #e6f2ff;
     border-color: #3498db;
     box-shadow: 0 2px 6px rgba(52,152,219,0.2);
@@ -179,6 +185,46 @@
     min-width: 0;
 }
 
+.task-item .session-title {
+    overflow: hidden;
+}
+
+.task-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-media-caption {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+
+.task-media-filename {
+    color: #5a6a7a;
+    font-size: 0.85rem;
+    font-family: monospace;
+}
+
+.task-search-header {
+    color: #5a6a7a;
+    font-size: 0.85rem;
+    font-family: monospace;
+    display: block;
+    margin-top: 0.2rem;
+}
+
+.download-link-inline {
+    font-size: 1.2rem;
+    text-decoration: none;
+    cursor: pointer;
+    margin-left: 0.3rem;
+}
+
 .session-icons {
     display: flex;
     align-items: center;
@@ -213,6 +259,323 @@
 .delete-session-button:hover,
 .delete-document-button:hover {
     color: #e74c3c;
+}
+
+/* ===== TASKS ===== */
+.task-status-line {
+    font-size: 0.72rem;
+    color: #8e44ad;
+    margin-top: 0.2rem;
+}
+
+.task-status-banner {
+    background-color: #f5f0fa;
+    border: 1px solid #d5c8e8;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #6c3483;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The awaiting-answer live banner: same pulsing look as the chat's
+   .task-progress stage labels (progressPulse), plus the banner colors. */
+.task-await-banner {
+    background-color: #f5f0fa;
+    border: 1px solid #d5c8e8;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #6c3483;
+    animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+
+
+/* Tasks-tab empty state (no task selected): centred hint in the window. */
+.task-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    color: #888;
+    font-size: 0.95rem;
+    text-align: center;
+    padding: 1rem;
+}
+
+/* Service lines in task messages ("🗒️ Plan of N steps:", "⚙️ Step N of M:"):
+   their own line, italic, muted — visually distinct from the body. */
+.task-msg-service {
+    font-style: italic;
+    font-size: 0.78rem;
+    color: #8e44ad;
+    margin-bottom: 0.25rem;
+    white-space: pre-wrap;
+}
+
+.dark-theme .task-msg-service {
+    color: #d2b4de;
+}
+
+/* Step validation state (Tasks): a compact chip, the reason of the last
+   rejection and a collapsed per-attempt log. The same shape describes every
+   step type — the data (status + attempts + log) is what differs. */
+.task-step-validation {
+    margin: 0.2rem 0 0.35rem;
+}
+
+.task-step-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid #d5dbe3;
+    color: #5a6a7a;
+    background: #f6f8fa;
+    white-space: nowrap;
+}
+
+.task-step-chip.checked {
+    color: #1e7b45;
+    border-color: #b7e1c6;
+    background: #eefaf3;
+}
+
+.task-step-chip.rewritten {
+    color: #1f5f9e;
+    border-color: #bcd6ef;
+    background: #eef5fd;
+}
+
+.task-step-chip.retrying,
+.task-step-chip.unchecked {
+    color: #8a5a00;
+    border-color: #f0d9a8;
+    background: #fdf6e8;
+}
+
+.task-step-chip.failed {
+    color: #b3261e;
+    border-color: #f2c2bf;
+    background: #fdeeee;
+}
+
+.task-step-chip.skipped,
+.task-step-chip.interrupted {
+    color: #6b6b6b;
+    border-color: #dcdcdc;
+    background: #f4f4f4;
+}
+
+.task-step-reason {
+    margin-top: 0.2rem;
+    font-size: 0.8rem;
+    color: #7a4a00;
+    white-space: pre-wrap;
+}
+
+.task-step-log {
+    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    color: #5a6a7a;
+}
+
+.task-step-log summary {
+    cursor: pointer;
+}
+
+.task-step-log-line {
+    margin: 0.1rem 0 0 0.9rem;
+}
+
+/* Accepted results under the final answer. */
+.task-final-results {
+    margin-top: 0.6rem;
+}
+
+.task-final-title {
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.task-final-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.6rem;
+}
+
+.task-final-card {
+    border: 1px solid #e2e6ea;
+    border-radius: 8px;
+    padding: 0.35rem;
+    background: #fafbfc;
+}
+
+.task-final-card .attached-image {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+}
+
+.task-final-caption {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: #33414f;
+}
+
+.task-final-caption span {
+    flex: 1;
+}
+
+.task-final-badge {
+    font-size: 0.72rem;
+    color: #1f5f9e;
+    margin-top: 0.15rem;
+}
+
+.task-final-row {
+    font-size: 0.85rem;
+    margin: 0.15rem 0;
+}
+
+.task-final-row-expandable > summary {
+    cursor: pointer;
+}
+
+.task-final-full {
+    margin: 0.25rem 0 0 0.9rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.85rem;
+    color: #33414f;
+}
+
+.task-final-failures {
+    margin-top: 0.45rem;
+    font-size: 0.8rem;
+    color: #b3261e;
+}
+
+.dark-theme .task-final-full {
+    color: #b9c4cf;
+}
+
+.dark-theme .task-step-chip {
+    border-color: #3a4652;
+    background: #26303a;
+    color: #b9c4cf;
+}
+
+.dark-theme .task-step-chip.checked {
+    color: #7fd6a4;
+    border-color: #2f5c44;
+    background: #1e3327;
+}
+
+.dark-theme .task-step-chip.rewritten {
+    color: #8ec2f2;
+    border-color: #2f4a66;
+    background: #1c2b3c;
+}
+
+.dark-theme .task-step-chip.retrying,
+.dark-theme .task-step-chip.unchecked {
+    color: #e5c07b;
+    border-color: #5c4a2a;
+    background: #332a1a;
+}
+
+.dark-theme .task-step-chip.failed {
+    color: #f28b82;
+    border-color: #6b3a36;
+    background: #3a2220;
+}
+
+.dark-theme .task-step-chip.skipped,
+.dark-theme .task-step-chip.interrupted {
+    color: #a9b2bb;
+    border-color: #3d444c;
+    background: #2a2f35;
+}
+
+.dark-theme .task-step-reason {
+    color: #e5c07b;
+}
+
+.dark-theme .task-step-log {
+    color: #a9b2bb;
+}
+
+.dark-theme .task-final-card {
+    border-color: #3a4652;
+    background: #232b33;
+}
+
+.dark-theme .task-final-caption {
+    color: #c8d2dc;
+}
+
+.dark-theme .task-final-failures {
+    color: #f28b82;
+}
+
+/* The transcript of an audio attached to a task («🎤 Transcribed (name): …»):
+   the chat shows it as its own message in the regular reading font — here it
+   keeps the chat's prefix but NOT the italic service-line font, a long
+   transcript would be unreadable. */
+.task-msg-transcript {
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    margin: 0.35rem 0;
+    padding-left: 0.6rem;
+    border-left: 2px solid #8e44ad;
+}
+
+.dark-theme .task-msg-transcript {
+    border-left-color: #d2b4de;
+}
+
+.dark-theme .task-await-banner {
+    color: #d2b4de;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.dark-theme .task-empty-state {
+    color: #aaa;
+}
+
+.tasks-empty {
+    padding: 0.8rem;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.new-task-request {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #b8cfe8;
+    border-radius: 5px;
+    font-size: 0.95rem;
+    color: #2c3e50;
+    background: #fff;
+    font-family: inherit;
+    resize: vertical;
+}
+.new-task-request:focus {
+    outline: none;
+    border-color: #3498db;
 }
 
 /* ===== DOCUMENT FOLDERS ===== */
@@ -321,7 +684,10 @@
     border-radius: 6px;
     padding: 0.45rem 0.6rem;
     margin-bottom: 0.6rem;
-    flex-wrap: wrap;
+    /* One line, always: the label shrinks ("Selected:"), the buttons keep
+       their size — wrapping squeezed the buttons onto two rows on mobile. */
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 .bulk-documents-bar.hidden {
     display: none;
@@ -329,6 +695,9 @@
 .bulk-label {
     font-weight: 500;
     color: #2c3e50;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .bulk-move-button,
 .bulk-clear-button,
@@ -526,6 +895,7 @@
 .document-status-icon.blink,
 .session-status-icon.processing,
 .session-status-icon.queued,
+.session-status-icon.awaiting,
 .session-status-icon.unread,
 .session-status-icon.transcribing {
     animation: blink-animation 2s infinite !important;
@@ -546,6 +916,10 @@
 
 .session-status-icon.queued {
     color: #95a5a6;
+}
+
+.session-status-icon.awaiting {
+    color: #3498db;
 }
 
 .session-status-icon.unread {
@@ -604,7 +978,13 @@
 .chat-header h2 {
     color: #2c3e50;
     margin: 0;
-    font-size: 1.2rem;
+    /* Same size as the tab headers ("Documents", "Tasks", "Sessions"): the
+       header row reads as part of the same chrome, not as a page title. */
+    font-size: 1rem;
+    /* The header row («Chat 📊 0/0 | Style: …» / «Task 📊 …») is exactly as
+       tall as its tallest button (the 💾 save button): the h2 line-height
+       would otherwise inflate the bar. */
+    line-height: 1.1;
 }
 
 .context-info-container {
@@ -667,6 +1047,112 @@
     min-height: 0;
 }
 
+/* Document preview (Documents tab): the main window shows one file. */
+.preview-title-text {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* Preview mode: the file name owns every pixel up to the 💾 button. */
+body.document-preview-mode .chat-header h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+body.document-preview-mode .context-info-container {
+    flex-shrink: 0;
+}
+
+.document-preview {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    background-color: white;
+}
+
+.document-preview-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 60vh;
+    border: 0;
+}
+
+.document-preview-pages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.document-preview-page {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background-color: #fff;
+}
+
+.document-preview-open {
+    display: inline-flex;
+    margin-bottom: 0.75rem;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid #3498db;
+    border-radius: 6px;
+    color: #2980b9;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.document-preview-open:hover {
+    background-color: #eaf4fb;
+}
+
+.document-preview-image {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 220px);
+    margin: 0 auto;
+}
+
+.document-preview-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.document-preview-note {
+    margin: 0.25rem 0 0.6rem;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: #8e44ad;
+}
+
+.dark-theme .document-preview {
+    background-color: #1e1e1e;
+    border-color: #444;
+}
+
+@media (max-width: 768px) {
+    .document-preview-frame {
+        min-height: 55vh;
+    }
+    .document-preview {
+        padding: 0.5rem;
+    }
+}
+
 /* ===== MESSAGES ===== */
 .user-message,
 .assistant-message,
@@ -709,6 +1195,13 @@
 .message-content {
     line-height: 1.7;
     position: relative;
+}
+
+/* Task user requests are plain text: keep the user's own line breaks and
+   literal «1)» numbering (markdown turned it into an unselectable list marker). */
+.task-user-content {
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* ── Streaming UI ──────────────────────────────────── */
@@ -827,8 +1320,10 @@ video {
     border: none;
     cursor: pointer;
     font-size: 1.2rem;
-    margin-left: 8px;
-    padding: 2px 6px;
+    /* Spacing around the 🗣️ head in message headers is halved (user
+       request): 8px→4px left margin, 6px→3px side padding. */
+    margin-left: 4px;
+    padding: 2px 3px;
     border-radius: 4px;
     transition: background-color 0.2s;
     vertical-align: middle;
@@ -860,8 +1355,9 @@ video {
     border: none;
     cursor: pointer;
     font-size: 1.2rem;
-    margin-left: 8px;
-    padding: 2px 6px;
+    /* Matches the halved 🗣️ spacing so the pair reads evenly. */
+    margin-left: 4px;
+    padding: 2px 3px;
     border-radius: 4px;
     transition: background-color 0.2s;
     vertical-align: middle;
@@ -1068,6 +1564,16 @@ video {
     color: #c0392b !important;
 }
 
+#retry-task-button {
+    background-color: #3498db;
+    color: white;
+    min-width: 100px;
+}
+
+#retry-task-button:hover {
+    background-color: #2980b9;
+}
+
 #attach-file-button {
     background-color: #f1f1f1;
     color: #333;
@@ -1223,11 +1729,18 @@ video {
     .header-tabs {
         display: flex;
         width: 100%;
+        /* Same height as the footer bar (min-height 30px):
+           the two bars frame the panel symmetrically. */
+        height: 30px;
     }
 
     .header-tab {
         flex: 1;
-        padding: 0.6rem 0.3rem;
+        /* Height is owned by .header-tabs (30px) — vertical padding only
+           centers the content inside it. Horizontal gaps around the tab
+           titles ("Documents", "Tasks", "Sessions") are halved. */
+        padding: 0 0.15rem;
+        min-height: 0;
     }
 
     .header-tab span.tab-text {
@@ -1245,7 +1758,8 @@ video {
        lists are hidden entirely — the chat fills everything below the tabs
        down to the footer. */
     .sessions-list,
-    .documents-list {
+    .documents-list,
+    .tasks-list {
         display: none !important;
     }
 
@@ -1255,7 +1769,8 @@ video {
     }
 
     .sessions-sidebar.panel-open .sessions-list.active,
-    .sessions-sidebar.panel-open .documents-list.active {
+    .sessions-sidebar.panel-open .documents-list.active,
+    .sessions-sidebar.panel-open .tasks-list.active {
         display: block !important;
         overflow-y: auto;
         max-height: none;
@@ -1279,13 +1794,23 @@ video {
     .chat-header {
         flex-shrink: 0;
         margin-bottom: 5px;
+        /* The bar hugs the 💾 save button (bottom edges flush) with a top
+           allowance (7px total): smaller tops still clipped the
+           h2/status-counter emoji glyphs. */
+        padding: 7px 0 0;
+        align-items: stretch;
+    }
+
+    .chat-header h2,
+    .chat-header .context-info-container {
+        align-items: center;
     }
     
     .chat-messages {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
-        margin-bottom: 5px;
+        margin-bottom: 0;
         padding: 8px;
         padding-bottom: 5px;
     }
@@ -1293,7 +1818,7 @@ video {
     .message-input {
         margin-top: 0;
         margin-bottom: 0;
-        padding: 5px 0;
+        padding: 0;
         flex-shrink: 0;
     }
     
@@ -1317,14 +1842,37 @@ video {
 
     .message-input input[type="text"] {
         width: 100%;
+        /* Same height as the Send button above (font line ~19px + its 0.4rem
+           vertical padding ≈ 2rem): box-sizing border-box makes the explicit
+           height include the border. */
+        height: 2rem;
+        padding: 0.15rem 0.6rem;
     }
 
     /* Chat controls: 🎤/📎/Send are relocated into the "Deep analysis" row
        by chat-init.js relocateChatControls() — compact buttons there; the
        message input takes the full width below. Only the FIRST relocated
-       button carries margin-left: auto (equal gaps between all three). */
-    .rlm-controls {
+       button carries margin-left: auto (equal gaps between all three).
+       Selector specificity is raised (`.chat-container .rlm-controls`)
+       because the base .rlm-controls rule lives AFTER this media block in
+       the file and would win the tie. */
+    .chat-container .rlm-controls {
         width: 100%;
+        /* The row is exactly as tall as the Send button: every control
+           stretches edge-to-edge with it (the label keeps its content
+           centered), and NO gaps: the chat/task output window starts right
+           above the row, the message input right below it. */
+        align-items: stretch;
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    .chat-container .rlm-controls label {
+        align-self: center;
+    }
+
+    .chat-container #file-preview-container {
+        margin: 0;
     }
 
     .rlm-controls #voice-record-button {
@@ -1333,13 +1881,18 @@ video {
 
     .rlm-controls #voice-record-button,
     .rlm-controls #attach-file-button,
-    .rlm-controls #send-button {
+    .rlm-controls #send-button,
+    .rlm-controls #retry-task-button {
         padding: 0.4rem 0.5rem;
         min-width: 40px;
         flex-shrink: 0;
     }
 
     #send-button {
+        min-width: 0;
+    }
+
+    #retry-task-button {
         min-width: 0;
     }
 
@@ -1394,7 +1947,8 @@ video {
     }
 
     .chat-header h2 {
-        font-size: 1rem;
+        /* Same size as the mobile tab headers (0.85rem). */
+        font-size: 0.85rem;
     }
 
     .response-style-btn {
@@ -1411,6 +1965,18 @@ video {
     .context-info {
         font-size: 0.8rem;
         padding: 0.2rem 0.4rem;
+    }
+
+    /* Halved spacing around the 🗣️ head in message headers (user request):
+       the flex gap between header items drops 0.5rem → 0.25rem and the head
+       button itself shrinks (shared rule above). */
+    .message-header {
+        gap: 0.25rem;
+    }
+
+    .save-chat-button,
+    .cancel-stream-header {
+        align-self: flex-end;
     }
 
     .message-input button {
@@ -1808,3 +2374,5 @@ video {
 .dark-theme .assistant-message .rlm-trace summary {
     color: #aaa;
 }
+
+

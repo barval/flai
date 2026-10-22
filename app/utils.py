@@ -20,6 +20,16 @@ from PIL import Image
 PROMPTS_DIR = "prompts"
 
 
+def N_(message: str) -> str:  # noqa: N802 — gettext lazy marker (Babel default keyword)
+    """Mark a msgid for Babel extraction when ``_tr()`` receives it as a variable.
+
+    ``pybabel extract`` only sees literals, so a message held in a module
+    constant silently becomes an obsolete catalog entry and users get the
+    English source text.
+    """
+    return message
+
+
 def _gguf_scalar(val: Any) -> Any:
     """Extract Python scalar from a gguf reader field value.
 
@@ -54,12 +64,17 @@ SD_ERROR_TRANSLATIONS = {
     "sd-cli produced empty output": "Image generation produced empty output.",
     "sd-wrapper returned no image data": "sd-wrapper returned no image data.",
     "sd-wrapper returned no image": "sd-wrapper returned no image.",
-    "sd-cli timeout": "Image generation timeout ({timeout}s)",
+    # The sd-wrapper guards its own sd-cli run (services/sd_cpp/sd_wrapper.py):
+    # on timeout IT reports the error, so the message must not name FLAI's
+    # SD_CPP_TIMEOUT — that used to print 900 s while the wrapper had cut the
+    # run at 300 s (a live defect: a generation killed at 331 s announced
+    # "Image generation timeout (900s)").
+    "sd-cli timeout": "Image generation timed out. Try again later.",
     "Image editing failed": "Image editing failed. Try again later.",
     "Image editing produced empty output": "Image editing produced empty output.",
     "No edit prompt provided": "No editing instructions provided.",
     "No source image provided": "No source image provided.",
-    "sd-cli edit timeout": "Image editing timeout ({timeout}s)",
+    "sd-cli edit timeout": "Image editing timed out. Try again later.",
 }
 
 
@@ -286,6 +301,21 @@ def record_usage_for_current(prompt_tokens: int | None, completion_tokens: int |
 def current_usage_account_id() -> str | None:
     """Return the account id bound to this thread, or None."""
     return getattr(_USAGE_CURRENT, "account_id", None)
+
+
+def peek_usage_account() -> dict[str, Any] | None:
+    """Totals of the account bound to this thread, WITHOUT popping it.
+
+    Task-subsystem sub-task handlers (camera/vision) read the real token
+    totals this way before returning their result envelope: the per-request
+    account stays open for the ``_process_single_task`` cleanup clause.
+    """
+    account_id = getattr(_USAGE_CURRENT, "account_id", None)
+    if not account_id:
+        return None
+    with _USAGE_ACCOUNTS_LOCK:
+        entry = _USAGE_ACCOUNTS.get(account_id)
+        return dict(entry) if entry else None
 
 
 def finish_usage_account(account_id: str | None = None) -> dict[str, Any] | None:
@@ -652,6 +682,47 @@ def save_uploaded_file(
     except Exception as e:
         current_app.logger.error(f"Failed to save file {file_path}: {e}")
         return None
+
+
+def remove_uploaded_dir(session_id: str, upload_folder: str) -> int:
+    """Remove a session/task upload directory and return the freed byte count.
+
+    Task artifacts live in ``<upload_folder>/<task_id>/`` because the executor
+    queues every media subtask with the task id as its session id. Deleting the
+    task rows alone left those files (and their quota share) behind forever.
+    The helper is strictly contained inside ``upload_folder`` and never follows
+    symlinks.
+    """
+    if not session_id or ".." in session_id or "/" in session_id or "\\" in session_id:
+        return 0
+    try:
+        uuid.UUID(session_id, version=4)
+    except ValueError:
+        return 0
+    if not upload_folder:
+        return 0
+
+    base = os.path.realpath(upload_folder)
+    target = os.path.realpath(os.path.join(base, session_id))
+    if not target.startswith(base + os.sep) or not os.path.isdir(target):
+        return 0
+
+    freed = 0
+    for root, dirs, files in os.walk(target, topdown=False):
+        for name in files:
+            path = os.path.join(root, name)
+            try:
+                size = os.path.getsize(path)
+                os.remove(path)
+                freed += size
+            except OSError as e:
+                current_app.logger.warning(f"could not remove upload file {path}: {e}")
+        for name in dirs:
+            with contextlib.suppress(OSError):
+                os.rmdir(os.path.join(root, name))
+    with contextlib.suppress(OSError):
+        os.rmdir(target)
+    return freed
 
 
 def extract_text_from_file(file_path: str) -> str | None:
@@ -1102,6 +1173,22 @@ def validate_session_ownership(session_id: str, user_id: str) -> bool:
             return row is not None and row["user_id"] == user_id
     except Exception:
         return False
+
+
+def cancel_session_requests(session_id: str) -> int:
+    """Cancel the queued/in-flight requests of one chat session (best effort).
+
+    Called before the session rows are removed (web chat delete and public API
+    session delete): a request left running keeps the GPU and the queue slot, and
+    its answer lands in a chat that no longer exists.
+    """
+    if not session_id:
+        return 0
+    try:
+        return int(current_app.request_queue.cancel_session_tasks(session_id))
+    except Exception as e:  # noqa: BLE001 — the delete itself must go on
+        current_app.logger.warning(f"session cancel failed ({session_id}): {e}")
+        return 0
 
 
 def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
@@ -1622,7 +1709,8 @@ def _sd_error_translation_markers() -> None:
     gettext("Image editing produced empty output.")
     gettext("No editing instructions provided.")
     gettext("No source image provided.")
-    gettext("Image editing timeout ({timeout}s)")
+    gettext("Image generation timed out. Try again later.")
+    gettext("Image editing timed out. Try again later.")
 
 
 def clean_markdown_for_tts(text: str) -> str:
@@ -1658,7 +1746,7 @@ def clean_markdown_for_tts(text: str) -> str:
     # 8. Italic *...*
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     # 8b. Strip orphaned ** adjacent to letters
-    #     (survives after sentence-split fragments like **НН. / РУ**)
+    #     (survives after sentence-split fragments such as "**AB. / CD**")
     text = re.sub(r"(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])", "", text)
     # 9. Underline-bold __...__ (word-boundary guarded)
     text = re.sub(r"\b__(.+?)__\b", r"\1", text)

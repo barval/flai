@@ -810,6 +810,27 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
     return parsed
 
 
+_CHECKPOINT_SENTINELS = {
+    "unparseable checkpoint reply": "the verifier returned an unreadable verdict",
+    "checkpoint verification failed": "the verification could not be started",
+}
+
+
+def localize_checkpoint_explanation(explanation: str, lang: str = "ru") -> str:
+    """Translate an internal sentinel; keep a model-written reason as it is.
+
+    ``_parse_verdict`` reports failures in English so the executor can match
+    them. Those markers are internal and must never reach a user: the executor
+    stores the explanation in the step row and the task view prints it. Every
+    other explanation is the verifier's own wording, written in the requested
+    language already.
+    """
+    from app.llamacpp_client import _tr
+
+    msgid = _CHECKPOINT_SENTINELS.get(str(explanation or "").strip())
+    return _tr(msgid, lang=lang) if msgid else explanation
+
+
 def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "ru") -> dict[str, Any]:
     """Judge a step result against its readiness criterion (short reasoning call).
 
@@ -850,6 +871,7 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
             verdict = {"verdict": False, "explanation": "checkpoint verification failed"}
         finally:
             usage = finish_usage_account(account_id) or {}
+        verdict["explanation"] = localize_checkpoint_explanation(str(verdict.get("explanation") or ""), lang)
         verdict["exec_seconds"] = round(time.monotonic() - start, 2)
         # The verifier's model + real token usage. For a step whose content came
         # from a tool (calculate/search) this is the ONLY model call made for it,
@@ -917,6 +939,7 @@ def run_media_checkpoint(
             verdict = {"verdict": False, "explanation": "checkpoint verification failed"}
         finally:
             usage = finish_usage_account(account_id) or {}
+        verdict["explanation"] = localize_checkpoint_explanation(str(verdict.get("explanation") or ""), lang)
         verdict["exec_seconds"] = round(time.monotonic() - start, 2)
         config = get_model_config("reasoning") or {}
         verdict["model_name"] = str(config.get("model_name") or "")

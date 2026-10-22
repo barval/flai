@@ -1605,6 +1605,18 @@ msgstr ""
 msgid "step attempts exhausted"
 msgstr "step attempts exhausted"
 
+msgid "the step did not pass verification"
+msgstr "the step did not pass verification"
+
+msgid "no media file was produced by any attempt"
+msgstr "no media file was produced by any attempt"
+
+msgid "the verifier returned an unreadable verdict"
+msgstr "the verifier returned an unreadable verdict"
+
+msgid "the verification could not be started"
+msgstr "the verification could not be started"
+
 #: app/tasks/executor.py:3924
 msgid "Result of subtask expired while task was paused. Please restart the task."
 msgstr "Result of subtask expired while task was paused. Please restart the task."

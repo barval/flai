@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.7] — Unreleased
 
+### Fixed
+
+- **Task steps report failures in the user's language** — a step that never produces a file (a text step) is no longer closed with «all image attempts failed»: the reason now matches the step kind, the verifier's internal markers are translated before they reach the step view, and the last rejection is kept in the attempt log and the attempt counter.
+
 ## [v12.6] — 2026-10-22
 
 ### Added

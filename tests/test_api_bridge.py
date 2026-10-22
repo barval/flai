@@ -664,7 +664,7 @@ class TestNormalizeChatMessages:
         with pytest.raises(ApiImageRejectedError) as exc_info:
             normalize_chat_messages([{"role": "user", "content": [IMAGE_URL_PART, second, third]}])
         assert exc_info.value.msgid == "max_images_reached"
-        assert exc_info.value.msgid_args == ("2",)
+        assert exc_info.value.msgid_kwargs == {"max": "2"}
 
     @pytest.mark.parametrize(
         "url",

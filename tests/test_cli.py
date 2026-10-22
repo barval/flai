@@ -5,7 +5,11 @@ import json as _json
 import os
 from base64 import b64encode
 
+import pytest
+
 from tests.test_multi_attachment import PNG_1PX_RAW
+
+pytestmark = pytest.mark.requires_db
 
 
 class TestBackfillAttachmentPaths:
@@ -114,3 +118,62 @@ class TestBackfillAttachmentPaths:
             if p.get("file_path") and os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], p["file_path"]))
         ]
         assert not saved, "dry-run must not write any attachment file"
+
+
+class TestCleanupUploadsTaskMedia:
+    """cleanup-uploads must keep task-generated files (task_steps.extra.media)
+    referenced by running/completed tasks (whole-branch review, I6)."""
+
+    def _setup_upload(self, test_app, rel_path):
+        full = os.path.join(test_app.config["UPLOAD_FOLDER"], rel_path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(b"media-bytes")
+
+    def test_task_media_survives_cleanup(self, runner, test_app):
+        from app.database import get_db
+
+        with test_app.app_context():
+            from app.tasks import store
+
+            task_id = store.create_task("clitest", 3, "T", "ru", "neutral")
+            step_id = store.add_step(task_id=task_id, seq=1, kind="subtask", goal="draw", tool="image_gen")
+            store.update_step(
+                step_id,
+                extra={"subtask_queue_id": "q1", "media": {"file_path": "clitest/task-image.png"}},
+            )
+
+        self._setup_upload(test_app, "clitest/task-image.png")
+        self._setup_upload(test_app, "clitest/orphan.png")
+
+        result = runner.invoke(args=["cleanup-uploads"])
+
+        assert result.exit_code == 0, result.output
+        # The task media file survives; the true orphan is deleted.
+        assert os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], "clitest/task-image.png"))
+        assert not os.path.exists(os.path.join(test_app.config["UPLOAD_FOLDER"], "clitest/orphan.png"))
+        with test_app.app_context(), get_db() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM task_steps")
+            c.execute("DELETE FROM tasks")
+
+
+def test_storage_by_owner_sums_owned_dirs_and_skips_deleted(tmp_path):
+    """Quota recalculation counts only files that remain in owned directories."""
+    from app.cli import _storage_by_owner
+
+    owned = tmp_path / "aaaa"
+    owned.mkdir()
+    (owned / "keep.png").write_bytes(b"x" * 10)
+    (owned / "gone.png").write_bytes(b"y" * 5)
+    unknown = tmp_path / "bbbb"
+    unknown.mkdir()
+    (unknown / "orphan.png").write_bytes(b"z" * 3)
+
+    usage, unknown_dirs, unknown_bytes = _storage_by_owner(
+        str(tmp_path), {"aaaa": "alice"}, exclude={"aaaa/gone.png"}
+    )
+
+    assert usage == {"alice": 10}
+    assert unknown_dirs == 1
+    assert unknown_bytes == 3

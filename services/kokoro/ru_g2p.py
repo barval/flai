@@ -25,20 +25,20 @@ _PROJECT = Path(__file__).resolve().parent
 ACUTE = "́"
 
 # espeak IPA output -> Kokoro vocab. Discovered empirically; ru espeak never
-# emits the doc-claimed ʐ/ʑ for ж/щ (it uses ʒ/ɕ), but does emit these:
+# emits the doc-claimed ʐ/ʑ for "zh"/"shch" (it uses ʒ/ɕ), but does emit these:
 NORMALIZE = {
-    'u"': "u",  # espeak-internal centralized u leaks as literal u+quote (чу́вство)
-    "ɭ": "l",  # espeak's hard л
-    "ɵ": "o",  # stressed ё nucleus (jɵ -> jo)
-    "ʑ": "ʒ",  # rare, cross-morpheme assimilation (шестьдесят)
+    'u"': "u",  # espeak-internal centralized u leaks as literal u+quote ("chuvstvo")
+    "ɭ": "l",  # espeak's hard "l"
+    "ɵ": "o",  # stressed "yo" nucleus (jɵ -> jo)
+    "ʑ": "ʒ",  # rare, cross-morpheme assimilation ("shestdesyat")
     "ʐ": "ʒ",  # defensive; not observed for ru
-    "ʧʲ": "ʧ",  # ч is inherently soft; drop redundant palatalization mark
+    "ʧʲ": "ʧ",  # "ch" is inherently soft; drop redundant palatalization mark
 }
 
-# Word-final -ого/-его is pronounced -ово/-ево. espeak's rules handle the
-# unstressed ending, but stressed -о́го (его́, большо́го, того́...) is an open
+# The word-final "-ogo"/"-ego" ending is pronounced "-ovo"/"-evo". espeak's rules handle the
+# unstressed ending, but a stressed "-ogo" ("ego", "bolshogo", "togo"...) is an open
 # class the rules miss, so we respell all of them uniformly, minus the
-# adverbs/loans where г is really pronounced.
+# adverbs/loans where "g" is really pronounced.
 _OGO_BLACKLIST = {
     "много",
     "немного",
@@ -61,7 +61,7 @@ _OGO_BLACKLIST = {
 # lowercase Russian applied to the acute-marked text (acutes preserved by
 # substring position, so patterns avoid vowels where possible).
 _RESPELL_SUBSTR = [
-    ("солнц", "сонц"),  # со́лнце; солнечный has no ц and keeps л
+    ("солнц", "сонц"),  # "solntse"; "solnechny" has no "ts" and keeps "l"
     ("чувств", "чуств"),
     ("здравств", "здраств"),
     ("счастлив", "счаслив"),
@@ -70,13 +70,13 @@ _RESPELL_SUBSTR = [
     ("совестлив", "совеслив"),
 ]
 
-# чн -> шн exceptions (conservative core set; modern Russian keeps чн elsewhere),
+# "chn" -> "shn" exceptions (conservative core set; modern Russian keeps "chn" elsewhere),
 # plus three adverbs espeak mangles on its own.
 #
-# _OGO_BLACKLIST stops OUR -ого rule from firing on adverbs, but espeak's own
-# ru_rules also apply the change and ignore our blacklist, so дорого came out as
-# "dorovo". Respelling the ending to -га blocks espeak's rule and lands the
-# correct [g]; post-tonic а and о both reduce to [ə], so the vowel is unaffected.
+# _OGO_BLACKLIST stops OUR "-ogo" rule from firing on adverbs, but espeak's own
+# ru_rules also apply the change and ignore our blacklist, so "dorogo" came out as
+# "dorovo". Respelling the ending to "-ga" blocks espeak's rule and lands the
+# correct [g]; post-tonic "a" and "o" both reduce to [ə], so the vowel is unaffected.
 _RESPELL_WORD = {
     "дорого": "дорога",
     "недорого": "недорога",
@@ -101,7 +101,7 @@ _OGO_RE = re.compile(r"([а-яё́]*?[ое]́?)го(́?)$")
 # --- Vowel reduction (v2) -------------------------------------------------
 #
 # espeak's ru_rules do not implement akanye: standard Russian merges unstressed
-# а and о in pretonic position to a single [ɐ], but espeak keeps them apart and
+# "a" and "o" in pretonic position to a single [ɐ], but espeak keeps them apart and
 # splits them inconsistently across `a` and `ʌ`. Measured over the 26,506 v1
 # training lines, the SAME first-pretonic slot got `ʌ` 16,682 times and `a`
 # 9,128 times, and post-tonic split `ʌ` 25,840 / `a` 7,840 / `o` 509. Because a
@@ -112,11 +112,11 @@ _OGO_RE = re.compile(r"([а-яё́]*?[ое]́?)го(́?)$")
 # The mapping is positional, so it is derivable from the IPA string alone:
 #   first pretonic, or absolute word-initial  -> ɐ  (moderate reduction)
 #   anything else unstressed                  -> ə  (full reduction)
-#   after a palatalized consonant             -> ɪ  (unstressed я/е)
+#   after a palatalized consonant             -> ɪ  (unstressed "ya"/"ye")
 # ɐ, ə, ɪ and ː are all already in Kokoro's 114-symbol vocab; ɐ and ː were
 # entirely unused by v1.
 _VOWELS = set("aɑoeiuyʌəɪɐɛɨ")
-# Only the а/о-derived vowels reduce this way. `ɑ` and `o` are effectively the
+# Only the "a"/"o"-derived vowels reduce this way. `ɑ` and `o` are effectively the
 # stressed realizations (29,310 of 29,430 `ɑ` and 24,195 of 24,824 `o` in the v1
 # lists carried stress), but the unstressed stragglers are included so they are
 # normalized rather than left as a third tier.
@@ -136,7 +136,7 @@ def _reduce_token(tok: str) -> str:
     # counts too: those vowels are not reduced either.
     #
     # Except that espeak puts a spurious secondary stress on the reflexive ending
-    # -ться/-тся, emitting `ʦˌʌ` where Russian has an unstressed [ʦə]; that
+    # "-tsya"/"-tsya" ending, emitting `ʦˌʌ` where Russian has an unstressed [ʦə]; that
     # accounted for every residual third-tier vowel in the v1 lists (1,577 of
     # them, all reflexive verbs). Russian secondary stress falls on an EARLIER
     # element of a compound, so a `ˌ` sitting after the primary `ˈ` is an
@@ -162,9 +162,9 @@ def _reduce_token(tok: str) -> str:
         # Nearest following stress, so compounds with two marks classify each
         # pretonic slot against the stress it actually leans on.
         next_stress = next((s for s in stressed_ordinals if s > ordinal), None)
-        # Absolute-initial means the vowel itself opens the word (окно -> ɐknˈo),
-        # not merely that it is the first vowel: голова is [ɡəlɐˈva], because its
-        # о sits behind a consonant and is second-pretonic.
+        # Absolute-initial means the vowel itself opens the word (e.g. "okno" -> ɐknˈo),
+        # not merely that it is the first vowel: "golova" is [ɡəlɐˈva], because its
+        # "o" sits behind a consonant and is second-pretonic.
         absolute_initial = i == 0
         chars[i] = "ɐ" if next_stress == ordinal + 1 or absolute_initial else "ə"
 
@@ -181,7 +181,7 @@ def reduce_vowels(ps: str) -> str:
 
 
 def lengthen_sch(ps: str) -> str:
-    """щ (and сч/зч, which respell to it) is long [ɕː] in Russian; espeak emits
+    """The "shch" sound (and "sch"/"zch", which respell to it) is long [ɕː] in Russian; espeak emits
     a short [ɕ] and never emits `ː` at all."""
     return _SCH_RE.sub("ɕː", ps)
 

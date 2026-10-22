@@ -4,7 +4,7 @@ from flask_babel import gettext as _
 
 from app import db
 from app.database import get_db
-from app.utils import get_current_time_in_timezone_for_db, validate_session_ownership
+from app.utils import cancel_session_requests, get_current_time_in_timezone_for_db, validate_session_ownership
 
 bp = Blueprint("sessions", __name__, url_prefix="/api")
 
@@ -175,6 +175,11 @@ def api_delete_session(session_id):
     if not validate_session_ownership(session_id, session["login"]):
         current_app.logger.warning(f"User {session['login']} attempted to delete session {session_id}")
         return jsonify({"error": _("Session not found or access denied")}), 404
+
+    # Cancel the chat's own queued/in-flight requests first: a running one keeps
+    # the GPU and the queue slot, and would write its answer into the session
+    # that is being removed (best effort — never blocks the delete).
+    cancel_session_requests(session_id)
 
     success = db.delete_session_and_messages(
         session_id, session["login"], upload_folder=current_app.config["UPLOAD_FOLDER"]

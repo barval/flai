@@ -125,7 +125,9 @@ class TestBulkBar:
         assert "doc.file_size" in CHAT_DOCS
 
     def test_bulk_size_format_in_translation(self):
-        assert "Selected documents: {count} ({size})" in CHAT_HTML
+        assert "Selected: {count} ({size})" in CHAT_HTML
+        # The shortened label must fit the bar's one-line layout (user request).
+        assert "Selected documents" not in CHAT_HTML
 
     def test_move_button_icons_fit_one_line(self):
         # two glyphs must not wrap inside the narrow per-document button

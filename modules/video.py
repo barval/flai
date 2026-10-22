@@ -343,7 +343,11 @@ class VideoModule(TranslationMixin):
             # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
             # with _resolve_use_gpu() below.
             swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-            deadline = time.time() + 15
+            # A busy GPU is waited out, not reported as a failure: a hardcoded
+            # 15 s deadline failed video generation while a 12 GB reasoning model
+            # was still unloading (same class of bug as ensure_vram_for).
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
+            deadline = time.time() + timeout
             video_needed = rm.estimate_video_vram_needed() + 1000
             while time.time() < deadline:
                 rm._poll_vram()
@@ -369,7 +373,7 @@ class VideoModule(TranslationMixin):
                     "is below safe threshold ({need} MB). Please try again later or simplify the request.",
                     lang,
                 ).format(free=free, need=video_needed)
-                self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
+                self.logger.warning(f"VRAM wait timeout ({timeout}s) — free={free}MB, models={loaded}")
                 return {"success": False, "error": err_msg}
 
             use_gpu = self._resolve_use_gpu(rm)
@@ -387,8 +391,6 @@ class VideoModule(TranslationMixin):
             self.logger.info(
                 f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
             )
-
-        rm.mark_video_busy()
 
         # Cap video resolution ONLY when VRAM is insufficient.
         # Default policy: 240 frames at 768×512 (10-sec video @ 24fps).
@@ -426,6 +428,7 @@ class VideoModule(TranslationMixin):
         image_data, resized_info = resize_video_source_image(image_data)
 
         try:
+            rm.mark_video_busy()
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
                 "negative_prompt": prompt_data.get("negative_prompt", DEFAULT_VIDEO_NEGATIVE_PROMPT),
@@ -477,6 +480,7 @@ class VideoModule(TranslationMixin):
                     "generation_time": result.get("generation_time", 0),
                     "seed": result.get("seed", 0),
                     "metadata": result.get("metadata", {}),
+                    "preview_data": result.get("preview_data", ""),
                     "resized": resized_info["resized"],
                     "original_size": resized_info["original_size"],
                     "new_size": resized_info["new_size"],

@@ -85,6 +85,74 @@ class TestReasoningStreamFilter:
             assert candidate.startswith(emitted)  # no retraction
         f.flush()
 
+    def test_marker_inside_the_answer_does_not_splice_it(self):
+        """A marker phrase in the answer body must not drop buffered text.
+
+        Regression (2026-10-16): the filter moved ``start`` forward to the last
+        marker, permanently discarding the text buffered between ``_emitted``
+        and that marker, so the streamed answer came out spliced.
+        """
+        cot = "Let me think about this. "
+        answer = "first part of the answer. " * 10 + "Review the columns. " + "second part of the answer. " * 10
+        text = cot + answer
+        out = self._stream(text, step=20, hold=100)
+        assert text.endswith(out), "the stream must stay a contiguous suffix of the reply"
+        assert "first part of the answer." in out
+        assert "second part of the answer." in out
+
+    def test_json_answer_is_streamed_unchanged(self):
+        """A serialized answer full of marker phrases survives the stream intact.
+
+        Regression (2026-10-16): the task-plan JSON carried "Analyze attached
+        images…" / "Identify commonalities…" in its title and goals; the marker
+        strip spliced it and the planner reported an unreadable plan.
+        """
+        plan = (
+            '{"title": "Analyze attached images for similarities and differences", "steps": ['
+            '{"seq": 1, "goal": "Extract a detailed description of everything visible plus all text '
+            'in aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png.", "tool": "vision", '
+            '"checkpoint_criteria": "described.", "user_input_expected": false}, '
+            '{"seq": 2, "goal": "Identify commonalities and differences between the four images", '
+            '"tool": "llm", "checkpoint_criteria": "compared.", "user_input_expected": false}]}'
+        )
+        assert self._stream(plan, step=7) == plan
+
+
+class TestStripGenericReasoningStructured:
+    """The non-stream twin must never cut a structured (serialized) answer."""
+
+    def test_json_answer_is_returned_unchanged(self):
+        from app.llamacpp_client import _strip_generic_reasoning
+
+        plan = (
+            '{"title": "Analyze attached images for similarities and differences", "steps": ['
+            '{"goal": "Identify commonalities and differences between the four images", '
+            '"tool": "llm", "checkpoint_criteria": "compared."}]}'
+        )
+        assert _strip_generic_reasoning(plan) == plan
+
+    def test_fenced_json_answer_is_returned_unchanged(self):
+        from app.llamacpp_client import _strip_generic_reasoning
+
+        fenced = (
+            '```json\n{"verdict": true, "explanation": "Analyze the chart. Review the columns and the '
+            'legend — they agree with each other across all four files."}\n```'
+        )
+        assert _strip_generic_reasoning(fenced) == fenced
+
+    def test_plain_text_cot_is_still_stripped(self):
+        from app.llamacpp_client import _strip_generic_reasoning
+
+        cot = (
+            "Let me review the user request carefully. "
+            "The user asked to fix the white screen. "
+            "Final Answer: here is the corrected page that the user sees — it replaces the empty white "
+            "screen the user reported and it renders the whole application correctly after the fix lands."
+        )
+        out = _strip_generic_reasoning(cot)
+        assert "Let me review" not in out
+        assert "here is the corrected page" in out
+
 
 class TestExtractErrorMessage:
     """Pure-function tests for _extract_error_message."""

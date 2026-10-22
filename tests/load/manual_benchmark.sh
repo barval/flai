@@ -21,7 +21,7 @@ for i in $(seq 1 $ITERATIONS); do
     echo -n "Iteration $i: "
     time curl -s -X POST http://localhost:5000/api/chat \
         -H "Content-Type: application/json" \
-        -d '{"message":"Привет","session_id":null}' | \
+        -d '{"message":"Hello","session_id":null}' | \
         jq -r '.response' 2>/dev/null | head -c 50
     echo ""
 done
@@ -33,7 +33,7 @@ for i in $(seq 1 $ITERATIONS); do
     echo -n "Iteration $i: "
     time curl -s -X POST http://localhost:5000/api/chat \
         -H "Content-Type: application/json" \
-        -d '{"message":"Сколько будет 2+2?","session_id":null,"use_reasoning":true}' | \
+        -d '{"message":"What is 2+2?","session_id":null,"use_reasoning":true}' | \
         jq -r '.response' 2>/dev/null | head -c 50
     echo ""
 done
@@ -45,7 +45,7 @@ for i in $(seq 1 $ITERATIONS); do
     echo -n "Iteration $i: "
     time curl -s -X POST http://localhost:5000/api/image/generate \
         -H "Content-Type: application/json" \
-        -d '{"prompt":"кот"}' | \
+        -d '{"prompt":"cat"}' | \
         jq -r '.image_url // .error' 2>/dev/null | head -c 50
     echo ""
 done

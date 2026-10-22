@@ -52,7 +52,7 @@ class TestTokenize:
         from slm_http import _tokenize
 
         tokens = _tokenize("кот и я O X")
-        # "кот" = 3 chars ✓, "и" = stopword, "я" = stopword, "O"/"X" = 1 char
+        # the Russian word for "cat" = 3 chars ✓, the words for "and"/"I" = stopwords, "O"/"X" = 1 char
         assert tokens == ["кот"]
 
     def test_numbers_kept(self):

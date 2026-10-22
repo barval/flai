@@ -95,7 +95,7 @@ A reasoning mode for serious work across multiple documents: comparing contracts
 
 ### How many files can I attach to one chat message?
 
-Up to **4 images** plus one document, or one audio file, or one voice recording (voice + one image is also allowed). Images attach as thumbnails (no taller than the Send button), documents/audio/voice as emoji chips. A chat-attached document is saved to your Documents and indexed through the normal RAG pipeline, so the model answers questions about it; scanned PDFs are OCR-recognized with a 30-minute budget per document (`OCR_TIME_BUDGET_S`). Limits: image 5 MB, document 25 MB, request body 75 MB.
+Up to **4 images** plus one document, or up to **4 audio items** — one voice recording and several audio files (1 voice + 3 files, or 4 files; voice + one image is also allowed). Images attach as thumbnails (no taller than the Send button), documents/audio/voice as emoji chips. A chat-attached document is saved to your Documents and indexed through the normal RAG pipeline, so the model answers questions about it; scanned PDFs are OCR-recognized with a 30-minute budget per document (`OCR_TIME_BUDGET_S`). Every audio item is transcribed in order and the transcripts, together with your typed text, form the question — an audio message is always answered. Limits: image 5 MB, audio 4 MB (voice 5 MB), document 25 MB, audio items per message 4 (`MAX_CHAT_AUDIO`), request body 75 MB.
 
 ### Can I stop a running task?
 

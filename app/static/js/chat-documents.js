@@ -10,6 +10,8 @@ let documentQueuePositions = {};
 let selectedDocIds = new Set(); // documents checked for bulk operations
 let activeFolderPicker = null; // open folder picker menu element
 let draggedDocId = null;
+let previewDocId = null; // document open in the main-window preview
+let previewDocName = '';
 
 // Documents selected for the RLM "Deep analysis" toggle. Clicking a
 // document in the sidebar list toggles it; the choice is mirrored into
@@ -19,6 +21,27 @@ let rlmSelectedDocs = new Set();
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
     const view = currentView;
+    // The preview lives in the main window and belongs to the Documents tab:
+    // any other tab (or a task/session) restores the chat/task window.
+    if (view !== 'documents') closeDocumentPreview();
+    // The Tasks tab owns the main window too: the empty task state when no
+    // task is selected (chat-tasks.js), the task conversation otherwise.
+    // Only the Sessions tab restores the chat conversation — the Documents
+    // tab is a sidebar view, so the main window keeps whatever was open
+    // (an active task stays open, a chat stays the chat) until a document
+    // is clicked.
+    if (typeof enterTasksEmptyState === 'function' && typeof leaveTasksView === 'function') {
+        if (view === 'tasks') {
+            if (!window.currentTaskId) {
+                // Reopen the last task (tab switch or page reload); the empty
+                // state is the fallback when there is nothing to restore.
+                if (typeof restoreTasksView === 'function') restoreTasksView();
+                else enterTasksEmptyState();
+            }
+        } else if (view === 'sessions' && typeof isTaskViewActive === 'function' && isTaskViewActive()) {
+            leaveTasksView();
+        }
+    }
     // Update tab styling
     document.querySelectorAll('.header-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -29,17 +52,38 @@ function applyCurrentView() {
     // Show/hide lists
     const sessionsList = document.getElementById('sessions-list');
     const documentsList = document.getElementById('documents-list');
+    const tasksList = document.getElementById('tasks-list');
     if (view === 'sessions') {
         sessionsList.classList.add('active');
         sessionsList.style.display = 'block';
         documentsList.classList.remove('active');
         documentsList.classList.add('hidden');
-    } else {
+        if (tasksList) {
+            tasksList.classList.remove('active');
+            tasksList.classList.add('hidden');
+        }
+    } else if (view === 'documents') {
         sessionsList.classList.remove('active');
         sessionsList.style.display = 'none';
         documentsList.classList.remove('hidden');
         documentsList.classList.add('active');
+        if (tasksList) {
+            tasksList.classList.remove('active');
+            tasksList.classList.add('hidden');
+        }
         loadDocuments(); // immediate load (no polling — SSE handles updates)
+    } else if (view === 'tasks') {
+        sessionsList.classList.remove('active');
+        sessionsList.style.display = 'none';
+        documentsList.classList.remove('active');
+        documentsList.classList.add('hidden');
+        if (tasksList) {
+            tasksList.classList.remove('hidden');
+            tasksList.classList.add('active');
+        }
+        if (typeof loadTasksFromServer === 'function') {
+            loadTasksFromServer(); // immediate load (no polling — SSE handles updates)
+        }
     }
 }
 
@@ -374,6 +418,14 @@ function updateRlmToggleCount() {
 }
 
 function attachDocumentEventHandlers() {
+    // A click on the document card (not on the checkbox or the action buttons)
+    // opens the read-only preview in the main window.
+    document.querySelectorAll('.document-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            if (e.target.closest('.document-checkbox, .document-actions, button, input, label')) return;
+            openDocumentPreview(this.dataset.documentId, this.dataset.documentName || '');
+        });
+    });
     document.querySelectorAll('.delete-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -764,6 +816,217 @@ function showFolderPicker(anchor, onPick) {
     document.addEventListener('keydown', onKeyDown);
 }
 
+// ---------------------------------------------------------------------------
+// Document preview (main window, Documents tab)
+// ---------------------------------------------------------------------------
+
+function setPreviewMode(active, name) {
+    const chatTitle = document.getElementById('chat-title-text');
+    const taskTitle = document.getElementById('task-title-text');
+    const previewTitle = document.getElementById('preview-title-text');
+    const contextInfo = document.getElementById('context-info');
+    const statusCounter = document.getElementById('status-counter');
+    const styleLabel = document.querySelector('.response-style-label');
+    const styleDropdown = document.querySelector('.response-style-dropdown');
+    const divider = document.querySelector('.header-divider');
+    const saveChat = document.getElementById('save-chat-button');
+    const saveDocument = document.getElementById('save-document-button');
+    const stopTask = document.getElementById('stop-task-button');
+    const retryTask = document.getElementById('retry-task-button');
+    const cancelStream = document.getElementById('cancel-stream-header');
+    const messages = document.getElementById('chat-messages');
+    const preview = document.getElementById('document-preview');
+    const rlmControls = document.querySelector('.rlm-controls');
+    const inputArea = document.querySelector('.message-input');
+
+    if (active) {
+        document.body.classList.add('document-preview-mode');
+        if (chatTitle) chatTitle.classList.add('hidden');
+        if (taskTitle) taskTitle.classList.add('hidden');
+        if (previewTitle) {
+            previewTitle.classList.remove('hidden');
+            previewTitle.textContent = formatString(t('document_preview_title'), { name });
+            previewTitle.title = name;
+        }
+        if (contextInfo) contextInfo.style.display = 'none';
+        if (statusCounter) statusCounter.style.display = 'none';
+        if (styleLabel) styleLabel.style.display = 'none';
+        if (styleDropdown) styleDropdown.style.display = 'none';
+        if (divider) divider.style.display = 'none';
+        if (saveChat) saveChat.style.display = 'none';
+        if (saveDocument) saveDocument.style.display = 'inline-flex';
+        if (stopTask) stopTask.style.display = 'none';
+        if (retryTask) retryTask.style.display = 'none';
+        if (cancelStream) cancelStream.style.display = 'none';
+        if (messages) messages.classList.add('hidden');
+        if (preview) preview.classList.remove('hidden');
+        if (rlmControls) rlmControls.style.display = 'none';
+        if (inputArea) inputArea.style.display = 'none';
+    } else {
+        document.body.classList.remove('document-preview-mode');
+        if (chatTitle) chatTitle.classList.remove('hidden');
+        if (taskTitle) taskTitle.classList.add('hidden');
+        if (previewTitle) {
+            previewTitle.classList.add('hidden');
+            previewTitle.textContent = '';
+            previewTitle.title = '';
+        }
+        if (contextInfo) contextInfo.style.display = '';
+        if (statusCounter) statusCounter.style.display = '';
+        if (styleLabel) styleLabel.style.display = '';
+        if (styleDropdown) styleDropdown.style.display = '';
+        if (divider) divider.style.display = '';
+        if (saveChat) saveChat.style.display = '';
+        if (saveDocument) saveDocument.style.display = 'none';
+        if (stopTask) stopTask.style.display = '';
+        if (retryTask) retryTask.style.display = 'none';
+        if (cancelStream) cancelStream.style.display = '';
+        if (messages) messages.classList.remove('hidden');
+        if (preview) {
+            preview.classList.add('hidden');
+            preview.innerHTML = '';
+        }
+        if (rlmControls) rlmControls.style.display = '';
+        if (inputArea) inputArea.style.display = '';
+    }
+}
+
+function closeDocumentPreview() {
+    if (!previewDocId) return;
+    previewDocId = null;
+    previewDocName = '';
+    setPreviewMode(false, '');
+}
+
+// The header buttons belong to the preview while a document is open; the chat
+// stream callbacks must not re-show the chat 💾 next to the preview's own 💾.
+function isDocumentPreviewActive() {
+    return !!previewDocId;
+}
+window.isDocumentPreviewActive = isDocumentPreviewActive;
+
+function openDocumentPreview(docId, docName) {
+    if (!docId) return;
+    // The preview is its own main-window mode; a task view must release it.
+    if (typeof closeTaskView === 'function') closeTaskView(true);
+    const sidebar = document.querySelector('.sessions-sidebar');
+    if (sidebar) sidebar.classList.remove('panel-open');
+    previewDocId = docId;
+    previewDocName = docName;
+    setPreviewMode(true, docName);
+    const saveButton = document.getElementById('save-document-button');
+    if (saveButton) {
+        saveButton.onclick = function() {
+            if (previewDocId) window.location.href = '/api/documents/' + encodeURIComponent(previewDocId);
+        };
+    }
+    const box = document.getElementById('document-preview');
+    if (box) box.textContent = '…';
+    fetch('/api/documents/' + encodeURIComponent(docId) + '/preview')
+        .then(res => res.json().catch(() => ({})))
+        .then(data => {
+            if (!previewDocId || previewDocId !== docId) return; // another doc opened meanwhile
+            renderDocumentPreview(data);
+        })
+        .catch(err => {
+            if (box) box.textContent = t('document_preview_failed') + ': ' + err.message;
+        });
+}
+
+function renderDocumentPreview(data) {
+    const box = document.getElementById('document-preview');
+    if (!box) return;
+    box.innerHTML = '';
+    if (data.error) {
+        box.textContent = data.error;
+        return;
+    }
+    if (data.kind === 'text') {
+        if (data.extracted) {
+            const note = document.createElement('div');
+            note.className = 'document-preview-note';
+            note.textContent = 'ℹ️ ' + t('document_extracted_text');
+            box.appendChild(note);
+        }
+        const pre = document.createElement('pre');
+        pre.className = 'document-preview-text';
+        pre.textContent = data.text || '';
+        box.appendChild(pre);
+    } else if (data.kind === 'pdf') {
+        const openLink = document.createElement('a');
+        openLink.className = 'document-preview-open';
+        openLink.href = data.url;
+        openLink.target = '_blank';
+        openLink.rel = 'noopener';
+        openLink.textContent = '↗ ' + t('document_open_pdf');
+        box.appendChild(openLink);
+        const pages = Number(data.pages) || 0;
+        const maxPages = Number(data.max_pages) || pages;
+        const mobile = typeof window.isMobileViewport === 'function' && window.isMobileViewport();
+        if (mobile) {
+            // Chrome for Android cannot render a PDF in an iframe (it shows
+            // «This content is blocked»); the server renders page images.
+            if (pages > 0) {
+                const pagesBox = document.createElement('div');
+                pagesBox.className = 'document-preview-pages';
+                const last = Math.min(pages, maxPages);
+                for (let n = 1; n <= last; n += 1) {
+                    const pageImg = document.createElement('img');
+                    pageImg.className = 'document-preview-page';
+                    pageImg.loading = 'lazy';
+                    pageImg.src = (data.page_url || '') + n;
+                    pageImg.alt = (data.filename || '') + ' — ' + n;
+                    pagesBox.appendChild(pageImg);
+                }
+                box.appendChild(pagesBox);
+                if (pages > last) {
+                    const note = document.createElement('div');
+                    note.className = 'document-preview-note';
+                    note.textContent = 'ℹ️ ' + formatString(t('document_preview_pages_capped'), { n: last });
+                    box.appendChild(note);
+                }
+            } else {
+                const note = document.createElement('div');
+                note.className = 'document-preview-note';
+                note.textContent = t('document_preview_unavailable');
+                box.appendChild(note);
+            }
+        } else {
+            const frame = document.createElement('iframe');
+            frame.className = 'document-preview-frame';
+            frame.src = data.url;
+            frame.title = data.filename || '';
+            box.appendChild(frame);
+        }
+    } else if (data.kind === 'binary' && data.url) {
+        if (String(data.mime || '').startsWith('image/')) {
+            const img = document.createElement('img');
+            img.className = 'document-preview-image';
+            img.src = data.url;
+            img.alt = data.filename || '';
+            box.appendChild(img);
+        } else {
+            const frame = document.createElement('iframe');
+            frame.className = 'document-preview-frame';
+            frame.src = data.url;
+            frame.title = data.filename || '';
+            box.appendChild(frame);
+        }
+    } else {
+        box.textContent = t('document_preview_unavailable');
+    }
+    if (data.truncated) {
+        const note = document.createElement('div');
+        note.className = 'document-preview-note';
+        note.textContent = 'ℹ️ ' + t('document_preview_truncated');
+        box.appendChild(note);
+    }
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && previewDocId) closeDocumentPreview();
+});
+
 function attachDocumentDragAndDrop() {
     document.removeEventListener('dragstart', onDocumentDragStart);
     document.removeEventListener('dragend', onDocumentDragEnd);
@@ -950,7 +1213,7 @@ function initDocumentsView() {
     const login = window.CURRENT_USER_LOGIN;
     if (login) {
         const savedView = localStorage.getItem(`current_view_${login}`);
-        if (savedView && ['sessions', 'documents'].includes(savedView)) {
+        if (savedView && ['sessions', 'documents', 'tasks'].includes(savedView)) {
             currentView = savedView;
         }
     }

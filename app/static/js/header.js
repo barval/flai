@@ -33,13 +33,14 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Mobile layout: the language dropdown shows only «Ру»/«En» and the voice
+// Mobile layout: the language dropdown shows only the native short labels
+// and the voice
 // gender / theme buttons live in the footer row (left / right corner).
 function isMobileLayout() {
     return window.matchMedia('(max-width: 768px)').matches;
 }
 
-// Mobile: hide the native select, show the custom dropdown (toggle «Ру ▾» +
+// Mobile: hide the native select, show the custom dropdown (short toggle +
 // a menu listing the full names). Desktop: the select alone. The menu always
 // starts closed; [hidden] is honoured via CSS rules, not UA defaults.
 function applyCompactLangOptions(compact) {
@@ -53,7 +54,7 @@ function applyCompactLangOptions(compact) {
     });
 }
 
-// Short label for the closed toggle: «Ру ▾» / «En ▾» from the select's
+// Short label for the closed toggle, taken from the select's
 // data-short attributes (authoritative, matches the option language).
 function langShortLabel(box) {
     const select = box.querySelector('select');
@@ -63,7 +64,7 @@ function langShortLabel(box) {
 }
 
 // Wire the custom mobile language dropdown: the toggle shows the short label,
-// the menu lists the full names («Русский»/«English»).
+// the menu lists each language under its native full name.
 function initLangDropdown() {
     document.querySelectorAll('.language-switcher').forEach(box => {
         const toggle = box.querySelector('.lang-toggle');

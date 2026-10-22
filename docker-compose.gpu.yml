@@ -27,6 +27,8 @@ services:
       - ./modules:/app/modules
       - ./prompts:/app/prompts
       - ./translations:/app/translations
+      # Single-file mount so gunicorn config edits hot-reload (no rebuild)
+      - ./gunicorn_config.py:/app/gunicorn_config.py:ro
     runtime: nvidia
     group_add:
       - "988"  # Docker socket group — needed for `docker restart` from inside container

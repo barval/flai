@@ -109,7 +109,7 @@ The endpoint takes `text`, optional `language` (`en` default) and `gender` (`mal
 ```bash
 curl -X POST http://localhost:8888/tts \
   -H "Content-Type: application/json" \
-  -d '{"text": "Привет, мир", "language": "ru", "gender": "male"}' \
+  -d '{"text": "Privet, mir", "language": "ru", "gender": "male"}' \
   --output speech.mp3
 ```
 

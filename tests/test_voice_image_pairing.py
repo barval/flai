@@ -21,9 +21,13 @@ AUDIO_B64 = base64.b64encode(b"\x1a\x45\xdf\xa3-fake-audio-bytes").decode()
 class TestVoiceImagePairing:
     def test_pairing_checks_both_voice_field_and_legacy_slot(self):
         # voice+image: the voice may be in "voice" (image in legacy slot) OR
-        # in the legacy slot (image in multi parts)
-        assert "audio_file_data = voice_file_data or file_data" in MESSAGES
-        assert "Voice in the legacy slot" in MESSAGES
+        # in the legacy slot (image in multi parts). Audio items are collected
+        # from both places first; the image is then taken from whichever slot
+        # holds one (the legacy slot, else the multi queue).
+        assert "if voice_file_data:" in MESSAGES
+        assert "audios.extend(" in MESSAGES
+        assert 'file_type.startswith("image/")' in MESSAGES
+        assert "elif extra_images:" in MESSAGES
 
     def test_transcribe_task_passes_image_list(self):
         # The requeue must carry every image, not only the legacy single slot

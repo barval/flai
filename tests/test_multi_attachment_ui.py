@@ -147,14 +147,34 @@ class TestExportAllAttachments:
         m = next(ln for ln in CHAT_CSS.split("\n") if ln.strip().startswith("height: 38px"))
         assert "38px" in m
 
+    def test_audio_cap_is_enforced_with_a_translated_toast(self):
+        # A recorded voice is one of the audio items: 1 voice + 3 files (or 4
+        # files) is the cap, and the excess gets a toast, not a silent drop.
+        assert "MAX_CHAT_AUDIO" in CHAT_INIT
+        assert "audioAttachmentCount" in CHAT_INIT
+        assert "hasRecordedVoice" in CHAT_INIT
+        assert "max_audio_reached" in CHAT_INIT
+        assert "window.FLAI_MAX_CHAT_AUDIO" in CHAT_HTML
+        recording = pathlib.Path("app/static/js/chat-recording.js").read_text(encoding="utf-8")
+        assert "MAX_CHAT_AUDIO" in recording, "recording must respect the audio cap"
+
 
 class TestTranslations:
     def test_new_keys_in_both_catalogs(self):
         ru = pathlib.Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
         en = pathlib.Path("translations/en/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
-        for key in ("max_images_reached", "remove_file"):
+        for key in ("max_images_reached", "max_audio_reached", "remove_file"):
             assert f'msgid "{key}"' in ru, key
             assert f'msgid "{key}"' in en, key
+
+    def test_cap_placeholders_survive_translation(self):
+        # The callers apply .format(max=…) to the translated string, so both
+        # catalogs must keep the {max} placeholder.
+        for key in ("max_images_reached", "max_audio_reached"):
+            for path in ("translations/ru/LC_MESSAGES/messages.po", "translations/en/LC_MESSAGES/messages.po"):
+                catalog = pathlib.Path(path).read_text(encoding="utf-8")
+                block = catalog[catalog.index(f'msgid "{key}"') :][:200]
+                assert "{max}" in block, (path, key)
 
     def test_ru_cap_message_translated(self):
         ru = pathlib.Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
@@ -178,3 +198,13 @@ class TestNoCyrillicInJs:
 
         cyr = [ln for ln in CHAT_MESSAGES.split("\n") if re.search(r"[А-Яа-яЁё]", ln)]
         assert cyr == [], cyr[:3]
+
+
+class TestSendJsonErrors:
+    def test_json_error_is_rendered_and_optimistic_message_removed(self):
+        """A quota/size rejection ({error: ...}) must reach the chat and drop
+        the unsaved optimistic message instead of failing silently."""
+        assert "if (!response.ok || data.error)" in CHAT_INIT
+        assert "data.error.trim()" in CHAT_INIT
+        assert "rawError.startsWith('⚠️')" in CHAT_INIT
+        assert 'orphan.remove()' in CHAT_INIT

@@ -198,18 +198,18 @@ class TestBrandingTemplateVars:
         html = resp.get_data(as_text=True)
         assert "logo-header.png" in html  # built-in logo while no custom one
         assert "/admin/api/branding/logo" not in html
-        # Default header name / tab title: the localized short brand (ПЛИИ / FLAI).
+        # Default header name / tab title: the localized short brand ("FLAI").
         assert "<title>ПЛИИ</title>" in html
         assert ">ПЛИИ</h1>" in html
         assert "Полностью Локальный ИИ" not in html.split("footer-about-modal")[0].split("<footer>")[0]
 
     def test_placeholder_hints_are_language_independent(self, admin_client):
-        """RU field hints ПЛИИ, EN field hints FLAI — in every profile language."""
+        """RU field hints show the Russian brand, EN field hints show FLAI — in every profile language."""
         with admin_client.session_transaction() as sess:
             sess["language"] = "ru"
         resp = admin_client.get("/admin/")
         html = resp.get_data(as_text=True)
-        # Both hints render regardless of profile language: RU→ПЛИИ, EN→FLAI.
+        # Both hints render regardless of profile language: RU→brand, EN→FLAI.
         ru_field = html[html.find('id="branding-name-ru"') :]
         en_field = html[html.find('id="branding-name-en"') :]
         assert 'placeholder="ПЛИИ"' in ru_field[:400]

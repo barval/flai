@@ -49,11 +49,11 @@ def generate_room_name_forms(name: str) -> list[str]:
     Deduplicates forms (e.g. masculine nouns where nomn == accs).
 
     For adjectives (ADJF/ADJS), filters lexeme by the gender of the original
-    word to avoid returning wrong-gender forms (e.g. "детская" → femn forms
-    only, not masc "детский").
+    word to avoid returning wrong-gender forms (e.g. "detskaya" → feminine forms
+    only, not the masculine "detskiy").
 
     Args:
-        name: Room name in lowercase nominative case (e.g. "кухня").
+        name: Room name in lowercase nominative case (e.g. "kukhnya").
 
     Returns:
         List of unique forms ordered as nomn → accs → loct.

@@ -1,5 +1,5 @@
 # app/routes/chat.py
-from flask import Blueprint, current_app, redirect, render_template, session, url_for
+from flask import Blueprint, current_app, make_response, redirect, render_template, session, url_for
 
 from app.db import get_user_documents, get_user_sessions
 
@@ -43,10 +43,18 @@ def chat():
         "model_name"
     ) or current_app.config.get("EMBEDDING_MODEL", "")
 
-    return render_template(
-        "chat.html",
-        sessions=sessions,
-        documents=documents,
-        current_session=session.get("current_session"),
-        embedding_model=embedding_model,
+    response = make_response(
+        render_template(
+            "chat.html",
+            sessions=sessions,
+            documents=documents,
+            current_session=session.get("current_session"),
+            embedding_model=embedding_model,
+        )
     )
+    # The template carries the per-start STATIC_VERSION in every script URL:
+    # a cached page would keep loading the OLD chat-tasks.js after a deploy
+    # (live: the «1)» request still rendered as a markdown list until Ctrl+F5).
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response

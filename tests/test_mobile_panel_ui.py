@@ -55,7 +55,9 @@ class TestMobilePanel:
     def test_closed_panel_hides_lists(self):
         # Closed panel (default): lists hidden entirely, chat fills the area
         # from the tab header down to the footer.
-        idx = CHAT_CSS.find("    .sessions-list,\n    .documents-list {\n        display: none !important;")
+        idx = CHAT_CSS.find(
+            "    .sessions-list,\n    .documents-list,\n    .tasks-list {\n        display: none !important;"
+        )
         assert idx != -1
         # The open-panel rule must re-show the active list above the hide rule
         open_idx = CHAT_CSS.find(".sessions-sidebar.panel-open .sessions-list.active")

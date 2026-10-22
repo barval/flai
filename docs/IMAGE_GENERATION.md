@@ -18,7 +18,9 @@ SD_MODEL_TYPE=z_image_turbo
 
 **«Draw something similar» with references** — attach example images to a generation request (in chat, or via `image_references` on `POST /v1/images/generations`). Each example is described by the multimodal model, the descriptions are prepended to the SD prompt as reference examples («Reference examples (draw something similar):»), and the real width×height of the reference is appended — the generation template gives the example's aspect ratio priority over the subject-based format rule. SD itself receives text only.
 
-An image-attached chat message such as *«нарисуй что-то похожее»* is classified by the multimodal model into a dedicated `[-IMAGE-]` option (create a NEW similar image, distinct from `[-IMAGE-EDIT-]`), and the two image-chat handlers route it straight to generation with the attached examples.
+An image-attached chat message such as *«draw something similar»* is classified by the multimodal model into a dedicated `[-IMAGE-]` option (create a NEW similar image, distinct from `[-IMAGE-EDIT-]`), and the two image-chat handlers route it straight to generation with the attached examples.
+
+**Quoted dialogue is not lettering.** Scene text often carries dialogue (for example, `"I will return by morning"`). Before the prompt builder, `strip_speech_for_image()` removes such quotes (and the `saying …` clause) unless the request explicitly asks for an inscription/sign/text; the final SD prompt then gets a positive `clean illustration without any text, letters, numbers, captions or watermarks` clause. The same rule is in both prompt templates. Without it the diffusion model tried to paint the quote and produced unreadable mixed-script lettering.
 
 ## Image Editing (Flux.2 Klein 4B)
 
@@ -29,7 +31,15 @@ Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remo
 
 Source images for editing are automatically resized to **1024px** on the longest side to avoid OOM on 16GB GPUs. A system notice shows the original vs resized dimensions if downscaled.
 
+**Tone matching.** Flux.2 Klein tends to return a lighter, flatter image (measured on live edits: luminance 128 → 166, contrast 44 → 42). After every task repair/polish edit and every chat edit that does not explicitly ask to change lighting/colour, `_match_tone()` measures the source and result luminance (YCbCr Y mean/std) and, when the drift exceeds 6 levels or contrast drops below 90 % of the source, pulls the edited image fully back to the source exposure/contrast. Only the luminance channel is corrected, so colours and an intentionally changed style survive; a request like «make it brighter», «darker» or «black and white» skips the correction.
+
 Editing uses separate model files and runs independently from generation — no conflict between the two.
+
+## Descriptions for task illustrations (visual continuity)
+
+A task that plans two or more `image_gen` steps first builds an internal **visual continuity sheet** (`tasks.visual_bible`): one style plus the fixed look of every character, place and prop named in the request. It is extracted by one reasoning call (`prompts/{ru,en}/task_continuity.template`) before the first generated image; `look` is **English only** (one concrete sentence with the identifying features), `aliases` are in the task language, `id` is lowercase Latin letters, digits and underscores. An edit-only task never extracts it.
+
+For each scene `render_sheet` selects the cards named by the step goal and criterion (case-insensitive substring, then pymorphy3 lemmas; a multi-word alias matches word-wise) and prepends a block with `Style:` and grouped `Characters:` / `Places:` / `Props:` lines to the generation query. The multimodal prompt builder (`create_image_z_image_turbo.template`) turns that query into the final SD prompt (`[subject] + [action] + [setting] + [style] + [lighting] + [composition] + [quality]`); `ensure_entities_in_prompt` then appends the look of any selected card missing from that prompt, so a rephrasing cannot drop an entity, and `ensure_style_in_prompt` moves the sheet's style to the front, adds 2D/hand-drawn/flat-color cues for a 2D illustration (never for 3D), removes `photorealistic` from non-photo styles and, for 2D only, also removes `high detail`/`sharp focus`/`masterpiece` (3D keeps them). A replan with pending images marks the sheet stale and merges it (existing ids/looks kept verbatim). Extraction retries, repair edits and the best-effort candidate pick are described in `docs/TASKS.md`.
 
 ## stable-diffusion.cpp Build
 
@@ -58,5 +68,10 @@ SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
 ```
+
+Two timeouts are nested: the wrapper that runs `sd-cli` guards its own subprocess
+(`SD_CLI_TIMEOUT`, default 600 s on GPU and 1800 s on CPU — an override applies to
+both cases), while FLAI waits on the HTTP call for `SD_CPP_TIMEOUT` (900 s). The inner
+guard is the one that reports a slow generation, so it must stay below the outer one.
 
 ---

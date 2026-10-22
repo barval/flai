@@ -34,7 +34,7 @@ Without `SLM_URL` the instance is fully functional — facts are simply never ex
 3. **Temporal decay.** Facts older than `SLM_TEMPORAL_DECAY_DAYS` (90) with confidence below `SLM_MIN_CONFIDENCE_FOR_DECAY` (0.5) are auto-archived.
 4. **Recall.** When the reasoning model builds its context, up to `SLM_RECALL_LIMIT` facts are fetched first and measured for real token cost before anything else is added. The router additionally sees up to `ROUTER_SLM_FACTS` (2) facts when deciding what a message is about.
 
-An explicit request to remember something — «запомни, что я не ем грибы» — is parsed by the extractor's explicit-remember path rather than being left to the scoring heuristics.
+An explicit request to remember something — "remember that I do not eat mushrooms" — is parsed by the extractor's explicit-remember path rather than being left to the scoring heuristics.
 
 ## Configuration
 

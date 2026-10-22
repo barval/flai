@@ -2,7 +2,7 @@
 
 Structural checks over the shipped JS/HTML/CSS (no live browser):
 
-- language dropdown shows only «Ру»/«En» on mobile (compact option texts);
+- language dropdown shows only the native short labels on mobile (compact option texts);
 - the logout button becomes a small square icon button next to the language
   switcher;
 - the voice-gender and theme buttons move into the footer row on mobile
@@ -36,7 +36,7 @@ class TestCompactLanguageOptions:
         assert "lang-option" in HEADER_JS
 
     def test_toggle_label_from_data_short(self):
-        # «Ру ▾» / «En ▾» come from the options' data-short (no toUpperCase
+        # the toggle label comes from the options' data-short (native names) (no toUpperCase
         # on the lang value — that produced "RU"/"EN")
         assert "selected.dataset.short" in HEADER_JS
         assert "dataset.lang.toUpperCase()" not in HEADER_JS

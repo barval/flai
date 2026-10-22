@@ -133,6 +133,16 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
             "Requested model is not available on the model server. Check the selected model in the admin panel.",
             lang,
         )
+    if "model unloaded" in lower:
+        return _tr(
+            "Model was unloaded to free GPU memory. Please repeat the request.",
+            lang,
+        )
+    if "group is shutting down" in lower:
+        return _tr(
+            "Model server is reloading due to configuration changes. Please wait a few seconds and repeat the request.",
+            lang,
+        )
     return msg
 
 
@@ -214,6 +224,17 @@ _REASONING_MARKERS_RE = re.compile(
 _MD_PLAN_LINE_RE = re.compile(r"^\s*\*\*\s+\w", re.MULTILINE)
 
 
+def _looks_structured(text: str) -> bool:
+    """Whether the reply is a serialized payload (JSON object/array or a code fence).
+
+    Structured replies — task plans, verifier verdicts, generated code — are never
+    chain-of-thought, so a reasoning marker inside them (a plan step starting with
+    "Analyze attached images" or "Identify commonalities") must not truncate them.
+    """
+    head = text.lstrip()
+    return head[:1] in "{[" or head.startswith("```")
+
+
 def _strip_generic_reasoning(text: str) -> str:
     """Strip chain-of-thought reasoning output as plain text (no thinking tags).
 
@@ -233,6 +254,8 @@ def _strip_generic_reasoning(text: str) -> str:
     string — better to show raw reasoning than to error out on the user.
     """
     if not text or len(text) < 30:
+        return text
+    if _looks_structured(text):
         return text
 
     # Check for known reasoning markers
@@ -466,6 +489,7 @@ class _ReasoningStreamFilter:
         self._base_hold = hold
         self._feeds = 0
         self._emitted = 0  # position in _buf already handed to the client
+        self._structured = False  # a serialized answer: stream it verbatim
 
     @property
     def _hold(self) -> int:
@@ -480,21 +504,32 @@ class _ReasoningStreamFilter:
         """Append a streamed chunk, return the emittable (stable) text."""
         self._feeds += 1
         self._buf += chunk
-        matches = list(_REASONING_MARKERS_RE.finditer(self._buf))
+        if not self._structured and _looks_structured(self._buf):
+            # Serialized answer (plan/verdict/code): stream it verbatim — the
+            # marker strip must never mangle a payload.
+            self._structured = True
+        matches = [] if self._structured else list(_REASONING_MARKERS_RE.finditer(self._buf))
         if not matches:
             # Healthy deepseek-split path: answer streamed freely.
             out = self._buf[self._emitted :]
             self._emitted = len(self._buf)
             return out
 
-        start = max(self._emitted, matches[-1].end())
-        if start == matches[-1].end():
+        # Reasoning suspected. Only the not-yet-emitted head may be dropped: once
+        # the answer has started streaming, a marker appearing inside it must not
+        # splice out text already buffered for emission (2026-10-16: a valid JSON
+        # plan was shredded this way and reported as unreadable).
+        start = self._emitted
+        if start == 0:
+            start = matches[-1].end()
             # Align the emission with `_strip_generic_reasoning()`'s `.strip()`
             # so the streamed text is a prefix of the stored answer.
             while start < len(self._buf) and self._buf[start].isspace():
                 start += 1
-        # Reasoning suspected: do not emit until the candidate answer is
-        # `hold` chars long, and always keep a `hold`-char tail unreleased.
+        # Do not emit until the candidate answer is `hold` chars long, and keep a
+        # `hold`-char tail unreleased while tokens may still change its meaning.
+        # Until something is actually emitted, `_emitted` stays untouched so the
+        # reasoning head stays droppable.
         if len(self._buf) - start <= self._hold:
             return ""
         safe_end = len(self._buf) - self._hold
@@ -504,12 +539,15 @@ class _ReasoningStreamFilter:
 
     def flush(self) -> str:
         """Release the remaining answer once the stream ends (no hold-back)."""
-        matches = list(_REASONING_MARKERS_RE.finditer(self._buf))
-        if not matches:
-            return ""
-        boundary = matches[-1].end()
-        start = max(self._emitted, boundary)
-        return self._buf[start:]
+        matches = [] if self._structured else list(_REASONING_MARKERS_RE.finditer(self._buf))
+        start = self._emitted
+        if start == 0 and matches:
+            start = matches[-1].end()
+            while start < len(self._buf) and self._buf[start].isspace():
+                start += 1
+        out = self._buf[start:]
+        self._emitted = len(self._buf)
+        return out
 
 
 class AbstractLlamaBackend:

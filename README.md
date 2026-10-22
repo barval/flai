@@ -27,13 +27,13 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.5](#-whats-new-in-v125)
+- [🆕 What's New in v12.6](#-whats-new-in-v126)
 - [✨ Features](#-features)
-- [🏗️ Architecture Overview](#-architecture-overview)
-- [🧭 Types of Requests & Search Mechanisms](#-types-of-requests-search-mechanisms)
+- [🏗 Architecture Overview](#-architecture-overview)
+- [🧭 Types of Requests & Search Mechanisms](#-types-of-requests--search-mechanisms)
 - [📋 System Requirements](#-system-requirements)
 - [🚀 Quick Start](#-quick-start)
-- [🛠️ Contributing](#-contributing)
+- [🛠 Contributing](#-contributing)
 - [🙏 Acknowledgments](#-acknowledgments)
 - [📄 License](#-license)
 <!-- TOC:END -->
@@ -42,7 +42,7 @@
 
 Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
-| Topic | English | Русский |
+| Topic | English | Russian |
 |-------|---------|---------|
 | Architecture, queue, GPU lock, data flow | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE-ru.md](docs/ARCHITECTURE-ru.md) |
 | VRAM accounting, context auto-fit, hardware | [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md) | [VRAM_MANAGEMENT-ru.md](docs/VRAM_MANAGEMENT-ru.md) |
@@ -52,6 +52,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Environment variables, compose profiles | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
 | Web search, Tavily keys, site crawler | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
 | Deep analysis (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
+| Background tasks (Tasks) | [TASKS.md](docs/TASKS.md) | [TASKS-ru.md](docs/TASKS-ru.md) |
 | Image generation and editing | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
 | Video generation (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
 | Voice: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
@@ -69,18 +70,12 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.5
+## 🆕 What's New in v12.6
 
-- **Multi-attachment chat** — up to 4 images per message, sent to the vision model in one call (with a per-image fallback), and a document attached straight in chat is indexed into RAG so the model answers questions about it. Attachments render as chips: thumbnails for images, 🎤/🎵/📄 for voice/audio/documents. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Attachments live on disk, sessions open instantly** — every attached file (images, audio, documents) is saved to disk from the very first write, and `flask backfill-attachment-paths` migrates older chats the same way, so a history reload no longer ships megabytes of base64 that once made heavy sessions slow to open (one picture-heavy message dropped from ~3.9 MB to a few KB). Built for old rows too: pre-migration messages keep rendering untouched. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- **Deep analysis with attachments** — the 🔬 toggle accepts up to 4 images (each becomes a corpus «document») and chat-attached documents, so the Documents-panel selection is optional. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
-- **«Draw something similar» with examples** — attach example images to an image-generation request; each example is described and the descriptions steer the SD prompt. An image-attached chat request («нарисуй что-то похожее») is routed to generation too, and the real width×height of the reference is respected. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
-- **Higher limits** — documents 25 MB, per-user document storage 250 MB, request body 75 MB; scanned-PDF OCR gets a 30-minute budget per document with a partial-indexing notice. → [CONFIGURATION.md](docs/CONFIGURATION.md)
-- **Tavily-first web search** — every user can attach a free personal Tavily key (1000 credits/month) in the profile popup. Search tries Tavily and degrades to the local SearXNG engine on any failure, so a spent quota or an invalid key never breaks search; transient `403`/`429` answers are retried and a rate-limited key is reported «unavailable» instead of mistaken for invalid. → [SEARCH.md](docs/SEARCH.md)
-- **Web crawler (Crawl4AI)** — an optional sidecar reads a pasted URL in a real browser (`read_page`) and, for an explicit «study this site» request, crawls the domain (≤50 pages, depth ≤3, 5-minute budget), replaces the per-domain document, indexes it through the normal RAG pipeline and answers from it — including in Deep Analysis. → [SEARCH.md](docs/SEARCH.md)
-- **CPU timeouts scaled up** — CPU-only image generation gets 45 minutes and video 2 hours, so slow media generation finishes instead of dying at step 3/10. → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- **A single version source** — the About dialog spells the project out and the version string comes from one constant. The exported chat repeats the site footer: the brand label opens the same About dialog, with the custom logo embedded in the header and the dialog. → [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md)
-- **Reworked header and mobile UI** — on desktop the voice-gender and theme switchers sit before your user name with the logout button as the rightmost control; on mobile the Documents and Sessions panels open full-screen, the header is a single 38 px row with a compact «Ру ▾» language dropdown, and the voice/theme buttons live in the footer corners. Mobile header offsets are uniform (left→logo, logo→name and right→logout all equal the guest page's language-dropdown edge), the admin «Administrator» name fits whole, the admin header carries a plain label instead of a profile popup (no Tavily / API-key blocks), and the admin Hardware table switches to a compact wrapping layout on narrow screens. A voice question recorded over an attached image is now transcribed with that image in sight (previously the model answered «there is no image in your message»). → [VOICE.md](docs/VOICE.md)
+- **Background Tasks (Tasks)** — a new section (the left-column tab between Documents and Sessions): long-running jobs decomposed into checkpointed steps and executed at lower priority than chat, preempted by any chat request; chat never waits for a task. The task renders as a chat-like conversation (plan → per-step results → clarifying questions → final answer) with live statuses on the shared SSE stream. One task runs globally; a 24 h pure-execution budget produces a final summary on expiry; everything survives restarts (`tasks` + `task_steps` in PostgreSQL). Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`. Details → [docs/TASKS.md](docs/TASKS.md) / [docs/TASKS-ru.md](docs/TASKS-ru.md).
+
+- **Verified media in tasks** — every picture a task produces is judged against the content it illustrates; a mismatch sends the step back with the verifier's reason instead of silently accepting the wrong image, and a redo stays inside its own step (the plan never grows a duplicate). Each step shows what was checked, why it was redone and which attempts were rejected; the final answer lists only the accepted results, with a separate line for what was not delivered. Details → [docs/TASKS.md](docs/TASKS.md).
+- **Stop and delete now really free the GPU** — a deleted chat or a stopped task no longer leaves its model resident, and stopping/deleting works through the public `/v1` API as well. Details → [docs/API.md](docs/API.md).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -114,7 +109,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - **Voice messages** — Whisper ASR transcription.
 - **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
 - **Camera snapshots (optional)** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
-- **Attachments** — up to 4 images, one document, audio, or a voice message in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions). Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Attachments** — up to 4 images, one document, or up to 4 audio items (one voice message plus audio files: 1 voice + 3 files, or 4 files) in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions); every audio item is transcribed in order and answered. Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
 - **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
 
@@ -139,7 +134,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - Redis queue tasks are HMAC-signed; file paths are validated for traversal; all markdown HTML is sanitized with DOMPurify.
 - Every URL that leaves the app passes an SSRF guard (no private, loopback, link-local or CGNAT addresses).
 
-## 🏗️ Architecture Overview
+## 🏗 Architecture Overview
 
 ```
 Browser / API client
@@ -352,7 +347,7 @@ Every service has a profile, and most settings live in `.env`: compose profiles,
 
 Chat and reasoning · image analysis · image generation and editing · video generation · voice messages and spoken answers · document search · web search and site reading · deep analysis · long-term memory · camera snapshots · chat export · backups · the `/v1` API.
 
-## 🛠️ Contributing
+## 🛠 Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the code layout, the test commands and the project's hard rules. In short: fork, branch from the current version branch, keep changes surgical, and open a pull request.
 

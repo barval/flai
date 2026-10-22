@@ -663,6 +663,91 @@ def _init_postgresql():
     """)
     c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
 
+    # v12.6: Tasks subsystem — persisted background task plans and their steps.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id UUID PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            task_class SMALLINT NOT NULL DEFAULT 5,
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            -- status 'draft' = created via "+" before the first message; the
+            -- executor never selects it (its queries cover queued/active/
+            -- frozen/awaiting_user only).
+            step_plan JSONB NOT NULL DEFAULT '{}'::jsonb,
+            next_step_index INT NOT NULL DEFAULT 0,
+            accumulated_exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+            lang TEXT NOT NULL DEFAULT 'ru',
+            response_style TEXT NOT NULL DEFAULT 'neutral',
+            -- Attached documents (Documents-panel selection at submit time);
+            -- an empty array means "search all of the user's documents".
+            doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Deep-analysis toggle (🔬) state at submit time: forces a deep
+            -- analysis (rlm) step over the attached documents.
+            deep_analysis BOOLEAN NOT NULL DEFAULT FALSE,
+            -- Attached images (v12.6 vision): each entry is {file_path,
+            -- file_name} on disk under UPLOAD_FOLDER/<login>/; the planner
+            -- sees only their names, the vision step reads the files.
+            images JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Attached audio (v12.6 voice parity): each entry is {file_path,
+            -- file_name, file_type, phase, step_id, transcript} on disk under
+            -- UPLOAD_FOLDER/<login>/. The transcript is task CONTEXT (like an
+            -- image description), never a Documents-panel document.
+            audio JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Visual continuity sheet (v12.6):
+            --  visual_bible          — the style/continuity sheet the planner
+            --    keeps across attempts of THIS task ({} = none yet);
+            --  visual_bible_attempted — the sheet was produced at least once
+            --    (even if empty/plain, so we do not retry forever);
+            --  visual_bible_stale     — the sheet no longer matches the plan
+            --    (a rewrite invalidated it) and should be regenerated.
+            visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb,
+            visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE,
+            visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            abort_reason TEXT
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
+    # NOT EXISTS never alters a live table).
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible JSONB NOT NULL DEFAULT '{}'::jsonb")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
+    c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS task_steps (
+            id UUID PRIMARY KEY,
+            task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            seq INT NOT NULL,
+            parent_step_id UUID,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            goal TEXT NOT NULL DEFAULT '',
+            tool TEXT NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            result TEXT NOT NULL DEFAULT '',
+            checkpoint_criteria TEXT NOT NULL DEFAULT '',
+            checkpoint_result TEXT NOT NULL DEFAULT '',
+            checkpoint_verdict BOOLEAN,
+            attempts INT NOT NULL DEFAULT 0,
+            last_error TEXT NOT NULL DEFAULT '',
+            exec_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+            started_at TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ,
+            interrupt_reason TEXT,
+            extra JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_task_steps_task_id ON task_steps(task_id)")
+
     # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
     # so the lightweight models don't burn RAM with oversized KV cache.
     # v11.4: bumps are VRAM-aware — capped by the same auto-fit logic as the

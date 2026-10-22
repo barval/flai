@@ -479,7 +479,12 @@ class TestCrawlErrorMessages:
         po_path = _REPO_ROOT / "translations" / lang / "LC_MESSAGES" / "messages.po"
         with open(po_path, encoding="utf-8") as po:
             content = po.read()
-        assert f'msgid "{msgid}"' in content
+        # An obsolete entry is written as ``#~ msgid "…"``: pybabel turns a msgid
+        # it can no longer extract into that form, the runtime catalog then has
+        # no translation and the user silently gets English.
+        assert re.search(rf'^msgid "{re.escape(msgid)}"', content, re.M), (
+            f"{lang}: {msgid!r} is not an active catalog entry (obsolete or missing)"
+        )
         entry = content.split(f'msgid "{msgid}"', 1)[1].split("\n\n", 1)[0]
         # The msgstr may be line-wrapped into several quoted chunks — join them.
         msgstr = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', entry.split("msgstr", 1)[1]))

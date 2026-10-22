@@ -1729,7 +1729,7 @@ video {
     .header-tabs {
         display: flex;
         width: 100%;
-        /* Same height as the footer bar ("FLAI v12.6", min-height 30px):
+        /* Same height as the footer bar (min-height 30px):
            the two bars frame the panel symmetrically. */
         height: 30px;
     }

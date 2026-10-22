@@ -683,7 +683,7 @@ def test_poll_subtask_ignores_gate_closed_by_its_own_work(db_env, test_app, monk
     """
     store = db_env
     plan = {"title": "Deep analysis", "steps": [{"seq": 1, "goal": "Analyze", "tool": "rlm"}]}
-    task_id = _mk_task(store, step_plan=plan)
+    task_id = _mk_task(store, status="active", step_plan=plan)
     executor = ex.TaskExecutor(app=test_app)
     monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
     executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
@@ -948,10 +948,12 @@ def test_subtask_result_runs_checkpoint(db_env, test_app, gate_open, monkeypatch
     assert store.get_task(task_id)["next_step_index"] == 0, "the retry stays on the same step"
 
 
-def test_subtask_checkpoint_rejection_fails_after_attempts_are_exhausted(db_env, test_app, gate_open, monkeypatch):
-    """Once TASK_STEP_MAX_ATTEMPTS attempts are spent, the rejected media step
-    is failed (media refs still recorded) and the task continues — the same
-    attempts-exhausted semantics a direct step has."""
+def test_subtask_checkpoint_rejection_closes_the_step_when_attempts_are_exhausted(
+    db_env, test_app, gate_open, monkeypatch
+):
+    """Once the generation budget is spent, the rejected media step is closed
+    with its closest candidate kept as a best-effort artifact and the task
+    continues — the same exhausted-budget semantics a direct step has."""
     store = db_env
     plan = _media_plan("image_gen", goal="Make an image")
     plan["steps"][0]["checkpoint_criteria"] = "image matches the request"
@@ -960,8 +962,14 @@ def test_subtask_checkpoint_rejection_fails_after_attempts_are_exhausted(db_env,
     monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
     executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
     row = store.get_task_steps(task_id)[0]
-    # Spend the retry budget: the next rejection closes the step.
-    store.update_step(row["id"], attempts=ex.TASK_STEP_MAX_ATTEMPTS)
+    # Spend the generation budget: media retries are counted by produced
+    # artifacts (a repair edit is not a generation), so the next rejection
+    # closes the step instead of scheduling another run.
+    store.update_step(
+        row["id"],
+        attempts=ex.TASK_STEP_MAX_ATTEMPTS,
+        extra={**(row.get("extra") or {}), "generations_used": ex.TASK_STEP_MAX_ATTEMPTS},
+    )
     row = store.get_task_steps(task_id)[0]
 
     envelope = {"status": "completed", "response": "an image was generated", "file_path": "x/y.png"}
@@ -981,10 +989,10 @@ def test_subtask_checkpoint_rejection_fails_after_attempts_are_exhausted(db_env,
 
     assert outcome == "done"
     step = store.get_task_steps(task_id)[0]
-    assert step["status"] == "failed"
-    assert step["checkpoint_verdict"] is False and step["checkpoint_result"] == "wrong subject"
-    assert "exhausted" in step["last_error"], "the failure names the spent attempts"
+    assert step["status"] == "passed", "the exhausted step keeps its best candidate"
+    assert step["extra"]["best_effort"] is True
     assert step["extra"]["media"]["file_path"] == "x/y.png", "the rejected artifact is still recorded"
+    assert step["checkpoint_verdict"] is False and step["checkpoint_result"] == "wrong subject"
     assert store.get_task(task_id)["next_step_index"] == 1, "the task continues once the attempts are spent"
 
 
@@ -1169,10 +1177,11 @@ def test_subtask_envelope_without_meta_keeps_extra_clean(db_env, test_app, gate_
     assert "model_name" not in extra and "model_type" not in extra and "usage" not in extra
 
 
-def test_subtask_artifact_line_is_the_bare_file_name(db_env, test_app, gate_open, monkeypatch):
-    """The artifact service line is JUST the file name (no translatable
-    sentence): the user asked for the plain name, and a sentence that was
-    translated outside an app context leaked English into a Russian task."""
+def test_subtask_artifact_name_stays_out_of_the_visible_body(db_env, test_app, gate_open, monkeypatch):
+    """The artifact file name is metadata for the verifier and the image card,
+    not a user-facing service line: the visible body keeps the worker's answer,
+    and a translatable «saved» sentence can no longer leak English into a
+    Russian task."""
     store = db_env
     plan = _media_plan("image_gen", goal="Make an image")
     task_id = _mk_task(store, step_plan=plan)
@@ -1196,10 +1205,11 @@ def test_subtask_artifact_line_is_the_bare_file_name(db_env, test_app, gate_open
 
     executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
 
-    result = store.get_task_steps(task_id)[0]["result"]
-    assert "b.png" in result, "the artifact name still reaches the result"
-    assert "Сохранён" not in result and "saved" not in result, "the old sentence is gone entirely"
-    assert result.splitlines()[-1].strip() == "b.png", "the artifact line is the bare file name"
+    step = store.get_task_steps(task_id)[0]
+    assert step["result"] == "done", "the visible body keeps the worker's answer"
+    assert "b.png" not in step["result"], "the artifact name is metadata, not a service line"
+    assert "Сохранён" not in step["result"] and "saved" not in step["result"], "no translated sentence either"
+    assert step["extra"]["media"]["file_name"] == "b.png", "the artifact is still recorded as media"
 
 
 def test_subtask_no_criteria_skips_checkpoint(db_env, test_app, gate_open, monkeypatch):
@@ -2619,6 +2629,7 @@ def test_enqueue_subtask_image_edit_edits_the_image_the_goal_names(monkeypatch, 
     ]
     task = {"id": "t1", "user_id": "tester", "task_class": 5, "lang": "ru", "images": images}
     monkeypatch.setattr(ex, "get_task_steps", lambda task_id: [{"id": "s1", "seq": 1, "extra": {}}])
+    monkeypatch.setattr(ex, "get_step", lambda step_id: {"id": step_id, "seq": 1, "extra": {}})
     monkeypatch.setattr(ex, "update_step", lambda *a, **k: None)
     queue = _RecordingQ()
     monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
@@ -2654,6 +2665,7 @@ def test_enqueue_subtask_image_edit_without_a_named_image_takes_the_first(monkey
         ],
     }
     monkeypatch.setattr(ex, "get_task_steps", lambda task_id: [{"id": "s1", "seq": 1, "extra": {}}])
+    monkeypatch.setattr(ex, "get_step", lambda step_id: {"id": step_id, "seq": 1, "extra": {}})
     monkeypatch.setattr(ex, "update_step", lambda *a, **k: None)
     queue = _RecordingQ()
     monkeypatch.setattr(ex, "_get_request_queue", lambda: queue)
@@ -3127,9 +3139,25 @@ def test_parse_replan_rejects_an_unknown_tool():
 
 
 def test_parse_replan_accepts_an_empty_tail():
-    """An empty replacement tail is legitimate: nothing remains to do."""
-    parsed = ex._parse_replan('{"changed": true, "steps": []}', 2)
-    assert parsed == {"changed": True, "steps": []}
+    """An empty replacement tail is legitimate — but only the reviewer's own
+    reason makes it usable; without one the reply is flagged as implicit so the
+    caller keeps the running plan instead of ending the task on a truncated
+    answer."""
+    explicit = ex._parse_replan('{"changed": true, "reason": "nothing remains", "steps": []}', 2)
+    assert explicit == {
+        "changed": True,
+        "steps": [],
+        "reason": "nothing remains",
+        "reason_explicit": True,
+    }
+
+    implicit = ex._parse_replan('{"changed": true, "steps": []}', 2)
+    assert implicit == {
+        "changed": True,
+        "steps": [],
+        "reason": "unspecified",
+        "reason_explicit": False,
+    }
 
 
 def test_parse_replan_numbers_steps_from_the_global_prefix():
@@ -3179,7 +3207,7 @@ def test_parse_replan_uses_the_first_balanced_object():
 
 
 def _replan_reply(*steps):
-    return json.dumps({"changed": True, "steps": list(steps)})
+    return json.dumps({"changed": True, "reason": "plan review", "steps": list(steps)})
 
 
 def _replan_once(payload):

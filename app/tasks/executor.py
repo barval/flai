@@ -70,7 +70,7 @@ from app.tasks.runner import (
     wait_for_documents_indexed,
 )
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
-from app.utils import get_current_time_in_timezone
+from app.utils import N_, get_current_time_in_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +108,15 @@ _SUBTASK_TYPE = {
 # Localized user-facing fallbacks (⚠️ prefix per the project error rule).
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."
 _MSG_PLAN_UNREADABLE = "Task could not be planned: the planner returned an unreadable plan. Please try again."
-_MSG_NO_EDIT_SOURCE = "The step has no image to edit: no image is attached and no earlier step produced one."
+_MSG_NO_EDIT_SOURCE = N_(
+    "The step has no image to edit: no image is attached and no earlier step produced one."
+)
 # A step bound to a producer step (``source_step``) whose artifact never
 # materialized: the step is SKIPPED, not failed — the plan asked for the image
 # of THAT step, and neither an edit nor a video may quietly fall back to
 # something else (a video step quietly became text-to-video).
-_MSG_SKIP_EDIT_NO_SOURCE = "Skipped: step {source} produced no image to edit."
-_MSG_SKIP_VIDEO_NO_SOURCE = "Skipped: step {source} produced no image to animate."
+_MSG_SKIP_EDIT_NO_SOURCE = N_("Skipped: step {source} produced no image to edit.")
+_MSG_SKIP_VIDEO_NO_SOURCE = N_("Skipped: step {source} produced no image to animate.")
 # Real token usage of the last planner call (module-level: the single
 # executor thread is the only planner caller; the plan phase reads it for
 # the plan message's chat-style header).
@@ -1068,8 +1070,10 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     """Fence-tolerant parse of the re-planner reply.
 
     Returns ``{"changed": bool, "steps": [...]}`` or None when the reply is
-    unusable. None is NOT an error: the caller keeps the plan and the task runs
-    on (a bad review must never damage a running plan).
+    unusable. A rewrite also carries ``reason`` (the template's mandatory
+    explanation, ``"unspecified"`` when the model forgot it) and
+    ``reason_explicit`` — an empty tail is honoured only when the reviewer
+    stated why, so a truncated reply cannot end a running task.
     """
     from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
     from app.tasks.tools import get_capabilities
@@ -1097,9 +1101,12 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
     # even though it stays in the tool registry for the runner/tests.
     known_tools = {str(c.get("id") or "") for c in get_capabilities()} - {"continuity"}
     reason = str(data.get("reason") or "").strip()
+    reason_explicit = bool(reason)
     if not reason:
-        # The template makes the field mandatory; a forgetful model must not
-        # freeze a genuinely needed correction, so record it and apply.
+        # The template makes the field mandatory. A missing reason still lets a
+        # non-empty rewrite through, but an EMPTY tail without one is treated as
+        # an unusable review: ending a task on a possibly truncated reply is
+        # worse than running the plan that is already there.
         logger.warning("re-planner: changed=true without a reason — applying with 'unspecified'")
         reason = "unspecified"
     steps = []
@@ -1131,7 +1138,7 @@ def _parse_replan(raw: str, prefix_len: int) -> dict | None:
         src = entry.get("source_step")
         if src is not None and not (1 <= src < entry["seq"]):
             entry["source_step"] = None
-    return {"changed": True, "steps": steps, "reason": reason}
+    return {"changed": True, "steps": steps, "reason": reason, "reason_explicit": reason_explicit}
 
 
 def _parse_plan(raw: str) -> dict | None:
@@ -2603,7 +2610,9 @@ class TaskExecutor:
             return "cancelled"
         return None
 
-    def _apply_replan(self, task: dict, idx: int, new_steps: list[dict], meta: dict | None = None) -> dict:
+    def _apply_replan(
+        self, task: dict, idx: int, new_steps: list[dict], meta: dict | None = None, reason_explicit: bool = True
+    ) -> dict:
         """Replace the plan tail from ``idx`` on; forward-only.
 
         ``steps[:idx]`` is copied verbatim — an executed step is immutable.
@@ -2641,9 +2650,30 @@ class TaskExecutor:
             seen.add(key)
             deduped.append(s)
         todo = deduped
-        if not todo and reopen_pos is None:
-            logger.info("task %s: replan produced no new steps — plan kept", task_id)
+        if not todo and reopen_pos is None and not new_steps and not reason_explicit:
+            # No steps AND no stated reason: treat the review as unusable.
+            logger.info("task %s: replan produced no new steps and no reason — plan kept", task_id)
             return update_task(task_id, step_plan={**plan, "replanned_upto": idx}) or task
+        if not todo and reopen_pos is None:
+            # The reviewer explicitly said nothing remains (or its only proposal
+            # was a duplicate of an executed / exhausted redo step): close the
+            # plan at the executed prefix so the task can finalize instead of
+            # carrying work the reviewer already cancelled.
+            merged = list(steps[:idx])
+            for pos, s in enumerate(merged):
+                s["seq"] = pos + 1
+            from app.tasks.store import delete_pending_steps_after
+
+            delete_pending_steps_after(task_id, idx)
+            revisions = list(plan.get("revisions") or [])
+            revisions.append({"upto": idx, "total": len(merged)})
+            update_task(
+                task_id,
+                step_plan={**plan, "steps": merged, "replanned_upto": idx, "revisions": revisions},
+            )
+            logger.info(f"task {task_id}: replan left no tail — plan closed at {len(merged)} steps")
+            self._publish_task_update(task_id)
+            return get_task(task_id) or task
         max_steps = int(self._cfg("TASK_MAX_STEPS", 40))
         if len(steps[:idx]) + len(todo) > max_steps:
             logger.warning(
@@ -2816,7 +2846,13 @@ class TaskExecutor:
             task_id,
             str(parsed.get("reason") or "")[:200],
         )
-        return self._apply_replan(task, idx, parsed["steps"], meta=dict(_LAST_REPLAN_META))
+        return self._apply_replan(
+            task,
+            idx,
+            parsed["steps"],
+            meta=dict(_LAST_REPLAN_META),
+            reason_explicit=bool(parsed.get("reason_explicit", True)),
+        )
 
     def _create_plan_step_rows(
         self, task_id: str, plan_steps: list[dict], start_pos: int = 0, meta: dict | None = None

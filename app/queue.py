@@ -35,6 +35,7 @@ from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, str
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
+    N_,
     begin_usage_account,
     check_document_quota,
     current_usage_account_id,
@@ -46,17 +47,6 @@ from .utils import (
     get_image_dimensions,
     save_uploaded_file,
 )
-
-
-def N_(message: str) -> str:  # noqa: N802 — gettext lazy marker (Babel default keyword)
-    """Mark a crawl message for Babel extraction; ``_crawl_msg()`` translates it later.
-
-    ``_crawl_error()`` receives the msgid as a variable, which ``pybabel extract``
-    cannot see, so an unwrapped literal silently becomes an obsolete catalog entry
-    and Russian users get the English text.
-    """
-    return message
-
 
 # A chat edit that explicitly asks to change the picture's lighting or colour
 # must not be tone-matched back to the source; every other chat edit is.

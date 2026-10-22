@@ -20,6 +20,16 @@ from PIL import Image
 PROMPTS_DIR = "prompts"
 
 
+def N_(message: str) -> str:  # noqa: N802 — gettext lazy marker (Babel default keyword)
+    """Mark a msgid for Babel extraction when ``_tr()`` receives it as a variable.
+
+    ``pybabel extract`` only sees literals, so a message held in a module
+    constant silently becomes an obsolete catalog entry and users get the
+    English source text.
+    """
+    return message
+
+
 def _gguf_scalar(val: Any) -> Any:
     """Extract Python scalar from a gguf reader field value.
 

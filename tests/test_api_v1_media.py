@@ -521,6 +521,9 @@ class TestTranscriptionQueueTask:
         q.app.logger = Mock()
         q.app.app_context.return_value = nullcontext()
         q.redis = Mock()
+        # No cancel flags: this test exercises the unexpected-exception path,
+        # and a truthy Mock would read as «cancelled» and skip it entirely.
+        q.redis.exists.return_value = 0
         q.results_key = "results"
         q.processing_key = "processing"
         q.slow_processing_key = "slow_processing"

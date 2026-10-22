@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.6\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 16:54+0300\n"
+"POT-Creation-Date: 2026-10-22 18:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -226,42 +226,42 @@ msgstr "Внутренняя ошибка: модель не ответила"
 msgid "GPU memory unavailable. Please try again."
 msgstr "Память GPU недоступна. Попробуйте снова."
 
-#: app/queue.py:168 app/queue.py:6585 app/routes/admin.py:1792
+#: app/queue.py:160 app/queue.py:6577 app/routes/admin.py:1792
 msgid "RAG module unavailable"
 msgstr "RAG модуль недоступен"
 
-#: app/queue.py:927
+#: app/queue.py:919
 #, python-brace-format
 msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
 msgstr "Запрос отменён - слишком долго в очереди ({queue_time:.1f}с)"
 
-#: app/queue.py:977 app/queue.py:5401 app/queue.py:5404 app/queue.py:6029
-#: app/queue.py:6146 app/tasks/audio_transcribe.py:200
+#: app/queue.py:969 app/queue.py:5393 app/queue.py:5396 app/queue.py:6021
+#: app/queue.py:6138 app/tasks/audio_transcribe.py:200
 #: app/templates/chat.html:149
 msgid "Failed to recognize speech"
 msgstr "Не удалось распознать речь"
 
-#: app/queue.py:1795 app/queue.py:1859 app/queue.py:2040 app/queue.py:2111
-#: app/queue.py:3119 app/queue.py:3160 app/queue.py:3314 app/queue.py:3383
-#: app/queue.py:4403 app/queue.py:6976
+#: app/queue.py:1787 app/queue.py:1851 app/queue.py:2032 app/queue.py:2103
+#: app/queue.py:3111 app/queue.py:3152 app/queue.py:3306 app/queue.py:3375
+#: app/queue.py:4395 app/queue.py:6968
 msgid "Task cancelled"
 msgstr "Задача отменена"
 
 # GPU memory error messages
-#: app/queue.py:1800 app/queue.py:2045 app/queue.py:3082 app/queue.py:3276
+#: app/queue.py:1792 app/queue.py:2037 app/queue.py:3074 app/queue.py:3268
 #: modules/multimodal.py:317
 msgid "GPU memory unavailable. Try again in a moment."
 msgstr "Память GPU недоступна. Попробуйте снова."
 
-#: app/queue.py:1814 app/queue.py:2077 app/queue.py:3101 app/queue.py:3295
+#: app/queue.py:1806 app/queue.py:2069 app/queue.py:3093 app/queue.py:3287
 msgid "Fix the stated problem and redo this step."
 msgstr "Исправь указанную проблему и выполни этот шаг заново."
 
-#: app/queue.py:1884
+#: app/queue.py:1876
 msgid "Image editing failed"
 msgstr "Редактирование изображения не удалось"
 
-#: app/queue.py:1901 app/queue.py:2148
+#: app/queue.py:1893 app/queue.py:2140
 #, python-brace-format
 msgid ""
 "CPU mode: reduced resolution {new_w}×{new_h} (requested "
@@ -270,7 +270,7 @@ msgstr ""
 "Режим CPU: сниженное разрешение {new_w}×{new_h} (запрошено "
 "{orig_w}×{orig_h})."
 
-#: app/queue.py:1919
+#: app/queue.py:1911
 #, python-brace-format
 msgid ""
 "Maximum resolution for editing is {max_w}×{max_h}. The image has been "
@@ -279,73 +279,73 @@ msgstr ""
 "Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение"
 " уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
 
-#: app/queue.py:1934
+#: app/queue.py:1926
 #, python-brace-format
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
 
-#: app/queue.py:2015 app/routes/api_v1.py:641 app/routes/api_v1.py:644
+#: app/queue.py:2007 app/routes/api_v1.py:641 app/routes/api_v1.py:644
 msgid "Image generation module unavailable"
 msgstr "Модуль генерации изображений недоступен"
 
-#: app/queue.py:2049 app/queue.py:3087 app/queue.py:3280
+#: app/queue.py:2041 app/queue.py:3079 app/queue.py:3272
 msgid "GPU memory check failed. Please try again."
 msgstr "Проверка памяти GPU не удалась. Попробуйте снова."
 
-#: app/queue.py:2066
+#: app/queue.py:2058
 msgid "Reference examples (draw something similar):"
 msgstr "Примеры для подражания (нарисуй что-то похожее):"
 
-#: app/queue.py:2165 app/templates/chat.html:155
+#: app/queue.py:2157 app/templates/chat.html:155
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
 
-#: app/queue.py:2238
+#: app/queue.py:2230
 msgid "Video request"
 msgstr "Запрос видео"
 
-#: app/queue.py:2288
+#: app/queue.py:2280
 msgid "Image request"
 msgstr "Запрос изображения"
 
-#: app/queue.py:2336
+#: app/queue.py:2328
 msgid "Reasoning request"
 msgstr "Запрос рассуждений"
 
 # stage label: the crawler is studying the site
-#: app/queue.py:2389
+#: app/queue.py:2381
 msgid "Studying the site…"
 msgstr "Изучаю сайт…"
 
-#: app/queue.py:2441 app/tasks/tools.py:48 app/tasks/tools.py:132
+#: app/queue.py:2433 app/tasks/tools.py:48 app/tasks/tools.py:132
 #: app/templates/chat.html:115
 msgid "Deep analysis"
 msgstr "Глубокий анализ"
 
-#: app/queue.py:2480
+#: app/queue.py:2472
 msgid "No documents selected for analysis"
 msgstr "Для анализа не выбрано ни одного документа"
 
-#: app/queue.py:2608 app/queue.py:2631 app/queue.py:2678 app/queue.py:2916
+#: app/queue.py:2600 app/queue.py:2623 app/queue.py:2670 app/queue.py:2908
 msgid "Reasoning model unavailable: GPU memory check failed. Try again."
 msgstr ""
 "Модель рассуждения недоступна: проверка памяти GPU не удалась. Попробуйте"
 " снова."
 
-#: app/queue.py:2640 app/queue.py:2649
+#: app/queue.py:2632 app/queue.py:2641
 msgid "Unable to recognize the image for deep analysis"
 msgstr "Не удалось распознать изображение для глубокого анализа"
 
-#: app/queue.py:2652 app/queue.py:3801 app/routes/messages.py:481
+#: app/queue.py:2644 app/queue.py:3793 app/routes/messages.py:481
 msgid "Image"
 msgstr "Изображение"
 
-#: app/queue.py:2657
+#: app/queue.py:2649
 msgid "Selected documents contain no extractable text"
 msgstr "В выбранных документах нет извлекаемого текста"
 
-#: app/queue.py:2666
+#: app/queue.py:2658
 #, python-brace-format
 msgid ""
 "The selected documents are too large for deep analysis (limit: {limit} "
@@ -354,7 +354,7 @@ msgstr ""
 "Выбранные документы слишком велики для глубокого анализа (лимит: {limit} "
 "символов). Выберите меньше документов или файлы поменьше."
 
-#: app/queue.py:2719
+#: app/queue.py:2711
 msgid ""
 "Deep analysis: the model did not reach a final answer within the step "
 "limit."
@@ -362,11 +362,11 @@ msgstr ""
 "Глубокий анализ: модель не дошла до окончательного ответа за отведённое "
 "число шагов."
 
-#: app/queue.py:2722
+#: app/queue.py:2714
 msgid "Deep analysis: the model produced an empty answer."
 msgstr "Глубокий анализ: модель выдала пустой ответ."
 
-#: app/queue.py:2725
+#: app/queue.py:2717
 msgid ""
 "Deep analysis: the task exceeded the time limit. A partial trace has been"
 " saved."
@@ -374,53 +374,53 @@ msgstr ""
 "Глубокий анализ: превышен лимит времени задачи. Частичная сводка шагов "
 "сохранена."
 
-#: app/queue.py:2736 app/queue.py:2995
+#: app/queue.py:2728 app/queue.py:2987
 msgid "No response from reasoning model"
 msgstr "Не удалось получить ответ от модели рассуждений"
 
-#: app/queue.py:2804
+#: app/queue.py:2796
 msgid "horizontal"
 msgstr "горизонтальный"
 
-#: app/queue.py:2806
+#: app/queue.py:2798
 msgid "vertical"
 msgstr "вертикальный"
 
-#: app/queue.py:2808
+#: app/queue.py:2800
 msgid "square"
 msgstr "квадратный"
 
-#: app/queue.py:2809
+#: app/queue.py:2801
 #, python-brace-format
 msgid "Aspect ratio: {width}×{height} ({orientation})"
 msgstr "Формат: {width}×{height} ({orientation})"
 
-#: app/queue.py:2883 app/queue.py:3998 app/queue.py:4619
+#: app/queue.py:2875 app/queue.py:3990 app/queue.py:4611
 #: app/tasks/runner.py:519 modules/rag.py:421 modules/rag.py:481
 msgid "Source"
 msgstr "Источник"
 
-#: app/queue.py:3069 app/queue.py:3263 app/routes/api_v1.py:838
+#: app/queue.py:3061 app/queue.py:3255 app/routes/api_v1.py:838
 #: app/routes/api_v1.py:841
 msgid "Video generation module unavailable"
 msgstr "Модуль генерации видео недоступен"
 
-#: app/queue.py:3132 app/queue.py:3324
+#: app/queue.py:3124 app/queue.py:3316
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "Память GPU недоступна после выгрузки LLM. Попробуйте снова."
 
-#: app/queue.py:3167 app/queue.py:3390
+#: app/queue.py:3159 app/queue.py:3382
 msgid ""
 "Video generation failed: GPU memory exhausted. Please simplify your "
 "request."
 msgstr "Генерация видео не удалась: память GPU исчерпана. Упростите запрос."
 
-#: app/queue.py:3188 app/queue.py:3434
+#: app/queue.py:3180 app/queue.py:3426
 #, python-brace-format
 msgid "Video generated from request: {query}"
 msgstr "Видео сгенерировано по запросу: {query}"
 
-#: app/queue.py:3305 app/queue.py:3775 app/queue.py:5614 app/queue.py:5751
+#: app/queue.py:3297 app/queue.py:3767 app/queue.py:5606 app/queue.py:5743
 #: modules/multimodal.py:224 modules/multimodal.py:262
 #: modules/multimodal.py:299 modules/multimodal.py:333
 #: modules/multimodal.py:357 modules/multimodal.py:395
@@ -429,7 +429,7 @@ msgstr "Видео сгенерировано по запросу: {query}"
 msgid "Multimodal model unavailable"
 msgstr "Мультимодальная модель недоступна"
 
-#: app/queue.py:3343 app/queue.py:3421
+#: app/queue.py:3335 app/queue.py:3413
 #, python-brace-format
 msgid ""
 "Maximum resolution for video is {max_w}×{max_h}. The image has been "
@@ -438,50 +438,50 @@ msgstr ""
 "Максимальное разрешение для видео — {max_w}×{max_h}. Изображение "
 "уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
 
-#: app/queue.py:3510 app/queue.py:3845
+#: app/queue.py:3502 app/queue.py:3837
 msgid "Camera module unavailable"
 msgstr "Модуль камер недоступен"
 
-#: app/queue.py:3520 app/queue.py:3697 app/queue.py:3857
+#: app/queue.py:3512 app/queue.py:3689 app/queue.py:3849
 #: app/templates/chat.html:156
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Снимок с камеры: {room_name}"
 
-#: app/queue.py:3659
+#: app/queue.py:3651
 #, python-brace-format
 msgid "Camera snapshot analysis: {question}"
 msgstr "Это снимок с камеры. Ответь по снимку: {question}"
 
-#: app/queue.py:3669
+#: app/queue.py:3661
 #, python-brace-format
 msgid ""
 "Describe what the camera snapshot of {room_name} shows and answer: "
 "{question}"
 msgstr "Опиши, что видно на снимке камеры «{room_name}», и ответь: {question}"
 
-#: app/queue.py:3679
+#: app/queue.py:3671
 #, python-brace-format
 msgid "Describe what the camera snapshot of {room_name} shows."
 msgstr "Опиши, что видно на снимке камеры «{room_name}»."
 
-#: app/queue.py:3693 app/queue.py:3809 app/queue.py:5705
+#: app/queue.py:3685 app/queue.py:3801 app/queue.py:5697
 msgid "Failed to process image request. Please try again."
 msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
 
-#: app/queue.py:3762
+#: app/queue.py:3754
 msgid "No image in your message"
 msgstr "В вашем сообщении нет изображения"
 
-#: app/queue.py:3781
+#: app/queue.py:3773
 msgid "IMAGE FILE NAME"
 msgstr "ИМЯ ФАЙЛА С ИЗОБРАЖЕНИЕМ"
 
-#: app/queue.py:4088
+#: app/queue.py:4080
 msgid "Web search is not available"
 msgstr "Веб-поиск недоступен"
 
-#: app/queue.py:4143
+#: app/queue.py:4135
 msgid ""
 "Search services are temporarily unavailable. Please try again in a few "
 "minutes."
@@ -490,41 +490,42 @@ msgstr ""
 "поисковиков. Пожалуйста, попробуйте повторить запрос через несколько "
 "минут."
 
-#: app/queue.py:4154 app/queue.py:4431
+#: app/queue.py:4146 app/queue.py:4423
 msgid "Web search failed"
 msgstr "Ошибка веб-поиска"
 
-#: app/queue.py:4369
+#: app/queue.py:4361
 msgid "No link found in your message"
 msgstr "⚠️ В вашем сообщении нет ссылки"
 
-#: app/queue.py:4372
+#: app/queue.py:4364
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Сервис обхода сайтов недоступен"
 
-#: app/queue.py:4391 app/tools.py:444
+#: app/queue.py:4383 app/tools.py:444
 msgid "This address is not available for reading"
 msgstr "⚠️ Этот адрес недоступен для чтения"
 
-#: app/queue.py:4414
+#: app/queue.py:4406
 msgid "The site blocked automated access (anti-bot protection)"
 msgstr ""
 "Сайт закрыт для автоматического доступа (антибот-защита). Пробую обычный "
 "поиск."
 
-#: app/queue.py:4437
+#: app/queue.py:4429
+#, python-brace-format
 msgid "Could not read any pages from {domain}"
 msgstr "⚠️ Не удалось прочитать ни одну страницу с {domain}"
 
-#: app/queue.py:4449
+#: app/queue.py:4441
 msgid "Document quota reached — the collected materials were not saved"
 msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
 
-#: app/queue.py:4459
+#: app/queue.py:4451
 msgid "Failed to save the collected materials"
 msgstr "⚠️ Не удалось сохранить собранные материалы."
 
-#: app/queue.py:5048 modules/base.py:666 modules/base.py:796
+#: app/queue.py:5040 modules/base.py:666 modules/base.py:796
 #: modules/base.py:855 modules/multimodal.py:228 modules/multimodal.py:260
 #: modules/multimodal.py:266 modules/multimodal.py:307
 #: modules/multimodal.py:338 modules/multimodal.py:362
@@ -533,66 +534,66 @@ msgstr "⚠️ Не удалось сохранить собранные мат�
 msgid "Error loading prompt template"
 msgstr "Ошибка загрузки шаблона промпта"
 
-#: app/queue.py:5176
+#: app/queue.py:5168
 msgid "No response from chat model. Try rephrasing your request."
 msgstr "Не удалось получить ответ от модели. Попробуйте переформулировать запрос."
 
-#: app/queue.py:5352
+#: app/queue.py:5344
 msgid "Invalid embedding input"
 msgstr "Некорректные входные данные для эмбеддингов"
 
-#: app/queue.py:5357
+#: app/queue.py:5349
 msgid "Embeddings are temporarily unavailable"
 msgstr "Эмбеддинги временно недоступны"
 
-#: app/queue.py:5368
+#: app/queue.py:5360
 msgid "Failed to compute embeddings"
 msgstr "Не удалось вычислить эмбеддинги"
 
-#: app/queue.py:5388
+#: app/queue.py:5380
 msgid "Invalid audio input"
 msgstr "Некорректные аудиоданные"
 
-#: app/queue.py:5393 app/queue.py:6010 app/queue.py:6101
+#: app/queue.py:5385 app/queue.py:6002 app/queue.py:6093
 #: app/routes/api_v1.py:1162
 msgid "Audio service unavailable"
 msgstr "Сервис аудио недоступен"
 
-#: app/queue.py:5557
+#: app/queue.py:5549
 msgid "Unknown request type"
 msgstr "Неизвестный тип запроса"
 
-#: app/queue.py:5661 app/queue.py:5864
+#: app/queue.py:5653 app/queue.py:5856
 msgid "Image editing request was empty"
 msgstr "Запрос на редактирование изображения пуст"
 
-#: app/queue.py:5679 app/queue.py:5891
+#: app/queue.py:5671 app/queue.py:5883
 msgid "Video request was empty"
 msgstr "Запрос на создание видео пуст"
 
-#: app/queue.py:5695 app/queue.py:5916
+#: app/queue.py:5687 app/queue.py:5908
 msgid "Image generation request was empty"
 msgstr "Запрос на создание изображения был пуст"
 
-#: app/queue.py:5709 app/queue.py:5766
+#: app/queue.py:5701 app/queue.py:5758
 msgid "Invalid image"
 msgstr "Неверное изображение"
 
-#: app/queue.py:6047 app/queue.py:6136 app/routes/tasks.py:497
+#: app/queue.py:6039 app/queue.py:6128 app/routes/tasks.py:497
 #: app/tasks/audio_transcribe.py:168 app/templates/chat.html:154
 msgid "Transcribed"
 msgstr "Распознано"
 
-#: app/queue.py:6062 app/queue.py:6159 app/routes/messages.py:436
+#: app/queue.py:6054 app/queue.py:6151 app/routes/messages.py:436
 #: app/templates/chat.html:150
 msgid "Voice request"
 msgstr "Голосовой запрос"
 
-#: app/queue.py:6246 app/routes/documents.py:252
+#: app/queue.py:6238 app/routes/documents.py:252
 msgid "No file provided"
 msgstr "Файл не предоставлен"
 
-#: app/queue.py:6289
+#: app/queue.py:6281
 msgid ""
 "Could not index the attached document. It was saved to your Documents; "
 "try again later."
@@ -600,7 +601,7 @@ msgstr ""
 "Не удалось проиндексировать приложенный документ. Он сохранён в разделе "
 "«Документы»; попробуйте позже."
 
-#: app/queue.py:6553
+#: app/queue.py:6545
 #, python-brace-format
 msgid ""
 "OCR time budget reached: recognized the first {pages} of {total} pages. "
@@ -609,7 +610,7 @@ msgstr ""
 "Достигнут лимит времени распознавания: распознаны первые {pages} из "
 "{total} страниц. Они сейчас индексируются."
 
-#: app/queue.py:6753 app/templates/chat.html:157
+#: app/queue.py:6745 app/templates/chat.html:157
 msgid "Unknown session"
 msgstr "Неизвестный сеанс"
 
@@ -702,7 +703,7 @@ msgstr "Неизвестный инструмент: {tool}"
 msgid "Tool execution error: {error}"
 msgstr "Ошибка выполнения инструмента: {error}"
 
-#: app/utils.py:1204
+#: app/utils.py:1214
 #, python-brace-format
 msgid ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
@@ -711,39 +712,39 @@ msgstr ""
 "Превышена квота хранилища: использовано {used_mb:.0f}МБ из {max_mb}МБ. "
 "Удалите часть файлов."
 
-#: app/utils.py:1695
+#: app/utils.py:1705
 msgid "Image generation failed. Try again later."
 msgstr "Генерация изображения не удалась. Попробуйте позже."
 
-#: app/utils.py:1696
+#: app/utils.py:1706
 msgid "Image generation produced empty output."
 msgstr "Генерация изображения дала пустой результат."
 
-#: app/utils.py:1697
+#: app/utils.py:1707
 msgid "Image generation error. Check logs for details."
 msgstr "Ошибка генерации изображения. Подробности в логах."
 
-#: app/utils.py:1698
+#: app/utils.py:1708
 msgid "Image editing failed. Try again later."
 msgstr "Редактирование изображения не удалось. Попробуйте позже."
 
-#: app/utils.py:1699
+#: app/utils.py:1709
 msgid "Image editing produced empty output."
 msgstr "Редактирование дало пустой результат."
 
-#: app/utils.py:1700
+#: app/utils.py:1710
 msgid "No editing instructions provided."
 msgstr "Не указаны инструкции для редактирования."
 
-#: app/utils.py:1701
+#: app/utils.py:1711
 msgid "No source image provided."
 msgstr "Не предоставлено исходное изображение."
 
-#: app/utils.py:1702
+#: app/utils.py:1712
 msgid "Image generation timed out. Try again later."
 msgstr "Генерация изображения превысила лимит времени. Попробуйте позже."
 
-#: app/utils.py:1703
+#: app/utils.py:1713
 msgid "Image editing timed out. Try again later."
 msgstr "Редактирование изображения превысило лимит времени. Попробуйте позже."
 
@@ -1494,71 +1495,87 @@ msgstr "{file_name} — описание изображения"
 msgid "{file_name} — frame from the generated video"
 msgstr "{file_name} — кадр из сгенерированного видео"
 
-#: app/tasks/executor.py:213
+#: app/tasks/executor.py:112
+msgid ""
+"The step has no image to edit: no image is attached and no earlier step "
+"produced one."
+msgstr "У шага нет изображения для редактирования: изображение не приложено и ни один из предыдущих шагов не создал его."
+
+#: app/tasks/executor.py:118
+#, python-brace-format
+msgid "Skipped: step {source} produced no image to edit."
+msgstr "Пропущено: шаг {source} не создал изображение для редактирования."
+
+#: app/tasks/executor.py:119
+#, python-brace-format
+msgid "Skipped: step {source} produced no image to animate."
+msgstr "Пропущено: шаг {source} не создал изображение для анимации."
+
+#: app/tasks/executor.py:215
 #, python-brace-format
 msgid "Expected: «{value}»"
 msgstr "ожидалось: «{value}»"
 
-#: app/tasks/executor.py:215
+#: app/tasks/executor.py:217
 #, python-brace-format
 msgid "Seen: «{value}»"
 msgstr "получено: «{value}»"
 
-#: app/tasks/executor.py:219 app/tasks/executor.py:222
+#: app/tasks/executor.py:221 app/tasks/executor.py:224
 #, python-brace-format
 msgid "Minor defects: {details}"
 msgstr "Мелкие недочёты: {details}"
 
-#: app/tasks/executor.py:223
+#: app/tasks/executor.py:225
 msgid "Minor style or detail drift"
 msgstr "мелкие расхождения стиля или деталей"
 
-#: app/tasks/executor.py:589 app/tasks/executor.py:2506
+#: app/tasks/executor.py:591 app/tasks/executor.py:2513
 msgid ""
 "the analysis contains the concrete data from the documents that answers "
 "the request"
 msgstr "в анализе есть конкретные данные из документов, отвечающие на запрос"
 
-#: app/tasks/executor.py:756
+#: app/tasks/executor.py:758
 msgid "label"
 msgstr "Метка"
 
-#: app/tasks/executor.py:756
+#: app/tasks/executor.py:758
 msgid "description"
 msgstr "Описание"
 
-#: app/tasks/executor.py:757
+#: app/tasks/executor.py:759
 msgid "Checkpoint hint:"
 msgstr "Критерий готовности:"
 
-#: app/tasks/executor.py:757
+#: app/tasks/executor.py:759
 msgid "checkpoint_hint"
 msgstr "Подсказка к контрольной точке"
 
-#: app/tasks/executor.py:760
+#: app/tasks/executor.py:762
 msgid "Available rooms:"
 msgstr "Доступные комнаты:"
 
-#: app/tasks/executor.py:795
+#: app/tasks/executor.py:797
 #, python-brace-format
 msgid "Attached images: {count} ({names})."
 msgstr "Приложенные изображения: {count} ({names})."
 
-#: app/tasks/executor.py:812
+#: app/tasks/executor.py:814
 #, python-brace-format
 msgid "Attached documents: {count} ({names})."
 msgstr "Приложенные документы: {count} ({names})."
 
-#: app/tasks/executor.py:818
+#: app/tasks/executor.py:820
 #, python-brace-format
 msgid "Attached audio recordings: {count} ({names})."
 msgstr "Приложенные аудиозаписи: {count} ({names})."
 
-#: app/tasks/executor.py:823
+#: app/tasks/executor.py:825
 msgid "No files are attached to the task."
 msgstr "К задаче файлы не приложены."
 
-#: app/tasks/executor.py:864
+#: app/tasks/executor.py:866
 msgid ""
 "The user turned on 🔬 Deep Analysis: to find data in the user's documents,"
 " plan a step with tool \"rlm\" (multi-step deep analysis) over the "
@@ -1572,7 +1589,7 @@ msgstr ""
 "не приложено). НЕ планируй шаги \"rag\" или \"llm\" для поиска по "
 "документам. Не спрашивай, какие документы анализировать."
 
-#: app/tasks/executor.py:870
+#: app/tasks/executor.py:872
 msgid ""
 "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with "
 "tool \"rlm\" that deeply analyzes the attached documents (all of the "
@@ -1584,7 +1601,7 @@ msgstr ""
 " документы (или все документы пользователя, если ничего не приложено) и "
 "отвечает на запрос задачи; не спрашивай, какие документы анализировать."
 
-#: app/tasks/executor.py:877
+#: app/tasks/executor.py:879
 msgid ""
 "To find data in the user's documents, plan a step with tool \"rag\" "
 "(document search) followed by a step with tool \"llm\" that composes the "
@@ -1598,11 +1615,11 @@ msgstr ""
 "какие документы анализировать: если документы приложены к задаче — искать"
 " в них, если не приложены — искать по всем документам пользователя."
 
-#: app/tasks/executor.py:2919
+#: app/tasks/executor.py:2955
 msgid "step attempts exhausted"
 msgstr "Исчерпаны попытки выполнения шага"
 
-#: app/tasks/executor.py:3888
+#: app/tasks/executor.py:3924
 msgid "Result of subtask expired while task was paused. Please restart the task."
 msgstr ""
 "Результат подзадачи устарел, пока задача была на паузе. Пожалуйста, "
@@ -4137,12 +4154,6 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "редактирования: изображение не приложено и "
 #~ "ни один из предыдущих шагов не "
 #~ "создал его."
-
-#~ msgid "Skipped: step {source} produced no image to edit."
-#~ msgstr "Пропущено: шаг {source} не создал изображение для редактирования."
-
-#~ msgid "Skipped: step {source} produced no image to animate."
-#~ msgstr "Пропущено: шаг {source} не создал изображение для анимации."
 
 # Tasks subsystem (v12.6): planning failures and terminal fallbacks
 #~ msgid "Task could not be planned: the plan template is unavailable."

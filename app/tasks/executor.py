@@ -94,6 +94,10 @@ CANCEL_FLAG_TTL_S = 3600
 
 # Direct tools run in-process (runner); everything else goes through the queue.
 _SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen", "camera", "crawl", "vision"}
+# Subtask tools that are supposed to leave a file behind. A step of any OTHER
+# type has no candidate list by design, so "nothing was produced" must never be
+# reported to it as a failed image.
+_MEDIA_TOOLS = {"image_gen", "image_edit", "video_gen"}
 # Queue task_type per subtask tool (Task 8 refines the exact payloads).
 _SUBTASK_TYPE = {
     "image_gen": "image_gen",
@@ -2028,6 +2032,7 @@ class TaskExecutor:
         elapsed: float,
         result_text: str,
         extra: dict,
+        checkpoint: dict | None = None,
     ) -> None:
         """All attempts failed: keep the candidate closest to the task (best effort)."""
         task_id = task["id"]
@@ -2036,12 +2041,22 @@ class TaskExecutor:
             if isinstance(c, dict) and c.get("file_path")
         ]
         if not candidates:
+            lang = task.get("lang") or "ru"
+            # A text step never has a candidate, so the image wording would
+            # describe something that was never attempted.
+            message = (
+                "no media file was produced by any attempt"
+                if str(row.get("tool") or "") in _MEDIA_TOOLS
+                else "the step did not pass verification"
+            )
             self._end_step(
                 task_id,
                 row["id"],
                 status="failed",
                 exec_seconds=elapsed,
-                last_error="all image attempts failed",
+                last_error=f"⚠️ {_tr(message, lang=lang)}",
+                checkpoint_result=str((checkpoint or {}).get("explanation") or ""),
+                checkpoint_verdict=False if checkpoint else None,
             )
             self._clear_task_stage(task)
             update_task(task_id, next_step_index=idx + 1)
@@ -4249,7 +4264,10 @@ class TaskExecutor:
                     )
                     return "done"
                 # All generations and repairs are spent: keep the closest one.
-                self._finish_best_effort(task, row, idx, elapsed, result_text, merged_extra)
+                # The last verdict is logged too, otherwise the view stops at
+                # the previous attempt and under-reports the attempt count.
+                self._log_attempt(row["id"], attempts, False, reason)
+                self._finish_best_effort(task, row, idx, elapsed, result_text, merged_extra, checkpoint)
                 return "done"
         if media.get("file_path"):
             self._prune_candidates(merged_extra, media, task.get("user_id"))

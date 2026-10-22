@@ -145,7 +145,8 @@ grep -rnE 'pdb\.set_trace|debugger;|console\.log' app modules app/static/js
 
 ```bash
 pytest tests/test_app_version.py tests/test_api_docs.py \
-  tests/test_js_signatures.py tests/test_translations.py
+  tests/test_api_inventory.py tests/test_js_signatures.py \
+  tests/test_translations.py
 ```
 
 - Add the test files for changed areas.
@@ -153,7 +154,18 @@ pytest tests/test_app_version.py tests/test_api_docs.py \
 
 ### API docs
 
-`tests/test_api_docs.py` is the drift guard: every `/v1` route must be in `docs/openapi-v1.yaml`, and vice versa. New endpoints, parameters or errors also update `docs/API.md` and `docs/API-ru.md`.
+`tests/test_api_docs.py` is the path-level drift guard: every registered `/v1` route must appear in `docs/openapi-v1.yaml`, and every documented path must exist. It compares path templates only. It does not look at HTTP methods, request parameters, request or response bodies, or error codes, so a spec with the wrong verb and an outdated payload still passes.
+
+`tests/test_api_inventory.py` is the method-level contract guard: it enumerates every in-scope `/v1` endpoint with its exact method set, so a removed route, a rename or a dropped method fails the build. Its `EXPECTED_ENDPOINTS` table mirrors the endpoint table in `docs/API.md`; add a new endpoint there and in the test in the same commit.
+
+Neither test covers parameters, payloads or response schemas. Review these by hand for every changed endpoint:
+
+- HTTP methods and path parameters in `docs/openapi-v1.yaml`;
+- request body and query parameters, their types and required flags;
+- response schema and status codes, including the localized `⚠️ ` error bodies;
+- the endpoint table, authentication notes and examples in `docs/API.md` and `docs/API-ru.md`.
+
+The internal web/admin API (`/api/...`) has no drift guard. `docs/openapi.yaml` is an older standalone document and no test compares it with the code. Check the endpoints the release touched against it by hand, and report the internal API as `NOT VERIFIED` when you did not.
 
 ## Phase 3 — Documentation and version
 
@@ -264,7 +276,8 @@ Check and record evidence:
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
 | What's New | manual traceability review | PASS / FAIL |
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |
-| API docs | `tests/test_api_docs.py` | PASS / FAIL |
+| API docs (paths) | `tests/test_api_docs.py` | PASS / FAIL |
+| API contract (methods) | `tests/test_api_inventory.py` | PASS / FAIL |
 | Tree clean | `git status --short`, `git diff --check` | PASS / FAIL |
 
 Final report:

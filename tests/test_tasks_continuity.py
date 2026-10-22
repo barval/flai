@@ -252,7 +252,7 @@ def test_continuity_prompt_renders_existing_sheet_merge_section(test_app):
         patch("app.tasks.runner.run_checkpoint", return_value=_passed_checkpoint()),
     ):
         run_direct_step(test_app, _cont_step(), context_digest="", cancel_check=lambda: False, lang="ru")
-    assert "watercolor" not in captured["prompt"], "no existing sheet — no merge section content"
+    assert "a black cat with a white spot" not in captured["prompt"], "no existing sheet — no merge section content"
 
 
 def test_continuity_registered_in_badges_and_capabilities():
@@ -772,18 +772,16 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _translations_catalog(lang: str) -> dict:
-    """Rough msgid -> msgstr parse of the Flask .po catalog (single-line entries)."""
-    text = (_ROOT / "translations" / lang / "LC_MESSAGES" / "messages.po").read_text(encoding="utf-8")
-    catalog: dict[str, str] = {}
-    entry_id = None
-    for line in text.splitlines():
-        raw = line.strip()
-        if raw.startswith('msgid "'):
-            entry_id = raw[7:-1] if raw.endswith('"') else raw[7:]
-        elif raw.startswith('msgstr "') and entry_id:
-            catalog[entry_id] = raw[8:-1] if raw.endswith('"') else raw[8:]
-            entry_id = None
-    return catalog
+    """msgid -> msgstr from the Flask .po catalog, including multi-line entries."""
+    from babel.messages.pofile import read_po
+
+    with (_ROOT / "translations" / lang / "LC_MESSAGES" / "messages.po").open("rb") as fh:
+        catalog = read_po(fh)
+    return {
+        message.id: message.string
+        for message in catalog
+        if isinstance(message.id, str) and isinstance(message.string, str) and message.string
+    }
 
 
 @pytest.mark.unit

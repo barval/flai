@@ -24,9 +24,10 @@ Run these from the repository root. They are read-only and exit non-zero when th
 python3 .opencode/skills/preparing-flai-release/scripts/check_release_branches.py --release vX.Y --previous vX.(Y-1)
 python3 .opencode/skills/preparing-flai-release/scripts/check_translations.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 ```
 
-The branch and translation scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+The branch, translation and TOC scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -190,11 +191,17 @@ grep -n "What's New in" README.md README-ru.md
 grep -n 'Project-Id-Version' translations/*/LC_MESSAGES/messages.po
 ```
 
-Documentation heading parity:
+Documentation heading parity and README links:
 
 ```bash
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 ```
+
+The TOC check compares every entry with the `##` headings and recomputes the
+anchor the renderer will generate. Anchors are never written by hand: run
+`python3 scripts/update_toc.py` after any heading change (`docs/DEVELOPMENT.md`,
+"README table of contents").
 
 Environment sync:
 
@@ -236,6 +243,7 @@ Check and record evidence:
 | Translations complete | `check_translations.py`, `pybabel compile` | PASS / FAIL |
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
+| README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
 | What's New | manual traceability review | PASS / FAIL |
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |
 | API docs | `tests/test_api_docs.py` | PASS / FAIL |

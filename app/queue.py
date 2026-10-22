@@ -47,8 +47,20 @@ from .utils import (
     save_uploaded_file,
 )
 
+
+def N_(message: str) -> str:  # noqa: N802 — gettext lazy marker (Babel default keyword)
+    """Mark a crawl message for Babel extraction; ``_crawl_msg()`` translates it later.
+
+    ``_crawl_error()`` receives the msgid as a variable, which ``pybabel extract``
+    cannot see, so an unwrapped literal silently becomes an obsolete catalog entry
+    and Russian users get the English text.
+    """
+    return message
+
+
 # A chat edit that explicitly asks to change the picture's lighting or colour
 # must not be tone-matched back to the source; every other chat edit is.
+
 _EDIT_TONE_CHANGE_RE = re.compile(
     r"(?:ярч|темн|светл|контраст|насыщ|освещ|экспозиц|оттен|тепле|холодн|"
     r"ч[её]рно-?\s*бел|монохром|black\s+and\s+white|"
@@ -4356,10 +4368,10 @@ class RedisRequestQueue:
         query = data.get("query", "")
         url = data.get("url") or self._extract_first_url(query)
         if not url:
-            return self._crawl_error(session_id, "No link found in your message", lang)
+            return self._crawl_error(session_id, N_("No link found in your message"), lang)
         crawler = self.app.modules.get("crawler")
         if not crawler or not crawler.available:
-            return self._crawl_error(session_id, "Crawler service is unavailable", lang)
+            return self._crawl_error(session_id, N_("Crawler service is unavailable"), lang)
 
         # The previous crawl of this domain is replaced, not added, so it must
         # not count against the quota measured here.
@@ -4378,7 +4390,7 @@ class RedisRequestQueue:
 
             if isinstance(e, BlockedUrlError):
                 self.logger.warning(f"Crawl blocked: {url} — {e}")
-                return self._crawl_error(session_id, "This address is not available for reading", lang)
+                return self._crawl_error(session_id, N_("This address is not available for reading"), lang)
             if isinstance(e, SiteBlockedError):
                 self.logger.warning(f"Crawl blocked by the site itself: {url} — {e}")
                 site_blocked = True
@@ -4390,7 +4402,7 @@ class RedisRequestQueue:
 
         if task.get("id") and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._crawl_error(session_id, "Task cancelled", lang, round(time.time() - start_time, 1))
+            return self._crawl_error(session_id, N_("Task cancelled"), lang, round(time.time() - start_time, 1))
 
         if not pages:
             if site_blocked:
@@ -4424,7 +4436,7 @@ class RedisRequestQueue:
                 )
             return self._crawl_error(
                 session_id,
-                "Could not read any pages from {domain}",
+                N_("Could not read any pages from {domain}"),
                 lang,
                 crawl_time,
                 domain=urlsplit(url).hostname or url,
@@ -4436,7 +4448,7 @@ class RedisRequestQueue:
         quota_error_after = check_document_quota(user_id, excluded_doc_id=existing_doc_id, lang=lang)
         if quota_error_after:
             return self._crawl_error(
-                session_id, "Document quota reached — the collected materials were not saved", lang, crawl_time
+                session_id, N_("Document quota reached — the collected materials were not saved"), lang, crawl_time
             )
 
         self.app.logger.info(
@@ -4446,7 +4458,7 @@ class RedisRequestQueue:
         doc_id = self._store_crawl_document(user_id, url, pages, task)
         if not doc_id:
             return self._crawl_error(
-                session_id, "Failed to save the collected materials", lang, round(time.time() - start_time, 1)
+                session_id, N_("Failed to save the collected materials"), lang, round(time.time() - start_time, 1)
             )
 
         process_time = round(time.time() - start_time, 1)

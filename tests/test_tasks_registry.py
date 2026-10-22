@@ -19,6 +19,7 @@ def test_registry_contains_core_tools():
         "image_gen",
         "image_edit",
         "video_gen",
+        "continuity",
     } == caps
 
 
@@ -55,5 +56,6 @@ def test_get_capabilities_returns_defensive_copies():
         "image_gen",
         "image_edit",
         "video_gen",
+        "continuity",
     }
     assert fresh[0]["label"] != "x"

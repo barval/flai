@@ -5,7 +5,11 @@ import json as _json
 import os
 from base64 import b64encode
 
+import pytest
+
 from tests.test_multi_attachment import PNG_1PX_RAW
+
+pytestmark = pytest.mark.requires_db
 
 
 class TestBackfillAttachmentPaths:

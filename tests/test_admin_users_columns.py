@@ -8,6 +8,8 @@ import pytest
 from app.api_tokens import create_api_token, revoke_api_token
 from app.tavily_keys import set_tavily_key
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.fixture
 def admin_client(client, test_app):

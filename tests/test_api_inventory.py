@@ -22,7 +22,7 @@ EXPECTED_ENDPOINTS = {
     "/v1/files/<file_id>/content": {"GET", "HEAD", "OPTIONS"},
     "/v1/flai/me": {"GET", "HEAD", "OPTIONS"},
     "/v1/flai/tasks": {"GET", "HEAD", "OPTIONS"},
-    "/v1/flai/tasks/<task_id>": {"GET", "HEAD", "OPTIONS"},
+    "/v1/flai/tasks/<task_id>": {"GET", "DELETE", "HEAD", "OPTIONS"},
     "/v1/flai/tasks/<task_id>/cancel": {"POST", "OPTIONS"},
     "/v1/flai/tasks/<task_id>/content": {"GET", "HEAD", "OPTIONS"},
     "/v1/flai/chat/async": {"POST", "OPTIONS"},
@@ -32,6 +32,7 @@ EXPECTED_ENDPOINTS = {
     "/v1/flai/rlm": {"POST", "OPTIONS"},
     "/v1/flai/sessions": {"GET", "POST", "HEAD", "OPTIONS"},
     "/v1/flai/sessions/<session_id>/messages": {"GET", "HEAD", "OPTIONS"},
+    "/v1/flai/sessions/<session_id>": {"DELETE", "OPTIONS"},
 }
 
 # Documentation routes are part of the served surface but not of the API
@@ -40,7 +41,11 @@ DOC_ROUTES = {"/v1/openapi.json", "/v1/docs", "/v1/docs/oauth2-redirect.html"}
 
 
 def _collect_v1_rules(test_app):
-    return {rule.rule: rule.methods for rule in test_app.url_map.iter_rules() if rule.rule.startswith("/v1")}
+    rules: dict[str, set[str]] = {}
+    for rule in test_app.url_map.iter_rules():
+        if rule.rule.startswith("/v1"):
+            rules.setdefault(rule.rule, set()).update(rule.methods)
+    return rules
 
 
 @pytest.mark.unit

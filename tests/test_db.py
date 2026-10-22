@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+pytestmark = pytest.mark.requires_db
+
 
 def generate_unique_name(prefix="test"):
     """Generate unique name for test isolation."""

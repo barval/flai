@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.requires_db
+
 
 @pytest.mark.integration
 class TestAdminAuth:

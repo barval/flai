@@ -334,7 +334,7 @@ class TestImageGenSubtaskResult:
             "file_size": 4242,
             "model_name": "z_image_turbo",
             "model_type": "image_gen",
-            "backend_prompt": "a cat",
+            "backend_prompt": "a cat, clean illustration without any text, letters, numbers, captions or watermarks",
             "backend_params": {},
         }
         assert saved["session_id"] == task["id"], "the file lands in the task's own folder"

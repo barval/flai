@@ -18,6 +18,7 @@ EXPECTED_PLACEHOLDERS: dict[str, set[str]] = {
         "response_language",
         "attachments_section",
         "current_time",
+        "plan_audit_section",
     },
     "task_step": {
         "task_request",
@@ -86,6 +87,7 @@ DUMMY_VALUES: dict[str, str] = {
     "results_digest": "Step 1: done\nStep 2: got 12",
     "attachments_section": "Attached images: 2 (a.jpg, b.jpg).",
     "current_time": "15 October 2026, time 12:00:00 Thursday (UTC+3)",
+    "plan_audit_section": "Plan review: steps 3 and 4 need a checkpoint.",
 }
 
 

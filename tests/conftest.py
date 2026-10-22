@@ -26,6 +26,22 @@ if _USE_MOCK_DB:
 
 from app import create_app
 
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip database-backed tests while the in-memory mock stands in for PostgreSQL.
+
+    The mock answers the SQL patterns a handful of tests need. A query that gains
+    a column (admin stats, task usage, visual bible) then returns a row without
+    that key and the test fails on the mock, not on the product. CI always sets
+    DATABASE_URL, where these tests run against a real database.
+    """
+    if not _USE_MOCK_DB:
+        return
+    skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
+    for item in items:
+        if "requires_db" in item.keywords:
+            item.add_marker(skip)
+
 # ── Helpers: mock external services ────────────────────────────────────
 
 

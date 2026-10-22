@@ -3682,6 +3682,56 @@ def test_strip_foreign_style_tail_never_empties_a_goal():
     assert ex._strip_foreign_style_tail(goal, "ru") == goal
 
 
+def test_strip_foreign_style_tail_removes_a_leading_english_instruction():
+    """The plan reviewer opened a Russian scene with an English action phrase."""
+    goal = (
+        "Generate illustration for scene 1: Кот Антипка спит на уютной лежанке рядом с автором, "
+        "в едином стиле детской книги"
+    )
+
+    assert ex._strip_foreign_style_tail(goal, "ru") == (
+        "Кот Антипка спит на уютной лежанке рядом с автором, в едином стиле детской книги"
+    )
+
+
+def test_strip_foreign_style_tail_keeps_a_native_colon_prefix():
+    """A colon that belongs to the scene («Сцена 1: …») is not a foreign prefix."""
+    goal = "Сцена 1: кот спит на лежанке"
+    assert ex._strip_foreign_style_tail(goal, "ru") == goal
+
+
+def test_strip_foreign_style_tail_keeps_a_wholly_foreign_goal():
+    """Nothing is cut when no target-language text follows: a goal that is
+    entirely foreign is reported, never silently emptied."""
+    goal = "Generate an illustration of a cat"
+    assert ex._strip_foreign_style_tail(goal, "ru") == goal
+
+
+def test_strip_foreign_style_tail_keeps_an_english_goal_in_an_english_profile():
+    goal = "Generate illustration for scene 1: a cat sleeping on a sofa"
+    assert ex._strip_foreign_style_tail(goal, "en") == goal
+
+
+def test_strip_foreign_style_tail_keeps_a_url_before_the_colon():
+    goal = "https://example.com/scene: кот спит на лежанке"
+    assert ex._strip_foreign_style_tail(goal, "ru") == goal
+
+
+def test_sanitize_media_plan_goals_strips_a_leading_foreign_instruction():
+    """Only media goals lose the prefix; an llm goal is answer text."""
+    plan = {
+        "steps": [
+            {"seq": 3, "tool": "image_gen", "goal": "Generate illustration for scene 1: Кот спит."},
+            {"seq": 4, "tool": "llm", "goal": "Generate illustration for scene 2: Кот ест."},
+        ]
+    }
+
+    cleaned = ex._sanitize_media_plan_goals(plan, "ru")
+
+    assert cleaned["steps"][0]["goal"] == "Кот спит."
+    assert cleaned["steps"][1]["goal"] == "Generate illustration for scene 2: Кот ест."
+
+
 def test_sanitize_media_plan_goals_only_touches_media_steps():
     """Only image/video goals are cleaned; crawl and llm goals keep their text."""
     english_tail = "\n\nIllustration in the unified style of classic Russian folklore art."

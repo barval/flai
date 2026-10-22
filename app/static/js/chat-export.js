@@ -6,32 +6,49 @@ function siteTitleFallback() {
 }
 
 async function saveChatAsHTML() {
-    const userNameElement = document.querySelector('.logout-container .user-name');
-    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');    const activeSession = document.querySelector('.session-item.active');
-    if (!activeSession) {
-        alert(t('no_active_session_save'));
-        return;
-    }
+    // The Tasks view is a second mode of the same #chat-messages container, so
+    // one export walks the DOM either way. A task has no chat session: its
+    // title comes from the open task, and its plan/step service lines (rendered
+    // outside .message-content) are folded back into the exported body.
+    const taskMode = Boolean(window.currentTaskId);
+    const task = taskMode
+        ? ((typeof tasksData !== 'undefined' && tasksData[window.currentTaskId]) || {})
+        : null;
 
-    const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
-    let displayTitle = rawTitle;
-    const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
-    const match = rawTitle.match(filenameDateRegex);
-    if (match) {
-        const datePart = match[2];
-        const timePart = match[3];
-        const year = datePart.substring(0, 4);
-        const month = datePart.substring(4, 6);
-        const day = datePart.substring(6, 8);
-        const hours = timePart.substring(0, 2);
-        const minutes = timePart.substring(2, 4);
-        const seconds = timePart.substring(4, 6);
-        const dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
-        const dateOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-        const formattedDate = dateObj.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
-        displayTitle = '🎤 ' + t('voice_request') + ' (' + formattedDate + ')';
-    } else {
+    const userNameElement = document.querySelector('.logout-container .user-name');
+    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
+
+    let rawTitle;
+    let displayTitle;
+    if (taskMode) {
+        rawTitle = task.title || t('task_status_draft');
         displayTitle = escapeHtml(rawTitle);
+    } else {
+        const activeSession = document.querySelector('.session-item.active');
+        if (!activeSession) {
+            alert(t('no_active_session_save'));
+            return;
+        }
+        rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
+        displayTitle = rawTitle;
+        const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
+        const match = rawTitle.match(filenameDateRegex);
+        if (match) {
+            const datePart = match[2];
+            const timePart = match[3];
+            const year = datePart.substring(0, 4);
+            const month = datePart.substring(4, 6);
+            const day = datePart.substring(6, 8);
+            const hours = timePart.substring(0, 2);
+            const minutes = timePart.substring(2, 4);
+            const seconds = timePart.substring(4, 6);
+            const dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+            const dateOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            const formattedDate = dateObj.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
+            displayTitle = '🎤 ' + t('voice_request') + ' (' + formattedDate + ')';
+        } else {
+            displayTitle = escapeHtml(rawTitle);
+        }
     }
 
     let logoBase64 = '';
@@ -88,7 +105,17 @@ async function saveChatAsHTML() {
         const headerEl = msgEl.querySelector('.message-header');
         const timeHtml = headerEl ? headerEl.innerHTML : formatFullDateTime(msgTimestamp);
         const contentEl = msgEl.querySelector('.message-content');
-        const contentHtml = contentEl ? contentEl.innerHTML : '';
+        let contentHtml = contentEl ? contentEl.innerHTML : '';
+        if (taskMode) {
+            // A task message renders its plan/step/tool lines and attachment
+            // notes as siblings of .message-content — keep them in the export
+            // so the task structure survives.
+            let serviceHtml = '';
+            msgEl.querySelectorAll('.task-msg-service, .task-msg-transcript').forEach(el => {
+                serviceHtml += '<div class="' + el.className + '">' + escapeHtml(el.textContent) + '</div>';
+            });
+            contentHtml = serviceHtml + contentHtml;
+        }
 
         // Find all media elements (multi-attachment messages carry several
         // images: the legacy first one plus the .extra-attachments row).
@@ -373,7 +400,7 @@ ${fileHtml}
         '<main>\n' +
         '<div class="chat-wrapper">\n' +
         '<div class="chat-header">\n' +
-        '<h1>' + t('session') + ': ' + displayTitle + '</h1>\n' +
+        '<h1>' + (taskMode ? t('task') : t('session')) + ': ' + displayTitle + '</h1>\n' +
         '<p class="user-info">👤 ' + t('user') + ': ' + escapeHtml(userName) + '</p>\n' +
         '<p>📅 ' + t('saved_on') + ': ' + formattedDate + '</p>\n' +
         '<p>💬 ' + t('total_messages') + ': ' + messageElements.length + '</p>\n' +
@@ -432,7 +459,7 @@ ${fileHtml}
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'chat_' + timestamp + '.html';
+    a.download = (taskMode ? 'task_' : 'chat_') + timestamp + '.html';
     a.click();
     URL.revokeObjectURL(url);
 

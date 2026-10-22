@@ -209,9 +209,15 @@ window.setLocalTranscribing = setLocalTranscribing;
 
 window.updateStatusCounter = function() {
     if (window.IS_RELOADING) return;
-    fetch('/api/queue/counts')
+    const counter = document.getElementById('status-counter');
+    if (!counter) return;
+    // When the Tasks tab is active show the number of queued tasks;
+    // otherwise show the chat-request queue (0/0 is normal — tasks
+    // do not live in the chat queue, only their media sub-tasks do).
+    const isTask = typeof isTaskViewActive === 'function' && isTaskViewActive();
+    const url = isTask ? '/api/tasks/queue-count' : '/api/queue/counts';
+    fetch(url)
         .then(response => {
-            // Check if response is JSON
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 console.error('Queue counter returned non-JSON response:', response.status);
@@ -221,11 +227,12 @@ window.updateStatusCounter = function() {
         })
         .then(data => {
             if (window.IS_RELOADING || !data) return;
-            const counter = document.getElementById('status-counter');
-            if (counter) {
+            if (isTask) {
+                counter.textContent = '📊 ' + (data.queued_tasks || 0) + '/' + (data.total_queued_tasks || 0);
+            } else {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
-                dlog('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
             }
+            dlog('updateStatusCounter:', counter.textContent);
         })
         .catch(err => console.error('Error updating counter:', err));
 };

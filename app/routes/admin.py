@@ -58,6 +58,36 @@ def get_folder_size_bytes(folder_path: str) -> int:
     return total_size
 
 
+def _database_sizes() -> tuple[int, int]:
+    """Return the PostgreSQL storage of the user and chat tables, in bytes.
+
+    PostgreSQL is one database, so the legacy «User DB» / «Chat DB» labels are
+    mapped to the tables that belong to each area. ``to_regclass`` keeps a
+    legacy schema without one of the tables from failing the whole panel.
+    """
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT
+                    COALESCE(pg_total_relation_size(to_regclass('users')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('user_sessions')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('user_storage')), 0) AS user_db_size,
+                    COALESCE(pg_total_relation_size(to_regclass('chat_sessions')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('messages')), 0)
+                    + COALESCE(pg_total_relation_size(to_regclass('session_visits')), 0) AS chat_db_size
+                """
+            )
+            row = c.fetchone()
+            if not row:
+                return 0, 0
+            return int(row["user_db_size"] or 0), int(row["chat_db_size"] or 0)
+    except Exception as e:
+        logger.warning(f"Could not measure PostgreSQL table sizes: {e}")
+        return 0, 0
+
+
 def _slm_fact_counts() -> dict[str, int]:
     """Return per-profile active fact counts from the SLM daemon DB.
 
@@ -131,8 +161,9 @@ def admin_panel():
     except Exception as e:
         logger.warning(f"Failed to load camera rooms for admin panel: {e}")
 
-    # PostgreSQL size is tracked on the server, not accessible from app container
-    user_db_size = 0
+    # PostgreSQL table sizes for the legacy «User DB» / «Chat DB» labels; the
+    # folder sizes below are the real bytes of the uploads/documents trees.
+    user_db_size, chat_db_size = _database_sizes()
     uploads_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
@@ -179,7 +210,7 @@ def admin_panel():
         rooms=rooms,
         camera_rooms=camera_rooms,
         camera_enabled=current_app.config.get("CAMERA_ENABLED", False),
-        chat_db_size=0,
+        chat_db_size=chat_db_size,
         user_db_size=user_db_size,
         files_db_size=files_db_size,
         documents_db_size=documents_db_size,
@@ -215,8 +246,8 @@ def get_users():
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
-                        COALESCE(SUM(m.completion_tokens), 0) as outgoing_tokens,
-                        COALESCE(SUM(m.prompt_tokens), 0) as incoming_tokens,
+                        COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
+                        COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
                          WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
@@ -224,23 +255,86 @@ def get_users():
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id
                          WHERE cs2.user_id = %s AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count,
                         (SELECT COUNT(*) FROM api_tokens
-                         WHERE login = %s AND revoked_at IS NULL) as api_keys_count
+                         WHERE login = %s AND revoked_at IS NULL) as api_keys_count,
+                        (SELECT COUNT(*) FROM tasks
+                         WHERE user_id = %s) as tasks_count,
+                        (SELECT COALESCE(SUM(
+                            COALESCE((ts.extra->'usage_total'->>'prompt_tokens')::bigint,
+                                     (ts.extra->'usage'->>'prompt_tokens')::bigint, 0)
+                          + COALESCE((ts.extra->'checkpoint_usage_total'->>'prompt_tokens')::bigint,
+                                     (ts.extra->'checkpoint_usage'->>'prompt_tokens')::bigint, 0)
+                         ), 0)
+                         FROM task_steps ts JOIN tasks t2 ON ts.task_id = t2.id
+                         WHERE t2.user_id = %s) as task_outgoing,
+                        (SELECT COALESCE(SUM(
+                            COALESCE((ts.extra->'usage_total'->>'completion_tokens')::bigint,
+                                     (ts.extra->'usage'->>'completion_tokens')::bigint, 0)
+                          + COALESCE((ts.extra->'checkpoint_usage_total'->>'completion_tokens')::bigint,
+                                     (ts.extra->'checkpoint_usage'->>'completion_tokens')::bigint, 0)
+                         ), 0)
+                         FROM task_steps ts JOIN tasks t2 ON ts.task_id = t2.id
+                         WHERE t2.user_id = %s) as task_incoming,
+                        (SELECT COALESCE(SUM(COALESCE((u.usage->>'prompt_tokens')::bigint, 0)), 0)
+                         FROM tasks t3
+                         CROSS JOIN LATERAL (
+                             SELECT t3.step_plan->'plan_meta'->'usage' AS usage
+                             UNION ALL
+                             SELECT rev.value->'usage'
+                             FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
+                         ) u
+                         WHERE t3.user_id = %s) as plan_outgoing,
+                        (SELECT COALESCE(SUM(COALESCE((u.usage->>'completion_tokens')::bigint, 0)), 0)
+                         FROM tasks t3
+                         CROSS JOIN LATERAL (
+                             SELECT t3.step_plan->'plan_meta'->'usage' AS usage
+                             UNION ALL
+                             SELECT rev.value->'usage'
+                             FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
+                         ) u
+                         WHERE t3.user_id = %s) as plan_incoming,
+                        (SELECT COALESCE(used_bytes, 0)
+                         FROM user_storage
+                         WHERE user_id = %s) as storage_used
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = %s
                 """,
-                    (u["login"], u["login"], u["login"], u["login"]),
+                    (
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                        u["login"],
+                    ),
                 )
                 stats = c.fetchone()
 
                 u_dict = dict(u)
                 u_dict["sessions_count"] = stats["sessions"] if stats else 0
+                u_dict["tasks_count"] = stats["tasks_count"] if stats else 0
                 u_dict["messages_count"] = stats["messages"] if stats else 0
-                u_dict["outgoing_tokens"] = stats["outgoing_tokens"] if stats else 0
-                u_dict["incoming_tokens"] = stats["incoming_tokens"] if stats else 0
+                # Chat + task steps (incl. checkpoints and retries) + planner /
+                # plan reviews: the Users tab shows the user's whole LLM spend.
+                u_dict["outgoing_tokens"] = (
+                    (stats["outgoing_tokens"] or 0)
+                    + (stats["task_outgoing"] or 0)
+                    + (stats["plan_outgoing"] or 0)
+                ) if stats else 0
+                u_dict["incoming_tokens"] = (
+                    (stats["incoming_tokens"] or 0)
+                    + (stats["task_incoming"] or 0)
+                    + (stats["plan_incoming"] or 0)
+                ) if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
+                u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
+                u_dict["storage_limit_mb"] = current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)
 
                 # The raw Tavily key must never reach the admin payload.
                 u_dict["has_tavily_key"] = bool(u_dict.pop("tavily_api_key", None))
@@ -439,8 +533,7 @@ def delete_user_account(login):
 def get_stats():
     """Return current sizes of databases and folders in bytes."""
     try:
-        chat_db_size = 0
-        user_db_size = 0
+        user_db_size, chat_db_size = _database_sizes()
         uploads_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
         files_db_size = get_folder_size_bytes(uploads_folder)
         documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
@@ -1587,7 +1680,7 @@ def update_model_config(module):
             current_app.logger.info(
                 f"Embedding model changed from '{old_model}' to '{new_model}', starting reindex all"
             )
-            current_app.request_queue.add_reindex_all_task(lang="ru")
+            current_app.request_queue.add_reindex_all_task(lang=session.get("language", "ru"))
             result["model_name"] = new_model
             result["reindex_triggered"] = True
         elif new_model == old_model:
@@ -1785,7 +1878,7 @@ def api_save_chunks_config():
                 and hasattr(current_app, "request_queue")
                 and current_app.request_queue
             ):
-                current_app.request_queue.add_reindex_all_task(lang="ru")
+                current_app.request_queue.add_reindex_all_task(lang=session.get("language", "ru"))
                 current_app.logger.info("Reindex triggered due to chunk config change")
                 reindex_triggered = True
 

@@ -151,3 +151,44 @@ def test_api_responses_never_set_cookie(client, api_user, test_app, owned_sessio
     ]
     for response in checked:
         assert response.headers.get("Set-Cookie") is None
+
+
+def test_delete_session_removes_it_and_cancels_its_requests(client, api_user, test_app, owned_session, monkeypatch):
+    """Deleting a session through the API must release the GPU its requests hold.
+
+    A request left running keeps the GPU and the queue slot and writes its answer
+    into a session that no longer exists (web incident of 2026-10-20).
+    """
+    save_messages(test_app, owned_session, 2)
+    cancelled = []
+    monkeypatch.setattr(
+        test_app.request_queue,
+        "cancel_session_tasks",
+        lambda session_id: cancelled.append(session_id) or 1,
+    )
+
+    response = client.delete(f"{SESSIONS}/{owned_session}", headers=bearer(api_user))
+
+    assert response.status_code == 200
+    assert response.get_json() == {"object": "session", "id": owned_session, "deleted": True}
+    assert cancelled == [owned_session]
+    with test_app.app_context():
+        assert db.get_session_messages(owned_session) == []
+
+
+def test_delete_of_a_foreign_session_is_404_and_changes_nothing(
+    client, api_user, test_app, foreign_session, monkeypatch
+):
+    cancelled = []
+    monkeypatch.setattr(
+        test_app.request_queue,
+        "cancel_session_tasks",
+        lambda session_id: cancelled.append(session_id) or 0,
+    )
+
+    response = client.delete(f"{SESSIONS}/{foreign_session}", headers=bearer(api_user))
+
+    assert response.status_code == 404
+    assert cancelled == []
+    with test_app.app_context():
+        assert db.get_user_sessions("otheruser"), "a foreign session must survive"

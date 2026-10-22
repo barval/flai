@@ -16,6 +16,7 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Skills engine** — named capability bundles that extend the Tasks capabilities registry (`app/tasks/tools.py`): a skill appears as one more step tool without storage changes (the seam is already in place; see [TASKS.md](TASKS.md))
 - Plugin architecture for custom modules
 - Multi-GPU support
 - Advanced queue prioritization

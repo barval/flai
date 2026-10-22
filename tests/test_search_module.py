@@ -181,25 +181,25 @@ class TestEnhanceQueryWithDate:
     """Test relative date normalization in search queries."""
 
     def test_ru_yesterday(self):
-        """'вчера' gets an absolute date appended."""
+        """'yesterday' gets an absolute date appended."""
         now = datetime(2026, 9, 15, 12, 0)
         q = enhance_query_with_date("Какие ИТ новости были вчера в мире?", lang="ru", now=now)
         assert "вчера (14 сентября 2026)" in q
 
     def test_ru_today(self):
-        """'сегодня' gets today's date appended."""
+        """'today' gets today's date appended."""
         now = datetime(2026, 9, 15, 12, 0)
         q = enhance_query_with_date("Какие новости произошли сегодня?", lang="ru", now=now)
         assert "сегодня (15 сентября 2026)" in q
 
     def test_ru_day_before_yesterday(self):
-        """'позавчера' gets the date two days back."""
+        """'day before yesterday' gets the date two days back."""
         now = datetime(2026, 9, 15, 12, 0)
         q = enhance_query_with_date("что случилось позавчера", lang="ru", now=now)
         assert "позавчера (13 сентября 2026)" in q
 
     def test_ru_month_boundary(self):
-        """'вчера' on the 1st resolves to the last day of the previous month."""
+        """'yesterday' on the 1st resolves to the last day of the previous month."""
         now = datetime(2026, 9, 1, 12, 0)
         q = enhance_query_with_date("новости вчера", lang="ru", now=now)
         assert "вчера (31 августа 2026)" in q

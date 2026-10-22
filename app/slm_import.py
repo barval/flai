@@ -84,7 +84,7 @@ def _extract_clean_text(content: str, model_name: str | None = None) -> str | No
 def _extract_user_quotes_from_assistant(content: str) -> list[str]:
     """Extract user quotes from assistant responses.
 
-    If the model explicitly quoted the user (e.g. "Вы сказали: ..."),
+    If the model explicitly quoted the user (e.g. a "you said: ..." wrapper),
     the quoted text is a real fact about the user.
     """
     if not content or len(content) < 15:
@@ -152,7 +152,7 @@ def import_user_messages(
         # Only import user messages — assistant responses are not user facts
         if role == "assistant":
             # Exception: extract direct user quotes from assistant responses
-            # e.g. "Вы сказали: 'я люблю Python'" → import "я люблю Python"
+            # e.g. the model's "you said: '<quote>'" wrapper is stripped and <quote> is imported
             if not dry_run:
                 quotes = _extract_user_quotes_from_assistant(content)
                 for quote in quotes:

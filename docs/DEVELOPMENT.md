@@ -30,6 +30,8 @@ mypy app/ modules/               # CI runs with `|| true` — does not block
 
 FLAI ships tests for every key component, plus load tests for the web interface.
 
+**Language:** test code is English only — test names, docstrings, comments and fixtures that are not language data. Russian input/expected strings are allowed only where a test exercises Russian-language behaviour (morphology, SLM extraction, date words, localization catalogs); everything else is written in English.
+
 ### Install
 
 ```bash

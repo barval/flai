@@ -55,6 +55,57 @@ def test_process_rlm_task_adds_image_description_to_corpus():
 
 
 @pytest.mark.unit
+def test_process_rlm_task_subtask_envelope_carries_usage():
+    """A task's RLM step bills the actor loop — its real totals ride the envelope.
+
+    Without them the step header showed no tokens even though ``broker_llm``
+    and the actor loop recorded every call into the per-request account.
+    """
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._get_model_name = Mock(return_value="reasoning")
+    q.redis = Mock()
+    app = Mock()
+    app.modules = {"base": Mock(), "multimodal": Mock()}
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
+    q.app = app
+
+    task = {
+        "id": "rlm-sub-1",
+        "data": {
+            "type": "rlm_analysis",
+            "text": "What is in the photo?",
+            "doc_ids": [],
+            "file_data": "BASE64",
+            "file_type": "image/jpeg",
+            "file_name": "photo.jpg",
+            "task_step_subtask": "step-1",
+        },
+        "session_id": "rlm-sub-1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for = Mock(return_value=True)
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    rm.mark_rlm_busy = Mock()
+    rm.mark_rlm_idle = Mock()
+    run_mock = Mock(return_value=RlmResult(answer="A cat on a sofa", trace=[], steps=1))
+    with (
+        patch("modules.rlm.RlmModule") as mock_rlm_module,
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+        patch("app.utils.peek_usage_account", return_value={"prompt_tokens": 900, "completion_tokens": 210}),
+    ):
+        mock_rlm_module.return_value.run = run_mock
+        app.modules["multimodal"].describe_image_for_rlm = Mock(return_value=("A cat on a sofa", None))
+        result = q._process_rlm_task(task)
+
+    assert result["model_type"] == "rlm"
+    assert result["usage"] == {"prompt_tokens": 900, "completion_tokens": 210}
+
+
+@pytest.mark.unit
 def test_process_rlm_task_uses_recognized_text_for_selected_image_document(tmp_path):
     q = RedisRequestQueue.__new__(RedisRequestQueue)
     q._publish_stream_event = lambda task, event_type, extra=None: None

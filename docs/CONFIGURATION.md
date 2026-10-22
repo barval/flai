@@ -13,6 +13,7 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 ```bash
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
+VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
 ```
 
 **Service URLs:**
@@ -37,6 +38,7 @@ SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
 MAX_IMAGE_SIZE_MULTI=1024       # Per-image long side when several images are attached
 MAX_CHAT_IMAGES=4               # Max images per chat message (also for deep analysis)
+MAX_CHAT_AUDIO=4                # Max audio items per message (1 voice + 3 files, or 4 files)
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
 MAX_DOCUMENT_SIZE_MB=25         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
@@ -68,6 +70,51 @@ RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to 
 RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call
 RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analysis
 RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
+```
+
+**Web Search and Crawling:**
+```bash
+SEARXNG_URL=http://flai-searxng:8080
+SEARXNG_TIMEOUT=10
+SEARXNG_MAX_RESULTS=7
+SEARXNG_MAX_RESULTS_CHARS=5000
+RAG_MAX_RESULTS_CHARS=5000
+TAVILY_ENABLED=true               # Optional per-user Tavily keys; without a key the local SearXNG path is used
+TAVILY_API_URL=https://api.tavily.com
+TAVILY_TIMEOUT=20
+TAVILY_USAGE_TIMEOUT=8
+TAVILY_MAX_RESULTS=7
+TAVILY_SEARCH_DEPTH=basic
+TAVILY_ADMIN_CACHE_TTL=300
+CRAWL_ENABLED=false               # Crawl4AI sidecar; enable with --with-crawler or this flag
+CRAWL4AI_API_TOKEN=flai-crawler-token  # Compose token; the web app receives it as CRAWL_API_TOKEN
+CRAWLER_URL=http://flai-crawler:11235
+CRAWL_MAX_PAGES=50
+CRAWL_MAX_DEPTH=3
+CRAWL_TIMEOUT_S=300
+CRAWL_PAGE_TIMEOUT_S=30
+CRAWL_MAX_PAGE_CHARS=50000
+CRAWL_MAX_TOTAL_CHARS=1000000
+CRAWL_CONCURRENCY=2
+```
+
+**Background Tasks:**
+```bash
+TASKS_ENABLED=1                 # Executor kill switch (0 stops picking up new tasks; running steps finish or abort on cancel flags)
+TASK_QUIET_PERIOD_S=15          # Sliding quiet window: a task step is preempted when any chat request arrives after this many quiet seconds
+TASK_TOTAL_BUDGET_S=86400       # Pure execution budget per task (seconds); on expiry the task finishes with a final summary
+TASK_STEP_MAX_ATTEMPTS=3        # Step attempts including corrective checkpoint retries, then the step is failed
+TASK_MAX_REVISIONS=8            # Accepted plan rewrites per task; then the plan is final
+TASK_MAX_STEPS=40               # Hard ceiling on the plan length
+TASK_REPLAN_EVERY_N=3           # Ordinary passing media steps between plan reviews (failures/answers always review)
+TASK_STEP_MAX_REPAIRS=3         # Image edits after generation attempts (local defects); then the best candidate is kept
+TASK_CONTINUITY_ENABLED=1       # Visual continuity sheet before the first of 2+ generated images (0 disables)
+TASK_CONTINUITY_MAX_CHARS=2000  # Character budget of the sheet (style + entity looks)
+TASK_STEP_REDO_MAX=1            # Plan-review re-opens of a failed step (a verbatim repeated goal); 0 disables
+TASK_POLL_INTERVAL_S=1          # Executor gate/cancel-flag polling interval
+TASK_SUBTASK_POLL_CYCLES=10     # Cycles a task holds at one subtask before the liveness check
+TASK_SUBTASK_ALIVE_UNKNOWN_MAX=3 # Cycles a failed liveness probe may hold a step before it is failed anyway
+TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU before it gives up
 ```
 
 **Router:**

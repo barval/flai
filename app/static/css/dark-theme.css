@@ -147,6 +147,11 @@
 .dark-theme #send-button:hover {
     background-color: #2980b9;
 }
+.dark-theme #send-button:disabled {
+    background-color: #95a5a6;
+    color: white;
+    cursor: not-allowed;
+}
 .dark-theme #attach-file-button {
     background-color: #3a3a3a;
     color: #ecf0f1;
@@ -421,6 +426,44 @@
 }
 .dark-theme .document-date {
     color: #b0b0b0;
+}
+/* ===== TASKS LIST DARK THEME ===== */
+.dark-theme .task-item {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme .task-item:hover {
+    background-color: #4a4a4a;
+    border-color: #3498db;
+}
+.dark-theme .task-item.active {
+    background-color: #2c3e50;
+    border-color: #3498db;
+}
+.dark-theme .task-status-line {
+    color: #c39bd3;
+}
+.dark-theme .task-status-banner {
+    background-color: #2d2533;
+    border-color: #553d6b;
+    color: #d2b4de;
+}
+.dark-theme .task-continuity {
+    background-color: #22332d;
+    border-color: #3d5a50;
+    color: #9ed3bd;
+}
+.dark-theme .task-continuity-note {
+    color: #e0a860;
+}
+.dark-theme .tasks-empty {
+    color: #b0b0b0;
+}
+.dark-theme .new-task-request {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
 }
 .dark-theme .document-embedding {
     color: #95a5a6;

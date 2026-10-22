@@ -42,7 +42,7 @@
 
 Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
-| Topic | English | Русский |
+| Topic | English | Russian |
 |-------|---------|---------|
 | Architecture, queue, GPU lock, data flow | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE-ru.md](docs/ARCHITECTURE-ru.md) |
 | VRAM accounting, context auto-fit, hardware | [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md) | [VRAM_MANAGEMENT-ru.md](docs/VRAM_MANAGEMENT-ru.md) |
@@ -52,6 +52,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Environment variables, compose profiles | [CONFIGURATION.md](docs/CONFIGURATION.md) | [CONFIGURATION-ru.md](docs/CONFIGURATION-ru.md) |
 | Web search, Tavily keys, site crawler | [SEARCH.md](docs/SEARCH.md) | [SEARCH-ru.md](docs/SEARCH-ru.md) |
 | Deep analysis (RLM) | [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md) | [DEEP_ANALYSIS-ru.md](docs/DEEP_ANALYSIS-ru.md) |
+| Background tasks (Tasks) | [TASKS.md](docs/TASKS.md) | [TASKS-ru.md](docs/TASKS-ru.md) |
 | Image generation and editing | [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) | [IMAGE_GENERATION-ru.md](docs/IMAGE_GENERATION-ru.md) |
 | Video generation (LTX-Video) | [VIDEO.md](docs/VIDEO.md) | [VIDEO-ru.md](docs/VIDEO-ru.md) |
 | Voice: Whisper, Piper, Kokoro | [VOICE.md](docs/VOICE.md) | [VOICE-ru.md](docs/VOICE-ru.md) |
@@ -70,6 +71,11 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
 ## 🆕 What's New in v12.6
+
+- **Background Tasks (Tasks)** — a new section (the left-column tab between Documents and Sessions): long-running jobs decomposed into checkpointed steps and executed at lower priority than chat, preempted by any chat request; chat never waits for a task. The task renders as a chat-like conversation (plan → per-step results → clarifying questions → final answer) with live statuses on the shared SSE stream. One task runs globally; a 24 h pure-execution budget produces a final summary on expiry; everything survives restarts (`tasks` + `task_steps` in PostgreSQL). Env: `TASKS_ENABLED`, `TASK_QUIET_PERIOD_S`, `TASK_TOTAL_BUDGET_S`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_POLL_INTERVAL_S`, `TASK_SUBTASK_POLL_CYCLES`. Details → [docs/TASKS.md](docs/TASKS.md) / [docs/TASKS-ru.md](docs/TASKS-ru.md).
+
+- **Verified media in tasks** — every picture a task produces is judged against the content it illustrates; a mismatch sends the step back with the verifier's reason instead of silently accepting the wrong image, and a redo stays inside its own step (the plan never grows a duplicate). Each step shows what was checked, why it was redone and which attempts were rejected; the final answer lists only the accepted results, with a separate line for what was not delivered. Details → [docs/TASKS.md](docs/TASKS.md).
+- **Stop and delete now really free the GPU** — a deleted chat or a stopped task no longer leaves its model resident, and stopping/deleting works through the public `/v1` API as well. Details → [docs/API.md](docs/API.md).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -103,7 +109,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - **Voice messages** — Whisper ASR transcription.
 - **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
 - **Camera snapshots (optional)** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
-- **Attachments** — up to 4 images, one document, audio, or a voice message in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions). Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Attachments** — up to 4 images, one document, or up to 4 audio items (one voice message plus audio files: 1 voice + 3 files, or 4 files) in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions); every audio item is transcribed in order and answered. Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
 - **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
 

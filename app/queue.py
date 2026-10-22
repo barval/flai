@@ -47,6 +47,16 @@ from .utils import (
     save_uploaded_file,
 )
 
+# A chat edit that explicitly asks to change the picture's lighting or colour
+# must not be tone-matched back to the source; every other chat edit is.
+_EDIT_TONE_CHANGE_RE = re.compile(
+    r"(?:ярч|темн|светл|контраст|насыщ|освещ|экспозиц|оттен|тепле|холодн|"
+    r"ч[её]рно-?\s*бел|монохром|black\s+and\s+white|"
+    r"bright|dark|light|contrast|saturat|exposure|colou?r|tone|warm|cool|hue|shade|"
+    r"monochrome|grayscale)\w*",
+    re.IGNORECASE,
+)
+
 
 def _parse_remember_json(llm_response: str) -> list[str]:
     """Parse remember response JSON: {"confirmed": true, "facts": [...]}"""
@@ -128,6 +138,7 @@ def _run_document_indexing(
     user_id: str,
     indexing_started_at: str | None,
     publish: Callable[[str], None],
+    lang: str = "ru",
 ) -> tuple[bool, str, str, bool]:
     """Extract, chunk, embed and upsert one document; mark it INDEXED on success.
 
@@ -144,8 +155,7 @@ def _run_document_indexing(
     """
     rag = app.modules.get("rag")
     if not rag or not rag.available:
-        with force_locale("en"):
-            error_msg = app.modules["base"]._("RAG module unavailable")
+        error_msg = app.modules["base"]._("RAG module unavailable", lang)
         return False, error_msg, "unknown", False
     try:
         success, message = rag.index_document(user_id, doc_id, file_path)
@@ -169,6 +179,9 @@ def _run_document_indexing(
 
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
+
+    # Set while a chat session is being deleted: its requests must not start.
+    SESSION_CANCEL_KEY_PREFIX = "session:cancelled:"
 
     def __init__(self, app, start_workers: bool = True):
         self.app = app
@@ -293,6 +306,196 @@ class RedisRequestQueue:
             self._crawl_worker_thread.join(timeout=timeout)
         self.app.logger.info("RedisRequestQueue: workers stopped")
 
+    # Task types that do NOT represent user chat activity for the Tasks
+    # scheduler gate: stateless API service calls, background fact tasks and
+    # document indexing/description. Everything else arriving through
+    # add_request() counts as chat activity (text/image/video/RLM/reasoning/
+    # crawl/transcribe-with-answer/api_image_edit).
+    _NON_CHAT_ACTIVITY_TYPES = frozenset(
+        {
+            "api_embedding",
+            "api_transcribe",
+            "index_document",
+            "reindex_all_embeddings",
+            "describe_document_image",
+            "describe_document_pdf",
+            "fact_extraction_task",
+            "fact_merge_task",
+        }
+    )
+
+    def _mark_chat_activity(self, task: dict[str, Any]) -> None:
+        """Record chat activity for the Tasks gate; swallow any Redis error."""
+        from app.tasks.gate import chat_activity_now
+
+        if task.get("type") in self._NON_CHAT_ACTIVITY_TYPES:
+            return
+        data = task.get("data", {})
+        # API service types (embeddings/transcriptions) and document indexing
+        # travel in data.type, not top-level task_type.
+        if data.get("type") in self._NON_CHAT_ACTIVITY_TYPES:
+            return
+        # Media sub-tasks of the Tasks subsystem must not keep the gate closed.
+        if data.get("task_step_subtask"):
+            return
+        try:
+            chat_activity_now(self.redis)
+            # Mid-step abort (v12.6): every running task step must die when a
+            # chat request arrives. The executor publishes one pointer per
+            # running task (task:running_step:<task_id> + the
+            # task:active_running_steps SET); this hook turns them into
+            # step-cancel flags the runner polls between stream chunks.
+            self._raise_step_cancel_flags()
+        except Exception as e:
+            self.logger.warning(f"chat activity signal failed: {e}")
+
+    def _drop_orphan_subtask(self, task: dict[str, Any]) -> bool:
+        """Drop a Tasks-subsystem media sub-task whose step is gone (v12.6).
+
+        Stop/delete cancels the queued request, but a request the worker already
+        dequeued would keep running as an orphan — holding the slow worker, the
+        GPU lock and (RLM) ``is_gpu_busy()``, which starved the next task's steps
+        and left it looking hung after a running task was removed. The step row
+        is the source of truth: a tagged sub-task whose step no longer exists, or
+        is no longer queued or running, is discarded. Fail-open on any error so a
+        transient DB hiccup never drops live work.
+        """
+        step_id = (task.get("data") or {}).get("task_step_subtask")
+        if not step_id:
+            return False
+        try:
+            from app.tasks.store import get_step
+
+            status = str((get_step(str(step_id)) or {}).get("status") or "")
+            if status not in ("subtask_queued", "subtask_running"):
+                self.logger.info(
+                    f"Orphan subtask dropped: step {step_id} status={status or 'missing'} "
+                    f"(request {str(task.get('id'))[:12]})"
+                )
+                return True
+            return False
+        except Exception as e:
+            self.logger.warning(f"Orphan subtask check failed (processing normally): {e}")
+            return False
+
+    def _defer_subtask_if_gate_closed(self, task: dict[str, Any]) -> bool:
+        """Slow-worker gate guard for Tasks-subsystem media sub-tasks (v12.6).
+
+        Returns True when the dequeued task was deferred to
+        ``task:deferred_subtasks`` (the worker must NOT process it) and False
+        when it should run normally. Only tagged subtask requests
+        (``data.task_step_subtask`` with ``user_class >= 3``) are subject —
+        chat NEVER hits this path. Any failure inside the guard is fail-open:
+        the task is processed normally.
+        """
+        try:
+            data = task.get("data", {})
+            step_id = data.get("task_step_subtask")
+            if not step_id or (task.get("user_class") or 0) < 3:
+                return False
+
+            from app.resource_manager import get_resource_manager
+            from app.tasks.executor import DEFERRED_SUBTASKS_KEY
+            from app.tasks.gate import is_gate_open
+
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 15))
+            gate_open = is_gate_open(
+                self.redis,
+                quiet_s=quiet_s,
+                gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
+                queues_empty=lambda: all(
+                    self.redis.llen(key) == 0
+                    for key in (
+                        self.queue_key,
+                        self.slow_queue_key,
+                        self.background_queue_key,
+                        self.crawl_queue_key,
+                    )
+                ),
+            )
+            if gate_open:
+                return False
+
+            serialized = self._serialize(task)
+            self.redis.rpush(DEFERRED_SUBTASKS_KEY, serialized)
+            self.logger.info(
+                f"Gate closed: deferred subtask {str(task.get('id'))[:12]} (step {step_id}) for later requeue"
+            )
+            return True
+        except Exception as e:
+            self.logger.warning(f"Subtask gate guard failed (processing task normally): {e}")
+            return False
+
+    def requeue_deferred_subtasks(self) -> int:
+        """Move deferred subtasks back onto the slow queue once the gate opens.
+
+        Called by the TaskExecutor once per cycle (Task 8b). Returns the number
+        of requeued tasks; 0 when the gate is closed, the list is empty or the
+        operation failed (fail-open).
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+            from app.tasks.executor import DEFERRED_SUBTASKS_KEY
+            from app.tasks.gate import is_gate_open
+
+            quiet_s = int(self.app.config.get("TASK_QUIET_PERIOD_S", 15))
+            gate_open = is_gate_open(
+                self.redis,
+                quiet_s=quiet_s,
+                gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
+                queues_empty=lambda: all(
+                    self.redis.llen(key) == 0
+                    for key in (
+                        self.queue_key,
+                        self.slow_queue_key,
+                        self.background_queue_key,
+                        self.crawl_queue_key,
+                    )
+                ),
+            )
+            if not gate_open:
+                return 0
+
+            count = 0
+            while True:
+                serialized = self.redis.lpop(DEFERRED_SUBTASKS_KEY)
+                if not serialized:
+                    break
+                self.redis.rpush(self.slow_queue_key, serialized)
+                count += 1
+            if count:
+                self.logger.info(f"Gate open: requeued {count} deferred subtask(s) onto the slow queue")
+            return count
+        except Exception as e:
+            self.logger.warning(f"Deferred subtask requeue failed: {e}")
+            return 0
+
+    def _raise_step_cancel_flags(self) -> None:
+        """Raise task:step_cancel:<step_id> for every published running step.
+
+        Best effort only — a Redis failure here must never break chat.
+        """
+        try:
+            from app.tasks.executor import (
+                CANCEL_FLAG_TTL_S,
+                CANCEL_KEY_PREFIX,
+                RUNNING_STEP_KEY_PREFIX,
+                RUNNING_STEPS_SET,
+            )
+
+            task_ids = self.redis.smembers(RUNNING_STEPS_SET)
+            for raw in task_ids or []:
+                task_id = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else raw
+                step_id = self.redis.get(f"{RUNNING_STEP_KEY_PREFIX}{task_id}")
+                if not step_id:
+                    continue
+                if isinstance(step_id, bytes):
+                    step_id = step_id.decode("utf-8", "ignore")
+                self.redis.set(f"{CANCEL_KEY_PREFIX}{step_id}", "1", ex=CANCEL_FLAG_TTL_S)
+                self.logger.info(f"chat activity: cancel flag raised for task step {step_id}")
+        except Exception as e:
+            self.logger.warning(f"step cancel flag raise failed: {e}")
+
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
@@ -334,6 +537,10 @@ class RedisRequestQueue:
         if req_type in ("image_gen", "api_image_edit") or task_type == "api_image_edit":
             return "slow"
         if req_type == "rlm_analysis":
+            return "slow"
+        # Tasks-subsystem vision step: the joint multimodal call holds the GPU —
+        # slow queue (gate guard + _gpu_lock, same as the camera sub-task).
+        if req_type in ("vision_task", "camera_task"):
             return "slow"
         if req_type == "reasoning_task":
             return "slow"
@@ -391,6 +598,13 @@ class RedisRequestQueue:
             queue_key = self.queue_key
 
         serialized = self._serialize(task)
+
+        # Chat activity signal for the Tasks scheduler gate (v12.6): every
+        # chat-bearing enqueue refreshes the sliding window. Not counted:
+        # stateless API service types (embeddings, transcriptions), background
+        # fact tasks, document indexing/description, and Tasks-subsystem media
+        # sub-tasks (task_step_subtask tag). Redis failure must never break chat.
+        self._mark_chat_activity(task)
 
         # Atomic: RPUSH + HINCRBY in the same pipeline so get_user_queue_counts()
         # never sees a task in the LIST before the hash counter is updated.
@@ -499,6 +713,10 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
+        if task_type == "camera_task":
+            return "multimodal"  # snapshot analysis via the resident multimodal model
+        if task_type == "vision_task":
+            return "multimodal"  # attached-image analysis via the resident multimodal model
         if task_type == "api_image_edit":
             return "multimodal"
         if req_type in ("describe_document_image", "describe_document_pdf"):
@@ -674,6 +892,8 @@ class RedisRequestQueue:
         task_id = task.get("id")
         if not task_id:
             return
+        if self._drop_cancelled_task(task):
+            return
         publish_result = task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe")
 
         processing_ttl = max(
@@ -835,6 +1055,16 @@ class RedisRequestQueue:
                         f"Slow worker: dequeued task {str(task.get('id'))[:12]} "
                         f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
                     )
+                    # Tasks-subsystem sub-tasks wait while the scheduler gate
+                    # is closed (chat activity / busy GPU / occupied queues).
+                    # A sub-task whose step was removed or is no longer queued
+                    # (the task was stopped/deleted meanwhile) is dropped
+                    # outright — it would otherwise run as an orphan and starve
+                    # the next task.
+                    if self._drop_orphan_subtask(task):
+                        continue
+                    if self._defer_subtask_if_gate_closed(task):
+                        continue
                     with self._gpu_lock:
                         self._process_single_task(task, self.slow_processing_key)
                     continue
@@ -878,6 +1108,10 @@ class RedisRequestQueue:
                     f"Crawl worker: dequeued task {str(task.get('id'))[:12]} "
                     f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
                 )
+                # A crawl step of a stopped/deleted task must not run (it would
+                # replace the user's document as an orphan).
+                if self._drop_orphan_subtask(task):
+                    continue
                 # The HTTP crawl must not hold the GPU lock; the task takes it
                 # itself for the embedding phase of indexing.
                 self._process_single_task(task, self.crawl_processing_key)
@@ -930,19 +1164,32 @@ class RedisRequestQueue:
         response_time is stored in DB (for analytics) but intentionally omitted
         from the returned dict so the client does not render ⏱️/🚀/🤖 in the
         error message header.
+
+        A sub-task of a FLAI Task runs with the task id as its session, and nothing
+        ever reads a chat message written there — the task view renders steps.
+        Persisting one leaks an orphan ``messages`` row per failed step (15 found
+        live), so it is skipped for a task session.
         """
         from .db import save_message
+        from .tasks.store import get_task
 
         completion_time = get_current_time_in_timezone_for_db(self.app)
         prefix = "" if error.startswith("⚠️") else "⚠️ "
-        msg_id = save_message(
-            session_id,
-            "assistant",
-            prefix + error,
-            model_name="system",
-            response_time=str(process_time),
-            model_type="system",
-        )
+        msg_id = None
+        try:
+            is_task_session = session_id and get_task(str(session_id)) is not None
+        except Exception as e:  # noqa: BLE001 — persistence must not mask the error
+            self.app.logger.warning(f"task session lookup failed ({session_id}): {e}")
+            is_task_session = False
+        if not is_task_session:
+            msg_id = save_message(
+                session_id,
+                "assistant",
+                prefix + error,
+                model_name="system",
+                response_time=str(process_time),
+                model_type="system",
+            )
         return {
             "error": prefix + error,
             "session_id": session_id,
@@ -977,48 +1224,48 @@ class RedisRequestQueue:
         error_prefixes = (
             # GPU memory errors (en + ru)
             "GPU memory ",  # "GPU memory unavailable..."
-            "Память GPU ",  # ru: "Память GPU недоступна..."
-            "Проверка памяти GPU",  # ru: "Проверка памяти GPU не удалась"
+            "Память GPU ",  # RU error: "GPU memory unavailable..."
+            "Проверка памяти GPU",  # RU error: "GPU memory check failed"
             # Timeout (en + ru)
             "Timeout (",  # "Timeout (300s) when calling..."
-            "Таймаут (",  # ru: "Таймаут (300с) при вызове..."
+            "Таймаут (",  # RU error: "Timeout (300 s) during a call..."
             # Connection errors (en + ru)
             "Could not connect",  # "Could not connect to llama-server/swap"
-            "Не удалось подключиться",  # ru
+            "Не удалось подключиться",  # RU error
             # Service availability (en + ru)
             "Service temporarily unavailable",  # circuit breaker
-            "Сервис временно недоступен",  # ru
+            "Сервис временно недоступен",  # RU error
             # Model configuration (en + ru)
             "Model configuration missing",
             "Model for ",  # "Model for chat not configured"
-            "Модель для ",  # ru
-            "не настроена",  # ru: "Модель для chat не настроена"
+            "Модель для ",  # RU error prefix
+            "не настроена",  # RU error: "Model for chat is not configured"
             # Generic errors (en + ru)
             "Error: ",  # "Error: <exception>" (en, note trailing space)
-            "Ошибка: ",  # ru: "Ошибка: <exception>" (note trailing space)
+            "Ошибка: ",  # RU error: "Error: <exception>" (note the trailing space)
             "Internal error:",  # "Internal error: no response from model"
-            "Внутренняя ошибка:",  # ru
+            "Внутренняя ошибка:",  # RU error
             "HTTP error",  # "HTTP error 400" (en)
-            "Ошибка HTTP",  # ru
+            "Ошибка HTTP",  # RU error
             # Request errors (en + ru)
             "Request too long",  # "Request too long, please simplify"
-            "Запрос слишком длинный",  # ru
+            "Запрос слишком длинный",  # RU error
             "Request cancelled",  # "Request cancelled - too long in queue"
-            "Запрос отменён",  # ru
+            "Запрос отменён",  # RU error
             # Model response errors (en + ru)
             "Model returned empty response",
-            "Модель вернула пустой ответ",  # ru
+            "Модель вернула пустой ответ",  # RU error
             # Reasoning errors (en + ru)
             "Reasoning model unavailable:",  # "Reasoning model unavailable: GPU memory..."
-            "Модель рассуждения недоступна:",  # ru
+            "Модель рассуждения недоступна:",  # RU error prefix
             "Reasoning failed:",  # "Reasoning failed: GPU memory exhausted..."
-            "Рассуждение не удалось:",  # ru
+            "Рассуждение не удалось:",  # RU error prefix
             # Video generation errors (en + ru)
             "Video generation failed:",  # "Video generation failed: GPU memory..."
-            "Генерация видео не удалась:",  # ru
+            "Генерация видео не удалась:",  # RU error prefix
             # Prompt template errors (en + ru)
             "Error loading prompt template",
-            "Ошибка загрузки шаблона промпта",  # ru
+            "Ошибка загрузки шаблона промпта",  # RU error
             # CUDA OOM (from llama.cpp directly, not translated)
             "CUDA out of memory",
             # llama-swap specific (Go binary, not translated)
@@ -1080,6 +1327,87 @@ class RedisRequestQueue:
         if extra:
             result.update(extra)
         return result
+
+    @staticmethod
+    def _is_task_subtask(task: dict[str, Any] | None) -> bool:
+        """Is this queue request a Tasks-subsystem step (a tagged sub-task)?"""
+        return bool(task and (task.get("data") or {}).get("task_step_subtask"))
+
+    def _subtask_envelope(
+        self,
+        task: dict[str, Any] | None,
+        session_id: str,
+        response: str,
+        file_path: str | None,
+        media: dict[str, Any],
+        meta: dict[str, Any] | None = None,
+        backend: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Result envelope for a Tasks-subsystem step (media / RLM), else None.
+
+        A task step has no chat session, so its artifact is returned in the
+        result envelope (the executor stores it in the step's extra and the task
+        view renders it) instead of being persisted as a chat message — the
+        camera, vision and crawl sub-tasks have always worked that way. The
+        normal chat path returns None and saves the message as before. ``meta``
+        carries the chat-style header fields (model name / type / token usage)
+        the executor merges into the step's extra.
+        """
+        if not self._is_task_subtask(task):
+            return None
+        envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "response": response}
+        if file_path:
+            envelope.update(
+                {
+                    "file_path": file_path,
+                    "file_name": media.get("file_name"),
+                    "file_type": media.get("file_type"),
+                    "file_size": media.get("file_size"),
+                }
+            )
+            preview = media.get("preview_data")
+            if preview:
+                envelope["preview_data"] = preview
+        if meta:
+            envelope.update(meta)
+        if backend:
+            # What the backend was told (spec Part C): the verifier compares the
+            # produced artifact with this exact instruction.
+            envelope["backend_prompt"] = str(backend.get("prompt") or "")
+            envelope["backend_params"] = dict(backend.get("params") or {})
+        return envelope
+
+    @staticmethod
+    def _subtask_usage_meta() -> dict[str, int] | None:
+        """Real token totals of the current per-request account, or None.
+
+        Camera and vision sub-tasks bill through the account opened in
+        ``_process_request`` (their multimodal calls record into it); without
+        this peek the totals were dropped by the worker's cleanup clause and
+        the step header showed no tokens.
+        """
+        from app.utils import peek_usage_account
+
+        totals = peek_usage_account() or {}
+        usage = {
+            "prompt_tokens": int(totals.get("prompt_tokens") or 0),
+            "completion_tokens": int(totals.get("completion_tokens") or 0),
+        }
+        return usage if (usage["prompt_tokens"] or usage["completion_tokens"]) else None
+
+    def _subtask_model_meta(self, model_name: str, model_type: str, with_usage: bool = False) -> dict[str, Any]:
+        """Chat-style header metadata for a task-step envelope.
+
+        ``model_type`` doubles as the emoji key in the task view (multimodal/
+        image_gen/image_edit/video/rlm); the model name is the same value the
+        chat message of that kind shows (multimodal/reasoning via
+        get_model_config, image_gen/image_edit/video via their config).
+        """
+        meta: dict[str, Any] = {"model_name": str(model_name or ""), "model_type": model_type}
+        usage = self._subtask_usage_meta() if with_usage else None
+        if usage:
+            meta["usage"] = usage
+        return meta
 
     def _unload_video_pipeline(self) -> None:
         """Unload LTX-Video pipeline to free VRAM after generation."""
@@ -1213,7 +1541,7 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int = 60) -> bool:
+    def _wait_for_vram_full(self, timeout: int | None = None) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
@@ -1224,7 +1552,12 @@ class RedisRequestQueue:
         Active unload synchronization: if models remain loaded in
         llama-swap after the initial POST /unload, re-triggers unload
         every poll cycle until /running reports 0.
+
+        The deadline defaults to ``VRAM_WAIT_TIMEOUT_S`` (120 s) — a busy GPU
+        is waited out, not reported as unavailable.
         """
+        if timeout is None:
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
@@ -1325,13 +1658,21 @@ class RedisRequestQueue:
 
         return prompt_data, None
 
-    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 30) -> bool:
+    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int | None = None) -> bool:
         """Block until at least ``needed_mb`` MB of VRAM is free AND no LLM tasks are running.
 
         First unloads llama.cpp models, then polls VRAM and llama-swap /running endpoint
         until sufficient space available AND no LLM processes occupy memory.
         Returns True on success, False if still insufficient after timeout.
+
+        ``timeout`` bounds a genuinely stuck GPU only — it is NOT a "give up on a
+        busy GPU" switch. The default comes from ``VRAM_WAIT_TIMEOUT_S`` (120 s):
+        a hardcoded 30 s deadline turned a GPU that was still unloading a 12 GB
+        model into «GPU memory unavailable. Try again in a moment.» and a failed
+        task step.
         """
+        if timeout is None:
+            timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
         self._unload_llamacpp_models()
         from app.resource_manager import get_resource_manager
 
@@ -1379,6 +1720,44 @@ class RedisRequestQueue:
 
     # ── Task handlers extracted from _process_request ──
 
+    def _append_no_text_clause(self, prompt_data: dict, key: str = "prompt") -> dict:
+        """Keep lettering out unless the request explicitly asked for it."""
+        prompt = str(prompt_data.get(key) or "").rstrip()
+        if prompt and "without any text" not in prompt.lower():
+            prompt_data[key] = (
+                prompt
+                + ", clean illustration without any text, letters, numbers, captions or watermarks"
+            )
+        return prompt_data
+
+    def _ensure_prompt_entities(self, task: dict | None, prompt_data: dict | None) -> dict | None:
+        """Keep continuity entities in the final SD prompt.
+
+        The multimodal prompt builder rephrases free text and can drop a named
+        character or prop; the executor carries the sheet in ``data``, so the
+        selected cards whose look is missing are appended before diffusion.
+        """
+        if not isinstance(prompt_data, dict):
+            return prompt_data
+        data = (task or {}).get("data") or {}
+        bible = data.get("visual_bible_data")
+        if not isinstance(bible, dict):
+            return prompt_data
+        key = "prompt" if "prompt" in prompt_data else "edit_prompt"
+        prompt = str(prompt_data.get(key) or "")
+        if not prompt:
+            return prompt_data
+        from app.tasks.continuity import ensure_entities_in_prompt, ensure_style_in_prompt
+
+        prompt_data[key] = ensure_entities_in_prompt(
+            prompt,
+            bible,
+            str(data.get("visual_bible_goal") or ""),
+            str(data.get("visual_bible_criteria") or ""),
+        )
+        prompt_data[key] = ensure_style_in_prompt(prompt_data[key], bible)
+        return prompt_data
+
     def _process_image_edit_task(
         self,
         message_text: str,
@@ -1414,10 +1793,55 @@ class RedisRequestQueue:
         mm_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
-        edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
+        # Corrective retry: append the verifier's reason to the edit prompt only,
+        # never to `message_text` itself (the media envelope below echoes it).
+        edit_prompt = message_text
+        corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+        if corrective_note:
+            from app.llamacpp_client import _tr
+
+            with force_locale(lang):
+                corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+            edit_prompt = f"{message_text}\n\n{corrective_note}. {corrective_label}"
+        task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+        if task_context:
+            edit_prompt = f"{edit_prompt}\n\nContext so far:\n{task_context}"
+        continuity_sheet = str((task.get("data") or {}).get("visual_bible") or "").strip()
+        if continuity_sheet:
+            edit_prompt = f"{continuity_sheet}\n\n{edit_prompt}"
+        # Prompt hygiene (spec §9a): the same source-marker strip as image_gen
+        # (assembled text sanitized right before the prompt builder).
+        from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
+
+        edit_prompt = sanitize_reference_markers(edit_prompt)
+        explicit_text = wants_text_in_image(edit_prompt)
+        if not explicit_text:
+            edit_prompt = strip_speech_for_image(edit_prompt)
+        edit_data, error = self.app.modules["multimodal"].generate_edit_params(edit_prompt, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+        # Repair mode: keep the edit local (low strength) so the rest of the
+        # illustration survives; a full-strength edit would redraw the scene.
+        if bool((task.get("data") or {}).get("repair")) and isinstance(edit_data, dict):
+            try:
+                strength = float(edit_data.get("strength") or 0.42)
+            except (TypeError, ValueError):
+                strength = 0.42
+            edit_data["strength"] = min(0.5, max(0.35, strength))
+        if isinstance(edit_data, dict):
+            data = (task or {}).get("data") or {}
+            if data.get("repair"):
+                # Repair/polish edits must keep the source's exposure/contrast;
+                # sd_cpp corrects the model's global lightening after the run.
+                edit_data["tone_match"] = True
+            elif not _EDIT_TONE_CHANGE_RE.search(message_text or ""):
+                # Chat edit: preserve the source look unless the user explicitly
+                # asks to change lighting/colour (then the requested change wins).
+                edit_data["tone_match"] = True
+        edit_data = self._ensure_prompt_entities(task, edit_data)
+        if isinstance(edit_data, dict) and not explicit_text:
+            edit_data = self._append_no_text_clause(edit_data, "edit_prompt")
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
@@ -1469,9 +1893,10 @@ class RedisRequestQueue:
                     )
                     .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
                 )
-            resize_notice_id = save_message(
-                session_id, "assistant", resize_text, model_name="system", response_time="0"
-            )
+            if not self._is_task_subtask(task):
+                resize_notice_id = save_message(
+                    session_id, "assistant", resize_text, model_name="system", response_time="0"
+                )
             resize_notice = resize_text
         elif image_result.get("resized") and image_result.get("original_size") and image_result.get("new_size"):
             orig_w, orig_h = image_result["original_size"]
@@ -1487,9 +1912,10 @@ class RedisRequestQueue:
                     )
                     .format(max_w=1024, max_h=1024, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                 )
-            resize_notice_id = save_message(
-                session_id, "assistant", resize_text, model_name="system", response_time="0"
-            )
+            if not self._is_task_subtask(task):
+                resize_notice_id = save_message(
+                    session_id, "assistant", resize_text, model_name="system", response_time="0"
+                )
             resize_notice = resize_text
 
         # Reload multimodal model for next interaction
@@ -1531,6 +1957,20 @@ class RedisRequestQueue:
             "resize_notice": resize_notice,
             "resize_notice_id": resize_notice_id,
         }
+        subtask_result = self._subtask_envelope(
+            task,
+            session_id,
+            message_text,
+            file_path,
+            image_result,
+            meta=self._subtask_model_meta("flux-2-klein-4b", "image_edit", with_usage=True),
+            backend={
+                "prompt": str(edit_data.get("prompt") or ""),
+                "params": {k: v for k, v in edit_data.items() if k != "prompt"},
+            },
+        )
+        if subtask_result is not None:
+            return subtask_result
         return self._save_and_respond(
             session_id,
             message_text_out,
@@ -1564,11 +2004,16 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
-        self.app.modules["image"].check_availability()
-        if not self.app.modules["image"].available:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
-            )
+        image_module = self.app.modules["image"]
+        if not image_module.available:
+            # A probe failure is NOT proof the service is down: the wrapper is
+            # single-threaded and cannot answer /health while it renders (live:
+            # steps died in ~5 s with «Image generation module unavailable»
+            # during a running generation). Re-probe once for a stale flag, then
+            # attempt the request — a genuinely dead service reports itself.
+            image_module.check_availability()
+            if not image_module.available:
+                self.app.logger.warning("sd-wrapper health probe failed — attempting the generation anyway")
 
         # Pre-operation monitoring and VRAM cleanup
         self._log_gpu_state_before_op("sd-gen", 8000)
@@ -1610,12 +2055,45 @@ class RedisRequestQueue:
             with force_locale(lang):
                 examples_header = _("Reference examples (draw something similar):")
             generation_query = f"{query}\n\n{examples_header}\n" + "\n".join(example_sections)
+        # Corrective retry: the verifier rejected the previous attempt — pass
+        # its reason into the SD prompt so the generator fixes the issue. It is
+        # appended to the PROMPT only (generation_query), never to `query` —
+        # the media envelope echoes `query` and would leak it into the step.
+        corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+        if corrective_note:
+            from app.llamacpp_client import _tr
+
+            with force_locale(lang):
+                corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+            generation_query = f"{generation_query}\n\n{corrective_note}. {corrective_label}"
+        task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+        if task_context:
+            generation_query = f"{generation_query}\n\nContext so far:\n{task_context}"
+        # Continuity sheet injection (Task 5) — rendered by the executor and
+        # carried in the queued request's ``data``; already includes its header.
+        continuity_sheet = str((task.get("data") or {}).get("visual_bible") or "").strip()
+        if continuity_sheet:
+            generation_query = f"{continuity_sheet}\n\n{generation_query}"
+        # Prompt hygiene (spec §9a): source-reference markers (document line
+        # ranges, «(источник: …)» citation stubs) left by the extractor reach
+        # the SD prompt as garbage text/CJK/digits. The sanitizer strips the
+        # markers from the ASSEMBLED query — scene numbering and quoted
+        # inscriptions (legitimate text content) survive.
+        from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
+
+        generation_query = sanitize_reference_markers(generation_query)
+        explicit_text = wants_text_in_image(generation_query)
+        if not explicit_text:
+            generation_query = strip_speech_for_image(generation_query)
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             generation_query, lang=lang, response_style=response_style
         )
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+        prompt_data = self._ensure_prompt_entities(task, prompt_data)
+        if isinstance(prompt_data, dict) and not explicit_text:
+            prompt_data = self._append_no_text_clause(prompt_data, "prompt")
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
@@ -1646,6 +2124,7 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
         # CPU mode halves the generation size: surface the reduced resolution.
+        # Only for chat — a task step keeps the notice out of the chat tables.
         cpu_notice_id = None
         cpu_notice = None
         cpu_dg = image_result.get("cpu_degrade") or {}
@@ -1661,7 +2140,10 @@ class RedisRequestQueue:
                     )
                     .format(new_w=new_w, new_h=new_h, orig_w=orig_w, orig_h=orig_h)
                 )
-            cpu_notice_id = save_message(session_id, "assistant", cpu_notice, model_name="system", response_time="0")
+            if not self._is_task_subtask(task):
+                cpu_notice_id = save_message(
+                    session_id, "assistant", cpu_notice, model_name="system", response_time="0"
+                )
 
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
@@ -1698,6 +2180,20 @@ class RedisRequestQueue:
             "resize_notice": cpu_notice,
             "resize_notice_id": cpu_notice_id,
         }
+        subtask_result = self._subtask_envelope(
+            task,
+            session_id,
+            query,
+            file_path,
+            image_result,
+            meta=self._subtask_model_meta(sd_model, "image_gen", with_usage=True),
+            backend={
+                "prompt": str(prompt_data.get("prompt") or ""),
+                "params": {k: v for k, v in prompt_data.items() if k != "prompt"},
+            },
+        )
+        if subtask_result is not None:
+            return subtask_result
         return self._save_and_respond(
             session_id,
             message_text,
@@ -1926,7 +2422,7 @@ class RedisRequestQueue:
         image, ``images=[{data,type,name}, …]``; the legacy single-image
         arguments are still accepted and prepended); the slow worker describes
         each with the multimodal model and adds the descriptions to the
-        analysis corpus as documents named 'Изображение (name)'.
+        analysis corpus as documents named "Image (name)".
         """
         request_data: dict[str, Any] = {
             "type": "rlm_analysis",
@@ -1975,12 +2471,29 @@ class RedisRequestQueue:
             )
 
         self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+        # Publish task_stage events for the task view when RLM runs as a subtask.
+        from app.tasks.events import publish_task_stage
+
+        subtask_step_id = (request_data or {}).get("task_step_subtask")
+        subtask_task_val = None
+        if subtask_step_id:
+            try:
+                from app.tasks.store import get_task as _gt
+
+                subtask_task_val = _gt(task["session_id"])
+            except Exception:
+                pass
+
+        def _publish_rlm_stage(stage: str, count: int | None = None) -> None:
+            if subtask_task_val is not None:
+                publish_task_stage(self.app, subtask_task_val, stage, count=count)
 
         def on_stage(stage: str, extra: dict | None = None) -> None:
             payload = {"stage": stage}
             if extra:
                 payload.update(extra)
             self._publish_stream_event(task, "task_progress", payload)
+            _publish_rlm_stage(stage, (extra or {}).get("step"))
 
         on_stage("rlm_reading", None)
 
@@ -2005,6 +2518,78 @@ class RedisRequestQueue:
                         )
             if text:
                 corpus[doc.get("filename", doc_id)] = text
+            else:
+                # no text and no sidecar -> repair once
+                import contextlib as _ctx
+
+                with _ctx.suppress(Exception):
+                    subtask_task_val = subtask_task_val
+                try:
+                    from app.tasks.store import get_task as _gt
+
+                    if subtask_task_val is None and subtask_step_id:
+                        subtask_task_val = _gt(task["session_id"])
+                except Exception:
+                    pass
+                if subtask_task_val is not None:
+                    try:
+                        from app.tasks.events import publish_task_stage
+
+                        publish_task_stage(self.app, subtask_task_val, "indexing_document")
+                    except Exception:
+                        pass
+                # enqueue repair
+                try:
+                    q = RedisRequestQueue(self.app, start_workers=False)
+                    docs_folder = self.app.config["DOCUMENTS_FOLDER"]
+                    full_path = os.path.join(docs_folder, doc.get("file_path"))
+                    ext = os.path.splitext(full_path)[1].lower()
+                    if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".pdf"):
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": lang,
+                            "data": {
+                                "type": "describe_document_image",
+                                "doc_id": doc_id,
+                                "file_path": doc.get("file_path"),
+                            },
+                            "user_class": 5,
+                        }
+                    else:
+                        rq = {
+                            "id": str(__import__("uuid").uuid4()),
+                            "session_id": str(__import__("uuid").uuid4()),
+                            "user_id": user_id,
+                            "lang": lang,
+                            "data": {"type": "index_document", "doc_id": doc_id, "file_path": doc.get("file_path")},
+                            "user_class": 5,
+                        }
+                    q.add_request(
+                        user_id=user_id, session_id=rq["session_id"], request_data=rq["data"], user_class=5, lang=lang
+                    )
+                except Exception as e:
+                    self.app.logger.warning(f"rlm corpus repair enqueue failed: {e}")
+                # wait a bit
+                try:
+                    import time as _time
+
+                    _time.sleep(3)
+                except Exception:
+                    pass
+                # re-read
+                text = extract_text_from_file(full_path)
+                if not text:
+                    recognized_path = os.path.splitext(full_path)[0] + ".recognized_text"
+                    if os.path.exists(recognized_path):
+                        try:
+                            with open(recognized_path, encoding="utf-8") as f:
+                                text = f.read()
+                        except Exception:
+                            pass
+                if text:
+                    corpus[doc.get("filename", doc_id)] = text
 
         rm = get_resource_manager()
         if not rm:
@@ -2016,7 +2601,7 @@ class RedisRequestQueue:
             )
 
         # Attached image: describe it with the multimodal model and treat the
-        # description as a corpus document named 'Изображение (file)'.
+        # description as a corpus document named "Image (file)".
         rlm_images: list[dict[str, Any]] = []
         if request_data.get("images"):
             rlm_images = [p for p in request_data["images"] if p.get("data")]
@@ -2069,7 +2654,8 @@ class RedisRequestQueue:
                 self.app.modules["base"]
                 ._(
                     "The selected documents are too large for deep analysis "
-                    "(limit: {limit} characters). Select fewer or smaller documents."
+                    "(limit: {limit} characters). Select fewer or smaller documents.",
+                    lang,
                 )
                 .format(limit=limit_chars),
                 0,
@@ -2101,6 +2687,7 @@ class RedisRequestQueue:
             )
         finally:
             rm.mark_rlm_idle()
+            _publish_rlm_stage("")
 
         # Total time from request submission (queue wait + document reading +
         # image description + model load + analysis), not just the actor loop.
@@ -2141,6 +2728,16 @@ class RedisRequestQueue:
                 lang,
             )
 
+        subtask_result = self._subtask_envelope(
+            task,
+            session_id,
+            result.answer,
+            None,
+            {},
+            meta=self._subtask_model_meta(self._get_model_name("reasoning") or "reasoning", "rlm", with_usage=True),
+        )
+        if subtask_result is not None:
+            return {**subtask_result, "rlm_steps": result.steps}
         return self._save_and_respond(
             session_id,
             result.answer,
@@ -2184,7 +2781,7 @@ class RedisRequestQueue:
 
     def _image_aspect_line(self, image_data: str, lang: str) -> str:
         """Localized real-size line for a reference image, e.g.
-        «Формат: 768×1024 (вертикальный)». Empty string when the size is unknown."""
+        The size hint (e.g. "Format: 768x1024 (portrait)"). Empty string when the size is unknown."""
         dimensions = get_image_dimensions(image_data)
         if not dimensions:
             return ""
@@ -2364,7 +2961,15 @@ class RedisRequestQueue:
                 attempt == 0
                 and not self._is_task_cancelled(task["id"])
                 and self._is_llm_error_string(full_response)
-                and ("502" in full_response or "HTTP error" in full_response or "Ошибка HTTP" in full_response)
+                and (
+                    "502" in full_response
+                    or "HTTP error" in full_response
+                    or "Ошибка HTTP" in full_response
+                    or "model unloaded" in full_response
+                    or "была выгружен" in full_response
+                    or "shutting down" in full_response
+                    or "перезагружает" in full_response
+                )
             ):
                 self.app.logger.warning(
                     f"Reasoning backend HTTP failure on attempt {attempt + 1}, retrying once: {full_response[:200]}"
@@ -2475,8 +3080,21 @@ class RedisRequestQueue:
             mm_start = time.time()
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "analyzing"})
+            # Corrective retry: append the verifier's reason to the video prompt
+            # only, never to `query` (the media envelope below echoes it).
+            video_prompt = query
+            corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+            if corrective_note:
+                from app.llamacpp_client import _tr
+
+                with force_locale(lang):
+                    corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+                video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
+            task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+            if task_context:
+                video_prompt = f"{video_prompt}\n\nContext so far:\n{task_context}"
             prompt_data, error = self.app.modules["multimodal"].generate_video_params(
-                query, lang=lang, response_style=response_style
+                video_prompt, lang=lang, response_style=response_style
             )
             mm_time = round(time.time() - mm_start, 1)
             if error:
@@ -2589,6 +3207,16 @@ class RedisRequestQueue:
                 },
                 "metadata": video_result.get("metadata", {}),
             }
+            subtask_result = self._subtask_envelope(
+                task,
+                session_id,
+                query,
+                file_path,
+                video_result,
+                meta=self._subtask_model_meta(video_model, "video", with_usage=True),
+            )
+            if subtask_result is not None:
+                return subtask_result
             return self._save_and_respond(
                 session_id,
                 message_text,
@@ -2646,8 +3274,23 @@ class RedisRequestQueue:
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
             mm_model = self.app.modules.get("multimodal")
+            # Corrective retry: append the verifier's reason to the video prompt
+            # only, never to `query` (the media envelope below echoes it).
+            video_prompt = query
+            corrective_note = str((task.get("data") or {}).get("corrective_note") or "").strip()
+            if corrective_note:
+                from app.llamacpp_client import _tr
+
+                with force_locale(lang):
+                    corrective_label = _tr("Fix the stated problem and redo this step.", lang)
+                video_prompt = f"{query}\n\n{corrective_note}. {corrective_label}"
+            task_context = str((task.get("data") or {}).get("task_context") or "").strip()
+            if task_context:
+                video_prompt = f"{video_prompt}\n\nContext so far:\n{task_context}"
             prompt_data, error = (
-                mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
+                mm_model.generate_video_params_from_image(
+                    video_prompt, image_data, lang=lang, response_style=response_style
+                )
                 if mm_model
                 else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
             )
@@ -2771,9 +3414,10 @@ class RedisRequestQueue:
                         )
                         .format(max_w=768, max_h=768, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                     )
-                resize_notice_id = save_message(
-                    session_id, "assistant", resize_text, model_name="system", response_time="0"
-                )
+                if not self._is_task_subtask(task):
+                    resize_notice_id = save_message(
+                        session_id, "assistant", resize_text, model_name="system", response_time="0"
+                    )
                 resize_notice = resize_text
 
             video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
@@ -2810,6 +3454,16 @@ class RedisRequestQueue:
                 "resize_notice": resize_notice,
                 "resize_notice_id": resize_notice_id,
             }
+            subtask_result = self._subtask_envelope(
+                task,
+                session_id,
+                query,
+                file_path,
+                video_result,
+                meta=self._subtask_model_meta(video_model, "video", with_usage=True),
+            )
+            if subtask_result is not None:
+                return subtask_result
             return self._save_and_respond(
                 session_id,
                 message_text,
@@ -2918,6 +3572,251 @@ class RedisRequestQueue:
             messages.append(second)
 
         return {"messages": messages, "session_id": session_id}
+
+    def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Camera step of a Tasks-subsystem plan: one room's snapshot + analysis.
+
+        Mirrors the chat camera path without chat plumbing (no message pair, no
+        reasoning requeue): the snapshot is described by the resident multimodal
+        model and the description IS the step result, which the executor's
+        checkpoint then verifies. The planner emits ONE such step per room for
+        "which room…" questions; the goal names the room (``get_room_code``
+        resolves declensions). Errors return the localized text as an error
+        envelope so the step fails and the task continues.
+        """
+        data = task.get("data", {})
+        session_id = task.get("session_id", "")
+        user_id = task.get("user_id", "")
+        lang = task.get("lang", "ru")
+        base = self.app.modules.get("base")
+
+        def _err(msgid: str, **kwargs: Any) -> dict[str, Any]:
+            text = str(base._(msgid, lang, **kwargs)) if base else msgid.format(**kwargs)
+            envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "error": text}
+            # The multimodal model is the analyzer for camera steps even when
+            # it only reports the failure: the step header keeps the model
+            # name (and real tokens when the model actually ran) so a failed
+            # snapshot is shown like every other message, not as a bare text.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
+
+        cam = self.app.modules.get("cam")
+        if cam is None or not getattr(cam, "available", False):
+            return _err("Camera module unavailable")
+
+        room_name = str(data.get("room") or data.get("prompt") or "").strip()
+        if not room_name:
+            return _err("Unknown room: {room}", room="")
+        camera_result = cam.get_snapshot(user_id, room_name, lang=lang)
+        if not camera_result.get("success"):
+            envelope: dict[str, Any] = {
+                "status": "completed",
+                "session_id": session_id,
+                "error": str(camera_result.get("error") or "Camera error"),
+            }
+            # The camera call is not an LLM call (no tokens yet), but the step
+            # header must still show the model that would analyze the snapshot.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
+
+        mm = self.app.modules.get("multimodal")
+        if mm is None or not getattr(mm, "available", False):
+            return _err("Multimodal model unavailable")
+
+        question = str(data.get("task_question") or "").strip()
+        current_time_str = get_current_time_in_timezone(self.app) or ""
+        room_display = str(camera_result.get("room_name") or room_name)
+
+        def _ask_mm(q: str) -> tuple[str | None, str | None]:
+            return mm.process_image_with_text(
+                camera_result["image_data"],
+                q,
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style=str(data.get("response_style") or "neutral"),
+            )
+
+        # Analysis framing, never the raw planner goal ("Take a snapshot…"
+        # reads as an image-generation request and the multimodal classifier
+        # answers with a router marker like [-IMAGE-EDIT-]).
+        if question:
+            question = (
+                str(base._("Camera snapshot analysis: {question}", lang)).format(question=question)
+                if base
+                else question
+            )
+        bot_reply, mm_error = _ask_mm(question or room_display)
+        if not bot_reply or self._is_llm_error_string(bot_reply) or not str(bot_reply).strip():
+            # One retry: the model is already loaded and the known
+            # empty-output flake (thinking-only answer) usually clears.
+            retry_question = (
+                str(
+                    base._("Describe what the camera snapshot of {room_name} shows and answer: {question}", lang)
+                ).format(room_name=room_display, question=question or "")
+                if base
+                else f"Describe the camera snapshot of {room_display}. {question}"
+            )
+            bot_reply, mm_error = _ask_mm(retry_question)
+        # Router-marker guard (chat parity): the classifier may misroute the
+        # analysis question as an image/video request and echo the marker.
+        if bot_reply and str(bot_reply).strip().startswith((("[-IMAGE-EDIT-]"), "[-IMAGE-]", "[-VIDEO-]")):
+            bot_reply, mm_error = _ask_mm(
+                str(base._("Describe what the camera snapshot of {room_name} shows.", lang)).format(
+                    room_name=room_display
+                )
+                if base
+                else f"Describe what the camera snapshot of {room_display} shows."
+            )
+            # Still a marker after the retry → the analysis never happened;
+            # surface the error instead of leaking the echo.
+            if bot_reply and str(bot_reply).strip().startswith((("[-IMAGE-EDIT-]"), "[-IMAGE-]", "[-VIDEO-]")):
+                bot_reply = None
+        if mm_error:
+            bot_reply = f"⚠️ {mm_error}"
+        if not bot_reply or not str(bot_reply).strip():
+            bot_reply = "⚠️ " + (
+                str(base._("Failed to process image request. Please try again.", lang))
+                if base
+                else "Failed to process image request. Please try again."
+            )
+        snapshot_label = str(base._("Camera snapshot: {room_name}", lang)) if base else "Camera snapshot: {room_name}"
+        text = snapshot_label.replace("{room_name}", room_display) + "\n" + bot_reply
+        envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "response": text}
+        # Chat-style header: the snapshot analysis runs on the multimodal model
+        # — the step header shows its name and the real token totals.
+        envelope.update(
+            self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+        )
+        # The snapshot itself rides the envelope as media refs so the executor
+        # stores it in the step's extra and the task view renders it (chat
+        # parity: the chat camera path shows the image too).
+        if camera_result.get("image_data"):
+            file_path = save_uploaded_file(
+                file_data=camera_result["image_data"],
+                filename=camera_result["file_name"],
+                # The task's own id: the folder /api/files resolves through the
+                # tasks table. The queue request id used before was no owner of
+                # any session or task, so the task view's <img> got a 403.
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+            if file_path:
+                envelope["file_path"] = file_path
+                envelope["file_name"] = camera_result["file_name"]
+                envelope["file_type"] = camera_result.get("image_type")
+                envelope["file_size"] = camera_result.get("file_size")
+        return envelope
+
+    def _process_vision_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Vision step of a Tasks-subsystem plan: extract data from the images.
+
+        The images arrive as ``{data, name}`` parts (data: URLs built from the
+        stored files at enqueue time). The step is a pure READER: it returns
+        the two-section extraction the multimodal model produces with the
+        extraction prompt (``image.template``) — a detailed description plus
+        all text — and never answers the planner goal (the plan's following
+        ``llm`` step composes the answer from this material). Every image is
+        read by its OWN call, because that prompt mandates exactly one
+        description block: a joint call over several images describes only the
+        first of them (the verifier rejects such a step and the planner asks
+        the user for images it already has). Each extraction is preceded by the
+        image's file name, written by the caller and never by the model, so the
+        material stays attributable. Errors return the localized error envelope
+        so the step fails and the task continues.
+
+        Only the images the step goal names by file name are read (see
+        ``images_named_in_goal``); a goal that names none reads them all.
+        """
+        data = task.get("data", {})
+        session_id = task.get("session_id", "")
+        lang = task.get("lang", "ru")
+        base = self.app.modules.get("base")
+
+        def _err(text: str) -> dict[str, Any]:
+            envelope: dict[str, Any] = {"status": "completed", "session_id": session_id, "error": text}
+            # The multimodal model analyzes the attached images (or reports why
+            # it cannot): the failure header keeps its name and real tokens.
+            envelope.update(
+                self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+            )
+            return envelope
+
+        images = [p for p in (data.get("images") or []) if isinstance(p, dict) and p.get("data")]
+        if not images:
+            return _err(str(base._("No image in your message", lang)) if base else "No image in your message")
+        # One step per image: the goal names the file (the executor puts the step
+        # goal into ``text``, the camera handler's ``room`` equivalent), so the
+        # step reads only that image. A goal naming no attached file covers the
+        # whole set — one step for every image.
+        from app.tasks.executor import images_named_in_goal
+
+        named_images = images_named_in_goal(images, str(data.get("text") or data.get("prompt") or ""))
+        if named_images:
+            images = named_images
+
+        mm = self.app.modules.get("multimodal")
+        if mm is None or not getattr(mm, "available", False):
+            return _err(str(base._("Multimodal model unavailable", lang)) if base else "Multimodal model unavailable")
+
+        current_time_str = get_current_time_in_timezone(self.app) or ""
+        # The file name of every image precedes its extraction: the caller writes
+        # it, never the model — a guessed or absent name leaves the descriptions
+        # unattributable.
+        name_marker = str(base._("IMAGE FILE NAME", lang)) if base else "IMAGE FILE NAME"
+        bot_reply = ""
+        mm_error = None
+        sections: list[str] = []
+        # Empty user text selects the extraction prompt (description + text)
+        # instead of the image-request classifier — the step only reads. One call
+        # PER image: that prompt mandates exactly one description block, so a
+        # single joint call over several images describes only the first of them.
+        for part in images:
+            reply, err = mm.process_image_with_text(
+                str(part.get("data")),
+                "",
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style="neutral",
+            )
+            if err or not reply or not str(reply).strip():
+                mm_error = err
+                break
+            name = str(part.get("name") or "") or (str(base._("Image", lang)) if base else "Image")
+            sections.append(f"=== {name_marker} ===\n{name}\n\n{str(reply).strip()}")
+        else:
+            bot_reply = "\n\n".join(sections)
+        if mm_error:
+            bot_reply = f"⚠️ {mm_error}"
+        if not bot_reply or not str(bot_reply).strip():
+            return _err(
+                str(base._("Failed to process image request. Please try again.", lang))
+                if base
+                else "Failed to process image request. Please try again."
+            )
+        if self._is_llm_error_string(str(bot_reply)):
+            return _err(str(bot_reply))
+        # Router-marker guard (chat parity): the classifier may misroute the
+        # analysis question as an image/video request; the echo is never a
+        # valid step answer, so it is stripped from the result text.
+        stripped = re.sub(r"\[-(IMAGE(?:-EDIT)?|VIDEO)-\]\s*", "", str(bot_reply)).strip()
+        envelope = {
+            "status": "completed",
+            "session_id": session_id,
+            "response": stripped or str(bot_reply).strip(),
+        }
+        # Chat-style header: the image analysis runs on the multimodal model —
+        # the step header shows its name and the real token totals.
+        envelope.update(
+            self._subtask_model_meta(self._get_model_name("multimodal") or "", "multimodal", with_usage=True)
+        )
+        return envelope
 
     def _process_camera_task_stream(
         self,
@@ -3400,6 +4299,7 @@ class RedisRequestQueue:
                 user_id,
                 indexing_started_at,
                 lambda status: _publish_document_index_event(self.app, user_id, doc_id, status),
+                lang=str(task.get("lang") or "ru"),
             )
             self._cleanup_vram_after_task(task)
         if not success:
@@ -3551,6 +4451,17 @@ class RedisRequestQueue:
 
         process_time = round(time.time() - start_time, 1)
         self.app.logger.info(f"Crawl task done in {process_time}s — requeueing reasoning over the corpus")
+        if data.get("task_step_subtask"):
+            # A Tasks-subsystem crawl step: the site material is indexed as the
+            # user's document and the collected context IS the step result — no
+            # reasoning continuation is re-queued (the plan's following llm
+            # step composes the answer over this context). Success-path only:
+            # the doc_id was stored above.
+            self.app.logger.info(
+                f"Crawl subtask {data.get('task_step_subtask')} stored document {doc_id} "
+                f"({len(pages)} pages, {sum(len(p.get('markdown', '')) for p in pages)} chars)"
+            )
+            return {"status": "completed", "session_id": session_id, "response": self._crawl_context(pages)}
         return self._requeue_reasoning_task(
             query,
             session_id,
@@ -4523,6 +5434,10 @@ class RedisRequestQueue:
             return self._process_index_task(task)
         if task_type == "crawl_task":
             return self._process_crawl_task(task)
+        if task_type == "camera_task":
+            return self._process_camera_subtask(task)
+        if task_type == "vision_task":
+            return self._process_vision_subtask(task)
         if task_type == "reindex_all_embeddings":
             return self._process_reindex_all_task(task)
         if task_type == "transcribe_audio":
@@ -5119,7 +6034,7 @@ class RedisRequestQueue:
         from flask_babel import force_locale
 
         with force_locale(lang):
-            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
+            prefix = "🎤 " + self.app.modules["base"]._("Transcribed", lang) + ": "
 
         system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
 
@@ -5155,14 +6070,19 @@ class RedisRequestQueue:
             }
 
     def _process_transcribe_task(self, task: dict[str, Any]) -> dict[str, Any]:
-        """Process audio transcription task asynchronously."""
+        """Process audio transcription task asynchronously.
+
+        A message may carry several audio items — one voice recording plus audio
+        files, at most ``MAX_CHAT_AUDIO`` in total — and every one of them is
+        transcribed in order: the transcripts join the question, so the message
+        is always answered (a plain audio file next to a typed question used to
+        be transcribed and left unanswered, because the answer was gated on the
+        voice-recording flag). An item that cannot be read is skipped; the
+        localized error appears only when nothing at all was recognized.
+        """
         user_id = task["user_id"]
         session_id = task["session_id"]
         request_data = task["data"]
-        file_data = request_data.get("file_data")
-        file_type = request_data.get("file_type")
-        file_name = request_data.get("file_name")
-        voice_record = request_data.get("voice_record", False)
         lang = task.get("lang", "ru")
         user_class = task.get("user_class", 2)
 
@@ -5172,79 +6092,123 @@ class RedisRequestQueue:
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
-        start_time = time.time()
-        transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
-        process_time = round(time.time() - start_time, 1)
-        if transcribed_text is None:
+        # Every audio item of the message in attachment order (the route puts a
+        # voice recording first); a legacy single-audio payload — a requeued
+        # task, the /v1 API — is read from the flat fields.
+        audios = [a for a in (request_data.get("audios") or []) if isinstance(a, dict) and a.get("data")]
+        if not audios and request_data.get("file_data"):
+            audios = [
+                {
+                    "data": request_data.get("file_data"),
+                    "type": request_data.get("file_type"),
+                    "name": request_data.get("file_name"),
+                }
+            ]
+
+        from flask_babel import force_locale
+
+        transcribed: list[str] = []
+        process_time = 0.0
+        transcribed_message_id = None
+        for audio in audios:
+            started = time.time()
+            text = audio_module.transcribe(audio.get("data"), audio.get("type"), audio.get("name"), lang=lang)
+            process_time += time.time() - started
+            text = str(text or "").strip()
+            if not text:
+                continue
+            transcribed.append(text)
+            name = str(audio.get("name") or "")
+            # With several items the file name tells the transcripts apart; a
+            # lone one keeps the familiar plain label.
+            suffix = f" ({name})" if name and len(audios) > 1 else ""
+            with force_locale(lang):
+                prefix = "🎤 " + self.app.modules["base"]._("Transcribed", lang) + suffix + ": "
+            transcribed_message_id = save_message(
+                session_id,
+                "assistant",
+                json.dumps({"prefix": prefix, "text": text}, ensure_ascii=False),
+                model_name="whisper",
+                response_time=str(round(process_time, 1)),
+            )
+
+        if not transcribed:
             error_msg = self.app.modules["base"]._("Failed to recognize speech", lang)
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
-        from flask_babel import force_locale
+        transcribed_text = "\n\n".join(transcribed)
+        process_time = round(process_time, 1)
 
-        with force_locale(lang):
-            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
-
-        system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
-        transcribed_message_id = save_message(
-            session_id, "assistant", system_content, model_name="whisper", response_time=str(process_time)
+        # The question: the typed text first, then every transcript in order.
+        typed = str(request_data.get("text") or "").strip()
+        question = f"{typed}\n\n{transcribed_text}" if typed else transcribed_text
+        preview = (
+            (transcribed_text[:50] + "...")
+            if transcribed_text
+            else self.app.modules["base"]._("Voice request", lang=lang)
         )
+        response_style = request_data.get("response_style", "neutral")
+        images = [img for img in (request_data.get("images") or []) if img]
+        image_data = request_data.get("image_data")
 
-        if voice_record:
-            response_style = request_data.get("response_style", "neutral")
-            image_data = request_data.get("image_data")
-            image_type = request_data.get("image_type")
-            image_name = request_data.get("image_name")
-
-            if image_data:
-                # Image + voice: requeue as image task (multimodal processing).
-                # Multi-attachment: extra images beyond the primary one travel
-                # in "images" and reach the joint vision call.
-                requeue_request_data = {
-                    "type": "image",
-                    "text": transcribed_text,
-                    "file_data": image_data,
-                    "file_type": image_type,
-                    "file_name": image_name,
-                    "preview": (transcribed_text[:50] + "...")
-                    if transcribed_text
-                    else self.app.modules["base"]._("Voice request", lang=lang),
-                    "response_style": response_style,
-                    "stream": True,
-                }
-                extra_images = [img for img in request_data.get("images", []) if img != image_data]
-                if extra_images:
-                    requeue_request_data["images"] = [image_data] + extra_images
-            else:
-                # Voice only: requeue as text task (router processing)
-                requeue_request_data = {
-                    "type": "text",
-                    "text": transcribed_text,
-                    "preview": (transcribed_text[:50] + "...")
-                    if transcribed_text
-                    else self.app.modules["base"]._("Voice request", lang=lang),
-                    "response_style": response_style,
-                    "stream": True,
-                }
-            new_request_id, _ = self.app.request_queue.add_request(
-                user_id, session_id, requeue_request_data, user_class, lang=lang
-            )
-            return {
-                "transcribed_text": transcribed_text,
-                "transcribed_message_id": transcribed_message_id,
-                "request_id": new_request_id,
-                "session_id": session_id,
-                "response_time": process_time,
-                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+        if request_data.get("doc_file_data"):
+            # A document attached next to the audio scopes the answer (the same
+            # doc_chat chain a document-only message takes), with the transcripts
+            # as the question — the document used to win the request type and the
+            # audio was never transcribed.
+            requeue_request_data: dict[str, Any] = {
+                "type": "doc_chat",
+                "text": question,
+                "doc_file_data": request_data.get("doc_file_data"),
+                "doc_file_type": request_data.get("doc_file_type"),
+                "doc_file_name": request_data.get("doc_file_name"),
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
             }
+            if images:
+                requeue_request_data["images"] = images
+        elif image_data:
+            # Image + audio: requeue as image task (multimodal processing).
+            # Multi-attachment: extra images beyond the primary one travel
+            # in "images" and reach the joint vision call.
+            requeue_request_data = {
+                "type": "image",
+                "text": question,
+                "file_data": image_data,
+                "file_type": request_data.get("image_type"),
+                "file_name": request_data.get("image_name"),
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
+            }
+            extra_images = [img for img in images if img != image_data]
+            if extra_images:
+                requeue_request_data["images"] = [image_data] + extra_images
         else:
-            return {
-                "transcribed_text": transcribed_text,
-                "transcribed_message_id": transcribed_message_id,
-                "session_id": session_id,
-                "response_time": process_time,
-                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+            # No image and no document: continue as a text task (router
+            # processing). Every audio message is answered — a plain audio file
+            # next to a typed question used to be left unanswered.
+            requeue_request_data = {
+                "type": "text",
+                "text": question,
+                "preview": preview,
+                "response_style": response_style,
+                "stream": True,
             }
+
+        new_request_id, _ = self.app.request_queue.add_request(
+            user_id, session_id, requeue_request_data, user_class, lang=lang
+        )
+        return {
+            "transcribed_text": transcribed_text,
+            "transcribed_message_id": transcribed_message_id,
+            "request_id": new_request_id,
+            "session_id": session_id,
+            "response_time": process_time,
+            "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
+        }
 
     def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
         """Publish a document_indexed event to the user's SSE stream."""
@@ -5269,7 +6233,7 @@ class RedisRequestQueue:
         if not doc_b64:
             return self._build_error_response(
                 session_id,
-                self.app.modules["base"]._("No file provided"),
+                self.app.modules["base"]._("No file provided", lang),
                 0,
                 lang,
             )
@@ -5303,6 +6267,7 @@ class RedisRequestQueue:
             user_id,
             indexing_started_at=None,
             publish=lambda status: self._publish_document_event(user_id, doc_id, status),
+            lang=lang,
         )
         if not success:
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -5365,6 +6330,7 @@ class RedisRequestQueue:
             user_id,
             indexing_started_at,
             lambda status: self._publish_document_event(user_id, doc_id, status),
+            lang=task.get("lang", "ru"),
         )
         if success:
             self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
@@ -5606,8 +6572,7 @@ class RedisRequestQueue:
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
             self.app.logger.error("RAG module not available for reindexing")
-            with force_locale("en"):
-                error_msg = self.app.modules["base"]._("RAG module unavailable")
+            error_msg = self.app.modules["base"]._("RAG module unavailable", task.get("lang", "ru"))
             return {"success": False, "error": error_msg}
 
         batch_size = 50
@@ -5884,14 +6849,150 @@ class RedisRequestQueue:
         if not exists:
             exists = self.redis.hexists(self.slow_processing_key, task_id)
         if not exists:
+            exists = self.redis.hexists(self.background_processing_key, task_id)
+        if not exists:
             exists = self.redis.hexists(self.crawl_processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.results_key, task_id)
+        if not exists:
+            exists = self._find_in_queue_lists(task_id)
         if not exists:
             return False
         ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 120
         self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
         self.app.logger.info(f"Task {task_id} marked as cancelled")
+        return True
+
+    def _find_in_queue_lists(self, task_id: str) -> bool:
+        """True when the request is still waiting in one of the queue lists.
+
+        The lookup used to scan only the processing hashes, so the ■ button
+        answered «Task not found» for a request that had not been dequeued yet;
+        the client swallows that error and the stop silently did nothing.
+        """
+        target = str(task_id)
+        for key in (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key):
+            try:
+                for raw in self.redis.lrange(key, 0, -1) or []:
+                    task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
+                    if task and str(task.get("id")) == target:
+                        return True
+            except Exception as e:  # noqa: BLE001 — a broken list must not break the cancel
+                self.app.logger.warning(f"queue list scan failed ({key}): {e}")
+        return False
+
+    def _iter_queue_tasks(self):
+        """Yield every request payload the queue machinery currently knows.
+
+        Sources: the four waiting lists and the four processing hashes. Used to
+        find the requests of one chat session, so an undecodable entry is skipped
+        rather than raising.
+        """
+        list_keys = (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key)
+        hash_keys = (
+            self.processing_key,
+            self.slow_processing_key,
+            self.background_processing_key,
+            self.crawl_processing_key,
+        )
+        for key in (*list_keys, *hash_keys):
+            try:
+                raw_values = self.redis.lrange(key, 0, -1) if key in list_keys else self.redis.hvals(key)
+                for raw in raw_values or []:
+                    task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
+                    if task:
+                        yield task
+            except Exception as e:  # noqa: BLE001 — one broken source must not hide the rest
+                self.app.logger.warning(f"queue scan failed ({key}): {e}")
+
+    def _tasks_of_session(self, session_id: str) -> list[dict[str, Any]]:
+        """Every queued/in-flight request belonging to one chat session."""
+        target = str(session_id)
+        return [task for task in self._iter_queue_tasks() if str(task.get("session_id") or "") == target]
+
+    def cancel_session_tasks(self, session_id: str) -> int:
+        """Cancel every queued/in-flight request of one chat session.
+
+        Deleting a chat used to cancel nothing at all: an ``rlm_analysis``
+        already running held the GPU and ``_gpu_lock`` for another 85 s, the
+        task created right after could not start (its gate requires a free GPU),
+        and the answer was written into the deleted session as an orphan
+        ``messages`` row. Returns the number of requests flagged (best effort).
+        """
+        if not session_id:
+            return 0
+        ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 120
+        flagged = 0
+        try:
+            # A requeue child of this chat is enqueued AFTER the delete and has no
+            # per-id flag yet — the session flag catches it at dequeue time.
+            self.redis.setex(f"{self.SESSION_CANCEL_KEY_PREFIX}{session_id}", ttl, "1")
+            for task in self._tasks_of_session(session_id):
+                task_id = str(task.get("id") or "")
+                if task_id:
+                    self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
+                    flagged += 1
+        except Exception as e:  # noqa: BLE001 — the delete itself must go on
+            self.app.logger.warning(f"session cancel failed ({session_id}): {e}")
+        if flagged:
+            self.app.logger.info(f"Session {session_id} cancelled: {flagged} request(s) flagged")
+        return flagged
+
+    def _is_session_cancelled(self, session_id: str) -> bool:
+        """Has the chat session been deleted? Its requests must not run."""
+        if not session_id:
+            return False
+        try:
+            return bool(self.redis.exists(f"{self.SESSION_CANCEL_KEY_PREFIX}{session_id}"))
+        except Exception as e:  # noqa: BLE001 — a Redis hiccup must not block work
+            self.app.logger.warning(f"session cancel check failed ({session_id}): {e}")
+            return False
+
+    def _drop_cancelled_task(self, task: dict[str, Any]) -> bool:
+        """Drop a request cancelled before it started; store a terminal result.
+
+        A request cancelled while still waiting (■ in the UI, a deleted chat)
+        used to run to completion: it held the GPU and the queue slot, and its
+        answer was written into a chat that may no longer exist. The client's
+        poll still terminates because a cancellation envelope is stored under the
+        queue id.
+        """
+        task_id = str(task.get("id") or "")
+        if not task_id:
+            return False
+        session_id = str(task.get("session_id") or "")
+        if not self._is_task_cancelled(task_id) and not self._is_session_cancelled(session_id):
+            return False
+        error_text = self.app.modules["base"]._("Task cancelled", lang=task.get("lang", "ru"))
+        try:
+            self.redis.hset(
+                self.results_key,
+                task_id,
+                self._serialize(
+                    {
+                        "status": "error",
+                        "error": error_text,
+                        "result": {"session_id": session_id, "cancelled": True},
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
+            self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
+        except Exception as e:  # noqa: BLE001 — the drop itself must not fail on Redis
+            self.app.logger.warning(f"cancellation result write failed ({task_id}): {e}")
+        self.app.logger.info(f"Task {task_id} dropped before processing (cancelled)")
+        user_id = task.get("user_id")
+        if user_id:
+            try:
+                pipe = self.redis.pipeline()
+                pipe.srem(f"{self.user_requests_key}:{user_id}", task_id)
+                pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
+                pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
+                pipe.execute()
+            except Exception as e:  # noqa: BLE001 — counters are best effort
+                self.app.logger.warning(f"cancelled task counter cleanup failed ({task_id}): {e}")
+        if task.get("data", {}).get("type") not in ("api_embedding", "api_transcribe"):
+            self._publish_result_event(task, "error", {"error": error_text, "session_id": session_id})
         return True
 
     @staticmethod

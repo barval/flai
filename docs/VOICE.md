@@ -7,6 +7,8 @@ Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
 A voice message may be recorded on top of attached images: the transcript task carries the images, so the answer is re-queued as an image-chat task and the model sees both what you said and what you attached (voice in the legacy attachment slot and in the multi-attachment layout both pair correctly).
 
+A message may carry several audio items at once — one microphone recording plus audio files, up to `MAX_CHAT_AUDIO` (4) in total (1 voice + 3 files, or 4 files). Every item is transcribed in order (the recording first, then the attachments in order), each transcript is saved as its own assistant message and labelled with the file name when several items ride the message, and the model's question is your typed text followed by all transcripts. An audio message is always answered: the answer continues as a document task (`doc_chat`) when a document is attached, as an image task when an image is, otherwise as a plain text task — a plain audio file next to a typed question used to be transcribed and left unanswered. Tasks share the same cap and the same transcription order.
+
 ```bash
 # Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
@@ -47,7 +49,7 @@ bash services/kokoro/download-model.sh
 | RAM during active sessions | ~500 MB (all 4 voices cached) | ~3–5.5 GB (RUAccent + model in worker; peak during long phrases) |
 | Russian quality | Good (WER 4.38%) | Higher (WER 2.50%, studio actors) |
 | Russian voices | `dmitri` (male), `irina` (female) | `dima` (male), `sveta` (female) |
-| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, ё restoration, akanye, orthoepy |
+| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, yo restoration, akanye, orthoepy |
 | First phrase (fresh container) | ~0.8 s | **~2 s** — a background warmup (one full ru synthesis) runs right after container start (`KOKORO_WARMUP_G2P=1`, default on) |
 | Subsequent phrases (same session) | ~0.7–0.8 s | RU ~1.1 s |
 | First RU phrase after idle | none — voices stay cached | Depends on `KOKORO_G2P_IDLE_TIMEOUT` (default 300 s): after it expires without a Russian request the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM, and the next Russian phrase reloads it (~10–11.5 s). Set `0` to never unload (always warm, +3.1 GB RAM permanently). EN is not affected. |

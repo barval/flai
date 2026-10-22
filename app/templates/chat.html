@@ -10,6 +10,11 @@
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
                     <button id="add-folder-button" class="new-tab-button" title="{{ _('New folder') }}">📁</button>
                 </div>
+                <!-- Tasks tab -->
+                <div class="header-tab tasks-tab {% if active_view == 'tasks' %}active{% endif %}" data-view="tasks">
+                    <span class="tab-text">{{ _('Tasks') }} (<span id="tasks-count">0</span>)</span>
+                    <button id="new-task-button" class="new-tab-button" title="{{ _('New task') }}">➕</button>
+                </div>
                 <!-- Sessions tab -->
                 <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
                     <span class="tab-text">{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
@@ -37,11 +42,16 @@
         <div class="documents-list hidden" id="documents-list">
             <!-- Documents will be loaded via JavaScript -->
         </div>
+
+        <!-- Tasks list (hidden by default) -->
+        <div class="tasks-list hidden" id="tasks-list">
+            <!-- Tasks will be loaded via JavaScript -->
+        </div>
     </div>
 
     <div class="chat-main">
         <div class="chat-header">
-            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;&nbsp;<span class="header-divider">|</span>&nbsp;&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
+            <h2><span id="chat-title-text">{{ _('Chat') }}</span><span id="task-title-text" class="task-title-text hidden">{{ _('Task') }}</span><span id="preview-title-text" class="task-title-text preview-title-text hidden"></span> <span id="status-counter" class="status-counter" title="{{ _('Your requests / Total requests') }}">📊 0/0</span>&nbsp;<span class="header-divider">|</span>&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
                 <div class="response-style-dropdown">
                     <button class="response-style-btn" id="response-style-btn" title="{{ _('response_style_title') }}">
                         {% set style_icons = {'neutral': '🤖', 'academic': '🎓', 'professional': '💼', 'friendly': '😊', 'funny': '😂'} %}
@@ -57,13 +67,18 @@
                 </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="stop-task-button" class="cancel-stream-header" title="{{ _('Stop task') }}">■</button>
                 <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
+                <button id="save-document-button" class="save-chat-button" title="{{ _('Save') }}" style="display:none">💾</button>
             </div>
         </div>
 
         <!-- Chat messages area -->
         <div class="chat-messages" id="chat-messages"></div>
+
+        <!-- Document preview (Documents tab) -->
+        <div id="document-preview" class="document-preview hidden"></div>
 
         <!-- File preview container (shown when files are attached) -->
         <div id="file-preview-container" class="hidden"></div>
@@ -91,9 +106,13 @@
             </div>
         </div>
 
+        <!-- The new-task dialog was removed (v12.6 review): «+» creates a draft
+     task directly (like a new chat session); the request text goes into the
+     ordinary message input. -->
+
         <!-- Message input area -->
         <div class="rlm-controls">
-            <label title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
+            <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
             <select id="rlm-docs" multiple hidden></select>
         </div>
         <div class="message-input">
@@ -102,6 +121,7 @@
             <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" multiple class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
+            <button id="retry-task-button" title="{{ _('Restart task') }}" style="display:none">🔄 {{ _('Restart task') }}</button>
         </div>
     </div>
 </div>
@@ -116,6 +136,7 @@
 window.initialSessionId = {{ current_session|tojson }};
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.FLAI_MAX_CHAT_IMAGES = {{ config.MAX_CHAT_IMAGES|tojson }};
+window.FLAI_MAX_CHAT_AUDIO = {{ config.MAX_CHAT_AUDIO|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
@@ -144,6 +165,53 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'chat': {{ _("Chat")|tojson }},
     'sessions': {{ _("Sessions")|tojson }},
     'documents': {{ _("Documents")|tojson }},
+    'tasks': {{ _("Tasks")|tojson }},
+    'new_task': {{ _("New task")|tojson }},
+    'task': {{ _("Task")|tojson }},
+    'task_request_label': {{ _("Task request")|tojson }},
+    'create_task': {{ _("Create task")|tojson }},
+    'stop_task': {{ _("Stop task")|tojson }},
+    'delete_task': {{ _("Delete task")|tojson }},
+    'delete_task_confirm': {{ _("Delete task {title} from {date}?")|tojson }},
+    'task_status_running': {{ _("Running (step {n} of {m})")|tojson }},
+    'task_running': {{ _("Running")|tojson }},
+    'task_status_frozen': {{ _("Frozen")|tojson }},
+    'task_status_transcribing': {{ _("Transcribing audio…")|tojson }},
+    'task_status_completed': {{ _("Completed")|tojson }},
+    'task_status_cancelled': {{ _("Cancelled")|tojson }},
+    'task_status_failed': {{ _("Failed")|tojson }},
+    'task_status_expired': {{ _("Expired")|tojson }},
+    'task_awaiting_answer': {{ _("Awaiting answer")|tojson }},
+    'task_step_checked': {{ _("Checked automatically")|tojson }},
+    'task_step_rewritten': {{ _("Redone ×{n}")|tojson }},
+    'task_step_retrying_short': {{ _("Retrying (attempt {n} of {max})")|tojson }},
+    'task_step_retrying': {{ _("Auto-check failed: {reason}. Redoing (attempt {n} of {max})")|tojson }},
+    'task_step_retrying_generic': {{ _("Redoing after the check (attempt {n} of {max})")|tojson }},
+    'task_step_rewritten_reason': {{ _("Redone after the check: {reason}")|tojson }},
+    'task_step_failed': {{ _("Not delivered")|tojson }},
+    'task_step_skipped': {{ _("Skipped")|tojson }},
+    'task_step_interrupted': {{ _("Interrupted")|tojson }},
+    'task_step_unchecked': {{ _("Not verified")|tojson }},
+    'task_step_unchecked_reason': {{ _("Check skipped: could not describe the image")|tojson }},
+    'task_step_attempts': {{ _("Verification attempts ({n})")|tojson }},
+    'task_step_best_effort': {{ _("Best of {n} attempts")|tojson }},
+    'task_step_kept_accepted': {{ _("Kept the accepted image")|tojson }},
+    'document_preview_title': {{ _("Preview: {name}")|tojson }},
+    'document_extracted_text': {{ _("Extracted text")|tojson }},
+    'document_preview_unavailable': {{ _("Preview is not available for this format")|tojson }},
+    'document_preview_truncated': {{ _("Preview is truncated")|tojson }},
+    'document_preview_failed': {{ _("Could not load the document preview")|tojson }},
+    'document_open_pdf': {{ _("Open PDF")|tojson }},
+    'document_preview_pages_capped': {{ _("Showing the first {n} pages")|tojson }},
+    'task_step_attempt': {{ _("attempt {n}")|tojson }},
+    'task_final_items': {{ _("Accepted results: {n} (images: {images}, texts: {texts})")|tojson }},
+    'task_final_failures': {{ _("Not delivered:")|tojson }},
+    'task_answer_placeholder': {{ _("Answer the clarifying question…")|tojson }},
+    'task_not_awaiting': {{ _("Task is not awaiting an answer right now — status:")|tojson }},
+    'task_no_tasks': {{ _("No tasks yet")|tojson }},
+    'task_status_draft': {{ _("Draft")|tojson }},
+    'task_draft_placeholder': {{ _("Draft — describe the task…")|tojson }},
+    'task_empty_state': {{ _("No task selected — use «+» to create one")|tojson }},
     'messages': {{ _("Messages")|tojson }},
     'your_requests': {{ _("Your requests in queue / Total in queue")|tojson }},
     'error': {{ _("Error")|tojson }},
@@ -163,6 +231,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'image': {{ _("image")|tojson }},
     'enter_message_or_file': {{ _("enter_message_or_file")|tojson }},
     'max_images_reached': {{ _("max_images_reached")|tojson }},
+    'max_audio_reached': {{ _("max_audio_reached")|tojson }},
     'remove_file': {{ _("remove_file")|tojson }},
     'request_timeout': {{ _("request_timeout")|tojson }},
     'unknown_error': {{ _("unknown_error")|tojson }},
@@ -218,7 +287,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'delete_selected': {{ _('Delete selected documents')|tojson }},
     'delete_selected_confirm': {{ _('Delete {count} selected documents ({size})?')|tojson }},
     'delete_selected_failure': {{ _('Failed to delete some documents')|tojson }},
-    'documents_selected_count': {{ _('Selected documents: {count} ({size})')|tojson }},
+    'documents_selected_count': {{ _('Selected: {count} ({size})')|tojson }},
     'documents_select_folder': {{ _('Select all documents in folder')|tojson }},
     'documents_select_for_move': {{ _('Select for moving')|tojson }},
     'documents_select_for_analysis': {{ _('Select for deep analysis')|tojson }},
@@ -279,6 +348,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_crawl_indexing': {{ _('Indexing crawled content...')|tojson }},
     'rlm_trace_summary': {{ _('Deep analysis (%s steps)')|tojson }},
     'stage_elapsed_s': {{ _('s')|tojson }},
+    'stage_making_plan': {{ _('Making the plan...')|tojson }},
+    'stage_continuity': {{ _('Extracting the visual continuity sheet...')|tojson }},
+    'stage_continuity_failed': {{ _('Could not build the visual continuity sheet — images continue without it.')|tojson }},
+    'stage_indexing_document': {{ _('Creating index for document...')|tojson }},
     'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
     'step': {{ _('Step')|tojson }},
     'minute_abbr': {{ _('minute_abbr')|tojson }},
@@ -296,6 +369,7 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-utils.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-sessions.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-documents.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-tasks.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-messages.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-tts.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-recording.js', v=config.STATIC_VERSION) }}"></script>

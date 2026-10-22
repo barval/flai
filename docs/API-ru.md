@@ -48,13 +48,13 @@ UI поставляется вместе с сервером, поэтому с�
 | Личность и возможности | `GET /v1/flai/me` | Готово |
 | Синтез речи | `POST /v1/audio/speech` | Готово |
 | Распознавание речи | `POST /v1/audio/transcriptions` | Готово |
-| Список задач / статус / отмена | `/v1/flai/tasks*` | Готово |
+| Список задач / статус / отмена / удаление | `/v1/flai/tasks*` | Готово |
 | Скачивание медиа задачи | `GET /v1/flai/tasks/{task_id}/content` | Готово |
 | Файлы и документы | `/v1/files*`, `/v1/flai/documents*` | Готово |
 | Генерация и редактирование изображений | `POST /v1/images/generations`, `POST /v1/images/edits` | Готово |
 | Генерация видео | `POST /v1/videos`, `GET /v1/videos/{task_id}` | Готово |
 | Глубокий анализ (RLM) | `POST /v1/flai/rlm` | Готово |
-| Сессии и история | `/v1/flai/sessions*` | Готово |
+| Сессии и история | `/v1/flai/sessions*` (список, создание, чтение, удаление) | Готово |
 | Интерактивный справочник | `/v1/docs`, `/v1/openapi.json` | Готово |
 | Документы, интерфейс глубокого анализа | Только веб-интерфейс | Веб-интерфейс |
 
@@ -292,8 +292,10 @@ curl http://localhost:5000/v1/flai/tasks/b6f1d0a2-4c77-4a1e-9c3f-2f1d8e5b7a10 \
   ответ также появляется в веб-интерфейсе этой сессии.
 - `status` проходит `queued` → `processing` → `completed` / `error` /
   `cancelled`; `result.response` содержит текст ответа.
-- Отмена — это `POST /v1/flai/tasks/{task_id}/cancel`. У чат-задачи нет
-  сгенерированного файла, поэтому `/content` к ней неприменим.
+- Отмена — это `POST /v1/flai/tasks/{task_id}/cancel` для работающей **или
+  всё ещё стоящей в очереди** чат-задачи; `DELETE /v1/flai/tasks/{task_id}`
+  убирает её из реестра. У чат-задачи нет сгенерированного файла, поэтому
+  `/content` к ней неприменим.
 - Слот синхронного ожидания не занимается: запрос возвращается до запуска модели,
   поэтому этот эндпоинт не расходует `API_MAX_CONCURRENT_WAITS`.
 
@@ -408,6 +410,10 @@ curl http://localhost:5000/v1/flai/tasks/your-task-id \
 # Request cancellation of an active task
 curl -X POST http://localhost:5000/v1/flai/tasks/your-task-id/cancel \
   -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
+
+# Delete a task (cancels it while it is still active)
+curl -X DELETE http://localhost:5000/v1/flai/tasks/your-task-id \
+  -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"
 ```
 
 - `GET /v1/flai/tasks` возвращает недавние задачи только этого владельца API-ключа.
@@ -425,15 +431,20 @@ curl -X POST http://localhost:5000/v1/flai/tasks/your-task-id/cancel \
 - Индекс списка задач ограничен 500 последними ID задач на каждого пользователя API;
   более старые записи задач всё равно истекают по `REDIS_RESULT_TTL`.
 - `POST /v1/flai/tasks/{task_id}/cancel` возвращает `{"status":"cancelling"}`
-  только для активной обрабатываемой задачи. Завершённые, упавшие и всё ещё
-  стоящие в очереди задачи возвращают `409 task_not_cancellable`, потому что
-  существующая очередь не может безопасно убрать элемент из очереди.
+  для обрабатываемой задачи **или задачи, всё ещё ждущей в очереди**: воркер
+  сбрасывает поставленный в очередь запрос до его запуска, поэтому чат-задачу
+  или медиазадачу, ждущую GPU, можно остановить. Завершённые и упавшие задачи
+  возвращают `409 task_not_cancellable`.
+- `DELETE /v1/flai/tasks/{task_id}` отменяет задачу, пока она активна, и затем
+  удаляет её запись из реестра, поэтому она исчезает из списка задач. Иначе
+  запущенная задача продолжала бы держать слот очереди GPU, и добраться до неё
+  было бы уже нельзя.
 - Неизвестный ID или ID другого пользователя возвращает `404 task_not_found`,
   что не даёт использовать API как оракул владения.
 
 Реестр задач хранится в Redis в течение `REDIS_RESULT_TTL` секунд — столько же,
-сколько хранятся результаты очереди. Эндпоинты списка/статуса/отмены задач
-расходуют бюджет `API_RATE_LIMIT` владельца API.
+сколько хранятся результаты очереди. Эндпоинты списка/статуса/отмены/удаления
+задач расходуют бюджет `API_RATE_LIMIT` владельца API.
 
 Пример ответа по задаче:
 
@@ -637,12 +648,20 @@ curl -X POST http://localhost:5000/v1/flai/sessions \
 # Read history (limit clamped to 1–200, offset >= 0)
 curl "http://localhost:5000/v1/flai/sessions/{session_id}/messages?limit=50&offset=0" \
   -H "Authorization: Bearer flai_..."
+
+# Delete a session (cancels its queued and in-flight requests first)
+curl -X DELETE http://localhost:5000/v1/flai/sessions/{session_id} \
+  -H "Authorization: Bearer flai_..."
 ```
 
 - Ответы списка имеют вид `{"object": "list", "data": [{id, title, created_at}, ...]}`.
 - Ответы с сообщениями повторяют форму веб-API:
   `{"messages": [...], "limit", "offset", "has_more"}`; payload'ы файлов, уже
   сохранённые на диске, вычищаются из `file_data` общим помощником БД.
+- `DELETE /v1/flai/sessions/{session_id}` сначала отменяет поставленные в очередь
+  и уже выполняющиеся запросы сессии, а затем удаляет сессию вместе с её
+  сообщениями и сохранёнными файлами: оставленный работающим запрос держит GPU и
+  слот очереди и записал бы свой ответ в уже удалённую сессию.
 - Чужие или неизвестные идентификаторы сессий возвращают `404 session_not_found`.
 - Ответы `/v1` никогда не устанавливают cookie: личность API локальна для запроса.
 
@@ -726,7 +745,7 @@ curl "http://localhost:5000/v1/flai/sessions/{session_id}/messages?limit=50&offs
 | 404 | `invalid_request_error` | `task_not_found` | ID задачи неизвестен или принадлежит другому пользователю API |
 | 405 | `invalid_request_error` | `method_not_allowed` | Неверный HTTP-метод |
 | 408 | `server_error` | `task_timeout` | Задача всё ещё работает после `API_SYNC_MAX_WAIT`; она **не** отменена |
-| 409 | `invalid_request_error` | `task_not_cancellable` | Задача в конечном состоянии или всё ещё в очереди |
+| 409 | `invalid_request_error` | `task_not_cancellable` | Задача в конечном состоянии (завершена или упала) |
 | 413 | `invalid_request_error` | `request_too_large` | Загрузка превышает `MAX_CONTENT_LENGTH` Flask |
 | 429 | `rate_limit_error` | `rate_limit_exceeded` | Бюджет запросов владельца ключа исчерпан |
 | 429 | `rate_limit_error` | `too_many_requests` | Уже ожидает `API_MAX_CONCURRENT_WAITS` запросов (`Retry-After: 1`) |

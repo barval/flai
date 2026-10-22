@@ -9,6 +9,14 @@ worker_class = "gevent"
 # ── Network ──
 bind = "0.0.0.0:5000"
 
+# ── Control socket ──
+# gunicorn 25.1+ opens a runtime control socket (for the `gunicornc` tool) under
+# $XDG_RUNTIME_DIR or $HOME. This container runs as a system user whose HOME is
+# /nonexistent, so the socket cannot be created and gunicorn logs a harmless
+# "Control server error" on every start. The project does not use `gunicornc`,
+# so the socket is disabled.
+control_socket_disable = True
+
 # ── Timeouts ──
 # 900s (15 min) to accommodate the longest operation:
 #   - LLM timeout: 300s (5 min)

@@ -430,7 +430,29 @@ def test_checkpoint_garbage(test_app):
     base = test_app.modules["base"]
     with patch.object(base.llamacpp, "call", return_value="Просто текст без JSON"):
         out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
-    assert out["verdict"] is False and out["explanation"] == "unparseable checkpoint reply"
+    assert out["verdict"] is False
+    assert out["explanation"] and "unparseable checkpoint reply" not in out["explanation"]
+
+
+def test_checkpoint_garbage_is_reported_in_the_user_language(test_app):
+    """A parse failure is an internal sentinel: the step view shows the reason,
+    so the English marker used for the executor's benefit must never reach it."""
+    base = test_app.modules["base"]
+    with patch.object(base.llamacpp, "call", return_value="Просто текст без JSON"):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["verdict"] is False
+    assert out["explanation"] != "unparseable checkpoint reply"
+    assert "вердикт" in out["explanation"]
+
+
+def test_checkpoint_keeps_a_model_written_reason_untouched(test_app):
+    """Only the internal sentinels are translated: the verifier's own wording is
+    already in the user language and must pass through byte for byte."""
+    base = test_app.modules["base"]
+    reply = '{"verdict": false, "explanation": "сцены не перечислены"}'
+    with patch.object(base.llamacpp, "call", return_value=reply):
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+    assert out["explanation"] == "сцены не перечислены"
 
 
 def test_checkpoint_reply_with_marker_like_phrases_still_parses(test_app):
@@ -476,7 +498,7 @@ def test_checkpoint_nonbool_verdict_explanation(test_app):
     base = test_app.modules["base"]
     with patch.object(base.llamacpp, "call", return_value='{"verdict": "результат выглядит хорошо"}'):
         out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
-    assert out["explanation"] == "unparseable checkpoint reply"
+    assert out["explanation"] == "проверяющий вернул нечитаемый вердикт"
 
 
 def test_checkpoint_reports_verifier_model_and_usage(test_app):

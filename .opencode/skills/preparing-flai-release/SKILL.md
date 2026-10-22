@@ -166,9 +166,26 @@ Update:
 - `AGENTS.md`: version title, architecture summary, critical rules, known issues; move history out.
 - `README.md` and `README-ru.md`: Features, What's New, Core Components, Hardware Tiers, Benchmarks, Quick Start, Compose profiles, Configuration, Contents links.
 - `CHANGELOG.md`: `## [vX.Y] — YYYY-MM-DD`, all significant changes, migration notes.
+- `docs/ROADMAP.md` and `-ru`: remove delivered items, rewrite the partially done ones (see below).
 - `docs/RELEASE_GUIDE.md` and `-ru` if the process itself changed.
 - `docs/CONFIGURATION.md` and `-ru`, `.env`, `.env.example` for every environment change; key order and sections match.
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/MODELS.md`, `docs/BENCHMARKS.md`, `docs/MONITORING.md` as touched.
+
+### ROADMAP reconciliation
+
+`docs/ROADMAP.md` and `docs/ROADMAP-ru.md` hold planned and in-progress work only; delivered work belongs to `CHANGELOG.md`, which is why the roadmap has no "Completed" section. Reconcile it against the release being prepared:
+
+- An item this release delivered leaves `## 🔄 In Progress` (or `## 📅 Planned`) entirely. Its record is the CHANGELOG entry written in this same phase.
+- An item the release advanced but did not finish stays, rewritten to the remaining work: delete the shipped sub-bullets instead of leaving them listed as if still open.
+- Add what the next cycle will actually work on, in priority order, taken from the user's direction for the next release — not from a wish list.
+- Both twins change together; heading count and order stay identical.
+
+Judge delivery by evidence, not memory: a roadmap item is delivered only when the `CHANGELOG.md` entry for this release names it and the code shows it. Otherwise it stays.
+
+```bash
+git log --oneline "$PREV..$REL"
+grep -n '^## ' docs/ROADMAP.md
+```
 
 Version bump:
 
@@ -243,6 +260,7 @@ Check and record evidence:
 | Translations complete | `check_translations.py`, `pybabel compile` | PASS / FAIL |
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
+| Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
 | What's New | manual traceability review | PASS / FAIL |
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |

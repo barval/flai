@@ -4049,6 +4049,54 @@ def test_final_extras_keeps_only_accepted_steps_and_names_the_failures(db_env):
     assert [i["seq"] for i in deduped["final_items"]] == [1], "the text row repeating the answer is dropped"
 
 
+def test_final_extras_keeps_the_full_text_and_a_word_boundary_preview(monkeypatch):
+    """A long text result is not cut mid-word and keeps a full copy for expansion."""
+    long_text = ("scene description " * 180).strip()
+    rows = [
+        {
+            "seq": 1,
+            "kind": "direct",
+            "goal": "List every scene",
+            "tool": "llm",
+            "status": "passed",
+            "result": long_text,
+            "attempts": 1,
+            "extra": {},
+        }
+    ]
+    monkeypatch.setattr(ex, "get_task_steps", lambda task_id: rows)
+
+    extras = ex._final_extras("task")
+
+    item = extras["final_items"][0]
+    assert item["summary_full"] == long_text
+    assert item["summary"].endswith("…")
+    assert item["summary"].rstrip("…").split()[-1] in {"scene", "description"}
+    assert len(item["summary"]) <= ex.FINAL_TEXT_PREVIEW_CHARS + 1
+
+
+def test_enrich_final_items_restores_full_text_for_old_rows():
+    """Old rows stored only a 300-char summary; the read path restores the full text."""
+    from app.routes.tasks import _enrich_final_items
+
+    long_text = ("scene description " * 180).strip()
+    media = {"seq": 2, "goal": "Draw it", "file_path": "t/2.png"}
+    extra = {
+        "final_items": [
+            {"seq": 1, "goal": "List every scene", "summary": long_text[:300]},
+            media,
+        ]
+    }
+
+    _enrich_final_items(extra, {1: {"seq": 1, "result": long_text}})
+
+    item = extra["final_items"][0]
+    assert item["summary_full"] == long_text
+    assert item["summary"].endswith("…")
+    assert item["summary"].rstrip("…").split()[-1] in {"scene", "description"}
+    assert "summary_full" not in media
+
+
 def test_results_digest_reports_a_rejected_attempt_as_not_delivered(db_env):
     """A rejected attempt is not a result: the summary must not present it as
     something the user received, only say that it was not delivered."""
@@ -4182,7 +4230,7 @@ def test_subtask_retry_logs_the_rejection_for_the_task_view(db_env, test_app, ga
     assert "astronaut is cropped" in log[-1]["reason"]
 
 
-def test_polish_note_and_style_detection():
+def test_polish_note_and_style_detection(test_app):
     """An accepted image with a minor style mismatch becomes a polish order."""
     checkpoint = {
         "verdict": True,
@@ -4197,11 +4245,34 @@ def test_polish_note_and_style_detection():
         ],
     }
     assert ex._is_style_polish(checkpoint) is True
-    note = ex._polish_note(checkpoint, "ru")
+    with test_app.test_request_context():
+        note = ex._polish_note(checkpoint, "ru")
     assert "children's book illustration" in note
     assert "photorealistic" in note
     assert "ожидалось" in note and "получено" in note
     assert "Minor defects" not in note
+
+
+def test_polish_note_uses_the_translation_layer(monkeypatch):
+    """The verification log is user-facing; its strings must come from the catalogs."""
+    checkpoint = {
+        "verdict": True,
+        "severity": "minor",
+        "mismatches": [{"expected": "a red ball", "seen": "a blue ball", "severity": "minor"}],
+    }
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake_tr(key: str, lang: str = "ru", **kwargs):
+        calls.append((key, lang, kwargs))
+        return key
+
+    monkeypatch.setattr(ex, "_tr", fake_tr)
+    note = ex._polish_note(checkpoint, "ru")
+
+    assert any(key == "Minor defects: {details}" for key, _, _ in calls)
+    assert any(key == "Expected: «{value}»" for key, _, _ in calls)
+    assert any(key == "Seen: «{value}»" for key, _, _ in calls)
+    assert note.startswith("Minor defects:")
 
 
 def test_candidate_key_prefers_an_accepted_artifact_over_a_later_rejected_one():

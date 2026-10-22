@@ -764,6 +764,21 @@ function appendFinalResults(div, m) {
         }
 
         textItems.forEach(function(it) {
+            const full = String(it.summary_full || '');
+            const preview = String(it.summary || '');
+            if (full && full !== preview) {
+                const details = document.createElement('details');
+                details.className = 'task-final-row task-final-row-expandable';
+                const summary = document.createElement('summary');
+                summary.textContent = it.seq + '. ' + String(it.goal || '') + (preview ? ' — ' + preview : '');
+                const body = document.createElement('div');
+                body.className = 'task-final-full';
+                body.textContent = full;
+                details.appendChild(summary);
+                details.appendChild(body);
+                wrap.appendChild(details);
+                return;
+            }
             const row = document.createElement('div');
             row.className = 'task-final-row';
             row.textContent = it.seq + '. ' + String(it.goal || '') + (it.summary ? ' — ' + it.summary : '');

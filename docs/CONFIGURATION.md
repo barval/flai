@@ -72,6 +72,32 @@ RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analy
 RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
 ```
 
+**Web Search and Crawling:**
+```bash
+SEARXNG_URL=http://flai-searxng:8080
+SEARXNG_TIMEOUT=10
+SEARXNG_MAX_RESULTS=7
+SEARXNG_MAX_RESULTS_CHARS=5000
+RAG_MAX_RESULTS_CHARS=5000
+TAVILY_ENABLED=true               # Optional per-user Tavily keys; without a key the local SearXNG path is used
+TAVILY_API_URL=https://api.tavily.com
+TAVILY_TIMEOUT=20
+TAVILY_USAGE_TIMEOUT=8
+TAVILY_MAX_RESULTS=7
+TAVILY_SEARCH_DEPTH=basic
+TAVILY_ADMIN_CACHE_TTL=300
+CRAWL_ENABLED=false               # Crawl4AI sidecar; enable with --with-crawler or this flag
+CRAWL4AI_API_TOKEN=flai-crawler-token  # Compose token; the web app receives it as CRAWL_API_TOKEN
+CRAWLER_URL=http://flai-crawler:11235
+CRAWL_MAX_PAGES=50
+CRAWL_MAX_DEPTH=3
+CRAWL_TIMEOUT_S=300
+CRAWL_PAGE_TIMEOUT_S=30
+CRAWL_MAX_PAGE_CHARS=50000
+CRAWL_MAX_TOTAL_CHARS=1000000
+CRAWL_CONCURRENCY=2
+```
+
 **Background Tasks:**
 ```bash
 TASKS_ENABLED=1                 # Executor kill switch (0 stops picking up new tasks; running steps finish or abort on cancel flags)

@@ -734,9 +734,7 @@ msgstr "Метаданные модели не найдены. Сначала н
 #: app/vram_estimate.py:336
 #, python-brace-format
 msgid "⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM."
-msgstr ""
-"⚠ Работа только на процессоре: требуется {needed} МБ, свободно {free} МБ "
-"ОЗУ."
+msgstr "⚠ Работает только на CPU: нужно {needed} МБ, свободно {free} МБ RAM."
 
 #: app/vram_estimate.py:343
 #, python-brace-format
@@ -982,7 +980,7 @@ msgstr ""
 
 #: app/routes/api_v1.py:658
 msgid "'image_references' must be a list of image_url objects"
-msgstr ""
+msgstr "'image_references' должен быть списком объектов image_url"
 
 #: app/routes/api_v1.py:710
 msgid "Only response_format 'url' is supported for asynchronous image edits"
@@ -1291,7 +1289,7 @@ msgstr "Сообщение не найдено"
 
 #: app/routes/messages.py:639
 msgid "No HTML code block found in this message"
-msgstr "В этом сообщении нет блока кода HTML"
+msgstr "В этом сообщении не найден блок HTML-кода"
 
 #: app/routes/model_hub.py:25
 msgid "Another download is already running"
@@ -1431,11 +1429,12 @@ msgid ""
 "The visual continuity sheet can be rebuilt while the task runs or after "
 "completion"
 msgstr ""
+"Лист визуальной непрерывности можно пересобрать во время выполнения "
+"задачи или после её завершения"
 
 #: app/routes/tasks.py:1037
-#, fuzzy
 msgid "The visual continuity sheet is already being rebuilt"
-msgstr "Пересобрать визуальную библию"
+msgstr "Лист визуальной непрерывности уже пересобирается"
 
 #: app/routes/tts.py:17
 msgid "Missing text"
@@ -1458,22 +1457,20 @@ msgid ""
 msgstr "в анализе есть конкретные данные из документов, отвечающие на запрос"
 
 #: app/tasks/executor.py:550
-#, fuzzy
 msgid "label"
-msgstr "Локально"
+msgstr "Метка"
 
 #: app/tasks/executor.py:550
 msgid "description"
-msgstr ""
+msgstr "Описание"
 
 #: app/tasks/executor.py:551
 msgid "Checkpoint hint:"
 msgstr "Критерий готовности:"
 
 #: app/tasks/executor.py:551
-#, fuzzy
 msgid "checkpoint_hint"
-msgstr "Критерий готовности:"
+msgstr "Подсказка к контрольной точке"
 
 #: app/tasks/executor.py:554
 msgid "Available rooms:"
@@ -2325,8 +2322,8 @@ msgstr "Превышен таймаут при получении информа
 #: app/templates/admin.html:420
 msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
 msgstr ""
-"Эту модель нельзя сохранить (недостаточно видеопамяти или ОЗУ). Выберите "
-"модель меньшего размера."
+"Эту модель нельзя сохранить (недостаточно VRAM/RAM). Выберите модель "
+"меньше."
 
 #: app/templates/admin.html:422
 msgid "Please select a model first."
@@ -3071,6 +3068,7 @@ msgstr "Проверка пропущена: не удалось описать 
 msgid "Verification attempts ({n})"
 msgstr "Попытки проверки ({n})"
 
+#, python-brace-format
 msgid "Best of {n} attempts"
 msgstr "Лучшее из {n} попыток"
 
@@ -3080,6 +3078,7 @@ msgstr "Оставлено принятое изображение"
 msgid "Minor defects corrected by a follow-up edit."
 msgstr "Мелкие недочёты исправлены повторным редактированием."
 
+#, python-brace-format
 msgid "Preview: {name}"
 msgstr "Предпросмотр: {name}"
 
@@ -3098,6 +3097,7 @@ msgstr "Не удалось загрузить предпросмотр доку
 msgid "Open PDF"
 msgstr "Открыть PDF"
 
+#, python-brace-format
 msgid "Showing the first {n} pages"
 msgstr "Показаны первые {n} страниц"
 
@@ -3610,9 +3610,8 @@ msgid "Rebuilding the visual continuity sheet..."
 msgstr "📐 Пересобираю визуальную библию..."
 
 #: app/templates/chat.html:347
-#, fuzzy
 msgid "Creating index for document..."
-msgstr "📚 Ищу в документах..."
+msgstr "Создание индекса для документа..."
 
 #: app/templates/chat.html:348
 msgid "Capturing snapshot..."
@@ -3791,6 +3790,21 @@ msgstr "Превышено время ожидания генерации вид
 #: modules/video.py:508
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
+
+#, python-brace-format
+msgid "Expected: «{value}»"
+msgstr "ожидалось: «{value}»"
+
+#, python-brace-format
+msgid "Seen: «{value}»"
+msgstr "получено: «{value}»"
+
+#, python-brace-format
+msgid "Minor defects: {details}"
+msgstr "Мелкие недочёты: {details}"
+
+msgid "Minor style or detail drift"
+msgstr "мелкие расхождения стиля или деталей"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
@@ -4126,7 +4140,4 @@ msgstr "Не удалось подключиться к сервису гене�
 # view
 #~ msgid "stage_indexing_document"
 #~ msgstr "Создаю индекс для документа..."
-
-msgid "Visual continuity"
-msgstr "Визуальная непрерывность"
 

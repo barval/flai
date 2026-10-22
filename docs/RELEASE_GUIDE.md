@@ -2,6 +2,8 @@
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
 
+The agent skill `preparing-flai-release` automates the mechanical checks in this guide (release-branch merge status, translation parity and compilation, documentation heading parity). Its entry point is [`.opencode/skills/preparing-flai-release/SKILL.md`](../.opencode/skills/preparing-flai-release/SKILL.md); the helper scripts live in `scripts/` next to it.
+
 > **v10.0 release steps:** Version bump from 9.2 to 10.0 (pyproject.toml, deploy scripts, docs, metrics, `.po` footers). Removed standalone chat model (Qwen3-4B-Instruct) — multimodal model (Qwen3VL-8B-Instruct) is now the single chat/router/vision model. Updated deploy scripts to download multimodal instead of chat. Removed chat from llama-swap config (`ttl=0` for multimodal, `preload: on_startup`). Removed chat card from admin panel. Updated test fixtures: `chat` → `multimodal` in all module-type assertions. DB self-healing: `DELETE FROM model_configs WHERE module = 'chat'` at startup.
 
 > **Note (v9.2):** Version bump from 9.1 to 9.2 everywhere (pyproject.toml, deploy scripts, docs, metrics, `.po` headers/footers). Critical dependency updates: CVE-2026-25645 (`requests`→≥2.33), CVE-2025-71176 (`pytest`→≥9.0), `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19. Qdrant server v1.12.1→v1.19.0 (clean start required — segment format incompatible). RAG reconnection (`check_availability()` with 3× startup retry + per-request reconnect). SLM recall optimization (single call, timeout 30→15s). Smart SD offload level selection (VRAM budget with VAE decode buffer). Router category numbering fix (camera=4, documents=5). Camera VRAM fix (`ensure_vram=False` in `chat_with_image_stream()`). VRAM regression fix (`ensure_vram_for()` returns True when model already loaded). Streaming output throttle (120ms render, 500ms save). Reasoning retry-on-empty. Tool call single-quote JSON fallback (`ast.literal_eval()`). Reasoning prompt fix (no web search from model). Qdrant client API migration (`search()`→`query_points()`). Router prompt fix (person-name queries → RAG). Streaming output freeze fix (O(n²) → throttled rendering).
@@ -16,7 +18,7 @@ When releasing a new version, update these files **in order**:
 
 - Located in the Architecture section (under `### What's New in vX.X`)
 - List only the **most impactful changes** from the new version
-- Format: `| **Feature name** | Brief description |`
+- Keep the current bullet-list format used by the READMEs: `- **Feature name** — brief description`. Do not switch to a table.
 - Keep entries concise (1-2 lines per feature)
 
 ### 2. README.md and README-ru.md — "Roadmap → Completed" section
@@ -41,7 +43,7 @@ When releasing a new version, update these files **in order**:
 
 ### 5. Git: release branch + push
 
-Since v10.0 every release lives on its own **version branch** (`vX.Y`), not a tag (tags only exist up to v9.3):
+Since v10.0 every release lives on its own **version branch** (`vX.Y`). Release tags are not created by default; the existing `release-vX.Y` tags are historical. Do not create a tag without explicit approval:
 
 ```bash
 git checkout -b vX.Y                      # branch from the previous release branch

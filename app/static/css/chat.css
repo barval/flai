@@ -447,10 +447,26 @@
     margin: 0.15rem 0;
 }
 
+.task-final-row-expandable > summary {
+    cursor: pointer;
+}
+
+.task-final-full {
+    margin: 0.25rem 0 0 0.9rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.85rem;
+    color: #33414f;
+}
+
 .task-final-failures {
     margin-top: 0.45rem;
     font-size: 0.8rem;
     color: #b3261e;
+}
+
+.dark-theme .task-final-full {
+    color: #b9c4cf;
 }
 
 .dark-theme .task-step-chip {

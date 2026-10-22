@@ -918,12 +918,24 @@ class TestStepValidationAndFinalResults:
             assert cls in CHAT_CSS, f"{cls} missing from chat.css"
         assert ".dark-theme .task-step-chip" in CHAT_CSS
 
+    def test_long_text_final_results_are_expandable(self):
+        assert "summary_full" in CHAT_TASKS
+        assert "createElement('details')" in CHAT_TASKS
+        assert "task-final-row-expandable" in CHAT_TASKS
+        assert "task-final-full" in CHAT_TASKS
+        assert ".task-final-row-expandable" in CHAT_CSS
+        assert ".task-final-full" in CHAT_CSS
+
     def test_validation_msgids_resolve_in_both_catalogs(self):
         expected = {
             "Checked automatically": "Проверено",
             "Verification attempts ({n})": "Попытки",
             "Accepted results: {n} (images: {images}, texts: {texts})": "изображений",
             "Not delivered:": "Не удалось",
+            "Minor defects: {details}": "Мелкие недочёты",
+            "Expected: «{value}»": "ожидалось",
+            "Seen: «{value}»": "получено",
+            "Minor style or detail drift": "мелкие расхождения",
         }
         for msgid, ru_part in expected.items():
             for lang in ("ru", "en"):

@@ -24,8 +24,10 @@ from app.database import get_db
 from app.db import update_user_storage
 from app.tasks.events import publish_task_update
 from app.tasks.executor import (
+    FINAL_TEXT_PREVIEW_CHARS,
     add_user_input_step,
     append_deep_analysis_step,
+    final_text_preview,
     get_queued_task_positions,
     get_task_steps,
 )
@@ -499,7 +501,7 @@ def _transcript_block(entry: dict) -> dict:
 def _localized_attempt_reason(reason: Any) -> str:
     """Hide the technical English polish/repair instruction from old rows.
 
-    New attempts store a localized «Мелкие недочёты: …» note; rows written
+    New attempts store a localized "minor defects" note; rows written
     before that fix still carry the model-facing English sentence, which must
     not appear in the verification log.
     """
@@ -591,6 +593,29 @@ def _step_message(row: dict, total: int, audio_entries: list[dict] | None = None
         )
         msg["audio_transcripts"] = [_transcript_block(e) for e in audio_entries if _transcript_block(e)["text"]]
     return msg
+
+
+def _enrich_final_items(extra: dict, steps_by_seq: dict[int, dict]) -> None:
+    """Restore the full text behind an already-stored final-results row.
+
+    Rows written before the expandable-text fix carry only a 300-character
+    summary. The source step still has the complete result, so the read path
+    replaces the mid-word preview and adds ``summary_full`` for the UI.
+    """
+    items = extra.get("final_items")
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict) or item.get("file_path"):
+            continue
+        step = steps_by_seq.get(int(item.get("seq") or 0))
+        full_text = str((step or {}).get("result") or "").strip()
+        if not full_text:
+            continue
+        normalized = " ".join(full_text.split())
+        item["summary"] = final_text_preview(full_text)
+        if len(normalized) > FINAL_TEXT_PREVIEW_CHARS:
+            item["summary_full"] = full_text
 
 
 def _render_messages(task: dict) -> list[dict]:
@@ -700,6 +725,7 @@ def _render_messages(task: dict) -> list[dict]:
             }
         )
     steps = get_task_steps(task["id"])
+    steps_by_seq = {int(r.get("seq") or 0): r for r in steps}
     by_id = {r["id"]: r for r in steps}
 
     def _chrono_key(row: dict) -> tuple[float, int]:
@@ -753,6 +779,8 @@ def _render_messages(task: dict) -> list[dict]:
     for rev in _plan_revisions(task):
         entries.append(((int(rev.get("upto") or 0), 4), _plan_update_message(task, rev)))
     for _key, msg in sorted(entries, key=lambda e: e[0]):
+        if msg.get("kind") == "final":
+            _enrich_final_items(msg.get("extra") or {}, steps_by_seq)
         messages.append(msg)
     return messages
 

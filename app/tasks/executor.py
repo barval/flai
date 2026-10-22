@@ -202,34 +202,25 @@ def _polish_note(checkpoint: dict, lang: str = "ru") -> str:
     prompt, so it must be in the task language — the verifier's ``expected`` /
     ``seen`` fields already are.
     """
-    russian = (lang or "ru").lower().startswith("ru")
     details = []
     for mismatch in _minor_mismatches(checkpoint)[:8]:
         expected = str(mismatch.get("expected") or "").strip()
         seen = str(mismatch.get("seen") or "").strip()
         if not (expected or seen):
             continue
-        if russian:
-            bits = []
-            if expected:
-                bits.append(f"ожидалось «{expected}»")
-            if seen:
-                bits.append(f"получено «{seen}»")
-        else:
-            bits = []
-            if expected:
-                bits.append(f"expected «{expected}»")
-            if seen:
-                bits.append(f"seen «{seen}»")
+        bits = []
+        if expected:
+            bits.append(_tr("Expected: «{value}»", lang=lang, value=expected))
+        if seen:
+            bits.append(_tr("Seen: «{value}»", lang=lang, value=seen))
         if bits:
             details.append(", ".join(bits))
-    prefix = "Мелкие недочёты: " if russian else "Minor defects: "
     if details:
-        return prefix + "; ".join(details)
+        return _tr("Minor defects: {details}", lang=lang, details="; ".join(details))
     explanation = str(checkpoint.get("explanation") or "").strip()
     if explanation:
-        return prefix + explanation
-    return prefix + ("мелкие расхождения стиля или деталей" if russian else "minor style or detail drift")
+        return _tr("Minor defects: {details}", lang=lang, details=explanation)
+    return _tr("Minor style or detail drift", lang=lang)
 
 
 def _is_style_polish(checkpoint: dict) -> bool:
@@ -916,6 +907,25 @@ def _results_digest(task_id: str, char_cap: int = 40000) -> str:
     return "\n".join(parts)[:char_cap]
 
 
+FINAL_TEXT_PREVIEW_CHARS = 300
+
+
+def final_text_preview(text: str, limit: int = FINAL_TEXT_PREVIEW_CHARS) -> str:
+    """A word-boundary preview of a text result for the final-results card.
+
+    The full text is stored separately (``summary_full``); this preview is what
+    the collapsed row shows, so it must never cut a word in half.
+    """
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    cut = normalized[:limit]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    cut = cut.rstrip(" ,;:—-")
+    return f"{cut}…" if cut else f"{normalized[:limit]}…"
+
+
 def _final_extras(task_id: str, answer_text: str = "") -> dict[str, Any]:
     """Accepted results for the final answer's UI section (data-driven).
 
@@ -940,8 +950,12 @@ def _final_extras(task_id: str, answer_text: str = "") -> dict[str, Any]:
             if media.get("file_path"):
                 entry.update({k: media.get(k) for k in ("file_path", "file_name", "file_type")})
             else:
-                entry["summary"] = " ".join(str(r.get("result") or "").split())[:300]
-                if entry["summary"] and entry["summary"] in answer_norm:
+                full_text = str(r.get("result") or "").strip()
+                normalized_text = " ".join(full_text.split())
+                entry["summary"] = final_text_preview(full_text)
+                if len(normalized_text) > FINAL_TEXT_PREVIEW_CHARS:
+                    entry["summary_full"] = full_text
+                if normalized_text and normalized_text in answer_norm:
                     continue
             items.append(entry)
         elif r["status"] in ("failed", "skipped"):

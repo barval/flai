@@ -728,7 +728,7 @@ msgstr "Model metadata not found. Run 'Refresh models' first."
 #: app/vram_estimate.py:336
 #, python-brace-format
 msgid "⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM."
-msgstr ""
+msgstr "⚠ Runs on CPU only: {needed} MB needed, {free} MB free RAM."
 
 #: app/vram_estimate.py:343
 #, python-brace-format
@@ -972,7 +972,7 @@ msgstr "Only response_format 'url' is supported for asynchronous image generatio
 
 #: app/routes/api_v1.py:658
 msgid "'image_references' must be a list of image_url objects"
-msgstr ""
+msgstr "'image_references' must be a list of image_url objects"
 
 #: app/routes/api_v1.py:710
 msgid "Only response_format 'url' is supported for asynchronous image edits"
@@ -1207,7 +1207,7 @@ msgstr "A folder with this name already exists"
 #: app/routes/documents.py:149
 #, python-brace-format
 msgid "Folder limit reached ({n})"
-msgstr ""
+msgstr "Folder limit reached ({n})"
 
 #: app/routes/documents.py:161 app/routes/documents.py:195
 #: app/routes/documents.py:216 app/routes/documents.py:232
@@ -1273,7 +1273,7 @@ msgstr "Message not found"
 
 #: app/routes/messages.py:639
 msgid "No HTML code block found in this message"
-msgstr ""
+msgstr "No HTML code block found in this message"
 
 #: app/routes/model_hub.py:25
 msgid "Another download is already running"
@@ -1413,11 +1413,12 @@ msgid ""
 "The visual continuity sheet can be rebuilt while the task runs or after "
 "completion"
 msgstr ""
+"The visual continuity sheet can be rebuilt while the task runs or after "
+"completion"
 
 #: app/routes/tasks.py:1037
-#, fuzzy
 msgid "The visual continuity sheet is already being rebuilt"
-msgstr "Rebuild the visual continuity sheet"
+msgstr "The visual continuity sheet is already being rebuilt"
 
 #: app/routes/tts.py:17
 msgid "Missing text"
@@ -1442,22 +1443,20 @@ msgstr ""
 "the request"
 
 #: app/tasks/executor.py:550
-#, fuzzy
 msgid "label"
-msgstr "Local"
+msgstr "Label"
 
 #: app/tasks/executor.py:550
 msgid "description"
-msgstr ""
+msgstr "Description"
 
 #: app/tasks/executor.py:551
 msgid "Checkpoint hint:"
 msgstr "Checkpoint hint:"
 
 #: app/tasks/executor.py:551
-#, fuzzy
 msgid "checkpoint_hint"
-msgstr "Checkpoint hint:"
+msgstr "Checkpoint hint"
 
 #: app/tasks/executor.py:554
 msgid "Available rooms:"
@@ -2293,7 +2292,7 @@ msgstr "Timeout fetching model info"
 
 #: app/templates/admin.html:420
 msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
-msgstr ""
+msgstr "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
 
 #: app/templates/admin.html:422
 msgid "Please select a model first."
@@ -3032,6 +3031,7 @@ msgstr "Check skipped: could not describe the image"
 msgid "Verification attempts ({n})"
 msgstr "Verification attempts ({n})"
 
+#, python-brace-format
 msgid "Best of {n} attempts"
 msgstr "Best of {n} attempts"
 
@@ -3041,6 +3041,7 @@ msgstr "Kept the accepted image"
 msgid "Minor defects corrected by a follow-up edit."
 msgstr "Minor defects corrected by a follow-up edit."
 
+#, python-brace-format
 msgid "Preview: {name}"
 msgstr "Preview: {name}"
 
@@ -3059,6 +3060,7 @@ msgstr "Could not load the document preview"
 msgid "Open PDF"
 msgstr "Open PDF"
 
+#, python-brace-format
 msgid "Showing the first {n} pages"
 msgstr "Showing the first {n} pages"
 
@@ -3562,7 +3564,7 @@ msgstr "📐 Extracting the visual continuity sheet..."
 
 #: app/templates/chat.html:341 app/templates/chat.html:346
 msgid "Could not build the visual continuity sheet — images continue without it."
-msgstr "⚠️ Could not build the visual continuity sheet — images continue without it."
+msgstr ""
 "⚠️ Could not build the visual continuity sheet — images continue without "
 "it."
 
@@ -3575,9 +3577,8 @@ msgid "Rebuilding the visual continuity sheet..."
 msgstr "📐 Rebuilding the visual continuity sheet..."
 
 #: app/templates/chat.html:347
-#, fuzzy
 msgid "Creating index for document..."
-msgstr "📚 Searching documents..."
+msgstr "Creating index for document..."
 
 #: app/templates/chat.html:348
 msgid "Capturing snapshot..."
@@ -3641,6 +3642,8 @@ msgid ""
 "Image format {format} is not supported by multimodal model. Convert to "
 "JPEG or PNG."
 msgstr ""
+"Image format {format} is not supported by multimodal model. Convert to "
+"JPEG or PNG."
 
 #: modules/multimodal.py:142
 msgid "Could not process image file"
@@ -3754,6 +3757,21 @@ msgstr "Video generation timeout ({timeout}s)"
 #: modules/video.py:508
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
+
+#, python-brace-format
+msgid "Expected: «{value}»"
+msgstr "Expected: «{value}»"
+
+#, python-brace-format
+msgid "Seen: «{value}»"
+msgstr "Seen: «{value}»"
+
+#, python-brace-format
+msgid "Minor defects: {details}"
+msgstr "Minor defects: {details}"
+
+msgid "Minor style or detail drift"
+msgstr "Minor style or detail drift"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
@@ -4085,7 +4103,4 @@ msgstr "Could not connect to video generation service"
 
 #~ msgid "stage_indexing_document"
 #~ msgstr "Creating index for document..."
-
-msgid "Visual continuity"
-msgstr "Visual continuity"
 

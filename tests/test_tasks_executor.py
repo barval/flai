@@ -996,6 +996,59 @@ def test_subtask_checkpoint_rejection_closes_the_step_when_attempts_are_exhauste
     assert store.get_task(task_id)["next_step_index"] == 1, "the task continues once the attempts are spent"
 
 
+@pytest.mark.parametrize(
+    "tool, fragment",
+    [
+        # A text step produced no file by design: it must never be told that
+        # an image failed.
+        ("rlm", "не прошёл проверку"),
+        ("image_gen", "медиафайл"),
+    ],
+)
+def test_exhausted_subtask_without_a_candidate_fails_in_the_user_language(
+    tool, fragment, db_env, test_app, gate_open, monkeypatch
+):
+    """Every attempt rejected and nothing to fall back on: the step closes with a
+    localized reason that matches its kind, and the final rejection reaches the
+    attempt log instead of vanishing behind the previous attempt."""
+    store = db_env
+    plan = {
+        "title": "Task",
+        "steps": [{"seq": 1, "goal": "Do the thing", "tool": tool, "checkpoint_criteria": "criteria"}],
+    }
+    task_id = _mk_task(store, step_plan=plan)
+    executor = ex.TaskExecutor(app=test_app)
+    monkeypatch.setattr(ex, "_get_request_queue", lambda: _RecordingQ())
+    executor._enqueue_subtask(store.get_task(task_id), 0, plan["steps"][0])
+    row = store.get_task_steps(task_id)[0]
+    store.update_step(
+        row["id"],
+        attempts=ex.TASK_STEP_MAX_ATTEMPTS,
+        extra={**(row.get("extra") or {}), "generations_used": ex.TASK_STEP_MAX_ATTEMPTS},
+    )
+    row = store.get_task_steps(task_id)[0]
+    envelope = {"status": "completed", "response": "a text answer without a file"}
+    monkeypatch.setattr(
+        executor, "_peek_subtask_result", lambda qid: envelope if qid == row["extra"]["subtask_queue_id"] else None
+    )
+    rejected = {"verdict": False, "explanation": "сцены не перечислены", "exec_seconds": 0.1}
+    monkeypatch.setattr(ex, "run_checkpoint", lambda *a, **k: dict(rejected))
+    monkeypatch.setattr(ex, "run_media_checkpoint", lambda *a, **k: dict(rejected))
+
+    # The executor loop always runs inside the app context, and that is what
+    # lets _tr resolve the catalogs; call it the same way here.
+    with test_app.app_context():
+        executor._poll_subtask(store.get_task(task_id), 0, row, gate_open=True)
+
+    step = store.get_task_steps(task_id)[0]
+    assert step["status"] == "failed"
+    assert step["last_error"].startswith("⚠️ ")
+    assert fragment in step["last_error"]
+    assert "all image attempts failed" not in step["last_error"]
+    assert step["checkpoint_result"] == "сцены не перечислены", "the last verdict is kept"
+    assert [e["ok"] for e in step["extra"]["attempts_log"]] == [False], "the final rejection is logged"
+
+
 def test_subtask_retry_reenqueues_with_the_mismatch_in_the_prompt(db_env, test_app, gate_open, monkeypatch):
     """The retry reaches the worker: the next cycle re-enqueues the same step
     with the verifier's mismatch appended to the media prompt, so the generator

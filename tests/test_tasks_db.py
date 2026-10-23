@@ -128,7 +128,11 @@ def test_update_step_datetime_and_iso_strings(test_app, fresh_db):
 
 
 def test_update_step_rejects_disallowed_keys(test_app, fresh_db):
-    """update_step raises ValueError when no allowed key is present."""
+    """update_step raises ValueError when no allowed key is present.
+
+    ``goal`` is an allowed field (a plan review rewrites the same step), so the
+    guard is checked with a key that is not part of the whitelist at all.
+    """
     with test_app.app_context():
         from app.tasks.store import add_step, create_task, update_step
 
@@ -136,7 +140,7 @@ def test_update_step_rejects_disallowed_keys(test_app, fresh_db):
         try:
             step_id = add_step(task_id=task_id, seq=1, kind="direct", goal="g")
             with pytest.raises(ValueError):
-                update_step(step_id, goal="nope")
+                update_step(step_id, bogus="nope")
         finally:
             _cleanup(fresh_db, task_id)
 

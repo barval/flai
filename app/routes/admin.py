@@ -451,13 +451,14 @@ def get_monitoring():
     if range_key not in RANGE_SPECS:
         return jsonify({"error": _("Invalid period")}), 400
 
+    selectable = [user["login"] for user in list_users(exclude_admin=True)]
     selected = request.args.get("user", "all")
     if selected == "all":
-        logins = [user["login"] for user in list_users(exclude_admin=True)]
-    else:
-        if not get_user_by_login(selected):
-            return jsonify({"error": _("Unknown user")}), 400
+        logins = selectable
+    elif selected in selectable:
         logins = [selected]
+    else:
+        return jsonify({"error": _("Unknown user")}), 400
 
     redis_client = None
     cache_key = f"admin:monitoring:{selected}:{range_key}"
@@ -465,22 +466,36 @@ def get_monitoring():
         from app.api_bridge import get_redis_client
 
         redis_client = get_redis_client()
-        cached = redis_client.get(cache_key)
-        if isinstance(cached, (bytes, str)) and cached:
-            return current_app.response_class(cached, mimetype="application/json")
     except Exception as e:
         logger.debug(f"Monitoring cache unavailable: {e}")
         redis_client = None
 
-    body = json.dumps(build_payload(logins, range_key))
+    try:
+        if redis_client is not None:
+            try:
+                cached = redis_client.get(cache_key)
+            except Exception as e:
+                logger.debug(f"Monitoring cache read failed: {e}")
+                cached = None
+            if isinstance(cached, (bytes, str)) and cached:
+                return current_app.response_class(cached, mimetype="application/json")
 
-    if redis_client is not None:
-        try:
-            redis_client.setex(cache_key, current_app.config.get("MONITORING_CACHE_TTL", 60), body)
-        except Exception as e:
-            logger.debug(f"Monitoring cache write failed: {e}")
+        payload = build_payload(logins, range_key)
+        # The selector lists every monitorable account, not only the selected one.
+        payload["users"] = [{"login": login} for login in selectable]
+        body = json.dumps(payload)
 
-    return current_app.response_class(body, mimetype="application/json")
+        if redis_client is not None:
+            try:
+                redis_client.setex(cache_key, current_app.config.get("MONITORING_CACHE_TTL", 60), body)
+            except Exception as e:
+                logger.debug(f"Monitoring cache write failed: {e}")
+
+        return current_app.response_class(body, mimetype="application/json")
+    finally:
+        if redis_client is not None:
+            with suppress(Exception):
+                redis_client.close()
 
 
 @bp.route("/api/users", methods=["POST"])

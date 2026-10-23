@@ -65,7 +65,8 @@
         if (!buckets.length) return;
 
         const known = values.filter((value) => value !== null && value !== undefined);
-        const max = known.length ? Math.max.apply(null, known) : 0;
+        if (!known.some((value) => value > 0)) return;
+        const max = Math.max.apply(null, known);
         const top = max > 0 ? max : 1;
         const plotW = W - PAD.left - PAD.right;
         const plotH = H - PAD.top - PAD.bottom;
@@ -140,6 +141,20 @@
             valueBox.textContent = hasData || storage.since
                 ? formatMb(used) + ' / ' + formatMb(limit) + ' (' + percent + '%)'
                 : t('monitoring_no_data');
+
+            const sinceBox = document.getElementById('monitoring-since-storage');
+            if (sinceBox) {
+                if (storage.since) {
+                    sinceBox.textContent = t('monitoring_since').replace(
+                        '{date}',
+                        new Date(storage.since).toLocaleString()
+                    );
+                    sinceBox.hidden = false;
+                } else {
+                    sinceBox.hidden = true;
+                }
+            }
+
             renderChart(svg, buckets, values, (value) => formatMb(value));
             return;
         }

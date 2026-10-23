@@ -3935,6 +3935,19 @@ msgstr "Вложения чата, добавленные за период — 
 msgid "All documents, same as the Documents panel."
 msgstr "Все документы, как в панели «Документы»."
 
+#: app/routes/admin.py
+msgid "Invalid period"
+msgstr "Неверный период"
+
+#: app/routes/admin.py
+msgid "Unknown user"
+msgstr "Неизвестный пользователь"
+
+#, python-brace-format
+#: app/routes/admin.py
+msgid "History since {date}"
+msgstr "История с {date}"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

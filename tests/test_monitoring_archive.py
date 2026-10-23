@@ -18,23 +18,23 @@ LOCAL_TS = "2020-10-23 12:05:00"
 TASK_AT = datetime(2020, 10, 23, 12, 30, tzinfo=UTC)
 
 
-def _seed_session(login: str = "u1") -> str:
+def _seed_session(login: str = "u1", session_id: str = "s1") -> str:
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO chat_sessions (id, user_id, title, created_at) VALUES ('s1', %s, 't', %s)",
-            (login, LOCAL_TS),
+            "INSERT INTO chat_sessions (id, user_id, title, created_at) VALUES (%s, %s, 't', %s)",
+            (session_id, login, LOCAL_TS),
         )
         cursor.execute(
             "INSERT INTO messages (session_id, role, content, timestamp, prompt_tokens, completion_tokens, file_path) "
-            "VALUES ('s1', 'user', 'hi', %s, 1500, 500, 'u1/a.png')",
-            (LOCAL_TS,),
+            "VALUES (%s, 'user', 'hi', %s, 1500, 500, 'u1/a.png')",
+            (session_id, LOCAL_TS),
         )
         cursor.execute(
-            "INSERT INTO messages (session_id, role, content, timestamp) VALUES ('s1', 'assistant', 'yo', %s)",
-            (LOCAL_TS,),
+            "INSERT INTO messages (session_id, role, content, timestamp) VALUES (%s, 'assistant', 'yo', %s)",
+            (session_id, LOCAL_TS),
         )
-    return "s1"
+    return session_id
 
 
 def _archive_rows(login: str = "u1") -> list[dict]:
@@ -131,3 +131,50 @@ def test_prune_archive_drops_only_old_rows(test_app):
 
         assert prune_archive() == 1
         assert len(_archive_rows()) == 1
+
+
+def test_deleting_a_session_with_a_null_timestamp_still_works(test_app):
+    """A legacy row without a timestamp must not make the deletion fail."""
+    with test_app.app_context():
+        test_app.config["TIMEZONE"] = pytz.UTC
+        create_user("u1", "pw", "U1")
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO chat_sessions (id, user_id, title, created_at) VALUES ('s1', 'u1', 't', NULL)"
+            )
+            cursor.execute(
+                "INSERT INTO messages (session_id, role, content, timestamp) VALUES ('s1', 'user', 'hi', NULL)"
+            )
+
+        assert delete_session_and_messages("s1", "u1", upload_folder=None) is True
+
+        assert len(_archive_rows()) == 2
+
+
+def test_clear_history_archives_the_messages(client, test_app):
+    """Clearing a chat deletes its messages; the archive must keep them."""
+    import uuid
+
+    session_id = str(uuid.uuid4())
+    with test_app.app_context():
+        test_app.config["TIMEZONE"] = pytz.UTC
+        create_user("u1", "pw", "U1")
+        _seed_session(session_id=session_id)
+
+    with client.session_transaction() as flask_session:
+        flask_session["login"] = "u1"
+        flask_session["current_session"] = session_id
+
+    response = client.post("/api/clear_history")
+    assert response.status_code == 200, response.data
+
+    with test_app.app_context():
+        rows = _archive_rows()
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) AS n FROM messages WHERE session_id = %s", (session_id,))
+            assert cursor.fetchone()["n"] == 0
+
+    assert [row["kind"] for row in rows] == ["message", "message"]
+    assert sum(row["out_tokens"] for row in rows) == 1500

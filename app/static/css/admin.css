@@ -1520,8 +1520,13 @@ body.dark-theme .installed-file-meta { color: #aaa; }
 .monitoring-chart {
     display: block;
     width: 100%;
-    height: 120px;
+    height: auto;
     margin-top: 8px;
+}
+.monitoring-since {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: #777;
 }
 .monitoring-grid {
     stroke: #e6e6e6;

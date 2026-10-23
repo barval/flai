@@ -40,3 +40,15 @@ def test_monitoring_translations_exist_in_both_catalogs():
     for msgid in ("Monitoring", "All users", "No data in this range", "Storage"):
         assert f'msgid "{msgid}"' in en, f"missing msgid {msgid!r} in en"
         assert f'msgid "{msgid}"' in ru, f"missing msgid {msgid!r} in ru"
+
+
+def test_storage_card_declares_the_history_start_line():
+    html = _admin_html()
+    assert 'id="monitoring-since-storage"' in html
+    assert "'monitoring_since'" in html
+
+
+def test_charts_keep_their_aspect_ratio():
+    html = _admin_html()
+    assert html.count('preserveAspectRatio="none"') == 0
+    assert html.count('preserveAspectRatio="xMidYMid meet"') == 8

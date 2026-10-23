@@ -39,37 +39,60 @@ def storage_series(
     starts: list[datetime],
     until: datetime,
 ) -> tuple[list[int | None], datetime | None]:
-    """Carry the last known usage forward; ``None`` buckets have no snapshot yet."""
+    """Carry the last known usage forward; ``None`` buckets have no snapshot yet.
+
+    Only one look-back row per user plus the rows inside the range are read, so
+    the cost stays bounded by the selected period instead of the whole history.
+    """
     if not logins or not starts:
         return [None] * len(starts), None
 
+    users = list(logins)
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT user_id, taken_at, used_bytes
+            SELECT DISTINCT ON (user_id) user_id, taken_at, used_bytes
             FROM storage_snapshots
-            WHERE user_id = ANY(%s) AND taken_at <= %s
-            ORDER BY user_id, taken_at
+            WHERE user_id = ANY(%s) AND taken_at < %s
+            ORDER BY user_id, taken_at DESC
             """,
-            (list(logins), until),
+            (users, starts[0]),
         )
         rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT user_id, taken_at, used_bytes
+            FROM storage_snapshots
+            WHERE user_id = ANY(%s) AND taken_at >= %s AND taken_at <= %s
+            ORDER BY user_id, taken_at
+            """,
+            (users, starts[0], until),
+        )
+        rows += cursor.fetchall()
+        cursor.execute(
+            "SELECT MIN(taken_at) AS first_seen FROM storage_snapshots "
+            "WHERE user_id = ANY(%s) AND taken_at <= %s",
+            (users, until),
+        )
+        first_seen = cursor.fetchone()["first_seen"]
 
     per_user: dict[str, list[tuple[datetime, int]]] = {login: [] for login in logins}
     for row in rows:
         per_user.setdefault(row["user_id"], []).append((row["taken_at"], row["used_bytes"]))
+    for values in per_user.values():
+        values.sort()
 
-    first_seen = min((values[0][0] for values in per_user.values() if values), default=None)
-
-    series: list[int | None] = []
-    for start in starts:
-        total: int | None = None
-        for values in per_user.values():
-            known = [value for taken_at, value in values if taken_at <= start]
-            if known:
-                total = (total or 0) + known[-1]
-        series.append(total)
+    series: list[int | None] = [None] * len(starts)
+    for values in per_user.values():
+        pointer = 0
+        current: int | None = None
+        for index, start in enumerate(starts):
+            while pointer < len(values) and values[pointer][0] <= start:
+                current = values[pointer][1]
+                pointer += 1
+            if current is not None:
+                series[index] = (series[index] or 0) + current
     return series, first_seen
 
 

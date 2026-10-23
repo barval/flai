@@ -50,3 +50,18 @@ def test_storage_series_without_logins_is_empty():
     starts = [datetime(2020, 10, 23, hour, 0, tzinfo=UTC) for hour in (9, 10)]
 
     assert storage_series([], starts, datetime(2020, 10, 23, 11, 0, tzinfo=UTC)) == ([None, None], None)
+
+
+def test_series_is_seeded_by_a_snapshot_before_the_range(test_app):
+    with test_app.app_context():
+        _set_storage("u1", 500)
+        write_snapshot(datetime(2020, 8, 1, 12, 0, tzinfo=UTC))
+        starts = [
+            datetime(2020, 10, 23, 10, 0, tzinfo=UTC),
+            datetime(2020, 10, 23, 11, 0, tzinfo=UTC),
+        ]
+
+        values, since = storage_series(["u1"], starts, datetime(2020, 10, 23, 12, 0, tzinfo=UTC))
+
+    assert values == [500, 500]
+    assert since == datetime(2020, 8, 1, 12, 0, tzinfo=UTC)

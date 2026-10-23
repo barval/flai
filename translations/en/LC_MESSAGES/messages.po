@@ -3902,6 +3902,19 @@ msgstr "Chat attachments added in range — a document attached in chat counts h
 msgid "All documents, same as the Documents panel."
 msgstr "All documents, same as the Documents panel."
 
+#: app/routes/admin.py
+msgid "Invalid period"
+msgstr "Invalid period"
+
+#: app/routes/admin.py
+msgid "Unknown user"
+msgstr "Unknown user"
+
+#, python-brace-format
+#: app/routes/admin.py
+msgid "History since {date}"
+msgstr "History since {date}"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

@@ -36,7 +36,7 @@ def archive_session(cursor, session_id: str) -> int:
     cursor.execute(
         """
         INSERT INTO monitoring_archive (user_id, kind, occurred_at)
-        SELECT user_id, 'session', created_at AT TIME ZONE %(tz)s
+        SELECT user_id, 'session', COALESCE(created_at AT TIME ZONE %(tz)s, now())
         FROM chat_sessions WHERE id = %(sid)s
         """,
         {"tz": app_timezone(), "sid": session_id},
@@ -49,7 +49,7 @@ def archive_messages(cursor, session_id: str) -> int:
     cursor.execute(
         """
         INSERT INTO monitoring_archive (user_id, kind, occurred_at, out_tokens, in_tokens, file_count)
-        SELECT cs.user_id, 'message', m.timestamp AT TIME ZONE %(tz)s,
+        SELECT cs.user_id, 'message', COALESCE(m.timestamp AT TIME ZONE %(tz)s, now()),
                COALESCE(m.prompt_tokens, 0), COALESCE(m.completion_tokens, 0),
                CASE WHEN m.file_path IS NOT NULL AND m.file_path <> '' THEN 1 ELSE 0 END
         FROM messages m JOIN chat_sessions cs ON cs.id = m.session_id
@@ -67,7 +67,7 @@ def archive_documents(cursor, user_id: str, doc_ids: list[str]) -> int:
     cursor.execute(
         """
         INSERT INTO monitoring_archive (user_id, kind, occurred_at)
-        SELECT user_id, 'document', uploaded_at AT TIME ZONE %(tz)s
+        SELECT user_id, 'document', COALESCE(uploaded_at AT TIME ZONE %(tz)s, now())
         FROM documents WHERE user_id = %(uid)s AND id = ANY(%(ids)s)
         """,
         {"tz": app_timezone(), "uid": user_id, "ids": list(doc_ids)},

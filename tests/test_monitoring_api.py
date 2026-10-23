@@ -72,3 +72,59 @@ def test_endpoint_works_without_redis(admin_client, test_app, monkeypatch):
         seed_monitoring_data()
 
     assert admin_client.get("/admin/api/monitoring?range=24h").status_code == 200
+
+
+def test_single_user_payload_keeps_the_whole_selector(admin_client, test_app):
+    """Choosing one user must not empty the selector down to that user."""
+    with test_app.app_context():
+        seed_monitoring_data()
+        from app.userdb import create_user
+
+        create_user("u2", "pw", "U2")
+
+    payload = admin_client.get("/admin/api/monitoring?user=u1&range=24h").get_json()
+
+    assert {entry["login"] for entry in payload["users"]} == {"u1", "u2"}
+
+
+def test_admin_login_is_not_monitorable(admin_client, test_app):
+    with test_app.app_context():
+        seed_monitoring_data()
+
+    assert admin_client.get("/admin/api/monitoring?user=admin").status_code == 400
+
+
+def test_endpoint_closes_the_redis_client(admin_client, test_app, monkeypatch):
+    class _Client:
+        def __init__(self):
+            self.closed = False
+
+        def get(self, key):
+            return None
+
+        def setex(self, key, ttl, value):
+            return True
+
+        def close(self):
+            self.closed = True
+
+    holder = _Client()
+    monkeypatch.setattr("app.api_bridge.get_redis_client", lambda: holder)
+    with test_app.app_context():
+        seed_monitoring_data()
+
+    assert admin_client.get("/admin/api/monitoring?range=24h").status_code == 200
+    assert holder.closed is True
+
+
+def test_deleted_user_disappears_from_all_users(admin_client, test_app):
+    with test_app.app_context():
+        from app.userdb import delete_user
+
+        seed_monitoring_data()
+        delete_user("u1")
+
+    payload = admin_client.get("/admin/api/monitoring?user=all&range=24h").get_json()
+
+    assert payload["users"] == []
+    assert payload["totals"]["sessions"] == 0

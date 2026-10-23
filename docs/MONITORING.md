@@ -40,7 +40,7 @@ instance is used over time — for one user or for all users — and never touch
 
 | Chart | Definition |
 |---|---|
-| Storage | `user_storage.used_bytes` per user, summed; the card shows "used / limit (percent)" and the line shows the hourly history |
+| Storage | `user_storage.used_bytes` per user, summed; the card shows "used / limit (percent)" and the bars show the hourly history |
 | Sessions | `chat_sessions` rows created in the range |
 | Messages | `messages` rows of the user's sessions |
 | Tasks | `tasks` rows created in the range |

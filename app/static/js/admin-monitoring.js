@@ -16,9 +16,11 @@
     const METRICS = Object.keys(SERIES_OF);
     const POLL_MS = 60000;
     const NS = 'http://www.w3.org/2000/svg';
-    const W = 320;
-    const H = 120;
-    const PAD = { left: 44, right: 8, top: 10, bottom: 20 };
+    const W = 360;
+    const H = 150;
+    const PAD = { left: 46, right: 8, top: 12, bottom: 22 };
+    const Y_INTERVALS = 5;
+    const X_TICKS = 6;
 
     const select = document.getElementById('monitoring-user');
     const rangeBox = document.getElementById('monitoring-range');
@@ -48,9 +50,45 @@
         return Number(value || 0).toLocaleString();
     }
 
-    function formatLabel(iso, long) {
+    // Axis ticks must read as round numbers (0, 20 000, 40 000 …), never as the
+    // raw maximum (67 304). The browser locale of the page keeps grouping and
+    // the compact suffix ("k", "тыс.") consistent with the active profile.
+    function axisLabel(value) {
+        const abs = Math.abs(value);
+        if (abs >= 10000) {
+            return new Intl.NumberFormat(document.documentElement.lang || undefined, {
+                notation: 'compact',
+                maximumFractionDigits: 1
+            }).format(value);
+        }
+        if (Number.isInteger(value)) return formatInt(value);
+        return value.toFixed(1);
+    }
+
+    function niceStep(rawStep) {
+        if (!(rawStep > 0)) return 1;
+        const power = Math.pow(10, Math.floor(Math.log10(rawStep)));
+        const candidates = [1, 2, 2.5, 5, 10];
+        for (let index = 0; index < candidates.length; index += 1) {
+            if (candidates[index] * power >= rawStep) return candidates[index] * power;
+        }
+        return 10 * power;
+    }
+
+    function niceScale(maxValue) {
+        const step = niceStep(maxValue / Y_INTERVALS);
+        return { top: Math.ceil(maxValue / step) * step, step };
+    }
+
+    function formatTooltipLabel(iso) {
+        return new Date(iso).toLocaleString();
+    }
+
+    function formatTickLabel(iso) {
         const date = new Date(iso);
-        if (long) return date.toLocaleString();
+        if (currentRange === '7d' || currentRange === '30d') {
+            return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+        }
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
@@ -60,68 +98,79 @@
         return raw.slice(0, data.buckets.length);
     }
 
-    function renderChart(svg, buckets, values, formatter) {
+    function renderChart(svg, buckets, values, options) {
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         if (!buckets.length) return;
 
         const known = values.filter((value) => value !== null && value !== undefined);
         if (!known.some((value) => value > 0)) return;
-        const max = Math.max.apply(null, known);
-        const top = max > 0 ? max : 1;
+
+        const scale = options.scale || 1;
+        const display = values.map((value) =>
+            value === null || value === undefined ? null : value * scale
+        );
+        const max = Math.max.apply(null, display.filter((value) => value !== null));
+        const { top, step: valueStep } = niceScale(max);
         const plotW = W - PAD.left - PAD.right;
         const plotH = H - PAD.top - PAD.bottom;
-        const step = buckets.length > 1 ? plotW / (buckets.length - 1) : 0;
+        const slot = plotW / buckets.length;
+        const barW = Math.max(1, slot * 0.7);
+        const baseline = PAD.top + plotH;
 
-        const x = (index) => PAD.left + index * step;
         const y = (value) => PAD.top + plotH - (value / top) * plotH;
 
-        [0, 0.5, 1].forEach((fraction) => {
-            const value = top * fraction;
-            const line = el('line', {
-                x1: PAD.left, y1: y(value), x2: W - PAD.right, y2: y(value),
+        // Horizontal grid: round values only, one line per tick.
+        const tickCount = Math.round(top / valueStep);
+        for (let index = 0; index <= tickCount; index += 1) {
+            const value = index * valueStep;
+            const lineY = y(value);
+            svg.appendChild(el('line', {
+                x1: PAD.left, y1: lineY.toFixed(1), x2: W - PAD.right, y2: lineY.toFixed(1),
                 class: 'monitoring-grid'
-            });
-            svg.appendChild(line);
+            }));
             const label = el('text', {
-                x: PAD.left - 6, y: y(value) + 3, class: 'monitoring-axis', 'text-anchor': 'end'
+                x: PAD.left - 8, y: (lineY + 3).toFixed(1), class: 'monitoring-axis', 'text-anchor': 'end'
             });
-            label.textContent = formatter(value);
+            label.textContent = options.format(value);
+            svg.appendChild(label);
+        }
+
+        // Vertical grid, one line per time label under the bars.
+        const tickIndexes = [];
+        const tickTotal = Math.min(X_TICKS, buckets.length);
+        for (let index = 0; index < tickTotal; index += 1) {
+            const bucketIndex = tickTotal === 1
+                ? 0
+                : Math.round((index * (buckets.length - 1)) / (tickTotal - 1));
+            if (tickIndexes.indexOf(bucketIndex) === -1) tickIndexes.push(bucketIndex);
+        }
+        tickIndexes.forEach((bucketIndex) => {
+            const centerX = PAD.left + bucketIndex * slot + slot / 2;
+            svg.appendChild(el('line', {
+                x1: centerX.toFixed(1), y1: PAD.top, x2: centerX.toFixed(1), y2: baseline,
+                class: 'monitoring-grid-v'
+            }));
+            const label = el('text', {
+                x: centerX.toFixed(1), y: H - 6, class: 'monitoring-axis', 'text-anchor': 'middle'
+            });
+            label.textContent = formatTickLabel(buckets[bucketIndex]);
             svg.appendChild(label);
         });
 
-        let path = '';
-        let pen = false;
-        values.forEach((value, index) => {
-            if (value === null || value === undefined) {
-                pen = false;
-                return;
-            }
-            path += (pen ? ' L ' : ' M ') + x(index).toFixed(1) + ' ' + y(value).toFixed(1);
-            pen = true;
-        });
-        if (path) {
-            svg.appendChild(el('path', { d: path, class: 'monitoring-line' }));
-        }
-
-        values.forEach((value, index) => {
-            if (value === null || value === undefined) return;
-            const point = el('circle', {
-                cx: x(index).toFixed(1), cy: y(value).toFixed(1), r: 5,
-                class: 'monitoring-point'
+        display.forEach((value, index) => {
+            if (value === null || value === undefined || value <= 0) return;
+            const bar = el('rect', {
+                x: (PAD.left + index * slot + (slot - barW) / 2).toFixed(1),
+                y: y(value).toFixed(1),
+                width: barW.toFixed(1),
+                height: Math.max(1, baseline - y(value)).toFixed(1),
+                class: 'monitoring-bar'
             });
             const title = el('title');
-            title.textContent = formatLabel(buckets[index], true) + ' — ' + formatter(value);
-            point.appendChild(title);
-            svg.appendChild(point);
+            title.textContent = formatTooltipLabel(buckets[index]) + ' — ' + options.tooltip(values[index]);
+            bar.appendChild(title);
+            svg.appendChild(bar);
         });
-
-        const first = el('text', { x: PAD.left, y: H - 5, class: 'monitoring-axis', 'text-anchor': 'start' });
-        first.textContent = formatLabel(buckets[0], false);
-        svg.appendChild(first);
-
-        const last = el('text', { x: W - PAD.right, y: H - 5, class: 'monitoring-axis', 'text-anchor': 'end' });
-        last.textContent = formatLabel(buckets[buckets.length - 1], false);
-        svg.appendChild(last);
     }
 
     function renderCard(metric, data) {
@@ -155,13 +204,21 @@
                 }
             }
 
-            renderChart(svg, buckets, values, (value) => formatMb(value));
+            renderChart(svg, buckets, values, {
+                scale: 1 / (1024 * 1024),
+                format: (value) => axisLabel(value) + ' MB',
+                tooltip: (value) => formatMb(value)
+            });
             return;
         }
 
         const total = values.reduce((acc, value) => acc + (value || 0), 0);
         valueBox.textContent = hasData ? formatInt(total) : t('monitoring_no_data');
-        renderChart(svg, buckets, values, (value) => formatInt(Math.round(value)));
+        renderChart(svg, buckets, values, {
+            scale: 1,
+            format: axisLabel,
+            tooltip: (value) => formatInt(Math.round(value))
+        });
     }
 
     function render(data) {

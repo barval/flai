@@ -1537,22 +1537,20 @@ body.dark-theme .installed-file-meta { color: #aaa; }
     stroke: #e6e6e6;
     stroke-width: 1;
 }
+.monitoring-grid-v {
+    stroke: #efeef2;
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
 .monitoring-axis {
     fill: #777;
-    font-size: 9px;
+    font-size: 8px;
 }
-.monitoring-line {
-    fill: none;
-    stroke: #1976d2;
-    stroke-width: 2;
-    stroke-linejoin: round;
-}
-.monitoring-point {
-    fill: transparent;
-    cursor: pointer;
-}
-.monitoring-point:hover {
+.monitoring-bar {
     fill: #1976d2;
+}
+.monitoring-bar:hover {
+    fill: #0d47a1;
 }
 .monitoring-hint {
     margin: 6px 0 0;
@@ -1578,13 +1576,19 @@ body.dark-theme .monitoring-range-btn.active {
 body.dark-theme .monitoring-grid {
     stroke: #3a3a3a;
 }
+body.dark-theme .monitoring-grid-v {
+    stroke: #34343c;
+}
 body.dark-theme .monitoring-axis,
 body.dark-theme .monitoring-hint {
     fill: #9a9a9a;
     color: #9a9a9a;
 }
-body.dark-theme .monitoring-line {
-    stroke: #64b5f6;
+body.dark-theme .monitoring-bar {
+    fill: #64b5f6;
+}
+body.dark-theme .monitoring-bar:hover {
+    fill: #90caf9;
 }
 body.dark-theme .monitoring-error {
     color: #ff8a80;

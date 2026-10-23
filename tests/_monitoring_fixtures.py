@@ -1,13 +1,15 @@
 # tests/_monitoring_fixtures.py
 """Shared, pinned monitoring fixture data."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.database import get_db
 from app.userdb import create_user
 
-NOW = datetime(2026, 10, 23, 12, 30, tzinfo=UTC)
-LOCAL_TS = "2026-10-23 12:05:00"  # naive local time; callers set TIMEZONE=UTC
+# The data must land inside every queried window, so the timestamps follow the
+# wall clock instead of being fixed (the endpoint has no injectable clock).
+NOW = datetime.now(UTC).replace(microsecond=0)
+LOCAL_TS = (NOW - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")  # naive local; tests use UTC
 
 
 def seed_monitoring_data() -> None:

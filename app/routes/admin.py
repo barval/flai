@@ -435,6 +435,54 @@ def get_users_tavily_usage():
     return jsonify(result)
 
 
+@bp.route("/api/monitoring", methods=["GET"])
+@admin_required
+def get_monitoring():
+    """Series for the Monitoring tab: one user or every non-admin user.
+
+    ``user=all`` means "the same list the Users tab shows" (admin excluded).
+    The payload is cached for ``MONITORING_CACHE_TTL`` seconds; Redis is
+    optional, and a failure degrades to computing the answer directly.
+    """
+    from app.monitoring.queries import build_payload
+    from app.monitoring.ranges import DEFAULT_RANGE, RANGE_SPECS
+
+    range_key = request.args.get("range", DEFAULT_RANGE)
+    if range_key not in RANGE_SPECS:
+        return jsonify({"error": _("Invalid period")}), 400
+
+    selected = request.args.get("user", "all")
+    if selected == "all":
+        logins = [user["login"] for user in list_users(exclude_admin=True)]
+    else:
+        if not get_user_by_login(selected):
+            return jsonify({"error": _("Unknown user")}), 400
+        logins = [selected]
+
+    redis_client = None
+    cache_key = f"admin:monitoring:{selected}:{range_key}"
+    try:
+        from app.api_bridge import get_redis_client
+
+        redis_client = get_redis_client()
+        cached = redis_client.get(cache_key)
+        if isinstance(cached, (bytes, str)) and cached:
+            return current_app.response_class(cached, mimetype="application/json")
+    except Exception as e:
+        logger.debug(f"Monitoring cache unavailable: {e}")
+        redis_client = None
+
+    body = json.dumps(build_payload(logins, range_key))
+
+    if redis_client is not None:
+        try:
+            redis_client.setex(cache_key, current_app.config.get("MONITORING_CACHE_TTL", 60), body)
+        except Exception as e:
+            logger.debug(f"Monitoring cache write failed: {e}")
+
+    return current_app.response_class(body, mimetype="application/json")
+
+
 @bp.route("/api/users", methods=["POST"])
 @admin_required
 def add_user():

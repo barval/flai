@@ -59,6 +59,9 @@ def load_config(app):
     app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 250))
     app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 250))
 
+    # Admin Monitoring tab: how long a computed payload stays cached in Redis
+    app.config["MONITORING_CACHE_TTL"] = 60
+
     # Image validation settings (shared)
     app.config["MAX_IMAGE_WIDTH"] = int(os.getenv("MAX_IMAGE_WIDTH", 3840))
     app.config["MAX_IMAGE_HEIGHT"] = int(os.getenv("MAX_IMAGE_HEIGHT", 2160))

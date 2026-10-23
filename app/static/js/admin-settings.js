@@ -42,6 +42,12 @@
         nameCell.appendChild(label);
         row.appendChild(nameCell);
 
+        const descriptionCell = document.createElement('td');
+        descriptionCell.className = 'settings-description';
+        descriptionCell.textContent = field.description ? t(field.description) : '';
+        descriptionCell.title = field.description || '';
+        row.appendChild(descriptionCell);
+
         const valueCell = document.createElement('td');
         valueCell.className = 'settings-value';
 
@@ -107,7 +113,7 @@
         schema.forEach((group) => {
             const details = document.createElement('details');
             details.className = 'settings-group';
-            details.open = true;
+            details.open = false;
             details.dataset.group = group.id;
 
             const summary = document.createElement('summary');
@@ -122,7 +128,7 @@
             table.className = 'settings-table';
             const head = document.createElement('thead');
             const headRow = document.createElement('tr');
-            [t('Variable'), t('Value'), t('Default value')].forEach(
+            [t('Variable'), t('Description'), t('Value'), t('Default value')].forEach(
                 (title) => {
                     const th = document.createElement('th');
                     th.textContent = title;
@@ -146,7 +152,11 @@
             let visible = 0;
             group.querySelectorAll('.settings-field').forEach((field) => {
                 const key = field.dataset.key.toLowerCase();
-                const match = !needle || key.includes(needle) || humanize(field.dataset.key).toLowerCase().includes(needle);
+                const description = (field.querySelector('.settings-description') || {}).textContent || '';
+                const match = !needle
+                    || key.includes(needle)
+                    || humanize(field.dataset.key).toLowerCase().includes(needle)
+                    || description.toLowerCase().includes(needle);
                 field.hidden = !match;
                 if (match) visible += 1;
             });

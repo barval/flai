@@ -4043,6 +4043,566 @@ msgstr "Value"
 msgid "Default value"
 msgstr "Default value"
 
+#: app/settings_registry.py
+msgid "Description"
+msgstr "Description"
+
+#: app/settings_registry.py
+msgid "Use the per-user Tavily key before the local search engine"
+msgstr "Use the per-user Tavily key before the local search engine"
+
+#: app/settings_registry.py
+msgid "Tavily API base URL"
+msgstr "Tavily API base URL"
+
+#: app/settings_registry.py
+msgid "Tavily search request timeout (seconds)"
+msgstr "Tavily search request timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Timeout for the Tavily quota lookup (seconds)"
+msgstr "Timeout for the Tavily quota lookup (seconds)"
+
+#: app/settings_registry.py
+msgid "Maximum results requested from Tavily"
+msgstr "Maximum results requested from Tavily"
+
+#: app/settings_registry.py
+msgid "Tavily depth: basic, advanced, fast or ultra-fast"
+msgstr "Tavily depth: basic, advanced, fast or ultra-fast"
+
+#: app/settings_registry.py
+msgid "How long an answered quota lookup is reused (seconds)"
+msgstr "How long an answered quota lookup is reused (seconds)"
+
+#: app/settings_registry.py
+msgid "How long an unreachable quota endpoint is remembered (seconds)"
+msgstr "How long an unreachable quota endpoint is remembered (seconds)"
+
+#: app/settings_registry.py
+msgid "Local SearXNG base URL"
+msgstr "Local SearXNG base URL"
+
+#: app/settings_registry.py
+msgid "SearXNG request timeout (seconds)"
+msgstr "SearXNG request timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Maximum results requested from SearXNG"
+msgstr "Maximum results requested from SearXNG"
+
+#: app/settings_registry.py
+msgid "Characters of search context passed to the model"
+msgstr "Characters of search context passed to the model"
+
+#: app/settings_registry.py
+msgid "Enable the Crawl4AI page reader and site crawler"
+msgstr "Enable the Crawl4AI page reader and site crawler"
+
+#: app/settings_registry.py
+msgid "Crawl4AI service URL"
+msgstr "Crawl4AI service URL"
+
+#: app/settings_registry.py
+msgid "Bearer token for the Crawl4AI service"
+msgstr "Bearer token for the Crawl4AI service"
+
+#: app/settings_registry.py
+msgid "Maximum pages per crawl"
+msgstr "Maximum pages per crawl"
+
+#: app/settings_registry.py
+msgid "Maximum link depth per crawl"
+msgstr "Maximum link depth per crawl"
+
+#: app/settings_registry.py
+msgid "Whole-crawl wall-clock limit (seconds)"
+msgstr "Whole-crawl wall-clock limit (seconds)"
+
+#: app/settings_registry.py
+msgid "Single page fetch timeout (seconds)"
+msgstr "Single page fetch timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Characters kept per crawled page"
+msgstr "Characters kept per crawled page"
+
+#: app/settings_registry.py
+msgid "Characters kept across the whole crawl"
+msgstr "Characters kept across the whole crawl"
+
+#: app/settings_registry.py
+msgid "Parallel crawl requests"
+msgstr "Parallel crawl requests"
+
+#: app/settings_registry.py
+msgid "Characters of document context passed to the model"
+msgstr "Characters of document context passed to the model"
+
+#: app/settings_registry.py
+msgid "Qdrant vector database URL"
+msgstr "Qdrant vector database URL"
+
+#: app/settings_registry.py
+msgid "Qdrant API key (optional)"
+msgstr "Qdrant API key (optional)"
+
+#: app/settings_registry.py
+msgid "Characters per indexed chunk"
+msgstr "Characters per indexed chunk"
+
+#: app/settings_registry.py
+msgid "Characters shared by neighbouring chunks"
+msgstr "Characters shared by neighbouring chunks"
+
+#: app/settings_registry.py
+msgid "Chunking strategy: fixed or recursive"
+msgstr "Chunking strategy: fixed or recursive"
+
+#: app/settings_registry.py
+msgid "Chunks retrieved per document query"
+msgstr "Chunks retrieved per document query"
+
+#: app/settings_registry.py
+msgid "Share of the context window given to documents"
+msgstr "Share of the context window given to documents"
+
+#: app/settings_registry.py
+msgid "Time budget for scanned-PDF OCR (seconds, 0 = unlimited)"
+msgstr "Time budget for scanned-PDF OCR (seconds, 0 = unlimited)"
+
+#: app/settings_registry.py
+msgid "Largest document a user may upload (MB)"
+msgstr "Largest document a user may upload (MB)"
+
+#: app/settings_registry.py
+msgid "Documents per user, also the folder limit"
+msgstr "Documents per user, also the folder limit"
+
+#: app/settings_registry.py
+msgid "Total document storage per user (MB)"
+msgstr "Total document storage per user (MB)"
+
+#: app/settings_registry.py
+msgid "Default upload limit per user (MB), overridable in Users"
+msgstr "Default upload limit per user (MB), overridable in Users"
+
+#: app/settings_registry.py
+msgid "Longest accepted file extension"
+msgstr "Longest accepted file extension"
+
+#: app/settings_registry.py
+msgid "Largest accepted HTTP request body (MB)"
+msgstr "Largest accepted HTTP request body (MB)"
+
+#: app/settings_registry.py
+msgid "Enable background tasks"
+msgstr "Enable background tasks"
+
+#: app/settings_registry.py
+msgid "Pure execution budget per task (seconds)"
+msgstr "Pure execution budget per task (seconds)"
+
+#: app/settings_registry.py
+msgid "Hard ceiling on the plan length"
+msgstr "Hard ceiling on the plan length"
+
+#: app/settings_registry.py
+msgid "Accepted plan rewrites per task"
+msgstr "Accepted plan rewrites per task"
+
+#: app/settings_registry.py
+msgid "Passing media steps between plan reviews"
+msgstr "Passing media steps between plan reviews"
+
+#: app/settings_registry.py
+msgid "Attempts per step, verification included"
+msgstr "Attempts per step, verification included"
+
+#: app/settings_registry.py
+msgid "Local edits after each generation attempt"
+msgstr "Local edits after each generation attempt"
+
+#: app/settings_registry.py
+msgid "Redo passes for a rejected step"
+msgstr "Redo passes for a rejected step"
+
+#: app/settings_registry.py
+msgid "Chat-free window before a step may run (seconds)"
+msgstr "Chat-free window before a step may run (seconds)"
+
+#: app/settings_registry.py
+msgid "Executor cycle interval (seconds)"
+msgstr "Executor cycle interval (seconds)"
+
+#: app/settings_registry.py
+msgid "Executor cycles between media subtask checks"
+msgstr "Executor cycles between media subtask checks"
+
+#: app/settings_registry.py
+msgid "How long an unknown subtask state is tolerated"
+msgstr "How long an unknown subtask state is tolerated"
+
+#: app/settings_registry.py
+msgid "Build a visual continuity sheet for image series"
+msgstr "Build a visual continuity sheet for image series"
+
+#: app/settings_registry.py
+msgid "Characters kept in the continuity sheet"
+msgstr "Characters kept in the continuity sheet"
+
+#: app/settings_registry.py
+msgid "VRAM wait before a task step gives up (seconds)"
+msgstr "VRAM wait before a task step gives up (seconds)"
+
+#: app/settings_registry.py
+msgid "LLM backend: llama-swap or direct llama.cpp"
+msgstr "LLM backend: llama-swap or direct llama.cpp"
+
+#: app/settings_registry.py
+msgid "llama-swap API URL"
+msgstr "llama-swap API URL"
+
+#: app/settings_registry.py
+msgid "Direct llama.cpp API URL"
+msgstr "Direct llama.cpp API URL"
+
+#: app/settings_registry.py
+msgid "Share of the context window given to history"
+msgstr "Share of the context window given to history"
+
+#: app/settings_registry.py
+msgid "Tokens reserved below the context limit"
+msgstr "Tokens reserved below the context limit"
+
+#: app/settings_registry.py
+msgid "Tokens reserved for the prompt template"
+msgstr "Tokens reserved for the prompt template"
+
+#: app/settings_registry.py
+msgid "Characters per token used for estimates"
+msgstr "Characters per token used for estimates"
+
+#: app/settings_registry.py
+msgid "Tokens charged for one attached image"
+msgstr "Tokens charged for one attached image"
+
+#: app/settings_registry.py
+msgid "Characters of media descriptions kept in context"
+msgstr "Characters of media descriptions kept in context"
+
+#: app/settings_registry.py
+msgid "Recent messages passed to the router"
+msgstr "Recent messages passed to the router"
+
+#: app/settings_registry.py
+msgid "Characters per message passed to the router"
+msgstr "Characters per message passed to the router"
+
+#: app/settings_registry.py
+msgid "Long-term facts passed to the router"
+msgstr "Long-term facts passed to the router"
+
+#: app/settings_registry.py
+msgid "Startup health-check attempts per service"
+msgstr "Startup health-check attempts per service"
+
+#: app/settings_registry.py
+msgid "Delay between startup health checks (seconds)"
+msgstr "Delay between startup health checks (seconds)"
+
+#: app/settings_registry.py
+msgid "How long to wait for VRAM to free (seconds)"
+msgstr "How long to wait for VRAM to free (seconds)"
+
+#: app/settings_registry.py
+msgid "Image generation wrapper URL"
+msgstr "Image generation wrapper URL"
+
+#: app/settings_registry.py
+msgid "Model used for image generation"
+msgstr "Model used for image generation"
+
+#: app/settings_registry.py
+msgid "Model used for image editing"
+msgstr "Model used for image editing"
+
+#: app/settings_registry.py
+msgid "Image generation timeout (seconds)"
+msgstr "Image generation timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Default image width (pixels)"
+msgstr "Default image width (pixels)"
+
+#: app/settings_registry.py
+msgid "Default image height (pixels)"
+msgstr "Default image height (pixels)"
+
+#: app/settings_registry.py
+msgid "Default diffusion steps"
+msgstr "Default diffusion steps"
+
+#: app/settings_registry.py
+msgid "Default classifier-free guidance scale"
+msgstr "Default classifier-free guidance scale"
+
+#: app/settings_registry.py
+msgid "Video generation wrapper URL"
+msgstr "Video generation wrapper URL"
+
+#: app/settings_registry.py
+msgid "LTX-Video model file"
+msgstr "LTX-Video model file"
+
+#: app/settings_registry.py
+msgid "Video generation timeout (seconds)"
+msgstr "Video generation timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Largest single image side (pixels)"
+msgstr "Largest single image side (pixels)"
+
+#: app/settings_registry.py
+msgid "Largest image upload (MB)"
+msgstr "Largest image upload (MB)"
+
+#: app/settings_registry.py
+msgid "Side limit when several images are attached"
+msgstr "Side limit when several images are attached"
+
+#: app/settings_registry.py
+msgid "Maximum accepted image width"
+msgstr "Maximum accepted image width"
+
+#: app/settings_registry.py
+msgid "Maximum accepted image height"
+msgstr "Maximum accepted image height"
+
+#: app/settings_registry.py
+msgid "Images per chat message"
+msgstr "Images per chat message"
+
+#: app/settings_registry.py
+msgid "Audio attachments per chat message"
+msgstr "Audio attachments per chat message"
+
+#: app/settings_registry.py
+msgid "Largest audio upload (MB)"
+msgstr "Largest audio upload (MB)"
+
+#: app/settings_registry.py
+msgid "Largest voice message (MB)"
+msgstr "Largest voice message (MB)"
+
+#: app/settings_registry.py
+msgid "Enable deep analysis"
+msgstr "Enable deep analysis"
+
+#: app/settings_registry.py
+msgid "Model driving the analysis loop"
+msgstr "Model driving the analysis loop"
+
+#: app/settings_registry.py
+msgid "Hard ceiling on analysis steps"
+msgstr "Hard ceiling on analysis steps"
+
+#: app/settings_registry.py
+msgid "Wall-clock limit (0 = derived from the step budget)"
+msgstr "Wall-clock limit (0 = derived from the step budget)"
+
+#: app/settings_registry.py
+msgid "Sandbox execution limit (seconds)"
+msgstr "Sandbox execution limit (seconds)"
+
+#: app/settings_registry.py
+msgid "Characters kept per observation"
+msgstr "Characters kept per observation"
+
+#: app/settings_registry.py
+msgid "Tokens per sub-model call"
+msgstr "Tokens per sub-model call"
+
+#: app/settings_registry.py
+msgid "Web lookups per analysis"
+msgstr "Web lookups per analysis"
+
+#: app/settings_registry.py
+msgid "Largest corpus accepted (characters)"
+msgstr "Largest corpus accepted (characters)"
+
+#: app/settings_registry.py
+msgid "Piper TTS service URL"
+msgstr "Piper TTS service URL"
+
+#: app/settings_registry.py
+msgid "Piper synthesis timeout (seconds)"
+msgstr "Piper synthesis timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Kokoro TTS service URL"
+msgstr "Kokoro TTS service URL"
+
+#: app/settings_registry.py
+msgid "Kokoro synthesis timeout (seconds)"
+msgstr "Kokoro synthesis timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Whisper speech-recognition URL"
+msgstr "Whisper speech-recognition URL"
+
+#: app/settings_registry.py
+msgid "Transcription timeout (seconds)"
+msgstr "Transcription timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "SuperLocalMemory service URL"
+msgstr "SuperLocalMemory service URL"
+
+#: app/settings_registry.py
+msgid "Facts recalled per message"
+msgstr "Facts recalled per message"
+
+#: app/settings_registry.py
+msgid "Minimum similarity for a recalled fact"
+msgstr "Minimum similarity for a recalled fact"
+
+#: app/settings_registry.py
+msgid "Confidence below which a fact starts decaying"
+msgstr "Confidence below which a fact starts decaying"
+
+#: app/settings_registry.py
+msgid "Days after which a fact loses weight"
+msgstr "Days after which a fact loses weight"
+
+#: app/settings_registry.py
+msgid "Facts considered in one merge pass"
+msgstr "Facts considered in one merge pass"
+
+#: app/settings_registry.py
+msgid "Characters per merged fact"
+msgstr "Characters per merged fact"
+
+#: app/settings_registry.py
+msgid "Facts kept per merge batch"
+msgstr "Facts kept per merge batch"
+
+#: app/settings_registry.py
+msgid "Facts that must fit the model window"
+msgstr "Facts that must fit the model window"
+
+#: app/settings_registry.py
+msgid "Characters in a rolling session summary"
+msgstr "Characters in a rolling session summary"
+
+#: app/settings_registry.py
+msgid "Messages read when building a summary"
+msgstr "Messages read when building a summary"
+
+#: app/settings_registry.py
+msgid "Trimmed messages needed before summarizing"
+msgstr "Trimmed messages needed before summarizing"
+
+#: app/settings_registry.py
+msgid "History matches per search"
+msgstr "History matches per search"
+
+#: app/settings_registry.py
+msgid "Characters of history context passed to the model"
+msgstr "Characters of history context passed to the model"
+
+#: app/settings_registry.py
+msgid "Characters per history message"
+msgstr "Characters per history message"
+
+#: app/settings_registry.py
+msgid "Messages kept in the conversation window"
+msgstr "Messages kept in the conversation window"
+
+#: app/settings_registry.py
+msgid "Messages loaded per session by default"
+msgstr "Messages loaded per session by default"
+
+#: app/settings_registry.py
+msgid "Largest message page the API returns"
+msgstr "Largest message page the API returns"
+
+#: app/settings_registry.py
+msgid "Enable the public OpenAI-compatible API"
+msgstr "Enable the public OpenAI-compatible API"
+
+#: app/settings_registry.py
+msgid "Rate limits, e.g. 60 per minute;1000 per hour"
+msgstr "Rate limits, e.g. 60 per minute;1000 per hour"
+
+#: app/settings_registry.py
+msgid "Synchronous API waiters per instance"
+msgstr "Synchronous API waiters per instance"
+
+#: app/settings_registry.py
+msgid "How long a synchronous request waits (seconds)"
+msgstr "How long a synchronous request waits (seconds)"
+
+#: app/settings_registry.py
+msgid "Allowed origins for /v1, comma separated"
+msgstr "Allowed origins for /v1, comma separated"
+
+#: app/settings_registry.py
+msgid "How long API results stay in Redis (seconds)"
+msgstr "How long API results stay in Redis (seconds)"
+
+#: app/settings_registry.py
+msgid "Enable camera support"
+msgstr "Enable camera support"
+
+#: app/settings_registry.py
+msgid "Room snapshot service URL"
+msgstr "Room snapshot service URL"
+
+#: app/settings_registry.py
+msgid "Camera service timeout (seconds)"
+msgstr "Camera service timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Camera availability check interval (seconds)"
+msgstr "Camera availability check interval (seconds)"
+
+#: app/settings_registry.py
+msgid "IANA timezone used for dates and monitoring"
+msgstr "IANA timezone used for dates and monitoring"
+
+#: app/settings_registry.py
+msgid "Token for gated Hugging Face repositories"
+msgstr "Token for gated Hugging Face repositories"
+
+#: app/settings_registry.py
+msgid "Largest model file the Hub may download (GB)"
+msgstr "Largest model file the Hub may download (GB)"
+
+#: app/settings_registry.py
+msgid "Free disk margin kept after a download (GB)"
+msgstr "Free disk margin kept after a download (GB)"
+
+#: app/settings_registry.py
+msgid "Results per Hugging Face search"
+msgstr "Results per Hugging Face search"
+
+#: app/settings_registry.py
+msgid "Download timeout (seconds)"
+msgstr "Download timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Largest queue wait before a task is rejected (seconds)"
+msgstr "Largest queue wait before a task is rejected (seconds)"
+
+#: app/settings_registry.py
+msgid "Expose the debug endpoints"
+msgstr "Expose the debug endpoints"
+
+#: app/settings_registry.py
+msgid "Log token-estimation details"
+msgstr "Log token-estimation details"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

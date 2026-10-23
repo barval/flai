@@ -139,14 +139,21 @@ class TestTavilyEnabledFlag:
 @pytest.mark.unit
 class TestFetchTavilyUsage:
     @pytest.fixture(autouse=True)
+    def _no_backoff_sleep(self, monkeypatch):
+        """The retry policy is asserted through call counts, not by waiting."""
+        monkeypatch.setattr("app.tavily_keys.time.sleep", lambda _delay: None)
+        monkeypatch.setattr("app.tavily_keys.random.uniform", lambda _a, _b: 0.0)
+
+    @pytest.fixture(autouse=True)
     def _no_retry_sleep(self, monkeypatch):
         monkeypatch.setattr("app.tavily_keys.time.sleep", lambda *_: None)
 
     @staticmethod
-    def _response(status_code=200, payload=None):
+    def _response(status_code=200, payload=None, headers=None):
         class _Resp:
             def __init__(self):
                 self.status_code = status_code
+                self.headers = headers or {}
 
             def json(self):
                 if payload is None:
@@ -333,3 +340,98 @@ class TestFetchTavilyUsage:
 
         assert usage["status"] == "ok"
         assert (usage["limit"], usage["used"], usage["remaining"]) == (None, None, None)
+
+
+class _CacheRedis:
+    """In-memory stand-in for the Redis client used by the quota cache."""
+
+    def __init__(self):
+        self.store = {}
+        self.ttls = {}
+        self.closed = 0
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def set(self, key, value, ex=None):
+        self.store[key] = value
+        self.ttls[key] = ex
+
+    def close(self):
+        self.closed += 1
+
+
+@pytest.mark.unit
+class TestCachedTavilyUsage:
+    """The quota cache must stay short: answers expire, failures expire faster."""
+
+    def _call(self, redis_client, key="tvly-key", fail_ttl=60):
+        with patch("app.api_bridge.get_redis_client", return_value=redis_client):
+            return tavily_keys.cached_tavily_usage("valery", key, "https://api.tavily.com", 8, 300, fail_ttl)
+
+    def test_answered_lookup_is_reused_for_the_success_ttl(self):
+        redis_client = _CacheRedis()
+        answer = {"status": "ok", "plan": "Free", "limit": 1000, "used": 10, "remaining": 990}
+
+        with patch("app.tavily_keys.fetch_tavily_usage", return_value=answer) as fetch:
+            first = self._call(redis_client)
+            second = self._call(redis_client)
+
+        assert first == second == answer
+        assert fetch.call_count == 1
+        assert redis_client.ttls[tavily_keys._usage_cache_key("valery", "tvly-key")] == 300
+        assert redis_client.closed == 1
+
+    def test_unreachable_endpoint_is_remembered_only_briefly(self):
+        redis_client = _CacheRedis()
+        outage = {"status": "unavailable", "plan": None, "limit": None, "used": None, "remaining": None}
+
+        with patch("app.tavily_keys.fetch_tavily_usage", return_value=outage) as fetch:
+            self._call(redis_client)
+            self._call(redis_client)
+
+        assert fetch.call_count == 1
+        assert redis_client.ttls[tavily_keys._usage_cache_key("valery", "tvly-key")] == 60
+
+    def test_failure_cache_can_be_disabled(self):
+        redis_client = _CacheRedis()
+        outage = {"status": "unavailable", "plan": None, "limit": None, "used": None, "remaining": None}
+
+        with patch("app.tavily_keys.fetch_tavily_usage", return_value=outage) as fetch:
+            self._call(redis_client, fail_ttl=0)
+            self._call(redis_client, fail_ttl=0)
+
+        assert fetch.call_count == 2
+
+    def test_a_replaced_key_never_reads_the_previous_answer(self):
+        redis_client = _CacheRedis()
+        answer = {"status": "ok", "plan": "Free", "limit": 1000, "used": 10, "remaining": 990}
+
+        with patch("app.tavily_keys.fetch_tavily_usage", return_value=answer) as fetch:
+            self._call(redis_client, key="tvly-old")
+            self._call(redis_client, key="tvly-new")
+
+        assert fetch.call_count == 2
+
+
+@pytest.mark.unit
+def test_retry_after_is_honored(monkeypatch):
+    """A limiter that sends Retry-After gets exactly that delay, not the backoff."""
+    delays = []
+    monkeypatch.setattr("app.tavily_keys.time.sleep", lambda delay: delays.append(delay))
+    monkeypatch.setattr("app.tavily_keys.random.uniform", lambda _a, _b: 0.0)
+
+    throttled = MagicMock()
+    throttled.status_code = 429
+    throttled.headers = {"Retry-After": "3"}
+    answered = MagicMock()
+    answered.status_code = 200
+    answered.headers = {}
+    answered.json.return_value = {"key": {"usage": 1, "limit": 10}}
+
+    with patch("app.tavily_keys.requests") as mock_requests:
+        mock_requests.get.side_effect = [throttled, answered]
+        usage = tavily_keys.fetch_tavily_usage("tvly-key", "https://api.tavily.com", 8)
+
+    assert usage["status"] == "ok"
+    assert delays == [3.0]

@@ -135,6 +135,7 @@ def load_config(app):
     app.config["TAVILY_MAX_RESULTS"] = int(os.getenv("TAVILY_MAX_RESULTS", 7))
     app.config["TAVILY_SEARCH_DEPTH"] = os.getenv("TAVILY_SEARCH_DEPTH", "basic")
     app.config["TAVILY_ADMIN_CACHE_TTL"] = int(os.getenv("TAVILY_ADMIN_CACHE_TTL", 300))
+    app.config["TAVILY_NEGATIVE_CACHE_TTL"] = int(os.getenv("TAVILY_NEGATIVE_CACHE_TTL", 60))
 
     # Web crawler (optional Crawl4AI sidecar; reads pages and deep-studies sites)
     app.config["CRAWL_ENABLED"] = os.getenv("CRAWL_ENABLED", "false").lower() in ("true", "1", "yes")

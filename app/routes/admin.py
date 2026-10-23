@@ -365,73 +365,43 @@ def get_users():
 def get_users_tavily_usage():
     """Return each user's Tavily credit state for the Users tab.
 
-    Quota values are cached in Redis so opening the admin page never performs one
-    Tavily round trip per user; keys without a cached entry are fetched in a
-    small thread pool. Key material is never included in the response.
+    Quota lookups go through ``cached_tavily_usage``: an answered lookup is
+    reused for the success TTL, and an unreachable endpoint is remembered only
+    for the short failure TTL — page reloads must not keep a block alive.
+    Key material is never included in the response.
     """
-    from app.api_bridge import get_redis_client
-    from app.tavily_keys import STATUS_EXHAUSTED, STATUS_NO_KEY, STATUS_OK, fetch_tavily_usage
+    from app.tavily_keys import STATUS_NO_KEY, cached_tavily_usage
 
     users = list_users(exclude_admin=True)
     api_url = current_app.config.get("TAVILY_API_URL", "https://api.tavily.com")
     timeout = current_app.config.get("TAVILY_USAGE_TIMEOUT", 8)
-    ttl = current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300)
+    ok_ttl = current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300)
+    fail_ttl = current_app.config.get("TAVILY_NEGATIVE_CACHE_TTL", 60)
+    app = current_app._get_current_object()
 
     # list_users() is a single SELECT *, so the key is already in memory here —
     # one query for every user instead of one query per user.
-    keys: dict[str, str] = {}
+    pending: dict[str, str] = {}
     result: dict[str, dict] = {}
     for user in users:
         key = user.get("tavily_api_key") or ""
         if not key:
             result[user["login"]] = {"has_key": False, "status": STATUS_NO_KEY, "remaining": None}
         else:
-            keys[user["login"]] = key
+            pending[user["login"]] = key
             result[user["login"]] = {"has_key": True, "status": None, "remaining": None}
-
-    if not keys:
-        return jsonify(result)
-
-    redis_client = None
-    try:
-        redis_client = get_redis_client()
-    except Exception as e:
-        logger.warning(f"Redis unavailable for Tavily usage cache: {e}")
-
-    pending: dict[str, str] = {}
-    for login in keys:
-        cached = None
-        if redis_client is not None:
-            try:
-                cached = redis_client.get(f"admin:tavily_usage:{login}")
-            except Exception as e:
-                logger.warning(f"Tavily usage cache read failed for {login}: {e}")
-        if cached:
-            try:
-                result[login].update(json.loads(cached))
-                continue
-            except (TypeError, ValueError):
-                logger.warning(f"Ignoring malformed Tavily usage cache entry for {login}")
-        pending[login] = keys[login]
 
     if pending:
 
         def _fetch(login: str) -> tuple[str, dict]:
-            return login, fetch_tavily_usage(pending[login], api_url, timeout)
+            with app.app_context():
+                usage = cached_tavily_usage(login, pending[login], api_url, timeout, ok_ttl, fail_ttl)
+            return login, usage
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             for login, usage in executor.map(_fetch, pending):
                 result[login].update(usage)
-                # Only successful lookups are cached. A transient WAF block or
-                # network failure must not freeze the cell on a stale status.
-                if usage.get("status") in (STATUS_OK, STATUS_EXHAUSTED) and redis_client is not None:
-                    try:
-                        redis_client.set(f"admin:tavily_usage:{login}", json.dumps(usage), ex=ttl)
-                    except Exception as e:
-                        logger.warning(f"Tavily usage cache write failed for {login}: {e}")
-    if redis_client is not None:
-        with suppress(Exception):
-            redis_client.close()
+
     return jsonify(result)
 
 

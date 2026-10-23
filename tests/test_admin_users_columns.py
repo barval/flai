@@ -39,15 +39,15 @@ class _FakeRedis:
 
     def __init__(self):
         self.store = {}
+        self.ttls = {}
 
     def get(self, key):
         return self.store.get(key)
 
     def set(self, key, value, ex=None):
         self.store[key] = value
+        self.ttls[key] = ex
 
-    def close(self):
-        pass
 
 
 @pytest.mark.unit
@@ -84,6 +84,13 @@ class TestAdminUserColumns:
 
 @pytest.mark.unit
 class TestAdminTavilyUsage:
+    @pytest.fixture(autouse=True)
+    def _isolated_cache(self, monkeypatch):
+        """Every test starts with an empty quota cache instead of a shared Redis."""
+        fake = _FakeRedis()
+        monkeypatch.setattr("app.api_bridge.get_redis_client", lambda: fake)
+        return fake
+
     def test_no_key_is_reported_without_any_outbound_call(self, admin_client, member):
         with patch("app.tavily_keys.fetch_tavily_usage") as usage:
             body = admin_client.get("/admin/api/users/tavily-usage").get_json()
@@ -100,17 +107,16 @@ class TestAdminTavilyUsage:
         assert body[member]["remaining"] == 880
         assert body[member]["has_key"] is True
 
-    def test_second_call_is_served_from_the_cache(self, admin_client, member):
-        set_tavily_key(member, "tvly-abcdefgh12345678")
-        redis_client = _FakeRedis()
+    def test_second_call_is_served_from_the_cache(self, admin_client, member, _isolated_cache):
+        from app.tavily_keys import _usage_cache_key
 
-        with (
-            patch("app.api_bridge.get_redis_client", return_value=redis_client),
-            patch("app.tavily_keys.fetch_tavily_usage", return_value={"status": "ok", "remaining": 880}) as usage,
-        ):
+        set_tavily_key(member, "tvly-abcdefgh12345678")
+
+        with patch("app.tavily_keys.fetch_tavily_usage", return_value={"status": "ok", "remaining": 880}) as usage:
             admin_client.get("/admin/api/users/tavily-usage")
             assert usage.call_count == 1
-            redis_client.store["admin:tavily_usage:member1"] = json.dumps({"status": "ok", "remaining": 42})
+            cache_key = _usage_cache_key(member, "tvly-abcdefgh12345678")
+            _isolated_cache.store[cache_key] = json.dumps({"status": "ok", "remaining": 42})
             body = admin_client.get("/admin/api/users/tavily-usage").get_json()
 
         assert body[member]["remaining"] == 42

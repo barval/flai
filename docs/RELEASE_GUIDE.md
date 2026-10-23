@@ -102,7 +102,7 @@ Sections to update:
   1. **Features list** (`### ✨ Features`) — add new features, remove deprecated ones
   2. **What's New list** (`### What's New in vX.X`) — update version number and add new features
   3. **Core Components table** (`### Core Components`) — add/remove services, update ports
-  4. **Hardware Tiers** (``### Hardware Tiers`) — update VRAM/RAM requirements if changed
+  4. **Hardware Tiers** (`### Hardware Tiers`) — update VRAM/RAM requirements if changed
   5. **Model Benchmarks** (`### Model Benchmarks`) — add new models, update performance data
   6. **Quick Start commands** (`### Quick Start`) — update deploy.sh flags if profiles changed
   7. **Docker Compose profiles** — list all available profiles with descriptions

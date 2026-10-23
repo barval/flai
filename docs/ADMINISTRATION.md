@@ -8,7 +8,11 @@
 - 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
 - 🧭 **Model Hub** – search Hugging Face for GGUF models with a GPU/RAM fit estimate before downloading, download with progress/resume, delete downloaded files, and keep working offline
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
-- 🎨 **Personalization** – upload a custom header logo (PNG/JPEG/WebP, auto-scaled) and set the site name in Russian and English (both required, max 40 chars each); the name is shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens. Exported chats reuse the live site's footer — a short brand label that opens the same About dialog (full name, version, GitHub link, copyright) — and the custom logo is embedded both in the header and in the About dialog. A saved branding set is included in full backups and the custom logo is replaced by the built-in one as soon as it is deleted
+- 🎨 **Personalization** – brand the instance:
+  - **Header logo** – upload a custom logo (PNG/JPEG/WebP, auto-scaled to 128 px with alpha preserved); deleting it restores the built-in logo.
+  - **Site name** – in Russian and English (both required, max 40 chars each); shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens.
+  - **Chat export** – reuses the live site's footer: a short brand label that opens the same About dialog (full name, version, GitHub link, copyright), and the custom logo is embedded in both the header and that dialog.
+  - **Backups** – a saved branding set is included in full backups.
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM and RAM (available of total), and CPU cores
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands

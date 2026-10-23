@@ -55,6 +55,7 @@ FULL_TABLES = [
     "task_steps",
     "storage_snapshots",
     "monitoring_archive",
+    "web_requests",
 ]
 
 # Directories included in 'full' backup

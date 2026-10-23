@@ -26,6 +26,7 @@ def test_monitoring_controls_and_cards_exist():
         "messages",
         "files",
         "documents",
+        "web_requests",
     ):
         assert f'id="monitoring-chart-{metric}"' in html
 
@@ -51,7 +52,7 @@ def test_storage_card_declares_the_history_start_line():
 def test_charts_keep_their_aspect_ratio():
     html = _admin_html()
     assert html.count('preserveAspectRatio="none"') == 0
-    assert html.count('preserveAspectRatio="xMidYMid meet"') == 8
+    assert html.count('preserveAspectRatio="xMidYMid meet"') == 9
 
 
 def test_range_buttons_use_short_equal_width_labels():
@@ -103,4 +104,4 @@ def test_axis_labels_are_smaller_than_the_card_text():
 
 def test_chart_viewbox_matches_the_script_coordinates():
     """The script draws into 360x150 — a stale viewBox would clip the bars."""
-    assert _admin_html().count('viewBox="0 0 360 150"') == 8
+    assert _admin_html().count('viewBox="0 0 360 150"') == 9

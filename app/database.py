@@ -398,9 +398,11 @@ def _init_postgresql():
     c.execute("""
         CREATE TABLE IF NOT EXISTS user_storage (
             user_id TEXT PRIMARY KEY,
-            used_bytes INTEGER DEFAULT 0
+            used_bytes INTEGER DEFAULT 0,
+            limit_bytes BIGINT
         )
     """)
+    c.execute("ALTER TABLE user_storage ADD COLUMN IF NOT EXISTS limit_bytes BIGINT")
     c.execute("""
         CREATE TABLE IF NOT EXISTS storage_snapshots (
             id BIGSERIAL PRIMARY KEY,
@@ -427,6 +429,23 @@ def _init_postgresql():
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_monitoring_archive_user_time
         ON monitoring_archive (user_id, occurred_at)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS web_requests (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            provider TEXT,
+            request_count INTEGER NOT NULL DEFAULT 1,
+            occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_web_requests_user_time
+        ON web_requests (user_id, occurred_at)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_web_requests_time ON web_requests (occurred_at)
     """)
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)

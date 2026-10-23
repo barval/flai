@@ -3919,6 +3919,30 @@ msgstr "7 d"
 msgid "30 d"
 msgstr "30 d"
 
+#: app/templates/admin.html
+msgid "Internet requests"
+msgstr "Internet requests"
+
+#: app/templates/admin.html
+msgid "Searches and page fetches since the 1st of the month"
+msgstr "Searches and page fetches since the 1st of the month"
+
+#: app/templates/admin.html
+msgid "Searches, page fetches and crawl pages sent to the internet — with a Tavily key or without."
+msgstr "Searches, page fetches and crawl pages sent to the internet — with a Tavily key or without."
+
+#: app/templates/admin.html
+msgid "Per-user limit in MB. Leave the field empty to use the default ({default} MB)."
+msgstr "Per-user limit in MB. Leave the field empty to use the default ({default} MB)."
+
+#: app/templates/admin.html
+msgid "Enter a whole number of megabytes, or leave the field empty for the default limit"
+msgstr "Enter a whole number of megabytes, or leave the field empty for the default limit"
+
+#: app/templates/admin.html
+msgid "Invalid storage limit"
+msgstr "Invalid storage limit"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

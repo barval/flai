@@ -37,6 +37,36 @@ def get_user_storage_usage(user_id: str) -> int:
         return 0
 
 
+def get_user_storage_limit(user_id: str) -> int | None:
+    """Per-user upload limit in bytes; ``None`` means the global default applies."""
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT limit_bytes FROM user_storage WHERE user_id = %s", (user_id,))
+            row = c.fetchone()
+            return int(row["limit_bytes"]) if row and row.get("limit_bytes") else None
+    except Exception:
+        return None
+
+
+def set_user_storage_limit(user_id: str, limit_bytes: int | None) -> None:
+    """Store a per-user upload limit; ``None`` clears the override.
+
+    Creates the quota row when the user has not uploaded anything yet, and never
+    touches ``used_bytes`` — the limit and the usage are independent.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO user_storage (user_id, used_bytes, limit_bytes)
+            VALUES (%s, 0, %s)
+            ON CONFLICT (user_id) DO UPDATE SET limit_bytes = EXCLUDED.limit_bytes
+        """,
+            (user_id, limit_bytes),
+        )
+
+
 def update_user_storage(user_id: str, delta_bytes: int) -> None:
     """Update user's storage counter. delta_bytes can be positive (upload) or negative (delete)."""
     try:

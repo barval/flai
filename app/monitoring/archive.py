@@ -116,6 +116,17 @@ def archive_task(cursor, task_id: str) -> int:
     return inserted
 
 
+def prune_web_requests(days: int = ARCHIVE_RETENTION_DAYS) -> int:
+    """Drop request rows older than the retention window; returns the deleted count."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM web_requests WHERE occurred_at < now() - make_interval(days => %(days)s)",
+            {"days": days},
+        )
+        return cursor.rowcount
+
+
 def prune_archive(days: int = ARCHIVE_RETENTION_DAYS) -> int:
     """Drop archive rows older than the retention window; returns the deleted count."""
     with get_db() as conn:

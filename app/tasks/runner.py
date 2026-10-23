@@ -546,7 +546,9 @@ def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) 
     step_extra = step.get("extra") or {}
     query = str(step_extra.get("query") or step.get("goal") or "")
     api_key = get_tavily_key(user_id) if user_id else None
-    results, _provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
+    results, _provider = search.search_with_fallback(
+        query, lang=lang, api_key=api_key, user_id=user_id
+    )
     base = app.modules.get("base")
     max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
     return search.format_results_context(results or [], lang=lang, max_chars=max_chars)

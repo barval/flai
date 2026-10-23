@@ -498,7 +498,9 @@ class RlmModule:
         api_key = get_tavily_key(broker.user_id) if broker.user_id else None
         if not search or (not getattr(search, "available", False) and not api_key):
             return "Web search is unavailable."
-        results, _provider = search.search_with_fallback(query, lang=broker.lang, max_results=3, api_key=api_key)
+        results, _provider = search.search_with_fallback(
+            query, lang=broker.lang, max_results=3, api_key=api_key, user_id=broker.user_id
+        )
         results = results or []
         if not results:
             return "No web results found."

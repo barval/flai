@@ -1062,9 +1062,9 @@ def test_app():
                     c.execute(
                         "TRUNCATE TABLE api_tokens, branding_settings, camera_rooms, "
                         "chat_sessions, document_folders, documents, gguf_models_cache, "
-                        "messages, model_configs, model_vram_estimates, session_visits, "
-                        "slm_import_progress, storage_snapshots, task_steps, tasks, user_sessions, "
-                        "user_storage, users "
+                        "messages, model_configs, model_vram_estimates, monitoring_archive, "
+                        "session_visits, slm_import_progress, storage_snapshots, task_steps, tasks, "
+                        "user_sessions, user_storage, users "
                         "RESTART IDENTITY CASCADE"
                     )
             except Exception:

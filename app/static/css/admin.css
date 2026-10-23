@@ -1669,6 +1669,7 @@ body.dark-theme .monitoring-error {
     border-radius: 8px;
     margin-bottom: 12px;
     background: #fff;
+    overflow: hidden;
 }
 .settings-group summary {
     cursor: pointer;
@@ -1683,26 +1684,44 @@ body.dark-theme .monitoring-error {
     font-weight: 400;
     font-size: 12px;
 }
-.settings-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px 18px;
-    padding: 4px 12px 12px;
+.settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
 }
-.settings-field {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 130px auto auto;
-    gap: 6px;
-    align-items: center;
+.settings-table th,
+.settings-table td {
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid #eee;
+    border-right: 1px dashed #e2e2e2;
+}
+.settings-table th:last-child,
+.settings-table td:last-child {
+    border-right: none;
+}
+.settings-table th {
+    background: #f5f6f8;
+    font-size: 12px;
+    font-weight: 600;
+    color: #444;
+}
+.settings-table th:nth-child(1),
+.settings-table td:nth-child(1) {
+    width: 46%;
+}
+.settings-table th:nth-child(2),
+.settings-table td:nth-child(2) {
+    width: 32%;
 }
 .settings-field-label {
     font-size: 12px;
     color: #555;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .settings-input {
+    width: 100%;
+    box-sizing: border-box;
     padding: 4px 6px;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -1710,14 +1729,15 @@ body.dark-theme .monitoring-error {
     min-width: 0;
 }
 .settings-input[type="checkbox"] {
-    justify-self: start;
+    width: auto;
 }
 .settings-default {
-    font-size: 11px;
-    color: #888;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+.settings-default-value {
+    font-size: 12px;
+    color: #888;
+    margin-right: 10px;
 }
 .settings-reset {
     border: none;
@@ -1737,6 +1757,15 @@ body.dark-theme .settings-group summary,
 body.dark-theme .settings-field-label {
     color: #e0e0e0;
 }
+body.dark-theme .settings-table th {
+    background: #333;
+    color: #e0e0e0;
+}
+body.dark-theme .settings-table th,
+body.dark-theme .settings-table td {
+    border-right-color: #3a3a3a;
+    border-bottom-color: #3a3a3a;
+}
 body.dark-theme #settings-search,
 body.dark-theme .settings-input {
     background: #2a2a2a;
@@ -1744,12 +1773,7 @@ body.dark-theme .settings-input {
     border-color: #555;
 }
 body.dark-theme .settings-count,
-body.dark-theme .settings-default,
+body.dark-theme .settings-default-value,
 body.dark-theme .settings-reset {
     color: #9a9a9a;
-}
-@media (max-width: 1100px) {
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
 }

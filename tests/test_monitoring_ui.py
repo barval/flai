@@ -67,3 +67,40 @@ def test_range_buttons_use_short_equal_width_labels():
 
     css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
     assert "flex: 1 1 0" in css
+
+
+def _monitoring_js() -> str:
+    return Path("app/static/js/admin-monitoring.js").read_text(encoding="utf-8")
+
+
+def test_charts_are_bars_on_two_grids():
+    """Bars with a horizontal and a vertical grid — no line series left."""
+    js = _monitoring_js()
+    assert "'monitoring-bar'" in js and "'rect'" in js
+    assert "monitoring-grid-v" in js
+    assert "monitoring-line" not in js
+    assert "monitoring-point" not in js
+
+
+def test_axis_scales_use_round_steps():
+    """Tick values come from a 1/2/2.5/5 ladder, never from the raw maximum."""
+    js = _monitoring_js()
+    assert "function niceStep(" in js and "function niceScale(" in js
+    assert "[1, 2, 2.5, 5, 10]" in js
+
+
+def test_charts_show_more_than_two_ticks_per_axis():
+    js = _monitoring_js()
+    assert "const Y_INTERVALS = 5;" in js
+    assert "const X_TICKS = 6;" in js
+
+
+def test_axis_labels_are_smaller_than_the_card_text():
+    css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
+    axis_block = css.split(".monitoring-axis {", 1)[1].split("}", 1)[0]
+    assert "font-size: 8px" in axis_block
+
+
+def test_chart_viewbox_matches_the_script_coordinates():
+    """The script draws into 360x150 — a stale viewBox would clip the bars."""
+    assert _admin_html().count('viewBox="0 0 360 150"') == 8

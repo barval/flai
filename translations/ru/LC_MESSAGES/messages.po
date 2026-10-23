@@ -3867,6 +3867,74 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/templates/admin.html
+msgid "Monitoring"
+msgstr "Мониторинг"
+
+#: app/templates/admin.html
+msgid "User"
+msgstr "Пользователь"
+
+#: app/templates/admin.html
+msgid "1 hour"
+msgstr "1 час"
+
+#: app/templates/admin.html
+msgid "6 hours"
+msgstr "6 часов"
+
+#: app/templates/admin.html
+msgid "24 hours"
+msgstr "24 часа"
+
+#: app/templates/admin.html
+msgid "7 days"
+msgstr "7 дней"
+
+#: app/templates/admin.html
+msgid "30 days"
+msgstr "30 дней"
+
+#: app/templates/admin.html
+msgid "All users"
+msgstr "Все пользователи"
+
+#: app/templates/admin.html
+msgid "No data in this range"
+msgstr "Нет данных за этот период"
+
+#: app/templates/admin.html
+msgid "Failed to load monitoring data"
+msgstr "Не удалось загрузить данные мониторинга"
+
+#: app/templates/admin.html
+msgid "Used of limit — hourly snapshots, history starts at the first snapshot."
+msgstr "Занято из лимита — снимки раз в час, история начинается с первого снимка."
+
+#: app/templates/admin.html
+msgid "Chat sessions created in range, including deleted ones."
+msgstr "Сеансы чата, созданные за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Chat messages in range, including deleted ones."
+msgstr "Сообщения чата за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Background tasks created in range, including deleted ones."
+msgstr "Фоновые задачи, созданные за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Chat + tasks + plans, including deleted activity."
+msgstr "Чат + задачи + планы, включая удалённую активность."
+
+#: app/templates/admin.html
+msgid "Chat attachments added in range — a document attached in chat counts here and in Documents."
+msgstr "Вложения чата, добавленные за период — документ, приложенный в чате, считается здесь и в «Документах»."
+
+#: app/templates/admin.html
+msgid "All documents, same as the Documents panel."
+msgstr "Все документы, как в панели «Документы»."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

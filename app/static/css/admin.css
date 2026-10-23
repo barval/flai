@@ -1454,3 +1454,133 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         align-items: flex-start;
     }
 }
+
+/* Monitoring tab */
+.monitoring-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.monitoring-label {
+    font-weight: 600;
+}
+.monitoring-select {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 14px;
+}
+.monitoring-range {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.monitoring-range-btn {
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+}
+.monitoring-range-btn.active {
+    background: #1976d2;
+    border-color: #1976d2;
+    color: #fff;
+}
+.monitoring-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+.monitoring-card {
+    padding: 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+}
+.monitoring-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+.monitoring-card-head h3 {
+    margin: 0;
+    font-size: 15px;
+}
+.monitoring-value {
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.monitoring-chart {
+    display: block;
+    width: 100%;
+    height: 120px;
+    margin-top: 8px;
+}
+.monitoring-grid {
+    stroke: #e6e6e6;
+    stroke-width: 1;
+}
+.monitoring-axis {
+    fill: #777;
+    font-size: 9px;
+}
+.monitoring-line {
+    fill: none;
+    stroke: #1976d2;
+    stroke-width: 2;
+    stroke-linejoin: round;
+}
+.monitoring-point {
+    fill: transparent;
+    cursor: pointer;
+}
+.monitoring-point:hover {
+    fill: #1976d2;
+}
+.monitoring-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: #777;
+}
+.monitoring-error {
+    margin: 0 0 16px;
+    color: #b00020;
+}
+body.dark-theme .monitoring-select,
+body.dark-theme .monitoring-range-btn,
+body.dark-theme .monitoring-card {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #e8e8e8;
+}
+body.dark-theme .monitoring-range-btn.active {
+    background: #1976d2;
+    border-color: #1976d2;
+    color: #fff;
+}
+body.dark-theme .monitoring-grid {
+    stroke: #3a3a3a;
+}
+body.dark-theme .monitoring-axis,
+body.dark-theme .monitoring-hint {
+    fill: #9a9a9a;
+    color: #9a9a9a;
+}
+body.dark-theme .monitoring-line {
+    stroke: #64b5f6;
+}
+body.dark-theme .monitoring-error {
+    color: #ff8a80;
+}
+@media (max-width: 768px) {
+    .monitoring-cards {
+        grid-template-columns: 1fr;
+    }
+}

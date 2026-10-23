@@ -3834,6 +3834,74 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
 
+#: app/templates/admin.html
+msgid "Monitoring"
+msgstr "Monitoring"
+
+#: app/templates/admin.html
+msgid "User"
+msgstr "User"
+
+#: app/templates/admin.html
+msgid "1 hour"
+msgstr "1 hour"
+
+#: app/templates/admin.html
+msgid "6 hours"
+msgstr "6 hours"
+
+#: app/templates/admin.html
+msgid "24 hours"
+msgstr "24 hours"
+
+#: app/templates/admin.html
+msgid "7 days"
+msgstr "7 days"
+
+#: app/templates/admin.html
+msgid "30 days"
+msgstr "30 days"
+
+#: app/templates/admin.html
+msgid "All users"
+msgstr "All users"
+
+#: app/templates/admin.html
+msgid "No data in this range"
+msgstr "No data in this range"
+
+#: app/templates/admin.html
+msgid "Failed to load monitoring data"
+msgstr "Failed to load monitoring data"
+
+#: app/templates/admin.html
+msgid "Used of limit — hourly snapshots, history starts at the first snapshot."
+msgstr "Used of limit — hourly snapshots, history starts at the first snapshot."
+
+#: app/templates/admin.html
+msgid "Chat sessions created in range, including deleted ones."
+msgstr "Chat sessions created in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Chat messages in range, including deleted ones."
+msgstr "Chat messages in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Background tasks created in range, including deleted ones."
+msgstr "Background tasks created in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Chat + tasks + plans, including deleted activity."
+msgstr "Chat + tasks + plans, including deleted activity."
+
+#: app/templates/admin.html
+msgid "Chat attachments added in range — a document attached in chat counts here and in Documents."
+msgstr "Chat attachments added in range — a document attached in chat counts here and in Documents."
+
+#: app/templates/admin.html
+msgid "All documents, same as the Documents panel."
+msgstr "All documents, same as the Documents panel."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

@@ -128,3 +128,18 @@ def test_full_backup_includes_the_settings_tables():
 
     assert "settings" in FULL_TABLES
     assert "settings_audit" in FULL_TABLES
+
+
+@pytest.mark.unit
+def test_settings_render_as_a_three_column_table_with_separators():
+    """Variable | value | default + reset, with the Users-tab column separators."""
+    js = Path("app/static/js/admin-settings.js").read_text(encoding="utf-8")
+    assert "settings-table" in js
+    assert "createElement('table')" in js
+    for cell in ("settings-name", "settings-value", "settings-default"):
+        assert cell in js
+
+    css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
+    block = css.split(".settings-table th,\n.settings-table td {", 1)[1].split("}", 1)[0]
+    assert "border-right: 1px dashed" in block
+    assert ".settings-table th:last-child" in css

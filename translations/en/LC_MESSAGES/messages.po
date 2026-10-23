@@ -4031,6 +4031,18 @@ msgstr "No settings to save"
 msgid "No settings to reset"
 msgstr "No settings to reset"
 
+#: app/templates/admin.html
+msgid "Variable"
+msgstr "Variable"
+
+#: app/templates/admin.html
+msgid "Value"
+msgstr "Value"
+
+#: app/templates/admin.html
+msgid "Default value"
+msgstr "Default value"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

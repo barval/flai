@@ -28,16 +28,22 @@
     }
 
     function buildField(field) {
-        const row = document.createElement('div');
+        const row = document.createElement('tr');
         row.className = 'settings-field';
         row.dataset.key = field.key;
 
+        const nameCell = document.createElement('td');
+        nameCell.className = 'settings-name';
         const label = document.createElement('label');
         label.className = 'settings-field-label';
         label.textContent = humanize(field.key);
         label.title = field.key;
         label.htmlFor = 'setting-' + field.key;
-        row.appendChild(label);
+        nameCell.appendChild(label);
+        row.appendChild(nameCell);
+
+        const valueCell = document.createElement('td');
+        valueCell.className = 'settings-value';
 
         let input;
         if (field.kind === 'bool') {
@@ -70,16 +76,19 @@
             }
             markDirty();
         });
-        row.appendChild(input);
+        valueCell.appendChild(input);
+        row.appendChild(valueCell);
 
+        const defaultCell = document.createElement('td');
+        defaultCell.className = 'settings-default';
         const meta = document.createElement('span');
-        meta.className = 'settings-default';
+        meta.className = 'settings-default-value';
         if (field.secret) {
             meta.textContent = field.has_value ? t('settings_secret_set') : t('settings_secret_empty');
         } else {
-            meta.textContent = t('settings_default') + ': ' + String(field.default);
+            meta.textContent = String(field.default);
         }
-        row.appendChild(meta);
+        defaultCell.appendChild(meta);
 
         const reset = document.createElement('button');
         reset.type = 'button';
@@ -87,7 +96,8 @@
         reset.textContent = '↺';
         reset.title = t('settings_reset');
         reset.addEventListener('click', () => resetField(field.key));
-        row.appendChild(reset);
+        defaultCell.appendChild(reset);
+        row.appendChild(defaultCell);
 
         return row;
     }
@@ -108,10 +118,23 @@
             summary.appendChild(count);
             details.appendChild(summary);
 
-            const grid = document.createElement('div');
-            grid.className = 'settings-grid';
-            group.fields.forEach((field) => grid.appendChild(buildField(field)));
-            details.appendChild(grid);
+            const table = document.createElement('table');
+            table.className = 'settings-table';
+            const head = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            [t('Variable'), t('Value'), t('Default value')].forEach(
+                (title) => {
+                    const th = document.createElement('th');
+                    th.textContent = title;
+                    headRow.appendChild(th);
+                }
+            );
+            head.appendChild(headRow);
+            table.appendChild(head);
+            const body = document.createElement('tbody');
+            group.fields.forEach((field) => body.appendChild(buildField(field)));
+            table.appendChild(body);
+            details.appendChild(table);
             groupsBox.appendChild(details);
         });
         applyFilter();

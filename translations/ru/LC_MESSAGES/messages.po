@@ -4064,6 +4064,18 @@ msgstr "Нет настроек для сохранения"
 msgid "No settings to reset"
 msgstr "Нет настроек для сброса"
 
+#: app/templates/admin.html
+msgid "Variable"
+msgstr "Переменная"
+
+#: app/templates/admin.html
+msgid "Value"
+msgstr "Значение"
+
+#: app/templates/admin.html
+msgid "Default value"
+msgstr "Значение по умолчанию"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

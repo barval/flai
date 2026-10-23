@@ -3834,6 +3834,10 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
 
+#: app/tasks/runner.py
+msgid "the verifier answered in another language"
+msgstr "the verifier answered in another language"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

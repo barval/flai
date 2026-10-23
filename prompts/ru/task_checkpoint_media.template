@@ -33,6 +33,8 @@
 Описание созданного изображения:
 {artifact_description}
 
+- Поле explanation пиши строго на языке ответа; текст на другом языке считается ошибкой.
+
 # ФОРМАТ ОТВЕТА
 Ответь строго одним JSON-объектом без какого-либо текста до или после:
 {{"verdict": true, "severity": "none", "repairable": false, "score": 100, "mismatches": [{{"entity": "...", "expected": "...", "seen": "...", "severity": "critical|minor"}}], "explanation": "..."}}

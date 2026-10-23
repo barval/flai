@@ -396,10 +396,14 @@ def _task_summary(
         # the budget's own accounting); rendered as ⏱️ in the view.
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
     }
-    base_totals = (
-        token_totals.get(task["id"]) if token_totals is not None else None
-    ) or {"prompt_tokens": 0, "completion_tokens": 0}
-    summary["token_totals"] = _add_plan_usage(task, base_totals)
+    if token_totals is None:
+        # A single-task response must report the same totals as the list: a
+        # caller that forgets to pass the mapping used to return plan-only
+        # numbers, so opening or stopping a task made the list counter drop.
+        base_totals = _token_totals_for([str(task["id"])]).get(str(task["id"]))
+    else:
+        base_totals = token_totals.get(str(task["id"]))
+    summary["token_totals"] = _add_plan_usage(task, base_totals or {"prompt_tokens": 0, "completion_tokens": 0})
     if queue_positions and task.get("status") == "queued":
         summary["queue_position"] = queue_positions.get(str(task["id"]), 0)
     return summary
@@ -466,7 +470,7 @@ def _token_totals_for(task_ids: list[str]) -> dict[str, dict[str, int]]:
             (task_ids,),
         )
         rows = c.fetchall()
-    return {r["task_id"]: {"prompt_tokens": int(r["p"]), "completion_tokens": int(r["c"])} for r in rows}
+    return {str(r["task_id"]): {"prompt_tokens": int(r["p"]), "completion_tokens": int(r["c"])} for r in rows}
 
 
 def _tool_badge(tool: Any) -> str:

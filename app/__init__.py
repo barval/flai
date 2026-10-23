@@ -60,8 +60,11 @@ def _is_cli_process() -> bool:
 
 def create_app():
     app = Flask(__name__)
-    # Load configuration
+    # Load configuration (.env is the default; the database may override it later)
     load_config(app)
+    from app.settings_registry import remember_defaults
+
+    remember_defaults(app)
 
     # Trust proxies for proper HTTPS detection behind nginx
     from werkzeug.middleware.proxy_fix import ProxyFix
@@ -185,6 +188,14 @@ def create_app():
 
     # Initialize chat DB
     init_db()
+
+    # Settings saved in the admin panel win over .env from now on.
+    try:
+        from app.settings_store import apply_overrides
+
+        apply_overrides(app)
+    except Exception as exc:  # noqa: BLE001 — the app must start even without the settings table
+        app.logger.warning(f"Settings overrides were not applied: {exc}")
 
     # Generate llama-swap config if using llama-swap backend
     backend_type = app.config.get("LLAMACP_BACKEND", "llamacpp")

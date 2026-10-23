@@ -153,6 +153,24 @@ MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
 HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 ```
 
+## Admin Panel Overrides
+
+Almost every variable above can also be edited in **Admin Panel → Settings** and is then stored in the
+database. The precedence is **database > `.env` > built-in default**: a value saved in the panel overrides
+the environment, and the ↺ button next to a field drops the override so the `.env` value applies again.
+
+- A saved value takes effect immediately, without a restart.
+- Values are grouped (Search and crawl, Documents and RAG, Tasks, Models and context, Media generation,
+  Deep analysis, Voice, Memory and history, API, Cameras, Service, Debug) and the search box filters by
+  name or environment key.
+- Secret values (`QDRANT_API_KEY`, `HUGGINGFACE_TOKEN`, `CRAWL_API_TOKEN`) are never sent back to the
+  browser: only a mask is shown, and an empty field means "leave unchanged".
+- Every change is written to `settings_audit` (who, when, old → new; secrets are redacted) and pruned
+  after 45 days. Both tables are included in full backups.
+- `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, the folder paths, `HTTPS_ENABLED`, `FLAI_PLATFORM` and the
+  developer `DEBUG_JS` / `DEBUG_TRANSLATIONS` flags stay in `.env` only — they are needed before the
+  database is reachable or define process behaviour.
+
 ## Domain Access and HTTPS (Reverse Proxy)
 
 By default the web interface is available at `http://<server-ip>:5000` — the web service publishes port `5000` (`"5000:5000"` in `docker-compose.gpu.yml` / `docker-compose.cpu.yml`) and Gunicorn listens on `0.0.0.0:5000`.

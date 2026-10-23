@@ -249,7 +249,7 @@ def get_users():
                         COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
                         COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
-                         WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                         WHERE user_id = %s) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
                          FROM messages m2
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id

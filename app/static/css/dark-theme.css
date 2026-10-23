@@ -3,6 +3,18 @@
 .dark-theme {
     background-color: #1e1e1e;
     color: #e0e0e0;
+    /* Native widgets — autofill, scrollbars, date pickers — follow the dark palette. */
+    color-scheme: dark;
+}
+/* Chrome paints autofilled fields with its own background and text colour; keep
+   the field's themed background (the transition never completes) and fix the text. */
+.dark-theme input:-webkit-autofill,
+.dark-theme input:-webkit-autofill:hover,
+.dark-theme input:-webkit-autofill:focus,
+.dark-theme textarea:-webkit-autofill {
+    -webkit-text-fill-color: #e0e0e0;
+    caret-color: #e0e0e0;
+    transition: background-color 9999s ease-in-out 0s;
 }
 .dark-theme header {
     background-color: #1a2632;

@@ -343,6 +343,15 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not start watchdog: {e}")
 
+    # Monitoring: hourly storage snapshots (history survives deletions)
+    if not _is_cli_process():
+        try:
+            from app.monitoring.snapshots import start_snapshotter
+
+            start_snapshotter(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start monitoring snapshotter: {e}")
+
     # Initialize Redis queue (workers only in server processes, never in CLI)
     app.request_queue = RedisRequestQueue(app, start_workers=not _is_cli_process())
 

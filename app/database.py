@@ -402,6 +402,18 @@ def _init_postgresql():
         )
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS storage_snapshots (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            taken_at TIMESTAMPTZ NOT NULL,
+            used_bytes BIGINT NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_snapshots_hour
+        ON storage_snapshots (user_id, taken_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
             user_id TEXT PRIMARY KEY,
             last_message_id INTEGER NOT NULL DEFAULT 0,

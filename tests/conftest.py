@@ -63,6 +63,10 @@ def stop_app_background_threads(flask_app: Any) -> None:
 
         stop_watchdog(flask_app, timeout=3)
     with contextlib.suppress(Exception):
+        from app.monitoring.snapshots import stop_snapshotter
+
+        stop_snapshotter(flask_app, timeout=3)
+    with contextlib.suppress(Exception):
         from app.tasks import executor as tasks_executor
 
         tasks_executor.stop_task_executor(timeout=2)
@@ -1059,7 +1063,8 @@ def test_app():
                         "TRUNCATE TABLE api_tokens, branding_settings, camera_rooms, "
                         "chat_sessions, document_folders, documents, gguf_models_cache, "
                         "messages, model_configs, model_vram_estimates, session_visits, "
-                        "slm_import_progress, task_steps, tasks, user_sessions, user_storage, users "
+                        "slm_import_progress, storage_snapshots, task_steps, tasks, user_sessions, "
+                        "user_storage, users "
                         "RESTART IDENTITY CASCADE"
                     )
             except Exception:

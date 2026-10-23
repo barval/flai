@@ -3867,6 +3867,10 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/tasks/runner.py
+msgid "the verifier answered in another language"
+msgstr "верификатор ответил на другом языке"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

@@ -3943,6 +3943,94 @@ msgstr "Enter a whole number of megabytes, or leave the field empty for the defa
 msgid "Invalid storage limit"
 msgstr "Invalid storage limit"
 
+#: app/templates/admin.html
+msgid "Settings"
+msgstr "Settings"
+
+#: app/templates/admin.html
+msgid "Search settings…"
+msgstr "Search settings…"
+
+#: app/templates/admin.html
+msgid "Save changes"
+msgstr "Save changes"
+
+#: app/templates/admin.html
+msgid "Default"
+msgstr "Default"
+
+#: app/templates/admin.html
+msgid "Reset to the .env value"
+msgstr "Reset to the .env value"
+
+#: app/templates/admin.html
+msgid "Saving…"
+msgstr "Saving…"
+
+#: app/templates/admin.html
+msgid "Invalid settings"
+msgstr "Invalid settings"
+
+#: app/templates/admin.html
+msgid "Failed to load settings"
+msgstr "Failed to load settings"
+
+#: app/templates/admin.html
+msgid "Reset"
+msgstr "Reset"
+
+#: app/templates/admin.html
+msgid "A value is stored"
+msgstr "A value is stored"
+
+#: app/templates/admin.html
+msgid "Not set"
+msgstr "Not set"
+
+#: app/templates/admin.html
+msgid "Search and crawl"
+msgstr "Search and crawl"
+
+#: app/templates/admin.html
+msgid "Documents and RAG"
+msgstr "Documents and RAG"
+
+#: app/templates/admin.html
+msgid "Models and context"
+msgstr "Models and context"
+
+#: app/templates/admin.html
+msgid "Media generation"
+msgstr "Media generation"
+
+#: app/templates/admin.html
+msgid "Voice"
+msgstr "Voice"
+
+#: app/templates/admin.html
+msgid "Memory and history"
+msgstr "Memory and history"
+
+#: app/templates/admin.html
+msgid "API"
+msgstr "API"
+
+#: app/templates/admin.html
+msgid "Service"
+msgstr "Service"
+
+#: app/templates/admin.html
+msgid "Debug"
+msgstr "Debug"
+
+#: app/templates/admin.html
+msgid "No settings to save"
+msgstr "No settings to save"
+
+#: app/templates/admin.html
+msgid "No settings to reset"
+msgstr "No settings to reset"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

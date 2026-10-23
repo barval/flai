@@ -427,6 +427,74 @@ def get_users_tavily_usage():
     return jsonify(result)
 
 
+@bp.route("/api/settings", methods=["GET"])
+@admin_required
+def get_settings():
+    """Schema and current values for the Settings tab (secrets are masked)."""
+    from app.settings_registry import build_schema
+
+    return jsonify({"groups": build_schema(current_app)})
+
+
+@bp.route("/api/settings", methods=["POST"])
+@admin_required
+def save_settings():
+    """Persist submitted settings and apply them without a restart."""
+    from app.settings_store import save_values
+
+    body = request.get_json(silent=True) or {}
+    values = body.get("values")
+    if not isinstance(values, dict) or not values:
+        return jsonify({"error": "⚠️ " + _("No settings to save")}), 400
+
+    saved, errors = save_values(current_app, values, session.get("login") or "admin")
+    if errors and not saved:
+        return jsonify({"error": "⚠️ " + _("Invalid settings"), "fields": errors}), 400
+    return jsonify({"status": "ok", "saved": saved, "errors": errors})
+
+
+@bp.route("/api/settings/reset", methods=["POST"])
+@admin_required
+def reset_settings():
+    """Drop overrides so the .env values apply again."""
+    from app.settings_store import reset_keys
+
+    body = request.get_json(silent=True) or {}
+    keys = body.get("keys")
+    if not isinstance(keys, list) or not keys:
+        return jsonify({"error": "⚠️ " + _("No settings to reset")}), 400
+
+    count = reset_keys(current_app, [str(key) for key in keys], session.get("login") or "admin")
+    return jsonify({"status": "ok", "reset": count})
+
+
+@bp.route("/api/settings/audit", methods=["GET"])
+@admin_required
+def get_settings_audit():
+    """Recent settings changes, newest first (secrets are already redacted)."""
+    limit = min(max(int(request.args.get("limit", 50)), 1), 200)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT key, old_value, new_value, updated_by, changed_at "
+            "FROM settings_audit ORDER BY changed_at DESC LIMIT %s",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    return jsonify(
+        [
+            {
+                "key": row["key"],
+                "old_value": row["old_value"],
+                "new_value": row["new_value"],
+                "updated_by": row["updated_by"],
+                "changed_at": row["changed_at"].isoformat(),
+            }
+            for row in rows
+        ]
+    )
+
+
 @bp.route("/api/monitoring", methods=["GET"])
 @admin_required
 def get_monitoring():

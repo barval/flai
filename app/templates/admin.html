@@ -9,6 +9,7 @@
         <button class="admin-tab active" data-tab="hardware">{{ _('Hardware') }}</button>
         <button class="admin-tab" data-tab="users">{{ _('Users') }}</button>
         <button class="admin-tab" data-tab="monitoring">{{ _('Monitoring') }}</button>
+        <button class="admin-tab" data-tab="settings">{{ _('Settings') }}</button>
         <button class="admin-tab" data-tab="hub">{{ _('Model Hub') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
         {% if camera_enabled %}
@@ -223,6 +224,16 @@
             <h3><span class="module-name">{{ _('Downloaded models') }}</span></h3>
             <div id="models-files-list" class="models-files-list"></div>
         </div>
+    </div>
+
+    <!-- Settings tab content: values from the database override .env -->
+    <div id="settings-tab" class="admin-tab-content">
+        <div class="settings-toolbar">
+            <input type="search" id="settings-search" placeholder="{{ _('Search settings…') }}" autocomplete="off">
+            <button id="settings-save" class="add-user-button" disabled>{{ _('Save changes') }}</button>
+            <span id="settings-status" class="settings-status"></span>
+        </div>
+        <div id="settings-groups"></div>
     </div>
 
     <!-- Model Hub tab content -->
@@ -665,6 +676,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin-backups.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-branding.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-monitoring.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-settings.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
 {% endif %}

@@ -454,6 +454,27 @@ def _init_postgresql():
         CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON documents(uploaded_at)
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_by TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS settings_audit (
+            id BIGSERIAL PRIMARY KEY,
+            key TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            updated_by TEXT,
+            changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_settings_audit_time ON settings_audit (changed_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
             user_id TEXT PRIMARY KEY,
             last_message_id INTEGER NOT NULL DEFAULT 0,

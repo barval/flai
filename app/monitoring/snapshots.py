@@ -8,6 +8,7 @@ from flask import Flask
 
 from app.database import get_db
 from app.monitoring.archive import prune_archive, prune_web_requests
+from app.settings_store import prune_audit
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def start_snapshotter(app: Flask) -> None:
                     write_snapshot()
                     prune_archive()
                     prune_web_requests()
+                    prune_audit()
             except Exception as exc:
                 logger.warning(f"Monitoring snapshot failed: {exc}")
             if stop_event.wait(SNAPSHOT_INTERVAL_S):

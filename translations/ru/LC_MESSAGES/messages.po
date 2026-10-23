@@ -3976,6 +3976,94 @@ msgstr "Введите целое число мегабайт или остав�
 msgid "Invalid storage limit"
 msgstr "Неверный лимит хранилища"
 
+#: app/templates/admin.html
+msgid "Settings"
+msgstr "Настройки"
+
+#: app/templates/admin.html
+msgid "Search settings…"
+msgstr "Поиск по настройкам…"
+
+#: app/templates/admin.html
+msgid "Save changes"
+msgstr "Сохранить изменения"
+
+#: app/templates/admin.html
+msgid "Default"
+msgstr "По умолчанию"
+
+#: app/templates/admin.html
+msgid "Reset to the .env value"
+msgstr "Сбросить к значению из .env"
+
+#: app/templates/admin.html
+msgid "Saving…"
+msgstr "Сохранение…"
+
+#: app/templates/admin.html
+msgid "Invalid settings"
+msgstr "Неверные значения"
+
+#: app/templates/admin.html
+msgid "Failed to load settings"
+msgstr "Не удалось загрузить настройки"
+
+#: app/templates/admin.html
+msgid "Reset"
+msgstr "Сброшено"
+
+#: app/templates/admin.html
+msgid "A value is stored"
+msgstr "Значение сохранено"
+
+#: app/templates/admin.html
+msgid "Not set"
+msgstr "Не задано"
+
+#: app/templates/admin.html
+msgid "Search and crawl"
+msgstr "Поиск и обход"
+
+#: app/templates/admin.html
+msgid "Documents and RAG"
+msgstr "Документы и RAG"
+
+#: app/templates/admin.html
+msgid "Models and context"
+msgstr "Модели и контекст"
+
+#: app/templates/admin.html
+msgid "Media generation"
+msgstr "Генерация медиа"
+
+#: app/templates/admin.html
+msgid "Voice"
+msgstr "Голос"
+
+#: app/templates/admin.html
+msgid "Memory and history"
+msgstr "Память и история"
+
+#: app/templates/admin.html
+msgid "API"
+msgstr "API"
+
+#: app/templates/admin.html
+msgid "Service"
+msgstr "Служебное"
+
+#: app/templates/admin.html
+msgid "Debug"
+msgstr "Отладка"
+
+#: app/templates/admin.html
+msgid "No settings to save"
+msgstr "Нет настроек для сохранения"
+
+#: app/templates/admin.html
+msgid "No settings to reset"
+msgstr "Нет настроек для сброса"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

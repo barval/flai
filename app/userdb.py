@@ -194,6 +194,11 @@ def delete_user(login):
         # 6. Delete user storage quota
         c.execute("DELETE FROM user_storage WHERE user_id = %s", (user_id,))
 
+        # 6a. Erase the monitoring history (GDPR: it is the user's activity).
+        #     The session loop above archived rows; this removes them too.
+        c.execute("DELETE FROM monitoring_archive WHERE user_id = %s", (user_id,))
+        c.execute("DELETE FROM storage_snapshots WHERE user_id = %s", (user_id,))
+
         # 6b. Delete SLM import progress checkpoint
         c.execute("DELETE FROM slm_import_progress WHERE user_id = %s", (user_id,))
 

@@ -52,3 +52,18 @@ def test_charts_keep_their_aspect_ratio():
     html = _admin_html()
     assert html.count('preserveAspectRatio="none"') == 0
     assert html.count('preserveAspectRatio="xMidYMid meet"') == 8
+
+
+def test_range_buttons_use_short_equal_width_labels():
+    html = _admin_html()
+    for label in ("1 h", "6 h", "24 h", "7 d", "30 d"):
+        assert f"{{{{ _('{label}') }}}}" in html, f"missing range button {label!r}"
+
+    en = Path("translations/en/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    ru = Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    for msgid, msgstr in (("1 h", "1 ч"), ("6 h", "6 ч"), ("24 h", "24 ч"), ("7 d", "7 д"), ("30 d", "30 д")):
+        assert f'msgid "{msgid}"' in en
+        assert f'msgid "{msgid}"\nmsgstr "{msgstr}"' in ru
+
+    css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
+    assert "flex: 1 1 0" in css

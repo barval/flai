@@ -1475,15 +1475,20 @@ body.dark-theme .installed-file-meta { color: #aaa; }
 }
 .monitoring-range {
     display: flex;
-    flex-wrap: wrap;
     gap: 6px;
+    flex: 1 1 320px;
+    max-width: 26rem;
 }
 .monitoring-range-btn {
-    padding: 6px 12px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 8px;
     border: 1px solid #ccc;
     border-radius: 6px;
     background: #fff;
     font-size: 13px;
+    text-align: center;
+    white-space: nowrap;
     cursor: pointer;
 }
 .monitoring-range-btn.active {

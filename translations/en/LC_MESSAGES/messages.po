@@ -3843,26 +3843,6 @@ msgid "User"
 msgstr "User"
 
 #: app/templates/admin.html
-msgid "1 hour"
-msgstr "1 hour"
-
-#: app/templates/admin.html
-msgid "6 hours"
-msgstr "6 hours"
-
-#: app/templates/admin.html
-msgid "24 hours"
-msgstr "24 hours"
-
-#: app/templates/admin.html
-msgid "7 days"
-msgstr "7 days"
-
-#: app/templates/admin.html
-msgid "30 days"
-msgstr "30 days"
-
-#: app/templates/admin.html
 msgid "All users"
 msgstr "All users"
 
@@ -3914,6 +3894,26 @@ msgstr "Unknown user"
 #: app/routes/admin.py
 msgid "History since {date}"
 msgstr "History since {date}"
+
+#: app/templates/admin.html
+msgid "1 h"
+msgstr "1 h"
+
+#: app/templates/admin.html
+msgid "6 h"
+msgstr "6 h"
+
+#: app/templates/admin.html
+msgid "24 h"
+msgstr "24 h"
+
+#: app/templates/admin.html
+msgid "7 d"
+msgstr "7 d"
+
+#: app/templates/admin.html
+msgid "30 d"
+msgstr "30 d"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"

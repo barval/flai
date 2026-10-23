@@ -1709,11 +1709,19 @@ body.dark-theme .monitoring-error {
 }
 .settings-table th:nth-child(1),
 .settings-table td:nth-child(1) {
-    width: 46%;
+    width: 26%;
 }
 .settings-table th:nth-child(2),
 .settings-table td:nth-child(2) {
-    width: 32%;
+    width: 34%;
+}
+.settings-table th:nth-child(3),
+.settings-table td:nth-child(3) {
+    width: 22%;
+}
+.settings-description {
+    font-size: 12px;
+    color: #777;
 }
 .settings-field-label {
     font-size: 12px;
@@ -1774,6 +1782,7 @@ body.dark-theme .settings-input {
 }
 body.dark-theme .settings-count,
 body.dark-theme .settings-default-value,
+body.dark-theme .settings-description,
 body.dark-theme .settings-reset {
     color: #9a9a9a;
 }

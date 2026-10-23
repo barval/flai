@@ -131,15 +131,51 @@ def test_full_backup_includes_the_settings_tables():
 
 
 @pytest.mark.unit
-def test_settings_render_as_a_three_column_table_with_separators():
-    """Variable | value | default + reset, with the Users-tab column separators."""
+def test_settings_render_as_a_four_column_table_with_separators():
+    """Variable | description | value | default + reset, with dashed separators."""
     js = Path("app/static/js/admin-settings.js").read_text(encoding="utf-8")
     assert "settings-table" in js
     assert "createElement('table')" in js
-    for cell in ("settings-name", "settings-value", "settings-default"):
+    for cell in ("settings-name", "settings-description", "settings-value", "settings-default"):
         assert cell in js
 
     css = Path("app/static/css/admin.css").read_text(encoding="utf-8")
     block = css.split(".settings-table th,\n.settings-table td {", 1)[1].split("}", 1)[0]
     assert "border-right: 1px dashed" in block
     assert ".settings-table th:last-child" in css
+
+
+@pytest.mark.unit
+def test_every_settings_string_is_exposed_to_the_script():
+    """The script reads window.TRANSLATIONS; a missing key renders in English."""
+    js = Path("app/static/js/admin-settings.js").read_text(encoding="utf-8")
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+
+    used = set(re.findall(r"(?<![\w.])t\('([^']+)'\)", js))
+    used |= {label for label, _keys in GROUPS.values()}
+    missing = sorted(key for key in used if f"'{key}':" not in html)
+
+    assert not missing, f"settings strings missing from TRANSLATIONS: {missing}"
+
+
+@pytest.mark.unit
+def test_every_setting_has_a_description_in_both_languages():
+    from app.settings_registry import DESCRIPTIONS
+
+    keys = movable_keys()
+    assert all(DESCRIPTIONS.get(key) for key in keys), "a setting without a description"
+
+    en = Path("translations/en/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    ru = Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    for key in keys:
+        msgid = DESCRIPTIONS[key]
+        assert f'msgid "{msgid}"' in en, f"missing English description for {key}"
+        assert f'msgid "{msgid}"' in ru, f"missing Russian description for {key}"
+        assert f"'{msgid}':" in html, f"{key} description is not exposed to the script"
+
+
+@pytest.mark.unit
+def test_settings_groups_start_collapsed():
+    js = Path("app/static/js/admin-settings.js").read_text(encoding="utf-8")
+    assert "details.open = false" in js

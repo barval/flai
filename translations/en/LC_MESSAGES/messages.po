@@ -3838,6 +3838,87 @@ msgstr "Could not connect to video generation service"
 msgid "the verifier answered in another language"
 msgstr "the verifier answered in another language"
 
+#: app/templates/admin.html
+msgid "Monitoring"
+msgstr "Monitoring"
+
+#: app/templates/admin.html
+msgid "User"
+msgstr "User"
+
+#: app/templates/admin.html
+msgid "All users"
+msgstr "All users"
+
+#: app/templates/admin.html
+msgid "No data in this range"
+msgstr "No data in this range"
+
+#: app/templates/admin.html
+msgid "Failed to load monitoring data"
+msgstr "Failed to load monitoring data"
+
+#: app/templates/admin.html
+msgid "Used of limit — hourly snapshots, history starts at the first snapshot."
+msgstr "Used of limit — hourly snapshots, history starts at the first snapshot."
+
+#: app/templates/admin.html
+msgid "Chat sessions created in range, including deleted ones."
+msgstr "Chat sessions created in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Chat messages in range, including deleted ones."
+msgstr "Chat messages in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Background tasks created in range, including deleted ones."
+msgstr "Background tasks created in range, including deleted ones."
+
+#: app/templates/admin.html
+msgid "Chat + tasks + plans, including deleted activity."
+msgstr "Chat + tasks + plans, including deleted activity."
+
+#: app/templates/admin.html
+msgid "Chat attachments added in range — a document attached in chat counts here and in Documents."
+msgstr "Chat attachments added in range — a document attached in chat counts here and in Documents."
+
+#: app/templates/admin.html
+msgid "All documents, same as the Documents panel."
+msgstr "All documents, same as the Documents panel."
+
+#: app/routes/admin.py
+msgid "Invalid period"
+msgstr "Invalid period"
+
+#: app/routes/admin.py
+msgid "Unknown user"
+msgstr "Unknown user"
+
+#, python-brace-format
+#: app/routes/admin.py
+msgid "History since {date}"
+msgstr "History since {date}"
+
+#: app/templates/admin.html
+msgid "1 h"
+msgstr "1 h"
+
+#: app/templates/admin.html
+msgid "6 h"
+msgstr "6 h"
+
+#: app/templates/admin.html
+msgid "24 h"
+msgstr "24 h"
+
+#: app/templates/admin.html
+msgid "7 d"
+msgstr "7 d"
+
+#: app/templates/admin.html
+msgid "30 d"
+msgstr "30 d"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

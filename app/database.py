@@ -402,6 +402,39 @@ def _init_postgresql():
         )
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS storage_snapshots (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            taken_at TIMESTAMPTZ NOT NULL,
+            used_bytes BIGINT NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_snapshots_hour
+        ON storage_snapshots (user_id, taken_at)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS monitoring_archive (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            occurred_at TIMESTAMPTZ NOT NULL,
+            out_tokens BIGINT NOT NULL DEFAULT 0,
+            in_tokens BIGINT NOT NULL DEFAULT 0,
+            file_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_monitoring_archive_user_time
+        ON monitoring_archive (user_id, occurred_at)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON documents(uploaded_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
             user_id TEXT PRIMARY KEY,
             last_message_id INTEGER NOT NULL DEFAULT 0,
@@ -713,6 +746,7 @@ def _init_postgresql():
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")

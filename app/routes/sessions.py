@@ -4,6 +4,7 @@ from flask_babel import gettext as _
 
 from app import db
 from app.database import get_db
+from app.monitoring.archive import archive_messages
 from app.utils import cancel_session_requests, get_current_time_in_timezone_for_db, validate_session_ownership
 
 bp = Blueprint("sessions", __name__, url_prefix="/api")
@@ -221,6 +222,7 @@ def clear_history():
 
     with get_db() as conn:
         c = conn.cursor()
+        archive_messages(c, session_id)
         c.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
         current_time = get_current_time_in_timezone_for_db()
         c.execute(

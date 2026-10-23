@@ -149,7 +149,7 @@ def delete_user(login):
         c.execute("SELECT id FROM chat_sessions WHERE user_id = %s", (user_id,))
         sessions = c.fetchall()
         for s in sessions:
-            delete_session_and_messages(s["id"], user_id, upload_folder)
+            delete_session_and_messages(s["id"], user_id, upload_folder, archive=False)
 
         # 2. Delete all documents (metadata only - file deletion handled below)
         c.execute("SELECT file_path, file_size FROM documents WHERE user_id = %s", (user_id,))
@@ -193,6 +193,11 @@ def delete_user(login):
 
         # 6. Delete user storage quota
         c.execute("DELETE FROM user_storage WHERE user_id = %s", (user_id,))
+
+        # 6a. Erase the monitoring history (GDPR: it is the user's activity).
+        #     The session loop above archived rows; this removes them too.
+        c.execute("DELETE FROM monitoring_archive WHERE user_id = %s", (user_id,))
+        c.execute("DELETE FROM storage_snapshots WHERE user_id = %s", (user_id,))
 
         # 6b. Delete SLM import progress checkpoint
         c.execute("DELETE FROM slm_import_progress WHERE user_id = %s", (user_id,))

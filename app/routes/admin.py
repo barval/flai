@@ -249,7 +249,7 @@ def get_users():
                         COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
                         COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
-                         WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                         WHERE user_id = %s) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
                          FROM messages m2
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id
@@ -433,6 +433,69 @@ def get_users_tavily_usage():
         with suppress(Exception):
             redis_client.close()
     return jsonify(result)
+
+
+@bp.route("/api/monitoring", methods=["GET"])
+@admin_required
+def get_monitoring():
+    """Series for the Monitoring tab: one user or every non-admin user.
+
+    ``user=all`` means "the same list the Users tab shows" (admin excluded).
+    The payload is cached for ``MONITORING_CACHE_TTL`` seconds; Redis is
+    optional, and a failure degrades to computing the answer directly.
+    """
+    from app.monitoring.queries import build_payload
+    from app.monitoring.ranges import DEFAULT_RANGE, RANGE_SPECS
+
+    range_key = request.args.get("range", DEFAULT_RANGE)
+    if range_key not in RANGE_SPECS:
+        return jsonify({"error": _("Invalid period")}), 400
+
+    selectable = [user["login"] for user in list_users(exclude_admin=True)]
+    selected = request.args.get("user", "all")
+    if selected == "all":
+        logins = selectable
+    elif selected in selectable:
+        logins = [selected]
+    else:
+        return jsonify({"error": _("Unknown user")}), 400
+
+    redis_client = None
+    cache_key = f"admin:monitoring:{selected}:{range_key}"
+    try:
+        from app.api_bridge import get_redis_client
+
+        redis_client = get_redis_client()
+    except Exception as e:
+        logger.debug(f"Monitoring cache unavailable: {e}")
+        redis_client = None
+
+    try:
+        if redis_client is not None:
+            try:
+                cached = redis_client.get(cache_key)
+            except Exception as e:
+                logger.debug(f"Monitoring cache read failed: {e}")
+                cached = None
+            if isinstance(cached, (bytes, str)) and cached:
+                return current_app.response_class(cached, mimetype="application/json")
+
+        payload = build_payload(logins, range_key)
+        # The selector lists every monitorable account, not only the selected one.
+        payload["users"] = [{"login": login} for login in selectable]
+        body = json.dumps(payload)
+
+        if redis_client is not None:
+            try:
+                redis_client.setex(cache_key, current_app.config.get("MONITORING_CACHE_TTL", 60), body)
+            except Exception as e:
+                logger.debug(f"Monitoring cache write failed: {e}")
+
+        return current_app.response_class(body, mimetype="application/json")
+    finally:
+        if redis_client is not None:
+            with suppress(Exception):
+                redis_client.close()
 
 
 @bp.route("/api/users", methods=["POST"])

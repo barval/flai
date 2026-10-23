@@ -143,3 +143,14 @@ def test_storage_column_precedes_sessions_and_renders_quota():
     assert html.index('data-sort="storage_used"') < html.index('data-sort="sessions_count"')
     assert "user.storage_used" in js and "user.storage_limit_mb" in js
     assert "storage-over-quota" in js and "storage-over-quota" in css
+
+
+@pytest.mark.unit
+def test_dark_theme_checkboxes_use_a_dark_control_scheme():
+    """accent-color paints only the checked state; unchecked boxes need color-scheme."""
+    from pathlib import Path
+
+    css = Path("app/static/css/dark-theme.css").read_text(encoding="utf-8")
+    block = css.split('.dark-theme input[type="checkbox"],', 1)[1].split("}", 1)[0]
+    assert 'input[type="radio"]' in block
+    assert "color-scheme: dark" in block

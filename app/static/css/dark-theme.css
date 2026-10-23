@@ -379,9 +379,27 @@
 .dark-theme .camera-checkboxes label {
     color: #e0e0e0;
 }
+.dark-theme input[type="checkbox"],
+.dark-theme input[type="radio"] {
+    /* accent-color only paints the checked state; without color-scheme the
+       browser still draws an unchecked box in its light appearance. */
+    color-scheme: dark;
+}
 .dark-theme .camera-checkboxes input[type="checkbox"] {
     accent-color: #3498db;
 }
+/* Model Hub filters: native text fields and the range slider follow the theme */
+.dark-theme .hub-context-value,
+.dark-theme #hub-search-input {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #555;
+}
+.dark-theme #hub-context-slider {
+    accent-color: #3498db;
+    color-scheme: dark;
+}
+
 /* Light grey text for database info in dark theme */
 .dark-theme .db-info {
     color: #cccccc;

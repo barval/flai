@@ -13,8 +13,15 @@ For critical rules and commands, see the root `AGENTS.md`.
 - **`app/__init__.py:create_app()`** — Flask application factory.
 - **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `tasks`, `backups`, `events`, `debug`, `rlm`, `api_v1` (public OpenAI-compatible API).
 - **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`, `rlm`.
-- **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save; auto-rollback reverts model swaps to the previous admin-chosen model — never a hardcoded fallback — and context-only changes restore `context_length`), `health_monitor.py` (crash-loop watchdog that marks modules unhealthy instead of swapping models).
-- **Tasks (Tasks) subsystem (v12.6)** (`app/tasks/`): `executor.py` (one global daemon thread, agent loop planner → executor → verifier over `tasks`/`task_steps` in PostgreSQL; classes 3/4/5 derived from the user's service class; one active task globally; gate = chat-queue emptiness + `is_gpu_busy()` + sliding `TASK_QUIET_PERIOD_S` window written by every chat enqueue; abort-inside-step via Redis `task:step_cancel:<step_id>` raised by the chat-activity hook in `app/queue.py`; 24 h pure-execution budget with a final summary on expiry; clarifying questions park the task `awaiting_user` and release the slot), `store.py` (schema helpers), `tools.py` (capabilities registry `llm`/`search`/`calculate` — the seam for a future skills concept), `runner.py` (direct step + checkpoint verifier), `events.py` (`task_update` on the shared per-user SSE stream). Media sub-tasks (`image_gen`/`image_edit`/`video_gen`/`rlm`) are enqueued through the existing queue at the task's class with a slow-worker gate guard + `task:deferred_subtasks` deferred list; the internal API is `app/routes/tasks.py` (`/api/tasks*`, owner-scoped) and the UI is the Tasks tab in `chat.html` + `app/static/js/chat-tasks.js`. Full description → `docs/TASKS.md`.
+- **Background tasks** (`app/tasks/`): `dry_load.py` (model test load (dry-load) after admin save; auto-rollback reverts model swaps to the previous admin-chosen model — never a hardcoded fallback — and context-only changes restore `context_length`), `health_monitor.py` (crash-loop watchdog that marks modules unhealthy instead of swapping models).
+- **Background Tasks subsystem (v12.6)** (`app/tasks/`): one global daemon thread runs an agent loop (planner → executor → verifier) over `tasks`/`task_steps` in PostgreSQL. One task is active globally; media sub-tasks are enqueued through the existing queue. Full description → `docs/TASKS.md`.
+  - `executor.py` — the agent loop; task classes 3/4/5 derive from the user's service class; the gate is chat-queue emptiness + `is_gpu_busy()` + a sliding `TASK_QUIET_PERIOD_S` window written by every chat enqueue; abort-inside-step via Redis `task:step_cancel:<step_id>` raised by the chat-activity hook in `app/queue.py`; a 24 h pure-execution budget with a final summary on expiry; clarifying questions park the task `awaiting_user` and release the slot.
+  - `store.py` — schema helpers.
+  - `tools.py` — capabilities registry `llm`/`search`/`calculate` (the seam for a future skills concept).
+  - `runner.py` — direct step + checkpoint verifier.
+  - `events.py` — `task_update` on the shared per-user SSE stream.
+  - Media sub-tasks (`image_gen`/`image_edit`/`video_gen`/`rlm`) — enqueued at the task's class with a slow-worker gate guard and a `task:deferred_subtasks` deferred list.
+  - Internal API and UI — `app/routes/tasks.py` (`/api/tasks*`, owner-scoped) and the Tasks tab in `chat.html` + `app/static/js/chat-tasks.js`.
 - **Templates** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Static**: `app/static/css/` (all CSS), `app/static/js/` (all JS). No inline styles, no CDN.
 
@@ -234,7 +241,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 - `search(query, lang, max_results)` → list of dicts.
 - `format_results_context()` → formatted string for reasoning model.
-- Health check via `/healthz`.
+- Health check via `/health`.
 - Docker profile `with-search`.
 - Config: `SEARXNG_URL`, `SEARXNG_TIMEOUT`, `SEARXNG_MAX_RESULTS`.
 - Router category 7 (`[-SEARCH-]`) in `prompts/{en,ru}/base_text.template`.

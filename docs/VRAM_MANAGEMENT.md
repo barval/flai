@@ -109,7 +109,7 @@ Verified against tier/hardware combinations in `tests/test_autofit_context.py` (
 ## 5-Layer Protection
   1. **UI hint** (`app/static/js/admin-models.js:updateMemoryEstimation`): on model/ctx change, fetches `/admin/api/model-estimate` and displays colored tier indicator. Save button is **disabled** when `can_save=false`.
   2. **Server validation** (`app/routes/admin.py:update_model_config`): before saving, calls `_classify_model_fit()`. If `tier=impossible` or `tier=unknown` → returns 400 with `tier_message`. Defense in depth (UI is bypassable).
-  3. **Dry-load + admin-model rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
+  3. **Test load + admin-model rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
     + Sends tiny completion to llama-swap to trigger model load
     + Polls `/running` for 30s waiting for model
     + On success: unloads test instance (next user request reloads)

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.7] — Unreleased
 
+### Added
+
+- **Admin Monitoring tab** — a new tab between «Users» and «Model Hub» charts eight metrics for one user or all users over 1 h / 6 h / 24 h / 7 d / 30 d: storage (used / limit / percent plus history), sessions, messages, tasks, outgoing tokens, incoming tokens, files and documents. Tokens are chat + task steps + planner/revisions (parity with the Users tab); documents follow the Documents-panel definition; a document attached in chat counts in both Files and Documents. Charts are hand-written SVG (no chart library, no CDN), buckets are UTC and labels use the browser time zone. Storage is sampled hourly into `storage_snapshots`; everything else is aggregated on demand with one bounded query per source and cached in Redis for 60 s (`GET /admin/api/monitoring`). Details → `docs/MONITORING.md`, `docs/MONITORING-ru.md`.
+- **Monitoring history survives deletion** — deleting a chat session, clearing a chat, deleting a task or a document now writes a minimal entry to `monitoring_archive` inside the same transaction before the rows disappear, and every chart sums live and archived rows. The archive is pruned at 45 days, included in full backups and erased with the account (GDPR), like `storage_snapshots`. Monitoring therefore reports activity that happened, while the Users tab reports data that still exists.
+- **Indexes for the monitoring queries** — `messages(timestamp)`, `tasks(created_at)`, `documents(uploaded_at)`.
+
+### Fixed
+
+- **The Users tab documents counter matches the Documents panel** — it filtered `file_ext IN ('.pdf', '.doc', '.docx', '.txt')`, so images and every other format were invisible; it now counts every `documents` row, exactly like the panel and the Monitoring tab.
+
 ## [v12.6] — 2026-10-22
 
 ### Added

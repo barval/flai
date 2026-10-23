@@ -14,7 +14,7 @@
 
 ## TL;DR
 
-- **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service in the path (optional Tavily web search is the only opt-in cloud service).
+- **Everything runs on your hardware.** Chat, reasoning, image and video generation, voice, document search and web search — no cloud service on the processing path (the only exception is optional web search through Tavily).
 - **One GPU queue, strictly serialized.** VRAM is cleaned unconditionally between GPU tasks; a model is loaded only after the previous one is gone.
 - **An LLM router decides what happens.** Every message is classified into one of eleven categories — there is no keyword routing anywhere in the code.
 - **Multimodal, multilingual, persistent.** Images and scanned PDFs are read by a vision model, the UI is English/Russian, and long-term memory survives across sessions.
@@ -91,7 +91,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
 - **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Document folders** — single-level folders in the Documents panel: create/rename/delete (with cascade), move documents by button or drag-and-drop, bulk selection with move and delete (the bar shows the total size), and upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
@@ -102,9 +102,9 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ### 🗣️ Voice, camera & web UI
 - **Voice messages** — Whisper ASR transcription.
-- **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time, male or female voice. → [VOICE.md](docs/VOICE.md)
+- **Speech synthesis** — Piper (lightweight) or Kokoro (higher quality), selectable at deploy time; male or female voice. → [VOICE.md](docs/VOICE.md)
 - **Camera snapshots (optional)** — request a frame from an IP camera and analyse it with the vision model, with per-user permissions. → [CAMERA.md](docs/CAMERA.md)
-- **Attachments** — up to 4 images, one document, or up to 4 audio items (one voice message plus audio files: 1 voice + 3 files, or 4 files) in one chat message; images attach as thumbnails (≤ the Send button height), documents/audio/voice as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions); every audio item is transcribed in order and answered. Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Attachments** — up to 4 images, one document or up to 4 audio items (one voice message plus audio files: 1 voice + 3 files, or 4 files) per chat message. Images appear as thumbnails no taller than the Send button; documents, audio and voice appear as emoji chips. A document is indexed into RAG so the model can answer questions about it; several images are analysed together (compare/group questions); every audio item is transcribed in order and answered. Clipboard paste (Ctrl+V) adds to the queue. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Queue visibility** — live position and stage indicators, progress bars, task cancellation, unread markers.
 - **HTML blocks** — run generated HTML from a message in a sandboxed preview tab.
 
@@ -201,19 +201,19 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Component | Minimal | Moderate | Full | CPU-only |
 |-----------|---------|----------|------|----------|
 | **GPU VRAM** | 8 GB | 12 GB | 16+ GB | — |
-| **RAM (minimum)** | 16 GB | 24 GB | 24 GB | 24 GB |
+| **RAM (minimum)** | 16 GB | 24 GB | 24 GB | 16 GB (24 GB with media) |
 | **RAM (recommended)** | 24 GB | 32 GB | 32 GB | 48 GB |
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-Only one llama.cpp model is resident at a time, so the RAM budget is the OS plus PostgreSQL/Redis plus the web app, plus CPU-offloaded layers for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
+Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis, the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
 
 ### What works at each tier
 
 | Feature | 8 GB | 12 GB | 16+ GB | CPU-only |
 |---------|------|-------|--------|----------|
 | Chat + vision (Qwen3VL) | ✅ 4B (light) | ✅ 8B | ✅ 8B | ✅ 4B (light) |
-| Reasoning | ⚠️ partial offload (~15–20 tok/s) | ✅ ~70–90 tok/s | ✅ ~107 tok/s | ✅ MXFP4 model, slow |
+| Reasoning | ⚠️ partial CPU offload (~15–20 tok/s) | ✅ ~70–90 tok/s | ✅ ~107 tok/s | ✅ MXFP4 model, slow |
 | Image generation | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution halved |
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
 | Video generation | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
@@ -228,21 +228,21 @@ Measured throughput for the default stack and every candidate model: [BENCHMARKS
 - Linux server, Docker Engine ≥ 20.10, Docker Compose ≥ 2.0
 - **GPU mode:** NVIDIA drivers + NVIDIA Container Toolkit, GPU with 8 GB+ VRAM
 - **CPU-only mode:** plain Docker, no NVIDIA tooling
-- Internet access once, for model downloads — after that FLAI works fully offline
+- Internet access is needed once, for model downloads — after that FLAI works fully offline
 
 ### CUDA driver compatibility
 
-`deploy.sh` reads the host driver and selects matching images. **Minimum supported driver: CUDA 12.2.**
+`deploy.sh` reads the host driver and selects matching images. **Minimum supported CUDA version: 12.2 (driver 525.60.13+).**
 
-| Host driver | Images | Notes |
-|-------------|--------|-------|
+| CUDA version (driver branch) | Images | Notes |
+|------------------------------|--------|-------|
 | ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard |
 | 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard |
-| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Image requirements waived |
-| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Image requirements waived |
-| **12.2 – 12.3 (min)** | CUDA 12.2.2 (Ubuntu 22.04) | Image requirements waived for all GPU services |
+| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |
+| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |
+| **12.2 – 12.3 (min)** | CUDA 12.2.2 (Ubuntu 22.04) | NVIDIA image requirements disabled for all GPU services (`NVIDIA_DISABLE_REQUIRE=1`) |
 
-llama-swap is pinned on purpose: upstream changed its config format in v243, and a floating tag then breaks fresh deployments. Below 12.2 the script refuses GPU mode and falls back to CPU-only.
+llama-swap is pinned on purpose: it changed its config format in v243, and a floating tag then breaks fresh deployments. Below 12.2 the script refuses GPU mode and falls back to CPU-only.
 
 Deployment problems: [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) · auto-fit details: [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md).
 
@@ -330,7 +330,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 
 Then log in as `admin` at `http://localhost:5000`:
 
-1. **Admin Panel → Models** — confirm the multimodal, reasoning and embedding models; adjust parameters if needed. A context window that would not fit the RAM/VRAM budget is rejected on save, and a background dry-load rolls the configuration back if loading fails.
+1. **Admin Panel → Models** — confirm the multimodal, reasoning and embedding models; adjust parameters if needed. A context window that would not fit the RAM/VRAM budget is rejected on save, and a background test load (dry-load) rolls the configuration back if loading fails.
 2. **Admin Panel → Users** — create accounts and assign service classes and camera permissions.
 3. **Send your first message** — the router picks the subsystem. Attach a document, an image or a voice message to see the other paths.
 

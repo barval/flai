@@ -64,6 +64,7 @@
                         <th data-sort="files_count">{{ _('Files') }}</th>
                         <th data-sort="documents_count">{{ _('Documents') }}</th>
                         <th data-sort="slm_facts_count">{{ _('SLM Facts') }}</th>
+                        <th data-sort="web_requests_month">{{ _('Internet requests') }}</th>
                         <th>{{ _('Tavily API') }}</th>
                         <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
                         {% if rooms %}
@@ -126,6 +127,14 @@
                 </div>
                 <svg id="monitoring-chart-tasks" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
                 <p class="monitoring-hint">{{ _('Background tasks created in range, including deleted ones.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('Internet requests') }}</h3>
+                    <span id="monitoring-value-web_requests" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-web_requests" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Searches, page fetches and crawl pages sent to the internet — with a Tavily key or without.') }}</p>
             </div>
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -469,6 +478,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'lowest': {{ _('lowest')|tojson }},
     'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }},
     'unknown_error': {{ _('unknown_error')|tojson }},
+    'internet_requests_hint': {{ _('Searches and page fetches since the 1st of the month')|tojson }},
     'tavily_unavailable': {{ _('Tavily API - unavailable')|tojson }},
     'tavily_invalid_key': {{ _('Tavily API - invalid key')|tojson }},
     'user_db': {{ _('User DB')|tojson }},
@@ -476,6 +486,8 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'files_db': {{ _('Files DB')|tojson }},
     'documents_db': {{ _('Documents DB')|tojson }},
     'mb': {{ _('MB')|tojson }},
+    'storage_limit_hint': {{ _('Per-user limit in MB. Leave the field empty to use the default ({default} MB).')|tojson }},
+    'storage_limit_invalid': {{ _('Enter a whole number of megabytes, or leave the field empty for the default limit')|tojson }},
     // New translations for models tab
     'Refresh models from llama-server': {{ _('Refresh models from llama-server')|tojson }},
     'Update model list': {{ _('Update model list')|tojson }},

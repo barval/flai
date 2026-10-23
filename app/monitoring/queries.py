@@ -23,6 +23,7 @@ SERIES_KEYS = (
     "files",
     "outgoing_tokens",
     "incoming_tokens",
+    "web_requests",
     "storage_bytes",
 )
 
@@ -69,6 +70,7 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
     positions = {start: position for position, start in enumerate(starts)}
     current_bytes = 0
     storage_since = None
+    storage_overrides: dict[str, int] = {}
 
     if logins:
         params = _params(logins, since, until, tz)
@@ -179,6 +181,19 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
                 params,
             )
 
+            web_rows = _fetch(
+                cursor,
+                f"""
+                SELECT {_bucket_expr(_ts("occurred_at", naive=False), size)} AS bucket,
+                       COALESCE(SUM(request_count), 0) AS n
+                FROM web_requests
+                WHERE user_id = ANY(%(logins)s)
+                  AND occurred_at >= %(since)s AND occurred_at < %(until)s
+                GROUP BY bucket
+                """,
+                params,
+            )
+
             archive_rows = _fetch(
                 cursor,
                 f"""
@@ -201,6 +216,14 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
             )
             current_bytes = int(cursor.fetchone()["used"])
 
+            cursor.execute(
+                "SELECT user_id, limit_bytes FROM user_storage "
+                "WHERE user_id = ANY(%s) AND limit_bytes IS NOT NULL",
+                (list(logins),),
+            )
+            for row in cursor.fetchall():
+                storage_overrides[row["user_id"]] = int(row["limit_bytes"])
+
         series["storage_bytes"], storage_since = storage_series(logins, starts, until)
 
         for row in session_rows:
@@ -218,6 +241,8 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
             _add(series, positions, "tasks", row["bucket"], row["n"])
         for row in document_rows:
             _add(series, positions, "documents", row["bucket"], row["n"])
+        for row in web_rows:
+            _add(series, positions, "web_requests", row["bucket"], row["n"])
         for row in step_rows + plan_rows:
             position = positions.get(row["bucket"])
             if position is None:
@@ -238,7 +263,11 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
                 series["outgoing_tokens"][position] += int(row["out_tokens"])
                 series["incoming_tokens"][position] += int(row["in_tokens"])
 
-    limit_bytes = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)) * 1024 * 1024 * max(len(logins), 1)
+    default_limit_bytes = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)) * 1024 * 1024
+    # Each user may carry an individual limit; "all users" sums the effective ones.
+    limit_bytes = sum(storage_overrides.get(login, default_limit_bytes) for login in logins)
+    if not logins:
+        limit_bytes = default_limit_bytes
 
     return {
         "range": range_key,

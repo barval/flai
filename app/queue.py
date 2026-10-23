@@ -4088,7 +4088,9 @@ class RedisRequestQueue:
             )
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
-            results, provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
+            results, provider = search.search_with_fallback(
+                query, lang=lang, api_key=api_key, user_id=user_id
+            )
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             if task and results:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
@@ -4103,7 +4105,7 @@ class RedisRequestQueue:
                 or not any(len((r.get("content") or "").strip()) > 500 for r in results)
             )
             if thin and provider != "searxng" and search.available:
-                supplemented = search.search(query, lang=lang)
+                supplemented = search.search(query, lang=lang, user_id=user_id)
                 if supplemented:
                     supplemented_ctx = search.format_results_context(
                         supplemented, lang=lang, max_chars=search_max_chars
@@ -4121,7 +4123,7 @@ class RedisRequestQueue:
                 self.app.logger.warning(
                     f"Web search returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
                 )
-                retried = search.search(retry_query, lang=lang)
+                retried = search.search(retry_query, lang=lang, user_id=user_id)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
@@ -4208,7 +4210,7 @@ class RedisRequestQueue:
         Honours the task cancel flag between page progress updates.
         """
         self._publish_stream_event(task, "task_progress", {"stage": "crawl_start"})
-        pages: list[dict] = crawler.crawl_site(url)
+        pages: list[dict] = crawler.crawl_site(url, user_id=str(task.get("user_id") or "") or None)
         total = len(pages)
         for count in range(1, total + 1):
             if count < total and task.get("id") and self._is_task_cancelled(task["id"]):

@@ -11,7 +11,8 @@
         outgoing_tokens: 'outgoing_tokens',
         incoming_tokens: 'incoming_tokens',
         files: 'files',
-        documents: 'documents'
+        documents: 'documents',
+        web_requests: 'web_requests'
     };
     const METRICS = Object.keys(SERIES_OF);
     const POLL_MS = 60000;

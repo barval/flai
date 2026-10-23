@@ -238,6 +238,19 @@ def get_users():
 
         # Build a single optimized query with all stats using JOINs
         with get_db() as conn:
+            monthly_requests: dict[str, int] = {}
+            storage_limits: dict[str, int] = {}
+            c = conn.cursor()
+            c.execute(
+                "SELECT user_id, COALESCE(SUM(request_count), 0) AS n FROM web_requests "
+                "WHERE occurred_at >= date_trunc('month', now()) GROUP BY user_id"
+            )
+            for row in c.fetchall():
+                monthly_requests[row["user_id"]] = int(row["n"])
+            c.execute("SELECT user_id, limit_bytes FROM user_storage WHERE limit_bytes IS NOT NULL")
+            for row in c.fetchall():
+                storage_limits[row["user_id"]] = int(row["limit_bytes"])
+
             for u in users:
                 # Single query with subqueries for all stats - no N+1
                 c = conn.cursor()
@@ -334,7 +347,16 @@ def get_users():
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
                 u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
-                u_dict["storage_limit_mb"] = current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)
+                default_limit_mb = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500))
+                custom_limit = storage_limits.get(u["login"])
+                u_dict["storage_limit_custom"] = custom_limit is not None
+                u_dict["storage_limit_mb"] = (
+                    max(1, custom_limit // (1024 * 1024)) if custom_limit else default_limit_mb
+                )
+                u_dict["storage_limit_default_mb"] = default_limit_mb
+                # Outbound internet requests since the first day of this month:
+                # every search, page fetch and crawl page, Tavily or not.
+                u_dict["web_requests_month"] = monthly_requests.get(u["login"], 0)
 
                 # The raw Tavily key must never reach the admin payload.
                 u_dict["has_tavily_key"] = bool(u_dict.pop("tavily_api_key", None))
@@ -514,7 +536,7 @@ def add_user():
 def update_user_data(login):
     """Update user data."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get("name")
         service_class = data.get("service_class")
         is_active = data.get("is_active")
@@ -527,6 +549,23 @@ def update_user_data(login):
             is_active=is_active,
             camera_permissions=camera_permissions,
         )
+
+        if "storage_limit_mb" in data:
+            from app.db import set_user_storage_limit
+
+            raw = data.get("storage_limit_mb")
+            if raw in (None, ""):
+                set_user_storage_limit(login, None)
+                return jsonify({"status": "ok", "storage_limit_mb": None})
+            try:
+                limit_mb = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "⚠️ " + _("Invalid storage limit")}), 400
+            if limit_mb < 1 or limit_mb > 100000:
+                return jsonify({"error": "⚠️ " + _("Invalid storage limit")}), 400
+            set_user_storage_limit(login, limit_mb * 1024 * 1024)
+            return jsonify({"status": "ok", "storage_limit_mb": limit_mb})
+
         return jsonify({"status": "ok"})
     except Exception as e:
         logger.error(f"Error in update_user_data for {login}: {str(e)}", exc_info=True)

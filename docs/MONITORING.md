@@ -44,6 +44,7 @@ instance is used over time — for one user or for all users — and never touch
 | Sessions | `chat_sessions` rows created in the range |
 | Messages | `messages` rows of the user's sessions |
 | Tasks | `tasks` rows created in the range |
+| Internet requests | Outbound calls to the internet from `web_requests`: every search (Tavily or SearXNG), every page downloaded for text extraction, and every page a crawl fetched — one row per call, summed by `request_count`. Only counts are stored (no queries, no URLs). Retained with the archive (45 days), erased with the account. |
 | Outgoing tokens | Chat tokens (`messages.prompt_tokens`) + task step tokens (`task_steps.extra`, the same `*_total`-then-`usage` fallback the Users tab uses) + planner and revision tokens (`tasks.step_plan.plan_meta` / `revision_meta`) |
 | Incoming tokens | The same three sources for `completion_tokens` |
 | Files | Distinct `messages.file_path` values — chat attachments added in the range |

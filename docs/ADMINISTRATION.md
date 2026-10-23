@@ -32,7 +32,7 @@
 | 📊 System Stats | Monitor database and storage sizes |
 | 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
 | «Tasks» column in the user table — the Users table shows each user's task count; background task classes (3/4/5) are internal and never offered to admins — service classes stay 0/1/2 |
-| «Storage» column in the user table — upload usage / `MAX_UPLOAD_STORAGE_MB`, placed before Sessions and sorted numerically; an over-quota value is highlighted. The System Stats line maps the legacy «User DB»/«Chat DB» labels to real PostgreSQL table sizes |
+| «Storage» column in the user table — upload usage / the user's limit, placed before Sessions and sorted numerically; the limit field is editable (MB) and an empty field resets the user to the global `MAX_UPLOAD_STORAGE_MB`; an over-quota value is highlighted. Column separators are dashed. The System Stats line maps the legacy «User DB»/«Chat DB» labels to real PostgreSQL table sizes |
 
 ## CLI Commands
 ```bash

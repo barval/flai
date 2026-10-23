@@ -1203,8 +1203,12 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
     """
     from . import db
 
-    max_mb = current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)
-    max_bytes = max_mb * 1024 * 1024
+    # A per-user override (set from the admin Users tab) wins over the global
+    # default for every upload path — documents, chat attachments, task media.
+    max_bytes = db.get_user_storage_limit(user_id)
+    if not max_bytes:
+        max_bytes = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)) * 1024 * 1024
+    max_mb = max(1, max_bytes // (1024 * 1024))
 
     # O(1): read from SQLite counter instead of walking directory tree
     total_used = db.get_user_storage_usage(user_id)

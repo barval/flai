@@ -414,6 +414,21 @@ def _init_postgresql():
         ON storage_snapshots (user_id, taken_at)
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS monitoring_archive (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            occurred_at TIMESTAMPTZ NOT NULL,
+            out_tokens BIGINT NOT NULL DEFAULT 0,
+            in_tokens BIGINT NOT NULL DEFAULT 0,
+            file_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_monitoring_archive_user_time
+        ON monitoring_archive (user_id, occurred_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
             user_id TEXT PRIMARY KEY,
             last_message_id INTEGER NOT NULL DEFAULT 0,

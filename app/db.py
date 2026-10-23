@@ -15,6 +15,7 @@ from flask import current_app
 from flask_babel import gettext as _
 
 from app.database import get_db
+from app.monitoring.archive import archive_documents, archive_messages, archive_session
 
 
 def get_current_time_for_db():
@@ -428,13 +429,16 @@ def set_last_session(user_id, session_id):
         )
 
 
-def delete_session_and_messages(session_id, user_id, upload_folder=None):
+def delete_session_and_messages(session_id, user_id, upload_folder=None, archive=True):
     """Delete a session, its messages, and associated files from disk.
     Also updates user_storage quota by subtracting file sizes.
 
     File sources are both the messages.file_path column AND file_path fields
     inside the content JSON (extra multi-attachment chat images are stored
     there — the column only holds the first image).
+
+    Unless *archive* is false, the session and its messages are first copied to
+    the monitoring archive so deleting a chat does not erase its history.
     """
     total_deleted_bytes = 0
     deleted_rel_paths: set[str] = set()
@@ -476,6 +480,10 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
             for item in parsed:
                 if isinstance(item, dict) and item.get("file_path"):
                     _remove_file(item["file_path"])
+
+        if archive:
+            archive_session(c, session_id)
+            archive_messages(c, session_id)
 
         c.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
         c.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))
@@ -812,7 +820,10 @@ def set_document_folder(doc_id, user_id, folder_id):
 
 
 def delete_document(doc_id, user_id):
-    """Delete document metadata from database and update storage quota."""
+    """Delete document metadata from database and update storage quota.
+
+    The document is archived first, so its history survives the deletion.
+    """
     file_size = 0
     with get_db() as conn:
         c = conn.cursor()
@@ -820,6 +831,7 @@ def delete_document(doc_id, user_id):
         row = c.fetchone()
         if row:
             file_size = row["file_size"] or 0
+        archive_documents(c, user_id, [doc_id])
         c.execute("DELETE FROM documents WHERE id = %s AND user_id = %s", (doc_id, user_id))
 
     if file_size > 0:

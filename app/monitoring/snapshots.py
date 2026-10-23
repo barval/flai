@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from flask import Flask
 
 from app.database import get_db
+from app.monitoring.archive import prune_archive
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ def start_snapshotter(app: Flask) -> None:
             try:
                 with app.app_context():
                     write_snapshot()
+                    prune_archive()
             except Exception as exc:
                 logger.warning(f"Monitoring snapshot failed: {exc}")
             if stop_event.wait(SNAPSHOT_INTERVAL_S):

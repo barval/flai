@@ -149,7 +149,7 @@ def delete_user(login):
         c.execute("SELECT id FROM chat_sessions WHERE user_id = %s", (user_id,))
         sessions = c.fetchall()
         for s in sessions:
-            delete_session_and_messages(s["id"], user_id, upload_folder)
+            delete_session_and_messages(s["id"], user_id, upload_folder, archive=False)
 
         # 2. Delete all documents (metadata only - file deletion handled below)
         c.execute("SELECT file_path, file_size FROM documents WHERE user_id = %s", (user_id,))

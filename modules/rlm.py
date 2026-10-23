@@ -199,6 +199,37 @@ RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def _chat_turn(llamacpp: Any, messages: list[dict], *, lang: str, tools: list[dict] | None = None) -> Any:
+    """Run one RLM model turn through the streaming path and collect the result.
+
+    A non-streaming ``chat()`` applies the model's configured timeout to the
+    WHOLE generation, so on a CPU host a long deep-analysis turn died with
+    "Timeout (120 s) when calling the model". Streaming resets the read timeout
+    on every chunk, exactly like a chat request, and the client still hands the
+    accumulated tool calls back as a final dict.
+
+    Returns ``{"content": str, "tool_calls": [...]}`` or a backend error string.
+    """
+    parts: list[str] = []
+    tool_calls: list[dict] = []
+    for chunk in llamacpp.chat_stream(
+        messages, model_type="reasoning", lang=lang, tools=tools, temperature=0.2
+    ):
+        if isinstance(chunk, dict):
+            if chunk.get("type") == "tool_calls":
+                tool_calls = chunk.get("tool_calls") or []
+            continue
+        parts.append(str(chunk))
+
+    content = "".join(parts)
+    if not tool_calls:
+        from app.queue import RedisRequestQueue
+
+        if RedisRequestQueue._is_llm_error_string(content):
+            return content
+    return {"content": content, "tool_calls": tool_calls}
+
+
 @dataclass
 class RlmTraceStep:
     step: int
@@ -207,7 +238,6 @@ class RlmTraceStep:
     observation: str
 
 
-@dataclass
 class RlmResult:
     answer: str
     trace: list[RlmTraceStep] = field(default_factory=list)
@@ -446,8 +476,8 @@ class RlmModule:
             {"role": "user", "content": f"{prompt}\n\n---\n{text}"},
         ]
         max_tokens = current_app.config.get("RLM_SUB_MAX_TOKENS", 1024)
-        result = self.app.modules["base"].llamacpp.chat(
-            messages, model_type="reasoning", lang=self.lang, validate=False, temperature=0.2
+        result = _chat_turn(
+            self.app.modules["base"].llamacpp, messages, lang=self.lang, tools=None
         )
         if isinstance(result, str):
             return _strip_thinking_tags(_strip_generic_reasoning(result))
@@ -569,7 +599,7 @@ class RlmModule:
                         }
                     )
                 on_stage("rlm_step", {"step": step})
-                response = llamacpp.chat(messages, model_type="reasoning", lang=lang, tools=step_tools, temperature=0.2)
+                response = _chat_turn(llamacpp, messages, lang=lang, tools=step_tools)
                 if isinstance(response, str):
                     # chat() returns a plain string both for a normal answer
                     # without tool calls and for backend errors. Only the
@@ -692,12 +722,11 @@ class RlmModule:
                 # reaches the answer.
                 if executed_non_final and step >= max_steps:
                     on_stage("rlm_step", {"step": step + 1})
-                    response = llamacpp.chat(
+                    response = _chat_turn(
+                        llamacpp,
                         messages,
-                        model_type="reasoning",
                         lang=lang,
                         tools=[t for t in tools if t["function"]["name"] == "final"],
-                        temperature=0.2,
                     )
                     if isinstance(response, str):
                         if RedisRequestQueue._is_llm_error_string(response):

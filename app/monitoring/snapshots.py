@@ -84,11 +84,16 @@ def storage_series(
         values.sort()
 
     series: list[int | None] = [None] * len(starts)
+    span = starts[1] - starts[0] if len(starts) > 1 else (until - starts[0])
     for values in per_user.values():
         pointer = 0
         current: int | None = None
         for index, start in enumerate(starts):
-            while pointer < len(values) and values[pointer][0] <= start:
+            # A bucket shows the value as of its END: a daily bucket opened at
+            # midnight must pick up the snapshots taken during that day, not
+            # only the ones from before its start.
+            bucket_end = start + span
+            while pointer < len(values) and values[pointer][0] < bucket_end:
                 current = values[pointer][1]
                 pointer += 1
             if current is not None:

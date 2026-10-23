@@ -65,3 +65,25 @@ def test_series_is_seeded_by_a_snapshot_before_the_range(test_app):
 
     assert values == [500, 500]
     assert since == datetime(2020, 8, 1, 12, 0, tzinfo=UTC)
+
+
+def test_a_day_bucket_counts_snapshots_taken_during_that_day(test_app):
+    """Snapshots after the bucket start belong to that bucket.
+
+    Buckets are compared by their start only, so a daily bucket opened at
+    midnight ignored every snapshot of that day: a fresh install (snapshots
+    exist for today, none for yesterday) showed an empty 30-day storage chart
+    while the hourly ranges were fine.
+    """
+    with test_app.app_context():
+        _set_storage("u1", 700)
+        write_snapshot(datetime(2020, 10, 23, 6, 0, tzinfo=UTC))
+        starts = [
+            datetime(2020, 10, 21, 0, 0, tzinfo=UTC),
+            datetime(2020, 10, 22, 0, 0, tzinfo=UTC),
+            datetime(2020, 10, 23, 0, 0, tzinfo=UTC),
+        ]
+
+        values, _since = storage_series(["u1"], starts, datetime(2020, 10, 24, 0, 0, tzinfo=UTC))
+
+    assert values == [None, None, 700]

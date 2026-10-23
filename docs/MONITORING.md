@@ -75,8 +75,9 @@ time and are converted with the configured `TIMEZONE` (UTC when it is unset).
 Storage is the only sampled metric. A background thread writes one `storage_snapshots` row per
 user per hour (idempotent per hour, retention is unlimited). The chart carries the last known
 value forward, so a gap in snapshots never draws a drop to zero, and a bucket before the first
-snapshot is a gap (`null`), not zero. On a fresh installation the card states the date of the
-first snapshot.
+snapshot is a gap (`null`), not zero. Each bucket reports the value as of its end, so a daily
+bucket picks up every snapshot taken during that day. On a fresh installation the card states
+the date of the first snapshot.
 
 ### Deleted activity is kept
 

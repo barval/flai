@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **The 30-day storage chart is no longer empty on a fresh install** — storage buckets were matched against their START, so a daily bucket opened at midnight ignored every snapshot taken during that day: with snapshots only for today the 30-day series was entirely `null` while the hourly ranges looked fine. Each bucket now reports the value as of the end of its window. Tests: `tests/test_monitoring_snapshots.py`.
 - **The Users tab documents counter matches the Documents panel** — it filtered `file_ext IN ('.pdf', '.doc', '.docx', '.txt')`, so images and every other format were invisible; it now counts every `documents` row, exactly like the panel and the Monitoring tab.
 
 ## [v12.6] — 2026-10-22

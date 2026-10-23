@@ -429,6 +429,15 @@ def _init_postgresql():
         ON monitoring_archive (user_id, occurred_at)
     """)
     c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON documents(uploaded_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
             user_id TEXT PRIMARY KEY,
             last_message_id INTEGER NOT NULL DEFAULT 0,

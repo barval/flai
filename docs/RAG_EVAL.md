@@ -56,7 +56,7 @@ ground truth), dense search, `top_k=10`:
 
 | Run | hit@10 | recall@10 | MRR | nDCG@10 | p50 | p95 |
 |---|---|---|---|---|---|---|
-| dense baseline | 0.950 | 0.950 | 0.900 | 0.850 | 15 ms | 35 ms |
+| dense baseline | 0.950 | 0.950 | 0.900 | 0.913 | 15 ms | 37 ms |
 
 Every candidate change (hybrid search, reranker, metadata filters, structure-aware chunking) is
 measured against this row with the same dataset and `top_k`.
@@ -67,3 +67,4 @@ measured against this row with the same dataset and `top_k`.
 - Questions are paraphrased on purpose (the prompt forbids copying the passage wording); otherwise
   dense search scores 1.0 trivially and the harness cannot tell approaches apart.
 - Rebuild the dataset only when the corpus changes materially; otherwise runs stop being comparable.
+- Datasets and reports contain real documents and personal data: keep them under `data/rag_eval/`, which is git-ignored. Nothing from there is committed or pushed.

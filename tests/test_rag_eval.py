@@ -134,3 +134,48 @@ def test_reference_makes_the_check_chunk_level():
 
     assert hit.hit == 1.0
     assert miss.hit == 0.0
+
+
+def test_any_ground_truth_passage_counts():
+    """A multi-hop answer may live in several chunks; hitting one is enough."""
+    chunks = [{"doc_id": "d1", "filename": "d1.pdf", "text": "Second fact lives here."}]
+    item = EvalItem("q", ["d1"], references=["First fact", "Second fact"])
+
+    result = evaluate_item(item, lambda _q, _k: chunks, top_k=5)
+
+    assert result.hit == 1.0
+
+
+def test_dataset_reads_a_references_list(tmp_path: Path):
+    path = tmp_path / "set.jsonl"
+    path.write_text(
+        json.dumps({"question": "Q?", "relevant": ["d1"], "references": ["a", "b"]}),
+        encoding="utf-8",
+    )
+
+    item = load_dataset(path)[0]
+
+    assert item.passages == ["a", "b"]
+
+
+def test_ndcg_uses_standard_position_weights():
+    """A single relevant result at rank 2 scores 1/log2(3), not 1.0."""
+    chunks = [_chunk("other"), _chunk("d1")]
+
+    result = evaluate_item(EvalItem("q", ["d1"]), lambda _q, _k: chunks, top_k=5)
+
+    assert round(result.ndcg, 4) == 0.6309
+
+
+def test_chunk_level_ground_truth_is_not_deduplicated_by_document():
+    """A matching chunk below a non-matching chunk of the same file still counts."""
+    chunks = [
+        {"doc_id": "d1", "filename": "d1.pdf", "text": "unrelated opening"},
+        {"doc_id": "d1", "filename": "d1.pdf", "text": "the exact passage"},
+    ]
+    item = EvalItem("q", ["d1"], reference="the exact passage")
+
+    result = evaluate_item(item, lambda _q, _k: chunks, top_k=5)
+
+    assert result.reciprocal_rank == 0.5
+    assert round(result.ndcg, 4) == 0.6309

@@ -32,6 +32,14 @@ class EvalItem:
     question: str
     relevant: list[str] = field(default_factory=list)
     reference: str | None = None
+    references: list[str] = field(default_factory=list)
+
+    @property
+    def passages(self) -> list[str]:
+        """Ground-truth passages; an answer may span several chunks."""
+        if self.references:
+            return [str(value) for value in self.references if value]
+        return [self.reference] if self.reference else []
 
 
 @dataclass
@@ -61,7 +69,15 @@ def load_dataset(path: str | Path) -> list[EvalItem]:
         relevant = [str(value) for value in (row.get("relevant") or []) if value]
         if not question or not relevant:
             raise ValueError(f"{path}:{number}: 'question' and 'relevant' are required")
-        items.append(EvalItem(question=question, relevant=relevant, reference=row.get("reference")))
+        references = [str(value) for value in (row.get("references") or []) if value]
+        items.append(
+            EvalItem(
+                question=question,
+                relevant=relevant,
+                reference=row.get("reference"),
+                references=references,
+            )
+        )
     return items
 
 
@@ -69,22 +85,24 @@ def _normalize(text: str) -> str:
     return " ".join(str(text or "").split()).lower()
 
 
-def _is_relevant(chunk: dict, relevant: set[str], reference: str | None = None) -> bool:
+def _is_relevant(chunk: dict, relevant: set[str], passages: list[str] | None = None) -> bool:
     """Chunk-level when the dataset carries the source text, document-level otherwise.
 
     A document-level ground truth saturates on a small corpus (any chunk of the
     right file counts), so a question generated from a passage also stores that
     passage: the retrieved chunk must then actually contain it.
     """
-    if reference:
-        # A different chunk of the same document is NOT a hit at chunk level.
-        needle = _normalize(reference)[:120]
-        return bool(needle) and needle in _normalize(chunk.get("text") or "")
+    if passages:
+        # A different chunk of the same document is NOT a hit at chunk level;
+        # any one of the ground-truth passages counts.
+        text = _normalize(chunk.get("text") or "")
+        return any(_normalize(passage)[:120] in text for passage in passages if passage)
     return str(chunk.get("doc_id") or "") in relevant or str(chunk.get("filename") or "") in relevant
 
 
 def _dcg(gains: list[float]) -> float:
-    return sum(gain / (1 if index == 0 else math.log2(index + 1)) for index, gain in enumerate(gains))
+    """Standard DCG: position 1 weighs 1, position 2 weighs 1/log2(3), and so on."""
+    return sum(gain / math.log2(position + 1) for position, gain in enumerate(gains, start=1))
 
 
 def evaluate_item(item: EvalItem, search_fn: SearchFn, top_k: int) -> EvalResult:
@@ -94,7 +112,7 @@ def evaluate_item(item: EvalItem, search_fn: SearchFn, top_k: int) -> EvalResult
 
     relevant = set(item.relevant)
     retrieved = [str(chunk.get("doc_id") or chunk.get("filename") or "") for chunk in chunks]
-    matches = [_is_relevant(chunk, relevant, item.reference) for chunk in chunks]
+    matches = [_is_relevant(chunk, relevant, item.passages) for chunk in chunks]
 
     hit = 1.0 if any(matches) else 0.0
     found = {retrieved[index] for index, matched in enumerate(matches) if matched}
@@ -102,16 +120,20 @@ def evaluate_item(item: EvalItem, search_fn: SearchFn, top_k: int) -> EvalResult
     first = next((index for index, matched in enumerate(matches) if matched), None)
     reciprocal_rank = 0.0 if first is None else 1.0 / (first + 1)
 
-    # Relevance is judged per DOCUMENT: several chunks of the same file are one
-    # hit, otherwise a long document could push nDCG above 1.
-    gains: list[float] = []
-    seen_docs: set[str] = set()
-    for index in range(len(chunks)):
-        doc = retrieved[index]
-        if doc in seen_docs:
-            continue
-        seen_docs.add(doc)
-        gains.append(1.0 if matches[index] else 0.0)
+    # Document-level ground truth counts a file once (several chunks of the same
+    # document must not push nDCG above 1); chunk-level ground truth ranks the
+    # matching chunks themselves.
+    if item.passages:
+        gains = [1.0 if matched else 0.0 for matched in matches]
+    else:
+        gains = []
+        seen_docs: set[str] = set()
+        for index in range(len(chunks)):
+            doc = retrieved[index]
+            if doc in seen_docs:
+                continue
+            seen_docs.add(doc)
+            gains.append(1.0 if matches[index] else 0.0)
     dcg = _dcg(gains)
     ideal = _dcg([1.0] * min(len(relevant), top_k))
     ndcg = dcg / ideal if ideal else 0.0

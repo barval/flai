@@ -35,6 +35,21 @@ Options: `--coverage` enables the file-coverage pass, `--lang` and `--model` con
 The report also records the settings snapshot (`RAG_TOP_K`, chunk size, overlap, strategy, context
 share), so a report is self-describing.
 
+### Answer quality (end-to-end)
+
+Retrieval metrics cannot catch a model that finds the right chunks and still counts wrong, which is
+the usual failure for "how many jobs in this city" questions. Add an `"answer"` field to a dataset
+item and run the same command with `--answers`:
+
+```json
+{"question": "How many jobs did he have in Moscow?", "relevant": ["<doc_id>"], "answer": "0"}
+```
+
+The harness retrieves, builds the context exactly like a chat request, asks the model (it is told to
+answer `НЕТ ДАННЫХ` when the fragments do not contain the answer) and compares the result: numbers
+compare by number, free text by normalized containment, and an expected `0` also accepts an explicit
+"no data" answer. The report lists every mismatch with the expected and actual answer.
+
 ## Metrics
 
 | Metric | Meaning |
@@ -51,12 +66,12 @@ numbers above are what decides whether the trade is worth it.
 
 ## Baseline
 
-Measured on a 20-question set generated from 29 real documents (paraphrased questions, chunk-level
+Measured on a 19-question set generated from a real corpus (paraphrased questions, chunk-level
 ground truth), dense search, `top_k=10`:
 
 | Run | hit@10 | recall@10 | MRR | nDCG@10 | p50 | p95 |
 |---|---|---|---|---|---|---|
-| dense baseline | 0.950 | 0.950 | 0.900 | 0.913 | 15 ms | 37 ms |
+| dense baseline | 0.947 | 0.947 | 0.750 | 0.800 | 14 ms | 36 ms |
 
 Every candidate change (hybrid search, reranker, metadata filters, structure-aware chunking) is
 measured against this row with the same dataset and `top_k`.

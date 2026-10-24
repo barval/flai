@@ -461,6 +461,7 @@ def create_app():
     app.cli.add_command(cli.backfill_attachment_paths)
     app.cli.add_command(cli.rag_eval)
     app.cli.add_command(cli.rag_eval_generate)
+    app.cli.add_command(cli.rag_backfill_chunks)
 
     # Additional camera routes
     if "cam" in modules:

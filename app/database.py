@@ -454,6 +454,24 @@ def _init_postgresql():
         CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON documents(uploaded_at)
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_chunks (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            filename TEXT,
+            text TEXT NOT NULL,
+            tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('russian', text)) STORED
+        )
+    """)
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk
+        ON rag_chunks (user_id, doc_id, chunk_index)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT,

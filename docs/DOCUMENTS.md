@@ -50,6 +50,29 @@ For deep, multi-step work across a document set — comparisons, totals, structu
 
 ---
 
+## Hybrid retrieval
+
+Search is dense by default: the query is embedded and Qdrant returns the closest chunks. That misses
+queries built around a rare word — "how many jobs in Moscow" ranks chat chatter about Moscow above the
+resume, because a vector blurs the one term that matters.
+
+With `RAG_HYBRID_ENABLED=true` every chunk is also mirrored into PostgreSQL (`rag_chunks`, a generated
+`tsvector` with Russian stemming) and both retrievers run: Qdrant by meaning, PostgreSQL full-text by
+terms. The two ranked lists are merged with **reciprocal rank fusion** (`RAG_RRF_K`, default 60), so a
+chunk both finders agree on outranks a chunk only one found. Lexical terms are chosen carefully:
+
+- proper nouns and Latin-script words are the discriminative ones (cities, companies, tool names);
+- terms that appear in a large share of the corpus are dropped (`ts_rank_cd` has no IDF, so a name
+  present in half the chunks would drown the city present in five);
+- matching is by prefix, because the Russian stemmer maps `Саров` to `сар` but `Сарове` to `саров`;
+- a chunk from a document whose **title** matches the query gets a bonus — the resume is named after
+  the person, a chat export is not.
+
+Existing documents are mirrored with `flask rag-backfill-chunks --user <login>`; new uploads are
+mirrored automatically and deleted together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
+`RAG_HYBRID_CANDIDATES` (per-retriever candidate pool, default 30), `RAG_RRF_K`; all three are also in
+Admin Panel → Settings. Measure the effect with `docs/RAG_EVAL.md` before enabling it everywhere.
+
 ## 5. Documents attached in chat
 
 A document can be attached directly to a chat message (the same 📎 button, PDF/DOC/DOCX/TXT/ODT/RTF/CSV/JSON/EPUB up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.

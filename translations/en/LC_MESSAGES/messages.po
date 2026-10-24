@@ -4603,6 +4603,18 @@ msgstr "Expose the debug endpoints"
 msgid "Log token-estimation details"
 msgstr "Log token-estimation details"
 
+#: app/settings_registry.py
+msgid "Merge full-text and vector search results (RRF)"
+msgstr "Merge full-text and vector search results (RRF)"
+
+#: app/settings_registry.py
+msgid "Candidates fetched from each retriever before fusion"
+msgstr "Candidates fetched from each retriever before fusion"
+
+#: app/settings_registry.py
+msgid "RRF constant: lower values favour the top of each list"
+msgstr "RRF constant: lower values favour the top of each list"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

@@ -775,6 +775,36 @@ function updateChunksLimits(maxTopK) {
 }
 
 function initChunksSection() {
+    const saveRerankBtn = document.getElementById('rerank-save');
+    if (saveRerankBtn) {
+        saveRerankBtn.addEventListener('click', async function () {
+            const enabled = document.getElementById('rerank-enabled').checked;
+            const candidates = parseInt(document.getElementById('rerank-candidates').value) || 10;
+            const status = document.getElementById('rerank-status');
+            status.classList.remove('is-error');
+            status.textContent = '⏳';
+            try {
+                const response = await fetchWithCSRF('/admin/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        values: { RAG_RERANK_ENABLED: enabled, RAG_RERANK_CANDIDATES: candidates }
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    status.textContent = '✅';
+                } else {
+                    status.classList.add('is-error');
+                    status.textContent = result.error || '✖️';
+                }
+            } catch (err) {
+                status.classList.add('is-error');
+                status.textContent = '✖️';
+            }
+        });
+    }
+
     const saveChunksBtn = document.getElementById('save-chunks-btn');
     if (!saveChunksBtn) return;
 

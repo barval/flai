@@ -322,6 +322,16 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf already exists — skipping."
     fi
+
+    # CPU cross-encoder for RAG reranking (small, optional, no GPU)
+    if [[ ! -f "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf" ]]; then
+        info "Downloading bge-reranker-v2-m3-Q4_K_M.gguf (CPU reranker, ~0.4 GB)..."
+        HF_DOWNLOAD "gpustack/bge-reranker-v2-m3-GGUF" \
+            "bge-reranker-v2-m3-Q4_K_M.gguf" \
+            "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf"
+    else
+        warn "bge-reranker-v2-m3-Q4_K_M.gguf already exists — skipping."
+    fi
 }
 
 # ── Stable Diffusion models ──

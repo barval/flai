@@ -221,6 +221,32 @@
                 <button id="save-chunks-btn" class="btn-primary">{{ _('Save') }}</button>
             </div>
         </div>
+        <div class="model-card" id="reranker-card">
+            <h3><span class="module-name">{{ _('Reranker') }}</span></h3>
+            <div class="chunks-config">
+                <div class="param">
+                    <label>{{ _('Cross-encoder reranking') }}</label>
+                    <input type="checkbox" id="rerank-enabled"{% if rag_rerank_enabled %} checked{% endif %}>
+                </div>
+                <div class="param">
+                    <label>{{ _('Candidates to rerank') }}</label>
+                    <input type="number" id="rerank-candidates" min="1" max="50" value="{{ rag_rerank_candidates }}">
+                </div>
+                <div class="param" style="grid-column: 1 / -1;">
+                    <small>
+                        {% if reranker_available %}
+                        bge-reranker-v2-m3 ({{ reranker_size_mb }} MB, CPU)
+                        {% else %}
+                        {{ _('Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models') }}
+                        {% endif %}
+                    </small>
+                </div>
+                <div class="param" style="grid-column: 1 / -1;">
+                    <button id="rerank-save" class="btn-primary">💾 {{ _('Save') }}</button>
+                    <span id="rerank-status" class="settings-status"></span>
+                </div>
+            </div>
+        </div>
         <div id="models-files" class="model-card" style="margin-top:16px;">
             <h3><span class="module-name">{{ _('Downloaded models') }}</span></h3>
             <div id="models-files-list" class="models-files-list"></div>

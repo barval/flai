@@ -90,7 +90,7 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
-- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. Optional **hybrid search** (vectors + full-text with reciprocal rank fusion) and a **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.

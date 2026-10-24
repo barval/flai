@@ -145,3 +145,20 @@ def test_rerank_returns_none_when_the_service_is_down(monkeypatch):
     monkeypatch.setattr(reranker.requests, "post", boom)
 
     assert reranker.rerank("q", ["a"], "http://llama:8080") is None
+
+
+@pytest.mark.unit
+def test_reranker_is_manageable_from_the_models_tab():
+    """The Models tab shows the file and carries the enable switch."""
+    from pathlib import Path
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    assert 'id="reranker-card"' in html
+    assert 'id="rerank-enabled"' in html
+    assert 'id="rerank-candidates"' in html
+
+    js = Path("app/static/js/admin-models.js").read_text(encoding="utf-8")
+    assert "RAG_RERANK_ENABLED" in js and "/admin/api/settings" in js
+
+    deploy = Path("deploy.sh").read_text(encoding="utf-8")
+    assert "bge-reranker-v2-m3-Q4_K_M.gguf" in deploy

@@ -4652,6 +4652,18 @@ msgstr "Константа RRF: меньше — сильнее влияет в�
 msgid "Structural (by entries)"
 msgstr "Структурная (по записям)"
 
+#: app/settings_registry.py
+msgid "Reorder retrieved candidates with a cross-encoder"
+msgstr "Переупорядочивать найденные фрагменты кросс-энкодером"
+
+#: app/settings_registry.py
+msgid "Candidates scored by the reranker"
+msgstr "Кандидатов на вход реранкера"
+
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Таймаут запроса к реранкеру (секунды)"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

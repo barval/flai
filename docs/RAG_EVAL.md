@@ -76,6 +76,7 @@ half mostly adds noise.
 |---|---|---|---|---|---|---|
 | dense | 0.842 | 0.842 | 0.781 | 0.796 | 14 ms | 44 ms |
 | hybrid (RRF) | 0.842 | 0.842 | 0.671 | 0.715 | 31 ms | 59 ms |
+| hybrid + rerank | 0.842 | 0.842 | 0.816 | 0.823 | 190 ms | 398 ms |
 
 **Counting questions** (three real "how many jobs in <city>" questions with known answers) are where
 dense retrieval fails outright: the chat export outranks the resume. Retrieval on the mixed 22-item
@@ -85,6 +86,7 @@ set goes 0.773 → 0.864 hit@10, and end-to-end answers with the production `top
 |---|---|
 | dense | 0/3 |
 | hybrid | 3/3 |
+| hybrid + rerank | 3/3 |
 
 So hybrid is worth its 17 ms on entity-style questions and costs a little ranking quality on easy
 ones; it stays opt-in (`RAG_HYBRID_ENABLED`), and that trade-off is the reason.

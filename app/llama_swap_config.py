@@ -250,6 +250,46 @@ class LlamaSwapConfigGenerator:
         self.logger.info(f"Built model entry for merge_cpu: {entry}")
         return {"merge_cpu": entry}
 
+    RERANKER_PATH = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+
+    def build_reranker_entry(self) -> dict[str, Any] | None:
+        """CPU-only cross-encoder used to rerank the top RAG candidates.
+
+        It runs on the llama-swap host like merge_cpu: no VRAM, no GPU queue
+        slot, so a search never waits behind a chat request. Registered only
+        when the GGUF is present, so installations without it are unaffected.
+        """
+        if not os.path.exists(self.RERANKER_PATH):
+            return None
+        cmd_parts = [
+            "llama-server",
+            "--port",
+            "${PORT}",
+            "-m",
+            self.RERANKER_PATH,
+            "--host",
+            "0.0.0.0",
+            "--ctx-size",
+            "2048",
+            "--n-gpu-layers",
+            "0",
+            "--flash-attn",
+            "off",
+            "--reranking",
+            "--reasoning_format",
+            "none",
+            "--jinja",
+        ]
+        entry = {
+            "cmd": " ".join(cmd_parts),
+            "ttl": 0,  # keep it resident: it is small, CPU-only and used on every search
+            "name": "reranker",
+            "group": "cpu_only",
+            "unlisted": True,
+        }
+        self.logger.info(f"Built model entry for reranker: {entry}")
+        return {"reranker": entry}
+
     def build_model_entry(self, module: str, ngl_override: int | None = None) -> dict[str, Any] | None:
         """Build llama-swap model entry from FLAI model config."""
         config = get_model_config(module)
@@ -406,9 +446,17 @@ class LlamaSwapConfigGenerator:
             },
             "cpu_only": {
                 "swap": False,
+                # The CPU group must not evict GPU models and must survive their
+                # loading: the reranker is queried on every search, and a reload
+                # costs ~1.6 s per query.
+                "exclusive": False,
+                "persistent": True,
                 "models": ["merge_cpu"],
             },
         }
+
+        if os.path.exists(self.RERANKER_PATH):
+            groups["cpu_only"]["models"].append("reranker")
 
         lines.append("groups:")
         for group_name, group_config in groups.items():
@@ -416,10 +464,14 @@ class LlamaSwapConfigGenerator:
             if not group_config.get("swap", True):
                 lines.append(f"  {group_name}:")
                 lines.append("    swap: false")
-                lines.append(f"    models: [{models_list}]")
+                if group_config.get("exclusive") is False:
+                    lines.append("    exclusive: false")
+                if group_config.get("persistent"):
+                    lines.append("    persistent: true")
+                lines.append(f"    members: [{models_list}]")
             else:
                 lines.append(f"  {group_name}:")
-                lines.append(f"    models: [{models_list}]")
+                lines.append(f"    members: [{models_list}]")
         lines.append("")
 
         # Preload multimodal model at startup via llama-swap hooks
@@ -488,6 +540,18 @@ class LlamaSwapConfigGenerator:
                     lines.append(f"    {key}: {'true' if value else 'false'}")
                 elif isinstance(value, list):
                     lines.append(f"    {key}: {value}")
+                else:
+                    lines.append(f"    {key}: {value}")
+
+        reranker_entry = self.build_reranker_entry()
+        if reranker_entry:
+            entry = reranker_entry["reranker"]
+            lines.append("  reranker:")
+            for key, value in entry.items():
+                if isinstance(value, str):
+                    lines.append(f'    {key}: "{value}"')
+                elif isinstance(value, bool):
+                    lines.append(f"    {key}: {'true' if value else 'false'}")
                 else:
                     lines.append(f"    {key}: {value}")
 

@@ -104,3 +104,44 @@ def test_tsquery_terms_cover_both_stems():
     """The stemmer maps "Саров" and "Сарове" to different lexemes; both prefixes stay."""
     assert RagModule._tsquery_terms(["сарове"]) == ["сарове:*", "саров:*"]
     assert RagModule._tsquery_terms(["баш"]) == ["баш:*"]
+
+
+@pytest.mark.unit
+def test_rerank_scores_are_normalised_and_ordered(monkeypatch):
+    """Raw logits become comparable scores with the best candidate at 1.0."""
+    from app import reranker
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "results": [
+                    {"index": 0, "relevance_score": -4.28},
+                    {"index": 1, "relevance_score": -10.99},
+                    {"index": 2, "relevance_score": -10.79},
+                ]
+            }
+
+    monkeypatch.setattr(reranker.requests, "post", lambda *a, **k: _Response())
+
+    scores = reranker.rerank("q", ["a", "b", "c"], "http://llama:8080")
+
+    assert scores is not None
+    assert scores[0] == pytest.approx(1.0)
+    assert scores[0] > scores[2] > scores[1]
+
+
+@pytest.mark.unit
+def test_rerank_returns_none_when_the_service_is_down(monkeypatch):
+    from app import reranker
+
+    def boom(*_args, **_kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(reranker.requests, "post", boom)
+
+    assert reranker.rerank("q", ["a"], "http://llama:8080") is None

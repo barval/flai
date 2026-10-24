@@ -82,6 +82,7 @@ bash services/ltx_video/download-t5-encoder.sh
 |-------|---------|---------|-------------|
 | **Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf** | Reasoning (all tiers) | [Qwen License](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal — chat/router/vision | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~1.1 GB |
+| **bge-reranker-v2-m3-Q4_K_M.gguf** | Reranker (optional, CPU) | [MIT License](https://huggingface.co/BAAI/bge-reranker-v2-m3) | ~0.42 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
 
 ### Image Generation Models (stable-diffusion.cpp)

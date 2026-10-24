@@ -50,6 +50,30 @@ For deep, multi-step work across a document set — comparisons, totals, structu
 
 ---
 
+## Reranking
+
+Retrieval decides which passages are candidates; a cross-encoder decides their order by reading the
+query and the passage together. `bge-reranker-v2-m3` (Q4_K_M, ~0.42 GB) runs as a **CPU-only**
+llama-server registered by the llama-swap config, so it never takes a GPU slot and a search never waits
+behind a chat request. The CPU group is declared `exclusive: false` and `persistent: true`, which keeps
+the reranker and the embedding model resident together — without that, the two evict each other and
+every query pays two model loads (3.5 s instead of 0.15 s).
+
+Enable it with `RAG_RERANK_ENABLED=true`; `RAG_RERANK_CANDIDATES` (default 10) sets how many top
+candidates are reordered. The endpoint returns raw logits, so scores are sigmoided and scaled to the
+best candidate — otherwise an absolute relevance threshold would drop every reranked chunk.
+
+Measured on the same sets as hybrid search: ranking improves further (nDCG@10 0.838 → 0.918 on the
+mixed set, MRR 0.646 → 0.742) at ~170 ms per query; keeping the pool at 10 matters, because reranking
+20 candidates pushed a block of valid entries to the end of the context and the answer regressed.
+
+Download (optional):
+
+```bash
+curl -L -o models/bge-reranker-v2-m3-Q4_K_M.gguf \
+  https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/resolve/main/bge-reranker-v2-m3-Q4_K_M.gguf
+```
+
 ## Chunking strategies
 
 Three strategies are available in Admin Panel → Models → Chunks:

@@ -598,3 +598,123 @@ def backfill_attachment_paths(dry_run):
         return
 
     click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
+
+
+@click.command("rag-eval")
+@click.option("--user", required=True, help="Login whose indexed documents are searched")
+@click.option("--dataset", required=True, type=click.Path(exists=True), help="JSONL question set")
+@click.option("--top-k", default=10, type=int, show_default=True)
+@click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
+@click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
+@click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
+@with_appcontext
+def rag_eval(user, dataset, top_k, coverage, label, out):
+    """Measure retrieval quality on a fixed question set."""
+    from datetime import datetime
+
+    from app.rag_eval import evaluate, format_report, load_dataset, save_report
+
+    rag = current_app.modules.get("rag")
+    if rag is None:
+        raise click.ClickException("RAG module is not available")
+    if not rag.check_availability():
+        raise click.ClickException("Qdrant is not reachable")
+
+    items = load_dataset(dataset)
+    click.echo(f"Loaded {len(items)} questions from {dataset}")
+
+    def search(query: str, limit: int) -> list[dict]:
+        chunks, _scores = rag.search(user, query, top_k=limit, file_coverage=coverage)
+        return chunks
+
+    config = {
+        key: current_app.config.get(key)
+        for key in ("RAG_TOP_K", "RAG_CHUNK_SIZE", "RAG_CHUNK_OVERLAP", "RAG_CHUNK_STRATEGY", "RAG_CONTEXT_PERCENT")
+    }
+    config["coverage"] = coverage
+    report = evaluate(
+        items,
+        search,
+        top_k=top_k,
+        label=label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}",
+        config=config,
+    )
+    click.echo("")
+    click.echo(format_report(report))
+
+    target = out or f"data/rag_eval/{datetime.now():%Y%m%d-%H%M%S}.json"
+    saved = save_report(report, target)
+    click.echo(f"\nReport saved: {saved}")
+
+
+@click.command("rag-eval-generate")
+@click.option("--user", required=True, help="Login whose indexed documents seed the questions")
+@click.option("--count", default=20, type=int, show_default=True)
+@click.option("--lang", default="ru", show_default=True)
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--out", required=True, type=click.Path(), help="JSONL output path")
+@with_appcontext
+def rag_eval_generate(user, count, lang, model, out):
+    """Build a question set from the user's indexed chunks (one LLM call each)."""
+    import json
+    import random
+    from pathlib import Path
+
+    rag = current_app.modules.get("rag")
+    base = current_app.modules.get("base")
+    if rag is None or base is None:
+        raise click.ClickException("RAG or LLM module is not available")
+    if not rag.check_availability():
+        raise click.ClickException("Qdrant is not reachable")
+
+    collection = rag._get_collection_name(user)
+    points, _offset = rag.qdrant_client.scroll(
+        collection_name=collection, limit=max(count * 5, 50), with_payload=True
+    )
+    chunks = [point.payload for point in points if (point.payload or {}).get("text")]
+    random.shuffle(chunks)
+    if not chunks:
+        raise click.ClickException(f"No indexed chunks for {user}")
+
+    instruction = (
+        "Представь, что человек ищет этот фрагмент в базе документов. Задай один конкретный вопрос, "
+        "на который фрагмент полностью отвечает. Сформулируй его своими словами, как спросил бы живой "
+        "человек: не копируй формулировки и редкие термины из текста, без цитат. Верни только вопрос."
+        if lang == "ru"
+        else "Imagine a person searching a document base for this passage. Write one specific question "
+        "that the passage fully answers, in your own words as a real user would ask: do not copy the "
+        "wording or rare terms from the text, no quotes. Return only the question."
+    )
+    items: list[dict] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        if len(items) >= count:
+            break
+        text = str(chunk.get("text") or "").strip()
+        if len(text) < 200:
+            continue
+        answer = base.call_llamacpp(
+            [{"role": "user", "content": f"{instruction}\n\n---\n{text[:1500]}"}],
+            model_type=model,
+            lang=lang,
+            temperature=0.3,
+        )
+        question = str(answer or "").strip().strip('"')
+        if not question or len(question) < 12 or question.lower() in seen:
+            continue
+        seen.add(question.lower())
+        items.append(
+            {
+                "question": question,
+                "relevant": [str(chunk.get("doc_id") or chunk.get("filename") or "")],
+                "reference": text[:200],
+            }
+        )
+        click.echo(f"[{len(items)}/{count}] {question}")
+
+    if not items:
+        raise click.ClickException("No questions were generated")
+    target = Path(out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in items), encoding="utf-8")
+    click.echo(f"\nSaved {len(items)} questions to {target}")

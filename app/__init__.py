@@ -459,6 +459,8 @@ def create_app():
     app.cli.add_command(cli.cleanup_slm)
     app.cli.add_command(cli.reset_slm_checkpoint)
     app.cli.add_command(cli.backfill_attachment_paths)
+    app.cli.add_command(cli.rag_eval)
+    app.cli.add_command(cli.rag_eval_generate)
 
     # Additional camera routes
     if "cam" in modules:

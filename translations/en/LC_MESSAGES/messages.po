@@ -4631,6 +4631,18 @@ msgstr "Candidates scored by the reranker"
 msgid "Reranker request timeout (seconds)"
 msgstr "Reranker request timeout (seconds)"
 
+#: app/templates/admin.html
+msgid "Cross-encoder reranking"
+msgstr "Cross-encoder reranking"
+
+#: app/templates/admin.html
+msgid "Candidates to rerank"
+msgstr "Candidates to rerank"
+
+#: app/templates/admin.html
+msgid "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
+msgstr "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

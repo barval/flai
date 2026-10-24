@@ -4664,6 +4664,18 @@ msgstr "Кандидатов на вход реранкера"
 msgid "Reranker request timeout (seconds)"
 msgstr "Таймаут запроса к реранкеру (секунды)"
 
+#: app/templates/admin.html
+msgid "Cross-encoder reranking"
+msgstr "Реранкинг кросс-энкодером"
+
+#: app/templates/admin.html
+msgid "Candidates to rerank"
+msgstr "Кандидатов на реранк"
+
+#: app/templates/admin.html
+msgid "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
+msgstr "Модель реранкера не установлена: положите bge-reranker-v2-m3-Q4_K_M.gguf в /models"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

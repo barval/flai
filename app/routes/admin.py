@@ -202,6 +202,13 @@ def admin_panel():
     rag_threshold_default = current_app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
     rag_threshold_reasoning = current_app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.3)
 
+    # Reranker: a CPU cross-encoder file registered by the llama-swap config.
+    reranker_path = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+    reranker_available = os.path.exists(reranker_path)
+    reranker_size_mb = round(os.path.getsize(reranker_path) / (1024 * 1024)) if reranker_available else 0
+    rag_rerank_enabled = bool(current_app.config.get("RAG_RERANK_ENABLED", False))
+    rag_rerank_candidates = int(current_app.config.get("RAG_RERANK_CANDIDATES", 10))
+
     backend_type = current_app.config.get("LLAMACP_BACKEND", "llamacpp")
     llama_swap_url = current_app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
@@ -221,6 +228,10 @@ def admin_panel():
         max_top_k=max_top_k,
         rag_threshold_default=rag_threshold_default,
         rag_threshold_reasoning=rag_threshold_reasoning,
+        reranker_available=reranker_available,
+        reranker_size_mb=reranker_size_mb,
+        rag_rerank_enabled=rag_rerank_enabled,
+        rag_rerank_candidates=rag_rerank_candidates,
         backend_type=backend_type,
         llama_swap_url=llama_swap_url,
     )

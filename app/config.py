@@ -225,6 +225,9 @@ def load_config(app):
     app.config["RAG_HYBRID_ENABLED"] = os.getenv("RAG_HYBRID_ENABLED", "false").lower() in ("true", "1", "yes")
     app.config["RAG_HYBRID_CANDIDATES"] = int(os.getenv("RAG_HYBRID_CANDIDATES", 30))
     app.config["RAG_RRF_K"] = int(os.getenv("RAG_RRF_K", 60))
+    app.config["RAG_RERANK_ENABLED"] = os.getenv("RAG_RERANK_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["RAG_RERANK_CANDIDATES"] = int(os.getenv("RAG_RERANK_CANDIDATES", 10))
+    app.config["RAG_RERANK_TIMEOUT"] = int(os.getenv("RAG_RERANK_TIMEOUT", 10))
     app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 30))
 
     # RAG relevance thresholds (used only if DB doesn't have values)

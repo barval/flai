@@ -4619,6 +4619,18 @@ msgstr "RRF constant: lower values favour the top of each list"
 msgid "Structural (by entries)"
 msgstr "Structural (by entries)"
 
+#: app/settings_registry.py
+msgid "Reorder retrieved candidates with a cross-encoder"
+msgstr "Reorder retrieved candidates with a cross-encoder"
+
+#: app/settings_registry.py
+msgid "Candidates scored by the reranker"
+msgstr "Candidates scored by the reranker"
+
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Reranker request timeout (seconds)"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

@@ -67,6 +67,9 @@ class RagModule:
         self.hybrid_enabled = False
         self.hybrid_candidates = 30
         self.rrf_k = 60
+        self.rerank_enabled = False
+        self.rerank_candidates = 20
+        self.rerank_timeout = 10
         if app:
             self.init_app(app)
 
@@ -96,6 +99,9 @@ class RagModule:
         self.hybrid_enabled = bool(app.config.get("RAG_HYBRID_ENABLED", False))
         self.hybrid_candidates = int(app.config.get("RAG_HYBRID_CANDIDATES", 30))
         self.rrf_k = int(app.config.get("RAG_RRF_K", 60))
+        self.rerank_enabled = bool(app.config.get("RAG_RERANK_ENABLED", False))
+        self.rerank_candidates = int(app.config.get("RAG_RERANK_CANDIDATES", 10))
+        self.rerank_timeout = int(app.config.get("RAG_RERANK_TIMEOUT", 10))
 
         app.logger.info(f"RagModule: loaded chunk_size = {self.chunk_size}")
         app.logger.info(f"RagModule: loaded chunk_overlap = {self.chunk_overlap}")
@@ -534,6 +540,23 @@ class RagModule:
                     f"search: hybrid fused {len(chunks)} chunks "
                     f"(dense={len(search_result)}, lexical={len(lexical)})"
                 )
+
+        if self.rerank_enabled and len(chunks) > 1:
+            from app.reranker import rerank as rerank_scores
+
+            pool = chunks[: self.rerank_candidates]
+            texts = [str(chunk.get("text") or "") for chunk in pool]
+            reranked = rerank_scores(
+                query,
+                texts,
+                current_app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080"),
+                timeout=self.rerank_timeout,
+            )
+            if reranked is not None:
+                order = sorted(range(len(pool)), key=lambda index: reranked[index], reverse=True)
+                chunks = [pool[index] for index in order] + chunks[len(pool) :]
+                scores = [reranked[index] for index in order] + scores[len(pool) :]
+                self.logger.info(f"search: reranked {len(pool)} candidates")
 
         self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
 

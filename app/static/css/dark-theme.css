@@ -737,3 +737,33 @@
     background: #3a3a3a;
     border-color: #555;
 }
+
+/* Search scope popover */
+.dark-theme #scope-toggle {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme #scope-toggle.is-active {
+    border-color: #64b5f6;
+    color: #64b5f6;
+}
+.dark-theme .scope-popover {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme .scope-row {
+    color: #e0e0e0;
+}
+.dark-theme .scope-row select,
+.dark-theme .scope-row input[type="date"] {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme .scope-actions button {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
+}

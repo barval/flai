@@ -4643,6 +4643,38 @@ msgstr "Candidates to rerank"
 msgid "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
 msgstr "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
 
+#: app/templates/chat.html
+msgid "Search scope"
+msgstr "Search scope"
+
+#: app/templates/chat.html
+msgid "All documents"
+msgstr "All documents"
+
+#: app/templates/chat.html
+msgid "Folder"
+msgstr "Folder"
+
+#: app/templates/chat.html
+msgid "Uploaded from"
+msgstr "Uploaded from"
+
+#: app/templates/chat.html
+msgid "Uploaded to"
+msgstr "Uploaded to"
+
+#: app/templates/chat.html
+msgid "Apply"
+msgstr "Apply"
+
+#: app/templates/chat.html
+msgid "Clear"
+msgstr "Clear"
+
+#: app/templates/chat.html
+msgid "Unfiled"
+msgstr "Unfiled"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

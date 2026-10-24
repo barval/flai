@@ -522,6 +522,8 @@ async function sendMessage() {
                     if (tempAttachedFile) formData.append('file', tempAttachedFile);
                     for (const f of tempFiles) formData.append('file', f);
                     formData.append('session_id', currentSessionId);
+                    const scopeParams = (typeof window.getChatScope === 'function') ? window.getChatScope() : {};
+                    Object.keys(scopeParams).forEach((key) => formData.append(key, scopeParams[key]));
 
                     if (isVoiceRecorded && attachedVoiceBlob) {
                         // Image + voice: send both files
@@ -539,7 +541,10 @@ async function sendMessage() {
                     response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: tempText, session_id: currentSessionId })
+                        body: JSON.stringify(Object.assign(
+                            { message: tempText, session_id: currentSessionId },
+                            (typeof window.getChatScope === 'function') ? window.getChatScope() : {}
+                        ))
                     });
                 }
                 

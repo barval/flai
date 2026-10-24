@@ -114,6 +114,24 @@
         <div class="rlm-controls">
             <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
             <select id="rlm-docs" multiple hidden></select>
+            <div class="scope-control" id="scope-control">
+                <button type="button" id="scope-toggle" title="{{ _('Search scope') }}">🔍 <span id="scope-label">{{ _('All documents') }}</span></button>
+                <div class="scope-popover" id="scope-popover" hidden>
+                    <label class="scope-row">{{ _('Folder') }}
+                        <select id="scope-folder"><option value="">{{ _('All documents') }}</option></select>
+                    </label>
+                    <label class="scope-row">{{ _('Uploaded from') }}
+                        <input type="date" id="scope-from">
+                    </label>
+                    <label class="scope-row">{{ _('Uploaded to') }}
+                        <input type="date" id="scope-to">
+                    </label>
+                    <div class="scope-actions">
+                        <button type="button" id="scope-apply">{{ _('Apply') }}</button>
+                        <button type="button" id="scope-clear">{{ _('Clear') }}</button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
@@ -140,6 +158,15 @@ window.FLAI_MAX_CHAT_AUDIO = {{ config.MAX_CHAT_AUDIO|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    'Search scope': {{ _('Search scope')|tojson }},
+    'All documents': {{ _('All documents')|tojson }},
+    'Folder': {{ _('Folder')|tojson }},
+    'Uploaded from': {{ _('Uploaded from')|tojson }},
+    'Uploaded to': {{ _('Uploaded to')|tojson }},
+    'Apply': {{ _('Apply')|tojson }},
+    'Clear': {{ _('Clear')|tojson }},
+    'Unfiled': {{ _('Unfiled')|tojson }},
+
     'loading': {{ _("Loading...")|tojson }},
     'send': {{ _("Send")|tojson }},
     'sending': {{ _("Sending...")|tojson }},
@@ -378,4 +405,5 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-queue.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-style.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-init.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-scope.js', v=config.STATIC_VERSION) }}"></script>
 {% endblock %}

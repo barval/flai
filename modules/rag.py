@@ -18,6 +18,7 @@ from app.utils import (
     build_context_prompt,
     chunk_text,
     chunk_text_recursive,
+    chunk_text_structured,
     estimate_tokens,
     extract_text_from_file,
     format_prompt,
@@ -30,6 +31,7 @@ def rrf_fuse(
     ranked_lists: list[list[dict]],
     key,
     k: int = 60,
+    weights: list[float] | None = None,
 ) -> list[tuple[dict, float]]:
     """Reciprocal rank fusion: merge several ranked lists into one ordering.
 
@@ -39,10 +41,11 @@ def rrf_fuse(
     """
     scores: dict = {}
     payload: dict = {}
-    for items in ranked_lists:
+    for index, items in enumerate(ranked_lists):
+        weight = (weights[index] if weights and index < len(weights) else 1.0) or 0.0
         for rank, item in enumerate(items, start=1):
             ident = key(item)
-            scores[ident] = scores.get(ident, 0.0) + 1.0 / (k + rank)
+            scores[ident] = scores.get(ident, 0.0) + weight / (k + rank)
             payload.setdefault(ident, item)
     ordered = sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
     return [(payload[ident], score) for ident, score in ordered]
@@ -211,7 +214,9 @@ class RagModule:
         self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
 
         # 2. Chunk text based on strategy
-        if self.chunk_strategy == "recursive":
+        if self.chunk_strategy == "structured":
+            chunks = chunk_text_structured(text, self.chunk_size, self.chunk_overlap)
+        elif self.chunk_strategy == "recursive":
             chunks = chunk_text_recursive(text, self.chunk_size, self.chunk_overlap)
         else:
             chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
@@ -220,7 +225,19 @@ class RagModule:
             return False, "No text chunks generated"
         self.logger.info(f"index_document: generated {len(chunks)} chunks")
 
-        # 3. Get embeddings for all chunks using batch API (more efficient)
+        # 3. A re-index may produce a different chunk count: drop the previous
+        #    points first, otherwise higher-index chunks survive as orphans.
+        try:
+            self.qdrant_client.delete(
+                collection_name=self._get_collection_name(user_id),
+                points_selector=models.Filter(
+                    must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 — nothing to delete is fine
+            self.logger.debug(f"re-index cleanup skipped for {doc_id}: {exc}")
+
+        # 4. Get embeddings for all chunks using batch API (more efficient)
         embeddings = self._get_batch_embeddings(chunks)
 
         # Check for failed embeddings
@@ -381,9 +398,14 @@ class RagModule:
 
         if not total:
             return tokens
+        threshold = max(2, total // 10)
         ranked = sorted(tokens, key=lambda token: frequencies.get(token, 0))
-        rare = [token for token in ranked if frequencies.get(token, 0) <= max(2, total // 10)]
-        return (rare or ranked[:3])[:4]
+        rare = [token for token in ranked if frequencies.get(token, 0) <= threshold]
+        if rare:
+            return rare[:4]
+        # Every term is common: the lexical half would only add noise, so the
+        # search stays purely semantic for this query.
+        return []
 
     def _lexical_search(
         self,

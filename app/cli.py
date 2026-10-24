@@ -801,3 +801,35 @@ def rag_backfill_chunks(user):
                 written += 1
 
     click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
+
+
+@click.command("rag-reindex")
+@click.option("--user", required=True, help="Login whose documents are re-indexed")
+@click.option("--doc", default="", help="Only this document id")
+@with_appcontext
+def rag_reindex(user, doc):
+    """Re-index documents, e.g. after changing the chunking strategy."""
+    from app.db import get_user_documents
+
+    rag = current_app.modules.get("rag")
+    if rag is None or not rag.check_availability():
+        raise click.ClickException("RAG module or Qdrant is not available")
+
+    documents = get_user_documents(user) or []
+    if doc:
+        documents = [row for row in documents if str(row.get("id")) == doc]
+    if not documents:
+        raise click.ClickException("No documents to re-index")
+
+    folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
+    done = failed = 0
+    for row in documents:
+        path = f"{folder}/{row.get('file_path')}"
+        ok, message = rag.index_document(user, str(row["id"]), path)
+        if ok:
+            done += 1
+            click.echo(f"  ok   {row.get('filename')} — {message}")
+        else:
+            failed += 1
+            click.echo(f"  FAIL {row.get('filename')} — {message}")
+    click.echo(f"\nRe-indexed {done} documents, {failed} failed")

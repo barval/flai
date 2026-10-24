@@ -50,6 +50,25 @@ For deep, multi-step work across a document set — comparisons, totals, structu
 
 ---
 
+## Chunking strategies
+
+Three strategies are available in Admin Panel → Models → Chunks:
+
+| Strategy | Behaviour |
+|---|---|
+| `fixed` | Character windows with overlap; cheapest, cuts through sentences |
+| `recursive` | Splits by paragraphs, sentences and words; keeps sentences whole |
+| `structured` | Splits on logical entries: a resume entry ("Ноябрь 2023 — Сбер / Нижний Новгород / …") or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
+
+`structured` exists for counting questions ("how many jobs in this city"): when two
+entries share a chunk the model has to count inside a fragment and usually gets it
+wrong. The changelog entry for hybrid retrieval records the measurement — retrieval
+was no longer the bottleneck, chunking was.
+
+Changing the strategy re-chunks on the next index. Re-index existing documents with
+`flask rag-reindex --user <login>` (or `--doc <id>`); the old points are deleted
+first, so no orphan chunks survive.
+
 ## Hybrid retrieval
 
 Search is dense by default: the query is embedded and Qdrant returns the closest chunks. That misses

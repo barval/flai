@@ -200,6 +200,7 @@
                     <select id="chunk-strategy">
                         <option value="fixed">{{ _('Fixed (by size)') }}</option>
                         <option value="recursive">{{ _('Structural (by headings)') }}</option>
+                        <option value="structured">{{ _('Structural (by entries)') }}</option>
                     </select>
                 </div>
                 <div class="param">
@@ -540,6 +541,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Characters per indexed chunk': {{ _('Characters per indexed chunk')|tojson }},
     'Characters shared by neighbouring chunks': {{ _('Characters shared by neighbouring chunks')|tojson }},
     'Chunking strategy: fixed or recursive': {{ _('Chunking strategy: fixed or recursive')|tojson }},
+    'Structural (by entries)': {{ _('Structural (by entries)')|tojson }},
     'Chunks retrieved per document query': {{ _('Chunks retrieved per document query')|tojson }},
     'Share of the context window given to documents': {{ _('Share of the context window given to documents')|tojson }},
     'Time budget for scanned-PDF OCR (seconds, 0 = unlimited)': {{ _('Time budget for scanned-PDF OCR (seconds, 0 = unlimited)')|tojson }},

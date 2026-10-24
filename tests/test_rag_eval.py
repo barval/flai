@@ -219,3 +219,14 @@ def test_answer_mode_reports_accuracy_and_misses():
     assert report["mode"] == "answers"
     assert report["metrics"]["answer_accuracy"] == 0.5
     assert [row["match"] for row in report["results"]] == [True, False]
+
+
+def test_passage_match_survives_a_chunk_boundary_shift():
+    """Most of the passage in the chunk counts, exact bytes are not required."""
+    from app.rag_eval import _passage_match
+
+    passage = "Ноябрь 2023 — Сбер настоящее время Нижний Новгород rabota.sber.ru 2 года 3 месяца"
+    shifted = "Опыт работы Ноябрь 2023 — Сбер настоящее время Нижний Новгород, rabota.sber.ru/ 2 года 3 месяца"
+
+    assert _passage_match(passage, shifted.lower())
+    assert not _passage_match(passage, "совершенно другой текст про отпуск и погоду")

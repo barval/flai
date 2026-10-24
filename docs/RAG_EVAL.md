@@ -66,15 +66,30 @@ numbers above are what decides whether the trade is worth it.
 
 ## Baseline
 
-Measured on a 19-question set generated from a real corpus (paraphrased questions, chunk-level
-ground truth), dense search, `top_k=10`:
+Two datasets matter, and they disagree — that disagreement is the finding.
+
+**Synthetic set** (19 questions generated from the chunks, chunk-level ground truth, `top_k=10`):
+these queries are already close to their source chunk, so dense retrieval is strong and the lexical
+half mostly adds noise.
 
 | Run | hit@10 | recall@10 | MRR | nDCG@10 | p50 | p95 |
 |---|---|---|---|---|---|---|
-| dense baseline | 0.947 | 0.947 | 0.750 | 0.800 | 14 ms | 36 ms |
+| dense | 0.842 | 0.842 | 0.781 | 0.796 | 14 ms | 44 ms |
+| hybrid (RRF) | 0.842 | 0.842 | 0.671 | 0.715 | 31 ms | 59 ms |
 
-Every candidate change (hybrid search, reranker, metadata filters, structure-aware chunking) is
-measured against this row with the same dataset and `top_k`.
+**Counting questions** (three real "how many jobs in <city>" questions with known answers) are where
+dense retrieval fails outright: the chat export outranks the resume. Retrieval on the mixed 22-item
+set goes 0.773 → 0.864 hit@10, and end-to-end answers with the production `top_k=20`:
+
+| Config | answers correct |
+|---|---|
+| dense | 0/3 |
+| hybrid | 3/3 |
+
+So hybrid is worth its 17 ms on entity-style questions and costs a little ranking quality on easy
+ones; it stays opt-in (`RAG_HYBRID_ENABLED`), and that trade-off is the reason.
+
+Every candidate change (reranker, metadata filters, chunking) is measured on both datasets.
 
 ## Notes
 

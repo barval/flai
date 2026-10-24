@@ -4615,6 +4615,10 @@ msgstr "Candidates fetched from each retriever before fusion"
 msgid "RRF constant: lower values favour the top of each list"
 msgstr "RRF constant: lower values favour the top of each list"
 
+#: app/templates/admin.html
+msgid "Structural (by entries)"
+msgstr "Structural (by entries)"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

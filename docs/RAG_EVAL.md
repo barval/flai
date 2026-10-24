@@ -66,12 +66,12 @@ numbers above are what decides whether the trade is worth it.
 
 ## Baseline
 
-Measured on a 20-question set generated from 29 real documents (paraphrased questions, chunk-level
+Measured on a 19-question set generated from a real corpus (paraphrased questions, chunk-level
 ground truth), dense search, `top_k=10`:
 
 | Run | hit@10 | recall@10 | MRR | nDCG@10 | p50 | p95 |
 |---|---|---|---|---|---|---|
-| dense baseline | 0.950 | 0.950 | 0.900 | 0.913 | 15 ms | 37 ms |
+| dense baseline | 0.947 | 0.947 | 0.750 | 0.800 | 14 ms | 36 ms |
 
 Every candidate change (hybrid search, reranker, metadata filters, structure-aware chunking) is
 measured against this row with the same dataset and `top_k`.

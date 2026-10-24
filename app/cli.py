@@ -671,9 +671,10 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, label, out):
 @click.option("--count", default=20, type=int, show_default=True)
 @click.option("--lang", default="ru", show_default=True)
 @click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--doc", default="", help="Comma-separated document ids to sample from (default: all)")
 @click.option("--out", required=True, type=click.Path(), help="JSONL output path")
 @with_appcontext
-def rag_eval_generate(user, count, lang, model, out):
+def rag_eval_generate(user, count, lang, model, doc, out):
     """Build a question set from the user's indexed chunks (one LLM call each)."""
     import json
     import random
@@ -687,8 +688,16 @@ def rag_eval_generate(user, count, lang, model, out):
         raise click.ClickException("Qdrant is not reachable")
 
     collection = rag._get_collection_name(user)
+    scroll_filter = None
+    wanted_docs = [value.strip() for value in str(doc or "").split(",") if value.strip()]
+    if wanted_docs:
+        from qdrant_client import models as qmodels
+
+        scroll_filter = qmodels.Filter(
+            must=[qmodels.FieldCondition(key="doc_id", match=qmodels.MatchAny(any=wanted_docs))]
+        )
     points, _offset = rag.qdrant_client.scroll(
-        collection_name=collection, limit=max(count * 5, 50), with_payload=True
+        collection_name=collection, limit=max(count * 5, 50), with_payload=True, scroll_filter=scroll_filter
     )
     chunks = [point.payload for point in points if (point.payload or {}).get("text")]
     random.shuffle(chunks)
@@ -719,6 +728,9 @@ def rag_eval_generate(user, count, lang, model, out):
             temperature=0.3,
         )
         question = str(answer or "").strip().strip('"')
+        # The model occasionally returns a backend error instead of a question.
+        if question.startswith("⚠️") or "http error" in question.lower()[:60]:
+            continue
         if not question or len(question) < 12 or question.lower() in seen:
             continue
         seen.add(question.lower())

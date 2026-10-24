@@ -1,5 +1,6 @@
 # modules/rag.py
 import logging
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -25,6 +26,28 @@ from app.utils import (
 from modules.base import get_style_instruction, response_language_name
 
 
+def rrf_fuse(
+    ranked_lists: list[list[dict]],
+    key,
+    k: int = 60,
+) -> list[tuple[dict, float]]:
+    """Reciprocal rank fusion: merge several ranked lists into one ordering.
+
+    ``key(item)`` identifies the same chunk across lists. The fused score is the
+    sum of ``1 / (k + rank)`` over the lists that returned the chunk, so a chunk
+    both retrievers agree on outranks a chunk only one of them found.
+    """
+    scores: dict = {}
+    payload: dict = {}
+    for items in ranked_lists:
+        for rank, item in enumerate(items, start=1):
+            ident = key(item)
+            scores[ident] = scores.get(ident, 0.0) + 1.0 / (k + rank)
+            payload.setdefault(ident, item)
+    ordered = sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
+    return [(payload[ident], score) for ident, score in ordered]
+
+
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and llama.cpp embeddings."""
 
@@ -38,6 +61,9 @@ class RagModule:
         self.chunk_overlap = 50
         self.chunk_strategy = "fixed"
         self.top_k = 20
+        self.hybrid_enabled = False
+        self.hybrid_candidates = 30
+        self.rrf_k = 60
         if app:
             self.init_app(app)
 
@@ -62,10 +88,17 @@ class RagModule:
             self.chunk_strategy = app.config.get("RAG_CHUNK_STRATEGY", "fixed")
             self.top_k = app.config.get("RAG_TOP_K", 80)
 
+        # Hybrid retrieval is an app-level switch, not part of the chunks config:
+        # it must apply whether or not the chunk settings live in the database.
+        self.hybrid_enabled = bool(app.config.get("RAG_HYBRID_ENABLED", False))
+        self.hybrid_candidates = int(app.config.get("RAG_HYBRID_CANDIDATES", 30))
+        self.rrf_k = int(app.config.get("RAG_RRF_K", 60))
+
         app.logger.info(f"RagModule: loaded chunk_size = {self.chunk_size}")
         app.logger.info(f"RagModule: loaded chunk_overlap = {self.chunk_overlap}")
         app.logger.info(f"RagModule: loaded chunk_strategy = {self.chunk_strategy}")
         app.logger.info(f"RagModule: loaded top_k = {self.top_k}")
+        app.logger.info(f"RagModule: hybrid retrieval = {self.hybrid_enabled} (candidates={self.hybrid_candidates})")
 
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
@@ -228,6 +261,7 @@ class RagModule:
             collection_name = self._get_collection_name(user_id)
             self.qdrant_client.upsert(collection_name=collection_name, points=points)
             self.logger.info(f"index_document: upserted {len(points)} points for doc_id={doc_id}")
+            self._store_chunks(user_id, doc_id, filename, chunks)
             return True, f"Indexed {len(chunks)} chunks"
         except Exception as e:
             self.logger.error(f"Error during upsert: {e}")
@@ -245,6 +279,7 @@ class RagModule:
                     must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
                 ),
             )
+            self._delete_chunks(doc_id, user_id)
             self.logger.info(f"delete_document: deleted vectors for doc_id={doc_id}")
             return True
         except Exception as e:
@@ -253,6 +288,154 @@ class RagModule:
                 return True
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False
+
+    def _store_chunks(self, user_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
+        """Mirror the chunks into PostgreSQL for the lexical half of hybrid search."""
+        try:
+            from app.database import get_db
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+                for index, chunk in enumerate(chunks):
+                    cursor.execute(
+                        "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
+                        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        (user_id, doc_id, index, filename, chunk),
+                    )
+        except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
+            self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
+
+    def _delete_chunks(self, doc_id: str, user_id: str) -> None:
+        try:
+            from app.database import get_db
+
+            with get_db() as conn:
+                conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
+
+    @staticmethod
+    def _lexical_terms(query: str) -> list[str]:
+        """Pick the discriminative terms of a query.
+
+        ``ts_rank_cd`` has no IDF, so common words ("work", "place", "was")
+        drown the one word that matters. Proper nouns and Latin-script terms
+        (cities, companies, tool names) are the discriminative ones; a query
+        without any falls back to all its words.
+        """
+        raw = re.findall(r"[\w-]+", query)
+        if not raw:
+            return []
+        rest = raw[1:]  # the first word is capitalized by grammar, not by meaning
+        proper = [token for token in rest if token[:1].isupper()]
+        latin = [token for token in raw if re.search(r"[A-Za-z]", token)]
+        chosen = proper + latin or raw
+        seen: list[str] = []
+        for token in chosen:
+            lowered = re.sub(r"[^\w]", "", token.lower())
+            if len(lowered) >= 3 and lowered not in seen:
+                seen.append(lowered)
+        return seen[:10]
+
+    @staticmethod
+    def _tsquery_terms(tokens: list[str]) -> list[str]:
+        """Prefix tsquery terms that survive the stemmer's inconsistency.
+
+        The Russian stemmer maps "Саров" to "сар" but "Сарове" to "саров", so an
+        exact lexeme misses half the corpus. Each token contributes its own
+        prefix and a one-letter-shorter one, which covers both stems.
+        """
+        terms: list[str] = []
+        for token in tokens:
+            terms.append(f"{token}:*")
+            if len(token) > 4:
+                terms.append(f"{token[:-1]}:*")
+        return terms
+
+    def _rarest_terms(self, user_id: str, tokens: list[str]) -> list[str]:
+        """Keep the terms that actually discriminate inside this corpus.
+
+        ``ts_rank_cd`` has no IDF: a name present in half the chunks outweighs
+        the city that appears in five. One grouped query gives the document
+        frequency of each term; rare terms are kept, common ones dropped. When
+        every term is common the three rarest still survive.
+        """
+        from app.database import get_db
+
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT term, count(*) AS df FROM unnest(%(tokens)s) AS term "
+                    "JOIN rag_chunks rc ON rc.user_id = %(user_id)s "
+                    "AND rc.tsv @@ to_tsquery('russian', term) GROUP BY term",
+                    {"tokens": tokens, "user_id": user_id},
+                )
+                frequencies = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
+                cursor.execute("SELECT count(*) AS total FROM rag_chunks WHERE user_id = %s", (user_id,))
+                total = int(cursor.fetchone()["total"] or 0)
+        except Exception as exc:  # noqa: BLE001 — fall back to the plain terms
+            self.logger.warning(f"term frequency lookup failed: {exc}")
+            return tokens
+
+        if not total:
+            return tokens
+        ranked = sorted(tokens, key=lambda token: frequencies.get(token, 0))
+        rare = [token for token in ranked if frequencies.get(token, 0) <= max(2, total // 10)]
+        return (rare or ranked[:3])[:4]
+
+    def _lexical_search(
+        self,
+        user_id: str,
+        query: str,
+        limit: int,
+        doc_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Full-text search over the mirrored chunks (Russian stemming).
+
+        Terms are joined with OR: a question like "how many jobs in Moscow" must
+        match a chunk that contains "Moscow" even though it has none of the other
+        words. ``plainto_tsquery`` would require every term and return nothing.
+        """
+        from app.database import get_db
+
+        all_terms = self._lexical_terms(query)
+        if not all_terms:
+            return []
+        tokens = self._rarest_terms(user_id, all_terms)
+        if not tokens:
+            return []
+        # Prefix matching: the stemmer maps "Саров" to "сар" but "Сарове" to
+        # "саров", so exact lexemes miss each other; "саров:*" covers both.
+        tsquery = " | ".join(self._tsquery_terms(tokens))
+        all_tsquery = " | ".join(self._tsquery_terms(all_terms))
+
+        # A chunk from a document whose TITLE matches the query is more likely
+        # to be about it: the resume is named after the person, the chat export
+        # is not. Without this prior the chat's small talk outranks the resume
+        # on every "how many jobs in <city>" question.
+        sql = (
+            "SELECT doc_id, chunk_index, filename, text, "
+            "ts_rank_cd(tsv, q) "
+            "+ CASE WHEN to_tsvector('russian', coalesce(filename, '')) @@ q_all THEN 1.0 ELSE 0 END AS rank "
+            "FROM rag_chunks, to_tsquery('russian', %(tsq)s) AS q, "
+            "to_tsquery('russian', %(tsq_all)s) AS q_all "
+            "WHERE user_id = %(user_id)s AND tsv @@ q"
+        )
+        params: dict = {"tsq": tsquery, "tsq_all": all_tsquery, "user_id": user_id, "limit": limit}
+        if doc_ids:
+            sql += " AND doc_id = ANY(%(doc_ids)s)"
+            params["doc_ids"] = list(doc_ids)
+        sql += " ORDER BY rank DESC LIMIT %(limit)s"
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql, params)
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as exc:  # noqa: BLE001 — a bad query must not break search
+            self.logger.warning(f"lexical search failed: {exc}")
+            return []
 
     def search(
         self,
@@ -311,6 +494,24 @@ class RagModule:
 
         chunks = [hit.payload for hit in search_result]
         scores = [hit.score for hit in search_result]
+
+        if self.hybrid_enabled:
+            lexical = self._lexical_search(user_id, query, self.hybrid_candidates, scope)
+            fused = rrf_fuse(
+                [chunks, lexical],
+                key=lambda item: (str(item.get("doc_id") or ""), int(item.get("chunk_index") or 0)),
+                k=self.rrf_k,
+            )[:top_k]
+            if fused:
+                best = fused[0][1]
+                # Relative score in [0.5, 1]: the fused order is what matters,
+                # and the caller's absolute cosine threshold must not drop it.
+                chunks = [item for item, _score in fused]
+                scores = [0.5 + 0.5 * (score / best) if best else 0.0 for _item, score in fused]
+                self.logger.info(
+                    f"search: hybrid fused {len(chunks)} chunks "
+                    f"(dense={len(search_result)}, lexical={len(lexical)})"
+                )
 
         self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
 

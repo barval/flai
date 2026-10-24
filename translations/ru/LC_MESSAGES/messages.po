@@ -4636,6 +4636,18 @@ msgstr "Открыть отладочные эндпоинты"
 msgid "Log token-estimation details"
 msgstr "Логировать детали оценки токенов"
 
+#: app/settings_registry.py
+msgid "Merge full-text and vector search results (RRF)"
+msgstr "Объединять полнотекстовый и векторный поиск (RRF)"
+
+#: app/settings_registry.py
+msgid "Candidates fetched from each retriever before fusion"
+msgstr "Кандидатов из каждого поисковика до слияния"
+
+#: app/settings_registry.py
+msgid "RRF constant: lower values favour the top of each list"
+msgstr "Константа RRF: меньше — сильнее влияет верх списка"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

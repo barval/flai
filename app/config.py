@@ -222,6 +222,9 @@ def load_config(app):
     app.config["RAG_CHUNK_OVERLAP"] = int(os.getenv("RAG_CHUNK_OVERLAP", 50))
     app.config["RAG_CHUNK_STRATEGY"] = os.getenv("RAG_CHUNK_STRATEGY", "fixed")
     app.config["RAG_TOP_K"] = int(os.getenv("RAG_TOP_K", 80))
+    app.config["RAG_HYBRID_ENABLED"] = os.getenv("RAG_HYBRID_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["RAG_HYBRID_CANDIDATES"] = int(os.getenv("RAG_HYBRID_CANDIDATES", 30))
+    app.config["RAG_RRF_K"] = int(os.getenv("RAG_RRF_K", 60))
     app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 30))
 
     # RAG relevance thresholds (used only if DB doesn't have values)

@@ -641,8 +641,9 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, label, out):
         if base is None:
             raise click.ClickException("LLM module is not available")
         instruction = (
-            "Ответь на вопрос, используя ТОЛЬКО фрагменты ниже. Если ответа в них нет, ответь ровно: "
-            "НЕТ ДАННЫХ. Ответь одной короткой фразой, без пояснений."
+            "Ответь на вопрос, используя ТОЛЬКО фрагменты ниже. Если вопрос требует подсчёта, "
+            "пересчитай подходящие записи по фрагментам и ответь числом. Если ответа в них нет, "
+            "ответь ровно: НЕТ ДАННЫХ. Ответь одной короткой фразой, без пояснений."
         )
 
         def answer_fn(question: str, context: str) -> str:
@@ -749,3 +750,54 @@ def rag_eval_generate(user, count, lang, model, doc, out):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in items), encoding="utf-8")
     click.echo(f"\nSaved {len(items)} questions to {target}")
+
+
+@click.command("rag-backfill-chunks")
+@click.option("--user", required=True, help="Login whose indexed chunks are mirrored")
+@with_appcontext
+def rag_backfill_chunks(user):
+    """Mirror already-indexed chunks into PostgreSQL for hybrid search."""
+    from app.database import get_db
+
+    rag = current_app.modules.get("rag")
+    if rag is None or not rag.check_availability():
+        raise click.ClickException("RAG module or Qdrant is not available")
+
+    collection = rag._get_collection_name(user)
+    by_doc: dict[str, list[tuple[int, str, str]]] = {}
+    offset = None
+    while True:
+        points, offset = rag.qdrant_client.scroll(
+            collection_name=collection, limit=200, offset=offset, with_payload=True
+        )
+        for point in points:
+            payload = point.payload or {}
+            doc_id = str(payload.get("doc_id") or "")
+            if not doc_id:
+                continue
+            by_doc.setdefault(doc_id, []).append(
+                (
+                    int(payload.get("chunk_index") or 0),
+                    str(payload.get("text") or ""),
+                    str(payload.get("filename") or ""),
+                )
+            )
+        if offset is None:
+            break
+
+    written = 0
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for doc_id, rows in by_doc.items():
+            rows.sort()
+            filename = rows[0][2]
+            cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user, doc_id))
+            for index, text, _name in rows:
+                cursor.execute(
+                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
+                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (user, doc_id, index, filename, text),
+                )
+                written += 1
+
+    click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")

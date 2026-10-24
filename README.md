@@ -95,6 +95,35 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
+## 🔎 Working with document search
+
+Document search has three optional layers on top of plain vector retrieval. All are **off by default**
+and switch on in the admin panel; nothing changes until you enable them.
+
+| Layer | Where to enable | What it does | Cost |
+|---|---|---|---|
+| **Search scope** | 🔍 next to the chat input | Answers only from the chosen folder / upload period (or from the whole corpus) | none |
+| **Hybrid search** | Settings → `RAG_HYBRID_ENABLED` | Adds full-text retrieval (PostgreSQL, Russian stemming) and merges it with the vectors via reciprocal rank fusion; runs the lexical half only when the question contains a rare term (a name, a city, a tool) | +~17 ms per query |
+| **Reranker** | Models → Reranker | Reorders the top candidates with a CPU cross-encoder (`bge-reranker-v2-m3`, ~0.4 GB, no GPU) | +~150 ms warm, ~1.5 s on the first query |
+| **Structured chunking** | Models → Chunks → Strategy | Splits on logical entries (a resume entry, a dated block) instead of fixed windows, so counting questions can count blocks | none, but documents must be re-indexed (`flask rag-reindex --user <login>`) |
+
+How to use them:
+
+1. **Ask a question about a subset of documents** — set the scope (folder and/or upload dates) before
+   sending. The scope is shown as a chip and applies to the messages that follow; clearing it restores
+   the global search. A document attached to the message is always visible, even outside the scope.
+2. **Enable hybrid search** when questions hinge on a word the vector blurs: names, cities, product
+   codes, tool names. It also helps when a large chat export or a long manual drowns the right document.
+3. **Enable the reranker** when the right fragment is found but ranked second or third. Keep `Candidates
+   to rerank` at 10 — a wider pool can push valid entries to the end of the context.
+4. **Switch chunking to `structured`** for resumes, contracts, logs and other entry-based documents, then
+   re-index. Measure first with `docs/RAG_EVAL.md`; it exists exactly for this decision.
+
+Measured on a real corpus of 29 documents / 22 questions: vector-only answered 0 of 3 counting
+questions, hybrid answered 3 of 3 at the production `top_k=20`, and the reranker lifted nDCG@10 from
+0.84 to 0.92 without breaking an answer. Details and the exact numbers → [DOCUMENTS.md](docs/DOCUMENTS.md),
+[RAG_EVAL.md](docs/RAG_EVAL.md).
+
 ### 🧠 Memory & context
 - **Long-term memory (SLM)** — rule-based, CPU-only fact extraction and merging with semantic deduplication; a profile per user, erased with the account. → [MEMORY.md](docs/MEMORY.md)
 - **Context budgeting** — real token costs, not guesses: SLM facts first, then search, then a rolling summary, then history. → [CONTEXT.md](docs/CONTEXT.md)

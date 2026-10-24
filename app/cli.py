@@ -607,10 +607,12 @@ def backfill_attachment_paths(dry_run):
 @click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
 @click.option("--answers", is_flag=True, help="End-to-end mode: answer each question, compare with its 'answer' field")
 @click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--scope-folder", default="", help="Restrict retrieval to one folder id")
+@click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
 @click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
 @click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
 @with_appcontext
-def rag_eval(user, dataset, top_k, coverage, answers, model, label, out):
+def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope_docs, label, out):
     """Measure retrieval quality (or end-to-end answer quality) on a fixed question set."""
     from datetime import datetime
 
@@ -625,8 +627,22 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, label, out):
     items = load_dataset(dataset)
     click.echo(f"Loaded {len(items)} questions from {dataset}")
 
+    scope: dict = {}
+    if scope_folder:
+        scope["folder"] = scope_folder
+    if scope_docs:
+        scope["docs"] = [value.strip() for value in scope_docs.split(",") if value.strip()]
+    scope_ids = None
+    if scope:
+        from app.rag_filters import resolve_scope
+
+        scope_ids = resolve_scope(user, scope)
+        click.echo(f"Scope: {len(scope_ids or [])} document(s)")
+
     def search(query: str, limit: int) -> list[dict]:
-        chunks, _scores = rag.search(user, query, top_k=limit, file_coverage=coverage)
+        chunks, _scores = rag.search(
+            user, query, top_k=limit, file_coverage=coverage, doc_ids=scope_ids
+        )
         return chunks
 
     config = {

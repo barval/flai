@@ -494,6 +494,10 @@ class RagModule:
         if not self.check_availability():
             return [], []
         top_k = top_k or self.top_k
+        # ``None`` means "no scope"; an explicit empty list means "the scope
+        # matched nothing", which must stay empty instead of searching everything.
+        if doc_ids is not None and not [d for d in doc_ids if d]:
+            return [], []
         scope = [str(d) for d in (doc_ids or []) if d]
 
         # Get embedding directly from query

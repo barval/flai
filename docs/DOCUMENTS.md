@@ -93,6 +93,26 @@ Changing the strategy re-chunks on the next index. Re-index existing documents w
 `flask rag-reindex --user <login>` (or `--doc <id>`); the old points are deleted
 first, so no orphan chunks survive.
 
+## Search scope
+
+The chat asks *which documents* a question may be answered from. The scope lives next to the input
+(🔍): a folder and an upload-date range (both ends inclusive), combined with AND. With nothing set the
+search is global, exactly as before.
+
+- **Resolution.** The scope is turned into a list of document ids in PostgreSQL before the question is
+  queued, so a re-queued task keeps its scope, moving a document between folders takes effect
+  immediately, and no payload change or re-index is needed.
+- **Isolation.** Retrieval never sees a document outside the scope. An **empty** match is a real
+  answer — the search returns nothing and the model says there is no data in the selected documents
+  instead of silently answering from the rest of the corpus.
+- **Attachments.** A document attached to the message is always part of the context; the scope narrows
+  only the rest of the search.
+- **Coverage.** The file-coverage pass (the guarantee that every indexed document gets a slot) is
+  limited to the same scope.
+- **Period** is the upload date, not a date found inside the document.
+- **API.** `POST /api/send_message` accepts `filter_folder`, `filter_from`, `filter_to` (multipart or
+  JSON). The public `/v1` API does not expose the scope yet.
+
 ## Hybrid retrieval
 
 Search is dense by default: the query is embedded and Qdrant returns the closest chunks. That misses

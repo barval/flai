@@ -1203,6 +1203,20 @@ class RedisRequestQueue:
         }
 
     @staticmethod
+    def _rag_scope(data: dict) -> list[str] | None:
+        """Documents retrieval may look at: the user's filter plus attachments.
+
+        ``None`` means "no filter"; an empty list means the filter matched
+        nothing and the search must return nothing. A document attached to the
+        message is always visible, even when the filter points elsewhere.
+        """
+        scope = data.get("scope_docs")
+        attached = [str(value) for value in (data.get("doc_ids") or []) if value]
+        if scope is None:
+            return attached or None
+        return sorted(set(str(value) for value in scope) | set(attached))
+
+    @staticmethod
     def _is_llm_error_string(text: str) -> bool:
         """Check if a string from call_llamacpp/chat_stream is an error message.
 
@@ -2863,7 +2877,13 @@ class RedisRequestQueue:
             if rag and rag.available:
                 try:
                     self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
-                    chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+                    chunks, scores = rag.search(
+                        user_id,
+                        query,
+                        top_k=20,
+                        file_coverage=True,
+                        doc_ids=self._rag_scope(request_data),
+                    )
                     if task and chunks:
                         self._publish_stream_event(
                             task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -3977,7 +3997,13 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+            chunks, scores = rag.search(
+                user_id,
+                query,
+                top_k=20,
+                file_coverage=True,
+                doc_ids=self._rag_scope((task or {}).get("data") or {}),
+            )
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -4600,7 +4626,13 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+            chunks, scores = rag.search(
+                user_id,
+                query,
+                top_k=20,
+                file_coverage=True,
+                doc_ids=self._rag_scope((task or {}).get("data") or {}),
+            )
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}

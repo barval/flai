@@ -35,6 +35,21 @@ Options: `--coverage` enables the file-coverage pass, `--lang` and `--model` con
 The report also records the settings snapshot (`RAG_TOP_K`, chunk size, overlap, strategy, context
 share), so a report is self-describing.
 
+### Answer quality (end-to-end)
+
+Retrieval metrics cannot catch a model that finds the right chunks and still counts wrong, which is
+the usual failure for "how many jobs in this city" questions. Add an `"answer"` field to a dataset
+item and run the same command with `--answers`:
+
+```json
+{"question": "How many jobs did he have in Moscow?", "relevant": ["<doc_id>"], "answer": "0"}
+```
+
+The harness retrieves, builds the context exactly like a chat request, asks the model (it is told to
+answer `НЕТ ДАННЫХ` when the fragments do not contain the answer) and compares the result: numbers
+compare by number, free text by normalized containment, and an expected `0` also accepts an explicit
+"no data" answer. The report lists every mismatch with the expected and actual answer.
+
 ## Metrics
 
 | Metric | Meaning |

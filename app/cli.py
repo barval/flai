@@ -605,14 +605,16 @@ def backfill_attachment_paths(dry_run):
 @click.option("--dataset", required=True, type=click.Path(exists=True), help="JSONL question set")
 @click.option("--top-k", default=10, type=int, show_default=True)
 @click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
+@click.option("--answers", is_flag=True, help="End-to-end mode: answer each question, compare with its 'answer' field")
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
 @click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
 @click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
 @with_appcontext
-def rag_eval(user, dataset, top_k, coverage, label, out):
-    """Measure retrieval quality on a fixed question set."""
+def rag_eval(user, dataset, top_k, coverage, answers, model, label, out):
+    """Measure retrieval quality (or end-to-end answer quality) on a fixed question set."""
     from datetime import datetime
 
-    from app.rag_eval import evaluate, format_report, load_dataset, save_report
+    from app.rag_eval import evaluate, evaluate_answers, format_report, load_dataset, save_report
 
     rag = current_app.modules.get("rag")
     if rag is None:
@@ -632,13 +634,30 @@ def rag_eval(user, dataset, top_k, coverage, label, out):
         for key in ("RAG_TOP_K", "RAG_CHUNK_SIZE", "RAG_CHUNK_OVERLAP", "RAG_CHUNK_STRATEGY", "RAG_CONTEXT_PERCENT")
     }
     config["coverage"] = coverage
-    report = evaluate(
-        items,
-        search,
-        top_k=top_k,
-        label=label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}",
-        config=config,
-    )
+    run_label = label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}"
+
+    if answers:
+        base = current_app.modules.get("base")
+        if base is None:
+            raise click.ClickException("LLM module is not available")
+        instruction = (
+            "Ответь на вопрос, используя ТОЛЬКО фрагменты ниже. Если ответа в них нет, ответь ровно: "
+            "НЕТ ДАННЫХ. Ответь одной короткой фразой, без пояснений."
+        )
+
+        def answer_fn(question: str, context: str) -> str:
+            prompt = f"{instruction}\n\nВОПРОС: {question}\n\nФРАГМЕНТЫ:\n{context}"
+            reply = base.call_llamacpp(
+                [{"role": "user", "content": prompt}],
+                model_type=model,
+                lang="ru",
+                temperature=0.1,
+            )
+            return str(reply or "").strip()
+
+        report = evaluate_answers(items, answer_fn, search, top_k=top_k, label=run_label, config=config)
+    else:
+        report = evaluate(items, search, top_k=top_k, label=run_label, config=config)
     click.echo("")
     click.echo(format_report(report))
 

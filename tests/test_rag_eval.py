@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from app.rag_eval import EvalItem, evaluate, evaluate_item, format_report, load_dataset, save_report
+from app.rag_eval import (
+    EvalItem,
+    answer_matches,
+    evaluate,
+    evaluate_item,
+    format_report,
+    load_dataset,
+    save_report,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -179,3 +187,35 @@ def test_chunk_level_ground_truth_is_not_deduplicated_by_document():
 
     assert result.reciprocal_rank == 0.5
     assert round(result.ndcg, 4) == 0.6309
+
+
+def test_answer_matches_counts_by_number():
+    assert answer_matches("2", "В Москве было 2 места работы") is True
+    assert answer_matches("2", "3") is False
+
+
+def test_answer_matches_accepts_no_data_for_an_expected_zero():
+    assert answer_matches("0", "НЕТ ДАННЫХ") is True
+    assert answer_matches("0", "В Москве было 1 место") is False
+
+
+def test_answer_mode_reports_accuracy_and_misses():
+    from app.rag_eval import evaluate_answers
+
+    items = [
+        EvalItem("сколько мест в Москве?", ["d1"], answer="0"),
+        EvalItem("сколько мест в Нижнем?", ["d1"], answer="3"),
+    ]
+    answers = {"сколько мест в Москве?": "НЕТ ДАННЫХ", "сколько мест в Нижнем?": "два"}
+
+    report = evaluate_answers(
+        items,
+        lambda question, _context: answers[question],
+        lambda _q, _k: [{"doc_id": "d1", "filename": "cv.pdf", "text": "t"}],
+        top_k=5,
+        label="answers",
+    )
+
+    assert report["mode"] == "answers"
+    assert report["metrics"]["answer_accuracy"] == 0.5
+    assert [row["match"] for row in report["results"]] == [True, False]

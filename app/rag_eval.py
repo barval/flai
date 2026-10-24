@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import statistics
 import time
 from collections.abc import Callable
@@ -33,6 +34,7 @@ class EvalItem:
     relevant: list[str] = field(default_factory=list)
     reference: str | None = None
     references: list[str] = field(default_factory=list)
+    answer: str | None = None
 
     @property
     def passages(self) -> list[str]:
@@ -76,6 +78,7 @@ def load_dataset(path: str | Path) -> list[EvalItem]:
                 relevant=relevant,
                 reference=row.get("reference"),
                 references=references,
+                answer=str(row["answer"]) if row.get("answer") is not None else None,
             )
         )
     return items
@@ -201,9 +204,94 @@ def evaluate(
     }
 
 
+def _numbers(text: str) -> list[str]:
+    return re.findall(r"\d+", str(text or ""))
+
+
+def answer_matches(expected: str, actual: str) -> bool:
+    """Numeric answers compare by number, free-form ones by normalized text.
+
+    Counting questions are the reason this exists: a model that retrieves the
+    right chunks can still answer "3" where the truth is "2", and hit@k would
+    never notice. An expected zero also accepts an explicit "no data" wording.
+    """
+    expected = str(expected or "").strip()
+    actual = str(actual or "").strip()
+    if not expected:
+        return False
+    expected_numbers = _numbers(expected)
+    actual_numbers = _numbers(actual)
+    if expected_numbers:
+        if expected_numbers[0] in actual_numbers:
+            return True
+        if expected_numbers[0] == "0":
+            return not actual_numbers and bool(
+                re.search(r"нет|не работал|не найдено|no data|none", _normalize(actual))
+            )
+        return False
+    return _normalize(expected) in _normalize(actual)
+
+
+def evaluate_answers(
+    items: list[EvalItem],
+    answer_fn: Callable[[str, str], str],
+    search_fn: SearchFn,
+    top_k: int = 10,
+    label: str = "",
+    config: dict[str, Any] | None = None,
+) -> dict:
+    """End-to-end check: retrieve, answer, compare with the expected answer.
+
+    ``answer_fn(question, context)`` is the model call; the context is built
+    from the retrieved chunks exactly like a chat request.
+    """
+    judged = [item for item in items if item.answer]
+    if not judged:
+        raise ValueError("No dataset item carries an 'answer' field")
+
+    rows = []
+    for item in judged:
+        chunks = search_fn(item.question, top_k) or []
+        context = "\n\n".join(
+            f"[{chunk.get('filename') or '?'}] {chunk.get('text') or ''}" for chunk in chunks
+        )
+        actual = answer_fn(item.question, context)
+        rows.append(
+            {
+                "question": item.question,
+                "expected": item.answer,
+                "actual": actual,
+                "match": answer_matches(str(item.answer), actual),
+                "chunks": len(chunks),
+            }
+        )
+
+    return {
+        "label": label,
+        "mode": "answers",
+        "top_k": top_k,
+        "questions": len(rows),
+        "config": config or {},
+        "metrics": {
+            "answer_accuracy": sum(1 for row in rows if row["match"]) / len(rows),
+        },
+        "results": rows,
+    }
+
+
 def format_report(report: dict) -> str:
     """Human-readable summary for the CLI."""
     metrics = report["metrics"]
+    if report.get("mode") == "answers":
+        lines = [
+            f"label:     {report.get('label') or '-'}",
+            f"questions: {report['questions']}   top_k: {report['top_k']}",
+            f"answer accuracy: {metrics['answer_accuracy']:.3f}",
+        ]
+        misses = [row for row in report["results"] if not row["match"]]
+        for row in misses:
+            lines.append(f"  MISS  {row['question']}  expected={row['expected']!r}  got={row['actual'][:80]!r}")
+        return "\n".join(lines)
     lines = [
         f"label:     {report.get('label') or '-'}",
         f"questions: {report['questions']}   top_k: {report['top_k']}",

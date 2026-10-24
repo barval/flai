@@ -88,6 +88,19 @@ def _normalize(text: str) -> str:
     return " ".join(str(text or "").split()).lower()
 
 
+def _passage_match(passage: str, text: str, threshold: float = 0.75) -> bool:
+    """True when the chunk carries the passage (word overlap, not exact bytes)."""
+    needle = _normalize(passage)[:200]
+    if not needle:
+        return False
+    if needle in text:
+        return True
+    wanted = set(needle.split())
+    if not wanted:
+        return False
+    return len(wanted & set(text.split())) / len(wanted) >= threshold
+
+
 def _is_relevant(chunk: dict, relevant: set[str], passages: list[str] | None = None) -> bool:
     """Chunk-level when the dataset carries the source text, document-level otherwise.
 
@@ -97,9 +110,11 @@ def _is_relevant(chunk: dict, relevant: set[str], passages: list[str] | None = N
     """
     if passages:
         # A different chunk of the same document is NOT a hit at chunk level;
-        # any one of the ground-truth passages counts.
+        # any one of the ground-truth passages counts. Matching is tolerant to
+        # chunk boundaries: a passage split by a new chunking strategy still
+        # counts when most of its words are in the chunk.
         text = _normalize(chunk.get("text") or "")
-        return any(_normalize(passage)[:120] in text for passage in passages if passage)
+        return any(_passage_match(passage, text) for passage in passages if passage)
     return str(chunk.get("doc_id") or "") in relevant or str(chunk.get("filename") or "") in relevant
 
 

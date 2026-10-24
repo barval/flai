@@ -4648,6 +4648,10 @@ msgstr "Кандидатов из каждого поисковика до сл�
 msgid "RRF constant: lower values favour the top of each list"
 msgstr "Константа RRF: меньше — сильнее влияет верх списка"
 
+#: app/templates/admin.html
+msgid "Structural (by entries)"
+msgstr "Структурная (по записям)"
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

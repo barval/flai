@@ -1075,6 +1075,71 @@ def chunk_text_recursive(
     return merged
 
 
+_MONTH_RE = (
+    r"(?:январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|"
+    r"сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]|"
+    r"january|february|march|april|may|june|july|august|september|october|november|december)"
+)
+# An entry starts with a date RANGE ("Ноябрь 2023 — Сбер"); the closing line
+# ("Ноябрь 2023 Нижний Новгород") has no dash and belongs to the same entry.
+_ENTRY_START_RE = re.compile(rf"^(?:{_MONTH_RE}\s+)?(?:19|20)\d{{2}}\s*[—–-]", re.IGNORECASE)
+_YEAR_RANGE_RE = re.compile(r"^(?:19|20)\d{2}\s*[—–-]\s*(?:(?:19|20)\d{2}|настоящее)", re.IGNORECASE)
+
+
+def chunk_text_structured(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    """Split text on logical entries, not on arbitrary character counts.
+
+    A resume entry ("Ноябрь 2023 — Сбер / Нижний Новгород / …") stays in one
+    chunk, so a question like "how many jobs in this city" can be answered by
+    counting blocks instead of guessing at a fragment boundary. Markdown
+    headings and extraction markers ("###") become line breaks; a block that is
+    still too large (a chat log, a long article) falls back to the recursive
+    splitter. ``overlap`` only applies to that fallback — structured chunks are
+    self-contained by design.
+    """
+    text = re.sub(r"[ \t]*#{2,6}[ \t]*", "\n", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if not lines:
+        return []
+
+    blocks: list[tuple[bool, list[str]]] = []
+    current: list[str] = []
+    current_is_entry = False
+    for line in lines:
+        starts_entry = bool(_ENTRY_START_RE.match(line) or _YEAR_RANGE_RE.match(line))
+        if starts_entry and current:
+            blocks.append((current_is_entry, current))
+            current = [line]
+            current_is_entry = True
+        else:
+            current.append(line)
+    if current:
+        blocks.append((current_is_entry, current))
+
+    chunks: list[str] = []
+    buffer = ""
+    for is_entry, block in blocks:
+        block_text = " ".join(block)
+        if len(block_text) > chunk_size:
+            # A block that does not fit (a chat log, a long article) is split.
+            if buffer:
+                chunks.append(buffer)
+                buffer = ""
+            chunks.extend(chunk_text_recursive(block_text, chunk_size, overlap))
+            continue
+        # Two entries never share a chunk: counting "how many jobs" must not
+        # require the model to count inside a fragment.
+        if buffer and (is_entry or len(buffer) + len(block_text) + 1 > chunk_size):
+            chunks.append(buffer)
+            buffer = block_text
+        else:
+            buffer = f"{buffer} {block_text}".strip()
+    if buffer:
+        chunks.append(buffer)
+    return chunks
+
+
 def estimate_tokens(
     text: str, model_type: str = "multimodal", lang: str = "ru", token_chars: float | None = None
 ) -> int:

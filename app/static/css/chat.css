@@ -2378,8 +2378,9 @@ video {
 
 
 /* ===== Search scope (RAG filter) ===== */
-/* The control sits in the message input row, next to 📎. Its popover is
-   positioned in JS (fixed, clamped to the viewport), so it can never widen
+/* The control leads the Deep-analysis row: scope, then the analysis toggle,
+   then (on a phone) the relocated voice/paperclip/send buttons. Its popover
+   is positioned in JS (fixed, clamped to the viewport), so it can never widen
    the document on narrow screens. */
 .scope-control {
     flex: 0 0 auto;
@@ -2390,14 +2391,28 @@ video {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    max-width: 15rem;
+    max-width: 16rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+#scope-toggle:hover {
+    background: rgba(25, 118, 210, 0.08);
+}
 #scope-toggle.is-active {
     background: #e3f2fd;
     box-shadow: inset 0 0 0 1px #1976d2;
+    color: #1565c0;
+}
+#scope-icon {
+    display: none;
 }
 #scope-label {
     overflow: hidden;
@@ -2457,13 +2472,19 @@ video {
     color: #fff;
 }
 
-/* The input row is narrow on phones: the scope is an icon there. */
+/* On a phone the row carries the relocated buttons too: the scope becomes a
+   pair of emoji (🔍📁) and the Deep-analysis toggle keeps its checkbox + 🔬. */
 @media (max-width: 768px) {
-    #scope-label {
+    #scope-label,
+    .rlm-label-text {
         display: none;
+    }
+    #scope-icon {
+        display: inline;
     }
     #scope-toggle {
         max-width: none;
-        padding: 0.8rem 0.55rem;
+        padding: 0.35rem 0.4rem;
+        gap: 0.15rem;
     }
 }

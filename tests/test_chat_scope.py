@@ -19,22 +19,36 @@ def test_chat_has_the_scope_control_and_script():
     assert "js/chat-scope.js" in html
 
 
-def test_scope_control_lives_in_the_input_row():
-    """It belongs next to 📎, not in the Deep-analysis row.
+def test_scope_control_leads_the_deep_analysis_row():
+    """Scope first, then the analysis toggle — on desktop and on a phone.
 
-    That row is where mobile JS relocates 🎤/📎/Send, and it already carries a
-    margin-left:auto — a second auto margin there pushed the whole page into
-    horizontal scroll.
+    The row no longer carries a second margin-left:auto for the scope (that is
+    what used to push the page sideways); the relocated buttons keep theirs.
     """
     html = _chat_html()
-    input_row = html[html.index('<div class="message-input">'):]
     rlm_row = html[html.index('<div class="rlm-controls">'):html.index('<div class="message-input">')]
+    input_row = html[html.index('<div class="message-input">'):]
 
-    assert 'id="scope-control"' in input_row
-    assert 'id="scope-control"' not in rlm_row
-    # The desktop restore in relocateChatControls keeps the same position.
+    assert 'id="scope-control"' in rlm_row
+    assert 'id="scope-control"' not in input_row
+    assert rlm_row.index('id="scope-control"') < rlm_row.index('id="rlm-toggle"'), "scope comes first"
+
+    # Mobile JS still relocates only 🎤/📎/Send into that row.
     js = Path("app/static/js/chat-init.js").read_text(encoding="utf-8")
-    assert "insertBefore(scope, attach)" in js
+    assert "insertBefore(scope, attach)" not in js
+
+
+def test_phone_row_shows_two_emoji_and_hides_the_toggle_wording():
+    """A 360px row carries scope + 🔬 + three buttons: no room for words."""
+    css = Path("app/static/css/chat.css").read_text(encoding="utf-8")
+    assert "#scope-icon {\n    display: none;\n}" in css, "the folder icon is phone-only"
+    phone = css[css.index("/* On a phone the row carries the relocated buttons too"):]
+    assert "#scope-label,\n    .rlm-label-text {\n        display: none;" in phone
+    assert "#scope-icon {\n        display: inline;" in phone
+
+    html = _chat_html()
+    assert '<span id="scope-icon">📁</span>' in html
+    assert '<span class="rlm-label-text">{{ _(' in html
 
 
 def test_scope_popover_cannot_overflow_the_viewport():
@@ -44,7 +58,7 @@ def test_scope_popover_cannot_overflow_the_viewport():
     assert ".scope-popover {" in scope_css
     assert "position: fixed;" in scope_css
     assert "max-width: calc(100vw - 16px);" in scope_css
-    assert "#scope-label {\n        display: none;" in scope_css, "the phone layout is icon-only"
+    assert "#scope-icon" in scope_css
 
     js = Path("app/static/js/chat-scope.js").read_text(encoding="utf-8")
     assert "function positionPopover()" in js

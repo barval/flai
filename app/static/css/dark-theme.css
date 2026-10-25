@@ -740,9 +740,11 @@
 
 /* Search scope popover */
 .dark-theme #scope-toggle {
-    background: #2a2a2a;
-    border-color: #555;
+    background: transparent;
     color: #e0e0e0;
+}
+.dark-theme #scope-toggle:hover {
+    background: rgba(100, 181, 246, 0.12);
 }
 .dark-theme #scope-toggle.is-active {
     background: #1b3a55;

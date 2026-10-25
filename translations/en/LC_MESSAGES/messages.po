@@ -2062,6 +2062,9 @@ msgid "Reranker models"
 msgstr "Reranker models"
 
 #: app/templates/admin.html:146
+msgid "Context"
+msgstr "Context"
+
 msgid "Context length"
 msgstr "Context length"
 

@@ -494,7 +494,8 @@ body.dark-theme .cam-spinner {
    .add-user-button: a fixed 33px border-box height with the same 14px font. */
 .hub-dl,
 .hub-del,
-.hub-cancel {
+.hub-cancel,
+#hub-search-btn {
     height: 33px;
     padding: 0 16px;
     font-size: 14px;
@@ -661,6 +662,14 @@ body.dark-theme .model-card .model-desc {
         height: calc(100vh - 88px);
         height: calc(100dvh - 68px);
         padding: 15px;
+    }
+
+    /* Half the spacing around the page title: the browser's default h2
+       margin (20 px) over the 15 px container padding and the 30 px gap
+       below ate a whole row of a phone screen. */
+    .admin-panel-title {
+        margin-top: 0;
+        margin-bottom: 15px;
     }
 
     /* Model-type checkboxes: keep the box + icon, fold the text label into
@@ -1260,6 +1269,8 @@ body.dark-theme .hardware-table .hw-value {
 .hub-check input { margin: 0; }
 .hub-type-ic { font-size: 1em; }
 .hub-context-value { font-variant-numeric: tabular-nums; width: 7ch; min-width: 4ch; text-align: right; padding: 0.15rem 0.35rem; border: 1px solid #adb5bd; border-radius: 4px; }
+/* The phone shows a shorter caption, so the slider keeps a usable length. */
+.hub-context-label-short { display: none; }
 #hub-context-slider { width: 260px; max-width: 60%; }
 .hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-shrink: 0; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }
@@ -1446,20 +1457,22 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         -webkit-overflow-scrolling: touch;
     }
     .hub-filter-row > * { flex: 0 0 auto; }
-    /* The context row must not scroll sideways: the value field used to run
-       off the right edge. It wraps instead — label on its own line, then the
-       slider stretched and the value field beside it. */
+    /* One line: short caption, slider, value field. The long caption is
+       replaced with «Context», so the slider is not squeezed into a stub;
+       only the slider flexes, the caption and the field keep their width. */
     .hub-context-row {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         overflow-x: visible;
-        white-space: normal;
-        row-gap: 0.35rem;
+        white-space: nowrap;
+        gap: 0.35rem;
     }
-    .hub-context-row .hub-filter-label { flex: 1 1 100%; white-space: normal; }
+    .hub-context-label-full { display: none; }
+    .hub-context-label-short { display: inline; }
+    .hub-context-row .hub-filter-label { flex: 0 0 auto; white-space: nowrap; }
     .hub-context-row #hub-context-slider {
         flex: 1 1 auto;
         width: auto;
-        min-width: 0;
+        min-width: 3.5rem;
         max-width: none;
     }
     /* Seven digits plus the caret: the old 6ch field clipped a six-digit
@@ -1475,6 +1488,13 @@ body.dark-theme .installed-file-meta { color: #aaa; }
     .hub-header input[type="text"] { flex: 1 1 auto; min-width: 120px; }
     .hub-header .hub-filter-label,
     .hub-header button { flex: 0 0 auto; white-space: nowrap; }
+
+    /* The Hub is a scroll area, so its bottom must reach the footer: the
+       tab's 16 px, the container's 8 px and the page's 15 px bottom paddings
+       added up to a button-height gap above the footer. */
+    #hub-tab { padding-bottom: 0; }
+    .hub-container { padding-bottom: 0; }
+    .admin-container:has(#hub-tab.active) { padding-bottom: 0; }
 
     /* Results: one card per file. The four-column table needed its own
        horizontal viewport, which pushed the whole tab sideways; a phone now
@@ -1506,13 +1526,18 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         border: none;
         font-size: 0.8rem;
     }
-    .hub-file-row td:nth-child(1) { grid-area: size; justify-self: end; text-align: right; }
-    .hub-file-row td:nth-child(2) { grid-area: name; padding-left: 0; }
+    /* The desktop column widths (10% / 14% / 20%) are set on the same
+       nth-child selectors and win by specificity; they collapsed the size
+       cell to 6 px and the verdict to three lines. Every cell sizes itself
+       in the card. */
+    .hub-file-row td:nth-child(1) { grid-area: size; width: auto; justify-self: end; text-align: right; }
+    .hub-file-row td:nth-child(2) { grid-area: name; width: auto; padding-left: 0; }
     /* The fit verdict leads the line: "GPU+CPU" and "Impossible" are the
        longest labels and, right-aligned and unbreakable, they ran off the
        card and pushed the page sideways. */
     .hub-file-row td:nth-child(3) {
         grid-area: fit;
+        width: auto;
         justify-self: start;
         min-width: 0;
         text-align: left;
@@ -1521,6 +1546,7 @@ body.dark-theme .installed-file-meta { color: #aaa; }
     }
     .hub-file-row td:nth-child(4) {
         grid-area: action;
+        width: auto;
         display: flex;
         flex-wrap: wrap;
         align-items: center;

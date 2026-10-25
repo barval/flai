@@ -249,7 +249,7 @@
                     <label class="hub-check" title="{{ _('Reranker models') }}"><input type="checkbox" id="hub-type-reranker" checked> <span class="hub-type-ic">🎯</span> <span class="hub-type-label">{{ _('Reranker models') }}</span></label>
                 </div>
                 <div class="hub-filter-row hub-context-row">
-                    <span class="hub-filter-label">{{ _('Context length') }}:</span>
+                    <span class="hub-filter-label"><span class="hub-context-label-full">{{ _('Context length') }}:</span><span class="hub-context-label-short">{{ _('Context') }}:</span></span>
                     <input type="range" id="hub-context-slider" min="1024" max="262144" step="1024" value="8192">
                     <input type="text" inputmode="numeric" pattern="[0-9]*" id="hub-context-value" class="hub-context-value" value="8192" aria-label="Context length">
                 </div>

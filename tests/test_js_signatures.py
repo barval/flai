@@ -464,6 +464,15 @@ def _mobile_media_block(css: str, needle: str) -> tuple[str, str]:
         index = end + 1
 
 
+def test_the_hub_search_button_matches_the_download_buttons():
+    """They sit one above the other in the same tab and must be one height."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    rule = admin_css[admin_css.index(".hub-dl,\n.hub-del,"):]
+    rule = rule[: rule.index("}")]
+    assert "#hub-search-btn" in rule
+    assert "height: 33px;" in rule
+
+
 def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
     """The context field used to run off the right edge and the results table
     needed a sideways viewport; both now fit a phone."""
@@ -477,9 +486,16 @@ def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
     assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
     assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
     context = media[media.index(".hub-context-row {") :]
-    assert re.search(r"\.hub-context-row\s*\{[^}]*flex-wrap:\s*wrap", context)
+    assert re.search(r"\.hub-context-row\s*\{[^}]*flex-wrap:\s*nowrap", context), (
+        "the caption, slider and field share one line"
+    )
     assert re.search(r"\.hub-context-row\s*\{[^}]*overflow-x:\s*visible", context)
     assert re.search(r"\.hub-context-row #hub-context-slider\s*\{[^}]*flex:\s*1 1 auto", context)
+    assert ".hub-context-label-full { display: none; }" in context
+    assert ".hub-context-label-short { display: inline; }" in context
+    assert re.search(r"\.hub-context-label-short\s*\{\s*display:\s*none", admin_css), (
+        "the short caption exists for phones only"
+    )
     assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*width:\s*8ch", context), (
         "seven digits must fit the field"
     )
@@ -487,6 +503,10 @@ def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
 
     # Results: one card per file, no wide canvas, no column header.
     assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*visible", media)
+    # The Hub is a scroll area: no bottom padding may separate it from the footer.
+    assert "#hub-tab { padding-bottom: 0; }" in media
+    assert ".hub-container { padding-bottom: 0; }" in media
+    assert ".admin-container:has(#hub-tab.active) { padding-bottom: 0; }" in media
     assert re.search(r"\.hub-columns\s*\{\s*display:\s*none", media)
     assert "min-width: 680px" not in media
     cards = media[media.index(".hub-file-row {") :]
@@ -494,6 +514,12 @@ def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
     assert '"name   name"' in cards
     assert re.search(r'"fit\s+size"', cards), "the fit verdict leads the line"
     assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*white-space:\s*normal", cards)
+    # The desktop percentage widths (10/14/20 %) win by specificity and once
+    # collapsed the size cell to 6 px and the verdict to three lines.
+    for cell in (1, 2, 3, 4):
+        assert re.search(rf"\.hub-file-row td:nth-child\({cell}\)\s*\{{[^}}]*width:\s*auto", cards), (
+            f"cell {cell} must size itself in the card"
+        )
     assert re.search(r'"action action"', cards)
 
 

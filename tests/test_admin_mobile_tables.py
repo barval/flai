@@ -112,3 +112,11 @@ def test_users_become_cards_with_their_own_headings():
     html = ADMIN_HTML
     for label in ("Outgoing tokens", "Incoming tokens", "SLM Facts", "Tavily API", "Camera access"):
         assert f"'{label}': {{{{ _('{label}')|tojson }}}}" in html, f"{label} is not in TRANSLATIONS"
+
+
+def test_the_page_title_keeps_half_its_spacing():
+    """The browser's default h2 margin over the container padding and the
+    30 px gap below used a whole row of a phone screen (measured 35 / 30)."""
+    block = _mobile_block(".admin-panel-title {\n        margin-top: 0;")
+    assert "margin-top: 0;" in block
+    assert "margin-bottom: 15px;" in block

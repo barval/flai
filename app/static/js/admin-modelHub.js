@@ -16,10 +16,13 @@
     const typeBoxes = {
         reasoning: document.getElementById('hub-type-reasoning'),
         multimodal: document.getElementById('hub-type-multimodal'),
-        embedding: document.getElementById('hub-type-embedding')
+        embedding: document.getElementById('hub-type-embedding'),
+        reranker: document.getElementById('hub-type-reranker')
     };
 
-    const typeToModule = { reasoning: 'reasoning', multimodal: 'multimodal', embedding: 'embedding' };
+    const typeToModule = {
+        reasoning: 'reasoning', multimodal: 'multimodal', embedding: 'embedding', reranker: 'reranker'
+    };
     const ACTIVE_DOWNLOADS_KEY = 'flai.modelHub.activeDownloads';
     let lastData = null;
     let installedList = [];

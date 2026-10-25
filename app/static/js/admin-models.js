@@ -69,7 +69,8 @@ function renderModelCards() {
     const modules = [
         { id: 'reasoning', name: 'Reasoning', config: currentModelConfigs.reasoning || {} },
         { id: 'multimodal', name: 'Multimodal', config: currentModelConfigs.multimodal || {} },
-        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} }
+        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} },
+        { id: 'reranker', name: 'Reranker', config: currentModelConfigs.reranker || {} }
     ];
 
     let html = '';
@@ -87,6 +88,26 @@ function renderModelCards() {
                 </select>
             </div>
             <div class="model-details" id="details-${mod.id}"></div>`;
+
+        if (mod.id === 'reranker') {
+            // Its own switches: the reranker is a service, not a chat model.
+            const settings = window.RAG_RERANK_SETTINGS || {};
+            html += `
+            <div class="chunks-config">
+                <div class="param">
+                    <label>${t('Cross-encoder reranking')}</label>
+                    <input type="checkbox" class="rerank-enabled"${settings.enabled ? ' checked' : ''}>
+                </div>
+                <div class="param">
+                    <label>${t('Candidates to rerank')}</label>
+                    <input type="number" class="rerank-candidates" min="1" max="50" value="${settings.candidates || 10}">
+                </div>
+                <div class="param">
+                    <label>${t('Reranker request timeout (seconds)')}</label>
+                    <input type="number" class="rerank-timeout" min="1" max="120" value="${settings.timeout || 10}">
+                </div>
+            </div>`;
+        }
 
         if (mod.id !== 'embedding' && mod.id !== 'reranker') {
             html += `
@@ -161,11 +182,13 @@ async function onContextLengthChange(event) {
 }
 
 function modelAllowedForModule(type, module) {
-    // A missing/unknown type means legacy fallback servers: only the
-    // embedding module is restrictive then, everything else may be offered.
+    // A missing/unknown type means legacy fallback servers: only the typed
+    // modules are restrictive then.
     if (module === 'embedding') return type === 'embedding';
+    if (module === 'reranker') return type === 'reranker';
     if (module === 'multimodal') return type === 'multimodal';
-    return type !== 'embedding';
+    // A reranker cannot chat, and a chat model cannot rerank.
+    return type !== 'embedding' && type !== 'reranker';
 }
 
 async function refreshModelsForModule(module, silent = false) {
@@ -320,22 +343,6 @@ async function onModelSelect(event) {
         return;
     }
 
-    if (module === 'reranker') {
-        const rerankerInfo = {
-            architecture: 'BGE Cross-Encoder',
-            parameters: '~560M',
-            quantization: 'Q4_K_M',
-            context_length: '8192'
-        };
-        detailsGrid.innerHTML = `
-            <p><strong>${t('Architecture:')}</strong> ${rerankerInfo.architecture}</p>
-            <p><strong>${t('Parameters:')}</strong> ${rerankerInfo.parameters}</p>
-            <p><strong>${t('Quantization:')}</strong> ${rerankerInfo.quantization}</p>
-            <p><strong>${t('Max context length:')}</strong> ${rerankerInfo.context_length}</p>
-        `;
-        return;
-    }
-
     detailsGrid.innerHTML = `<p>${t('Loading...')}</p>`;
     clearModelError(module);
     select.closest('.model-card')?.querySelectorAll('.memory-hint').forEach(el => el.remove());
@@ -415,7 +422,10 @@ async function onModelSelect(event) {
 
     const ctxInput = document.querySelector(`.context-length[data-module="${module}"]`);
     const contextLength = ctxInput ? ctxInput.value : '';
-    await updateMemoryEstimation(module, info, contextLength);
+    if (module !== 'reranker') {
+        // The reranker is CPU-only: it has no VRAM tier and no fit verdict.
+        await updateMemoryEstimation(module, info, contextLength);
+    }
 
     if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
@@ -624,7 +634,7 @@ function validateModelConfig(module, card) {
         return false;
     }
 
-    if (module === 'embedding') return true;
+    if (module === 'embedding' || module === 'reranker') return true;
 
     // Multimodal module requires a vision model — block plain chat models.
     if (module === 'multimodal') {
@@ -726,6 +736,15 @@ function onSaveConfig(event) {
         repeat_penalty: repeatPenalty ? parseFloat(repeatPenalty) : (module === 'reasoning' ? 1.15 : 1.1),
     };
 
+    if (module === 'reranker') {
+        // The cross-encoder window is fixed; the sampling knobs are meaningless
+        // for a reranker and must not overwrite anything.
+        data.context_length = 2048;
+        delete data.temperature;
+        delete data.top_p;
+        delete data.repeat_penalty;
+    }
+
     fetchWithCSRF(`/admin/api/model_configs/${module}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -749,6 +768,34 @@ function onSaveConfig(event) {
                 if (result.reindex_triggered) {
                     alert(t('reindex_started'));
                 }
+            }
+
+            if (module === 'reranker') {
+                // The switches live in the same card: one button saves both the
+                // model row and the three reranker settings.
+                const settings = {
+                    RAG_RERANK_ENABLED: card.querySelector('.rerank-enabled').checked,
+                    RAG_RERANK_CANDIDATES: parseInt(card.querySelector('.rerank-candidates').value) || 10,
+                    RAG_RERANK_TIMEOUT: parseInt(card.querySelector('.rerank-timeout').value) || 10,
+                };
+                fetchWithCSRF('/admin/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ values: settings })
+                })
+                .then(res => res.json())
+                .then(saveResult => {
+                    if (saveResult.status !== 'ok') {
+                        alert(t('error') + ': ' + (saveResult.error || t('unknown_error')));
+                        return;
+                    }
+                    window.RAG_RERANK_SETTINGS = {
+                        enabled: settings.RAG_RERANK_ENABLED,
+                        candidates: settings.RAG_RERANK_CANDIDATES,
+                        timeout: settings.RAG_RERANK_TIMEOUT,
+                    };
+                })
+                .catch(err => alert(t('error') + ': ' + err.message));
             }
         } else {
             alert(t('error') + ': ' + (result.error || t('unknown_error')));
@@ -775,36 +822,6 @@ function updateChunksLimits(maxTopK) {
 }
 
 function initChunksSection() {
-    const saveRerankBtn = document.getElementById('rerank-save');
-    if (saveRerankBtn) {
-        saveRerankBtn.addEventListener('click', async function () {
-            const enabled = document.getElementById('rerank-enabled').checked;
-            const candidates = parseInt(document.getElementById('rerank-candidates').value) || 10;
-            const status = document.getElementById('rerank-status');
-            status.classList.remove('is-error');
-            status.textContent = '⏳';
-            try {
-                const response = await fetchWithCSRF('/admin/api/settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        values: { RAG_RERANK_ENABLED: enabled, RAG_RERANK_CANDIDATES: candidates }
-                    })
-                });
-                const result = await response.json();
-                if (result.status === 'ok') {
-                    status.textContent = '✅';
-                } else {
-                    status.classList.add('is-error');
-                    status.textContent = result.error || '✖️';
-                }
-            } catch (err) {
-                status.classList.add('is-error');
-                status.textContent = '✖️';
-            }
-        });
-    }
-
     const saveChunksBtn = document.getElementById('save-chunks-btn');
     if (!saveChunksBtn) return;
 
@@ -860,7 +877,7 @@ function initChunksSection() {
     }
 }
 
-const TYPE_EMOJI = { reasoning: '🧠', multimodal: '🖼️', embedding: '📐' };
+const TYPE_EMOJI = { reasoning: '🧠', multimodal: '🖼️', embedding: '📐', reranker: '🎯' };
 
 function fmtNum(n) {
     return (Number(n) || 0).toLocaleString();
@@ -888,12 +905,24 @@ function renderInstalledFiles(files) {
         name.className = 'installed-file-name';
         name.textContent = f.name;
         row.appendChild(name);
+        const details = document.createElement('span');
+        details.className = 'installed-file-details';
+        const badge = document.createElement('span');
+        badge.className = 'installed-file-badge';
+        if (f.from_hub) {
+            // Short badge: the full sentence does not fit a phone row. It keeps
+            // its own column (also when empty) so the sizes line up.
+            badge.textContent = t('Model Hub');
+            badge.title = t('hub_installed_via_hub');
+        }
+        details.appendChild(badge);
         const meta = document.createElement('span');
         meta.className = 'installed-file-meta';
         meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
-            + (f.path ? ' · ' + f.path : '')
-            + (f.from_hub ? ' · ' + t('hub_installed_via_hub') : '');
-        row.appendChild(meta);
+            + (f.path ? ' · ' + f.path : '');
+        meta.title = meta.textContent;
+        details.appendChild(meta);
+        row.appendChild(details);
         const del = document.createElement('button');
         del.className = 'hub-del add-user-button';
         del.dataset.filename = f.name;

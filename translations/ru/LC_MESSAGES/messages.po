@@ -2085,7 +2085,13 @@ msgstr "Мультимодальные"
 msgid "Embedding models"
 msgstr "Эмбеддинги"
 
+msgid "Reranker models"
+msgstr "Реранкеры"
+
 #: app/templates/admin.html:146
+msgid "Context"
+msgstr "Контекст"
+
 msgid "Context length"
 msgstr "Длина контекста"
 
@@ -2416,6 +2422,10 @@ msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model.
 msgstr ""
 "Эту модель нельзя сохранить (недостаточно VRAM/RAM). Выберите модель "
 "меньше."
+
+#: app/templates/admin.html
+msgid "The multimodal module requires a Vision model (with mmproj), not a plain chat model."
+msgstr "Для мультимодального модуля нужна Vision-модель (с mmproj), а не простая чат-модель."
 
 #: app/templates/admin.html:423
 msgid "Please select a model first."
@@ -3989,10 +3999,6 @@ msgid "Save changes"
 msgstr "Сохранить изменения"
 
 #: app/templates/admin.html
-msgid "Default"
-msgstr "По умолчанию"
-
-#: app/templates/admin.html
 msgid "Reset to the .env value"
 msgstr "Сбросить к значению из .env"
 
@@ -4191,6 +4197,30 @@ msgstr "Перекрытие соседних фрагментов (символ
 #: app/settings_registry.py
 msgid "Chunking strategy: fixed or recursive"
 msgstr "Стратегия нарезки: fixed или recursive"
+
+#: app/settings_registry.py
+msgid "Merge dense vector and full-text retrieval with reciprocal rank fusion"
+msgstr "Сливать плотный векторный и полнотекстовый поиск через reciprocal rank fusion"
+
+#: app/settings_registry.py
+msgid "Candidates each retriever returns before fusion"
+msgstr "Сколько кандидатов возвращает каждый поисковик до слияния"
+
+#: app/settings_registry.py
+msgid "Reciprocal rank fusion constant"
+msgstr "Константа reciprocal rank fusion"
+
+#: app/settings_registry.py
+msgid "Reorder the top candidates with the CPU cross-encoder"
+msgstr "Переупорядочивать верхние кандидаты CPU-кросс-энкодером"
+
+#: app/settings_registry.py
+msgid "How many top candidates the reranker reorders"
+msgstr "Сколько верхних кандидатов переупорядочивает реранкер"
+
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Таймаут запроса к реранкеру (секунды)"
 
 #: app/settings_registry.py
 msgid "Chunks retrieved per document query"
@@ -4665,16 +4695,16 @@ msgid "Reranker request timeout (seconds)"
 msgstr "Таймаут запроса к реранкеру (секунды)"
 
 #: app/templates/admin.html
+msgid "Reranker"
+msgstr "Реранкер"
+
+#: app/templates/admin.html
 msgid "Cross-encoder reranking"
 msgstr "Реранкинг кросс-энкодером"
 
 #: app/templates/admin.html
 msgid "Candidates to rerank"
 msgstr "Кандидатов на реранк"
-
-#: app/templates/admin.html
-msgid "Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models"
-msgstr "Модель реранкера не установлена: положите bge-reranker-v2-m3-Q4_K_M.gguf в /models"
 
 #: app/templates/chat.html
 msgid "Search scope"
@@ -4707,342 +4737,3 @@ msgstr "Сбросить"
 #: app/templates/chat.html
 msgid "Unfiled"
 msgstr "Без папки"
-
-#~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
-#~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
-
-#~ msgid "Documents Reindexing"
-#~ msgstr "Переиндексация документов"
-
-#~ msgid "Reindex All Documents"
-#~ msgstr "Переиндексировать все документы"
-
-#~ msgid "Rebuild all document embeddings with current chunking strategy"
-#~ msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
-
-#~ msgid "Current strategy"
-#~ msgstr "Текущая стратегия"
-
-#~ msgid "Reindex all documents"
-#~ msgstr "Переиндексировать все документы"
-
-#~ msgid "Reindex All"
-#~ msgstr "Переиндексировать"
-
-#~ msgid "Reindexing in progress"
-#~ msgstr "Переиндексация в процессе"
-
-#~ msgid "Reindexing complete"
-#~ msgstr "Переиндексация завершена"
-
-#~ msgid "Reindexing failed"
-#~ msgstr "Переиндексация не удалась"
-
-#~ msgid "delete_session_confirm"
-#~ msgstr "Удалить сеанс \"{title}\" от {date}?"
-
-#~ msgid "error"
-#~ msgstr "Ошибка"
-
-#~ msgid "chat"
-#~ msgstr "Чат"
-
-#~ msgid "llama.cpp service unavailable"
-#~ msgstr "Сервис llama.cpp недоступен"
-
-#~ msgid "Model for {model_type} not configured"
-#~ msgstr "Модель для {model_type} не настроена"
-
-#~ msgid ""
-#~ "Timeout ({timeout}s) when calling the "
-#~ "model. Try increasing timeout in admin"
-#~ " panel or simplify your request."
-#~ msgstr ""
-#~ "Превышено время ожидания ответа от "
-#~ "модели ({timeout}с). Попробуйте увеличить "
-#~ "таймаут в панели администратора или "
-#~ "упростите запрос."
-
-#~ msgid "Could not connect to llama.cpp"
-#~ msgstr "Не удалось подключиться к llama.cpp"
-
-#~ msgid "Could not connect to llama-server"
-#~ msgstr "Не удалось подключиться к llama-server"
-
-#~ msgid "Could not determine action"
-#~ msgstr "Не удалось определить действие"
-
-#~ msgid "Timeout ({timeout}s) during audio transcription"
-#~ msgstr "Таймаут ({timeout}с) при транскрибации аудио"
-
-#~ msgid "Connection error to Whisper API"
-#~ msgstr "Ошибка подключения к Whisper API"
-
-#~ msgid "Timeout ({timeout}s) when calling multimodal model"
-#~ msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
-
-#~ msgid "Could not connect to image generation service"
-#~ msgstr "Не удалось подключиться к сервису генерации изображений"
-
-#~ msgid "Image generation returned no image"
-#~ msgstr "Генерация изображений не вернула изображение"
-
-#~ msgid "male_voice"
-#~ msgstr "Мужской голос"
-
-#~ msgid "female_voice"
-#~ msgstr "Женский голос"
-
-#~ msgid "loading"
-#~ msgstr "Загрузка..."
-
-#~ msgid "Refresh models from llama.cpp"
-#~ msgstr "Обновить модели из llama.cpp"
-
-#~ msgid "Reranker"
-#~ msgstr "Реранкинг"
-
-#~ msgid "Cross-encoder model — reranks search results by relevance"
-#~ msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
-
-#~ msgid "BGE Cross-Encoder"
-#~ msgstr "BGE Cross-Encoder"
-
-#~ msgid "Please provide llama.cpp URL first."
-#~ msgstr "Сначала укажите URL llama.cpp."
-
-#~ msgid "llama.cpp available"
-#~ msgstr "llama.cpp доступен"
-
-#~ msgid "llama.cpp unavailable"
-#~ msgstr "llama.cpp недоступен"
-
-#~ msgid "your_requests"
-#~ msgstr "Ваши запросы в очереди / Всего в очереди"
-
-#~ msgid "recording"
-#~ msgstr "Запись"
-
-#~ msgid ""
-#~ "Service temporarily unavailable. Circuit "
-#~ "breaker is open after repeated failures."
-#~ msgstr ""
-#~ "Сервис временно недоступен. Предохранитель "
-#~ "открыт после повторных сбоев."
-
-#~ msgid "Model configuration missing"
-#~ msgstr "Конфигурация модели отсутствует"
-
-#~ msgid "Could not connect to llama-swap"
-#~ msgstr "Не удалось подключиться к llama-swap"
-
-#~ msgid "Reasoning model returned empty response"
-#~ msgstr "Модель рассуждений вернула пустой ответ"
-
-#~ msgid "vram_estimate_detail"
-#~ msgstr " (модель=%1%МБ + KV=%2%МБ + compute=%3%МБ)"
-
-#~ msgid "room_tambour"
-#~ msgstr "тамбур"
-
-#~ msgid "room_hallway"
-#~ msgstr "прихожая"
-
-#~ msgid "room_corridor"
-#~ msgstr "коридор"
-
-#~ msgid "room_bedroom"
-#~ msgstr "спальня"
-
-#~ msgid "room_office"
-#~ msgstr "кабинет"
-
-#~ msgid "room_children"
-#~ msgstr "детская"
-
-#~ msgid "room_living"
-#~ msgstr "гостиная"
-
-#~ msgid "room_kitchen"
-#~ msgstr "кухня"
-
-#~ msgid "room_balcony"
-#~ msgstr "балкон"
-
-#~ msgid "Name forms"
-#~ msgstr "Формы имён"
-
-#~ msgid ""
-#~ "One form per "
-#~ "line:&#10;гостиная&#10;гостиной&#10;гостиную&#10;living room"
-#~ msgstr ""
-
-#~ msgid "All declension forms + English name, one per line"
-#~ msgstr ""
-
-#~ msgid "Missing code"
-#~ msgstr "Не указан код"
-
-#~ msgid "At least one name form is required"
-#~ msgstr "Требуется хотя бы одна форма имени"
-
-#~ msgid "Camera not found"
-#~ msgstr "Камера не найдена"
-
-#~ msgid "Add camera"
-#~ msgstr "Добавить камеру"
-
-#~ msgid "New camera"
-#~ msgstr "Новая камера"
-
-#~ msgid "Short unique identifier, e.g. gos, spa, kab"
-#~ msgstr ""
-
-#~ msgid "One form per line:&#10;гостиная&#10;гостиной&#10;гостиную"
-#~ msgstr ""
-
-#~ msgid "All room name forms, one per line"
-#~ msgstr "Все формы названия комнаты, по одной на строку"
-
-#~ msgid "Enabled"
-#~ msgstr "Включена"
-
-#~ msgid "Order"
-#~ msgstr "Порядок"
-
-#~ msgid "Names (declensions)"
-#~ msgstr "Имена (падежи)"
-
-#~ msgid "English name"
-#~ msgstr "Английское имя"
-
-#~ msgid "RTSP IP"
-#~ msgstr "RTSP IP"
-
-#~ msgid "Port"
-#~ msgstr "Порт"
-
-#~ msgid "Stream"
-#~ msgstr "Поток"
-
-#~ msgid "Camera saved"
-#~ msgstr "Камера сохранена"
-
-#~ msgid "Camera deleted"
-#~ msgstr "Камера удалена"
-
-#~ msgid "Delete camera {code}?"
-#~ msgstr "Удалить камеру {code}?"
-
-#~ msgid "Edit camera"
-#~ msgstr "Редактировать камеру"
-
-#~ msgid "Refresh model list"
-#~ msgstr "Обновить список моделей"
-
-#~ msgid "Refresh backup list"
-#~ msgstr "Обновить список резервных копий"
-
-#~ msgid "model_cannot_be_saved"
-#~ msgstr ""
-#~ "Эта модель не может быть сохранена "
-#~ "(недостаточно VRAM/RAM). Выберите модель "
-#~ "меньшего размера."
-
-#~ msgid "multimodal_model_must_be_vision"
-#~ msgstr ""
-#~ "Для мультимодального модуля нужна "
-#~ "Vision-модель (с mmproj), а не простая"
-#~ " чат-модель."
-
-#~ msgid "Crawler service is unavailable"
-#~ msgstr ""
-#~ "⚠️ Сервис изучения сайтов недоступен. "
-#~ "Проверьте, что запущен контейнер flai-"
-#~ "crawler."
-
-#~ msgid "No link found in your message"
-#~ msgstr ""
-#~ "⚠️ В вашем сообщении нет ссылки. "
-#~ "Отправьте адрес сайта, который нужно "
-#~ "изучить."
-
-#~ msgid "Indexing the collected materials…"
-#~ msgstr "Индексирую собранные материалы…"
-
-#~ msgid "Could not read any pages from {domain}"
-#~ msgstr ""
-#~ "⚠️ Не удалось прочитать ни одной "
-#~ "страницы с {domain}. Попробуйте обычный "
-#~ "поиск."
-
-#~ msgid "Document quota reached — the collected materials were not saved"
-#~ msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
-
-#~ msgid "Failed to save the collected materials"
-#~ msgstr "⚠️ Не удалось сохранить собранные материалы."
-
-#~ msgid ""
-#~ "Document quota exceeded: {count} / "
-#~ "{max_docs} documents. Delete some to "
-#~ "upload more."
-#~ msgstr ""
-#~ "Превышена квота документов: {count} из "
-#~ "{max_docs}. Удалите часть документов."
-
-#~ msgid "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
-#~ msgstr ""
-#~ "Превышена квота хранилища документов: "
-#~ "использовано {used_mb:.0f}МБ из {max_mb}МБ."
-
-#~ msgid "Queued tasks cannot be cancelled"
-#~ msgstr "Задачи в очереди нельзя отменить"
-
-#~ msgid ""
-#~ "The step has no image to edit: "
-#~ "no image is attached and no "
-#~ "earlier step produced one."
-#~ msgstr ""
-#~ "У шага нет изображения для "
-#~ "редактирования: изображение не приложено и "
-#~ "ни один из предыдущих шагов не "
-#~ "создал его."
-
-# Tasks subsystem (v12.6): planning failures and terminal fallbacks
-#~ msgid "Task could not be planned: the plan template is unavailable."
-#~ msgstr "Задачу невозможно спланировать: шаблон планирования недоступен."
-
-#~ msgid ""
-#~ "Task could not be planned: the "
-#~ "planner returned an unreadable plan. "
-#~ "Please try again."
-#~ msgstr ""
-#~ "Задачу невозможно спланировать: планировщик "
-#~ "вернул нечитаемый план. Попробуйте ещё "
-#~ "раз."
-
-#~ msgid ""
-#~ "The final answer could not be "
-#~ "generated; please check the step results"
-#~ " above."
-#~ msgstr ""
-#~ "Не удалось сформировать итоговый ответ; "
-#~ "проверьте промежуточные результаты шагов выше."
-
-#~ msgid "Execution budget exhausted; the summary could not be generated."
-#~ msgstr "Время исполнения задачи исчерпано; сводку сформировать не удалось."
-
-# Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
-# view
-#~ msgid "stage_indexing_document"
-#~ msgstr "Создаю индекс для документа..."
-
-#~ msgid "Rebuild the visual continuity sheet"
-#~ msgstr "Пересобрать визуальную библию"
-
-#~ msgid "Style"
-#~ msgstr "Стиль"
-
-#~ msgid "Rebuilding the visual continuity sheet..."
-#~ msgstr "📐 Пересобираю визуальную библию..."
-

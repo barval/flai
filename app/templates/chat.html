@@ -112,10 +112,8 @@
 
         <!-- Message input area -->
         <div class="rlm-controls">
-            <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
-            <select id="rlm-docs" multiple hidden></select>
             <div class="scope-control" id="scope-control">
-                <button type="button" id="scope-toggle" title="{{ _('Search scope') }}">🔍 <span id="scope-label">{{ _('All documents') }}</span></button>
+                <button type="button" id="scope-toggle" title="{{ _('Search scope') }}" aria-label="{{ _('Search scope') }}">🔍<span id="scope-icon">📁</span><span id="scope-label">{{ _('All documents') }}</span></button>
                 <div class="scope-popover" id="scope-popover" hidden>
                     <label class="scope-row">{{ _('Folder') }}
                         <select id="scope-folder"><option value="">{{ _('All documents') }}</option></select>
@@ -132,6 +130,8 @@
                     </div>
                 </div>
             </div>
+            <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 <span class="rlm-label-text">{{ _('Deep analysis') }}</span><span id="rlm-count"></span></label>
+            <select id="rlm-docs" multiple hidden></select>
         </div>
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">

@@ -6,7 +6,7 @@ from typing import Any
 # Whitelist patterns
 LOGIN_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{3,50}$")
 NAME_PATTERN = re.compile(r"^[a-zA-Zа-яА-ЯёЁ0-9_\s\-]{2,100}$")
-MODULE_TYPES = {"multimodal", "reasoning", "embedding"}
+MODULE_TYPES = {"multimodal", "reasoning", "embedding", "reranker"}
 
 
 class ValidationError(Exception):

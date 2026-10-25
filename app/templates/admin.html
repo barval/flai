@@ -221,32 +221,6 @@
                 <button id="save-chunks-btn" class="btn-primary">{{ _('Save') }}</button>
             </div>
         </div>
-        <div class="model-card" id="reranker-card">
-            <h3><span class="module-name">{{ _('Reranker') }}</span></h3>
-            <div class="chunks-config">
-                <div class="param">
-                    <label>{{ _('Cross-encoder reranking') }}</label>
-                    <input type="checkbox" id="rerank-enabled"{% if rag_rerank_enabled %} checked{% endif %}>
-                </div>
-                <div class="param">
-                    <label>{{ _('Candidates to rerank') }}</label>
-                    <input type="number" id="rerank-candidates" min="1" max="50" value="{{ rag_rerank_candidates }}">
-                </div>
-                <div class="param" style="grid-column: 1 / -1;">
-                    <small>
-                        {% if reranker_available %}
-                        bge-reranker-v2-m3 ({{ reranker_size_mb }} MB, CPU)
-                        {% else %}
-                        {{ _('Reranker model is not installed: place bge-reranker-v2-m3-Q4_K_M.gguf in /models') }}
-                        {% endif %}
-                    </small>
-                </div>
-                <div class="param" style="grid-column: 1 / -1;">
-                    <button id="rerank-save" class="btn-primary">💾 {{ _('Save') }}</button>
-                    <span id="rerank-status" class="settings-status"></span>
-                </div>
-            </div>
-        </div>
         <div id="models-files" class="model-card" style="margin-top:16px;">
             <h3><span class="module-name">{{ _('Downloaded models') }}</span></h3>
             <div id="models-files-list" class="models-files-list"></div>
@@ -272,9 +246,10 @@
                     <label class="hub-check" title="{{ _('Reasoning models') }}"><input type="checkbox" id="hub-type-reasoning" checked> <span class="hub-type-ic">🧠</span> <span class="hub-type-label">{{ _('Reasoning models') }}</span></label>
                     <label class="hub-check" title="{{ _('Multimodal models') }}"><input type="checkbox" id="hub-type-multimodal" checked> <span class="hub-type-ic">🖼️</span> <span class="hub-type-label">{{ _('Multimodal models') }}</span></label>
                     <label class="hub-check" title="{{ _('Embedding models') }}"><input type="checkbox" id="hub-type-embedding" checked> <span class="hub-type-ic">📐</span> <span class="hub-type-label">{{ _('Embedding models') }}</span></label>
+                    <label class="hub-check" title="{{ _('Reranker models') }}"><input type="checkbox" id="hub-type-reranker" checked> <span class="hub-type-ic">🎯</span> <span class="hub-type-label">{{ _('Reranker models') }}</span></label>
                 </div>
-                <div class="hub-filter-row">
-                    <span class="hub-filter-label">{{ _('Context length') }}:</span>
+                <div class="hub-filter-row hub-context-row">
+                    <span class="hub-filter-label"><span class="hub-context-label-full">{{ _('Context length') }}:</span><span class="hub-context-label-short">{{ _('Context') }}:</span></span>
                     <input type="range" id="hub-context-slider" min="1024" max="262144" step="1024" value="8192">
                     <input type="text" inputmode="numeric" pattern="[0-9]*" id="hub-context-value" class="hub-context-value" value="8192" aria-label="Context length">
                 </div>
@@ -347,10 +322,10 @@
                     <thead>
                         <tr>
                             <th>№</th>
+                            <th>{{ _('Created') }}</th>
                             <th>{{ _('Filename') }}</th>
                             <th>{{ _('Type') }}</th>
                             <th>{{ _('Size') }}</th>
-                            <th>{{ _('Created') }}</th>
                             <th class="th-actions">{{ _('Actions') }}</th>
                         </tr>
                     </thead>
@@ -477,6 +452,11 @@
 window.ROOMS = {{ rooms|tojson }};
 window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     window.LLAMA_SWAP_URL = {{ llama_swap_url|tojson }};
+    window.RAG_RERANK_SETTINGS = {
+        enabled: {{ rag_rerank_enabled|tojson }},
+        candidates: {{ rag_rerank_candidates|tojson }},
+        timeout: {{ rag_rerank_timeout|tojson }}
+    };
     window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'monitoring_all_users': {{ _('All users')|tojson }},
     'monitoring_no_data': {{ _('No data in this range')|tojson }},
@@ -568,6 +548,12 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Characters shared by neighbouring chunks': {{ _('Characters shared by neighbouring chunks')|tojson }},
     'Chunking strategy: fixed or recursive': {{ _('Chunking strategy: fixed or recursive')|tojson }},
     'Structural (by entries)': {{ _('Structural (by entries)')|tojson }},
+    'Merge dense vector and full-text retrieval with reciprocal rank fusion': {{ _('Merge dense vector and full-text retrieval with reciprocal rank fusion')|tojson }},
+    'Candidates each retriever returns before fusion': {{ _('Candidates each retriever returns before fusion')|tojson }},
+    'Reciprocal rank fusion constant': {{ _('Reciprocal rank fusion constant')|tojson }},
+    'Reorder the top candidates with the CPU cross-encoder': {{ _('Reorder the top candidates with the CPU cross-encoder')|tojson }},
+    'How many top candidates the reranker reorders': {{ _('How many top candidates the reranker reorders')|tojson }},
+    'Reranker request timeout (seconds)': {{ _('Reranker request timeout (seconds)')|tojson }},
     'Chunks retrieved per document query': {{ _('Chunks retrieved per document query')|tojson }},
     'Share of the context window given to documents': {{ _('Share of the context window given to documents')|tojson }},
     'Time budget for scanned-PDF OCR (seconds, 0 = unlimited)': {{ _('Time budget for scanned-PDF OCR (seconds, 0 = unlimited)')|tojson }},
@@ -726,6 +712,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'MB': {{ _('MB')|tojson }},
     'timeout_fetching_model_info': {{ _('timeout_fetching_model_info')|tojson }},
     'model_cannot_be_saved': {{ _('This model cannot be saved (not enough VRAM/RAM). Choose a smaller model.')|tojson }},
+    'multimodal_model_must_be_vision': {{ _('The multimodal module requires a Vision model (with mmproj), not a plain chat model.')|tojson }},
     // Validation messages
     'Please select a model first.': {{ _('Please select a model first.')|tojson }},
     'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},
@@ -816,6 +803,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Update hardware list': {{ _('Update hardware list')|tojson }},
     'Platform': {{ _('Platform')|tojson }},
     'GPU': {{ _('GPU')|tojson }},
+    'CPU': {{ _('CPU')|tojson }},
     'CPU cores': {{ _('CPU cores')|tojson }},
     'VRAM': {{ _('VRAM')|tojson }},
     'RAM': {{ _('RAM')|tojson }},
@@ -826,6 +814,29 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_searching': {{ _('Searching…')|tojson }},
     'hub_no_query': {{ _('Enter a search query…')|tojson }},
     'hub_no_results': {{ _('No models found')|tojson }},
+    'Reranker': {{ _('Reranker')|tojson }},
+    'Cross-encoder reranking': {{ _('Cross-encoder reranking')|tojson }},
+    'Candidates to rerank': {{ _('Candidates to rerank')|tojson }},
+    'Status': {{ _('Status')|tojson }},
+    'Login': {{ _('Login')|tojson }},
+    'Password': {{ _('Password')|tojson }},
+    'Name': {{ _('Name')|tojson }},
+    'Class': {{ _('Class')|tojson }},
+    'Storage': {{ _('Storage')|tojson }},
+    'Sessions': {{ _('Sessions')|tojson }},
+    'Tasks': {{ _('Tasks')|tojson }},
+    'Outgoing tokens': {{ _('Outgoing tokens')|tojson }},
+    'Incoming tokens': {{ _('Incoming tokens')|tojson }},
+    'Messages': {{ _('Messages')|tojson }},
+    'Files': {{ _('Files')|tojson }},
+    'Documents': {{ _('Documents')|tojson }},
+    'SLM Facts': {{ _('SLM Facts')|tojson }},
+    'Internet requests': {{ _('Internet requests')|tojson }},
+    'Tavily API': {{ _('Tavily API')|tojson }},
+    'FLAI API': {{ _('FLAI API')|tojson }},
+    'Camera access': {{ _('Camera access')|tojson }},
+    'Actions': {{ _('Actions')|tojson }},
+    'Model Hub': {{ _('Model Hub')|tojson }},
     'hub_error': {{ _('Model Hub request failed')|tojson }},
     'hub_gated': {{ _('Access required')|tojson }},
     'hub_nc': {{ _('Non-commercial')|tojson }},

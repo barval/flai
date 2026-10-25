@@ -367,7 +367,7 @@ class TestCachedTavilyUsage:
 
     def _call(self, redis_client, key="tvly-key", fail_ttl=60):
         with patch("app.api_bridge.get_redis_client", return_value=redis_client):
-            return tavily_keys.cached_tavily_usage("valery", key, "https://api.tavily.com", 8, 300, fail_ttl)
+            return tavily_keys.cached_tavily_usage("demo", key, "https://api.tavily.com", 8, 300, fail_ttl)
 
     def test_answered_lookup_is_reused_for_the_success_ttl(self):
         redis_client = _CacheRedis()
@@ -379,7 +379,7 @@ class TestCachedTavilyUsage:
 
         assert first == second == answer
         assert fetch.call_count == 1
-        assert redis_client.ttls[tavily_keys._usage_cache_key("valery", "tvly-key")] == 300
+        assert redis_client.ttls[tavily_keys._usage_cache_key("demo", "tvly-key")] == 300
         assert redis_client.closed == 1
 
     def test_unreachable_endpoint_is_remembered_only_briefly(self):
@@ -391,7 +391,7 @@ class TestCachedTavilyUsage:
             self._call(redis_client)
 
         assert fetch.call_count == 1
-        assert redis_client.ttls[tavily_keys._usage_cache_key("valery", "tvly-key")] == 60
+        assert redis_client.ttls[tavily_keys._usage_cache_key("demo", "tvly-key")] == 60
 
     def test_failure_cache_can_be_disabled(self):
         redis_client = _CacheRedis()

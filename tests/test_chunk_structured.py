@@ -9,16 +9,16 @@ from app.utils import chunk_text_structured
 
 MONTH_START = re.compile(r"(?i)^(?:январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)")
 
-RESUME = """Барсуков Валерий Владимирович
-Опыт работы — 26 лет 3 месяца
-### Ноябрь 2023 — Сбер настоящее время Нижний Новгород, rabota.sber.ru/ 2 года 3 месяца
+RESUME = """Иванов Иван Иванович
+Опыт работы — 12 лет 4 месяца
+### Ноябрь 2023 — ООО «Альфа» настоящее время Тверь, alfa.example/ 2 года 3 месяца
 ### Финансовый сектор • Банк ### Главный инженер по разработке
 - Написание скриптов автоматизации сборки и деплоя (Jenkins, Groovy).
-### Ноябрь 2022 — Сбер
-### Ноябрь 2023 Нижний Новгород, rabota.sber.ru/ 1 год 1 месяц
+### Ноябрь 2022 — ООО «Альфа»
+### Ноябрь 2023 Тверь, alfa.example/ 1 год 1 месяц
 - Главный инженер по разработке.
-### Ноябрь 2018 — ООО Глобус-ИТ
-### Ноябрь 2022 Нижний Новгород, globus-ltd.com 4 года 1 месяц
+### Ноябрь 2018 — ООО «Вектор»
+### Ноябрь 2022 Тверь, vector.example 4 года 1 месяц
 - Поддержка разработчиков.
 """
 
@@ -29,10 +29,10 @@ def test_each_entry_keeps_its_dates_and_city():
 
     entries = [chunk for chunk in chunks if MONTH_START.match(chunk)]
     assert len(entries) == 3, chunks
-    assert "Ноябрь 2023 — Сбер" in entries[0] and "настоящее время" in entries[0]
-    assert "Ноябрь 2022 — Сбер" in entries[1]
-    assert "Ноябрь 2023 Нижний Новгород" in entries[1], "the closing date line stays with its entry"
-    assert "Глобус-ИТ" in entries[-1] and "globus-ltd.com" in entries[-1]
+    assert "Ноябрь 2023 — ООО «Альфа»" in entries[0] and "настоящее время" in entries[0]
+    assert "Ноябрь 2022 — ООО «Альфа»" in entries[1]
+    assert "Ноябрь 2023 Тверь" in entries[1], "the closing date line stays with its entry"
+    assert "ООО «Вектор»" in entries[-1] and "vector.example" in entries[-1]
 
 
 @pytest.mark.unit
@@ -60,7 +60,7 @@ def test_empty_text_yields_no_chunks():
 
 @pytest.mark.unit
 def test_year_ranges_start_a_new_entry():
-    text = "2018 — 2022 ООО Ромашка\nМосква\n2013 — 2018 ООО Лютик\nСаров"
+    text = "2018 — 2022 ООО Ромашка\nТверь\n2013 — 2018 ООО Лютик\nПсков"
 
     chunks = chunk_text_structured(text, 500, 50)
 

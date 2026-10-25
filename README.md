@@ -59,6 +59,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Camera integration | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
 | Long-term memory (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
 | Documents, RAG, PDF OCR | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| RAG quality measurement (hit@k, MRR, nDCG, latency) | [RAG_EVAL.md](docs/RAG_EVAL.md) | [RAG_EVAL-ru.md](docs/RAG_EVAL-ru.md) |
 | Users, backups, Model Hub, branding | [ADMINISTRATION.md](docs/ADMINISTRATION.md) | [ADMINISTRATION-ru.md](docs/ADMINISTRATION-ru.md) |
 | Health endpoint, Prometheus metrics | [MONITORING.md](docs/MONITORING.md) | [MONITORING-ru.md](docs/MONITORING-ru.md) |
 | Public `/v1` API | [API.md](docs/API.md) | [API-ru.md](docs/API-ru.md) |
@@ -71,6 +72,14 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
 ## 🆕 What's New in v12.7
+
+- **Document search that finds things** — hybrid retrieval (vectors + PostgreSQL full-text, fused with reciprocal rank fusion) is now on by default, and a **search scope** (folder + upload period) narrows the corpus before retrieval. On the 22-question set hybrid measured MRR 0.688 → 0.744 and nDCG 0.751 → 0.965 against dense-only, and the chat no longer cuts the retrieved list at fifteen fragments. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Structure-aware chunking** — the new `structured` strategy keeps one logical entry (dates, organisation, city) inside one chunk, which is what counting and listing questions need.
+- **CPU cross-encoder reranker (optional)** — `bge-reranker-v2-m3` is a regular module with a model picker; it stays off by default because it pays off only in a narrow context window and lowers ranking quality in a wide one. → [MODELS.md](docs/MODELS.md)
+- **Admin Monitoring tab** — storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h to 30 d, drawn as hand-written SVG bar charts with no chart library. → [MONITORING.md](docs/MONITORING.md)
+- **Admin Settings tab** — 139 of 149 environment variables are editable in the browser (database > `.env` > built-in default, applied without a restart); secrets stay masked and every change is audited. → [CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Per-user storage limits and internet-request accounting** — an editable megabyte limit enforced on every upload path, and a month-to-date count of every outbound call (search, page fetch, crawl). → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
+- **A phone-first admin panel** — Users, Settings, Cameras, Backups, Model Hub results and Downloaded models render as cards that keep every desktop column, instead of tables that turned the page sideways.
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -90,39 +99,42 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
-- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. Optional **hybrid search** (vectors + full-text with reciprocal rank fusion) and a **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
 ## 🔎 Working with document search
 
-Document search has three optional layers on top of plain vector retrieval. All are **off by default**
-and switch on in the admin panel; nothing changes until you enable them.
+Document search has several layers. Which one earns its cost depends on the question:
 
-| Layer | Where to enable | What it does | Cost |
-|---|---|---|---|
-| **Search scope** | 🔍 next to the chat input | Answers only from the chosen folder / upload period (or from the whole corpus) | none |
-| **Hybrid search** | Settings → `RAG_HYBRID_ENABLED` | Adds full-text retrieval (PostgreSQL, Russian stemming) and merges it with the vectors via reciprocal rank fusion; runs the lexical half only when the question contains a rare term (a name, a city, a tool) | +~17 ms per query |
-| **Reranker** | Models → Reranker | Reorders the top candidates with a CPU cross-encoder (`bge-reranker-v2-m3`, ~0.4 GB, no GPU) | +~150 ms warm, ~1.5 s on the first query |
-| **Structured chunking** | Models → Chunks → Strategy | Splits on logical entries (a resume entry, a dated block) instead of fixed windows, so counting questions can count blocks | none, but documents must be re-indexed (`flask rag-reindex --user <login>`) |
+| Question | Best tool | Why |
+|---|---|---|
+| Conceptual or paraphrased | **Vector search** (always on) | matches meaning rather than words and adds no latency |
+| Exact names, cities, codes, tool names — or one large file floods the results | **Hybrid search** (on by default) | adds PostgreSQL full-text with Russian stemming and fuses it with the vectors through reciprocal rank fusion; the lexical half only fires when the question carries a rare term |
+| The right fragment is found but ranked second or third | **Reranker** (off by default) | a CPU cross-encoder reorders the top candidates; it pays off in narrow windows, loses ranking quality in wide ones and adds ~0.3 s |
+| "List all…", "how many…", compare every entry of a document | **Deep analysis** (🔬 with documents selected) | walks the whole corpus step by step instead of fitting one fixed context window |
+| Only part of the corpus matters | **Search scope** (🔍) | removes competing documents before retrieval — usually the strongest lever |
+| Resumes, contracts, logs and other entry-based files | **Structured chunking** | keeps one logical entry in one chunk, so listing and counting stay possible |
 
 How to use them:
 
-1. **Ask a question about a subset of documents** — set the scope (folder and/or upload dates) before
-   sending. The scope is shown as a chip and applies to the messages that follow; clearing it restores
-   the global search. A document attached to the message is always visible, even outside the scope.
-2. **Enable hybrid search** when questions hinge on a word the vector blurs: names, cities, product
-   codes, tool names. It also helps when a large chat export or a long manual drowns the right document.
-3. **Enable the reranker** when the right fragment is found but ranked second or third. Keep `Candidates
-   to rerank` at 10 — a wider pool can push valid entries to the end of the context.
-4. **Switch chunking to `structured`** for resumes, contracts, logs and other entry-based documents, then
-   re-index. Measure first with `docs/RAG_EVAL.md`; it exists exactly for this decision.
+1. **Narrow the scope first** — a folder and/or an upload period removes competing documents before
+   retrieval, which buys more than any ranking setting. The scope is shown as a chip and applies to the
+   messages that follow; a document attached to a message is always visible, even outside the scope.
+2. **Keep hybrid search on** — it helps with names, codes and large files for tens of milliseconds.
+   Turning it off makes sense only on a tiny corpus where the lexical half adds nothing.
+3. **Enable the reranker selectively** — when the right fragment consistently ranks second or third and
+   the context window is narrow (few fragments). In a wide window (a couple of dozen fragments) it
+   lowers ranking quality and adds ~0.3 s; keep `Candidates to rerank` at 10.
+4. **Choose chunking by document shape** — `structured` for resumes, contracts and logs, `recursive` or
+   `fixed` for continuous prose; after changing the strategy, re-index (`flask rag-reindex --user <login>`).
+5. **Switch to deep analysis when the answer is a list or a count** over a document: ordinary search
+   returns the best fragments, not the whole document.
 
-Measured on a real corpus of 29 documents / 22 questions: vector-only answered 0 of 3 counting
-questions, hybrid answered 3 of 3 at the production `top_k=20`, and the reranker lifted nDCG@10 from
-0.84 to 0.92 without breaking an answer. Details and the exact numbers → [DOCUMENTS.md](docs/DOCUMENTS.md),
-[RAG_EVAL.md](docs/RAG_EVAL.md).
+Every layer is measured with the built-in harness instead of being enabled on faith: `flask rag-eval`
+reports hit@k, MRR, nDCG and latency, and the decision log lives in [RAG_EVAL.md](docs/RAG_EVAL.md)
+together with the layered design in [DOCUMENTS.md](docs/DOCUMENTS.md).
 
 ### 🧠 Memory & context
 - **Long-term memory (SLM)** — rule-based, CPU-only fact extraction and merging with semantic deduplication; a profile per user, erased with the account. → [MEMORY.md](docs/MEMORY.md)
@@ -143,12 +155,12 @@ questions, hybrid answered 3 of 3 at the production `top_k=20`, and the reranker
 - **Interactive reference** — Swagger UI at `/v1/docs`, OpenAPI document at `/v1/openapi.json`, served offline with bundled assets. → [API.md](docs/API.md)
 
 ### ⚙️ Administration
-- **Users** — create, edit, delete, service classes, camera permissions.
+- **Users** — create, edit, delete, service classes, camera permissions, per-user storage limits (enforced on every upload path) and the month-to-date internet-request count.
 - **Models** — select and tune GGUF models per module; a context window that would not fit the hardware is rejected.
 - **Model Hub** — search Hugging Face for GGUF models, see a VRAM/RAM fit estimate before downloading, download with progress and resume, delete what you no longer need.
 - **Backups** — full or per-user backup and restore from the admin panel.
 - **Personalization** — your own header logo and localized site names, included in full backups.
-- **Monitoring** — hardware overview, database sizes, system statistics. → [MONITORING.md](docs/MONITORING.md)
+- **Monitoring** — hardware and database overview plus a usage tab: storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h – 30 d. → [MONITORING.md](docs/MONITORING.md)
 - **CLI tools** — admin password, upload cleanup, message-format migration, SLM import and cleanup. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 ### 🔒 Privacy & security
@@ -234,6 +246,12 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **RAM (recommended)** | 24 GB | 32 GB | 32 GB | 48 GB |
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
+
+**Optional components add to this budget.** The CPU reranker (`bge-reranker-v2-m3`, off by default) costs
+~0.42 GB of disk and holds about **0.9 GB of RAM** while resident: it runs in llama-swap's `cpu_only` group,
+never touches VRAM and never takes a GPU queue slot, but on the CPU-only tier it competes with the reasoning
+model for cores (a warm query costs ~150 ms, the first one ~1.5 s). Hybrid search adds a PostgreSQL mirror of
+the chunks — a few MB per thousand chunks, no GPU memory.
 
 Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis, the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
 

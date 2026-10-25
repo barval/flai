@@ -24,10 +24,10 @@ JSONL, one question per line:
 
 ```bash
 # Build a question set from the user's indexed chunks (one model call per question)
-flask rag-eval-generate --user valery --count 20 --out data/rag_eval/questions.jsonl
+flask rag-eval-generate --user <login> --count 20 --out data/rag_eval/questions.jsonl
 
 # Measure
-flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
+flask rag-eval --user <login> --dataset data/rag_eval/questions.jsonl \
                --top-k 10 --label "dense baseline" --out data/rag_eval/baseline.json
 ```
 
@@ -42,11 +42,12 @@ the usual failure for "how many jobs in this city" questions. Add an `"answer"` 
 item and run the same command with `--answers`:
 
 ```json
-{"question": "How many jobs did he have in Moscow?", "relevant": ["<doc_id>"], "answer": "0"}
+{"question": "How many jobs did the candidate have in Tver?", "relevant": ["<doc_id>"], "answer": "0"}
 ```
 
-The harness retrieves, builds the context exactly like a chat request, asks the model (it is told to
-answer `НЕТ ДАННЫХ` when the fragments do not contain the answer) and compares the result: numbers
+The harness retrieves, builds the context exactly like a chat request, asks the model (the prompt in
+`app/cli.py` tells it to answer a fixed «no data» marker when the fragments do not contain the answer) and
+compares the result: numbers
 compare by number, free text by normalized containment, and an expected `0` also accepts an explicit
 "no data" answer. The report lists every mismatch with the expected and actual answer.
 
@@ -88,8 +89,11 @@ set goes 0.773 → 0.864 hit@10, and end-to-end answers with the production `top
 | hybrid | 3/3 |
 | hybrid + rerank | 3/3 |
 
-So hybrid is worth its 17 ms on entity-style questions and costs a little ranking quality on easy
-ones; it stays opt-in (`RAG_HYBRID_ENABLED`), and that trade-off is the reason.
+Hybrid is on by default (`RAG_HYBRID_ENABLED=true`): on the mixed 22-question set it wins on every
+metric (hit 0.909 vs 0.864, MRR 0.744 vs 0.688, nDCG 0.965 vs 0.751) for the 20-chunk chat window and
+for the 5-chunk task window (hit 0.864 vs 0.727, nDCG 0.815 vs 0.688). The reranker stays off by
+default: with hybrid on it lowers nDCG on the 20-chunk window (0.922) and costs ~280 ms per search,
+while helping only the 5-chunk tool window (0.831 vs 0.815).
 
 Every candidate change (reranker, metadata filters, chunking) is measured on both datasets.
 

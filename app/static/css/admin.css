@@ -489,12 +489,19 @@ body.dark-theme .cam-spinner {
     cursor: pointer;
     font-size: 16px;
 }
+/* One hover language across the admin panel: the button darkens instead of
+   switching to another hue. The red hub buttons keep their own darker red
+   (their rules follow and win on equal specificity). */
+.add-user-button:hover {
+    background-color: #2980b9;
+}
 /* Hub download/delete/cancel buttons must match the .btn-primary/.save-button
    height (the Chunks and Model-card "Save" buttons) instead of the taller
    .add-user-button: a fixed 33px border-box height with the same 14px font. */
 .hub-dl,
 .hub-del,
-.hub-cancel {
+.hub-cancel,
+#hub-search-btn {
     height: 33px;
     padding: 0 16px;
     font-size: 14px;
@@ -519,6 +526,9 @@ body.dark-theme .hub-del:hover {
     border-radius: 4px;
     cursor: pointer;
 }
+.delete-user-btn:hover {
+    background-color: #c0392b;
+}
 .change-password-btn {
     background-color: #f39c12;
     color: white;
@@ -526,6 +536,9 @@ body.dark-theme .hub-del:hover {
     padding: 5px 10px;
     border-radius: 4px;
     cursor: pointer;
+}
+.change-password-btn:hover {
+    background-color: #e67e22;
 }
 
 /* Model cards */
@@ -602,6 +615,14 @@ body.dark-theme .model-card .model-desc {
     display: flex;
     flex-direction: column;
 }
+
+/* A checkbox keeps its own size inside these column-flex params (the shared
+   `align-items: stretch` would otherwise widen it). */
+.model-card .param input[type="checkbox"] {
+    align-self: flex-start;
+    width: auto;
+    margin: 6px 0 0;
+}
 .model-card .param label {
     font-size: 0.85em;
     color: #666;
@@ -655,6 +676,14 @@ body.dark-theme .model-card .model-desc {
         padding: 15px;
     }
 
+    /* Half the spacing around the page title: the browser's default h2
+       margin (20 px) over the 15 px container padding and the 30 px gap
+       below ate a whole row of a phone screen. */
+    .admin-panel-title {
+        margin-top: 0;
+        margin-bottom: 15px;
+    }
+
     /* Model-type checkboxes: keep the box + icon, fold the text label into
        the element's hover tooltip so the row fits the mobile width. */
     .hub-type-label { display: none; }
@@ -676,15 +705,6 @@ body.dark-theme .model-card .model-desc {
     .db-value {
         white-space: nowrap;
         font-weight: bold;
-    }
-
-    /* Ensure table wrapper takes full width and scrolls */
-    .users-table-wrapper {
-        width: 100%;
-        overflow-x: auto;
-    }
-    #users-table {
-        min-width: 800px; /* force table to be wider than screen to enable horizontal scroll */
     }
 
     /* Model cards: prevent content overflow */
@@ -857,6 +877,15 @@ body.admin-page .voice-gender-switcher {
     position: relative;
 }
 
+/* A checkbox is not a text field: the shared width:100% stretched it into a
+   wide bar next to its label. */
+.chunks-config .param input[type="checkbox"] {
+    width: auto;
+    align-self: flex-start;
+    margin: 6px 0 0;
+}
+
+
 .chunks-config .param > small {
     display: block;
     margin-top: 3px;
@@ -892,7 +921,16 @@ body.admin-page .voice-gender-switcher {
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-wrap: wrap;
     flex-shrink: 0;
+}
+/* One row, one height: the refresh button (10/20 padding, 16 px font) and the
+   create button (8/16 padding) sat on different baselines. */
+.backups-header .add-user-button,
+.backups-header .btn-primary,
+.backup-create select {
+    height: 38px;
+    box-sizing: border-box;
 }
 
 .backups-table-wrapper {
@@ -934,10 +972,9 @@ body.admin-page .voice-gender-switcher {
     cursor: pointer;
     font-size: 14px;
     transition: background-color 0.2s;
-    margin-top: 10px;
 }
 .btn-primary:hover {
-    background-color: #2980b9;
+    background-color: #219a52;
 }
 .btn-primary:disabled {
     background-color: #bdc3c7;
@@ -979,7 +1016,12 @@ body.admin-page .voice-gender-switcher {
     cursor: pointer;
     font-size: 13px;
     text-decoration: none;
-    display: inline-block;
+    /* An <a> styled as a button: inline-flex centres its label the way the
+       <button> elements next to it are centred. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 .btn-warning:hover {
     background-color: #e67e22;
@@ -1010,6 +1052,16 @@ body.admin-page .voice-gender-switcher {
     font-size: 14px;
     letter-spacing: 0.5px;
     border-bottom: 2px solid #2980b9;
+}
+
+/* The same dashed column separators as the Users table. */
+.backups-table th,
+.backups-table td {
+    border-right: 1px dashed #e2e2e2;
+}
+.backups-table th:last-child,
+.backups-table td:last-child {
+    border-right: none;
 }
 
 .backups-table td {
@@ -1043,26 +1095,20 @@ body.admin-page .voice-gender-switcher {
     font-size: 16px;
 }
 
+/* The type is plain text: coloured pills competed with the row's action
+   buttons for attention. */
 .backup-type-badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-}
-.backup-type-badge.users {
-    background-color: #3498db;
-    color: white;
-}
-.backup-type-badge.full {
-    background-color: #27ae60;
-    color: white;
+    font-size: 13px;
 }
 
 /* Dark theme for backups table */
 body.dark-theme .backups-table {
     background-color: #1e1e1e;
     color: #e0e0e0;
+}
+body.dark-theme .backups-table th,
+body.dark-theme .backups-table td {
+    border-right-color: #333;
 }
 body.dark-theme .backups-table td {
     background-color: #1e1e1e;
@@ -1252,6 +1298,8 @@ body.dark-theme .hardware-table .hw-value {
 .hub-check input { margin: 0; }
 .hub-type-ic { font-size: 1em; }
 .hub-context-value { font-variant-numeric: tabular-nums; width: 7ch; min-width: 4ch; text-align: right; padding: 0.15rem 0.35rem; border: 1px solid #adb5bd; border-radius: 4px; }
+/* The phone shows a shorter caption, so the slider keeps a usable length. */
+.hub-context-label-short { display: none; }
 #hub-context-slider { width: 260px; max-width: 60%; }
 .hub-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-shrink: 0; flex-wrap: wrap; }
 .hub-header input[type="text"] { flex: 1 1 280px; }
@@ -1345,6 +1393,7 @@ table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 /* The in-place "Cancel" button reuses .add-user-button (same size as
    "Download"); only its color changes to signal cancellation. */
 .hub-cancel { background-color: #c0392b; }
+.hub-cancel:hover { background-color: #a93226; }
 body.dark-theme .hub-cancel { background-color: #a93226; }
 /* dark theme */
 body.dark-theme .hub-note { color: #888; }
@@ -1381,7 +1430,8 @@ body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; borde
 /* Models-tab disk files panel. */
 .models-files-list { display: flex; flex-direction: column; gap: 0.4rem; }
 .installed-file {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.4rem minmax(0, 1fr) minmax(0, 26rem) auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.4rem 0.5rem;
@@ -1389,7 +1439,36 @@ body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; borde
     border-radius: 4px;
 }
 .installed-file-name { font-weight: 600; word-break: break-all; }
-.installed-file-meta { margin-left: auto; color: #777; font-size: 0.9em; white-space: nowrap; }
+/* Badge and footprint share one cell; the badge keeps a fixed width (also
+   when it is empty) so every size starts on the same line. */
+.installed-file-details {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.installed-file-badge {
+    flex: 0 0 7.2rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-size: 0.85em;
+    text-align: center;
+    white-space: nowrap;
+}
+.installed-file-badge:empty { background: transparent; }
+.installed-file-meta {
+    min-width: 0;
+    overflow: hidden;
+    color: #777;
+    font-size: 0.9em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+body.dark-theme .installed-file-badge { background: #1e3a24; color: #7fd493; }
+body.dark-theme .installed-file-badge:empty { background: transparent; }
 .installed-file .hub-del { margin-left: 0.5rem; }
 body.dark-theme .installed-file { border-color: #444; }
 body.dark-theme .installed-file-meta { color: #aaa; }
@@ -1408,32 +1487,154 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         -webkit-overflow-scrolling: touch;
     }
     .hub-filter-row > * { flex: 0 0 auto; }
-    #hub-context-slider { width: 150px; max-width: none; }
+    /* One line: short caption, slider, value field. The long caption is
+       replaced with «Context», so the slider is not squeezed into a stub;
+       only the slider flexes, the caption and the field keep their width. */
+    .hub-context-row {
+        flex-wrap: nowrap;
+        overflow-x: visible;
+        white-space: nowrap;
+        gap: 0.35rem;
+    }
+    .hub-context-label-full { display: none; }
+    .hub-context-label-short { display: inline; }
+    .hub-context-row .hub-filter-label { flex: 0 0 auto; white-space: nowrap; }
+    .hub-context-row #hub-context-slider {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 3.5rem;
+        max-width: none;
+    }
+    /* Seven digits plus the caret: the old 6ch field clipped a six-digit
+       window down to four visible digits. content-box keeps the padding
+       and the border outside that width. */
+    .hub-context-row .hub-context-value {
+        flex: 0 0 auto;
+        box-sizing: content-box;
+        width: 8ch;
+        min-width: 8ch;
+    }
     .hub-header { flex-wrap: nowrap; gap: 0.4rem; margin-bottom: 0.5rem; }
     .hub-header input[type="text"] { flex: 1 1 auto; min-width: 120px; }
     .hub-header .hub-filter-label,
     .hub-header button { flex: 0 0 auto; white-space: nowrap; }
 
-    /* Keep the Model Hub headings and file rows aligned in a horizontal
-       viewport rather than squeezing their columns over one another. */
-    .hub-results-wrap { overflow-x: auto; }
-    .hub-columns { min-width: 680px; box-sizing: border-box; }
-    .hub-repo { min-width: 680px; box-sizing: border-box; }
-    table.hub-files { min-width: 680px; }
+    /* The Hub is a scroll area, so its bottom must reach the footer: the
+       tab's 16 px, the container's 8 px and the page's 15 px bottom paddings
+       added up to a button-height gap above the footer. */
+    #hub-tab { padding-bottom: 0; }
+    .hub-container { padding-bottom: 0; }
+    .admin-container:has(#hub-tab.active) { padding-bottom: 0; }
 
-    /* Downloaded models are a compact list with its own horizontal viewport. */
-    #models-files { overflow-x: auto; }
-    .models-files-list { min-width: 620px; }
-    .installed-file { flex-wrap: nowrap; white-space: nowrap; }
-    .installed-file-name {
-        flex: 0 0 48%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        word-break: normal;
+    /* Results: one card per file. The four-column table needed its own
+       horizontal viewport, which pushed the whole tab sideways; a phone now
+       reads the name, then footprint + fit, then the action. */
+    .hub-results-wrap { overflow-x: visible; }
+    .hub-columns { display: none; }
+    .hub-repo { min-width: 0; padding: 0.45rem 0.5rem; }
+    table.hub-files,
+    .hub-files tbody { display: block; width: 100%; min-width: 0; }
+    .hub-file-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "name   name"
+            "fit    size"
+            "action action";
+        align-items: center;
+        gap: 0.25rem 0.5rem;
+        padding: 0.45rem 0.4rem;
+        border: 1px solid #e2e2e2;
+        border-radius: 6px;
+        background: #fff;
     }
-    .installed-file-meta,
-    .installed-file .hub-del { flex-shrink: 0; }
+    .hub-file-row + .hub-file-row { margin-top: 0.4rem; }
+    .hub-file-row td {
+        display: block;
+        width: auto;
+        padding: 0;
+        border: none;
+        font-size: 0.8rem;
+    }
+    /* The desktop column widths (10% / 14% / 20%) are set on the same
+       nth-child selectors and win by specificity; they collapsed the size
+       cell to 6 px and the verdict to three lines. Every cell sizes itself
+       in the card. */
+    .hub-file-row td:nth-child(1) { grid-area: size; width: auto; justify-self: end; text-align: right; }
+    .hub-file-row td:nth-child(2) { grid-area: name; width: auto; padding-left: 0; }
+    /* The fit verdict leads the line: "GPU+CPU" and "Impossible" are the
+       longest labels and, right-aligned and unbreakable, they ran off the
+       card and pushed the page sideways. */
+    .hub-file-row td:nth-child(3) {
+        grid-area: fit;
+        width: auto;
+        justify-self: start;
+        min-width: 0;
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .hub-file-row td:nth-child(4) {
+        grid-area: action;
+        width: auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+        text-align: left;
+    }
+    .hub-path { font-weight: 600; word-break: break-word; }
+    /* A long org/model id must wrap instead of widening the card. */
+    .hub-repo-name { min-width: 0; overflow-wrap: anywhere; }
+    .hub-progress-wrap { width: 100%; min-width: 0; }
+    body.dark-theme .hub-file-row { background: #1e1e1e; border-color: #444; }
+
+    /* Downloaded models: one card per model, two lines inside it — the name
+       and the delete button on the first, the footprint on the second. A
+       horizontal viewport here forced the whole page sideways on a phone. */
+    #models-files { overflow-x: visible; }
+    .models-files-list { min-width: 0; }
+    .installed-file {
+        display: grid;
+        grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+        grid-template-areas:
+            "emoji name    del"
+            ".     details details";
+        align-items: center;
+        column-gap: 0.45rem;
+        row-gap: 0.15rem;
+        padding: 0.35rem 0.4rem;
+        white-space: normal;
+    }
+    .installed-file-emoji { grid-area: emoji; }
+    .installed-file-name {
+        grid-area: name;
+        min-width: 0;
+        font-size: 0.82rem;
+        word-break: normal;
+        overflow-wrap: anywhere;
+    }
+    .installed-file-details {
+        grid-area: details;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 0.35rem;
+        font-size: 0.72rem;
+    }
+    .installed-file-badge {
+        flex: 0 0 auto;
+    }
+    .installed-file-meta {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .installed-file .hub-del {
+        grid-area: del;
+        margin-left: 0;
+        height: 28px;
+        padding: 0 0.5rem;
+        font-size: 0.78rem;
+    }
 }
 
 /* ===== BRANDING (PERSONALIZATION) TAB ===== */
@@ -1481,6 +1682,9 @@ body.dark-theme .installed-file-meta { color: #aaa; }
 }
 .branding-names-actions {
     margin-top: 4px;
+}
+.branding-names-actions .btn-primary {
+    margin-top: 10px;
 }
 
 /* Branding tab logo buttons must match the .btn-primary "Save names"
@@ -1785,4 +1989,383 @@ body.dark-theme .settings-default-value,
 body.dark-theme .settings-description,
 body.dark-theme .settings-reset {
     color: #9a9a9a;
+}
+
+/* ===== Cameras & Backups: one card per row on a phone ===== */
+/* Both tables used to be wider than the viewport, so the whole tab scrolled
+   sideways. Each row becomes a two-line card instead, and the tab itself
+   never widens. */
+@media (max-width: 768px) {
+    #cameras-tab,
+    #backups-tab {
+        overflow-x: visible;
+    }
+
+    /* ── Cameras ── */
+    .cameras-table-wrapper {
+        max-height: none;
+    }
+    #cameras-table thead {
+        display: none;
+    }
+    #cameras-table,
+    #cameras-table tbody,
+    #cameras-table tr,
+    #cameras-table td {
+        display: block;
+        width: 100%;
+    }
+    #cameras-table tr {
+        display: grid;
+        grid-template-columns: 1.4rem auto auto minmax(0, 1fr);
+        grid-template-areas:
+            "num status code room"
+            "preview preview preview preview";
+        align-items: center;
+        gap: 0.3rem 0.45rem;
+        margin: 0 0 0.5rem;
+        padding: 0.4rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    #cameras-table td {
+        border: none;
+        padding: 0;
+    }
+    #cameras-table td.cam-num {
+        grid-area: num;
+        color: #888;
+        font-size: 0.78rem;
+    }
+    #cameras-table td:nth-child(2) {
+        grid-area: status;
+    }
+    #cameras-table td.cam-code {
+        grid-area: code;
+        font-family: monospace;
+        font-size: 0.8rem;
+    }
+    #cameras-table td:nth-child(4) {
+        grid-area: room;
+        font-size: 0.85rem;
+        overflow-wrap: anywhere;
+    }
+    #cameras-table td.cam-preview-cell {
+        grid-area: preview;
+        width: auto;
+        padding: 0.2rem 0 0 !important;
+    }
+    #cameras-table .cam-preview {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    /* ── Backups ── */
+    .backups-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .backups-table-wrapper {
+        max-height: none;
+    }
+    #backups-table thead {
+        display: none;
+    }
+    #backups-table,
+    #backups-table tbody,
+    #backups-table tr,
+    #backups-table td {
+        display: block;
+        width: 100%;
+    }
+    /* A card keeps every desktop column, in the desktop order:
+       № · Created · Filename · Type · Size · Actions. */
+    #backups-table tr {
+        display: grid;
+        /* The desktop rule stretches the row to 100 %; with the card padding
+           and border that overflowed the table. */
+        width: auto;
+        box-sizing: border-box;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "num     created  created"
+            "filename filename filename"
+            "type    type     size"
+            "actions actions  actions";
+        gap: 0.25rem 0.5rem;
+        margin: 0 0 0.5rem;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    #backups-table td {
+        border: none;
+        padding: 0;
+        min-width: 0;
+        /* The desktop table centres every cell; a card reads left to right. */
+        width: auto;
+        text-align: left;
+    }
+    #backups-table td:nth-child(1) {
+        grid-area: num;
+        font-size: 0.78rem;
+        color: #999;
+    }
+    #backups-table td:nth-child(2) {
+        grid-area: created;
+        font-size: 0.78rem;
+        color: #777;
+        text-align: right;
+    }
+    #backups-table td:nth-child(3) {
+        grid-area: filename;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    #backups-table td:nth-child(4) {
+        grid-area: type;
+        overflow-wrap: anywhere;
+    }
+    #backups-table td:nth-child(5) {
+        grid-area: size;
+        text-align: right;
+        white-space: nowrap;
+    }
+    #backups-table td.actions-cell {
+        grid-area: actions;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        justify-content: flex-start;
+    }
+    /* Buttons and the download <a> share one box, so their labels sit on the
+       same line. */
+    #backups-table td.actions-cell button,
+    #backups-table td.actions-cell a {
+        height: 30px;
+        padding: 0 0.6rem;
+        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+
+    body.dark-theme #cameras-table tr,
+    body.dark-theme #backups-table tr {
+        border-color: #444;
+    }
+    body.dark-theme #backups-table td:nth-child(2) {
+        color: #aaa;
+    }
+}
+
+/* ===== Settings: two columns and two rows per setting on a phone ===== */
+/* The four-column table cannot fit a phone: the default column was cut off and
+   long values stayed invisible. Each row now reads as
+       Variable            [value]
+       Description         default ↺
+   and the header repeats the same grid, so every label stays over its cell. */
+@media (max-width: 768px) {
+    #settings-tab {
+        overflow-x: visible;
+    }
+    .settings-table,
+    .settings-table thead,
+    .settings-table tbody,
+    .settings-table tr,
+    .settings-table th,
+    .settings-table td {
+        display: block;
+        width: 100%;
+    }
+    .settings-table thead tr,
+    .settings-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        grid-template-areas:
+            "name  value"
+            "desc  default";
+        align-items: start;
+        gap: 0.2rem 0.5rem;
+        padding: 0.45rem 0.4rem;
+        border-bottom: 1px solid #eee;
+    }
+    /* Row filtering sets the hidden attribute; a block display would revive it. */
+    .settings-table tbody tr[hidden] {
+        display: none;
+    }
+    .settings-table th,
+    .settings-table td {
+        border: none;
+        padding: 0;
+    }
+    .settings-table th:nth-child(1),
+    .settings-table td:nth-child(1) {
+        grid-area: name;
+        width: auto;
+    }
+    .settings-table th:nth-child(2),
+    .settings-table td:nth-child(2) {
+        grid-area: desc;
+        width: auto;
+    }
+    .settings-table th:nth-child(3),
+    .settings-table td:nth-child(3) {
+        grid-area: value;
+        width: auto;
+    }
+    .settings-table th:nth-child(4),
+    .settings-table td:nth-child(4) {
+        grid-area: default;
+        width: auto;
+    }
+    .settings-table thead th {
+        font-size: 0.68rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+    .settings-field-label {
+        font-size: 0.8rem;
+        display: block;
+        overflow-wrap: anywhere;
+    }
+    .settings-description {
+        font-size: 0.72rem;
+        line-height: 1.25;
+    }
+    .settings-default {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.25rem;
+        white-space: normal;
+    }
+    .settings-default-value {
+        margin-right: 0;
+        font-size: 0.72rem;
+        overflow-wrap: anywhere;
+    }
+    .settings-input {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.35rem;
+    }
+    body.dark-theme .settings-table tbody tr {
+        border-color: #3a3a3a;
+    }
+}
+
+
+/* ===== Users: one card per user on a phone ===== */
+/* Appended last: the base .users-table-wrapper rule (overflow + max-height)
+   sits after the general mobile block, so overriding it there had no effect. */
+@media (max-width: 768px) {
+    .users-table-wrapper {
+        width: 100%;
+        overflow-x: visible;
+        overflow-y: visible;
+        max-height: none;
+        box-shadow: none;
+        border-radius: 0;
+    }
+    #users-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        background: transparent;
+        font-size: 12.5px;
+    }
+    #users-table thead {
+        display: none;
+    }
+    #users-table tbody {
+        display: block;
+    }
+    #users-table tbody tr {
+        display: block;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px solid #d8dde3;
+        border-radius: 8px;
+        background: #fff;
+    }
+    /* Flex, not grid: the storage cell holds three children, and a two-column
+       grid would drop the third one under the heading. */
+    #users-table tbody td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        text-align: left;
+        border: none;
+        border-bottom: 1px dashed #eee;
+    }
+    #users-table tbody td:last-child {
+        border-bottom: none;
+    }
+    #users-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 8.5rem;
+        color: #7f8c8d;
+        font-size: 11.5px;
+        line-height: 1.2;
+    }
+    /* Login is the card title: bigger, no heading, above the fields. */
+    #users-table tbody td:nth-child(2) {
+        display: block;
+        padding-bottom: 6px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    #users-table tbody td:nth-child(2)::before {
+        content: none;
+    }
+    /* Actions sit on their own row at the bottom of the card. */
+    #users-table tbody td:last-child {
+        display: block;
+        padding-top: 8px;
+        text-align: right;
+    }
+    #users-table tbody td:last-child::before {
+        content: none;
+    }
+    /* Inputs fill the space left of their heading instead of a fixed column. */
+    #users-table tbody td input[type="text"],
+    #users-table tbody td input[type="number"],
+    #users-table tbody td select {
+        flex: 1 1 6rem;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #users-table .storage-cell {
+        white-space: normal;
+    }
+    #users-table .storage-limit-input {
+        flex: 0 1 5rem;
+        width: 5rem;
+    }
+    #users-table td input[type="checkbox"] {
+        transform: scale(1.2);
+    }
+    #users-table .camera-checkboxes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        justify-content: flex-start;
+    }
+    body.dark-theme #users-table tbody tr {
+        background: #1e1e1e;
+        border-color: #444;
+    }
+    body.dark-theme #users-table tbody td {
+        border-bottom-color: #333;
+    }
+    body.dark-theme #users-table tbody td::before {
+        color: #999;
+    }
 }

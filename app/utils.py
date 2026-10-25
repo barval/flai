@@ -1080,8 +1080,8 @@ _MONTH_RE = (
     r"сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]|"
     r"january|february|march|april|may|june|july|august|september|october|november|december)"
 )
-# An entry starts with a date RANGE ("Ноябрь 2023 — Сбер"); the closing line
-# ("Ноябрь 2023 Нижний Новгород") has no dash and belongs to the same entry.
+# An entry starts with a date RANGE ("November 2023 — Company"); the closing
+# line ("November 2023 City") has no dash and belongs to the same entry.
 _ENTRY_START_RE = re.compile(rf"^(?:{_MONTH_RE}\s+)?(?:19|20)\d{{2}}\s*[—–-]", re.IGNORECASE)
 _YEAR_RANGE_RE = re.compile(r"^(?:19|20)\d{2}\s*[—–-]\s*(?:(?:19|20)\d{2}|настоящее)", re.IGNORECASE)
 
@@ -1089,8 +1089,8 @@ _YEAR_RANGE_RE = re.compile(r"^(?:19|20)\d{2}\s*[—–-]\s*(?:(?:19|20)\d{2}|н
 def chunk_text_structured(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
     """Split text on logical entries, not on arbitrary character counts.
 
-    A resume entry ("Ноябрь 2023 — Сбер / Нижний Новгород / …") stays in one
-    chunk, so a question like "how many jobs in this city" can be answered by
+    A resume entry ("November 2023 — Company / City / …") stays in one chunk, so
+    a question like "how many jobs in this city" can be answered by
     counting blocks instead of guessing at a fragment boundary. Markdown
     headings and extraction markers ("###") become line breaks; a block that is
     still too large (a chat log, a long article) falls back to the recursive
@@ -1388,6 +1388,9 @@ def init_gguf_cache_db():
                 "value_length INTEGER",
                 "parameter_count BIGINT",
                 "supports_mtp BOOLEAN DEFAULT NULL",
+                # v12.7: the model's own name, used to tell a reranker from a
+                # plain encoder (both are "bert"-architecture).
+                "general_name VARCHAR(255)",
             ]:
                 try:
                     c.execute(f"ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS {col}")
@@ -1415,7 +1418,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
         with get_db() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp FROM gguf_models_cache"
+                "SELECT model_name, context_length, embedding_length, architecture, general_name, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp FROM gguf_models_cache"
             )
             for row in c.fetchall():
                 arch = row["architecture"]
@@ -1430,6 +1433,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
                     "context_length": row["context_length"],
                     "embedding_length": row["embedding_length"],
                     "architecture": arch,
+                    "name": row["general_name"],
                     "block_count": row["block_count"],
                     "expert_count": row["expert_count"],
                     "file_size_mb": row["file_size_mb"],
@@ -1459,12 +1463,13 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
             c = conn.cursor()
             c.execute(
                 """
-                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, general_name, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (model_name) DO UPDATE SET
                     context_length = EXCLUDED.context_length,
                     embedding_length = EXCLUDED.embedding_length,
                     architecture = EXCLUDED.architecture,
+                    general_name = EXCLUDED.general_name,
                     block_count = EXCLUDED.block_count,
                     expert_count = EXCLUDED.expert_count,
                     file_size_mb = EXCLUDED.file_size_mb,
@@ -1481,6 +1486,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     metadata.get("context_length"),
                     metadata.get("embedding_length"),
                     metadata.get("architecture"),
+                    metadata.get("name"),
                     metadata.get("block_count"),
                     metadata.get("expert_count", 0),
                     metadata.get("file_size_mb"),
@@ -1566,6 +1572,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                             "context_length": None,
                             "embedding_length": None,
                             "architecture": None,
+                            "name": None,
                             "block_count": None,
                             "expert_count": None,
                             "head_count": None,
@@ -1626,6 +1633,12 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                     val = _gguf_scalar(fields["general.parameter_count"].parts[-1])
                                     if val is not None:
                                         scanned["parameter_count"] = int(float(val))  # type: ignore[assignment]
+                                if "general.name" in fields and not scanned["name"]:
+                                    raw = _gguf_scalar(fields["general.name"].parts[-1])
+                                    if isinstance(raw, (bytes, bytearray)):
+                                        scanned["name"] = raw.decode("utf-8", errors="replace")
+                                    else:
+                                        scanned["name"] = str(raw)
                                 if "general.architecture" in fields and not scanned["architecture"]:
                                     raw = _gguf_scalar(fields["general.architecture"].parts[-1])
                                     if isinstance(raw, (bytes, bytearray)):

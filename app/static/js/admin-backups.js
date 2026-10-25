@@ -52,10 +52,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td class="cam-num">${index + 1}</td>
-                        <td title="${escapeHtml(backup.filename)}">${escapeHtml(backup.filename)}</td>
-                        <td><span class="backup-type-badge ${backup.type}">${backup.type === 'users' ? t('Users only') : (backup.type === 'full' ? t('Full (users + chats + files)') : backup.type)}</span></td>
-                        <td>${formatSize(backup.size)}</td>
                         <td>${formatDate(backup.created_at)}</td>
+                        <td title="${escapeHtml(backup.filename)}">${escapeHtml(backup.filename)}</td>
+                        <td><span class="backup-type-badge">${backup.type === 'users' ? t('Users only') : (backup.type === 'full' ? t('Full (users + chats + files)') : backup.type)}</span></td>
+                        <td>${formatSize(backup.size)}</td>
                         <td class="actions-cell">
                             <button class="btn-success" onclick="restoreBackup('${escapeHtml(backup.filename)}')" title="${t('restore')}">${t('restore')}</button>
                             <a href="/admin/api/backups/${encodeURIComponent(backup.filename)}/download" class="btn-warning" title="${t('download')}">${t('download')}</a>

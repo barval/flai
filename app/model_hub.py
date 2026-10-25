@@ -34,8 +34,9 @@ HF_DL = "https://huggingface.co"
 
 _NC_MARKERS = ("nc", "non-commercial", "noncommercial", "cc-by-nc", "personal")
 
-MODEL_TYPES = ("reasoning", "multimodal", "embedding")
+MODEL_TYPES = ("reasoning", "multimodal", "embedding", "reranker")
 
+_RERANKER_MARKERS = ("rerank", "cross-encoder", "crossencoder")
 _MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
 _EMBEDDING_ARCH = ("bert", "bge", "nomic", "gte", "embedding", "withlintransformerpooler", "lora")
 _MULTIMODAL_NAME = ("vl", "vision", "multimodal", "mplug", "mmproj", "ollama")
@@ -46,12 +47,17 @@ _EMBEDDING_NAME = ("embed", "bge", "mxbai", "gte", "nomic", "e5-", "instructor",
 _HUB_WORKERS = 10
 
 
-def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
-    """Classify a model as reasoning / multimodal / embedding.
+def classify_model_type(repo: str, archs: list[str] | None = None, name_hint: str = "") -> str:
+    """Classify a model as reasoning / multimodal / embedding / reranker.
 
-    Prioritizes the repo's architecture names (config.json), then falls back to
-    the repo/file name heuristics. Unknown cases default to ``reasoning``.
+    A reranker is checked first and across every signal: its architecture is a
+    plain encoder (``bert``), exactly like an embedding model, so the only
+    reliable mark is its own name ("bge-reranker-v2-m3") — the file may be
+    renamed, hence ``name_hint`` (the GGUF's ``general.name``).
     """
+    haystack = " ".join([repo or "", name_hint or "", *(archs or [])]).lower()
+    if any(marker in haystack for marker in _RERANKER_MARKERS):
+        return "reranker"
     for arch in archs or []:
         low = arch.lower()
         if any(m in low for m in _MULTIMODAL_ARCH):
@@ -70,7 +76,12 @@ def classify_model_type(repo: str, archs: list[str] | None = None) -> str:
 
 def _module_for_type(mtype: str) -> str:
     """Module key used by fit estimation, matching the client's type->module map."""
-    return {"reasoning": "reasoning", "multimodal": "multimodal", "embedding": "embedding"}.get(mtype, "reasoning")
+    return {
+        "reasoning": "reasoning",
+        "multimodal": "multimodal",
+        "embedding": "embedding",
+        "reranker": "reranker",
+    }.get(mtype, "reasoning")
 
 
 class HubError(RuntimeError):
@@ -1086,7 +1097,7 @@ def installed_basenames(models_dir: str | None = None) -> list[str]:
     return sorted(n for n in os.listdir(models_dir) if n.endswith(".gguf"))
 
 
-_TYPE_ORDER = {"reasoning": 0, "multimodal": 1, "embedding": 2}
+_TYPE_ORDER = {"reasoning": 0, "multimodal": 1, "embedding": 2, "reranker": 3}
 
 
 def list_installed(models_dir: str | None = None) -> list[dict]:

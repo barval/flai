@@ -18,7 +18,7 @@ After starting the services, log in as admin and go to **Admin Panel → Models*
 
 - **Chunk Size (characters):** How documents are split into pieces for indexing.
 - **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
-- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
+- **Chunk Strategy:** `fixed` (by character count), `recursive` (by headings/paragraphs) or `structured` (one logical entry per chunk — see [Chunking strategies](#chunking-strategies)).
 - **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
 - **Threshold (documents):** Minimum similarity score for general document queries.
 - **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.
@@ -59,13 +59,17 @@ behind a chat request. The CPU group is declared `exclusive: false` and `persist
 the reranker and the embedding model resident together — without that, the two evict each other and
 every query pays two model loads (3.5 s instead of 0.15 s).
 
-Enable it with `RAG_RERANK_ENABLED=true`; `RAG_RERANK_CANDIDATES` (default 10) sets how many top
-candidates are reordered. The endpoint returns raw logits, so scores are sigmoided and scaled to the
-best candidate — otherwise an absolute relevance threshold would drop every reranked chunk.
+Enable it with `RAG_RERANK_ENABLED=true` (off by default, see the measurement below);
+`RAG_RERANK_CANDIDATES` (default 10) sets how many top candidates are reordered. The endpoint returns
+raw logits, so `app/reranker.py` sigmoids them and scales them to the best candidate for ordering; the
+search itself keeps each chunk's own cosine score. Applying an absolute relevance threshold to a
+relative scale collapsed a 20-chunk context to the top two and the answer lost almost every entry.
 
-Measured on the same sets as hybrid search: ranking improves further (nDCG@10 0.838 → 0.918 on the
-mixed set, MRR 0.646 → 0.742) at ~170 ms per query; keeping the pool at 10 matters, because reranking
-20 candidates pushed a block of valid entries to the end of the context and the answer regressed.
+Measured on the same 22-question set: in a narrow 5-chunk window (the `rag_search` tool used by deep
+analysis and tasks) it helps (nDCG 0.815 → 0.831, MRR 0.723 → 0.750), but in the 20-chunk chat and
+task windows with hybrid search on it lowers nDCG (0.965 → 0.922) and costs ~280 ms per search. That
+is why it stays off by default and is switched on per deployment only when the smaller window is the
+only consumer.
 
 Download (optional):
 
@@ -82,7 +86,7 @@ Three strategies are available in Admin Panel → Models → Chunks:
 |---|---|
 | `fixed` | Character windows with overlap; cheapest, cuts through sentences |
 | `recursive` | Splits by paragraphs, sentences and words; keeps sentences whole |
-| `structured` | Splits on logical entries: a resume entry ("Ноябрь 2023 — Сбер / Нижний Новгород / …") or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
+| `structured` | Splits on logical entries: a dated entry (start date, organisation, city) or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
 
 `structured` exists for counting questions ("how many jobs in this city"): when two
 entries share a chunk the model has to count inside a fragment and usually gets it
@@ -127,7 +131,8 @@ chunk both finders agree on outranks a chunk only one found. Lexical terms are c
 - proper nouns and Latin-script words are the discriminative ones (cities, companies, tool names);
 - terms that appear in a large share of the corpus are dropped (`ts_rank_cd` has no IDF, so a name
   present in half the chunks would drown the city present in five);
-- matching is by prefix, because the Russian stemmer maps `Саров` to `сар` but `Сарове` to `саров`;
+- matching is by prefix, because the Russian stemmer can map the nominative and the prepositional
+  case of one name to different lexemes;
 - a chunk from a document whose **title** matches the query gets a bonus — the resume is named after
   the person, a chat export is not.
 

@@ -65,22 +65,71 @@
             .catch(() => {});
     }
 
+    // The popover is a fixed layer clamped to the viewport: on a phone it
+    // becomes a bottom sheet, on a desktop it opens above the button and
+    // slides left when it would cross the right edge. Nothing can widen the
+    // page, whatever the container the button lives in.
+    function positionPopover() {
+        if (window.innerWidth <= 768) {
+            popover.style.left = '8px';
+            popover.style.right = '8px';
+            popover.style.width = 'auto';
+            popover.style.bottom = '8px';
+            popover.style.top = 'auto';
+            return;
+        }
+        const width = Math.min(320, window.innerWidth - 16);
+        const rect = toggle.getBoundingClientRect();
+        const height = popover.offsetHeight || 0;
+        const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+        let top = rect.top - height - 8;
+        if (top < 8) top = rect.bottom + 8;
+        top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+        popover.style.width = width + 'px';
+        popover.style.left = left + 'px';
+        popover.style.top = top + 'px';
+        popover.style.right = 'auto';
+        popover.style.bottom = 'auto';
+    }
+
+    function closePopover() {
+        popover.hidden = true;
+    }
+
     toggle.addEventListener('click', (event) => {
         event.stopPropagation();
-        popover.hidden = !popover.hidden;
-        if (!popover.hidden) {
+        if (popover.hidden) {
             loadFolders();
             folderSelect.value = scope.filter_folder === undefined ? '' : scope.filter_folder;
             fromInput.value = scope.filter_from || '';
             toInput.value = scope.filter_to || '';
+            popover.hidden = false;
+            positionPopover();
+        } else {
+            closePopover();
         }
     });
 
     document.addEventListener('click', (event) => {
         if (!popover.hidden && !popover.contains(event.target) && event.target !== toggle) {
-            popover.hidden = true;
+            closePopover();
         }
     });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !popover.hidden) {
+            closePopover();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (!popover.hidden) positionPopover();
+    });
+
+    // A fixed layer over a scrolling page drifts away from its anchor.
+    window.addEventListener('scroll', () => {
+        if (!popover.hidden) closePopover();
+    }, true);
 
     applyButton.addEventListener('click', () => {
         scope = {};
@@ -88,7 +137,7 @@
         if (fromInput.value) scope.filter_from = fromInput.value;
         if (toInput.value) scope.filter_to = toInput.value;
         persist();
-        popover.hidden = true;
+        closePopover();
     });
 
     clearButton.addEventListener('click', () => {
@@ -97,7 +146,7 @@
         fromInput.value = '';
         toInput.value = '';
         persist();
-        popover.hidden = true;
+        closePopover();
     });
 
     // The send flow appends whatever this returns to the request.

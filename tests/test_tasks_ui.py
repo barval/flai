@@ -398,7 +398,17 @@ class TestReviewGuards:
         an answer, and microphone, paperclip and the Deep analysis toggle are
         offered in the same two states."""
         start = CHAT_HTML.index('<div class="message-input">')
-        input_row = CHAT_HTML[start:CHAT_HTML.index('</div>', start)]
+        # The row nests blocks (the search-scope popover), so the element ends
+        # at the closing tag that balances its opening one — not at the first
+        # </div>, which belongs to an inner panel.
+        depth = 0
+        for token in re.finditer(r"<div\b|</div>", CHAT_HTML[start:]):
+            depth += 1 if token.group().startswith("<div") else -1
+            if depth == 0:
+                input_row = CHAT_HTML[start:start + token.end()]
+                break
+        else:
+            raise AssertionError("the message input row is not closed")
         assert 'id="retry-task-button"' in input_row
         block = self._function_block(CHAT_TASKS, "function setTaskMode(")
         assert "showSend = !active || awaiting || draft" in block
@@ -865,21 +875,21 @@ class TestTaskStagePayload:
 
         seen: list = []
         monkeypatch.setattr(task_events, "get_events_publisher", lambda app: self._Publisher(seen))
-        task_events.publish_task_stage(None, {"id": "t1", "user_id": "valery"}, stage, count=count)
+        task_events.publish_task_stage(None, {"id": "t1", "user_id": "demo"}, stage, count=count)
         return seen
 
     def test_count_rides_the_stage_payload(self, monkeypatch):
         assert self._publish(monkeypatch, "rlm_step", count=4) == [
-            ("valery", "task_stage", {"task_id": "t1", "stage": "rlm_step", "count": 4})
+            ("demo", "task_stage", {"task_id": "t1", "stage": "rlm_step", "count": 4})
         ]
 
     def test_numberless_stage_omits_the_count_key(self, monkeypatch):
         assert self._publish(monkeypatch, "making_plan") == [
-            ("valery", "task_stage", {"task_id": "t1", "stage": "making_plan"})
+            ("demo", "task_stage", {"task_id": "t1", "stage": "making_plan"})
         ]
 
     def test_cleared_stage_carries_no_count(self, monkeypatch):
-        assert self._publish(monkeypatch, None) == [("valery", "task_stage", {"task_id": "t1", "stage": ""})]
+        assert self._publish(monkeypatch, None) == [("demo", "task_stage", {"task_id": "t1", "stage": ""})]
 
 
 class TestStepValidationAndFinalResults:

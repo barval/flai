@@ -1052,7 +1052,7 @@ function relocateChatControls(mobile) {
         delete voice.dataset.location;
         delete attach.dataset.location;
         delete send.dataset.location;
-        // Original template order: input, voice, (hidden file-input), attach, send
+        // Template order: input, voice, (hidden file-input), attach, send
         inputRow.appendChild(voice);
         inputRow.appendChild(attach);
         inputRow.appendChild(send);

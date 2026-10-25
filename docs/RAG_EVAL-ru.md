@@ -24,10 +24,10 @@ JSONL, один вопрос на строку:
 
 ```bash
 # Собрать набор вопросов из проиндексированных чанков (один вызов модели на вопрос)
-flask rag-eval-generate --user valery --count 20 --out data/rag_eval/questions.jsonl
+flask rag-eval-generate --user <login> --count 20 --out data/rag_eval/questions.jsonl
 
 # Замерить
-flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
+flask rag-eval --user <login> --dataset data/rag_eval/questions.jsonl \
                --top-k 10 --label "dense baseline" --out data/rag_eval/baseline.json
 ```
 
@@ -42,7 +42,7 @@ flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
 `"answer"` и запустите ту же команду с `--answers`:
 
 ```json
-{"question": "Сколько рабочих мест было в Москве?", "relevant": ["<doc_id>"], "answer": "0"}
+{"question": "Сколько рабочих мест было в Твери?", "relevant": ["<doc_id>"], "answer": "0"}
 ```
 
 Инструмент делает поиск, собирает контекст так же, как запрос в чате, просит модель ответить (ей
@@ -88,8 +88,11 @@ flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
 | hybrid | 3/3 |
 | hybrid + rerank | 3/3 |
 
-То есть гибрид отрабатывает свои 17 мс на сущностных вопросах и немного теряет в ранжировании на
-простых; поэтому он остаётся опциональным (`RAG_HYBRID_ENABLED`).
+Гибрид включён по умолчанию (`RAG_HYBRID_ENABLED=true`): на смешанном наборе из 22 вопросов он лучше
+по всем метрикам (hit 0.909 против 0.864, MRR 0.744 против 0.688, nDCG 0.965 против 0.751) и для
+20-фрагментного окна чата, и для 5-фрагментного окна задач (hit 0.864 против 0.727, nDCG 0.815 против
+0.688). Реранкер по умолчанию выключен: с включённым гибридом он снижает nDCG на 20-фрагментном окне
+(0.922) и стоит ~280 мс на поиск, помогая только 5-фрагментному окну инструмента (0.831 против 0.815).
 
 Каждое изменение (реранкер, фильтры по метаданным, нарезка) меряется на обоих наборах.
 

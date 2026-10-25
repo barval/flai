@@ -77,7 +77,7 @@ Prune and merge memories, either for everyone or for one profile:
 docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
 
 # Single user
-docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({'profile':'valery'}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
+docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({'profile':'<login>'}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
 ```
 
 The SLM container is healthy when `GET http://localhost:8766/health` answers. In `docker-compose.gpu.yml` its healthcheck polls port **8766** while the container is configured with `SLM_PORT=8765` — check the healthcheck output before assuming memory is broken:

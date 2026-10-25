@@ -2894,12 +2894,7 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        semantic_seen = 0
                         for i, chunk in enumerate(chunks):
-                            if not chunk.get("coverage"):
-                                if semantic_seen >= 15:  # top 15 semantic chunks
-                                    continue
-                                semantic_seen += 1
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
                             score = scores[i] if i < len(scores) else 0.0
@@ -4015,12 +4010,11 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                semantic_seen = 0
+                # Retrieval bounds the list (top_k + coverage) and the token
+                # budget trims the prompt, so no extra count cap: a 15-chunk
+                # cut dropped the tail of a document's own chunks — the
+                # current employer among them.
                 for chunk, score in filtered:
-                    if not chunk.get("coverage"):
-                        if semantic_seen >= 15:
-                            continue
-                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
@@ -4644,12 +4638,11 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                semantic_seen = 0
+                # Retrieval bounds the list (top_k + coverage) and the token
+                # budget trims the prompt, so no extra count cap: a 15-chunk
+                # cut dropped the tail of a document's own chunks — the
+                # current employer among them.
                 for chunk, score in filtered:
-                    if not chunk.get("coverage"):
-                        if semantic_seen >= 15:
-                            continue
-                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")

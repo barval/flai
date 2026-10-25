@@ -685,7 +685,7 @@ curl -X DELETE http://localhost:5000/v1/flai/sessions/{session_id} \
 
 ```json
 {
-  "login": "valery",
+  "login": "demo",
   "service_class": 2,
   "is_admin": true,
   "language": "en",

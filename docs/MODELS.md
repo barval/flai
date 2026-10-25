@@ -85,6 +85,17 @@ bash services/ltx_video/download-t5-encoder.sh
 | **bge-reranker-v2-m3-Q4_K_M.gguf** | Reranker (optional, CPU) | [MIT License](https://huggingface.co/BAAI/bge-reranker-v2-m3) | ~0.42 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
 
+The reranker is optional: ~0.42 GB on disk, and a resident CPU llama-server holds about **0.9 GB of RAM**
+(measured RSS). It is never offloaded to GPU memory and does not reserve a GPU queue slot.
+
+**Choosing the reranker model.** It is a module like any other: Admin → Models → Reranker lists the GGUF
+files whose type is `reranker` (recognised from the model's own name and architecture, so a renamed file
+still appears in this card), shows the metadata read from the GGUF header and saves the choice together
+with `RAG_RERANK_ENABLED` / `RAG_RERANK_CANDIDATES` / `RAG_RERANK_TIMEOUT`. The file is registered in
+llama-swap's `cpu_only` group under the fixed name `reranker`; it must be a cross-encoder built with
+`--reranking`. When no file is chosen the legacy path `/models/bge-reranker-v2-m3-Q4_K_M.gguf` is used,
+so an existing installation keeps working.
+
 ### Image Generation Models (stable-diffusion.cpp)
 
 | Model | Purpose | License | Approx. Size |

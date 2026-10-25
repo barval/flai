@@ -239,7 +239,7 @@ def test_rag_step_formats_fragments_and_scopes_documents(test_app):
             _step(tool="rag", goal="найти перечень работ"),
             context_digest="",
             cancel_check=lambda: False,
-            user_id="valery",
+            user_id="demo",
             doc_ids=["d1", "d2"],
         )
     assert out["status"] == "passed"
@@ -420,10 +420,10 @@ def test_checkpoint_clean_json(test_app):
 
 def test_checkpoint_fenced_json(test_app):
     base = test_app.modules["base"]
-    reply = '```json\n{"verdict": false, "explanation": "no number found"}\n```'
+    reply = '```json\n{"verdict": false, "explanation": "число не найдено"}\n```'
     with patch.object(base.llamacpp, "call", return_value=reply):
         out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
-    assert out["verdict"] is False and out["explanation"] == "no number found"
+    assert out["verdict"] is False and out["explanation"] == "число не найдено"
 
 
 def test_checkpoint_garbage(test_app):
@@ -468,7 +468,9 @@ def test_checkpoint_reply_with_marker_like_phrases_still_parses(test_app):
         'Review the columns — the values match across all four files."}'
     )
     with patch.object(base.llamacpp, "call", return_value=reply):
-        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="ru")
+        # An English profile on purpose: the marker phrases are English, and
+        # the verdict language follows the profile.
+        out = run_checkpoint(test_app, {"goal": "g", "checkpoint_criteria": "c"}, "result text", lang="en")
     assert out["verdict"] is True, "a marker phrase inside the JSON must not break the verdict"
     assert out["explanation"].startswith("Analyze attached images")
 

@@ -721,3 +721,46 @@ def test_on_message_new_marks_active_session_visited():
         "onMessageNew does not call updateLastVisit(currentSessionId) — "
         "read replies stay unread on the server and the envelope reappears"
     )
+
+
+def test_backups_table_columns_and_separators():
+    """Dashed separators like the Users table, and «Created» before the file."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    table = admin_css[admin_css.index(".backups-table th,\n.backups-table td {"):]
+    assert "border-right: 1px dashed #e2e2e2;" in table[:200]
+    assert ".backups-table th:last-child,\n.backups-table td:last-child {\n    border-right: none;" in admin_css
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    thead = html[html.index('<table id="backups-table"'):html.index("</thead>", html.index('<table id="backups-table"'))]
+    assert thead.index("{{ _('Created') }}") < thead.index("{{ _('Filename') }}")
+
+    js = (JS_DIR / "admin-backups.js").read_text(encoding="utf-8")
+    row = js[js.index("tr.innerHTML = `"):js.index("`;", js.index("tr.innerHTML = `"))]
+    assert row.index("formatDate(backup.created_at)") < row.index("escapeHtml(backup.filename)")
+
+
+def test_admin_buttons_darken_on_hover_and_share_one_height():
+    """One hover language: darken, never switch hue; one row for the backup
+    header, whose buttons used to sit 10 px apart."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".add-user-button:hover {\n    background-color: #2980b9;\n}" in admin_css
+    primary = admin_css[admin_css.index(".btn-primary {"):]
+    primary = primary[: primary.index("}")]
+    assert "margin-top" not in primary, "the 10 px margin put the button off the row"
+    assert ".btn-primary:hover {\n    background-color: #219a52;\n}" in admin_css
+
+    header = admin_css[admin_css.index(".backups-header {"):]
+    header = header[: header.index("}")]
+    assert "flex-wrap: wrap;" in header
+    assert ".backups-header .add-user-button,\n.backups-header .btn-primary,\n.backup-create select {\n    height: 38px;" in admin_css
+
+
+def test_the_backup_type_is_plain_text():
+    """The coloured pills competed with the row's action buttons."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".backup-type-badge.users" not in admin_css
+    assert ".backup-type-badge.full" not in admin_css
+
+    js = (JS_DIR / "admin-backups.js").read_text(encoding="utf-8")
+    assert 'class="backup-type-badge"' in js
+    assert 'class="backup-type-badge ${backup.type}"' not in js

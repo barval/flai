@@ -489,6 +489,12 @@ body.dark-theme .cam-spinner {
     cursor: pointer;
     font-size: 16px;
 }
+/* One hover language across the admin panel: the button darkens instead of
+   switching to another hue. The red hub buttons keep their own darker red
+   (their rules follow and win on equal specificity). */
+.add-user-button:hover {
+    background-color: #2980b9;
+}
 /* Hub download/delete/cancel buttons must match the .btn-primary/.save-button
    height (the Chunks and Model-card "Save" buttons) instead of the taller
    .add-user-button: a fixed 33px border-box height with the same 14px font. */
@@ -909,7 +915,16 @@ body.admin-page .voice-gender-switcher {
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-wrap: wrap;
     flex-shrink: 0;
+}
+/* One row, one height: the refresh button (10/20 padding, 16 px font) and the
+   create button (8/16 padding) sat on different baselines. */
+.backups-header .add-user-button,
+.backups-header .btn-primary,
+.backup-create select {
+    height: 38px;
+    box-sizing: border-box;
 }
 
 .backups-table-wrapper {
@@ -951,10 +966,9 @@ body.admin-page .voice-gender-switcher {
     cursor: pointer;
     font-size: 14px;
     transition: background-color 0.2s;
-    margin-top: 10px;
 }
 .btn-primary:hover {
-    background-color: #2980b9;
+    background-color: #219a52;
 }
 .btn-primary:disabled {
     background-color: #bdc3c7;
@@ -1029,6 +1043,16 @@ body.admin-page .voice-gender-switcher {
     border-bottom: 2px solid #2980b9;
 }
 
+/* The same dashed column separators as the Users table. */
+.backups-table th,
+.backups-table td {
+    border-right: 1px dashed #e2e2e2;
+}
+.backups-table th:last-child,
+.backups-table td:last-child {
+    border-right: none;
+}
+
 .backups-table td {
     padding: 10px 8px;
     text-align: center;
@@ -1060,26 +1084,20 @@ body.admin-page .voice-gender-switcher {
     font-size: 16px;
 }
 
+/* The type is plain text: coloured pills competed with the row's action
+   buttons for attention. */
 .backup-type-badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-}
-.backup-type-badge.users {
-    background-color: #3498db;
-    color: white;
-}
-.backup-type-badge.full {
-    background-color: #27ae60;
-    color: white;
+    font-size: 13px;
 }
 
 /* Dark theme for backups table */
 body.dark-theme .backups-table {
     background-color: #1e1e1e;
     color: #e0e0e0;
+}
+body.dark-theme .backups-table th,
+body.dark-theme .backups-table td {
+    border-right-color: #333;
 }
 body.dark-theme .backups-table td {
     background-color: #1e1e1e;
@@ -1364,6 +1382,7 @@ table.hub-files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 /* The in-place "Cancel" button reuses .add-user-button (same size as
    "Download"); only its color changes to signal cancellation. */
 .hub-cancel { background-color: #c0392b; }
+.hub-cancel:hover { background-color: #a93226; }
 body.dark-theme .hub-cancel { background-color: #a93226; }
 /* dark theme */
 body.dark-theme .hub-note { color: #888; }
@@ -1652,6 +1671,9 @@ body.dark-theme .installed-file-meta { color: #aaa; }
 }
 .branding-names-actions {
     margin-top: 4px;
+}
+.branding-names-actions .btn-primary {
+    margin-top: 10px;
 }
 
 /* Branding tab logo buttons must match the .btn-primary "Save names"
@@ -2069,21 +2091,21 @@ body.dark-theme .settings-reset {
         display: none;
     }
     #backups-table td:nth-child(2) {
+        grid-area: created;
+        font-size: 0.78rem;
+        color: #777;
+    }
+    #backups-table td:nth-child(3) {
         grid-area: filename;
         font-weight: 600;
         overflow-wrap: anywhere;
     }
-    #backups-table td:nth-child(3) {
+    #backups-table td:nth-child(4) {
         grid-area: type;
     }
-    #backups-table td:nth-child(4) {
+    #backups-table td:nth-child(5) {
         grid-area: size;
         justify-self: end;
-    }
-    #backups-table td:nth-child(5) {
-        grid-area: created;
-        font-size: 0.78rem;
-        color: #777;
     }
     #backups-table td.actions-cell {
         grid-area: actions;
@@ -2102,7 +2124,7 @@ body.dark-theme .settings-reset {
     body.dark-theme #backups-table tr {
         border-color: #444;
     }
-    body.dark-theme #backups-table td:nth-child(5) {
+    body.dark-theme #backups-table td:nth-child(2) {
         color: #aaa;
     }
 }

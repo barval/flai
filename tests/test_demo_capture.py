@@ -2,7 +2,7 @@
 
 import pytest
 
-from demo.capture import CaptureTimeout, DemoSession, rewrite_for_publication, wait_for
+from demo.capture import CaptureTimeoutError, DemoSession, rewrite_for_publication, wait_for
 
 
 class Response:
@@ -58,7 +58,7 @@ def test_publication_replaces_monitoring_series():
 
 
 def test_wait_for_raises_on_timeout():
-    with pytest.raises(CaptureTimeout):
+    with pytest.raises(CaptureTimeoutError):
         wait_for(lambda: False, timeout_s=0.05, interval_s=0.01)
 
 

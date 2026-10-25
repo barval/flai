@@ -64,3 +64,21 @@ def test_an_unset_reranker_adopts_the_legacy_file():
     """The card must open with a selected model, not an empty dropdown."""
     db = Path("app/database.py").read_text(encoding="utf-8")
     assert "module = 'reranker' AND (model_name IS NULL OR model_name = '')" in db
+
+
+def test_the_hub_type_filter_offers_rerankers():
+    """The Hub filter listed only reasoning/multimodal/embedding models."""
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    assert 'id="hub-type-reranker"' in html
+
+    js = Path("app/static/js/admin-modelHub.js").read_text(encoding="utf-8")
+    assert "reranker: document.getElementById('hub-type-reranker')" in js
+    assert "reranker: 'reranker'" in js, "a downloaded reranker must land in its own module"
+
+    from app.model_hub import MODEL_TYPES, _module_for_type
+
+    assert "reranker" in MODEL_TYPES
+    assert _module_for_type("reranker") == "reranker"
+
+    po = Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    assert 'msgid "Reranker models"\nmsgstr "Реранкеры"' in po

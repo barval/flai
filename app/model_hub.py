@@ -34,7 +34,7 @@ HF_DL = "https://huggingface.co"
 
 _NC_MARKERS = ("nc", "non-commercial", "noncommercial", "cc-by-nc", "personal")
 
-MODEL_TYPES = ("reasoning", "multimodal", "embedding")
+MODEL_TYPES = ("reasoning", "multimodal", "embedding", "reranker")
 
 _RERANKER_MARKERS = ("rerank", "cross-encoder", "crossencoder")
 _MULTIMODAL_ARCH = ("vision", "mllama", "composite", "owl", "florence", "pali")
@@ -76,7 +76,12 @@ def classify_model_type(repo: str, archs: list[str] | None = None, name_hint: st
 
 def _module_for_type(mtype: str) -> str:
     """Module key used by fit estimation, matching the client's type->module map."""
-    return {"reasoning": "reasoning", "multimodal": "multimodal", "embedding": "embedding"}.get(mtype, "reasoning")
+    return {
+        "reasoning": "reasoning",
+        "multimodal": "multimodal",
+        "embedding": "embedding",
+        "reranker": "reranker",
+    }.get(mtype, "reasoning")
 
 
 class HubError(RuntimeError):

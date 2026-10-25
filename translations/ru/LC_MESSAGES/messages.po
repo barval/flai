@@ -2085,6 +2085,9 @@ msgstr "Мультимодальные"
 msgid "Embedding models"
 msgstr "Эмбеддинги"
 
+msgid "Reranker models"
+msgstr "Реранкеры"
+
 #: app/templates/admin.html:146
 msgid "Context length"
 msgstr "Длина контекста"

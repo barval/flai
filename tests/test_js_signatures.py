@@ -480,7 +480,10 @@ def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
     assert re.search(r"\.hub-context-row\s*\{[^}]*flex-wrap:\s*wrap", context)
     assert re.search(r"\.hub-context-row\s*\{[^}]*overflow-x:\s*visible", context)
     assert re.search(r"\.hub-context-row #hub-context-slider\s*\{[^}]*flex:\s*1 1 auto", context)
-    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*width:\s*6ch", context)
+    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*width:\s*8ch", context), (
+        "seven digits must fit the field"
+    )
+    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*box-sizing:\s*content-box", context)
 
     # Results: one card per file, no wide canvas, no column header.
     assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*visible", media)
@@ -489,7 +492,8 @@ def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
     cards = media[media.index(".hub-file-row {") :]
     assert "grid-template-areas:" in cards
     assert '"name   name"' in cards
-    assert re.search(r'"size\s+fit"', cards)
+    assert re.search(r'"fit\s+size"', cards), "the fit verdict leads the line"
+    assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*white-space:\s*normal", cards)
     assert re.search(r'"action action"', cards)
 
 

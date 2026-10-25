@@ -1462,7 +1462,15 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         min-width: 0;
         max-width: none;
     }
-    .hub-context-row .hub-context-value { flex: 0 0 auto; width: 6ch; }
+    /* Seven digits plus the caret: the old 6ch field clipped a six-digit
+       window down to four visible digits. content-box keeps the padding
+       and the border outside that width. */
+    .hub-context-row .hub-context-value {
+        flex: 0 0 auto;
+        box-sizing: content-box;
+        width: 8ch;
+        min-width: 8ch;
+    }
     .hub-header { flex-wrap: nowrap; gap: 0.4rem; margin-bottom: 0.5rem; }
     .hub-header input[type="text"] { flex: 1 1 auto; min-width: 120px; }
     .hub-header .hub-filter-label,
@@ -1481,7 +1489,7 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas:
             "name   name"
-            "size   fit"
+            "fit    size"
             "action action";
         align-items: center;
         gap: 0.25rem 0.5rem;
@@ -1498,9 +1506,19 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         border: none;
         font-size: 0.8rem;
     }
-    .hub-file-row td:nth-child(1) { grid-area: size; text-align: left; }
+    .hub-file-row td:nth-child(1) { grid-area: size; justify-self: end; text-align: right; }
     .hub-file-row td:nth-child(2) { grid-area: name; padding-left: 0; }
-    .hub-file-row td:nth-child(3) { grid-area: fit; justify-self: end; }
+    /* The fit verdict leads the line: "GPU+CPU" and "Impossible" are the
+       longest labels and, right-aligned and unbreakable, they ran off the
+       card and pushed the page sideways. */
+    .hub-file-row td:nth-child(3) {
+        grid-area: fit;
+        justify-self: start;
+        min-width: 0;
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
     .hub-file-row td:nth-child(4) {
         grid-area: action;
         display: flex;
@@ -1510,6 +1528,8 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         text-align: left;
     }
     .hub-path { font-weight: 600; word-break: break-word; }
+    /* A long org/model id must wrap instead of widening the card. */
+    .hub-repo-name { min-width: 0; overflow-wrap: anywhere; }
     .hub-progress-wrap { width: 100%; min-width: 0; }
     body.dark-theme .hub-file-row { background: #1e1e1e; border-color: #444; }
 

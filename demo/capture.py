@@ -6,8 +6,9 @@ import argparse
 import json
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from demo.io import DEMO_DIR, save_snapshot
 

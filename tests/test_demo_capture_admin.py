@@ -23,7 +23,8 @@ def test_capture_admin_records_every_endpoint():
     routes = capture_admin(session)["routes"]
     assert [route["path"] for route in routes] == session.paths
     assert routes[0]["path"] == "/admin/api/hardware"
-    assert len(routes) == 11
+    assert len(routes) == 15
+    assert any(route["path"] == "/admin/api/monitoring?range=30d" for route in routes)
 
 
 def test_cleanup_plan_names_every_residue():

@@ -39,7 +39,7 @@ def test_pages_are_self_contained(name):
 
 @pytest.mark.parametrize("name", NAMES)
 def test_pages_stay_under_the_budget(name):
-    assert (PAGES / name).stat().st_size <= 5 * 1024 * 1024
+    assert (PAGES / name).stat().st_size <= 16 * 1024 * 1024
 
 
 @pytest.mark.parametrize("name", ["chat-en.html", "admin-en.html"])

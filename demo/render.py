@@ -19,7 +19,7 @@ LOGIN_FORM_ANCHOR = '<form method="POST" id="login-form">'
 
 BASE_CONTEXT = {
     "branding_logo_url": None,
-    "branding_site_name": "FLAI",
+    "branding_site_name": None,
     "session": {},
 }
 

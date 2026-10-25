@@ -73,7 +73,7 @@ python -m demo.make_documents
 
 ## Limits and notes
 
-- Each page is a single file of up to 5 MB; the real ten-second video is embedded as is.
+- Each page is a single file of up to 16 MB; the real ten-second video is embedded as is.
 - The demo is verified in Chromium and Firefox opened from disk; Safari is not covered
   specially.
 - The phone layout is the product's own responsive layout rendered in a 390 px iframe,

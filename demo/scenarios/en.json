@@ -43,7 +43,7 @@
     {
       "kind": "image",
       "title": "Image",
-      "prompt": "Make a poster for the school science fair, no text."
+      "prompt": "Make a poster for the school science fair in autumn colours. No text, no captions, no letters."
     },
     {
       "kind": "video",
@@ -64,7 +64,7 @@
     {
       "kind": "text",
       "title": "Rate",
-      "prompt": "Find the current GBP to EUR rate and work out what a batch of 40 laptops at £899 each costs in euros."
+      "prompt": "Find the current GBP to EUR rate and work out what a batch of 40 laptops at 899 pounds each costs in euros. Answer in pounds with plain numbers, without formulas."
     },
     {
       "kind": "text",
@@ -72,6 +72,39 @@
       "prompt": "Transcribe this voice message and answer the question in it.",
       "attach": "tts",
       "voice": true
+    },
+    {
+      "kind": "task",
+      "title": "Album cover",
+      "prompt": "Make a cover for the school yearbook in autumn colours."
+    },
+    {
+      "kind": "task",
+      "title": "Video task",
+      "prompt": "Make a short video: raindrops on a window.",
+      "interrupt": true
+    },
+    {
+      "kind": "task",
+      "title": "Clarification",
+      "prompt": "Make something nice for the school."
+    },
+    {
+      "kind": "text",
+      "title": "Photo edit",
+      "prompt": "Change the background of this image to a sunset sky, keep the photo itself.",
+      "attach": "generated-image"
+    },
+    {
+      "kind": "task",
+      "title": "Fair plan",
+      "prompt": "Draft a five-step plan for the school autumn fair and carry it out in order: schedule, decorations, mailing, equipment, report."
+    },
+    {
+      "kind": "task",
+      "title": "Document analysis",
+      "prompt": "Analyse both quotes and the procurement policy: where are the risks and what should we choose? Give a justified conclusion.",
+      "deep_analysis": true
     }
   ]
 }

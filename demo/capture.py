@@ -404,11 +404,23 @@ def _run_scenario(
     elif kind == "task":
         created = session.post_json("/api/tasks", {})
         task_id = created["task"]["id"]
-        session.post_json(f"/api/tasks/{task_id}/request", {"request": prompt})
+        payload = {"request": prompt}
+        if scenario.get("deep_analysis"):
+            payload["deep_analysis"] = True
+            payload["doc_ids"] = document_ids
+        session.post_json(f"/api/tasks/{task_id}/request", payload)
+        if scenario.get("interrupt"):
+            time.sleep(45)
+            session.post_json(
+                "/api/send_message",
+                {"message": scenario.get("interrupt_text", prompt), "session_id": session_id},
+            )
+            time.sleep(20)
+            return
         wait_for(
             lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
-            in {"completed", "failed", "cancelled"},
-            timeout_s=1800.0,
+            in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
+            timeout_s=2400.0,
             interval_s=10.0,
         )
     else:

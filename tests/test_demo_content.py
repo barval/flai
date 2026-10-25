@@ -24,7 +24,7 @@ def test_russian_scenarios_have_cyrillic():
 def test_ten_scenarios_and_three_documents_per_language():
     for lang in ("ru", "en"):
         data = _scenarios(lang)
-        assert len(data["scenarios"]) == 10
+        assert len(data["scenarios"]) == 16
         assert len(data["documents"]) == 3
 
 

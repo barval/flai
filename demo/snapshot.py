@@ -21,17 +21,24 @@ MIME_BY_SUFFIX = {
 }
 
 
-def _path(path: str) -> str:
-    return urlsplit(path).path
+def _split(path: str) -> tuple[str, str]:
+    parts = urlsplit(path)
+    return parts.path, parts.query
 
 
 def find_route(snapshot: dict[str, Any], method: str, path: str) -> dict[str, Any] | None:
-    """Return the recorded route for a method and a path, ignoring the query string."""
-    wanted = (method.upper(), _path(path))
+    """Return the recorded route for a method and a path; an exact query wins over a bare path."""
+    pathname, query = _split(path)
+    fallback = None
     for route in snapshot.get("routes", []):
-        if (str(route.get("method", "GET")).upper(), _path(str(route["path"]))) == wanted:
+        route_path, route_query = _split(str(route["path"]))
+        if (str(route.get("method", "GET")).upper(), route_path) != (method.upper(), pathname):
+            continue
+        if query and route_query == query:
             return route
-    return None
+        if fallback is None:
+            fallback = route
+    return fallback
 
 
 def route_body(snapshot: dict[str, Any], method: str, path: str) -> Any:
@@ -47,7 +54,8 @@ def compile_routes(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
             "m": str(route.get("method", "GET")).upper(),
-            "p": _path(str(route["path"])),
+            "p": _split(str(route["path"]))[0],
+            "q": _split(str(route["path"]))[1],
             "s": int(route.get("status", 200)),
             "b": route.get("body"),
         }

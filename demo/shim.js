@@ -74,6 +74,15 @@
     }
   }
 
+  function queryMatches(routeQuery, search) {
+    var params = routeQuery.split("&");
+    var haystack = "&" + search + "&";
+    for (var i = 0; i < params.length; i += 1) {
+      if (haystack.indexOf("&" + params[i] + "&") < 0) return false;
+    }
+    return true;
+  }
+
   window.fetch = function (input, init) {
     var options = init || {};
     var method = String(options.method || (input && input.method) || "GET").toUpperCase();
@@ -81,12 +90,15 @@
     var path = url.split("?")[0];
 
     if (method === "GET") {
+      var search = url.indexOf("?") >= 0 ? url.split("?")[1] : "";
+      var bare = null;
       for (var i = 0; i < DEMO.routes.length; i += 1) {
-        if (DEMO.routes[i].m === "GET" && DEMO.routes[i].p === path) {
-          return Promise.resolve(jsonResponse(DEMO.routes[i].b));
-        }
+        var route = DEMO.routes[i];
+        if (route.m !== "GET" || route.p !== path) continue;
+        if (route.q && queryMatches(route.q, search)) return Promise.resolve(jsonResponse(route.b));
+        if (!route.q && bare === null) bare = route;
       }
-      return Promise.resolve(jsonResponse({}));
+      return Promise.resolve(jsonResponse(bare ? bare.b : {}));
     }
     if (path.indexOf("/set-theme/") === 0) {
       // Only a click may change the theme: product scripts ask for a theme on

@@ -24,7 +24,7 @@ def test_unknown_route_returns_none():
 
 
 def test_compile_routes_shape():
-    assert compile_routes(SNAPSHOT)[0] == {"m": "GET", "p": "/api/sessions", "s": 200, "b": [{"id": "s1"}]}
+    assert compile_routes(SNAPSHOT)[0] == {"m": "GET", "p": "/api/sessions", "q": "", "s": 200, "b": [{"id": "s1"}]}
 
 
 def test_compile_assets_prefixes_mime(tmp_path):
@@ -34,3 +34,24 @@ def test_compile_assets_prefixes_mime(tmp_path):
     assets = compile_assets(SNAPSHOT, tmp_path)
     assert assets["/api/files/a.png"].startswith("data:image/png;base64,")
     assert assets["/api/files/v.mp4"].startswith("data:video/mp4;base64,")
+
+
+def test_compile_routes_keeps_the_query():
+    snapshot = {
+        "routes": [
+            {"method": "GET", "path": "/admin/api/monitoring?range=1h", "body": {"range": "1h"}},
+            {"method": "GET", "path": "/admin/api/monitoring?range=30d", "body": {"range": "30d"}},
+        ]
+    }
+    compiled = compile_routes(snapshot)
+    assert [route["q"] for route in compiled] == ["range=1h", "range=30d"]
+
+
+def test_find_route_prefers_the_exact_query():
+    snapshot = {
+        "routes": [
+            {"method": "GET", "path": "/admin/api/monitoring?range=1h", "body": "first"},
+            {"method": "GET", "path": "/admin/api/monitoring?range=30d", "body": "second"},
+        ]
+    }
+    assert find_route(snapshot, "GET", "/admin/api/monitoring?range=30d")["body"] == "second"

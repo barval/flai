@@ -170,7 +170,7 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
                 )
                 rows.append(row)
             route["body"] = rows
-        elif route.get("path") == "/admin/api/monitoring":
+        elif str(route.get("path", "")).startswith("/admin/api/monitoring"):
             body = route.get("body") or {}
             series = body.get("series") or {}
             for key, values in list(series.items()):
@@ -526,8 +526,9 @@ ADMIN_PATHS = (
     "/admin/api/cameras",
     "/admin/api/branding",
     "/admin/api/settings",
-    "/admin/api/monitoring?range=24h",
 )
+
+MONITORING_RANGES = ("1h", "6h", "24h", "7d", "30d")
 
 DELETION_TABLES = ("tasks", "task_steps")
 
@@ -536,6 +537,9 @@ def capture_admin(session: DemoSession) -> dict:
     """Record every admin endpoint the panel reads."""
     routes: list[dict] = []
     for path in ADMIN_PATHS:
+        _record(routes, "GET", path, session.get_json(path))
+    for range_key in MONITORING_RANGES:
+        path = f"/admin/api/monitoring?range={range_key}"
         _record(routes, "GET", path, session.get_json(path))
     return {"routes": routes}
 

@@ -45,7 +45,7 @@ def build_page(lang: str, kind: str, demo_dir: Path = DEMO_DIR) -> str:
         "lang": lang,
         "notice": NOTICE[lang],
         "routes": compile_routes(snapshot),
-        "assets": compile_assets(snapshot, demo_dir),
+        "assets": compile_assets(snapshot, demo_dir) if kind == "chat" else {},
     }
     return build_shell(lang, kind, login_html=login_html, app_html=app_html, payload=payload)
 

@@ -1,0 +1,3099 @@
+{
+  "assets": {
+    "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/14e3cd92088840479e8edac056c80c3b.png": "media/ru/14e3cd92088840479e8edac056c80c3b.png",
+    "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png": "media/ru/2d436e975c9c4f3fb0599437655d5298.png",
+    "27d0d5f6-21ce-48af-803b-6e02e9d8d657/6ebf3492d44d438db335aed3446eff08.png": "media/ru/6ebf3492d44d438db335aed3446eff08.png",
+    "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4": "media/ru/417bc455b2d2449ba03695aeec74110c.mp4"
+  },
+  "credentials": {
+    "admin": {
+      "login": "admin",
+      "password": "admin"
+    },
+    "user": {
+      "login": "user",
+      "password": "user"
+    }
+  },
+  "lang": "ru",
+  "routes": [
+    {
+      "body": [
+        {
+          "created_at": "2026-10-25T23:38:04+03:00",
+          "has_unread": true,
+          "id": "d13027cd-3dc5-4ed0-b497-caf5e2cd1956",
+          "last_visit": "2026-10-25T23:38:04+03:00",
+          "message_count": 3,
+          "model_name": "auto",
+          "title": "Расшифруй голосовое сообщение и ответь н...",
+          "total_completion_tokens": 3421,
+          "total_prompt_tokens": 8856,
+          "unread_count": 2,
+          "updated_at": "2026-10-25T23:38:57+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:37:09+03:00",
+          "has_unread": false,
+          "id": "07386624-320d-4d09-a6bb-078b3f3161f9",
+          "last_visit": "2026-10-25T23:38:04+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Найди текущий курс евро к рублю и посчит...",
+          "total_completion_tokens": 2214,
+          "total_prompt_tokens": 6622,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:37:58+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:34:06+03:00",
+          "has_unread": false,
+          "id": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5",
+          "last_visit": "2026-10-25T23:35:39+03:00",
+          "message_count": 4,
+          "model_name": "auto",
+          "title": "Сделай фото: полка холодильника с продук...",
+          "total_completion_tokens": 306,
+          "total_prompt_tokens": 7853,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:35:31+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:29:42+03:00",
+          "has_unread": false,
+          "id": "f79b7786-848b-42b8-bf53-18e6cbc67056",
+          "last_visit": "2026-10-25T23:34:06+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Короткое видео: осенние листья медленно ...",
+          "total_completion_tokens": 200,
+          "total_prompt_tokens": 5090,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:33:54+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:28:17+03:00",
+          "has_unread": false,
+          "id": "27d0d5f6-21ce-48af-803b-6e02e9d8d657",
+          "last_visit": "2026-10-25T23:29:42+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Сделай обложку для школьной газеты в осе...",
+          "total_completion_tokens": 130,
+          "total_prompt_tokens": 5377,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:29:34+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:27:27+03:00",
+          "has_unread": false,
+          "id": "c28e7649-c048-426c-ad0a-7b580ff7a085",
+          "last_visit": "2026-10-25T23:28:17+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Проанализируй оба коммерческих предложен...",
+          "total_completion_tokens": 3805,
+          "total_prompt_tokens": 10544,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:28:11+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:27:03+03:00",
+          "has_unread": false,
+          "id": "6e70b09c-6cd2-4b08-914e-ee2556b6cf64",
+          "last_visit": "2026-10-25T23:27:27+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Сравни два коммерческих предложения на п...",
+          "total_completion_tokens": 1195,
+          "total_prompt_tokens": 4813,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:27:20+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:26:28+03:00",
+          "has_unread": false,
+          "id": "51a5c14f-1803-4200-8e0c-261535463ede",
+          "last_visit": "2026-10-25T23:27:03+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Какая погода в Москве на выходные?",
+          "total_completion_tokens": 1626,
+          "total_prompt_tokens": 8705,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:26:54+03:00"
+        },
+        {
+          "created_at": "2026-10-25T23:26:14+03:00",
+          "has_unread": false,
+          "id": "9f7310d6-2544-45e3-89c7-3e1edad06fe7",
+          "last_visit": "2026-10-25T23:26:28+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Что ты умеешь?",
+          "total_completion_tokens": 264,
+          "total_prompt_tokens": 6714,
+          "unread_count": 0,
+          "updated_at": "2026-10-25T23:26:20+03:00"
+        }
+      ],
+      "method": "GET",
+      "path": "/api/sessions",
+      "status": 200
+    },
+    {
+      "body": {
+        "documents": [
+          {
+            "description_model": null,
+            "embedding_model": "bge-m3-Q8_0.gguf",
+            "file_ext": ".pdf",
+            "file_path": "demo_ru_chat/57aeabf7-8125-4364-93b1-bdbb67209f3c.pdf",
+            "file_size": 49412,
+            "filename": "КП №1 — ООО «Вектор-Тех».pdf",
+            "folder_id": null,
+            "id": "57aeabf7-8125-4364-93b1-bdbb67209f3c",
+            "index_status": "indexed",
+            "indexed_at": "2026-10-25T23:25:59+03:00",
+            "indexing_started_at": "2026-10-25T23:25:55+03:00",
+            "processing_time": 4.0,
+            "uploaded_at": "2026-10-25T23:25:55+03:00"
+          },
+          {
+            "description_model": null,
+            "embedding_model": "bge-m3-Q8_0.gguf",
+            "file_ext": ".pdf",
+            "file_path": "demo_ru_chat/21fa33b9-e782-4e36-b3c6-951885b4a5e6.pdf",
+            "file_size": 49384,
+            "filename": "КП №2 — ООО «Смарт-Снаб».pdf",
+            "folder_id": null,
+            "id": "21fa33b9-e782-4e36-b3c6-951885b4a5e6",
+            "index_status": "indexed",
+            "indexed_at": "2026-10-25T23:26:02+03:00",
+            "indexing_started_at": "2026-10-25T23:25:59+03:00",
+            "processing_time": 3.0,
+            "uploaded_at": "2026-10-25T23:25:55+03:00"
+          },
+          {
+            "description_model": null,
+            "embedding_model": "bge-m3-Q8_0.gguf",
+            "file_ext": ".pdf",
+            "file_path": "demo_ru_chat/d4109b49-c5db-4a50-873e-7e2b7b610e7d.pdf",
+            "file_size": 33622,
+            "filename": "Положение о закупках школы.pdf",
+            "folder_id": null,
+            "id": "d4109b49-c5db-4a50-873e-7e2b7b610e7d",
+            "index_status": "indexed",
+            "indexed_at": "2026-10-25T23:26:06+03:00",
+            "indexing_started_at": "2026-10-25T23:26:02+03:00",
+            "processing_time": 4.0,
+            "uploaded_at": "2026-10-25T23:25:55+03:00"
+          }
+        ],
+        "folders": []
+      },
+      "method": "GET",
+      "path": "/api/documents",
+      "status": 200
+    },
+    {
+      "body": {
+        "tasks": [
+          {
+            "abort_reason": null,
+            "completed_at": "2026-10-25T20:37:00.504379+00:00",
+            "created_at": "2026-10-25T20:35:39.269446+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 77.19,
+            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc",
+            "images": [],
+            "next_step_index": 1,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T20:35:42.716560+00:00",
+            "status": "completed",
+            "task_class": 5,
+            "title": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
+            "token_totals": {
+              "completion_tokens": 4681,
+              "prompt_tokens": 5105
+            },
+            "total_steps": 1
+          }
+        ]
+      },
+      "method": "GET",
+      "path": "/api/tasks",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Что ты умеешь?\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4232,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:26:14+03:00"
+          },
+          {
+            "completion_tokens": 264,
+            "content": "Я — персональный ассистент 'Полностью Локальный ИИ (ПЛИИ)', и умею:\n\n- Отвечать на вопросы и вести диалог, используя историю переписки.\n- Генерировать изображения по описанию.\n- Редактировать загруженные изображения по запросу.\n- Анализировать изображения и отвечать на вопросы по ним.\n- Создавать видео из изображений.\n- Распознавать голосовые сообщения и выполнять задачи на их основе.\n- Распознавать аудиофайлы — переводить в текст.\n- Показывать снимки с камер видеонаблюдения (если подключены) и отвечать на вопросы по ним.\n- Искать информацию в загруженных документах.\n- Использовать инструменты: калькулятор, поиск в интернете, камеры, текущее время.\n\nЕсли нужно — могу помочь с расчётами, датами, информацией из интернета или файлов. Просто скажи, что тебе нужно!",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4233,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            "model_type": "multimodal",
+            "prompt_tokens": 6714,
+            "response_style": "neutral",
+            "response_time": 6.3,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:26:20+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/9f7310d6-2544-45e3-89c7-3e1edad06fe7/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "processing": null,
+        "queued": [],
+        "recent_completed": [],
+        "system": {
+          "avg_response_time": 5,
+          "current_load": "normal",
+          "total_queued": 0
+        }
+      },
+      "method": "GET",
+      "path": "/api/queue/status",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Какая погода в Москве на выходные?\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4234,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:26:28+03:00"
+          },
+          {
+            "completion_tokens": 1626,
+            "content": "По данным прогноза на ближайшие выходные:\n\n**Суббота**\n• Днём: +8 °C (+6 по ощущениям)  \n• Ночью: +4…+5 °C  \n• Осадки: вероятность 17–26%, кратковременные дожди возможны  \n• Ветер: слабый, 0.5–3 м/с  \n• Влажность: ~90%\n\n**Воскресенье**\n• Днём: +7 °C (+4 по ощущениям)  \n• Ночью: +4…+5 °C  \n• Осадки: вероятность 21–41%, возможен более частый дождь  \n• Ветер: ~3 м/с  \n• Влажность: ~80–94%\n\n**Общая картина:** выходные пройдут в облачную погоду с прохладным воздухом и повышенной влажностью. Осадки вероятны, преимущественно кратковременные. Для комфортного пребывания на улице рекомендуется одежда, защищающая от ветра и влаги.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4235,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "prompt_tokens": 8705,
+            "response_style": "neutral",
+            "response_time": 26.0,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:26:54+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/51a5c14f-1803-4200-8e0c-261535463ede/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Сравни два коммерческих предложения на поставку 20 ноутбуков для школы: что выгоднее и почему?\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4236,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:27:03+03:00"
+          },
+          {
+            "completion_tokens": 1195,
+            "content": "В данном диалоге не представлены сами коммерческие предложения (ни в виде текста, ни в виде файлов). Я не вижу данных о ценах, технических характеристиках ноутбуков и условиях поставщика.\n\nЧтобы я мог выполнить задачу, пожалуйста:\n1. **Загрузите файлы** с коммерческими предложениями в чат.\n2. Или **скопируйте текст** предложений сюда.\n\nКак только данные появятся, я проанализирую стоимость комплектации (процессор, оперативная память, SSD), условия доставки и гарантии, чтобы определить наиболее выгодный вариант для школы.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4237,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "prompt_tokens": 4813,
+            "response_style": "neutral",
+            "response_time": 17.0,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:27:20+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/6e70b09c-6cd2-4b08-914e-ee2556b6cf64/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Проанализируй оба коммерческих предложения и положение о закупках, составь таблицу сравнения и дай рекомендацию.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4238,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:27:27+03:00"
+          },
+          {
+            "completion_tokens": 3805,
+            "content": "## Анализ коммерческих предложений и рекомендации\n\n### Таблица сравнения\n\n| Критерий | КП №1 — ООО «Вектор-Тех» | КП №2 — ООО «Смарт-СнаБ» |\n|----------|---------------------------|---------------------------|\n| **Стоимость** | 1 278 000 руб. | 1 248 500 руб. |\n| Ноутбук (шт.) | 54 900 руб. × 20 = 1 098 000 | 52 400 руб. × 20 = 1 048 000 |\n| Док-станция (шт.) | 8 400 руб. × 20 = 168 000 | 9 100 руб. × 20 = 182 000 |\n| Доставка и настройка | 12 000 руб. | 18 500 руб. (только доставка) |\n| **Гарантия** | 24 месяца | 36 месяцев, сервис на территории заказчика |\n| **Срок поставки** | 14 рабочих дней | 21 рабочий день |\n| **Условия оплаты** | 50% аванс, 50% после приёмки | 100% по факту поставки и приёмки |\n| **Неустойка за просрочку** | 0.1%/день (макс. 10%) | 0.05%/день (макс. 5%) |\n\n### Расчёт баллов по критериям Положения о закупках школы №7\n\nСогласно пункту 3 Положения, при закупке от 600 000 руб. требуется не менее двух коммерческих предложений и оценка проводится по трём критериям: **цена — 60%, гарантийный срок — 25%, срок поставки — 15%**.\n\n| Критерий (вес) | КП №1 — Вектор-Тех | КП №2 — Смарт-СнаБ |\n|----------------|---------------------|---------------------|\n| Цена (60%) | **58.62** балла | **60.00** баллов |\n| Гарантия (25%) | **16.67** балла | **25.00** баллов |\n| Срок поставки (15%) | **15.00** баллов | **10.00** баллов |\n| **ИТОГО** | **90.28** | **95.00** |\n\n### Рекомендация\n\n**Рекомендуется выбрать ООО «Смарт-СнаБ» (КП №2).**\n\nОбоснование:\n1. **Ниже общая стоимость** — экономия 29 500 руб. по сравнению с Вектор-Тех.\n2. **Дольше гарантийный срок** — 36 месяцев вместо 24, плюс сервис на территории заказчика (без дополнительных расходов).\n3. По критерию «срок поставки» КП №1 выигрывает (быстрее), но этот критерий имеет меньший вес (15%) и не компенсирует преимущества Смарт-СнаБ по цене и гарантии.\n\n**Дополнительные соображения:**\n- Оплата 100% после приёмки у Смарт-СнаБ снижает финансовые риски школы.\n- Недостаток: подъём на этаж в стоимость не входит (КП №2), тогда как Вектор-Тех включает доставку до кабинета и настройку — это может быть учтено при подписании договора.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4239,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "rlm",
+            "prompt_tokens": 10544,
+            "response_style": "neutral",
+            "response_time": 43.8,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:28:11+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/c28e7649-c048-426c-ad0a-7b580ff7a085/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Сделай обложку для школьной газеты в осенних тонах, без текста.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4240,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:28:17+03:00"
+          },
+          {
+            "completion_tokens": 130,
+            "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай обложку для школьной газеты в осенних тонах, без текста.\"}",
+            "file_data": null,
+            "file_name": "2026-10-25_20-29-31.png",
+            "file_path": "27d0d5f6-21ce-48af-803b-6e02e9d8d657/6ebf3492d44d438db335aed3446eff08.png",
+            "file_size": 1461039,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4241,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "prompt_tokens": 5377,
+            "response_style": "neutral",
+            "response_time": 76.9,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:29:34+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/27d0d5f6-21ce-48af-803b-6e02e9d8d657/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Короткое видео: осенние листья медленно падают в парке.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4242,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:29:42+03:00"
+          },
+          {
+            "completion_tokens": 200,
+            "content": "{\"prefix\": \"🎬 Видео сгенерировано по запросу: \", \"text\": \"Короткое видео: осенние листья медленно падают в парке.\"}",
+            "file_data": null,
+            "file_name": "2026-10-25_20-33-51.mp4",
+            "file_path": "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4",
+            "file_size": 5378308,
+            "file_type": "video/mp4",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4243,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "ltxv-2b-0.9.8-distilled",
+            "model_type": "video",
+            "prompt_tokens": 5090,
+            "response_style": "neutral",
+            "response_time": 251.2,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:33:54+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/f79b7786-848b-42b8-bf53-18e6cbc67056/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4244,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:34:06+03:00"
+          },
+          {
+            "completion_tokens": 107,
+            "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.\"}",
+            "file_data": null,
+            "file_name": "2026-10-25_20-35-23.png",
+            "file_path": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/14e3cd92088840479e8edac056c80c3b.png",
+            "file_size": 1647089,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4245,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "prompt_tokens": 5403,
+            "response_style": "neutral",
+            "response_time": 79.6,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:35:26+03:00"
+          },
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Что можно приготовить из продуктов на фото? Предложи два простых блюда.\"}, {\"type\": \"image\", \"file_type\": \"image/png\", \"file_name\": \"photo.png\", \"file_path\": \"0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png\"}]",
+            "file_data": null,
+            "file_name": "photo.png",
+            "file_path": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png",
+            "file_size": 1647089,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4246,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:35:26+03:00"
+          },
+          {
+            "completion_tokens": 199,
+            "content": "Из продуктов на фото можно приготовить:\n\n1. **Омлет с томатами и сыром** — разогрейте сковороду, добавьте масло, взбейте яйца с молоком и немного соли. Жарьте омлет до готовности, затем выложите на него помидоры и кусочки сыра. Подавайте горячим.\n\n2. **Салат из помидоров, зелени и сыра** — нарежьте помидоры, добавьте мелко порезанную зелень (петрушку или петрушки), нарезанный сыр и немного соли. Перемешайте и подавайте.\n\nОба блюда готовятся быстро и не требуют сложных ингредиентов — идеально для простого ужина или перекуса.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4247,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            "model_type": "multimodal",
+            "prompt_tokens": 2450,
+            "response_style": "neutral",
+            "response_time": 4.4,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:35:31+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/930f5eff-a2ed-43a0-b46f-32ca5a5850d9/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Найди текущий курс евро к рублю и посчитай, сколько стоит партия из 40 ноутбуков по цене 54 900 рублей за штуку в евро.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4248,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:37:09+03:00"
+          },
+          {
+            "completion_tokens": 2214,
+            "content": "В предоставленных результатах поиска отсутствует актуальный курс евро к рублю, поэтому я не могу указать точное значение на текущую дату. Однако я рассчитал стоимость партии в рублях и подготовил формулу для пересчёта:\n\n- Стоимость одного ноутбука: 54 900 ₽\n- Количество единиц: 40 шт.\n- Общая сумма в рублях: `54 900 × 40 = 2 196 000 ₽`\n\nДля перевода в евро разделите полученную сумму на текущий курс EUR/RUB (например, если 1 € = X ₽, то стоимость партии составит `2 196 000 / X` €). \n\nПоскольку курсы валют обновляются ежедневно и зависят от источника (ЦБ РФ, межбанковский рынок или биржа), для точного расчёта рекомендуется взять актуальный курс из официального источника. Если укажете конкретный курс, я сразу выполню окончательный пересчёт в евро.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4249,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "prompt_tokens": 6622,
+            "response_style": "neutral",
+            "response_time": 48.7,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:37:58+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/07386624-320d-4d09-a6bb-078b3f3161f9/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Расшифруй голосовое сообщение и ответь на вопрос из него.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4250,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-25T23:38:04+03:00"
+          },
+          {
+            "completion_tokens": null,
+            "content": "{\"prefix\": \"🎤 Распознано: \", \"text\": \"Подскажи, сколько будет стоить партия и сорока ноутбуков, если один ноутбук стоит 54 900 рублей.\"}",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4251,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "whisper",
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": 7.0,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:38:11+03:00"
+          },
+          {
+            "completion_tokens": 3421,
+            "content": "Стоимость партии из сорока ноутбуков составит **2 196 000 рублей**.\n\nРасчет:\n$54\\,900 \\times 40 = 2\\,196\\,000$.",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4252,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "prompt_tokens": 8856,
+            "response_style": "neutral",
+            "response_time": 45.1,
+            "role": "assistant",
+            "timestamp": "2026-10-25T23:38:57+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/d13027cd-3dc5-4ed0-b497-caf5e2cd1956/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "available_ram_mb": 19713,
+        "available_vram_mb": 7543,
+        "cpu_count": 12,
+        "cpu_name": "AMD Ryzen 5 7500F 6-Core Processor",
+        "cuda_detected": true,
+        "gpu_name": "NVIDIA GeForce RTX 5060 Ti",
+        "platform": "nvidia",
+        "total_ram_mb": 31694,
+        "total_vram_mb": 16311
+      },
+      "method": "GET",
+      "path": "/admin/api/hardware",
+      "status": 200
+    },
+    {
+      "body": {
+        "chunks": {
+          "aliases": null,
+          "chunk_overlap": 50,
+          "chunk_size": 500,
+          "chunk_strategy": "structured",
+          "context_length": null,
+          "model_name": null,
+          "model_type": null,
+          "module": "chunks",
+          "ollama_url": null,
+          "preload": false,
+          "rag_threshold_default": 0.3,
+          "rag_threshold_reasoning": 0.2,
+          "repeat_penalty": 1.1,
+          "service_url": null,
+          "temperature": null,
+          "timeout": null,
+          "top_k": 29,
+          "top_p": null,
+          "ttl": null,
+          "updated_at": "Tue, 19 May 2026 14:38:42 GMT"
+        },
+        "embedding": {
+          "aliases": null,
+          "chunk_overlap": 50,
+          "chunk_size": 500,
+          "chunk_strategy": "fixed",
+          "context_length": null,
+          "model_name": "bge-m3-Q8_0.gguf",
+          "model_type": null,
+          "module": "embedding",
+          "ollama_url": null,
+          "preload": true,
+          "rag_threshold_default": 0.3,
+          "rag_threshold_reasoning": 0.2,
+          "repeat_penalty": 1.1,
+          "service_url": "http://flai-llamacpp:8033",
+          "temperature": null,
+          "timeout": null,
+          "top_k": null,
+          "top_p": null,
+          "ttl": null,
+          "updated_at": "Mon, 28 Sep 2026 15:52:58 GMT"
+        },
+        "multimodal": {
+          "aliases": null,
+          "chunk_overlap": 50,
+          "chunk_size": 500,
+          "chunk_strategy": "fixed",
+          "context_length": 32768,
+          "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+          "model_type": null,
+          "module": "multimodal",
+          "ollama_url": null,
+          "preload": false,
+          "rag_threshold_default": 0.3,
+          "rag_threshold_reasoning": 0.2,
+          "repeat_penalty": 1.1,
+          "service_url": "http://flai-llamacpp:8033",
+          "temperature": 0.7,
+          "timeout": 300,
+          "top_k": null,
+          "top_p": 0.9,
+          "ttl": null,
+          "updated_at": "Mon, 28 Sep 2026 15:52:56 GMT"
+        },
+        "reasoning": {
+          "aliases": null,
+          "chunk_overlap": 50,
+          "chunk_size": 500,
+          "chunk_strategy": "fixed",
+          "context_length": 24576,
+          "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+          "model_type": null,
+          "module": "reasoning",
+          "ollama_url": null,
+          "preload": false,
+          "rag_threshold_default": 0.3,
+          "rag_threshold_reasoning": 0.2,
+          "repeat_penalty": 1.15,
+          "service_url": "http://flai-llamacpp:8033",
+          "temperature": 0.7,
+          "timeout": 300,
+          "top_k": null,
+          "top_p": 0.9,
+          "ttl": null,
+          "updated_at": "Thu, 08 Oct 2026 20:29:58 GMT"
+        },
+        "reranker": {
+          "aliases": null,
+          "chunk_overlap": 50,
+          "chunk_size": 500,
+          "chunk_strategy": "fixed",
+          "context_length": 2048,
+          "model_name": "bge-reranker-v2-m3-Q4_K_M",
+          "model_type": null,
+          "module": "reranker",
+          "ollama_url": null,
+          "preload": false,
+          "rag_threshold_default": 0.3,
+          "rag_threshold_reasoning": 0.2,
+          "repeat_penalty": 1.1,
+          "service_url": "http://flai-llamacpp:8033",
+          "temperature": null,
+          "timeout": 10,
+          "top_k": null,
+          "top_p": null,
+          "ttl": null,
+          "updated_at": "Sun, 25 Oct 2026 07:34:08 GMT"
+        }
+      },
+      "method": "GET",
+      "path": "/admin/api/model_configs",
+      "status": 200
+    },
+    {
+      "body": [
+        {
+          "id": "Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ3_XXS.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "gemma-4-26B-A4B-it-UD-Q2_K_XL.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "bge-reranker-v2-m3-Q4_K_M.gguf",
+          "type": "reranker"
+        },
+        {
+          "id": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ3_XXS.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "Qwen3-Coder-30B-A3B-Instruct-UD-Q3_K_XL.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "gpt-oss-20b-mxfp4.gguf",
+          "type": "reasoning"
+        },
+        {
+          "id": "bge-m3-Q8_0.gguf",
+          "type": "embedding"
+        },
+        {
+          "id": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+          "type": "multimodal"
+        }
+      ],
+      "method": "GET",
+      "path": "/admin/api/llamacpp/models?list_type=gguf_files",
+      "status": 200
+    },
+    {
+      "body": {
+        "files": [
+          {
+            "from_hub": false,
+            "name": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            "path": "",
+            "size_mb": 2381.6,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": true,
+            "name": "Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ3_XXS.gguf",
+            "path": "",
+            "size_mb": 9626.7,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "gemma-4-26B-A4B-it-UD-Q2_K_XL.gguf",
+            "path": "",
+            "size_mb": 10058.3,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "gpt-oss-20b-mxfp4.gguf",
+            "path": "",
+            "size_mb": 11548.6,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "path": "",
+            "size_mb": 11721.3,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ3_XXS.gguf",
+            "path": "",
+            "size_mb": 12253.5,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "Qwen3-Coder-30B-A3B-Instruct-UD-Q3_K_XL.gguf",
+            "path": "",
+            "size_mb": 13166.7,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": true,
+            "name": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+            "path": "",
+            "size_mb": 16162.4,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": true,
+            "name": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "path": "",
+            "size_mb": 21109.1,
+            "type": "reasoning"
+          },
+          {
+            "from_hub": false,
+            "name": "mmproj-F16.gguf",
+            "path": "Qwen3VL-8B-Instruct-Q4_K_M",
+            "size_mb": 1105.3,
+            "type": "multimodal"
+          },
+          {
+            "from_hub": false,
+            "name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            "path": "Qwen3VL-8B-Instruct-Q4_K_M",
+            "size_mb": 4794.9,
+            "type": "multimodal"
+          },
+          {
+            "from_hub": false,
+            "name": "bge-m3-Q8_0.gguf",
+            "path": "",
+            "size_mb": 605.2,
+            "type": "embedding"
+          },
+          {
+            "from_hub": false,
+            "name": "bge-reranker-v2-m3-Q4_K_M.gguf",
+            "path": "",
+            "size_mb": 418.1,
+            "type": "reranker"
+          }
+        ],
+        "status": "ok"
+      },
+      "method": "GET",
+      "path": "/admin/api/hub/installed",
+      "status": 200
+    },
+    {
+      "body": [
+        {
+          "api_keys_count": 0,
+          "camera_permissions": [],
+          "created_at": "Sat, 07 Mar 2026 21:00:46 GMT",
+          "documents_count": 1,
+          "files_count": 2,
+          "has_tavily_key": false,
+          "id": 6,
+          "incoming_tokens": 38000,
+          "is_active": true,
+          "is_admin": false,
+          "language": "ru",
+          "login": "anna",
+          "messages_count": 12,
+          "name": "Анна",
+          "outgoing_tokens": 4200,
+          "password_hash": "REDACTED",
+          "response_style": "neutral",
+          "service_class": 2,
+          "sessions_count": 3,
+          "slm_facts_count": 0,
+          "storage_limit_custom": true,
+          "storage_limit_default_mb": 500,
+          "storage_limit_mb": 500,
+          "storage_used": 5242880,
+          "tasks_count": 0,
+          "tavily_key_added_at": "Sat, 03 Oct 2026 20:07:32 GMT",
+          "theme": "dark",
+          "updated_at": "Sun, 13 Sep 2026 14:12:28 GMT",
+          "voice_gender": "male",
+          "web_requests_month": 0
+        },
+        {
+          "api_keys_count": 0,
+          "camera_permissions": [],
+          "created_at": "Sat, 07 Mar 2026 21:00:46 GMT",
+          "documents_count": 2,
+          "files_count": 3,
+          "has_tavily_key": false,
+          "id": 6,
+          "incoming_tokens": 45000,
+          "is_active": true,
+          "is_admin": false,
+          "language": "ru",
+          "login": "igor",
+          "messages_count": 17,
+          "name": "Игорь",
+          "outgoing_tokens": 5100,
+          "password_hash": "REDACTED",
+          "response_style": "neutral",
+          "service_class": 2,
+          "sessions_count": 4,
+          "slm_facts_count": 0,
+          "storage_limit_custom": true,
+          "storage_limit_default_mb": 500,
+          "storage_limit_mb": 500,
+          "storage_used": 6291456,
+          "tasks_count": 1,
+          "tavily_key_added_at": "Sat, 03 Oct 2026 20:07:32 GMT",
+          "theme": "dark",
+          "updated_at": "Sun, 13 Sep 2026 14:12:28 GMT",
+          "voice_gender": "male",
+          "web_requests_month": 0
+        },
+        {
+          "api_keys_count": 0,
+          "camera_permissions": [],
+          "created_at": "Sat, 07 Mar 2026 21:00:46 GMT",
+          "documents_count": 3,
+          "files_count": 4,
+          "has_tavily_key": false,
+          "id": 6,
+          "incoming_tokens": 52000,
+          "is_active": true,
+          "is_admin": false,
+          "language": "ru",
+          "login": "maria",
+          "messages_count": 22,
+          "name": "Мария",
+          "outgoing_tokens": 6000,
+          "password_hash": "REDACTED",
+          "response_style": "neutral",
+          "service_class": 2,
+          "sessions_count": 5,
+          "slm_facts_count": 0,
+          "storage_limit_custom": true,
+          "storage_limit_default_mb": 500,
+          "storage_limit_mb": 500,
+          "storage_used": 7340032,
+          "tasks_count": 2,
+          "tavily_key_added_at": "Sat, 03 Oct 2026 20:07:32 GMT",
+          "theme": "dark",
+          "updated_at": "Sun, 13 Sep 2026 14:12:28 GMT",
+          "voice_gender": "male",
+          "web_requests_month": 0
+        }
+      ],
+      "method": "GET",
+      "path": "/admin/api/users",
+      "status": 200
+    },
+    {
+      "body": {
+        "chat_db_size": 6045696,
+        "documents_db_size": 3424398,
+        "files_db_size": 129097735,
+        "user_db_size": 196608
+      },
+      "method": "GET",
+      "path": "/admin/api/stats",
+      "status": 200
+    },
+    {
+      "body": [
+        {
+          "created_at": "2026-10-15T10:29:04.723988",
+          "filename": "users_2026-10-15_10-29-04.tar.gz",
+          "metadata": {
+            "checksum": "2de18f74d2d246b3f90bd3cbe0673939fee2c5f38a14317b623bef104e5f0b95",
+            "created_at": "2026-10-15T10:29:04.722542",
+            "database_type": "postgresql",
+            "tables": [
+              "users"
+            ],
+            "type": "users",
+            "version": "11.3"
+          },
+          "size": 2660,
+          "type": "users"
+        },
+        {
+          "created_at": "2026-10-15T10:29:10.823241",
+          "filename": "full_2026-10-15_10-29-07.tar.gz",
+          "metadata": {
+            "checksum": "51be944918441c888c289ec434ed630cd4df6aa148392896283e8af5ba098a07",
+            "created_at": "2026-10-15T10:29:09.063333",
+            "database_type": "postgresql",
+            "tables": [
+              "users",
+              "user_sessions",
+              "chat_sessions",
+              "messages",
+              "session_visits",
+              "documents",
+              "model_configs",
+              "user_storage",
+              "gguf_models_cache",
+              "model_vram_estimates",
+              "slm_import_progress",
+              "camera_rooms",
+              "branding_settings",
+              "tasks",
+              "task_steps"
+            ],
+            "type": "full",
+            "version": "11.3"
+          },
+          "size": 53406450,
+          "type": "full"
+        }
+      ],
+      "method": "GET",
+      "path": "/admin/api/backups/",
+      "status": 200
+    },
+    {
+      "body": [
+        {
+          "code": "bal",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "балкон",
+            "балконе"
+          ],
+          "sort_order": 0,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "det",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "детская",
+            "детскую",
+            "детской"
+          ],
+          "sort_order": 1,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "gos",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "гостиная",
+            "гостиную",
+            "гостиной"
+          ],
+          "sort_order": 2,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "kab",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "кабинет",
+            "кабинете"
+          ],
+          "sort_order": 3,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "kor",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "коридор",
+            "коридоре"
+          ],
+          "sort_order": 4,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "kuh",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "кухня",
+            "кухню",
+            "кухне"
+          ],
+          "sort_order": 5,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "pri",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "прихожая",
+            "прихожую",
+            "прихожей"
+          ],
+          "sort_order": 6,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "spa",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "спальня",
+            "спальню",
+            "спальне"
+          ],
+          "sort_order": 7,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "tam",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": true,
+          "name_forms": [
+            "тамбур",
+            "тамбуре"
+          ],
+          "sort_order": 8,
+          "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
+        },
+        {
+          "code": "tst",
+          "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
+          "enabled": false,
+          "name_forms": [
+            "test"
+          ],
+          "sort_order": 9,
+          "updated_at": "Tue, 09 Jun 2026 23:01:21 GMT"
+        }
+      ],
+      "method": "GET",
+      "path": "/admin/api/cameras",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_logo": false,
+        "logo_url": null,
+        "site_name_en": "",
+        "site_name_ru": ""
+      },
+      "method": "GET",
+      "path": "/admin/api/branding",
+      "status": 200
+    },
+    {
+      "body": {
+        "groups": [
+          {
+            "fields": [
+              {
+                "default": true,
+                "description": "Use the per-user Tavily key before the local search engine",
+                "has_value": true,
+                "key": "TAVILY_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": "https://api.tavily.com",
+                "description": "Tavily API base URL",
+                "has_value": true,
+                "key": "TAVILY_API_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "https://api.tavily.com"
+              },
+              {
+                "default": 20,
+                "description": "Tavily search request timeout (seconds)",
+                "has_value": true,
+                "key": "TAVILY_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 20
+              },
+              {
+                "default": 8,
+                "description": "Timeout for the Tavily quota lookup (seconds)",
+                "has_value": true,
+                "key": "TAVILY_USAGE_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 8
+              },
+              {
+                "default": 7,
+                "description": "Maximum results requested from Tavily",
+                "has_value": true,
+                "key": "TAVILY_MAX_RESULTS",
+                "kind": "int",
+                "secret": false,
+                "value": 7
+              },
+              {
+                "default": "basic",
+                "description": "Tavily depth: basic, advanced, fast or ultra-fast",
+                "has_value": true,
+                "key": "TAVILY_SEARCH_DEPTH",
+                "kind": "str",
+                "secret": false,
+                "value": "basic"
+              },
+              {
+                "default": 300,
+                "description": "How long an answered quota lookup is reused (seconds)",
+                "has_value": true,
+                "key": "TAVILY_ADMIN_CACHE_TTL",
+                "kind": "int",
+                "secret": false,
+                "value": 300
+              },
+              {
+                "default": 60,
+                "description": "How long an unreachable quota endpoint is remembered (seconds)",
+                "has_value": true,
+                "key": "TAVILY_NEGATIVE_CACHE_TTL",
+                "kind": "int",
+                "secret": false,
+                "value": 60
+              },
+              {
+                "default": "http://flai-searxng:8080",
+                "description": "Local SearXNG base URL",
+                "has_value": true,
+                "key": "SEARXNG_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-searxng:8080"
+              },
+              {
+                "default": 10,
+                "description": "SearXNG request timeout (seconds)",
+                "has_value": true,
+                "key": "SEARXNG_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": 7,
+                "description": "Maximum results requested from SearXNG",
+                "has_value": true,
+                "key": "SEARXNG_MAX_RESULTS",
+                "kind": "int",
+                "secret": false,
+                "value": 7
+              },
+              {
+                "default": 7000,
+                "description": "Characters of search context passed to the model",
+                "has_value": true,
+                "key": "SEARXNG_MAX_RESULTS_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 7000
+              },
+              {
+                "default": true,
+                "description": "Enable the Crawl4AI page reader and site crawler",
+                "has_value": true,
+                "key": "CRAWL_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": "http://flai-crawler:11235",
+                "description": "Crawl4AI service URL",
+                "has_value": true,
+                "key": "CRAWLER_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-crawler:11235"
+              },
+              {
+                "default": null,
+                "description": "Bearer token for the Crawl4AI service",
+                "has_value": true,
+                "key": "CRAWL_API_TOKEN",
+                "kind": "str",
+                "secret": true,
+                "value": null
+              },
+              {
+                "default": 50,
+                "description": "Maximum pages per crawl",
+                "has_value": true,
+                "key": "CRAWL_MAX_PAGES",
+                "kind": "int",
+                "secret": false,
+                "value": 50
+              },
+              {
+                "default": 3,
+                "description": "Maximum link depth per crawl",
+                "has_value": true,
+                "key": "CRAWL_MAX_DEPTH",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": 300,
+                "description": "Whole-crawl wall-clock limit (seconds)",
+                "has_value": true,
+                "key": "CRAWL_TIMEOUT_S",
+                "kind": "int",
+                "secret": false,
+                "value": 300
+              },
+              {
+                "default": 30,
+                "description": "Single page fetch timeout (seconds)",
+                "has_value": true,
+                "key": "CRAWL_PAGE_TIMEOUT_S",
+                "kind": "int",
+                "secret": false,
+                "value": 30
+              },
+              {
+                "default": 50000,
+                "description": "Characters kept per crawled page",
+                "has_value": true,
+                "key": "CRAWL_MAX_PAGE_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 50000
+              },
+              {
+                "default": 1000000,
+                "description": "Characters kept across the whole crawl",
+                "has_value": true,
+                "key": "CRAWL_MAX_TOTAL_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 1000000
+              },
+              {
+                "default": 2,
+                "description": "Parallel crawl requests",
+                "has_value": true,
+                "key": "CRAWL_CONCURRENCY",
+                "kind": "int",
+                "secret": false,
+                "value": 2
+              },
+              {
+                "default": 5000,
+                "description": "Characters of document context passed to the model",
+                "has_value": true,
+                "key": "RAG_MAX_RESULTS_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 5000
+              }
+            ],
+            "id": "search",
+            "label": "Search and crawl"
+          },
+          {
+            "fields": [
+              {
+                "default": "http://flai-qdrant:6333",
+                "description": "Qdrant vector database URL",
+                "has_value": true,
+                "key": "QDRANT_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-qdrant:6333"
+              },
+              {
+                "default": null,
+                "description": "Qdrant API key (optional)",
+                "has_value": true,
+                "key": "QDRANT_API_KEY",
+                "kind": "str",
+                "secret": true,
+                "value": null
+              },
+              {
+                "default": 500,
+                "description": "Characters per indexed chunk",
+                "has_value": true,
+                "key": "RAG_CHUNK_SIZE",
+                "kind": "int",
+                "secret": false,
+                "value": 500
+              },
+              {
+                "default": 50,
+                "description": "Characters shared by neighbouring chunks",
+                "has_value": true,
+                "key": "RAG_CHUNK_OVERLAP",
+                "kind": "int",
+                "secret": false,
+                "value": 50
+              },
+              {
+                "default": "fixed",
+                "description": "Chunking strategy: fixed or recursive",
+                "has_value": true,
+                "key": "RAG_CHUNK_STRATEGY",
+                "kind": "str",
+                "secret": false,
+                "value": "fixed"
+              },
+              {
+                "default": 80,
+                "description": "Chunks retrieved per document query",
+                "has_value": true,
+                "key": "RAG_TOP_K",
+                "kind": "int",
+                "secret": false,
+                "value": 80
+              },
+              {
+                "default": 30,
+                "description": "Share of the context window given to documents",
+                "has_value": true,
+                "key": "RAG_CONTEXT_PERCENT",
+                "kind": "int",
+                "secret": false,
+                "value": 30
+              },
+              {
+                "default": true,
+                "description": "Merge dense vector and full-text retrieval with reciprocal rank fusion",
+                "has_value": true,
+                "key": "RAG_HYBRID_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": 30,
+                "description": "Candidates each retriever returns before fusion",
+                "has_value": true,
+                "key": "RAG_HYBRID_CANDIDATES",
+                "kind": "int",
+                "secret": false,
+                "value": 30
+              },
+              {
+                "default": 60,
+                "description": "Reciprocal rank fusion constant",
+                "has_value": true,
+                "key": "RAG_RRF_K",
+                "kind": "int",
+                "secret": false,
+                "value": 60
+              },
+              {
+                "default": false,
+                "description": "Reorder the top candidates with the CPU cross-encoder",
+                "has_value": true,
+                "key": "RAG_RERANK_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": false
+              },
+              {
+                "default": 10,
+                "description": "How many top candidates the reranker reorders",
+                "has_value": true,
+                "key": "RAG_RERANK_CANDIDATES",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": 10,
+                "description": "Reranker request timeout (seconds)",
+                "has_value": true,
+                "key": "RAG_RERANK_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": 1800,
+                "description": "Time budget for scanned-PDF OCR (seconds, 0 = unlimited)",
+                "has_value": true,
+                "key": "OCR_TIME_BUDGET_S",
+                "kind": "int",
+                "secret": false,
+                "value": 1800
+              },
+              {
+                "default": 25,
+                "description": "Largest document a user may upload (MB)",
+                "has_value": true,
+                "key": "MAX_DOCUMENT_SIZE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 25
+              },
+              {
+                "default": 250,
+                "description": "Documents per user, also the folder limit",
+                "has_value": true,
+                "key": "MAX_DOCUMENTS_PER_USER",
+                "kind": "int",
+                "secret": false,
+                "value": 250
+              },
+              {
+                "default": 250,
+                "description": "Total document storage per user (MB)",
+                "has_value": true,
+                "key": "MAX_DOCUMENTS_STORAGE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 250
+              },
+              {
+                "default": 500,
+                "description": "Default upload limit per user (MB), overridable in Users",
+                "has_value": true,
+                "key": "MAX_UPLOAD_STORAGE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 500
+              },
+              {
+                "default": 10,
+                "description": "Longest accepted file extension",
+                "has_value": true,
+                "key": "MAX_EXTENSION_LENGTH",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": null,
+                "description": "Largest accepted HTTP request body (MB)",
+                "has_value": true,
+                "key": "MAX_CONTENT_LENGTH_MB",
+                "kind": "str",
+                "secret": false,
+                "value": null
+              }
+            ],
+            "id": "documents",
+            "label": "Documents and RAG"
+          },
+          {
+            "fields": [
+              {
+                "default": true,
+                "description": "Enable background tasks",
+                "has_value": true,
+                "key": "TASKS_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": 86400,
+                "description": "Pure execution budget per task (seconds)",
+                "has_value": true,
+                "key": "TASK_TOTAL_BUDGET_S",
+                "kind": "int",
+                "secret": false,
+                "value": 86400
+              },
+              {
+                "default": 40,
+                "description": "Hard ceiling on the plan length",
+                "has_value": true,
+                "key": "TASK_MAX_STEPS",
+                "kind": "int",
+                "secret": false,
+                "value": 40
+              },
+              {
+                "default": 8,
+                "description": "Accepted plan rewrites per task",
+                "has_value": true,
+                "key": "TASK_MAX_REVISIONS",
+                "kind": "int",
+                "secret": false,
+                "value": 8
+              },
+              {
+                "default": 3,
+                "description": "Passing media steps between plan reviews",
+                "has_value": true,
+                "key": "TASK_REPLAN_EVERY_N",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": 3,
+                "description": "Attempts per step, verification included",
+                "has_value": true,
+                "key": "TASK_STEP_MAX_ATTEMPTS",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": 3,
+                "description": "Local edits after each generation attempt",
+                "has_value": true,
+                "key": "TASK_STEP_MAX_REPAIRS",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": 1,
+                "description": "Redo passes for a rejected step",
+                "has_value": true,
+                "key": "TASK_STEP_REDO_MAX",
+                "kind": "int",
+                "secret": false,
+                "value": 1
+              },
+              {
+                "default": 15,
+                "description": "Chat-free window before a step may run (seconds)",
+                "has_value": true,
+                "key": "TASK_QUIET_PERIOD_S",
+                "kind": "int",
+                "secret": false,
+                "value": 15
+              },
+              {
+                "default": 1,
+                "description": "Executor cycle interval (seconds)",
+                "has_value": true,
+                "key": "TASK_POLL_INTERVAL_S",
+                "kind": "int",
+                "secret": false,
+                "value": 1
+              },
+              {
+                "default": 10,
+                "description": "Executor cycles between media subtask checks",
+                "has_value": true,
+                "key": "TASK_SUBTASK_POLL_CYCLES",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": 3,
+                "description": "How long an unknown subtask state is tolerated",
+                "has_value": true,
+                "key": "TASK_SUBTASK_ALIVE_UNKNOWN_MAX",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": true,
+                "description": "Build a visual continuity sheet for image series",
+                "has_value": true,
+                "key": "TASK_CONTINUITY_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": 2000,
+                "description": "Characters kept in the continuity sheet",
+                "has_value": true,
+                "key": "TASK_CONTINUITY_MAX_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 2000
+              },
+              {
+                "default": 600,
+                "description": "VRAM wait before a task step gives up (seconds)",
+                "has_value": true,
+                "key": "TASK_VRAM_WAIT_S",
+                "kind": "int",
+                "secret": false,
+                "value": 600
+              }
+            ],
+            "id": "tasks",
+            "label": "Tasks"
+          },
+          {
+            "fields": [
+              {
+                "default": "llama-swap",
+                "description": "LLM backend: llama-swap or direct llama.cpp",
+                "has_value": true,
+                "key": "LLAMACP_BACKEND",
+                "kind": "str",
+                "secret": false,
+                "value": "llama-swap"
+              },
+              {
+                "default": "http://flai-llamaswap:8080",
+                "description": "llama-swap API URL",
+                "has_value": true,
+                "key": "LLAMA_SWAP_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-llamaswap:8080"
+              },
+              {
+                "default": null,
+                "description": "Direct llama.cpp API URL",
+                "has_value": true,
+                "key": "LLAMACPP_URL",
+                "kind": "str",
+                "secret": false,
+                "value": null
+              },
+              {
+                "default": 85,
+                "description": "Share of the context window given to history",
+                "has_value": true,
+                "key": "CONTEXT_HISTORY_PERCENT",
+                "kind": "int",
+                "secret": false,
+                "value": 85
+              },
+              {
+                "default": 0.88,
+                "description": "Tokens reserved below the context limit",
+                "has_value": true,
+                "key": "CONTEXT_SAFETY_MARGIN",
+                "kind": "float",
+                "secret": false,
+                "value": 0.88
+              },
+              {
+                "default": 800,
+                "description": "Tokens reserved for the prompt template",
+                "has_value": true,
+                "key": "TEMPLATE_OVERHEAD_TOKENS",
+                "kind": "int",
+                "secret": false,
+                "value": 800
+              },
+              {
+                "default": 3,
+                "description": "Characters per token used for estimates",
+                "has_value": true,
+                "key": "TOKEN_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 3
+              },
+              {
+                "default": 1000,
+                "description": "Tokens charged for one attached image",
+                "has_value": true,
+                "key": "IMAGE_TOKENS_PER_IMAGE",
+                "kind": "int",
+                "secret": false,
+                "value": 1000
+              },
+              {
+                "default": 16000,
+                "description": "Characters of media descriptions kept in context",
+                "has_value": true,
+                "key": "MEDIA_CONTEXT_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 16000
+              },
+              {
+                "default": 6,
+                "description": "Recent messages passed to the router",
+                "has_value": true,
+                "key": "ROUTER_CONTEXT_MESSAGES",
+                "kind": "int",
+                "secret": false,
+                "value": 6
+              },
+              {
+                "default": 240,
+                "description": "Characters per message passed to the router",
+                "has_value": true,
+                "key": "ROUTER_CONTEXT_MSG_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 240
+              },
+              {
+                "default": 2,
+                "description": "Long-term facts passed to the router",
+                "has_value": true,
+                "key": "ROUTER_SLM_FACTS",
+                "kind": "int",
+                "secret": false,
+                "value": 2
+              },
+              {
+                "default": 5,
+                "description": "Startup health-check attempts per service",
+                "has_value": true,
+                "key": "SERVICE_RETRY_ATTEMPTS",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              },
+              {
+                "default": 2,
+                "description": "Delay between startup health checks (seconds)",
+                "has_value": true,
+                "key": "SERVICE_RETRY_DELAY",
+                "kind": "int",
+                "secret": false,
+                "value": 2
+              },
+              {
+                "default": 120,
+                "description": "How long to wait for VRAM to free (seconds)",
+                "has_value": true,
+                "key": "VRAM_WAIT_TIMEOUT_S",
+                "kind": "int",
+                "secret": false,
+                "value": 120
+              }
+            ],
+            "id": "models",
+            "label": "Models and context"
+          },
+          {
+            "fields": [
+              {
+                "default": "http://flai-sd:7861",
+                "description": "Image generation wrapper URL",
+                "has_value": true,
+                "key": "SD_WRAPPER_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-sd:7861"
+              },
+              {
+                "default": "z_image_turbo",
+                "description": "Model used for image generation",
+                "has_value": true,
+                "key": "SD_MODEL_TYPE",
+                "kind": "str",
+                "secret": false,
+                "value": "z_image_turbo"
+              },
+              {
+                "default": "flux-2-klein-4b",
+                "description": "Model used for image editing",
+                "has_value": true,
+                "key": "SD_EDIT_MODEL_TYPE",
+                "kind": "str",
+                "secret": false,
+                "value": "flux-2-klein-4b"
+              },
+              {
+                "default": 900,
+                "description": "Image generation timeout (seconds)",
+                "has_value": true,
+                "key": "SD_CPP_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 900
+              },
+              {
+                "default": 1024,
+                "description": "Default image width (pixels)",
+                "has_value": true,
+                "key": "SD_CPP_DEFAULT_WIDTH",
+                "kind": "int",
+                "secret": false,
+                "value": 1024
+              },
+              {
+                "default": 1024,
+                "description": "Default image height (pixels)",
+                "has_value": true,
+                "key": "SD_CPP_DEFAULT_HEIGHT",
+                "kind": "int",
+                "secret": false,
+                "value": 1024
+              },
+              {
+                "default": 10,
+                "description": "Default diffusion steps",
+                "has_value": true,
+                "key": "SD_CPP_DEFAULT_STEPS",
+                "kind": "int",
+                "secret": false,
+                "value": 10
+              },
+              {
+                "default": 1.0,
+                "description": "Default classifier-free guidance scale",
+                "has_value": true,
+                "key": "SD_CPP_DEFAULT_CFG_SCALE",
+                "kind": "float",
+                "secret": false,
+                "value": 1.0
+              },
+              {
+                "default": "http://flai-ltxvideo:7872",
+                "description": "Video generation wrapper URL",
+                "has_value": true,
+                "key": "LTX_VIDEO_WRAPPER_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-ltxvideo:7872"
+              },
+              {
+                "default": "ltxv-2b-0.9.8-distilled",
+                "description": "LTX-Video model file",
+                "has_value": true,
+                "key": "LTX_VIDEO_MODEL",
+                "kind": "str",
+                "secret": false,
+                "value": "ltxv-2b-0.9.8-distilled"
+              },
+              {
+                "default": 10800,
+                "description": "Video generation timeout (seconds)",
+                "has_value": true,
+                "key": "LTX_VIDEO_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 10800
+              },
+              {
+                "default": 1536,
+                "description": "Largest single image side (pixels)",
+                "has_value": true,
+                "key": "MAX_IMAGE_SIZE",
+                "kind": "int",
+                "secret": false,
+                "value": 1536
+              },
+              {
+                "default": 5,
+                "description": "Largest image upload (MB)",
+                "has_value": true,
+                "key": "MAX_IMAGE_SIZE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              },
+              {
+                "default": 1024,
+                "description": "Side limit when several images are attached",
+                "has_value": true,
+                "key": "MAX_IMAGE_SIZE_MULTI",
+                "kind": "int",
+                "secret": false,
+                "value": 1024
+              },
+              {
+                "default": 3840,
+                "description": "Maximum accepted image width",
+                "has_value": true,
+                "key": "MAX_IMAGE_WIDTH",
+                "kind": "int",
+                "secret": false,
+                "value": 3840
+              },
+              {
+                "default": 2160,
+                "description": "Maximum accepted image height",
+                "has_value": true,
+                "key": "MAX_IMAGE_HEIGHT",
+                "kind": "int",
+                "secret": false,
+                "value": 2160
+              },
+              {
+                "default": 4,
+                "description": "Images per chat message",
+                "has_value": true,
+                "key": "MAX_CHAT_IMAGES",
+                "kind": "int",
+                "secret": false,
+                "value": 4
+              },
+              {
+                "default": 4,
+                "description": "Audio attachments per chat message",
+                "has_value": true,
+                "key": "MAX_CHAT_AUDIO",
+                "kind": "int",
+                "secret": false,
+                "value": 4
+              },
+              {
+                "default": 5,
+                "description": "Largest audio upload (MB)",
+                "has_value": true,
+                "key": "MAX_AUDIO_SIZE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              },
+              {
+                "default": 5,
+                "description": "Largest voice message (MB)",
+                "has_value": true,
+                "key": "MAX_VOICE_SIZE_MB",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              }
+            ],
+            "id": "media",
+            "label": "Media generation"
+          },
+          {
+            "fields": [
+              {
+                "default": true,
+                "description": "Enable deep analysis",
+                "has_value": true,
+                "key": "RLM_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": "reasoning",
+                "description": "Model driving the analysis loop",
+                "has_value": true,
+                "key": "RLM_ACTOR_MODEL",
+                "kind": "str",
+                "secret": false,
+                "value": "reasoning"
+              },
+              {
+                "default": 18,
+                "description": "Hard ceiling on analysis steps",
+                "has_value": true,
+                "key": "RLM_MAX_STEPS",
+                "kind": "int",
+                "secret": false,
+                "value": 18
+              },
+              {
+                "default": 0,
+                "description": "Wall-clock limit (0 = derived from the step budget)",
+                "has_value": true,
+                "key": "RLM_TASK_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 0
+              },
+              {
+                "default": 15,
+                "description": "Sandbox execution limit (seconds)",
+                "has_value": true,
+                "key": "RLM_CODE_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 15
+              },
+              {
+                "default": 4000,
+                "description": "Characters kept per observation",
+                "has_value": true,
+                "key": "RLM_OBS_TRUNC",
+                "kind": "int",
+                "secret": false,
+                "value": 4000
+              },
+              {
+                "default": 1024,
+                "description": "Tokens per sub-model call",
+                "has_value": true,
+                "key": "RLM_SUB_MAX_TOKENS",
+                "kind": "int",
+                "secret": false,
+                "value": 1024
+              },
+              {
+                "default": 5,
+                "description": "Web lookups per analysis",
+                "has_value": true,
+                "key": "RLM_WEB_MAX_FETCHES",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              },
+              {
+                "default": 50000000,
+                "description": "Largest corpus accepted (characters)",
+                "has_value": true,
+                "key": "RLM_MAX_CORPUS_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 50000000
+              }
+            ],
+            "id": "rlm",
+            "label": "Deep analysis"
+          },
+          {
+            "fields": [
+              {
+                "default": "http://flai-piper:8888/tts",
+                "description": "Piper TTS service URL",
+                "has_value": true,
+                "key": "PIPER_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-piper:8888/tts"
+              },
+              {
+                "default": 30,
+                "description": "Piper synthesis timeout (seconds)",
+                "has_value": true,
+                "key": "PIPER_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 30
+              },
+              {
+                "default": null,
+                "description": "Kokoro TTS service URL",
+                "has_value": true,
+                "key": "KOKORO_URL",
+                "kind": "str",
+                "secret": false,
+                "value": null
+              },
+              {
+                "default": 60,
+                "description": "Kokoro synthesis timeout (seconds)",
+                "has_value": true,
+                "key": "KOKORO_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 60
+              },
+              {
+                "default": "http://flai-whisper:9000/asr",
+                "description": "Whisper speech-recognition URL",
+                "has_value": true,
+                "key": "WHISPER_API_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-whisper:9000/asr"
+              },
+              {
+                "default": 120,
+                "description": "Transcription timeout (seconds)",
+                "has_value": true,
+                "key": "WHISPER_API_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 120
+              }
+            ],
+            "id": "voice",
+            "label": "Voice"
+          },
+          {
+            "fields": [
+              {
+                "default": "http://flai-slm:8766",
+                "description": "SuperLocalMemory service URL",
+                "has_value": true,
+                "key": "SLM_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-slm:8766"
+              },
+              {
+                "default": 7,
+                "description": "Facts recalled per message",
+                "has_value": true,
+                "key": "SLM_RECALL_LIMIT",
+                "kind": "int",
+                "secret": false,
+                "value": 7
+              },
+              {
+                "default": 0.85,
+                "description": "Minimum similarity for a recalled fact",
+                "has_value": true,
+                "key": "SLM_SIMILARITY_THRESHOLD",
+                "kind": "float",
+                "secret": false,
+                "value": 0.85
+              },
+              {
+                "default": 0.5,
+                "description": "Confidence below which a fact starts decaying",
+                "has_value": true,
+                "key": "SLM_MIN_CONFIDENCE_FOR_DECAY",
+                "kind": "float",
+                "secret": false,
+                "value": 0.5
+              },
+              {
+                "default": 90,
+                "description": "Days after which a fact loses weight",
+                "has_value": true,
+                "key": "SLM_TEMPORAL_DECAY_DAYS",
+                "kind": "int",
+                "secret": false,
+                "value": 90
+              },
+              {
+                "default": 4096,
+                "description": "Facts considered in one merge pass",
+                "has_value": true,
+                "key": "MERGE_CONTEXT_SIZE",
+                "kind": "int",
+                "secret": false,
+                "value": 4096
+              },
+              {
+                "default": 120,
+                "description": "Characters per merged fact",
+                "has_value": true,
+                "key": "MERGE_FACT_MAX_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 120
+              },
+              {
+                "default": 100,
+                "description": "Facts kept per merge batch",
+                "has_value": true,
+                "key": "MERGE_MAX_FACTS",
+                "kind": "int",
+                "secret": false,
+                "value": 100
+              },
+              {
+                "default": 62,
+                "description": "Facts that must fit the model window",
+                "has_value": true,
+                "key": "MERGE_MAX_FIT_FACTS",
+                "kind": "int",
+                "secret": false,
+                "value": 62
+              },
+              {
+                "default": 1500,
+                "description": "Characters in a rolling session summary",
+                "has_value": true,
+                "key": "SESSION_SUMMARY_MAX_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 1500
+              },
+              {
+                "default": 120,
+                "description": "Messages read when building a summary",
+                "has_value": true,
+                "key": "SESSION_SUMMARY_MAX_FETCH",
+                "kind": "int",
+                "secret": false,
+                "value": 120
+              },
+              {
+                "default": 6,
+                "description": "Trimmed messages needed before summarizing",
+                "has_value": true,
+                "key": "SESSION_SUMMARY_MIN_MESSAGES",
+                "kind": "int",
+                "secret": false,
+                "value": 6
+              },
+              {
+                "default": 5,
+                "description": "History matches per search",
+                "has_value": true,
+                "key": "HISTORY_SEARCH_LIMIT",
+                "kind": "int",
+                "secret": false,
+                "value": 5
+              },
+              {
+                "default": 5000,
+                "description": "Characters of history context passed to the model",
+                "has_value": true,
+                "key": "HISTORY_MAX_RESULTS_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 5000
+              },
+              {
+                "default": 20000,
+                "description": "Characters per history message",
+                "has_value": true,
+                "key": "HISTORY_MAX_MESSAGE_CHARS",
+                "kind": "int",
+                "secret": false,
+                "value": 20000
+              },
+              {
+                "default": 90,
+                "description": "Messages kept in the conversation window",
+                "has_value": true,
+                "key": "MAX_HISTORY_MESSAGES",
+                "kind": "int",
+                "secret": false,
+                "value": 90
+              },
+              {
+                "default": 100,
+                "description": "Messages loaded per session by default",
+                "has_value": true,
+                "key": "MESSAGES_DEFAULT_LIMIT",
+                "kind": "int",
+                "secret": false,
+                "value": 100
+              },
+              {
+                "default": 200,
+                "description": "Largest message page the API returns",
+                "has_value": true,
+                "key": "MESSAGES_MAX_LIMIT",
+                "kind": "int",
+                "secret": false,
+                "value": 200
+              }
+            ],
+            "id": "memory",
+            "label": "Memory and history"
+          },
+          {
+            "fields": [
+              {
+                "default": true,
+                "description": "Enable the public OpenAI-compatible API",
+                "has_value": true,
+                "key": "API_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": "60 per minute;1000 per hour",
+                "description": "Rate limits, e.g. 60 per minute;1000 per hour",
+                "has_value": true,
+                "key": "API_RATE_LIMIT",
+                "kind": "str",
+                "secret": false,
+                "value": "60 per minute;1000 per hour"
+              },
+              {
+                "default": 64,
+                "description": "Synchronous API waiters per instance",
+                "has_value": true,
+                "key": "API_MAX_CONCURRENT_WAITS",
+                "kind": "int",
+                "secret": false,
+                "value": 64
+              },
+              {
+                "default": 600,
+                "description": "How long a synchronous request waits (seconds)",
+                "has_value": true,
+                "key": "API_SYNC_MAX_WAIT",
+                "kind": "int",
+                "secret": false,
+                "value": 600
+              },
+              {
+                "default": "",
+                "description": "Allowed origins for /v1, comma separated",
+                "has_value": true,
+                "key": "API_CORS_ORIGINS",
+                "kind": "str",
+                "secret": false,
+                "value": ""
+              },
+              {
+                "default": 3600,
+                "description": "How long API results stay in Redis (seconds)",
+                "has_value": true,
+                "key": "REDIS_RESULT_TTL",
+                "kind": "int",
+                "secret": false,
+                "value": 3600
+              }
+            ],
+            "id": "api",
+            "label": "API"
+          },
+          {
+            "fields": [
+              {
+                "default": true,
+                "description": "Enable camera support",
+                "has_value": true,
+                "key": "CAMERA_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": true
+              },
+              {
+                "default": "http://flai-room-snapshot-api:5000",
+                "description": "Room snapshot service URL",
+                "has_value": true,
+                "key": "CAMERA_API_URL",
+                "kind": "str",
+                "secret": false,
+                "value": "http://flai-room-snapshot-api:5000"
+              },
+              {
+                "default": 15,
+                "description": "Camera service timeout (seconds)",
+                "has_value": true,
+                "key": "CAMERA_API_TIMEOUT",
+                "kind": "int",
+                "secret": false,
+                "value": 15
+              },
+              {
+                "default": 30,
+                "description": "Camera availability check interval (seconds)",
+                "has_value": true,
+                "key": "CAMERA_CHECK_INTERVAL",
+                "kind": "int",
+                "secret": false,
+                "value": 30
+              }
+            ],
+            "id": "cameras",
+            "label": "Cameras"
+          },
+          {
+            "fields": [
+              {
+                "default": "Europe/Moscow",
+                "description": "IANA timezone used for dates and monitoring",
+                "has_value": true,
+                "key": "TIMEZONE",
+                "kind": "str",
+                "secret": false,
+                "value": "Europe/Moscow"
+              },
+              {
+                "default": null,
+                "description": "Token for gated Hugging Face repositories",
+                "has_value": false,
+                "key": "HUGGINGFACE_TOKEN",
+                "kind": "str",
+                "secret": true,
+                "value": null
+              },
+              {
+                "default": 40,
+                "description": "Largest model file the Hub may download (GB)",
+                "has_value": true,
+                "key": "MODEL_HUB_MAX_FILE_GB",
+                "kind": "int",
+                "secret": false,
+                "value": 40
+              },
+              {
+                "default": 4,
+                "description": "Free disk margin kept after a download (GB)",
+                "has_value": true,
+                "key": "MODEL_HUB_FREE_MARGIN_GB",
+                "kind": "int",
+                "secret": false,
+                "value": 4
+              },
+              {
+                "default": 20,
+                "description": "Results per Hugging Face search",
+                "has_value": true,
+                "key": "MODEL_HUB_SEARCH_LIMIT",
+                "kind": "int",
+                "secret": false,
+                "value": 20
+              },
+              {
+                "default": 3600,
+                "description": "Download timeout (seconds)",
+                "has_value": true,
+                "key": "MODEL_HUB_TIMEOUT_S",
+                "kind": "int",
+                "secret": false,
+                "value": 3600
+              },
+              {
+                "default": 300,
+                "description": "Largest queue wait before a task is rejected (seconds)",
+                "has_value": true,
+                "key": "QUEUE_MAX_WAIT_TIME",
+                "kind": "int",
+                "secret": false,
+                "value": 300
+              }
+            ],
+            "id": "service",
+            "label": "Service"
+          },
+          {
+            "fields": [
+              {
+                "default": false,
+                "description": "Expose the debug endpoints",
+                "has_value": true,
+                "key": "DEBUG_API_ENABLED",
+                "kind": "bool",
+                "secret": false,
+                "value": false
+              },
+              {
+                "default": false,
+                "description": "Log token-estimation details",
+                "has_value": true,
+                "key": "DEBUG_TOKEN_ESTIMATION",
+                "kind": "bool",
+                "secret": false,
+                "value": false
+              }
+            ],
+            "id": "debug",
+            "label": "Debug"
+          }
+        ]
+      },
+      "method": "GET",
+      "path": "/admin/api/settings",
+      "status": 200
+    },
+    {
+      "body": {
+        "bucket_seconds": 3600,
+        "buckets": [
+          "2026-10-24T21:00:00+00:00",
+          "2026-10-24T22:00:00+00:00",
+          "2026-10-24T23:00:00+00:00",
+          "2026-10-25T00:00:00+00:00",
+          "2026-10-25T01:00:00+00:00",
+          "2026-10-25T02:00:00+00:00",
+          "2026-10-25T03:00:00+00:00",
+          "2026-10-25T04:00:00+00:00",
+          "2026-10-25T05:00:00+00:00",
+          "2026-10-25T06:00:00+00:00",
+          "2026-10-25T07:00:00+00:00",
+          "2026-10-25T08:00:00+00:00",
+          "2026-10-25T09:00:00+00:00",
+          "2026-10-25T10:00:00+00:00",
+          "2026-10-25T11:00:00+00:00",
+          "2026-10-25T12:00:00+00:00",
+          "2026-10-25T13:00:00+00:00",
+          "2026-10-25T14:00:00+00:00",
+          "2026-10-25T15:00:00+00:00",
+          "2026-10-25T16:00:00+00:00",
+          "2026-10-25T17:00:00+00:00",
+          "2026-10-25T18:00:00+00:00",
+          "2026-10-25T19:00:00+00:00",
+          "2026-10-25T20:00:00+00:00"
+        ],
+        "from": "2026-10-24T21:00:00+00:00",
+        "range": "24h",
+        "series": {
+          "documents": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            18,
+            15,
+            6
+          ],
+          "files": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            13,
+            8
+          ],
+          "incoming_tokens": [
+            0,
+            0,
+            3142,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            7628,
+            2301,
+            17494,
+            10953,
+            0,
+            0,
+            0,
+            6473,
+            0,
+            7611,
+            64230,
+            35561
+          ],
+          "messages": [
+            0,
+            0,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            4,
+            2,
+            14,
+            4,
+            0,
+            0,
+            0,
+            4,
+            0,
+            21,
+            79,
+            42
+          ],
+          "outgoing_tokens": [
+            0,
+            0,
+            13956,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            12954,
+            7528,
+            121129,
+            15554,
+            0,
+            0,
+            0,
+            15925,
+            0,
+            54450,
+            341178,
+            152426
+          ],
+          "sessions": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            7,
+            2,
+            0,
+            0,
+            0,
+            2,
+            0,
+            22,
+            45,
+            22
+          ],
+          "storage_bytes": [
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            118813992,
+            120705839,
+            125699165
+          ],
+          "tasks": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "web_requests": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            16,
+            56,
+            40
+          ]
+        },
+        "storage": {
+          "current_bytes": 128947517,
+          "limit_bytes": 5242880000,
+          "since": "2026-10-23T06:00:00+00:00"
+        },
+        "to": "2026-10-25T21:00:00+00:00",
+        "totals": {
+          "documents": 39,
+          "files": 22,
+          "incoming_tokens": 155393,
+          "messages": 174,
+          "outgoing_tokens": 735100,
+          "sessions": 102,
+          "tasks": 1,
+          "web_requests": 112
+        },
+        "users": [
+          {
+            "login": "andrey"
+          },
+          {
+            "login": "demo_en_admin"
+          },
+          {
+            "login": "demo_en_chat"
+          },
+          {
+            "login": "demo_ru_admin"
+          },
+          {
+            "login": "demo_ru_chat"
+          },
+          {
+            "login": "nastya"
+          },
+          {
+            "login": "natasha"
+          },
+          {
+            "login": "testuser"
+          },
+          {
+            "login": "valery"
+          },
+          {
+            "login": "zoya"
+          }
+        ]
+      },
+      "method": "GET",
+      "path": "/admin/api/monitoring?range=24h",
+      "status": 200
+    }
+  ]
+}

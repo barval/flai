@@ -40,6 +40,14 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
+def _showcase_session(sessions: list[dict[str, Any]]) -> str | None:
+    """Open the conversation with the most messages, so the demo starts on a rich one."""
+    if not sessions:
+        return None
+    best = max(sessions, key=lambda session: (session.get("message_count") or 0))
+    return best["id"]
+
+
 def chat_context(snapshot: dict[str, Any]) -> dict[str, Any]:
     sessions = route_body(snapshot, "GET", "/api/sessions") or []
     documents = (route_body(snapshot, "GET", "/api/documents") or {}).get("documents", [])
@@ -51,7 +59,7 @@ def chat_context(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {
         "sessions": sessions,
         "documents": documents,
-        "current_session": sessions[0]["id"] if sessions else None,
+        "current_session": _showcase_session(sessions),
         "embedding_model": embedding,
     }
 

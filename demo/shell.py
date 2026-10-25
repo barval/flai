@@ -62,19 +62,22 @@ def build_shell(
 
     text = BAR_TEXT[lang]
     sibling = f"{kind}-{OTHER_LANG[lang]}.html"
-    data = json.dumps(payload, sort_keys=True, ensure_ascii=False).replace("</", "<\\/")
     shim = _read("shim.js")
-    bootstrap = (
-        "<script>\n"
-        f"window.__DEMO__ = {data};\n"
-        "</script>\n"
-        "<script>\n"
-        f"{shim}\n"
-        "</script>\n"
-    )
 
-    login_document = escape_document(_with_bootstrap(login_html, bootstrap))
-    app_document = escape_document(_with_bootstrap(app_html, bootstrap))
+    def bootstrap_for(data: dict) -> str:
+        encoded = json.dumps(data, sort_keys=True, ensure_ascii=False).replace("</", "<\\/")
+        return (
+            "<script>\n"
+            f"window.__DEMO__ = {encoded};\n"
+            "</script>\n"
+            "<script>\n"
+            f"{shim}\n"
+            "</script>\n"
+        )
+
+    login_payload = dict(payload, routes=[], assets={})
+    login_document = escape_document(_with_bootstrap(login_html, bootstrap_for(login_payload)))
+    app_document = escape_document(_with_bootstrap(app_html, bootstrap_for(payload)))
 
     return f"""<!doctype html>
 <html lang="{lang}">

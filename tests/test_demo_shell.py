@@ -39,3 +39,9 @@ def test_unknown_kind_is_rejected():
 
     with pytest.raises(ValueError):
         build_shell("ru", "settings", login_html="", app_html="", payload=PAYLOAD)
+
+
+def test_media_is_embedded_once():
+    payload = dict(PAYLOAD, assets={"/api/files/a.png": "data:image/png;base64,AAAA"})
+    html = build_shell("ru", "chat", login_html="<p>l</p>", app_html="<p>a</p>", payload=payload)
+    assert html.count("data:image/png;base64,AAAA") == 1

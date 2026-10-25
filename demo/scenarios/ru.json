@@ -54,7 +54,7 @@
       "kind": "text",
       "title": "Фото",
       "prompt": "Что можно приготовить из продуктов на фото? Предложи два простых блюда.",
-      "attach": "media/ru/input/photo.png"
+      "attach": "generated-image"
     },
     {
       "kind": "task",
@@ -70,7 +70,7 @@
       "kind": "text",
       "title": "Голосовое",
       "prompt": "Расшифруй голосовое сообщение и ответь на вопрос из него.",
-      "attach": "media/ru/input/voice.ogg",
+      "attach": "tts",
       "voice": true
     }
   ]

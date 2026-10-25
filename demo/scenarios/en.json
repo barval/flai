@@ -54,7 +54,7 @@
       "kind": "text",
       "title": "Photo",
       "prompt": "What can I cook with the ingredients in this photo? Suggest two simple dishes.",
-      "attach": "media/en/input/photo.png"
+      "attach": "generated-image"
     },
     {
       "kind": "task",
@@ -70,7 +70,7 @@
       "kind": "text",
       "title": "Voice",
       "prompt": "Transcribe this voice message and answer the question in it.",
-      "attach": "media/en/input/voice.ogg",
+      "attach": "tts",
       "voice": true
     }
   ]

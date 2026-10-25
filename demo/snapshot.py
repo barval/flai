@@ -67,6 +67,7 @@ def compile_assets(snapshot: dict[str, Any], demo_dir: Path = DEMO_DIR) -> dict[
     """Read every committed asset and turn it into a data: URL keyed by its request path."""
     assets: dict[str, str] = {}
     for url, relative in sorted(snapshot.get("assets", {}).items()):
+        url = url if url.startswith("/") else f"/api/files/{url}"
         path = demo_dir / relative
         suffix = path.suffix.lower()
         if suffix not in MIME_BY_SUFFIX:

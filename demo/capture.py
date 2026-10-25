@@ -477,6 +477,9 @@ def capture_language(
         for path in _scenario_paths(session_id):
             _record(routes, "GET", path, chat.get_json(path))
 
+    for task in chat.get_json("/api/tasks")["tasks"]:
+        _record(routes, "GET", f"/api/tasks/{task['id']}/messages", chat.get_json(f"/api/tasks/{task['id']}/messages"))
+
     collected: set[str] = set()
     for route in routes:
         _media_paths(route["body"], collected)
@@ -486,6 +489,17 @@ def capture_language(
         target = media_dir / Path(file_path).name
         target.write_bytes(chat.get_bytes(f"/api/files/{file_path}"))
         media[file_path] = f"media/{lang}/{target.name}"
+
+    for document in chat.get_json("/api/documents")["documents"]:
+        preview = chat.get_json(f"/api/documents/{document['id']}/preview")
+        _record(routes, "GET", f"/api/documents/{document['id']}/preview", preview)
+        if preview.get("kind") != "pdf":
+            continue
+        for page in range(1, int(preview.get("pages") or 1) + 1):
+            page_path = f"{preview['page_url']}{page}"
+            name = f"preview-{document['id'][:8]}-{page}.png"
+            (media_dir / name).write_bytes(chat.get_bytes(page_path))
+            media[page_path] = f"media/{lang}/{name}"
 
     snapshot = {
         "lang": lang,

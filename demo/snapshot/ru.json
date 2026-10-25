@@ -3,7 +3,10 @@
     "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/14e3cd92088840479e8edac056c80c3b.png": "media/ru/14e3cd92088840479e8edac056c80c3b.png",
     "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png": "media/ru/2d436e975c9c4f3fb0599437655d5298.png",
     "27d0d5f6-21ce-48af-803b-6e02e9d8d657/6ebf3492d44d438db335aed3446eff08.png": "media/ru/6ebf3492d44d438db335aed3446eff08.png",
-    "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4": "media/ru/417bc455b2d2449ba03695aeec74110c.mp4"
+    "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4": "media/ru/417bc455b2d2449ba03695aeec74110c.mp4",
+    "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/pdf-page/1": "media/ru/preview-57aeabf7-1.png",
+    "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/pdf-page/1": "media/ru/preview-21fa33b9-1.png",
+    "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/pdf-page/1": "media/ru/preview-d4109b49-1.png"
   },
   "credentials": {
     "admin": {
@@ -4271,6 +4274,230 @@
       "body": {
         "queued_tasks": 0,
         "total_queued_tasks": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview",
+      "status": 200,
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "КП №1 — ООО «Вектор-Тех».pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/file"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview",
+      "status": 200,
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "КП №2 — ООО «Смарт-Снаб».pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/file"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview",
+      "status": 200,
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "Положение о закупках школы.pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/file"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/1193b9c1-d47d-466a-8f52-9227a02943cc/messages",
+      "status": 200,
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
+            "created_at": "2026-10-25T20:35:39.269446+00:00",
+            "extra": {},
+            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1
+          },
+          {
+            "content": "План из 1 шагов:\n1. Составь расписание уроков на неделю для семиклассников: пять учебных дней по шесть уроков без повторов одного предмета в день.",
+            "created_at": "2026-10-25T20:35:39.269446+00:00",
+            "exec_seconds": 32.71,
+            "extra": {},
+            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 770,
+              "prompt_tokens": 2478
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T20:36:40.523092+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 1:\nВот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |",
+            "created_at": "2026-10-25T20:36:15.728760+00:00",
+            "exec_seconds": 24.75,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T20:36:40.523092+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 178,
+                "prompt_tokens": 885
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 178,
+                "prompt_tokens": 885
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 2238,
+                "prompt_tokens": 730
+              },
+              "usage_total": {
+                "completion_tokens": 2238,
+                "prompt_tokens": 730
+              }
+            },
+            "failure_reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются.",
+            "id": "efb8a5c3-9665-4eed-9bc8-ba849e5831ff",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2238,
+              "prompt_tokens": 730
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "Вот готовое расписание уроков на неделю для 7 класса:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |\n\nРасписание включает 5 учебных дней по 6 уроков. Предметы распределены так, чтобы не было повторов одних и тех же занятий внутри одного дня.",
+            "created_at": "2026-10-25T20:37:00.496752+00:00",
+            "exec_seconds": 14.99,
+            "extra": {
+              "exec_seconds": 14.99,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "goal": "Составь расписание уроков на неделю для семиклассников: пять учебных дней по шесть уроков без повторов одного предмета в день.",
+                  "seq": 1,
+                  "summary": "Вот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня: | День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 | | :--- | :--- | :--- | :--- | :--- | :--- | :--- | | **Понедельник** |…",
+                  "summary_full": "Вот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |"
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 1495,
+                "prompt_tokens": 1012
+              }
+            },
+            "failure_reason": "",
+            "id": "541b35d5-28d6-477b-b053-8c262132f49c",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 1495,
+              "prompt_tokens": 1012
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T20:37:00.504379+00:00",
+          "created_at": "2026-10-25T20:35:39.269446+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 77.19,
+          "id": "1193b9c1-d47d-466a-8f52-9227a02943cc",
+          "images": [],
+          "next_step_index": 1,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T20:35:42.716560+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
+          "token_totals": {
+            "completion_tokens": 4681,
+            "prompt_tokens": 5105
+          },
+          "total_steps": 1
+        }
       }
     }
   ]

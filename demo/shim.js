@@ -16,6 +16,7 @@
     'a[href^="/admin/"], a[target="_blank"]';
 
   document.documentElement.setAttribute("data-demo", "1");
+  document.documentElement.setAttribute("data-demo-asset-count", String(Object.keys(DEMO.assets || {}).length));
 
   function ensureStyle() {
     if (document.getElementById("demo-style")) return;
@@ -117,6 +118,9 @@
       }
       return Promise.resolve(jsonResponse({ status: "ok" }));
     }
+    if (isNavigationRequest(path)) {
+      return Promise.resolve(jsonResponse({ status: "ok" }));
+    }
     showNotice();
     return Promise.resolve(jsonResponse({ demo: true }));
   };
@@ -148,6 +152,19 @@
     showNotice();
     return null;
   };
+
+  // Recording would ask for a microphone and capture silence.
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia = function () {
+      showNotice();
+      return Promise.reject(new Error("demo"));
+    };
+  }
+
+  // Opening a session is navigation, not an action.
+  function isNavigationRequest(path) {
+    return /^\/api\/sessions\/[^/]+\/(switch|visit)$/.test(path);
+  }
 
   // A file dialog would open over the demo and accept nothing useful.
   var nativeInputClick = HTMLInputElement.prototype.click;
@@ -241,6 +258,22 @@
     return DEMO.assets[path] || url;
   }
 
+  function enhancePdfPreview() {
+    // A PDF preview is a link on desktop; show its first page instead.
+    var box = document.getElementById("document-preview");
+    if (!box || box.querySelector(".demo-page")) return;
+    var link = box.querySelector(".document-preview-open");
+    if (!link) return;
+    var match = /\/api\/documents\/([^/]+)/.exec(link.getAttribute("href") || "");
+    if (!match) return;
+    var src = DEMO.assets["/api/documents/" + match[1] + "/preview/pdf-page/1"];
+    if (!src) return;
+    var image = document.createElement("img");
+    image.className = "document-preview-page demo-page";
+    image.src = src;
+    box.appendChild(image);
+  }
+
   function rewrite(element) {
     ["src", "href"].forEach(function (attr) {
       var value = element.getAttribute && element.getAttribute(attr);
@@ -261,16 +294,28 @@
   document.addEventListener(
     "DOMContentLoaded",
     function () {
+      document.documentElement.setAttribute("data-demo-ready", "1");
       ensureStyle();
       var theme = savedTheme();
       if (theme) applyTheme(theme);
       var observer = new MutationObserver(function (records) {
         records.forEach(function (record) {
-          rewrite(record.target);
+          if (record.type === "attributes") {
+            rewrite(record.target);
+            return;
+          }
+          record.addedNodes.forEach(function (node) {
+            if (node.nodeType !== 1) return;
+            rewrite(node);
+            node.querySelectorAll('[src^="/api/"], [href^="/api/"]').forEach(rewrite);
+          });
+          enhancePdfPreview();
         });
       });
+      window.__demoObserver = observer;
       observer.observe(document.documentElement, {
         subtree: true,
+        childList: true,
         attributes: true,
         attributeFilter: ["src", "href"]
       });

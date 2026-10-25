@@ -498,8 +498,13 @@ def capture_language(
     media_dir = DEMO_DIR / "media" / lang
     media_dir.mkdir(parents=True, exist_ok=True)
     for file_path in sorted(collected):
+        try:
+            payload_bytes = chat.get_bytes(f"/api/files/{file_path}")
+        except CaptureError:
+            print(f"[{lang}] skip missing media: {file_path}", flush=True)
+            continue
         target = media_dir / Path(file_path).name
-        target.write_bytes(chat.get_bytes(f"/api/files/{file_path}"))
+        target.write_bytes(payload_bytes)
         media[file_path] = f"media/{lang}/{target.name}"
 
     for document in chat.get_json("/api/documents")["documents"]:

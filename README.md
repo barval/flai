@@ -59,6 +59,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Camera integration | [CAMERA.md](docs/CAMERA.md) | [CAMERA-ru.md](docs/CAMERA-ru.md) |
 | Long-term memory (SLM) | [MEMORY.md](docs/MEMORY.md) | [MEMORY-ru.md](docs/MEMORY-ru.md) |
 | Documents, RAG, PDF OCR | [DOCUMENTS.md](docs/DOCUMENTS.md) | [DOCUMENTS-ru.md](docs/DOCUMENTS-ru.md) |
+| RAG quality measurement (hit@k, MRR, nDCG, latency) | [RAG_EVAL.md](docs/RAG_EVAL.md) | [RAG_EVAL-ru.md](docs/RAG_EVAL-ru.md) |
 | Users, backups, Model Hub, branding | [ADMINISTRATION.md](docs/ADMINISTRATION.md) | [ADMINISTRATION-ru.md](docs/ADMINISTRATION-ru.md) |
 | Health endpoint, Prometheus metrics | [MONITORING.md](docs/MONITORING.md) | [MONITORING-ru.md](docs/MONITORING-ru.md) |
 | Public `/v1` API | [API.md](docs/API.md) | [API-ru.md](docs/API-ru.md) |
@@ -71,6 +72,14 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
 ## 🆕 What's New in v12.7
+
+- **Document search that finds things** — hybrid retrieval (vectors + PostgreSQL full-text, fused with reciprocal rank fusion) is now on by default, and a **search scope** (folder + upload period) narrows the corpus before retrieval. On the 22-question set hybrid measured MRR 0.688 → 0.744 and nDCG 0.751 → 0.965 against dense-only, and the chat no longer cuts the retrieved list at fifteen fragments. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Structure-aware chunking** — the new `structured` strategy keeps one logical entry (dates, organisation, city) inside one chunk, which is what counting and listing questions need.
+- **CPU cross-encoder reranker (optional)** — `bge-reranker-v2-m3` is a regular module with a model picker; it stays off by default because it pays off only in a narrow context window and lowers ranking quality in a wide one. → [MODELS.md](docs/MODELS.md)
+- **Admin Monitoring tab** — storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h to 30 d, drawn as hand-written SVG bar charts with no chart library. → [MONITORING.md](docs/MONITORING.md)
+- **Admin Settings tab** — 139 of 149 environment variables are editable in the browser (database > `.env` > built-in default, applied without a restart); secrets stay masked and every change is audited. → [CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Per-user storage limits and internet-request accounting** — an editable megabyte limit enforced on every upload path, and a month-to-date count of every outbound call (search, page fetch, crawl). → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
+- **A phone-first admin panel** — Users, Settings, Cameras, Backups, Model Hub results and Downloaded models render as cards that keep every desktop column, instead of tables that turned the page sideways.
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -146,12 +155,12 @@ together with the layered design in [DOCUMENTS.md](docs/DOCUMENTS.md).
 - **Interactive reference** — Swagger UI at `/v1/docs`, OpenAPI document at `/v1/openapi.json`, served offline with bundled assets. → [API.md](docs/API.md)
 
 ### ⚙️ Administration
-- **Users** — create, edit, delete, service classes, camera permissions.
+- **Users** — create, edit, delete, service classes, camera permissions, per-user storage limits (enforced on every upload path) and the month-to-date internet-request count.
 - **Models** — select and tune GGUF models per module; a context window that would not fit the hardware is rejected.
 - **Model Hub** — search Hugging Face for GGUF models, see a VRAM/RAM fit estimate before downloading, download with progress and resume, delete what you no longer need.
 - **Backups** — full or per-user backup and restore from the admin panel.
 - **Personalization** — your own header logo and localized site names, included in full backups.
-- **Monitoring** — hardware overview, database sizes, system statistics. → [MONITORING.md](docs/MONITORING.md)
+- **Monitoring** — hardware and database overview plus a usage tab: storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h – 30 d. → [MONITORING.md](docs/MONITORING.md)
 - **CLI tools** — admin password, upload cleanup, message-format migration, SLM import and cleanup. → [DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 ### 🔒 Privacy & security

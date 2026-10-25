@@ -712,6 +712,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'MB': {{ _('MB')|tojson }},
     'timeout_fetching_model_info': {{ _('timeout_fetching_model_info')|tojson }},
     'model_cannot_be_saved': {{ _('This model cannot be saved (not enough VRAM/RAM). Choose a smaller model.')|tojson }},
+    'multimodal_model_must_be_vision': {{ _('The multimodal module requires a Vision model (with mmproj), not a plain chat model.')|tojson }},
     // Validation messages
     'Please select a model first.': {{ _('Please select a model first.')|tojson }},
     'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},
@@ -802,6 +803,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Update hardware list': {{ _('Update hardware list')|tojson }},
     'Platform': {{ _('Platform')|tojson }},
     'GPU': {{ _('GPU')|tojson }},
+    'CPU': {{ _('CPU')|tojson }},
     'CPU cores': {{ _('CPU cores')|tojson }},
     'VRAM': {{ _('VRAM')|tojson }},
     'RAM': {{ _('RAM')|tojson }},

@@ -8,8 +8,6 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 - **Skills engine** — named capability bundles that extend the Tasks capabilities registry (`app/tasks/tools.py`): a skill appears as one more step tool without storage changes (the seam is already in place; see [TASKS.md](TASKS.md))
 - **Advanced queue prioritization** — weighting and anti-starvation for the existing user classes (0/1/2) and task classes (3/4/5)
-- **Admin panel expansion** — run more administration from the UI: monitoring, and moving most `.env` variables into the admin panel
-  - **User activity analytics** — per-user activity (tokens, sessions, tasks)
 
 ## 📅 Planned
 

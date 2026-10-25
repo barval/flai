@@ -45,8 +45,9 @@ item and run the same command with `--answers`:
 {"question": "How many jobs did the candidate have in Tver?", "relevant": ["<doc_id>"], "answer": "0"}
 ```
 
-The harness retrieves, builds the context exactly like a chat request, asks the model (it is told to
-answer `НЕТ ДАННЫХ` when the fragments do not contain the answer) and compares the result: numbers
+The harness retrieves, builds the context exactly like a chat request, asks the model (the prompt in
+`app/cli.py` tells it to answer a fixed «no data» marker when the fragments do not contain the answer) and
+compares the result: numbers
 compare by number, free text by normalized containment, and an expected `0` also accepts an explicit
 "no data" answer. The report lists every mismatch with the expected and actual answer.
 

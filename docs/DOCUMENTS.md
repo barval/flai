@@ -18,7 +18,7 @@ After starting the services, log in as admin and go to **Admin Panel → Models*
 
 - **Chunk Size (characters):** How documents are split into pieces for indexing.
 - **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
-- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
+- **Chunk Strategy:** `fixed` (by character count), `recursive` (by headings/paragraphs) or `structured` (one logical entry per chunk — see [Chunking strategies](#chunking-strategies)).
 - **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
 - **Threshold (documents):** Minimum similarity score for general document queries.
 - **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.

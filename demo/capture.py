@@ -25,7 +25,7 @@ class CaptureError(RuntimeError):
     """Raised when the capture cannot continue."""
 
 
-class CaptureTimeout(CaptureError):
+class CaptureTimeoutError(CaptureError):
     """Raised when a queued task does not finish in time."""
 
 
@@ -36,7 +36,7 @@ def wait_for(predicate: Callable[[], bool], timeout_s: float, interval_s: float 
         if predicate():
             return True
         time.sleep(interval_s)
-    raise CaptureTimeout(f"Condition not met within {timeout_s} s")
+    raise CaptureTimeoutError(f"Condition not met within {timeout_s} s")
 
 
 class DemoSession:
@@ -147,7 +147,7 @@ def wait_for_completion(session: DemoSession, request_id: str, timeout_s: float 
         if status == "queued" and body.get("request_id"):
             current = body["request_id"]
         time.sleep(2.0)
-    raise CaptureTimeout(f"Task {request_id} did not finish within {timeout_s} s")
+    raise CaptureTimeoutError(f"Task {request_id} did not finish within {timeout_s} s")
 
 
 def _record(routes: list[dict], method: str, path: str, body: Any) -> None:
@@ -286,9 +286,26 @@ def capture_language(
         "routes": routes,
         "assets": media,
     }
+    snapshot["routes"].extend(capture_admin(admin)["routes"])
     snapshot = rewrite_for_publication(snapshot, lang)
     save_snapshot(DEMO_DIR / "snapshot" / f"{lang}.json", snapshot)
+
+    manifest_path = _manifest_path(lang)
+    write_manifest(
+        manifest_path,
+        {
+            "accounts": [f"{ACCOUNT_PREFIX}{lang}_chat", f"{ACCOUNT_PREFIX}{lang}_admin"],
+            "media": sorted(media.values()),
+        },
+    )
+    print(f"manifest: {manifest_path}")
     return snapshot
+
+
+def _manifest_path(lang: str) -> Path:
+    import tempfile
+
+    return Path(tempfile.gettempdir()) / f"flai-demo-{lang}.manifest.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -297,7 +314,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", choices=("ru", "en", "all"), default="all")
     parser.add_argument("--password", required=True, help="password of the demo accounts")
     parser.add_argument("--force", action="store_true", help="confirm writing into the live database")
+    parser.add_argument("--cleanup", default="", help="finish the removal of an interrupted capture")
+    parser.add_argument("--database-url", default="", help="delete the orphan background tasks")
     args = parser.parse_args(argv)
+
+    if args.cleanup:
+        result = cleanup(args.base_url, Path(args.cleanup), database_url=args.database_url)
+        print(f"deleted: {', '.join(result['deleted'])}; residue: {result['residue']}")
+        return 0
 
     languages = ("ru", "en") if args.lang == "all" else (args.lang,)
     for lang in languages:
@@ -308,3 +332,67 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+ADMIN_PATHS = (
+    "/admin/api/hardware",
+    "/admin/api/model_configs",
+    "/admin/api/llamacpp/models?list_type=gguf_files",
+    "/admin/api/hub/installed",
+    "/admin/api/users",
+    "/admin/api/stats",
+    "/admin/api/backups/",
+    "/admin/api/cameras",
+    "/admin/api/branding",
+    "/admin/api/settings",
+    "/admin/api/monitoring?range=24h",
+)
+
+DELETION_TABLES = ("tasks", "task_steps")
+
+
+def capture_admin(session: DemoSession) -> dict:
+    """Record every admin endpoint the panel reads."""
+    routes: list[dict] = []
+    for path in ADMIN_PATHS:
+        _record(routes, "GET", path, session.get_json(path))
+    return {"routes": routes}
+
+
+def write_manifest(path: Path, manifest: dict) -> None:
+    """Persist what a capture created, so an interrupted run can be cleaned up."""
+    save_snapshot(path, manifest)
+
+
+def load_manifest(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def cleanup_plan(manifest: dict) -> dict:
+    """Describe every residue a capture leaves behind."""
+    logins = list(manifest.get("accounts", []))
+    return {
+        "logins": logins,
+        "tables": list(DELETION_TABLES),
+        "folders": logins,
+        "media": list(manifest.get("media", [])),
+    }
+
+
+def cleanup(base_url: str, manifest_path: Path, *, database_url: str = "") -> dict:
+    """Delete the demo accounts and report anything the product's deletion path leaves behind."""
+    manifest = load_manifest(manifest_path)
+    plan = cleanup_plan(manifest)
+    session = DemoSession(base_url)
+    session.login(plan["logins"][-1], manifest.get("password", ""))
+    for login in plan["logins"]:
+        session._request("DELETE", f"/admin/api/users/{login}")
+    residue = {"tasks": 0}
+    if database_url:
+        import psycopg2
+
+        with psycopg2.connect(database_url) as connection, connection.cursor() as cursor:
+            cursor.execute("DELETE FROM task_steps WHERE task_id IN (SELECT id FROM tasks WHERE user_id = ANY(%s))", (plan["logins"],))
+            cursor.execute("DELETE FROM tasks WHERE user_id = ANY(%s)", (plan["logins"],))
+            residue["tasks"] = cursor.rowcount
+    return {"deleted": plan["logins"], "residue": residue}

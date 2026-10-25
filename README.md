@@ -235,6 +235,12 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
+**Optional components add to this budget.** The CPU reranker (`bge-reranker-v2-m3`, off by default) costs
+~0.42 GB of disk and holds about **0.9 GB of RAM** while resident: it runs in llama-swap's `cpu_only` group,
+never touches VRAM and never takes a GPU queue slot, but on the CPU-only tier it competes with the reasoning
+model for cores (a warm query costs ~150 ms, the first one ~1.5 s). Hybrid search adds a PostgreSQL mirror of
+the chunks — a few MB per thousand chunks, no GPU memory.
+
 Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis, the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
 
 ### What works at each tier

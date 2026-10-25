@@ -252,6 +252,34 @@ class LlamaSwapConfigGenerator:
 
     RERANKER_PATH = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
 
+    def reranker_path(self) -> str | None:
+        """The GGUF the admin chose for the reranker, else the legacy file.
+
+        The model is a normal ``model_configs`` row (module ``reranker``), so
+        the file may be renamed, moved into a subdirectory, or swapped for
+        another cross-encoder without touching code.
+        """
+        try:
+            config = get_model_config("reranker") or {}
+        except Exception:  # noqa: BLE001 — the entry is optional, never fatal
+            config = {}
+        model_name = str(config.get("model_name") or "").strip()
+        if not model_name:
+            return self.RERANKER_PATH if os.path.exists(self.RERANKER_PATH) else None
+        path = self.get_model_path("reranker", model_name)
+        if path and os.path.exists(path):
+            return path
+        self.logger.warning(f"Reranker model not found on disk: {model_name}")
+        return None
+
+    def reranker_ctx_size(self) -> int:
+        """Context window for the cross-encoder (a query plus one passage)."""
+        try:
+            config = get_model_config("reranker") or {}
+            return max(512, int(config.get("context_length") or 2048))
+        except Exception:  # noqa: BLE001
+            return 2048
+
     def build_reranker_entry(self) -> dict[str, Any] | None:
         """CPU-only cross-encoder used to rerank the top RAG candidates.
 
@@ -259,18 +287,19 @@ class LlamaSwapConfigGenerator:
         slot, so a search never waits behind a chat request. Registered only
         when the GGUF is present, so installations without it are unaffected.
         """
-        if not os.path.exists(self.RERANKER_PATH):
+        path = self.reranker_path()
+        if not path:
             return None
         cmd_parts = [
             "llama-server",
             "--port",
             "${PORT}",
             "-m",
-            self.RERANKER_PATH,
+            path,
             "--host",
             "0.0.0.0",
             "--ctx-size",
-            "2048",
+            str(self.reranker_ctx_size()),
             "--n-gpu-layers",
             "0",
             "--flash-attn",
@@ -455,7 +484,7 @@ class LlamaSwapConfigGenerator:
             },
         }
 
-        if os.path.exists(self.RERANKER_PATH):
+        if self.reranker_path():
             groups["cpu_only"]["models"].append("reranker")
 
         lines.append("groups:")

@@ -46,6 +46,16 @@ Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning 
 - Returns `False` (never proceeds) if VRAM insufficient
 - Used by ALL model types: chat, reasoning, multimodal, embedding
 
+### CPU-only models: no VRAM, no GPU queue slot
+
+Two llama-swap entries never touch VRAM: `merge_cpu` (fact merge) and `reranker` (the cross-encoder).
+Both live in the `cpu_only` group (`members:`, `exclusive: false`, `persistent: true`), so llama-swap
+keeps them resident and they never evict a GPU model. The app never calls `ensure_vram_for()` for them
+and never takes `_gpu_lock`, so a reranked search never waits behind a chat request. The group is
+registered only when the GGUF file exists — an installation without the reranker is untouched. Cost:
+the reranker holds about **0.9 GB of RAM** while resident (measured RSS) and competes with the reasoning
+model for CPU cores on the CPU-only tier.
+
 ## Dynamic VRAM Estimation
 
 `_estimate_model_vram()` in `app/routes/admin.py`:

@@ -602,6 +602,14 @@ body.dark-theme .model-card .model-desc {
     display: flex;
     flex-direction: column;
 }
+
+/* A checkbox keeps its own size inside these column-flex params (the shared
+   `align-items: stretch` would otherwise widen it). */
+.model-card .param input[type="checkbox"] {
+    align-self: flex-start;
+    width: auto;
+    margin: 6px 0 0;
+}
 .model-card .param label {
     font-size: 0.85em;
     color: #666;
@@ -856,6 +864,15 @@ body.admin-page .voice-gender-switcher {
 .chunks-config .param {
     position: relative;
 }
+
+/* A checkbox is not a text field: the shared width:100% stretched it into a
+   wide bar next to its label. */
+.chunks-config .param input[type="checkbox"] {
+    width: auto;
+    align-self: flex-start;
+    margin: 6px 0 0;
+}
+
 
 .chunks-config .param > small {
     display: block;
@@ -1389,7 +1406,24 @@ body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; borde
     border-radius: 4px;
 }
 .installed-file-name { font-weight: 600; word-break: break-all; }
-.installed-file-meta { margin-left: auto; color: #777; font-size: 0.9em; white-space: nowrap; }
+.installed-file-meta {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #777;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+.installed-file-badge {
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+body.dark-theme .installed-file-badge { background: #1e3a24; color: #7fd493; }
 .installed-file .hub-del { margin-left: 0.5rem; }
 body.dark-theme .installed-file { border-color: #444; }
 body.dark-theme .installed-file-meta { color: #aaa; }
@@ -1421,19 +1455,46 @@ body.dark-theme .installed-file-meta { color: #aaa; }
     .hub-repo { min-width: 680px; box-sizing: border-box; }
     table.hub-files { min-width: 680px; }
 
-    /* Downloaded models are a compact list with its own horizontal viewport. */
-    #models-files { overflow-x: auto; }
-    .models-files-list { min-width: 620px; }
-    .installed-file { flex-wrap: nowrap; white-space: nowrap; }
-    .installed-file-name {
-        flex: 0 0 48%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        word-break: normal;
+    /* Downloaded models: one card per model, two lines inside it — the name
+       and the delete button on the first, the footprint on the second. A
+       horizontal viewport here forced the whole page sideways on a phone. */
+    #models-files { overflow-x: visible; }
+    .models-files-list { min-width: 0; }
+    .installed-file {
+        display: grid;
+        grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+        grid-template-areas:
+            "emoji name del"
+            ".     meta meta";
+        align-items: center;
+        column-gap: 0.45rem;
+        row-gap: 0.15rem;
+        padding: 0.35rem 0.4rem;
+        white-space: normal;
     }
-    .installed-file-meta,
-    .installed-file .hub-del { flex-shrink: 0; }
+    .installed-file-emoji { grid-area: emoji; }
+    .installed-file-name {
+        grid-area: name;
+        min-width: 0;
+        font-size: 0.82rem;
+        word-break: normal;
+        overflow-wrap: anywhere;
+    }
+    .installed-file-meta {
+        grid-area: meta;
+        margin-left: 0;
+        flex-wrap: wrap;
+        font-size: 0.72rem;
+        white-space: normal;
+    }
+    .installed-file-meta-text { overflow-wrap: anywhere; }
+    .installed-file .hub-del {
+        grid-area: del;
+        margin-left: 0;
+        height: 28px;
+        padding: 0 0.5rem;
+        font-size: 0.78rem;
+    }
 }
 
 /* ===== BRANDING (PERSONALIZATION) TAB ===== */
@@ -1785,4 +1846,153 @@ body.dark-theme .settings-default-value,
 body.dark-theme .settings-description,
 body.dark-theme .settings-reset {
     color: #9a9a9a;
+}
+
+/* ===== Cameras & Backups: one card per row on a phone ===== */
+/* Both tables used to be wider than the viewport, so the whole tab scrolled
+   sideways. Each row becomes a two-line card instead, and the tab itself
+   never widens. */
+@media (max-width: 768px) {
+    #cameras-tab,
+    #backups-tab {
+        overflow-x: visible;
+    }
+
+    /* ── Cameras ── */
+    .cameras-table-wrapper {
+        max-height: none;
+    }
+    #cameras-table thead {
+        display: none;
+    }
+    #cameras-table,
+    #cameras-table tbody,
+    #cameras-table tr,
+    #cameras-table td {
+        display: block;
+        width: 100%;
+    }
+    #cameras-table tr {
+        display: grid;
+        grid-template-columns: 1.4rem auto auto minmax(0, 1fr);
+        grid-template-areas:
+            "num status code room"
+            "preview preview preview preview";
+        align-items: center;
+        gap: 0.3rem 0.45rem;
+        margin: 0 0 0.5rem;
+        padding: 0.4rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    #cameras-table td {
+        border: none;
+        padding: 0;
+    }
+    #cameras-table td.cam-num {
+        grid-area: num;
+        color: #888;
+        font-size: 0.78rem;
+    }
+    #cameras-table td:nth-child(2) {
+        grid-area: status;
+    }
+    #cameras-table td.cam-code {
+        grid-area: code;
+        font-family: monospace;
+        font-size: 0.8rem;
+    }
+    #cameras-table td:nth-child(4) {
+        grid-area: room;
+        font-size: 0.85rem;
+        overflow-wrap: anywhere;
+    }
+    #cameras-table td.cam-preview-cell {
+        grid-area: preview;
+        width: auto;
+        padding: 0.2rem 0 0 !important;
+    }
+    #cameras-table .cam-preview {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    /* ── Backups ── */
+    .backups-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .backups-table-wrapper {
+        max-height: none;
+    }
+    #backups-table thead {
+        display: none;
+    }
+    #backups-table,
+    #backups-table tbody,
+    #backups-table tr,
+    #backups-table td {
+        display: block;
+        width: 100%;
+    }
+    #backups-table tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "filename filename"
+            "type     size"
+            "created  created"
+            "actions  actions";
+        gap: 0.2rem 0.5rem;
+        margin: 0 0 0.5rem;
+        padding: 0.45rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+    }
+    #backups-table td {
+        border: none;
+        padding: 0;
+    }
+    /* The row number adds nothing to a card. */
+    #backups-table td:nth-child(1) {
+        display: none;
+    }
+    #backups-table td:nth-child(2) {
+        grid-area: filename;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+    #backups-table td:nth-child(3) {
+        grid-area: type;
+    }
+    #backups-table td:nth-child(4) {
+        grid-area: size;
+        justify-self: end;
+    }
+    #backups-table td:nth-child(5) {
+        grid-area: created;
+        font-size: 0.78rem;
+        color: #777;
+    }
+    #backups-table td.actions-cell {
+        grid-area: actions;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        justify-content: flex-start;
+    }
+    #backups-table td.actions-cell button {
+        height: 30px;
+        padding: 0 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    body.dark-theme #cameras-table tr,
+    body.dark-theme #backups-table tr {
+        border-color: #444;
+    }
+    body.dark-theme #backups-table td:nth-child(5) {
+        color: #aaa;
+    }
 }

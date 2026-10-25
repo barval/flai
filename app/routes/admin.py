@@ -202,12 +202,12 @@ def admin_panel():
     rag_threshold_default = current_app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
     rag_threshold_reasoning = current_app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.3)
 
-    # Reranker: a CPU cross-encoder file registered by the llama-swap config.
-    reranker_path = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
-    reranker_available = os.path.exists(reranker_path)
-    reranker_size_mb = round(os.path.getsize(reranker_path) / (1024 * 1024)) if reranker_available else 0
+    # Reranker: a CPU cross-encoder chosen in the Models tab like any module.
+    # llama_swap_config.reranker_path() owns the file decision (configured model
+    # first, legacy path as the fallback).
     rag_rerank_enabled = bool(current_app.config.get("RAG_RERANK_ENABLED", False))
     rag_rerank_candidates = int(current_app.config.get("RAG_RERANK_CANDIDATES", 10))
+    rag_rerank_timeout = int(current_app.config.get("RAG_RERANK_TIMEOUT", 10))
 
     backend_type = current_app.config.get("LLAMACP_BACKEND", "llamacpp")
     llama_swap_url = current_app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
@@ -228,10 +228,9 @@ def admin_panel():
         max_top_k=max_top_k,
         rag_threshold_default=rag_threshold_default,
         rag_threshold_reasoning=rag_threshold_reasoning,
-        reranker_available=reranker_available,
-        reranker_size_mb=reranker_size_mb,
         rag_rerank_enabled=rag_rerank_enabled,
         rag_rerank_candidates=rag_rerank_candidates,
+        rag_rerank_timeout=rag_rerank_timeout,
         backend_type=backend_type,
         llama_swap_url=llama_swap_url,
     )
@@ -1195,7 +1194,7 @@ def llamacpp_models():
             base = base[: -len(".gguf")]
         meta = gguf_cache.get(base)
         if meta and meta.get("architecture"):
-            return classify_model_type(base, [str(meta["architecture"])])
+            return classify_model_type(base, [str(meta["architecture"])], str(meta.get("name") or ""))
         return classify_model_type(base)
 
     # If listing actual GGUF files from models directory
@@ -1762,7 +1761,7 @@ def update_model_config(module):
     # bump used to skip the check, letting OOM-ing configs (esp. on CPU) through.
     existing_cfg: dict = {}
     old_ctx: int | None = None
-    if module != "embedding" and (new_model_name is not None or new_ctx is not None):
+    if module not in ("embedding", "reranker") and (new_model_name is not None or new_ctx is not None):
         existing_cfg = get_model_config(module) or {}
         old_ctx = existing_cfg.get("context_length")
         # Tier classification blocks "impossible" models (file + KV > 70% RAM)
@@ -1874,7 +1873,7 @@ def update_model_config(module):
     # ── Schedule background dry-load + admin-model rollback on failure ──
     # A ctx-only change dry-loads the current model at the new context and
     # rolls back the context (not the model) if it can't load.
-    if module != "embedding" and (new_model_name or new_ctx):
+    if module not in ("embedding", "reranker") and (new_model_name or new_ctx):
         model_to_load = new_model_name or existing_cfg.get("model_name")
         if model_to_load:
             try:

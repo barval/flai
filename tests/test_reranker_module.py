@@ -1,0 +1,44 @@
+# tests/test_reranker_module.py
+"""The reranker is a first-class module: a config row, a card, its own switches."""
+
+from pathlib import Path
+
+import pytest
+
+
+@pytest.mark.requires_db
+def test_model_configs_has_a_reranker_row(test_app):
+    """Seeded for new and upgraded installations alike."""
+    with test_app.app_context():
+        from app.model_config import reload_all_model_configs
+
+        configs = reload_all_model_configs()
+        reranker = configs.get("reranker") or {}
+        assert reranker, "the reranker module must exist in model_configs"
+        assert int(reranker.get("context_length") or 0) >= 512
+
+
+@pytest.mark.unit
+def test_validator_accepts_the_reranker_module():
+    from app.validators import ValidationError, validate_model_config_update
+
+    updates = validate_model_config_update({"model_name": "custom-cross-encoder", "context_length": 1024}, "reranker")
+    assert updates["model_name"] == "custom-cross-encoder"
+
+    with pytest.raises(ValidationError):
+        validate_model_config_update({"model_name": "x"}, "not-a-module")
+
+
+@pytest.mark.unit
+def test_admin_renders_the_reranker_as_a_module_card():
+    js = Path("app/static/js/admin-models.js").read_text(encoding="utf-8")
+    assert "{ id: 'reranker', name: 'Reranker'" in js, "the card joins the module list"
+    assert "module === 'reranker') return type === 'reranker'" in js, "only reranker files are offered"
+    assert "type !== 'embedding' && type !== 'reranker'" in js, "chat cards stop offering rerankers"
+    for key in ("RAG_RERANK_ENABLED", "RAG_RERANK_CANDIDATES", "RAG_RERANK_TIMEOUT"):
+        assert key in js, f"the card saves {key}"
+    assert "BGE Cross-Encoder" not in js, "invented specs are gone: details come from the GGUF header"
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    assert 'id="reranker-card"' not in html, "the card is rendered like every other module"
+    assert "window.RAG_RERANK_SETTINGS" in html, "the card needs the current values"

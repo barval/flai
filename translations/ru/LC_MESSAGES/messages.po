@@ -4193,6 +4193,30 @@ msgid "Chunking strategy: fixed or recursive"
 msgstr "Стратегия нарезки: fixed или recursive"
 
 #: app/settings_registry.py
+msgid "Merge dense vector and full-text retrieval with reciprocal rank fusion"
+msgstr "Сливать плотный векторный и полнотекстовый поиск через reciprocal rank fusion"
+
+#: app/settings_registry.py
+msgid "Candidates each retriever returns before fusion"
+msgstr "Сколько кандидатов возвращает каждый поисковик до слияния"
+
+#: app/settings_registry.py
+msgid "Reciprocal rank fusion constant"
+msgstr "Константа reciprocal rank fusion"
+
+#: app/settings_registry.py
+msgid "Reorder the top candidates with the CPU cross-encoder"
+msgstr "Переупорядочивать верхние кандидаты CPU-кросс-энкодером"
+
+#: app/settings_registry.py
+msgid "How many top candidates the reranker reorders"
+msgstr "Сколько верхних кандидатов переупорядочивает реранкер"
+
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Таймаут запроса к реранкеру (секунды)"
+
+#: app/settings_registry.py
 msgid "Chunks retrieved per document query"
 msgstr "Фрагментов на один запрос по документам"
 
@@ -4665,6 +4689,10 @@ msgid "Reranker request timeout (seconds)"
 msgstr "Таймаут запроса к реранкеру (секунды)"
 
 #: app/templates/admin.html
+msgid "Reranker"
+msgstr "Реранкер"
+
+#: app/templates/admin.html
 msgid "Cross-encoder reranking"
 msgstr "Реранкинг кросс-энкодером"
 
@@ -4798,9 +4826,6 @@ msgstr "Без папки"
 
 #~ msgid "Refresh models from llama.cpp"
 #~ msgstr "Обновить модели из llama.cpp"
-
-#~ msgid "Reranker"
-#~ msgstr "Реранкинг"
 
 #~ msgid "Cross-encoder model — reranks search results by relevance"
 #~ msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"

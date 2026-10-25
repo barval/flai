@@ -437,12 +437,38 @@ def test_hub_type_labels_collapse_on_mobile():
     assert re.search(r"\.admin-tab-content\.active\s*\{[^}]*overflow-x:\s*auto", admin_css), "horizontal scroll"
 
 
+def _mobile_media_block(css: str, needle: str) -> tuple[str, str]:
+    """The 768px media block that holds ``needle`` (and the CSS before it).
+
+    ``rindex`` alone was wrong: several 768px blocks exist, and the nearest
+    *preceding* one may end long before the needle — the Model Hub overrides
+    were then looked for in the hardware-table block.
+    """
+    position = css.index(needle)
+    index = 0
+    while True:
+        start = css.find("@media (max-width: 768px)", index)
+        if start == -1:
+            raise AssertionError(f"{needle!r} is not inside a 768px media block")
+        depth = 0
+        end = start
+        for end in range(start, len(css)):
+            if css[end] == "{":
+                depth += 1
+            elif css[end] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+        if start <= position <= end:
+            return css[:start], css[start : end + 1]
+        index = end + 1
+
+
 def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    media_start = admin_css.rindex("@media (max-width: 768px)")
-    media = admin_css[media_start:]
-    assert media_start > admin_css.index(".hub-filter-row { display: flex"), "mobile overrides must follow base styles"
-    assert media_start > admin_css.index(".hub-header { display: flex"), "mobile overrides must follow base styles"
+    before, media = _mobile_media_block(admin_css, ".hub-columns { min-width: 680px")
+    assert ".hub-filter-row { display: flex" in before, "mobile overrides must follow base styles"
+    assert ".hub-header { display: flex" in before, "mobile overrides must follow base styles"
     assert ".hub-filters {" in media
     assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
     assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
@@ -451,12 +477,27 @@ def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
     assert re.search(r"table\.hub-files\s*\{[^}]*min-width:\s*", media)
 
 
-def test_mobile_downloaded_models_panel_scrolls_horizontally():
+def test_mobile_downloaded_models_panel_wraps_without_scroll():
+    """A phone must not scroll the whole page sideways for this panel.
+
+    One card per model: emoji, name and the delete button on the first line,
+    the footprint on the second, and a short hub badge instead of a sentence.
+    """
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
-    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*", media)
-    assert re.search(r"\.installed-file\s*\{[^}]*flex-wrap:\s*nowrap", media)
+    _before, media = _mobile_media_block(admin_css, "#models-files { overflow-x: visible")
+    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*visible", media)
+    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*0", media)
+    assert "min-width: 620px" not in media, "the panel no longer needs a wide canvas"
+    installed = media[media.index(".installed-file {") :]
+    assert "display: grid;" in installed
+    assert "grid-template-areas:" in installed
+    assert '"emoji name del"' in installed
+    assert re.search(r'"\.\s+meta meta"', installed)
+    assert re.search(r"\.installed-file-meta\s*\{[^}]*flex-wrap:\s*wrap", media)
+
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "installed-file-badge" in models_src
+    assert "t('Model Hub')" in models_src, "the badge uses the short hub label"
 
 
 def test_hub_calculating_msgid_in_both_catalogs():

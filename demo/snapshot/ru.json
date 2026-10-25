@@ -4254,6 +4254,24 @@
           }
         ]
       }
+    },
+    {
+      "method": "GET",
+      "path": "/api/queue/counts",
+      "status": 200,
+      "body": {
+        "user_queued": 0,
+        "total_queued": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/queue-count",
+      "status": 200,
+      "body": {
+        "queued_tasks": 0,
+        "total_queued_tasks": 0
+      }
     }
   ]
 }

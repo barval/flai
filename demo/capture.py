@@ -268,6 +268,8 @@ def _scenario_paths(session_id: str) -> list[str]:
         "/api/sessions",
         "/api/tasks",
         "/api/queue/status",
+        "/api/queue/counts",
+        "/api/tasks/queue-count",
     ]
 
 

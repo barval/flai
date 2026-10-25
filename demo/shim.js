@@ -23,8 +23,9 @@
     style.id = "demo-style";
     style.textContent =
       "#demo-notice{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(16px);" +
-      "max-width:min(520px,90vw);padding:12px 18px;border-radius:10px;background:rgba(30,30,34,.94);" +
-      "color:#fff;font:14px/1.45 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);" +
+      "max-width:min(560px,90vw);padding:14px 22px;border-radius:10px;background:#fff3b0;" +
+      "border:1px solid #e3c454;color:#3b2f00;font:600 14.5px/1.5 system-ui,sans-serif;" +
+      "box-shadow:0 10px 30px rgba(0,0,0,.35);" +
       "opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:2147483647}" +
       "#demo-notice.demo-visible{opacity:1;transform:translateX(-50%) translateY(0)}";
     document.head.appendChild(style);

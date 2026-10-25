@@ -77,3 +77,8 @@ def test_login_anchor_is_checked(monkeypatch):
     monkeypatch.setattr(render_module, "LOGIN_FORM_ANCHOR", "<form-missing>")
     with pytest.raises(RenderError):
         render_login("ru")
+
+
+def test_authenticated_session_renders_the_theme_switch():
+    html = render_app("ru", "chat", {**CHAT_CONTEXT, "session": {"login": "user", "language": "ru"}})
+    assert 'id="theme-toggle"' in html

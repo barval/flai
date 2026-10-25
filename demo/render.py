@@ -49,6 +49,7 @@ def jinja_app(lang: str) -> Flask:
         }
     )
     app.add_url_rule("/static/<path:filename>", "static", lambda filename: "", methods=["GET"])
+    app.add_url_rule("/logout", "auth.logout", lambda: "", methods=["POST"])
     return app
 
 
@@ -58,7 +59,7 @@ def render_app(lang: str, kind: str, context: dict) -> str:
         raise ValueError(f"Unknown demo page kind: {kind}")
     app = jinja_app(lang)
     with app.test_request_context("/"):
-        return render_template(TEMPLATES[kind], **BASE_CONTEXT, **context)
+        return render_template(TEMPLATES[kind], **{**BASE_CONTEXT, **context})
 
 
 def _replace_once(html: str, anchor: str, replacement: str) -> str:

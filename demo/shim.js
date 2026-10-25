@@ -10,6 +10,7 @@
 
   var DEMO = window.__DEMO__ || { lang: "ru", notice: "Interface demo", routes: [], assets: {} };
   var NOTICE_ID = "demo-notice";
+  var themeByUser = false;
   var BLOCKED_SELECTOR =
     '#save-chat-button, #save-document-button, a[download], a[href^="/api/"], a[target="_blank"]';
 
@@ -54,6 +55,10 @@
 
   function applyTheme(theme) {
     document.body.classList.toggle("dark-theme", theme === "dark");
+    ["theme-toggle", "theme-toggle-guest"].forEach(function (id) {
+      var button = document.getElementById(id);
+      if (button) button.textContent = theme === "dark" ? "\u2600\ufe0f" : "\ud83c\udf19";
+    });
     try {
       window.localStorage.setItem("demo_theme", theme);
     } catch (e) {
@@ -84,7 +89,17 @@
       return Promise.resolve(jsonResponse({}));
     }
     if (path.indexOf("/set-theme/") === 0) {
-      applyTheme(path.split("/").pop());
+      // Only a click may change the theme: product scripts ask for a theme on
+      // load (the guest page does) and would otherwise cancel the visitor's choice.
+      if (themeByUser) {
+        var requested = path.split("/").pop();
+        applyTheme(requested);
+        try {
+          window.parent.postMessage({ type: "demo-theme-set", theme: requested }, "*");
+        } catch (e) {
+          /* the shell is always the parent in the built page */
+        }
+      }
       return Promise.resolve(jsonResponse({ status: "ok" }));
     }
     showNotice();
@@ -156,6 +171,12 @@
     function (event) {
       var target = event.target;
       if (!target || !target.closest) return;
+      if (target.closest("#theme-toggle") || target.closest("#theme-toggle-guest")) {
+        themeByUser = true;
+        window.setTimeout(function () {
+          themeByUser = false;
+        }, 1500);
+      }
       if (target.closest(".lang-option") || target.closest(BLOCKED_SELECTOR)) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -179,6 +200,14 @@
       if (replacement !== value) element.setAttribute(attr, replacement);
     });
   }
+
+  window.addEventListener("message", function (event) {
+    var data = event.data || {};
+    if (data.type === "demo-theme" && (data.theme === "dark" || data.theme === "light")) {
+      applyTheme(data.theme);
+      document.documentElement.setAttribute("data-demo-theme", data.theme);
+    }
+  });
 
   document.addEventListener(
     "DOMContentLoaded",

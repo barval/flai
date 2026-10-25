@@ -40,9 +40,43 @@
 
   frame.srcdoc = decode(loginSource.textContent);
 
+  function savedTheme() {
+    var match = /(?:^|[#&])theme=(dark|light)/.exec(window.location.hash);
+    if (match) return match[1];
+    try {
+      return window.localStorage.getItem("demo_theme") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function rememberTheme(theme) {
+    try {
+      window.localStorage.setItem("demo_theme", theme);
+    } catch (e) {
+      /* storage is optional */
+    }
+    try {
+      window.history.replaceState(null, "", "#theme=" + theme);
+    } catch (e) {
+      window.location.hash = "theme=" + theme;
+    }
+  }
+
+  function pushTheme() {
+    var theme = savedTheme();
+    if (!theme || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ type: "demo-theme", theme: theme }, "*");
+  }
+
+  frame.addEventListener("load", pushTheme);
+
   window.addEventListener("message", function (event) {
-    if (event.data && event.data.type === "demo-login") {
+    var data = event.data || {};
+    if (data.type === "demo-login") {
       frame.srcdoc = decode(appSource.textContent);
+    } else if (data.type === "demo-theme-set" && data.theme) {
+      rememberTheme(data.theme);
     }
   });
 })();

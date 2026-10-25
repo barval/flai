@@ -247,7 +247,7 @@
                     <label class="hub-check" title="{{ _('Multimodal models') }}"><input type="checkbox" id="hub-type-multimodal" checked> <span class="hub-type-ic">🖼️</span> <span class="hub-type-label">{{ _('Multimodal models') }}</span></label>
                     <label class="hub-check" title="{{ _('Embedding models') }}"><input type="checkbox" id="hub-type-embedding" checked> <span class="hub-type-ic">📐</span> <span class="hub-type-label">{{ _('Embedding models') }}</span></label>
                 </div>
-                <div class="hub-filter-row">
+                <div class="hub-filter-row hub-context-row">
                     <span class="hub-filter-label">{{ _('Context length') }}:</span>
                     <input type="range" id="hub-context-slider" min="1024" max="262144" step="1024" value="8192">
                     <input type="text" inputmode="numeric" pattern="[0-9]*" id="hub-context-value" class="hub-context-value" value="8192" aria-label="Context length">
@@ -811,6 +811,28 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_searching': {{ _('Searching…')|tojson }},
     'hub_no_query': {{ _('Enter a search query…')|tojson }},
     'hub_no_results': {{ _('No models found')|tojson }},
+    'Reranker': {{ _('Reranker')|tojson }},
+    'Cross-encoder reranking': {{ _('Cross-encoder reranking')|tojson }},
+    'Candidates to rerank': {{ _('Candidates to rerank')|tojson }},
+    'Status': {{ _('Status')|tojson }},
+    'Login': {{ _('Login')|tojson }},
+    'Password': {{ _('Password')|tojson }},
+    'Name': {{ _('Name')|tojson }},
+    'Class': {{ _('Class')|tojson }},
+    'Storage': {{ _('Storage')|tojson }},
+    'Sessions': {{ _('Sessions')|tojson }},
+    'Tasks': {{ _('Tasks')|tojson }},
+    'Outgoing tokens': {{ _('Outgoing tokens')|tojson }},
+    'Incoming tokens': {{ _('Incoming tokens')|tojson }},
+    'Messages': {{ _('Messages')|tojson }},
+    'Files': {{ _('Files')|tojson }},
+    'Documents': {{ _('Documents')|tojson }},
+    'SLM Facts': {{ _('SLM Facts')|tojson }},
+    'Internet requests': {{ _('Internet requests')|tojson }},
+    'Tavily API': {{ _('Tavily API')|tojson }},
+    'FLAI API': {{ _('FLAI API')|tojson }},
+    'Camera access': {{ _('Camera access')|tojson }},
+    'Actions': {{ _('Actions')|tojson }},
     'Model Hub': {{ _('Model Hub')|tojson }},
     'hub_error': {{ _('Model Hub request failed')|tojson }},
     'hub_gated': {{ _('Access required')|tojson }},

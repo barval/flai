@@ -64,3 +64,51 @@ def test_the_hub_badge_uses_a_translated_short_label():
     assert "badge.textContent = t('Model Hub');" in js
     ru = Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
     assert 'msgid "Model Hub"\nmsgstr "Хаб Моделей"' in ru
+
+
+def test_hub_badge_sits_in_its_own_column_before_the_size():
+    """Fixed badge column: every footprint starts at the same x."""
+    assert ".installed-file-badge {\n    flex: 0 0 7.2rem;" in ADMIN_CSS
+    assert ".installed-file-badge:empty { background: transparent; }" in ADMIN_CSS
+
+    js = Path("app/static/js/admin-models.js").read_text(encoding="utf-8")
+    assert "details.appendChild(badge);" in js
+    assert js.index("details.appendChild(badge);") < js.index("details.appendChild(meta);")
+
+
+def test_settings_rows_become_two_columns_and_two_rows():
+    """Variable over description, value over default — a four-column table
+    pushed the default column off the screen and hid long values."""
+    block = _mobile_block(".settings-table thead tr,")
+    assert "display: grid;" in block
+    assert "grid-template-areas:" in block
+    assert '"name  value"' in block
+    assert '"desc  default"' in block
+    for area in ("name", "desc", "value", "default"):
+        assert f"grid-area: {area};" in block
+    # The search filter hides rows through the attribute; a block display revived them.
+    assert ".settings-table tbody tr[hidden] {\n        display: none;" in block
+    assert "overflow-wrap: anywhere;" in block, "long values must wrap instead of vanishing"
+    assert "#settings-tab {\n        overflow-x: visible;" in block
+
+
+def test_users_become_cards_with_their_own_headings():
+    """Seventeen columns cannot fit a phone: the table turned into a card per
+    user, and each cell keeps its localized heading (data-label)."""
+    block = _mobile_block("#users-table tbody td::before {")
+    assert "min-width: 0;" in block
+    assert "overflow-x: visible;" in block
+    assert "max-height: none;" in block, "the wrapper must not be a scroll box on a phone"
+    assert "#users-table thead {\n        display: none;" in block
+    assert "#users-table tbody tr {\n        display: block;" in block
+    assert "content: attr(data-label);" in block
+    assert "#users-table tbody td:nth-child(2)::before {\n        content: none;" in block, "login is the card title"
+
+    js = Path("app/static/js/admin.js").read_text(encoding="utf-8")
+    assert "function labelUserCardCells(row)" in js
+    assert "labelUserCardCells(row);" in js
+    assert "'Outgoing tokens'" in js and "'Camera access'" in js
+
+    html = ADMIN_HTML
+    for label in ("Outgoing tokens", "Incoming tokens", "SLM Facts", "Tavily API", "Camera access"):
+        assert f"'{label}': {{{{ _('{label}')|tojson }}}}" in html, f"{label} is not in TRANSLATIONS"

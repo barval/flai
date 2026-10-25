@@ -93,7 +93,7 @@ function renderModelCards() {
             // Its own switches: the reranker is a service, not a chat model.
             const settings = window.RAG_RERANK_SETTINGS || {};
             html += `
-            <div class="parameters">
+            <div class="chunks-config">
                 <div class="param">
                     <label>${t('Cross-encoder reranking')}</label>
                     <input type="checkbox" class="rerank-enabled"${settings.enabled ? ' checked' : ''}>
@@ -905,22 +905,24 @@ function renderInstalledFiles(files) {
         name.className = 'installed-file-name';
         name.textContent = f.name;
         row.appendChild(name);
-        const meta = document.createElement('span');
-        meta.className = 'installed-file-meta';
-        const metaText = document.createElement('span');
-        metaText.className = 'installed-file-meta-text';
-        metaText.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
-            + (f.path ? ' · ' + f.path : '');
-        meta.appendChild(metaText);
+        const details = document.createElement('span');
+        details.className = 'installed-file-details';
+        const badge = document.createElement('span');
+        badge.className = 'installed-file-badge';
         if (f.from_hub) {
-            // Short badge: the full sentence does not fit a phone row.
-            const badge = document.createElement('span');
-            badge.className = 'installed-file-badge';
+            // Short badge: the full sentence does not fit a phone row. It keeps
+            // its own column (also when empty) so the sizes line up.
             badge.textContent = t('Model Hub');
             badge.title = t('hub_installed_via_hub');
-            meta.appendChild(badge);
         }
-        row.appendChild(meta);
+        details.appendChild(badge);
+        const meta = document.createElement('span');
+        meta.className = 'installed-file-meta';
+        meta.textContent = fmtNum(Math.ceil(Number(f.size_mb) || 0)) + ' ' + t('MB')
+            + (f.path ? ' · ' + f.path : '');
+        meta.title = meta.textContent;
+        details.appendChild(meta);
+        row.appendChild(details);
         const del = document.createElement('button');
         del.className = 'hub-del add-user-button';
         del.dataset.filename = f.name;

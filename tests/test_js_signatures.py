@@ -464,17 +464,33 @@ def _mobile_media_block(css: str, needle: str) -> tuple[str, str]:
         index = end + 1
 
 
-def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
+def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
+    """The context field used to run off the right edge and the results table
+    needed a sideways viewport; both now fit a phone."""
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    before, media = _mobile_media_block(admin_css, ".hub-columns { min-width: 680px")
+    before, media = _mobile_media_block(admin_css, ".hub-context-row {")
     assert ".hub-filter-row { display: flex" in before, "mobile overrides must follow base styles"
     assert ".hub-header { display: flex" in before, "mobile overrides must follow base styles"
     assert ".hub-filters {" in media
+
+    # Type chips stay one line and may scroll; the context row never does.
     assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
     assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.hub-columns\s*\{[^}]*min-width:\s*", media)
-    assert re.search(r"table\.hub-files\s*\{[^}]*min-width:\s*", media)
+    context = media[media.index(".hub-context-row {") :]
+    assert re.search(r"\.hub-context-row\s*\{[^}]*flex-wrap:\s*wrap", context)
+    assert re.search(r"\.hub-context-row\s*\{[^}]*overflow-x:\s*visible", context)
+    assert re.search(r"\.hub-context-row #hub-context-slider\s*\{[^}]*flex:\s*1 1 auto", context)
+    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*width:\s*6ch", context)
+
+    # Results: one card per file, no wide canvas, no column header.
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*visible", media)
+    assert re.search(r"\.hub-columns\s*\{\s*display:\s*none", media)
+    assert "min-width: 680px" not in media
+    cards = media[media.index(".hub-file-row {") :]
+    assert "grid-template-areas:" in cards
+    assert '"name   name"' in cards
+    assert re.search(r'"size\s+fit"', cards)
+    assert re.search(r'"action action"', cards)
 
 
 def test_mobile_downloaded_models_panel_wraps_without_scroll():
@@ -491,9 +507,9 @@ def test_mobile_downloaded_models_panel_wraps_without_scroll():
     installed = media[media.index(".installed-file {") :]
     assert "display: grid;" in installed
     assert "grid-template-areas:" in installed
-    assert '"emoji name del"' in installed
-    assert re.search(r'"\.\s+meta meta"', installed)
-    assert re.search(r"\.installed-file-meta\s*\{[^}]*flex-wrap:\s*wrap", media)
+    assert '"emoji name    del"' in installed
+    assert re.search(r'"\.\s+details details"', installed)
+    assert re.search(r"\.installed-file-details\s*\{[^}]*flex-wrap:\s*wrap", media)
 
     models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
     assert "installed-file-badge" in models_src

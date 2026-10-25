@@ -686,15 +686,6 @@ body.dark-theme .model-card .model-desc {
         font-weight: bold;
     }
 
-    /* Ensure table wrapper takes full width and scrolls */
-    .users-table-wrapper {
-        width: 100%;
-        overflow-x: auto;
-    }
-    #users-table {
-        min-width: 800px; /* force table to be wider than screen to enable horizontal scroll */
-    }
-
     /* Model cards: prevent content overflow */
     .model-card {
         word-wrap: break-word;
@@ -1398,7 +1389,8 @@ body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; borde
 /* Models-tab disk files panel. */
 .models-files-list { display: flex; flex-direction: column; gap: 0.4rem; }
 .installed-file {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.4rem minmax(0, 1fr) minmax(0, 26rem) auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.4rem 0.5rem;
@@ -1406,24 +1398,36 @@ body.dark-theme .hub-offline-banner { background: #4a2420; color: #ffc9bf; borde
     border-radius: 4px;
 }
 .installed-file-name { font-weight: 600; word-break: break-all; }
-.installed-file-meta {
-    margin-left: auto;
-    display: inline-flex;
+/* Badge and footprint share one cell; the badge keeps a fixed width (also
+   when it is empty) so every size starts on the same line. */
+.installed-file-details {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
-    color: #777;
-    font-size: 0.9em;
-    white-space: nowrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    min-width: 0;
 }
 .installed-file-badge {
+    flex: 0 0 7.2rem;
     padding: 0 0.45rem;
     border-radius: 999px;
     background: #e8f5e9;
     color: #2e7d32;
     font-size: 0.85em;
+    text-align: center;
     white-space: nowrap;
 }
+.installed-file-badge:empty { background: transparent; }
+.installed-file-meta {
+    min-width: 0;
+    overflow: hidden;
+    color: #777;
+    font-size: 0.9em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
 body.dark-theme .installed-file-badge { background: #1e3a24; color: #7fd493; }
+body.dark-theme .installed-file-badge:empty { background: transparent; }
 .installed-file .hub-del { margin-left: 0.5rem; }
 body.dark-theme .installed-file { border-color: #444; }
 body.dark-theme .installed-file-meta { color: #aaa; }
@@ -1442,18 +1446,72 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         -webkit-overflow-scrolling: touch;
     }
     .hub-filter-row > * { flex: 0 0 auto; }
-    #hub-context-slider { width: 150px; max-width: none; }
+    /* The context row must not scroll sideways: the value field used to run
+       off the right edge. It wraps instead — label on its own line, then the
+       slider stretched and the value field beside it. */
+    .hub-context-row {
+        flex-wrap: wrap;
+        overflow-x: visible;
+        white-space: normal;
+        row-gap: 0.35rem;
+    }
+    .hub-context-row .hub-filter-label { flex: 1 1 100%; white-space: normal; }
+    .hub-context-row #hub-context-slider {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+    }
+    .hub-context-row .hub-context-value { flex: 0 0 auto; width: 6ch; }
     .hub-header { flex-wrap: nowrap; gap: 0.4rem; margin-bottom: 0.5rem; }
     .hub-header input[type="text"] { flex: 1 1 auto; min-width: 120px; }
     .hub-header .hub-filter-label,
     .hub-header button { flex: 0 0 auto; white-space: nowrap; }
 
-    /* Keep the Model Hub headings and file rows aligned in a horizontal
-       viewport rather than squeezing their columns over one another. */
-    .hub-results-wrap { overflow-x: auto; }
-    .hub-columns { min-width: 680px; box-sizing: border-box; }
-    .hub-repo { min-width: 680px; box-sizing: border-box; }
-    table.hub-files { min-width: 680px; }
+    /* Results: one card per file. The four-column table needed its own
+       horizontal viewport, which pushed the whole tab sideways; a phone now
+       reads the name, then footprint + fit, then the action. */
+    .hub-results-wrap { overflow-x: visible; }
+    .hub-columns { display: none; }
+    .hub-repo { min-width: 0; padding: 0.45rem 0.5rem; }
+    table.hub-files,
+    .hub-files tbody { display: block; width: 100%; min-width: 0; }
+    .hub-file-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "name   name"
+            "size   fit"
+            "action action";
+        align-items: center;
+        gap: 0.25rem 0.5rem;
+        padding: 0.45rem 0.4rem;
+        border: 1px solid #e2e2e2;
+        border-radius: 6px;
+        background: #fff;
+    }
+    .hub-file-row + .hub-file-row { margin-top: 0.4rem; }
+    .hub-file-row td {
+        display: block;
+        width: auto;
+        padding: 0;
+        border: none;
+        font-size: 0.8rem;
+    }
+    .hub-file-row td:nth-child(1) { grid-area: size; text-align: left; }
+    .hub-file-row td:nth-child(2) { grid-area: name; padding-left: 0; }
+    .hub-file-row td:nth-child(3) { grid-area: fit; justify-self: end; }
+    .hub-file-row td:nth-child(4) {
+        grid-area: action;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+        text-align: left;
+    }
+    .hub-path { font-weight: 600; word-break: break-word; }
+    .hub-progress-wrap { width: 100%; min-width: 0; }
+    body.dark-theme .hub-file-row { background: #1e1e1e; border-color: #444; }
 
     /* Downloaded models: one card per model, two lines inside it — the name
        and the delete button on the first, the footprint on the second. A
@@ -1464,8 +1522,8 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         display: grid;
         grid-template-columns: 1.4rem minmax(0, 1fr) auto;
         grid-template-areas:
-            "emoji name del"
-            ".     meta meta";
+            "emoji name    del"
+            ".     details details";
         align-items: center;
         column-gap: 0.45rem;
         row-gap: 0.15rem;
@@ -1480,14 +1538,20 @@ body.dark-theme .installed-file-meta { color: #aaa; }
         word-break: normal;
         overflow-wrap: anywhere;
     }
-    .installed-file-meta {
-        grid-area: meta;
-        margin-left: 0;
+    .installed-file-details {
+        grid-area: details;
         flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 0.35rem;
         font-size: 0.72rem;
-        white-space: normal;
     }
-    .installed-file-meta-text { overflow-wrap: anywhere; }
+    .installed-file-badge {
+        flex: 0 0 auto;
+    }
+    .installed-file-meta {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
     .installed-file .hub-del {
         grid-area: del;
         margin-left: 0;
@@ -1994,5 +2058,214 @@ body.dark-theme .settings-reset {
     }
     body.dark-theme #backups-table td:nth-child(5) {
         color: #aaa;
+    }
+}
+
+/* ===== Settings: two columns and two rows per setting on a phone ===== */
+/* The four-column table cannot fit a phone: the default column was cut off and
+   long values stayed invisible. Each row now reads as
+       Variable            [value]
+       Description         default ↺
+   and the header repeats the same grid, so every label stays over its cell. */
+@media (max-width: 768px) {
+    #settings-tab {
+        overflow-x: visible;
+    }
+    .settings-table,
+    .settings-table thead,
+    .settings-table tbody,
+    .settings-table tr,
+    .settings-table th,
+    .settings-table td {
+        display: block;
+        width: 100%;
+    }
+    .settings-table thead tr,
+    .settings-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        grid-template-areas:
+            "name  value"
+            "desc  default";
+        align-items: start;
+        gap: 0.2rem 0.5rem;
+        padding: 0.45rem 0.4rem;
+        border-bottom: 1px solid #eee;
+    }
+    /* Row filtering sets the hidden attribute; a block display would revive it. */
+    .settings-table tbody tr[hidden] {
+        display: none;
+    }
+    .settings-table th,
+    .settings-table td {
+        border: none;
+        padding: 0;
+    }
+    .settings-table th:nth-child(1),
+    .settings-table td:nth-child(1) {
+        grid-area: name;
+        width: auto;
+    }
+    .settings-table th:nth-child(2),
+    .settings-table td:nth-child(2) {
+        grid-area: desc;
+        width: auto;
+    }
+    .settings-table th:nth-child(3),
+    .settings-table td:nth-child(3) {
+        grid-area: value;
+        width: auto;
+    }
+    .settings-table th:nth-child(4),
+    .settings-table td:nth-child(4) {
+        grid-area: default;
+        width: auto;
+    }
+    .settings-table thead th {
+        font-size: 0.68rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+    .settings-field-label {
+        font-size: 0.8rem;
+        display: block;
+        overflow-wrap: anywhere;
+    }
+    .settings-description {
+        font-size: 0.72rem;
+        line-height: 1.25;
+    }
+    .settings-default {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.25rem;
+        white-space: normal;
+    }
+    .settings-default-value {
+        margin-right: 0;
+        font-size: 0.72rem;
+        overflow-wrap: anywhere;
+    }
+    .settings-input {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.35rem;
+    }
+    body.dark-theme .settings-table tbody tr {
+        border-color: #3a3a3a;
+    }
+}
+
+
+/* ===== Users: one card per user on a phone ===== */
+/* Appended last: the base .users-table-wrapper rule (overflow + max-height)
+   sits after the general mobile block, so overriding it there had no effect. */
+@media (max-width: 768px) {
+    .users-table-wrapper {
+        width: 100%;
+        overflow-x: visible;
+        overflow-y: visible;
+        max-height: none;
+        box-shadow: none;
+        border-radius: 0;
+    }
+    #users-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        background: transparent;
+        font-size: 12.5px;
+    }
+    #users-table thead {
+        display: none;
+    }
+    #users-table tbody {
+        display: block;
+    }
+    #users-table tbody tr {
+        display: block;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px solid #d8dde3;
+        border-radius: 8px;
+        background: #fff;
+    }
+    /* Flex, not grid: the storage cell holds three children, and a two-column
+       grid would drop the third one under the heading. */
+    #users-table tbody td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        text-align: left;
+        border: none;
+        border-bottom: 1px dashed #eee;
+    }
+    #users-table tbody td:last-child {
+        border-bottom: none;
+    }
+    #users-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 8.5rem;
+        color: #7f8c8d;
+        font-size: 11.5px;
+        line-height: 1.2;
+    }
+    /* Login is the card title: bigger, no heading, above the fields. */
+    #users-table tbody td:nth-child(2) {
+        display: block;
+        padding-bottom: 6px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    #users-table tbody td:nth-child(2)::before {
+        content: none;
+    }
+    /* Actions sit on their own row at the bottom of the card. */
+    #users-table tbody td:last-child {
+        display: block;
+        padding-top: 8px;
+        text-align: right;
+    }
+    #users-table tbody td:last-child::before {
+        content: none;
+    }
+    /* Inputs fill the space left of their heading instead of a fixed column. */
+    #users-table tbody td input[type="text"],
+    #users-table tbody td input[type="number"],
+    #users-table tbody td select {
+        flex: 1 1 6rem;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    #users-table .storage-cell {
+        white-space: normal;
+    }
+    #users-table .storage-limit-input {
+        flex: 0 1 5rem;
+        width: 5rem;
+    }
+    #users-table td input[type="checkbox"] {
+        transform: scale(1.2);
+    }
+    #users-table .camera-checkboxes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        justify-content: flex-start;
+    }
+    body.dark-theme #users-table tbody tr {
+        background: #1e1e1e;
+        border-color: #444;
+    }
+    body.dark-theme #users-table tbody td {
+        border-bottom-color: #333;
+    }
+    body.dark-theme #users-table tbody td::before {
+        color: #999;
     }
 }

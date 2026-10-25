@@ -42,3 +42,25 @@ def test_admin_renders_the_reranker_as_a_module_card():
     html = Path("app/templates/admin.html").read_text(encoding="utf-8")
     assert 'id="reranker-card"' not in html, "the card is rendered like every other module"
     assert "window.RAG_RERANK_SETTINGS" in html, "the card needs the current values"
+
+
+def test_the_card_labels_are_exposed_to_the_script():
+    """The card is rendered by JS: t() reads window.TRANSLATIONS, not the catalog."""
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    for label in ("Reranker", "Cross-encoder reranking", "Candidates to rerank"):
+        assert f"'{label}': {{{{ _('{label}')|tojson }}}}" in html, f"{label} is not in TRANSLATIONS"
+
+
+def test_the_card_inputs_use_the_chunks_row():
+    """Equal, full-width fields — the same .chunks-config row as the Chunks card."""
+    js = Path("app/static/js/admin-models.js").read_text(encoding="utf-8")
+    start = js.index("if (mod.id === 'reranker')")
+    block = js[start : js.index("if (mod.id !== 'embedding'", start)]
+    assert '<div class="chunks-config">' in block
+    assert '<div class="parameters">' not in block
+
+
+def test_an_unset_reranker_adopts_the_legacy_file():
+    """The card must open with a selected model, not an empty dropdown."""
+    db = Path("app/database.py").read_text(encoding="utf-8")
+    assert "module = 'reranker' AND (model_name IS NULL OR model_name = '')" in db

@@ -581,6 +581,16 @@ def _init_postgresql():
         """
     )
 
+    # Point an unset reranker at the legacy file once, so the Models card opens
+    # with a selected model and its metadata instead of an empty dropdown.
+    legacy_reranker = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+    if os.path.exists(legacy_reranker):
+        c.execute(
+            "UPDATE model_configs SET model_name = %s "
+            "WHERE module = 'reranker' AND (model_name IS NULL OR model_name = '')",
+            (os.path.basename(legacy_reranker)[: -len(".gguf")],),
+        )
+
     # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
         CREATE TABLE IF NOT EXISTS model_vram_estimates (

@@ -1,6 +1,24 @@
 // app/static/js/admin.js
 // Admin panel JavaScript - handles user management, translations, and page-specific setup
 
+// Phone cards (CSS <=768px): the header row is hidden, so every cell needs its
+// own localized heading. The camera column only exists when rooms are configured.
+const USER_CARD_LABELS = [
+    'Status', 'Login', 'Password', 'Name', 'Class', 'Storage', 'Sessions', 'Tasks',
+    'Outgoing tokens', 'Incoming tokens', 'Messages', 'Files', 'Documents', 'SLM Facts',
+    'Internet requests', 'Tavily API', 'FLAI API',
+];
+
+function labelUserCardCells(row) {
+    const cells = Array.from(row.children);
+    const labels = cells.length === USER_CARD_LABELS.length + 2
+        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
+        : [...USER_CARD_LABELS, 'Actions'];
+    cells.forEach((cell, index) => {
+        if (labels[index]) cell.dataset.label = t(labels[index]);
+    });
+}
+
 let currentSortField = null;
 let currentSortDirection = 'asc';
 
@@ -225,6 +243,7 @@ function loadUsers() {
             deleteBtn.onclick = () => deleteUser(user.login);
             actionsCell.appendChild(deleteBtn);
             row.appendChild(actionsCell);
+            labelUserCardCells(row);
             tbody.appendChild(row);
         });
         if (tavilyCells.size) {

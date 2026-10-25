@@ -11,8 +11,7 @@ PAGES = Path("docs/demo")
 NAMES = ["chat-ru.html", "chat-en.html", "admin-ru.html", "admin-en.html"]
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 
-if not PAGES.exists():
-    pytest.skip("demo pages are produced in Task 12", allow_module_level=True)
+pytestmark = pytest.mark.skipif(not PAGES.exists(), reason="demo pages are produced in Task 12")
 
 
 @pytest.fixture(scope="module")

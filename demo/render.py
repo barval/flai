@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gettext
 import html as html_module
-from pathlib import Path
 
 from flask import Flask, render_template
 from jinja2 import ChainableUndefined

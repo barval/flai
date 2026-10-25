@@ -90,39 +90,42 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
-- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. Optional **hybrid search** (vectors + full-text with reciprocal rank fusion) and a **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
 ## 🔎 Working with document search
 
-Document search has three optional layers on top of plain vector retrieval. All are **off by default**
-and switch on in the admin panel; nothing changes until you enable them.
+Document search has several layers. Which one earns its cost depends on the question:
 
-| Layer | Where to enable | What it does | Cost |
-|---|---|---|---|
-| **Search scope** | 🔍 next to the chat input | Answers only from the chosen folder / upload period (or from the whole corpus) | none |
-| **Hybrid search** | Settings → `RAG_HYBRID_ENABLED` | Adds full-text retrieval (PostgreSQL, Russian stemming) and merges it with the vectors via reciprocal rank fusion; runs the lexical half only when the question contains a rare term (a name, a city, a tool) | +~17 ms per query |
-| **Reranker** | Models → Reranker | Reorders the top candidates with a CPU cross-encoder (`bge-reranker-v2-m3`, ~0.4 GB, no GPU) | +~150 ms warm, ~1.5 s on the first query |
-| **Structured chunking** | Models → Chunks → Strategy | Splits on logical entries (a resume entry, a dated block) instead of fixed windows, so counting questions can count blocks | none, but documents must be re-indexed (`flask rag-reindex --user <login>`) |
+| Question | Best tool | Why |
+|---|---|---|
+| Conceptual or paraphrased | **Vector search** (always on) | matches meaning rather than words and adds no latency |
+| Exact names, cities, codes, tool names — or one large file floods the results | **Hybrid search** (on by default) | adds PostgreSQL full-text with Russian stemming and fuses it with the vectors through reciprocal rank fusion; the lexical half only fires when the question carries a rare term |
+| The right fragment is found but ranked second or third | **Reranker** (off by default) | a CPU cross-encoder reorders the top candidates; it pays off in narrow windows, loses ranking quality in wide ones and adds ~0.3 s |
+| "List all…", "how many…", compare every entry of a document | **Deep analysis** (🔬 with documents selected) | walks the whole corpus step by step instead of fitting one fixed context window |
+| Only part of the corpus matters | **Search scope** (🔍) | removes competing documents before retrieval — usually the strongest lever |
+| Resumes, contracts, logs and other entry-based files | **Structured chunking** | keeps one logical entry in one chunk, so listing and counting stay possible |
 
 How to use them:
 
-1. **Ask a question about a subset of documents** — set the scope (folder and/or upload dates) before
-   sending. The scope is shown as a chip and applies to the messages that follow; clearing it restores
-   the global search. A document attached to the message is always visible, even outside the scope.
-2. **Enable hybrid search** when questions hinge on a word the vector blurs: names, cities, product
-   codes, tool names. It also helps when a large chat export or a long manual drowns the right document.
-3. **Enable the reranker** when the right fragment is found but ranked second or third. Keep `Candidates
-   to rerank` at 10 — a wider pool can push valid entries to the end of the context.
-4. **Switch chunking to `structured`** for resumes, contracts, logs and other entry-based documents, then
-   re-index. Measure first with `docs/RAG_EVAL.md`; it exists exactly for this decision.
+1. **Narrow the scope first** — a folder and/or an upload period removes competing documents before
+   retrieval, which buys more than any ranking setting. The scope is shown as a chip and applies to the
+   messages that follow; a document attached to a message is always visible, even outside the scope.
+2. **Keep hybrid search on** — it helps with names, codes and large files for tens of milliseconds.
+   Turning it off makes sense only on a tiny corpus where the lexical half adds nothing.
+3. **Enable the reranker selectively** — when the right fragment consistently ranks second or third and
+   the context window is narrow (few fragments). In a wide window (a couple of dozen fragments) it
+   lowers ranking quality and adds ~0.3 s; keep `Candidates to rerank` at 10.
+4. **Choose chunking by document shape** — `structured` for resumes, contracts and logs, `recursive` or
+   `fixed` for continuous prose; after changing the strategy, re-index (`flask rag-reindex --user <login>`).
+5. **Switch to deep analysis when the answer is a list or a count** over a document: ordinary search
+   returns the best fragments, not the whole document.
 
-Measured on a real corpus of 29 documents / 22 questions: vector-only answered 0 of 3 counting
-questions, hybrid answered 3 of 3 at the production `top_k=20`, and the reranker lifted nDCG@10 from
-0.84 to 0.92 without breaking an answer. Details and the exact numbers → [DOCUMENTS.md](docs/DOCUMENTS.md),
-[RAG_EVAL.md](docs/RAG_EVAL.md).
+Every layer is measured with the built-in harness instead of being enabled on faith: `flask rag-eval`
+reports hit@k, MRR, nDCG and latency, and the decision log lives in [RAG_EVAL.md](docs/RAG_EVAL.md)
+together with the layered design in [DOCUMENTS.md](docs/DOCUMENTS.md).
 
 ### 🧠 Memory & context
 - **Long-term memory (SLM)** — rule-based, CPU-only fact extraction and merging with semantic deduplication; a profile per user, erased with the account. → [MEMORY.md](docs/MEMORY.md)

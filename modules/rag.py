@@ -340,22 +340,18 @@ class RagModule:
 
     @staticmethod
     def _lexical_terms(query: str) -> list[str]:
-        """Pick the discriminative terms of a query.
+        """Offer every content word of the query; ``_rarest_terms`` picks.
 
-        ``ts_rank_cd`` has no IDF, so common words ("work", "place", "was")
-        drown the one word that matters. Proper nouns and Latin-script terms
-        (cities, companies, tool names) are the discriminative ones; a query
-        without any falls back to all its words.
+        ``ts_rank_cd`` has no IDF, so a word every chunk carries (a person's
+        name in a corpus of their own documents) adds nothing — the rarity gate
+        drops it. Narrowing the list to proper nouns here discarded the other
+        half of a question ("места", "городам"), the gate then saw a single
+        common term and turned the lexical search off entirely (measured MRR
+        0.640 -> 0.744 and nDCG 0.879 -> 0.965 once every word is offered).
         """
         raw = re.findall(r"[\w-]+", query)
-        if not raw:
-            return []
-        rest = raw[1:]  # the first word is capitalized by grammar, not by meaning
-        proper = [token for token in rest if token[:1].isupper()]
-        latin = [token for token in raw if re.search(r"[A-Za-z]", token)]
-        chosen = proper + latin or raw
         seen: list[str] = []
-        for token in chosen:
+        for token in raw:
             lowered = re.sub(r"[^\w]", "", token.lower())
             if len(lowered) >= 3 and lowered not in seen:
                 seen.append(lowered)
@@ -559,8 +555,13 @@ class RagModule:
             )
             if reranked is not None:
                 order = sorted(range(len(pool)), key=lambda index: reranked[index], reverse=True)
+                dense = scores[: len(pool)]
                 chunks = [pool[index] for index in order] + chunks[len(pool) :]
-                scores = [reranked[index] for index in order] + scores[len(pool) :]
+                # The caller filters on absolute cosine scores; the reranker
+                # only decides the order, so every chunk keeps the cosine value
+                # it was retrieved with. Its relative scale (best = 1.0) would
+                # otherwise shrink a 20-chunk context to the top two.
+                scores = [dense[index] for index in order] + scores[len(pool) :]
                 self.logger.info(f"search: reranked {len(pool)} candidates")
 
         self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")

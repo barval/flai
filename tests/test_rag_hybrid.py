@@ -80,11 +80,26 @@ def test_reindexing_replaces_the_mirrored_chunks(test_app):
 
 
 @pytest.mark.unit
-def test_lexical_terms_prefer_proper_nouns():
+def test_lexical_terms_offer_every_word_for_the_rarity_gate():
+    """The date in the question carries the discriminating word, so the gate —
+    not the term chooser — must decide what is common."""
     module = RagModule()
 
-    assert module._lexical_terms("Сколько рабочих мест было у Иванова в Твери?") == ["иванова", "твери"]
-    assert module._lexical_terms("Для чего Иванов использовал bash?") == ["иванов", "bash"]
+    assert module._lexical_terms("Сколько рабочих мест было у Иванова в Твери?") == [
+        "сколько",
+        "рабочих",
+        "мест",
+        "было",
+        "иванова",
+        "твери",
+    ]
+    assert module._lexical_terms("Для чего Иванов использовал bash?") == [
+        "для",
+        "чего",
+        "иванов",
+        "использовал",
+        "bash",
+    ]
 
 
 @pytest.mark.unit
@@ -149,15 +164,15 @@ def test_rerank_returns_none_when_the_service_is_down(monkeypatch):
 
 @pytest.mark.unit
 def test_reranker_is_manageable_from_the_models_tab():
-    """The Models tab shows the file and carries the enable switch."""
+    """The card is rendered by JS: model choice plus the three settings, saved
+    through the generic settings endpoint."""
     from pathlib import Path
 
-    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
-    assert 'id="reranker-card"' in html
-    assert 'id="rerank-enabled"' in html
-    assert 'id="rerank-candidates"' in html
-
     js = Path("app/static/js/admin-models.js").read_text(encoding="utf-8")
+    assert "if (mod.id === 'reranker')" in js
+    assert 'class="rerank-enabled"' in js
+    assert 'class="rerank-candidates"' in js
+    assert 'class="rerank-timeout"' in js
     assert "RAG_RERANK_ENABLED" in js and "/admin/api/settings" in js
 
     deploy = Path("deploy.sh").read_text(encoding="utf-8")

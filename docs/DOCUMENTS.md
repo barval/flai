@@ -59,13 +59,17 @@ behind a chat request. The CPU group is declared `exclusive: false` and `persist
 the reranker and the embedding model resident together — without that, the two evict each other and
 every query pays two model loads (3.5 s instead of 0.15 s).
 
-Enable it with `RAG_RERANK_ENABLED=true`; `RAG_RERANK_CANDIDATES` (default 10) sets how many top
-candidates are reordered. The endpoint returns raw logits, so scores are sigmoided and scaled to the
-best candidate — otherwise an absolute relevance threshold would drop every reranked chunk.
+Enable it with `RAG_RERANK_ENABLED=true` (off by default, see the measurement below);
+`RAG_RERANK_CANDIDATES` (default 10) sets how many top candidates are reordered. The endpoint returns
+raw logits, so `app/reranker.py` sigmoids them and scales them to the best candidate for ordering; the
+search itself keeps each chunk's own cosine score. Applying an absolute relevance threshold to a
+relative scale collapsed a 20-chunk context to the top two and the answer lost almost every entry.
 
-Measured on the same sets as hybrid search: ranking improves further (nDCG@10 0.838 → 0.918 on the
-mixed set, MRR 0.646 → 0.742) at ~170 ms per query; keeping the pool at 10 matters, because reranking
-20 candidates pushed a block of valid entries to the end of the context and the answer regressed.
+Measured on the same 22-question set: in a narrow 5-chunk window (the `rag_search` tool used by deep
+analysis and tasks) it helps (nDCG 0.815 → 0.831, MRR 0.723 → 0.750), but in the 20-chunk chat and
+task windows with hybrid search on it lowers nDCG (0.965 → 0.922) and costs ~280 ms per search. That
+is why it stays off by default and is switched on per deployment only when the smaller window is the
+only consumer.
 
 Download (optional):
 
@@ -82,7 +86,7 @@ Three strategies are available in Admin Panel → Models → Chunks:
 |---|---|
 | `fixed` | Character windows with overlap; cheapest, cuts through sentences |
 | `recursive` | Splits by paragraphs, sentences and words; keeps sentences whole |
-| `structured` | Splits on logical entries: a resume entry ("November 2023 — Alfa LLC / Tver / …") or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
+| `structured` | Splits on logical entries: a dated entry (start date, organisation, city) or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
 
 `structured` exists for counting questions ("how many jobs in this city"): when two
 entries share a chunk the model has to count inside a fragment and usually gets it

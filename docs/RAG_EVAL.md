@@ -88,8 +88,11 @@ set goes 0.773 → 0.864 hit@10, and end-to-end answers with the production `top
 | hybrid | 3/3 |
 | hybrid + rerank | 3/3 |
 
-So hybrid is worth its 17 ms on entity-style questions and costs a little ranking quality on easy
-ones; it stays opt-in (`RAG_HYBRID_ENABLED`), and that trade-off is the reason.
+Hybrid is on by default (`RAG_HYBRID_ENABLED=true`): on the mixed 22-question set it wins on every
+metric (hit 0.909 vs 0.864, MRR 0.744 vs 0.688, nDCG 0.965 vs 0.751) for the 20-chunk chat window and
+for the 5-chunk task window (hit 0.864 vs 0.727, nDCG 0.815 vs 0.688). The reranker stays off by
+default: with hybrid on it lowers nDCG on the 20-chunk window (0.922) and costs ~280 ms per search,
+while helping only the 5-chunk tool window (0.831 vs 0.815).
 
 Every candidate change (reranker, metadata filters, chunking) is measured on both datasets.
 

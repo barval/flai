@@ -1,0 +1,77 @@
+{
+  "lang": "en",
+  "documents": [
+    {
+      "source": "pdfs/en/quote-a.pdf",
+      "name": "Quote A — Northfield IT Supplies Ltd.pdf"
+    },
+    {
+      "source": "pdfs/en/quote-b.pdf",
+      "name": "Quote B — Brightline Office Systems Ltd.pdf"
+    },
+    {
+      "source": "pdfs/en/policy.pdf",
+      "name": "Procurement Policy.pdf"
+    }
+  ],
+  "scenarios": [
+    {
+      "kind": "text",
+      "title": "Capabilities",
+      "prompt": "What can you do?"
+    },
+    {
+      "kind": "text",
+      "title": "Weather",
+      "prompt": "What is the weather in London this weekend?"
+    },
+    {
+      "kind": "text",
+      "title": "Quotes",
+      "prompt": "Compare the two quotes for 20 laptops for a school: which one is better value and why?"
+    },
+    {
+      "kind": "rlm",
+      "title": "Deep analysis",
+      "prompt": "Analyse both quotes and the procurement policy, build a comparison table and give a recommendation.",
+      "documents": [
+        "quote-a",
+        "quote-b",
+        "policy"
+      ]
+    },
+    {
+      "kind": "image",
+      "title": "Image",
+      "prompt": "Make a poster for the school science fair, no text."
+    },
+    {
+      "kind": "video",
+      "title": "Video",
+      "prompt": "Short video: rain running down a window."
+    },
+    {
+      "kind": "text",
+      "title": "Photo",
+      "prompt": "What can I cook with the ingredients in this photo? Suggest two simple dishes.",
+      "attach": "media/en/input/photo.png"
+    },
+    {
+      "kind": "task",
+      "title": "Timetable",
+      "prompt": "Draft a weekly timetable for Year 7: five school days, six lessons a day, no subject twice in one day."
+    },
+    {
+      "kind": "text",
+      "title": "Rate",
+      "prompt": "Find the current GBP to EUR rate and work out what a batch of 40 laptops at £899 each costs in euros."
+    },
+    {
+      "kind": "text",
+      "title": "Voice",
+      "prompt": "Transcribe this voice message and answer the question in it.",
+      "attach": "media/en/input/voice.ogg",
+      "voice": true
+    }
+  ]
+}

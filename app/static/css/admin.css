@@ -526,6 +526,9 @@ body.dark-theme .hub-del:hover {
     border-radius: 4px;
     cursor: pointer;
 }
+.delete-user-btn:hover {
+    background-color: #c0392b;
+}
 .change-password-btn {
     background-color: #f39c12;
     color: white;
@@ -533,6 +536,9 @@ body.dark-theme .hub-del:hover {
     padding: 5px 10px;
     border-radius: 4px;
     cursor: pointer;
+}
+.change-password-btn:hover {
+    background-color: #e67e22;
 }
 
 /* Model cards */
@@ -1010,7 +1016,12 @@ body.admin-page .voice-gender-switcher {
     cursor: pointer;
     font-size: 13px;
     text-decoration: none;
-    display: inline-block;
+    /* An <a> styled as a button: inline-flex centres its label the way the
+       <button> elements next to it are centred. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 .btn-warning:hover {
     background-color: #e67e22;
@@ -2068,32 +2079,44 @@ body.dark-theme .settings-reset {
         display: block;
         width: 100%;
     }
+    /* A card keeps every desktop column, in the desktop order:
+       № · Created · Filename · Type · Size · Actions. */
     #backups-table tr {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        /* The desktop rule stretches the row to 100 %; with the card padding
+           and border that overflowed the table. */
+        width: auto;
+        box-sizing: border-box;
+        grid-template-columns: auto minmax(0, 1fr) auto;
         grid-template-areas:
-            "filename filename"
-            "type     size"
-            "created  created"
-            "actions  actions";
-        gap: 0.2rem 0.5rem;
+            "num     created  created"
+            "filename filename filename"
+            "type    type     size"
+            "actions actions  actions";
+        gap: 0.25rem 0.5rem;
         margin: 0 0 0.5rem;
-        padding: 0.45rem;
+        padding: 0.45rem 0.55rem;
         border: 1px solid #ddd;
         border-radius: 6px;
     }
     #backups-table td {
         border: none;
         padding: 0;
+        min-width: 0;
+        /* The desktop table centres every cell; a card reads left to right. */
+        width: auto;
+        text-align: left;
     }
-    /* The row number adds nothing to a card. */
     #backups-table td:nth-child(1) {
-        display: none;
+        grid-area: num;
+        font-size: 0.78rem;
+        color: #999;
     }
     #backups-table td:nth-child(2) {
         grid-area: created;
         font-size: 0.78rem;
         color: #777;
+        text-align: right;
     }
     #backups-table td:nth-child(3) {
         grid-area: filename;
@@ -2102,10 +2125,12 @@ body.dark-theme .settings-reset {
     }
     #backups-table td:nth-child(4) {
         grid-area: type;
+        overflow-wrap: anywhere;
     }
     #backups-table td:nth-child(5) {
         grid-area: size;
-        justify-self: end;
+        text-align: right;
+        white-space: nowrap;
     }
     #backups-table td.actions-cell {
         grid-area: actions;
@@ -2114,10 +2139,17 @@ body.dark-theme .settings-reset {
         gap: 0.35rem;
         justify-content: flex-start;
     }
-    #backups-table td.actions-cell button {
+    /* Buttons and the download <a> share one box, so their labels sit on the
+       same line. */
+    #backups-table td.actions-cell button,
+    #backups-table td.actions-cell a {
         height: 30px;
         padding: 0 0.6rem;
         font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
     }
 
     body.dark-theme #cameras-table tr,

@@ -764,3 +764,44 @@ def test_the_backup_type_is_plain_text():
     js = (JS_DIR / "admin-backups.js").read_text(encoding="utf-8")
     assert 'class="backup-type-badge"' in js
     assert 'class="backup-type-badge ${backup.type}"' not in js
+
+def test_the_phone_backup_card_keeps_every_desktop_column():
+    """A card lists the same fields in the same order as the desktop table,
+    and it never widens the page (no horizontal scrolling)."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    card = admin_css[admin_css.index("#backups-table tr {"):]
+    card = card[: card.index("}")]
+    for area in ("num", "created", "filename", "type", "size", "actions"):
+        assert area in card
+    assert '"num     created  created"' in card
+    assert '"filename filename filename"' in card
+    assert '"type    type     size"' in card
+    assert '"actions actions  actions"' in card
+    # The desktop rules stretch the row to 100 %; with card padding that
+    # overflowed the table and produced a horizontal scrollbar.
+    assert "width: auto;" in card
+    assert "box-sizing: border-box;" in card
+
+
+def test_the_download_link_centres_its_label_like_the_buttons():
+    """The download control is an <a>: as an inline-block its label sat at the
+    top edge instead of being centred next to the <button> elements."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    warning = admin_css[admin_css.index(".btn-warning {"):]
+    warning = warning[: warning.index("}")]
+    assert "display: inline-flex;" in warning
+    assert "align-items: center;" in warning
+    assert "justify-content: center;" in warning
+    assert "box-sizing: border-box;" in warning
+
+    actions = admin_css[admin_css.index("#backups-table td.actions-cell button,"):]
+    actions = actions[: actions.index("}")]
+    assert "#backups-table td.actions-cell a {" in actions
+    assert "height: 30px;" in actions
+
+def test_the_users_tab_action_buttons_darken_on_hover():
+    """«Change» and «Delete» in the Users table follow the same hover language
+    as every other admin button."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".delete-user-btn:hover {\n    background-color: #c0392b;\n}" in admin_css
+    assert ".change-password-btn:hover {\n    background-color: #e67e22;\n}" in admin_css

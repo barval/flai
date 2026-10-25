@@ -3,7 +3,7 @@
 {% block content %}
 <div class="login-wrapper">
     <div class="login-container">
-        <h2>{{ _('Authorization') }}</h2>
+        <h2>{{ _('Sign in') }}</h2>
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
@@ -20,7 +20,7 @@
             </div>
             <!-- Hidden field to pass selected theme -->
             <input type="hidden" name="theme" id="login-theme" value="light">
-            <button type="submit">{{ _('Login') }}</button>
+            <button type="submit">{{ _('Log in') }}</button>
         </form>
     </div>
 </div>

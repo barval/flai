@@ -1910,7 +1910,6 @@ msgstr "Status"
 
 #: app/templates/admin.html:53 app/templates/admin.html:284
 #: app/templates/admin.html:364 app/templates/login.html:14
-#: app/templates/login.html:23
 msgid "Login"
 msgstr "Login"
 
@@ -3687,8 +3686,12 @@ msgid "timer_zero"
 msgstr "0s"
 
 #: app/templates/login.html:6
-msgid "Authorization"
-msgstr "Authorization"
+msgid "Sign in"
+msgstr "Sign in"
+
+#: app/templates/login.html:23
+msgid "Log in"
+msgstr "Log in"
 
 #: modules/base.py:471
 msgid "Request too long, please simplify your request"

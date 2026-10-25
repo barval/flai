@@ -146,6 +146,16 @@
     return null;
   };
 
+  // A file dialog would open over the demo and accept nothing useful.
+  var nativeInputClick = HTMLInputElement.prototype.click;
+  HTMLInputElement.prototype.click = function () {
+    if (this.type === "file") {
+      showNotice();
+      return;
+    }
+    return nativeInputClick.apply(this, arguments);
+  };
+
   document.addEventListener(
     "submit",
     function (event) {
@@ -188,6 +198,12 @@
         window.setTimeout(function () {
           themeByUser = false;
         }, 1500);
+      }
+      if (target.matches && target.matches('input[type="file"]')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        showNotice();
+        return;
       }
       if (target.closest(".lang-option") || target.closest(BLOCKED_SELECTOR)) {
         event.preventDefault();

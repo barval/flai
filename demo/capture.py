@@ -132,8 +132,44 @@ class DemoSession:
         return response.content, response.headers.get("Content-Type", "")
 
 
-def _synthetic_series(length: int, seed: int) -> list[int]:
-    return [(seed + index * 7) % 11 * (index % 3 + 1) for index in range(length)]
+SERIES_PER_HOUR = {
+    "outgoing_tokens": 30000,
+    "incoming_tokens": 6500,
+    "messages": 18,
+    "sessions": 6,
+    "tasks": 1.5,
+    "files": 2,
+    "documents": 1.5,
+    "web_requests": 20,
+}
+STORAGE_BYTES_BASE = 128_000_000
+
+
+def _series_value(key: str, index: int, bucket_seconds: int, range_key: str) -> int:
+    seed = (sum(ord(char) for char in range_key) + len(key)) % 7
+    if key == "storage_bytes":
+        return STORAGE_BYTES_BASE + index * 900_000 + seed * 40_000
+    per_bucket = SERIES_PER_HOUR.get(key, 5) * bucket_seconds / 3600.0
+    wobble = ((index * 5 + seed) % 11) / 10.0
+    return int(per_bucket * (0.3 + wobble))
+
+
+def _synthetic_monitoring(body: dict, range_key: str) -> dict:
+    """Give every monitoring range plausible, distinct numbers."""
+    count = len(body.get("buckets") or []) or 24
+    bucket_seconds = int(body.get("bucket_seconds") or 3600)
+    series = body.get("series") or {}
+    for key in series:
+        series[key] = [_series_value(key, index, bucket_seconds, range_key) for index in range(count)]
+    body["series"] = series
+    totals = body.get("totals") or {}
+    for key, values in series.items():
+        if key in {"documents", "files"}:
+            totals[key] = values[-1] if values else 0
+        else:
+            totals[key] = sum(values)
+    body["totals"] = totals
+    return body
 
 
 def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
@@ -172,10 +208,8 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             route["body"] = rows
         elif str(route.get("path", "")).startswith("/admin/api/monitoring"):
             body = route.get("body") or {}
-            series = body.get("series") or {}
-            for key, values in list(series.items()):
-                series[key] = _synthetic_series(len(values) or 24, len(key))
-            body["series"] = series
+            range_key = str(route.get("path", "")).split("range=")[-1] or "24h"
+            body = _synthetic_monitoring(body, range_key)
             body["users"] = [{"login": login} for login, _ in users]
             route["body"] = body
     return result

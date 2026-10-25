@@ -12,7 +12,8 @@
   var NOTICE_ID = "demo-notice";
   var themeByUser = false;
   var BLOCKED_SELECTOR =
-    '#save-chat-button, #save-document-button, a[download], a[href^="/api/"], a[target="_blank"]';
+    '#save-chat-button, #save-document-button, a[download], a[href^="/api/"], ' +
+    'a[href^="/admin/"], a[target="_blank"]';
 
   document.documentElement.setAttribute("data-demo", "1");
 
@@ -194,7 +195,25 @@
     function (event) {
       var target = event.target;
       if (!target || !target.closest) return;
-      if (target.closest("#theme-toggle") || target.closest("#theme-toggle-guest")) {
+      if (target.closest("#theme-toggle-guest")) {
+        // The guest page keeps its own theme in localStorage, which an embedded
+        // document does not get; the shim owns the switch there.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        var next = document.body.classList.contains("dark-theme") ? "light" : "dark";
+        themeByUser = true;
+        applyTheme(next);
+        try {
+          window.parent.postMessage({ type: "demo-theme-set", theme: next }, "*");
+        } catch (e) {
+          /* the shell is always the parent in the built page */
+        }
+        window.setTimeout(function () {
+          themeByUser = false;
+        }, 1500);
+        return;
+      }
+      if (target.closest("#theme-toggle")) {
         themeByUser = true;
         window.setTimeout(function () {
           themeByUser = false;

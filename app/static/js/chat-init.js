@@ -1034,6 +1034,7 @@ function relocateChatControls(mobile) {
     const attach = document.getElementById('attach-file-button');
     const send = document.getElementById('send-button');
     const retry = document.getElementById('retry-task-button');
+    const scope = document.getElementById('scope-control');
     const rlmRow = document.querySelector('.rlm-controls');
     const inputRow = document.querySelector('.message-input');
     if (!voice || !attach || !send || !rlmRow || !inputRow) return;
@@ -1052,9 +1053,10 @@ function relocateChatControls(mobile) {
         delete voice.dataset.location;
         delete attach.dataset.location;
         delete send.dataset.location;
-        // Original template order: input, voice, (hidden file-input), attach, send
+        // Original template order: input, voice, (hidden file-input), scope, attach, send
         inputRow.appendChild(voice);
         inputRow.appendChild(attach);
+        if (scope && scope.parentElement === inputRow) inputRow.insertBefore(scope, attach);
         inputRow.appendChild(send);
         if (retry) inputRow.appendChild(retry);
     }

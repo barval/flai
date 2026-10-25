@@ -24,10 +24,10 @@ JSONL, one question per line:
 
 ```bash
 # Build a question set from the user's indexed chunks (one model call per question)
-flask rag-eval-generate --user valery --count 20 --out data/rag_eval/questions.jsonl
+flask rag-eval-generate --user <login> --count 20 --out data/rag_eval/questions.jsonl
 
 # Measure
-flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
+flask rag-eval --user <login> --dataset data/rag_eval/questions.jsonl \
                --top-k 10 --label "dense baseline" --out data/rag_eval/baseline.json
 ```
 
@@ -42,7 +42,7 @@ the usual failure for "how many jobs in this city" questions. Add an `"answer"` 
 item and run the same command with `--answers`:
 
 ```json
-{"question": "How many jobs did he have in Moscow?", "relevant": ["<doc_id>"], "answer": "0"}
+{"question": "How many jobs did the candidate have in Tver?", "relevant": ["<doc_id>"], "answer": "0"}
 ```
 
 The harness retrieves, builds the context exactly like a chat request, asks the model (it is told to

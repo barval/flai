@@ -365,9 +365,10 @@ class RagModule:
     def _tsquery_terms(tokens: list[str]) -> list[str]:
         """Prefix tsquery terms that survive the stemmer's inconsistency.
 
-        The Russian stemmer maps "Саров" to "сар" but "Сарове" to "саров", so an
-        exact lexeme misses half the corpus. Each token contributes its own
-        prefix and a one-letter-shorter one, which covers both stems.
+        The Russian stemmer can map the nominative and the prepositional case of
+        the same proper noun to different lexemes, so an exact lexeme misses half
+        the corpus. Each token contributes its own prefix and a one-letter-shorter
+        one, which covers both stems.
         """
         terms: list[str] = []
         for token in tokens:
@@ -434,8 +435,8 @@ class RagModule:
         tokens = self._rarest_terms(user_id, all_terms)
         if not tokens:
             return []
-        # Prefix matching: the stemmer maps "Саров" to "сар" but "Сарове" to
-        # "саров", so exact lexemes miss each other; "саров:*" covers both.
+        # Prefix matching: the stemmer can return different lexemes for different
+        # cases of one name, so exact lexemes miss each other; "term:*" covers both.
         tsquery = " | ".join(self._tsquery_terms(tokens))
         all_tsquery = " | ".join(self._tsquery_terms(all_terms))
 

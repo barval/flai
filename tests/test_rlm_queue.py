@@ -262,7 +262,7 @@ def test_process_rlm_task_reports_empty_answer_as_error():
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
         patch("modules.rlm.RlmModule") as mock_rlm_module,
-        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.db.get_document", return_value={"file_path": "demo/doc.txt", "filename": "doc.txt"}),
         patch("app.utils.extract_text_from_file", return_value="corpus text"),
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):
@@ -313,7 +313,7 @@ def test_process_rlm_task_rejects_oversized_corpus():
     rm = Mock()
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
-        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.db.get_document", return_value={"file_path": "demo/doc.txt", "filename": "doc.txt"}),
         patch("app.utils.extract_text_from_file", return_value="a" * 500),
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):
@@ -353,7 +353,7 @@ def test_process_rlm_task_localizes_task_timeout():
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
         patch("modules.rlm.RlmModule") as mock_rlm_module,
-        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.db.get_document", return_value={"file_path": "demo/doc.txt", "filename": "doc.txt"}),
         patch("app.utils.extract_text_from_file", return_value="corpus text"),
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):
@@ -407,16 +407,16 @@ def test_process_rlm_task_emits_reading_and_finalizing_stages():
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
         patch("modules.rlm.RlmModule") as mock_rlm_module,
-        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.db.get_document", return_value={"file_path": "demo/doc.txt", "filename": "doc.txt"}),
         patch("app.utils.extract_text_from_file") as mock_extract,
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):
-        mock_extract.side_effect = lambda path: "corpus text" if path == "/tmp/documents/valery/doc.txt" else None
+        mock_extract.side_effect = lambda path: "corpus text" if path == "/tmp/documents/demo/doc.txt" else None
         mock_rlm_module.return_value.run = Mock(return_value=RlmResult(answer="ok", trace=[], steps=1))
         result = q._process_rlm_task(task)
 
     assert result["status"] == "ok"
-    mock_extract.assert_called_with("/tmp/documents/valery/doc.txt")
+    mock_extract.assert_called_with("/tmp/documents/demo/doc.txt")
     stages = [p["stage"] for p in events if p and "stage" in p]
     assert stages[0] == "loading_reasoning_model"
     assert stages.index("rlm_reading") < stages.index("rlm_finalizing")
@@ -450,7 +450,7 @@ def test_process_rlm_task_writes_trace_on_error():
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
         patch("modules.rlm.RlmModule") as mock_rlm_module,
-        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.db.get_document", return_value={"file_path": "demo/doc.txt", "filename": "doc.txt"}),
         patch("app.utils.extract_text_from_file", return_value="corpus text"),
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):

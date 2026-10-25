@@ -82,7 +82,7 @@ Three strategies are available in Admin Panel → Models → Chunks:
 |---|---|
 | `fixed` | Character windows with overlap; cheapest, cuts through sentences |
 | `recursive` | Splits by paragraphs, sentences and words; keeps sentences whole |
-| `structured` | Splits on logical entries: a resume entry ("Ноябрь 2023 — Сбер / Нижний Новгород / …") or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
+| `structured` | Splits on logical entries: a resume entry ("November 2023 — Alfa LLC / Tver / …") or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
 
 `structured` exists for counting questions ("how many jobs in this city"): when two
 entries share a chunk the model has to count inside a fragment and usually gets it
@@ -127,7 +127,8 @@ chunk both finders agree on outranks a chunk only one found. Lexical terms are c
 - proper nouns and Latin-script words are the discriminative ones (cities, companies, tool names);
 - terms that appear in a large share of the corpus are dropped (`ts_rank_cd` has no IDF, so a name
   present in half the chunks would drown the city present in five);
-- matching is by prefix, because the Russian stemmer maps `Саров` to `сар` but `Сарове` to `саров`;
+- matching is by prefix, because the Russian stemmer can map the nominative and the prepositional
+  case of one name to different lexemes;
 - a chunk from a document whose **title** matches the query gets a bonus — the resume is named after
   the person, a chat export is not.
 

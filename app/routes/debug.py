@@ -40,7 +40,7 @@ def rag_search():
         return jsonify({"error": "JSON body required"}), 400
 
     query = data.get("query", "")
-    user_id = data.get("user_id", "valery")
+    user_id = data.get("user_id", "demo")
     top_k = data.get("top_k", 80)
 
     if not query:
@@ -149,7 +149,7 @@ def list_documents():
     """List all documents for a user."""
     user_id = request.args.get("user_id")
     if not user_id:
-        user_id = "valery"
+        user_id = "demo"
 
     logger.info(f"list_documents: user_id={user_id}")
 

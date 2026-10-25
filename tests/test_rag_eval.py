@@ -190,23 +190,23 @@ def test_chunk_level_ground_truth_is_not_deduplicated_by_document():
 
 
 def test_answer_matches_counts_by_number():
-    assert answer_matches("2", "В Москве было 2 места работы") is True
+    assert answer_matches("2", "В Твери было 2 места работы") is True
     assert answer_matches("2", "3") is False
 
 
 def test_answer_matches_accepts_no_data_for_an_expected_zero():
     assert answer_matches("0", "НЕТ ДАННЫХ") is True
-    assert answer_matches("0", "В Москве было 1 место") is False
+    assert answer_matches("0", "В Твери было 1 место") is False
 
 
 def test_answer_mode_reports_accuracy_and_misses():
     from app.rag_eval import evaluate_answers
 
     items = [
-        EvalItem("сколько мест в Москве?", ["d1"], answer="0"),
-        EvalItem("сколько мест в Нижнем?", ["d1"], answer="3"),
+        EvalItem("сколько мест в Твери?", ["d1"], answer="0"),
+        EvalItem("сколько мест в Пскове?", ["d1"], answer="3"),
     ]
-    answers = {"сколько мест в Москве?": "НЕТ ДАННЫХ", "сколько мест в Нижнем?": "два"}
+    answers = {"сколько мест в Твери?": "НЕТ ДАННЫХ", "сколько мест в Пскове?": "два"}
 
     report = evaluate_answers(
         items,
@@ -225,8 +225,8 @@ def test_passage_match_survives_a_chunk_boundary_shift():
     """Most of the passage in the chunk counts, exact bytes are not required."""
     from app.rag_eval import _passage_match
 
-    passage = "Ноябрь 2023 — Сбер настоящее время Нижний Новгород rabota.sber.ru 2 года 3 месяца"
-    shifted = "Опыт работы Ноябрь 2023 — Сбер настоящее время Нижний Новгород, rabota.sber.ru/ 2 года 3 месяца"
+    passage = "Ноябрь 2023 — ООО «Альфа» настоящее время Тверь alfa.example 2 года 3 месяца"
+    shifted = "Опыт работы Ноябрь 2023 — ООО «Альфа» настоящее время Тверь, alfa.example/ 2 года 3 месяца"
 
     assert _passage_match(passage, shifted.lower())
     assert not _passage_match(passage, "совершенно другой текст про отпуск и погоду")

@@ -1372,7 +1372,7 @@ components:
     Me:
       type: object
       properties:
-        login: {type: string, example: valery}
+        login: {type: string, example: demo}
         service_class: {type: integer, example: 2}
         is_admin: {type: boolean, example: true}
         language: {type: string, enum: [ru, en], example: en}

@@ -130,10 +130,10 @@ class TestBaseModule:
         from unittest.mock import patch
 
         with patch("app.db.get_session_recent_history", return_value=[]):
-            ctx = module.build_router_context("s1", "valery", "мы смотрели снимки с камер?", "ru")
+            ctx = module.build_router_context("s1", "demo", "мы смотрели снимки с камер?", "ru")
         assert "смотрел снимки с камер" in ctx
         fake_slm.recall.assert_called_once_with(
-            "мы смотрели снимки с камер?", limit=module.ROUTER_SLM_FACTS, profile="valery"
+            "мы смотрели снимки с камер?", limit=module.ROUTER_SLM_FACTS, profile="demo"
         )
 
     @pytest.mark.unit

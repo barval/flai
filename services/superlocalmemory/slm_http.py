@@ -829,7 +829,7 @@ def recall():
 def forget():
     """Archive facts matching ``query`` inside ``profile``.
 
-    POST body: ``{"query": "...", "profile": "valery"}``.
+    POST body: ``{"query": "...", "profile": "<login>"}``.
     Recalls semantically, then archives the matched facts (profile-scoped).
     """
     data = request.get_json(force=True)
@@ -1030,7 +1030,7 @@ def cleanup_memories():
     A memory is orphaned when none of its ``atomic_facts`` has
     ``lifecycle = 'active'``.
 
-    POST body: ``{"profile": "valery"}`` or ``{}`` (all profiles).
+    POST body: ``{"profile": "<login>"}`` or ``{}`` (all profiles).
     """
     data = request.get_json(force=True) if request.data else {}
     profile = data.get("profile")
@@ -1052,7 +1052,7 @@ def cleanup_memories():
 def similarity_check():
     """Return similarity score between candidate text and closest existing fact.
 
-    POST body: ``{"text": "...", "profile": "valery"}``.
+    POST body: ``{"text": "...", "profile": "<login>"}``.
     Returns ``{"success": true, "max_similarity": 0.87, "closest": "..."}``
     or ``{"success": true, "max_similarity": 0.0, "closest": null}`` when no
     facts exist yet.

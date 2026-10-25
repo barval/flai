@@ -45,22 +45,22 @@ def test_chunks_are_mirrored_and_removed(test_app):
         _cleanup("hybriduser")
         module = RagModule()
 
-        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["Работал в Москве", "Отпуск в Сочи"])
-        rows = module._lexical_search("hybriduser", "Москве", 10)
+        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["Работал в Твери", "Отпуск в Сочи"])
+        rows = module._lexical_search("hybriduser", "Твери", 10)
         assert rows and rows[0]["doc_id"] == "doc-1"
 
         module._delete_chunks("doc-1", "hybriduser")
-        assert module._lexical_search("hybriduser", "Москве", 10) == []
+        assert module._lexical_search("hybriduser", "Твери", 10) == []
 
 
 def test_lexical_search_respects_the_document_scope(test_app):
     with test_app.app_context():
         _cleanup("hybriduser")
         module = RagModule()
-        module._store_chunks("hybriduser", "doc-1", "one.pdf", ["Москва, работа в банке"])
-        module._store_chunks("hybriduser", "doc-2", "two.pdf", ["Москва, работа в телекоме"])
+        module._store_chunks("hybriduser", "doc-1", "one.pdf", ["Тверь, работа в банке"])
+        module._store_chunks("hybriduser", "doc-2", "two.pdf", ["Тверь, работа в телекоме"])
 
-        scoped = module._lexical_search("hybriduser", "Москва", 10, ["doc-2"])
+        scoped = module._lexical_search("hybriduser", "Тверь", 10, ["doc-2"])
 
         assert [row["doc_id"] for row in scoped] == ["doc-2"]
         _cleanup("hybriduser")
@@ -70,12 +70,12 @@ def test_reindexing_replaces_the_mirrored_chunks(test_app):
     with test_app.app_context():
         _cleanup("hybriduser")
         module = RagModule()
-        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["старый текст про Москву"])
+        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["старый текст про Тверь"])
 
-        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["новый текст про Саров"])
+        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["новый текст про Псков"])
 
-        assert module._lexical_search("hybriduser", "Москву", 10) == []
-        assert module._lexical_search("hybriduser", "Саров", 10)[0]["doc_id"] == "doc-1"
+        assert module._lexical_search("hybriduser", "Тверь", 10) == []
+        assert module._lexical_search("hybriduser", "Псков", 10)[0]["doc_id"] == "doc-1"
         _cleanup("hybriduser")
 
 
@@ -83,8 +83,8 @@ def test_reindexing_replaces_the_mirrored_chunks(test_app):
 def test_lexical_terms_prefer_proper_nouns():
     module = RagModule()
 
-    assert module._lexical_terms("Сколько рабочих мест было у Валерия в Москве?") == ["валерия", "москве"]
-    assert module._lexical_terms("Для чего Валерий использовал bash?") == ["валерий", "bash"]
+    assert module._lexical_terms("Сколько рабочих мест было у Иванова в Твери?") == ["иванова", "твери"]
+    assert module._lexical_terms("Для чего Иванов использовал bash?") == ["иванов", "bash"]
 
 
 @pytest.mark.unit
@@ -101,8 +101,8 @@ def test_lexical_terms_fall_back_to_all_words():
 
 @pytest.mark.unit
 def test_tsquery_terms_cover_both_stems():
-    """The stemmer maps "Саров" and "Сарове" to different lexemes; both prefixes stay."""
-    assert RagModule._tsquery_terms(["сарове"]) == ["сарове:*", "саров:*"]
+    """Case forms of one name can stem differently; both prefixes are kept."""
+    assert RagModule._tsquery_terms(["твери"]) == ["твери:*", "твер:*"]
     assert RagModule._tsquery_terms(["баш"]) == ["баш:*"]
 
 

@@ -24,10 +24,10 @@ JSONL, один вопрос на строку:
 
 ```bash
 # Собрать набор вопросов из проиндексированных чанков (один вызов модели на вопрос)
-flask rag-eval-generate --user valery --count 20 --out data/rag_eval/questions.jsonl
+flask rag-eval-generate --user <login> --count 20 --out data/rag_eval/questions.jsonl
 
 # Замерить
-flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
+flask rag-eval --user <login> --dataset data/rag_eval/questions.jsonl \
                --top-k 10 --label "dense baseline" --out data/rag_eval/baseline.json
 ```
 
@@ -42,7 +42,7 @@ flask rag-eval --user valery --dataset data/rag_eval/questions.jsonl \
 `"answer"` и запустите ту же команду с `--answers`:
 
 ```json
-{"question": "Сколько рабочих мест было в Москве?", "relevant": ["<doc_id>"], "answer": "0"}
+{"question": "Сколько рабочих мест было в Твери?", "relevant": ["<doc_id>"], "answer": "0"}
 ```
 
 Инструмент делает поиск, собирает контекст так же, как запрос в чате, просит модель ответить (ей

@@ -859,7 +859,13 @@ def _verify_with_language_guard(base: Any, prompt: str, lang: str) -> dict[str, 
         temperature=0.2,
     )
     verdict = _parse_verdict(str(reply))
-    if not _needs_language_retry(str(verdict.get("explanation") or ""), lang):
+    explanation = str(verdict.get("explanation") or "")
+    if explanation.strip() in _CHECKPOINT_SENTINELS:
+        # An internal marker (unreadable reply, verification not started) is not
+        # model prose: localize_checkpoint_explanation() translates it and it
+        # must never trigger a wording retry.
+        return verdict
+    if not _needs_language_retry(explanation, lang):
         return verdict
 
     retry = _parse_verdict(

@@ -238,6 +238,7 @@ class RlmTraceStep:
     observation: str
 
 
+@dataclass
 class RlmResult:
     answer: str
     trace: list[RlmTraceStep] = field(default_factory=list)

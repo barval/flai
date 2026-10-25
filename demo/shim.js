@@ -55,6 +55,7 @@
 
   function applyTheme(theme) {
     document.body.classList.toggle("dark-theme", theme === "dark");
+    document.documentElement.classList.toggle("demo-dark", theme === "dark");
     ["theme-toggle", "theme-toggle-guest"].forEach(function (id) {
       var button = document.getElementById(id);
       if (button) button.textContent = theme === "dark" ? "\u2600\ufe0f" : "\ud83c\udf19";

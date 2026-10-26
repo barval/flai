@@ -243,6 +243,7 @@ Gate on the new build:
   serves `llamacpp:prompt_tokens_total`, `llamacpp:prompt_seconds_total` and the rest on its own port.
   Verified on the live container (`curl http://localhost:10003/metrics` inside `flai-llamaswap`). The
   endpoint is reachable only inside the Docker network; feeding the Monitoring tab is the follow-up.
+- **`--cache-reuse` and ngram speculation bring nothing measurable here** — measured from the API `timings` on the reasoning model, three runs each: baseline 110.4 tok/s, `--cache-reuse 256` 110.2, `--spec-type ngram-simple` 109.6. With a ~7k-token shared prefix, prompt processing is already cached by llama.cpp (1738 ms cold, then 54 ms with and 53 ms without `--cache-reuse`), so neither flag is enabled. BM25 in Qdrant is left open: it needs sparse-vector indexing, a re-index and a comparison against the PostgreSQL hybrid on the 30-question set, which is a feature-sized change rather than a flag.
 - **A spent thinking budget ends with a sentence** — the reasoning command now carries `--reasoning-budget-message`, so llama-server injects «Thinking budget reached. Stop analysing and answer now.» before the end-of-thinking tag instead of cutting the block silently. The flag is in the generated config and in the live `llama-server` argv (one argument, quotes handled by llama-swap); a full budget exhaustion was not exercised.
 - **CUDA 12.x drivers stay supported** — the v267 image still ships the CUDA 12.8.1 runtime and keeps
   `NVIDIA_REQUIRE_CUDA=cuda>=12.8`, exactly like v255, so the existing waiver path is unchanged:

@@ -243,6 +243,7 @@ Gate on the new build:
   serves `llamacpp:prompt_tokens_total`, `llamacpp:prompt_seconds_total` and the rest on its own port.
   Verified on the live container (`curl http://localhost:10003/metrics` inside `flai-llamaswap`). The
   endpoint is reachable only inside the Docker network; feeding the Monitoring tab is the follow-up.
+- **A spent thinking budget ends with a sentence** — the reasoning command now carries `--reasoning-budget-message`, so llama-server injects «Thinking budget reached. Stop analysing and answer now.» before the end-of-thinking tag instead of cutting the block silently. The flag is in the generated config and in the live `llama-server` argv (one argument, quotes handled by llama-swap); a full budget exhaustion was not exercised.
 - **CUDA 12.x drivers stay supported** — the v267 image still ships the CUDA 12.8.1 runtime and keeps
   `NVIDIA_REQUIRE_CUDA=cuda>=12.8`, exactly like v255, so the existing waiver path is unchanged:
   `deploy.sh` sets `LLAMA_SWAP_DISABLE_REQUIRE=1` for drivers 12.2–12.7 and the container was re-run with

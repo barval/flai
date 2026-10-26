@@ -4,6 +4,7 @@
 import pytest
 
 from app.vram_probe import (
+    is_plausible_measurement,
     kv_per_token_from_metadata,
     parse_compute_apps,
     parse_proc_status_rss_mb,
@@ -181,3 +182,12 @@ def test_measured_total_is_dropped_when_the_model_changed():
         ),
     ):
         assert rm.measured_total_mb("multimodal") is None
+
+
+def test_a_measurement_below_the_weights_is_not_plausible():
+    """The sample missed the unload: the model was still resident at baseline."""
+    assert is_plausible_measurement(measured_mb=2, weights_mb=4794, mmproj_mb=1105) is False
+
+
+def test_a_full_measurement_is_plausible():
+    assert is_plausible_measurement(measured_mb=7700, weights_mb=4794, mmproj_mb=1105) is True

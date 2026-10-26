@@ -131,6 +131,16 @@ def _gpu_used_mb() -> int:
     return int(first[0]) if first and first[0].strip().isdigit() else 0
 
 
+def is_plausible_measurement(measured_mb: int, weights_mb: int, mmproj_mb: int = 0) -> bool:
+    """A model cannot occupy less than its own weights.
+
+    Below that the sample caught the wrong moment — usually a model that was
+    still resident when the baseline was taken, so the delta is another model's
+    tail. Such a number must never replace the estimate.
+    """
+    return measured_mb > 0 and measured_mb >= (weights_mb + mmproj_mb) * 0.9
+
+
 def _weights_mb(module: str, model_name: str) -> int:
     """Size of the model file itself, resolved the same way llama-swap gets it."""
     import os
@@ -308,7 +318,8 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
     ctx_size = int(config.get("context_length") or 0)
 
     rm.unload_llamacpp_model(swap_url)
-    deadline = time.time() + 60
+    deadline = time.time() + 90
+    running: list[dict[str, Any]] = []
     while time.time() < deadline:
         try:
             running = requests.get(f"{swap_url}/running", timeout=5).json().get("running", [])
@@ -317,6 +328,10 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
         if not running:
             break
         time.sleep(1)
+    if running:
+        raise RuntimeError(
+            f"cannot measure {module}: {[m.get('name') for m in running]} stayed resident after the unload"
+        )
     time.sleep(2)
     baseline = _gpu_used_mb()
 
@@ -364,6 +379,10 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
             stop["flag"] = True
             sampler.join(timeout=2)
 
+    from app.utils import get_gguf_models_cached
+
+    meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+    expected = kv_per_token_from_metadata(meta)
     summary = summarize_probe(
         baseline_mb=baseline,
         loaded_mb=peak,
@@ -371,9 +390,9 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
         mmproj_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,
         ctx_size=ctx_size,
     )
-    from app.utils import get_gguf_models_cached
-
-    expected = kv_per_token_from_metadata(get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {}))
     summary["kv_expected_mb"] = round(expected * ctx_size) if expected else 0
+    summary["plausible"] = is_plausible_measurement(
+        summary["total_mb"], summary["weights_mb"], summary["mmproj_mb"]
+    )
     summary.update({"module": module, "model": model_name, "ctx_size": ctx_size, "baseline_mb": baseline})
     return summary

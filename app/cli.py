@@ -859,6 +859,10 @@ def vram_probe(module, peak, peak_chars, store):
     click.echo(f"kv+bufs:   {result['kv_and_buffers_mb']} MB (residual, includes buffers)")
     click.echo(f"kv shapes: {result['kv_expected_mb']} MB expected from the GGUF architecture")
 
+    if not result["plausible"]:
+        click.echo("measurement unusable: the total is below the model's own weights — nothing stored")
+        return
+
     if store:
         upsert_vram_estimate(
             module,

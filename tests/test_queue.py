@@ -47,6 +47,42 @@ class TestRedisRequestQueue:
         redis.pipeline.return_value = pipe
         return redis
 
+    def test_rag_context_keeps_every_retrieved_chunk(self, mock_app, mock_redis):
+        """The 15-chunk cap dropped the tail of the retrieved list.
+
+        On a resume those were the current employer and two previous jobs, while
+        the assembled context still used only ~12 % of the model window.
+        """
+        from contextlib import nullcontext
+
+        from app.queue import RedisRequestQueue
+
+        chunks = [
+            {"doc_id": "d1", "chunk_index": i, "filename": "cv.pdf", "text": f"chunk {i}"}
+            for i in range(20)
+        ]
+        scores = [0.40 - i * 0.004 for i in range(20)]
+        fake_rag = Mock()
+        fake_rag.available = True
+        fake_rag.search.return_value = (chunks, scores)
+        mock_app.modules = {"rag": fake_rag}
+        mock_app.config = {**mock_app.config, "RAG_RELEVANCE_THRESHOLD_DEFAULT": 0.3}
+
+        with (
+            patch("app.queue.redis.from_url", return_value=mock_redis),
+            patch("app.queue.force_locale", lambda *a, **k: nullcontext()),
+            patch("flask_babel.gettext", lambda text: text),
+        ):
+            queue = RedisRequestQueue(mock_app)
+            with (
+                patch.object(queue, "_requeue_reasoning_task") as requeue,
+                patch.object(queue, "_publish_stream_event"),
+            ):
+                queue._process_rag_task("q", "sess", "user", "ru", "neutral", task={"id": "t"})
+
+        context = requeue.call_args.kwargs["rag_context"]
+        assert context.count("[Source: cv.pdf") == 20, "every retrieved chunk belongs in the context"
+
     def test_serialize_creates_hmac_signature(self, mock_app, mock_redis):
         """Test that _serialize creates proper HMAC signature."""
         from app.queue import RedisRequestQueue

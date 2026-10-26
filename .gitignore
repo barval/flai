@@ -17,6 +17,9 @@ __pycache__/
 
 # Data directories (user data, uploads, documents)
 data/
+# RAG evaluation datasets and reports contain real documents and personal data:
+# they are created locally and must never be committed or pushed.
+data/rag_eval/
 uploads/
 documents/
 

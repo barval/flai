@@ -14,7 +14,7 @@ def ctx(test_app):
     test_app.config["CRAWLER_URL"] = "http://crawler-test:11235"
     test_app.config["CRAWL_PAGE_TIMEOUT_S"] = 30
     test_app.config["CRAWL_MAX_PAGE_CHARS"] = 50000
-    return {"app": test_app, "user_id": "valery", "lang": "ru"}
+    return {"app": test_app, "user_id": "demo", "lang": "ru"}
 
 
 @pytest.mark.unit

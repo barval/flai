@@ -417,7 +417,9 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
             return str(_("Web search service unavailable"))
 
     max_results = app.config.get("SEARXNG_MAX_RESULTS", 7) if app else 7
-    results, _provider = search_module.search_with_fallback(query, lang=lang, max_results=max_results, api_key=api_key)
+    results, _provider = search_module.search_with_fallback(
+        query, lang=lang, max_results=max_results, api_key=api_key, user_id=user_id
+    )
     if not results:
         with force_locale(lang):
             return str(_("No results found for query: {query}").format(query=query))
@@ -443,7 +445,7 @@ def _exec_read_page(ctx: dict[str, Any], url: str) -> str:
         with force_locale(lang):
             return str(_("This address is not available for reading"))
     try:
-        return str(crawler.read_page(url))
+        return str(crawler.read_page(url, user_id=ctx.get("user_id")))
     except Exception:
         logger.error(f"read_page tool failed for {url[:256]}")
         with force_locale(lang):

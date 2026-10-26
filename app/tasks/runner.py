@@ -546,7 +546,9 @@ def _run_search_step(app: Flask, step: dict[str, Any], user_id: str, lang: str) 
     step_extra = step.get("extra") or {}
     query = str(step_extra.get("query") or step.get("goal") or "")
     api_key = get_tavily_key(user_id) if user_id else None
-    results, _provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
+    results, _provider = search.search_with_fallback(
+        query, lang=lang, api_key=api_key, user_id=user_id
+    )
     base = app.modules.get("base")
     max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
     return search.format_results_context(results or [], lang=lang, max_chars=max_chars)
@@ -813,7 +815,79 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
 _CHECKPOINT_SENTINELS = {
     "unparseable checkpoint reply": "the verifier returned an unreadable verdict",
     "checkpoint verification failed": "the verification could not be started",
+    "verifier answered in another language": "the verifier answered in another language",
 }
+
+
+_FOREIGN_WORD_RES = {"ru": re.compile(r"[A-Za-z]{2,}"), "en": re.compile(r"[\u0400-\u04FF]{2,}")}
+_TARGET_SCRIPT_RES = {"ru": re.compile(r"[\u0400-\u04FF]"), "en": re.compile(r"[A-Za-z]")}
+
+
+def _needs_language_retry(text: str, lang: str) -> bool:
+    """True when a model-written verdict reason is not in the profile language.
+
+    The verifier gets ``response_language`` in its prompt, but a weak model
+    sometimes answers in English anyway; the explanation is stored verbatim and
+    printed in the task view, so a foreign reason is a visible defect.
+    """
+    text = (text or "").strip()
+    if not text or lang not in _FOREIGN_WORD_RES:
+        return False
+    if _TARGET_SCRIPT_RES[lang].search(text):
+        return False
+    return len(_FOREIGN_WORD_RES[lang].findall(text)) >= 3
+
+
+def _language_reminder(lang: str) -> str:
+    """Corrective sentence appended for the single wording retry."""
+    if lang == "ru":
+        return "Повтори ответ и напиши поле explanation строго на русском языке."
+    return "Repeat the answer and write the explanation strictly in English."
+
+
+def _verify_with_language_guard(base: Any, prompt: str, lang: str) -> dict[str, Any]:
+    """Ask the verifier once, retrying only when the reason came in another language.
+
+    The verdict itself is never re-decided by the retry — only the wording is
+    replaced. When the retry is foreign too, a localized sentinel is stored and
+    the original text goes to the log for diagnostics.
+    """
+    reply = base.call_llamacpp(
+        [{"role": "user", "content": prompt}],
+        model_type="reasoning",
+        lang=lang,
+        temperature=0.2,
+    )
+    verdict = _parse_verdict(str(reply))
+    explanation = str(verdict.get("explanation") or "")
+    if explanation.strip() in _CHECKPOINT_SENTINELS:
+        # An internal marker (unreadable reply, verification not started) is not
+        # model prose: localize_checkpoint_explanation() translates it and it
+        # must never trigger a wording retry.
+        return verdict
+    if not _needs_language_retry(explanation, lang):
+        return verdict
+
+    retry = _parse_verdict(
+        str(
+            base.call_llamacpp(
+                [
+                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": _language_reminder(lang)},
+                ],
+                model_type="reasoning",
+                lang=lang,
+                temperature=0.2,
+            )
+        )
+    )
+    if not _needs_language_retry(str(retry.get("explanation") or ""), lang):
+        verdict["explanation"] = retry.get("explanation") or verdict.get("explanation")
+        return verdict
+
+    logger.warning(f"verifier answered in another language (profile {lang!r}): {verdict.get('explanation')!r}")
+    verdict["explanation"] = "verifier answered in another language"
+    return verdict
 
 
 def localize_checkpoint_explanation(explanation: str, lang: str = "ru") -> str:
@@ -859,13 +933,7 @@ def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "r
             if not prompt:
                 raise RuntimeError("task_checkpoint prompt template unavailable")
             begin_usage_account(account_id)
-            reply = base.call_llamacpp(
-                [{"role": "user", "content": prompt}],
-                model_type="reasoning",
-                lang=lang,
-                temperature=0.2,
-            )
-            verdict = _parse_verdict(str(reply))
+            verdict = _verify_with_language_guard(base, prompt, lang)
         except Exception as e:
             logger.error(f"run_checkpoint failed for step {step.get('id', '?')}: {e}")
             verdict = {"verdict": False, "explanation": "checkpoint verification failed"}
@@ -927,13 +995,7 @@ def run_media_checkpoint(
             if not prompt:
                 raise RuntimeError("task_checkpoint_media prompt template unavailable")
             begin_usage_account(account_id)
-            reply = base.call_llamacpp(
-                [{"role": "user", "content": prompt}],
-                model_type="reasoning",
-                lang=lang,
-                temperature=0.2,
-            )
-            verdict = _parse_verdict(str(reply))
+            verdict = _verify_with_language_guard(base, prompt, lang)
         except Exception as e:
             logger.error(f"run_media_checkpoint failed for step {step.get('id', '?')}: {e}")
             verdict = {"verdict": False, "explanation": "checkpoint verification failed"}

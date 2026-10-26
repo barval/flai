@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.6\n"
+"Project-Id-Version: FLAI 12.7\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-22 18:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -1937,7 +1937,6 @@ msgstr "Статус"
 
 #: app/templates/admin.html:53 app/templates/admin.html:284
 #: app/templates/admin.html:364 app/templates/login.html:14
-#: app/templates/login.html:23
 msgid "Login"
 msgstr "Логин"
 
@@ -2085,7 +2084,13 @@ msgstr "Мультимодальные"
 msgid "Embedding models"
 msgstr "Эмбеддинги"
 
+msgid "Reranker models"
+msgstr "Реранкеры"
+
 #: app/templates/admin.html:146
+msgid "Context"
+msgstr "Контекст"
+
 msgid "Context length"
 msgstr "Длина контекста"
 
@@ -2416,6 +2421,10 @@ msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model.
 msgstr ""
 "Эту модель нельзя сохранить (недостаточно VRAM/RAM). Выберите модель "
 "меньше."
+
+#: app/templates/admin.html
+msgid "The multimodal module requires a Vision model (with mmproj), not a plain chat model."
+msgstr "Для мультимодального модуля нужна Vision-модель (с mmproj), а не простая чат-модель."
 
 #: app/templates/admin.html:423
 msgid "Please select a model first."
@@ -3710,8 +3719,12 @@ msgid "timer_zero"
 msgstr "0с"
 
 #: app/templates/login.html:6
-msgid "Authorization"
-msgstr "Авторизация"
+msgid "Sign in"
+msgstr "Вход"
+
+#: app/templates/login.html:23
+msgid "Log in"
+msgstr "Войти"
 
 #: modules/base.py:471
 msgid "Request too long, please simplify your request"
@@ -3867,341 +3880,863 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
-#~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
-#~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
+#: app/tasks/runner.py
+msgid "the verifier answered in another language"
+msgstr "верификатор ответил на другом языке"
+
+#: app/templates/admin.html
+msgid "Monitoring"
+msgstr "Мониторинг"
+
+#: app/templates/admin.html
+msgid "User"
+msgstr "Пользователь"
+
+#: app/templates/admin.html
+msgid "All users"
+msgstr "Все пользователи"
+
+#: app/templates/admin.html
+msgid "No data in this range"
+msgstr "Нет данных за этот период"
+
+#: app/templates/admin.html
+msgid "Failed to load monitoring data"
+msgstr "Не удалось загрузить данные мониторинга"
+
+#: app/templates/admin.html
+msgid "Used of limit — hourly snapshots, history starts at the first snapshot."
+msgstr "Занято из лимита — снимки раз в час, история начинается с первого снимка."
+
+#: app/templates/admin.html
+msgid "Chat sessions created in range, including deleted ones."
+msgstr "Сеансы чата, созданные за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Chat messages in range, including deleted ones."
+msgstr "Сообщения чата за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Background tasks created in range, including deleted ones."
+msgstr "Фоновые задачи, созданные за период, включая удалённые."
+
+#: app/templates/admin.html
+msgid "Chat + tasks + plans, including deleted activity."
+msgstr "Чат + задачи + планы, включая удалённую активность."
+
+#: app/templates/admin.html
+msgid "Chat attachments added in range — a document attached in chat counts here and in Documents."
+msgstr "Вложения чата, добавленные за период — документ, приложенный в чате, считается здесь и в «Документах»."
+
+#: app/templates/admin.html
+msgid "All documents, same as the Documents panel."
+msgstr "Все документы, как в панели «Документы»."
+
+#: app/routes/admin.py
+msgid "Invalid period"
+msgstr "Неверный период"
+
+#: app/routes/admin.py
+msgid "Unknown user"
+msgstr "Неизвестный пользователь"
+
+#, python-brace-format
+#: app/routes/admin.py
+msgid "History since {date}"
+msgstr "История с {date}"
+
+#: app/templates/admin.html
+msgid "1 h"
+msgstr "1 ч"
+
+#: app/templates/admin.html
+msgid "6 h"
+msgstr "6 ч"
+
+#: app/templates/admin.html
+msgid "24 h"
+msgstr "24 ч"
+
+#: app/templates/admin.html
+msgid "7 d"
+msgstr "7 д"
+
+#: app/templates/admin.html
+msgid "30 d"
+msgstr "30 д"
+
+#: app/templates/admin.html
+msgid "Internet requests"
+msgstr "Запросы в интернет"
+
+#: app/templates/admin.html
+msgid "Searches and page fetches since the 1st of the month"
+msgstr "Поиски и загрузки страниц с 1-го числа месяца"
+
+#: app/templates/admin.html
+msgid "Searches, page fetches and crawl pages sent to the internet — with a Tavily key or without."
+msgstr "Поиски, загрузки страниц и страницы обхода, отправленные в интернет — с ключом Tavily и без него."
+
+#: app/templates/admin.html
+msgid "Per-user limit in MB. Leave the field empty to use the default ({default} MB)."
+msgstr "Индивидуальный лимит в МБ. Оставьте поле пустым, чтобы использовать общий ({default} МБ)."
+
+#: app/templates/admin.html
+msgid "Enter a whole number of megabytes, or leave the field empty for the default limit"
+msgstr "Введите целое число мегабайт или оставьте поле пустым для общего лимита"
 
-#~ msgid "Documents Reindexing"
-#~ msgstr "Переиндексация документов"
+#: app/templates/admin.html
+msgid "Invalid storage limit"
+msgstr "Неверный лимит хранилища"
 
-#~ msgid "Reindex All Documents"
-#~ msgstr "Переиндексировать все документы"
+#: app/templates/admin.html
+msgid "Settings"
+msgstr "Настройки"
 
-#~ msgid "Rebuild all document embeddings with current chunking strategy"
-#~ msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
+#: app/templates/admin.html
+msgid "Search settings…"
+msgstr "Поиск по настройкам…"
 
-#~ msgid "Current strategy"
-#~ msgstr "Текущая стратегия"
+#: app/templates/admin.html
+msgid "Save changes"
+msgstr "Сохранить изменения"
 
-#~ msgid "Reindex all documents"
-#~ msgstr "Переиндексировать все документы"
+#: app/templates/admin.html
+msgid "Reset to the .env value"
+msgstr "Сбросить к значению из .env"
 
-#~ msgid "Reindex All"
-#~ msgstr "Переиндексировать"
+#: app/templates/admin.html
+msgid "Saving…"
+msgstr "Сохранение…"
 
-#~ msgid "Reindexing in progress"
-#~ msgstr "Переиндексация в процессе"
+#: app/templates/admin.html
+msgid "Invalid settings"
+msgstr "Неверные значения"
 
-#~ msgid "Reindexing complete"
-#~ msgstr "Переиндексация завершена"
+#: app/templates/admin.html
+msgid "Failed to load settings"
+msgstr "Не удалось загрузить настройки"
 
-#~ msgid "Reindexing failed"
-#~ msgstr "Переиндексация не удалась"
+#: app/templates/admin.html
+msgid "Reset"
+msgstr "Сброшено"
 
-#~ msgid "delete_session_confirm"
-#~ msgstr "Удалить сеанс \"{title}\" от {date}?"
+#: app/templates/admin.html
+msgid "A value is stored"
+msgstr "Значение сохранено"
 
-#~ msgid "error"
-#~ msgstr "Ошибка"
+#: app/templates/admin.html
+msgid "Not set"
+msgstr "Не задано"
 
-#~ msgid "chat"
-#~ msgstr "Чат"
+#: app/templates/admin.html
+msgid "Search and crawl"
+msgstr "Поиск и обход"
 
-#~ msgid "llama.cpp service unavailable"
-#~ msgstr "Сервис llama.cpp недоступен"
+#: app/templates/admin.html
+msgid "Documents and RAG"
+msgstr "Документы и RAG"
 
-#~ msgid "Model for {model_type} not configured"
-#~ msgstr "Модель для {model_type} не настроена"
+#: app/templates/admin.html
+msgid "Models and context"
+msgstr "Модели и контекст"
 
-#~ msgid ""
-#~ "Timeout ({timeout}s) when calling the "
-#~ "model. Try increasing timeout in admin"
-#~ " panel or simplify your request."
-#~ msgstr ""
-#~ "Превышено время ожидания ответа от "
-#~ "модели ({timeout}с). Попробуйте увеличить "
-#~ "таймаут в панели администратора или "
-#~ "упростите запрос."
+#: app/templates/admin.html
+msgid "Media generation"
+msgstr "Генерация медиа"
 
-#~ msgid "Could not connect to llama.cpp"
-#~ msgstr "Не удалось подключиться к llama.cpp"
+#: app/templates/admin.html
+msgid "Voice"
+msgstr "Голос"
 
-#~ msgid "Could not connect to llama-server"
-#~ msgstr "Не удалось подключиться к llama-server"
+#: app/templates/admin.html
+msgid "Memory and history"
+msgstr "Память и история"
 
-#~ msgid "Could not determine action"
-#~ msgstr "Не удалось определить действие"
+#: app/templates/admin.html
+msgid "API"
+msgstr "API"
 
-#~ msgid "Timeout ({timeout}s) during audio transcription"
-#~ msgstr "Таймаут ({timeout}с) при транскрибации аудио"
+#: app/templates/admin.html
+msgid "Service"
+msgstr "Служебное"
 
-#~ msgid "Connection error to Whisper API"
-#~ msgstr "Ошибка подключения к Whisper API"
+#: app/templates/admin.html
+msgid "Debug"
+msgstr "Отладка"
 
-#~ msgid "Timeout ({timeout}s) when calling multimodal model"
-#~ msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
+#: app/templates/admin.html
+msgid "No settings to save"
+msgstr "Нет настроек для сохранения"
 
-#~ msgid "Could not connect to image generation service"
-#~ msgstr "Не удалось подключиться к сервису генерации изображений"
+#: app/templates/admin.html
+msgid "No settings to reset"
+msgstr "Нет настроек для сброса"
 
-#~ msgid "Image generation returned no image"
-#~ msgstr "Генерация изображений не вернула изображение"
+#: app/templates/admin.html
+msgid "Variable"
+msgstr "Переменная"
 
-#~ msgid "male_voice"
-#~ msgstr "Мужской голос"
+#: app/templates/admin.html
+msgid "Value"
+msgstr "Значение"
 
-#~ msgid "female_voice"
-#~ msgstr "Женский голос"
+#: app/templates/admin.html
+msgid "Default value"
+msgstr "Значение по умолчанию"
 
-#~ msgid "loading"
-#~ msgstr "Загрузка..."
+#: app/settings_registry.py
+msgid "Description"
+msgstr "Описание"
 
-#~ msgid "Refresh models from llama.cpp"
-#~ msgstr "Обновить модели из llama.cpp"
+#: app/settings_registry.py
+msgid "Use the per-user Tavily key before the local search engine"
+msgstr "Использовать личный ключ Tavily раньше локального поисковика"
 
-#~ msgid "Reranker"
-#~ msgstr "Реранкинг"
+#: app/settings_registry.py
+msgid "Tavily API base URL"
+msgstr "Базовый адрес API Tavily"
 
-#~ msgid "Cross-encoder model — reranks search results by relevance"
-#~ msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
+#: app/settings_registry.py
+msgid "Tavily search request timeout (seconds)"
+msgstr "Таймаут поискового запроса Tavily (секунды)"
 
-#~ msgid "BGE Cross-Encoder"
-#~ msgstr "BGE Cross-Encoder"
+#: app/settings_registry.py
+msgid "Timeout for the Tavily quota lookup (seconds)"
+msgstr "Таймаут запроса квоты Tavily (секунды)"
 
-#~ msgid "Please provide llama.cpp URL first."
-#~ msgstr "Сначала укажите URL llama.cpp."
+#: app/settings_registry.py
+msgid "Maximum results requested from Tavily"
+msgstr "Максимум результатов от Tavily"
 
-#~ msgid "llama.cpp available"
-#~ msgstr "llama.cpp доступен"
+#: app/settings_registry.py
+msgid "Tavily depth: basic, advanced, fast or ultra-fast"
+msgstr "Глубина Tavily: basic, advanced, fast или ultra-fast"
 
-#~ msgid "llama.cpp unavailable"
-#~ msgstr "llama.cpp недоступен"
+#: app/settings_registry.py
+msgid "How long an answered quota lookup is reused (seconds)"
+msgstr "Сколько секунд переиспользуется успешный ответ о квоте"
 
-#~ msgid "your_requests"
-#~ msgstr "Ваши запросы в очереди / Всего в очереди"
+#: app/settings_registry.py
+msgid "How long an unreachable quota endpoint is remembered (seconds)"
+msgstr "Сколько секунд помнится недоступность эндпоинта квоты"
 
-#~ msgid "recording"
-#~ msgstr "Запись"
+#: app/settings_registry.py
+msgid "Local SearXNG base URL"
+msgstr "Базовый адрес локального SearXNG"
 
-#~ msgid ""
-#~ "Service temporarily unavailable. Circuit "
-#~ "breaker is open after repeated failures."
-#~ msgstr ""
-#~ "Сервис временно недоступен. Предохранитель "
-#~ "открыт после повторных сбоев."
+#: app/settings_registry.py
+msgid "SearXNG request timeout (seconds)"
+msgstr "Таймаут запроса к SearXNG (секунды)"
 
-#~ msgid "Model configuration missing"
-#~ msgstr "Конфигурация модели отсутствует"
+#: app/settings_registry.py
+msgid "Maximum results requested from SearXNG"
+msgstr "Максимум результатов от SearXNG"
 
-#~ msgid "Could not connect to llama-swap"
-#~ msgstr "Не удалось подключиться к llama-swap"
+#: app/settings_registry.py
+msgid "Characters of search context passed to the model"
+msgstr "Символов поискового контекста для модели"
 
-#~ msgid "Reasoning model returned empty response"
-#~ msgstr "Модель рассуждений вернула пустой ответ"
+#: app/settings_registry.py
+msgid "Enable the Crawl4AI page reader and site crawler"
+msgstr "Включить чтение страниц и обход сайтов через Crawl4AI"
 
-#~ msgid "vram_estimate_detail"
-#~ msgstr " (модель=%1%МБ + KV=%2%МБ + compute=%3%МБ)"
+#: app/settings_registry.py
+msgid "Crawl4AI service URL"
+msgstr "Адрес сервиса Crawl4AI"
 
-#~ msgid "room_tambour"
-#~ msgstr "тамбур"
+#: app/settings_registry.py
+msgid "Bearer token for the Crawl4AI service"
+msgstr "Токен доступа к сервису Crawl4AI"
 
-#~ msgid "room_hallway"
-#~ msgstr "прихожая"
+#: app/settings_registry.py
+msgid "Maximum pages per crawl"
+msgstr "Максимум страниц за один обход"
 
-#~ msgid "room_corridor"
-#~ msgstr "коридор"
+#: app/settings_registry.py
+msgid "Maximum link depth per crawl"
+msgstr "Максимальная глубина ссылок при обходе"
 
-#~ msgid "room_bedroom"
-#~ msgstr "спальня"
+#: app/settings_registry.py
+msgid "Whole-crawl wall-clock limit (seconds)"
+msgstr "Общий лимит времени обхода (секунды)"
 
-#~ msgid "room_office"
-#~ msgstr "кабинет"
+#: app/settings_registry.py
+msgid "Single page fetch timeout (seconds)"
+msgstr "Таймаут загрузки одной страницы (секунды)"
 
-#~ msgid "room_children"
-#~ msgstr "детская"
+#: app/settings_registry.py
+msgid "Characters kept per crawled page"
+msgstr "Символов на одну страницу обхода"
 
-#~ msgid "room_living"
-#~ msgstr "гостиная"
+#: app/settings_registry.py
+msgid "Characters kept across the whole crawl"
+msgstr "Символов на весь обход"
 
-#~ msgid "room_kitchen"
-#~ msgstr "кухня"
+#: app/settings_registry.py
+msgid "Parallel crawl requests"
+msgstr "Параллельных запросов при обходе"
 
-#~ msgid "room_balcony"
-#~ msgstr "балкон"
+#: app/settings_registry.py
+msgid "Characters of document context passed to the model"
+msgstr "Символов контекста документов для модели"
 
-#~ msgid "Name forms"
-#~ msgstr "Формы имён"
+#: app/settings_registry.py
+msgid "Qdrant vector database URL"
+msgstr "Адрес векторной базы Qdrant"
 
-#~ msgid ""
-#~ "One form per "
-#~ "line:&#10;гостиная&#10;гостиной&#10;гостиную&#10;living room"
-#~ msgstr ""
+#: app/settings_registry.py
+msgid "Qdrant API key (optional)"
+msgstr "Ключ API Qdrant (необязательно)"
 
-#~ msgid "All declension forms + English name, one per line"
-#~ msgstr ""
+#: app/settings_registry.py
+msgid "Characters per indexed chunk"
+msgstr "Символов в одном индексируемом фрагменте"
 
-#~ msgid "Missing code"
-#~ msgstr "Не указан код"
+#: app/settings_registry.py
+msgid "Characters shared by neighbouring chunks"
+msgstr "Перекрытие соседних фрагментов (символы)"
 
-#~ msgid "At least one name form is required"
-#~ msgstr "Требуется хотя бы одна форма имени"
+#: app/settings_registry.py
+msgid "Chunking strategy: fixed or recursive"
+msgstr "Стратегия нарезки: fixed или recursive"
 
-#~ msgid "Camera not found"
-#~ msgstr "Камера не найдена"
+#: app/settings_registry.py
+msgid "Merge dense vector and full-text retrieval with reciprocal rank fusion"
+msgstr "Сливать плотный векторный и полнотекстовый поиск через reciprocal rank fusion"
 
-#~ msgid "Add camera"
-#~ msgstr "Добавить камеру"
+#: app/settings_registry.py
+msgid "Candidates each retriever returns before fusion"
+msgstr "Сколько кандидатов возвращает каждый поисковик до слияния"
 
-#~ msgid "New camera"
-#~ msgstr "Новая камера"
+#: app/settings_registry.py
+msgid "Reciprocal rank fusion constant"
+msgstr "Константа reciprocal rank fusion"
 
-#~ msgid "Short unique identifier, e.g. gos, spa, kab"
-#~ msgstr ""
+#: app/settings_registry.py
+msgid "Reorder the top candidates with the CPU cross-encoder"
+msgstr "Переупорядочивать верхние кандидаты CPU-кросс-энкодером"
 
-#~ msgid "One form per line:&#10;гостиная&#10;гостиной&#10;гостиную"
-#~ msgstr ""
+#: app/settings_registry.py
+msgid "How many top candidates the reranker reorders"
+msgstr "Сколько верхних кандидатов переупорядочивает реранкер"
 
-#~ msgid "All room name forms, one per line"
-#~ msgstr "Все формы названия комнаты, по одной на строку"
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Таймаут запроса к реранкеру (секунды)"
 
-#~ msgid "Enabled"
-#~ msgstr "Включена"
+#: app/settings_registry.py
+msgid "Chunks retrieved per document query"
+msgstr "Фрагментов на один запрос по документам"
 
-#~ msgid "Order"
-#~ msgstr "Порядок"
+#: app/settings_registry.py
+msgid "Share of the context window given to documents"
+msgstr "Доля контекстного окна под документы"
 
-#~ msgid "Names (declensions)"
-#~ msgstr "Имена (падежи)"
+#: app/settings_registry.py
+msgid "Time budget for scanned-PDF OCR (seconds, 0 = unlimited)"
+msgstr "Бюджет времени на OCR сканов PDF (секунды, 0 — без ограничения)"
 
-#~ msgid "English name"
-#~ msgstr "Английское имя"
+#: app/settings_registry.py
+msgid "Largest document a user may upload (MB)"
+msgstr "Максимальный размер документа (МБ)"
 
-#~ msgid "RTSP IP"
-#~ msgstr "RTSP IP"
+#: app/settings_registry.py
+msgid "Documents per user, also the folder limit"
+msgstr "Документов на пользователя (и столько же папок)"
 
-#~ msgid "Port"
-#~ msgstr "Порт"
+#: app/settings_registry.py
+msgid "Total document storage per user (MB)"
+msgstr "Суммарный объём документов пользователя (МБ)"
 
-#~ msgid "Stream"
-#~ msgstr "Поток"
+#: app/settings_registry.py
+msgid "Default upload limit per user (MB), overridable in Users"
+msgstr "Общий лимит загрузок (МБ), переопределяется в «Пользователях»"
 
-#~ msgid "Camera saved"
-#~ msgstr "Камера сохранена"
+#: app/settings_registry.py
+msgid "Longest accepted file extension"
+msgstr "Максимальная длина расширения файла"
 
-#~ msgid "Camera deleted"
-#~ msgstr "Камера удалена"
+#: app/settings_registry.py
+msgid "Largest accepted HTTP request body (MB)"
+msgstr "Максимальный размер HTTP-запроса (МБ)"
 
-#~ msgid "Delete camera {code}?"
-#~ msgstr "Удалить камеру {code}?"
+#: app/settings_registry.py
+msgid "Enable background tasks"
+msgstr "Включить фоновые задачи"
 
-#~ msgid "Edit camera"
-#~ msgstr "Редактировать камеру"
+#: app/settings_registry.py
+msgid "Pure execution budget per task (seconds)"
+msgstr "Бюджет чистого выполнения задачи (секунды)"
 
-#~ msgid "Refresh model list"
-#~ msgstr "Обновить список моделей"
+#: app/settings_registry.py
+msgid "Hard ceiling on the plan length"
+msgstr "Жёсткий предел числа шагов плана"
 
-#~ msgid "Refresh backup list"
-#~ msgstr "Обновить список резервных копий"
+#: app/settings_registry.py
+msgid "Accepted plan rewrites per task"
+msgstr "Разрешённых переписываний плана на задачу"
 
-#~ msgid "model_cannot_be_saved"
-#~ msgstr ""
-#~ "Эта модель не может быть сохранена "
-#~ "(недостаточно VRAM/RAM). Выберите модель "
-#~ "меньшего размера."
+#: app/settings_registry.py
+msgid "Passing media steps between plan reviews"
+msgstr "Успешных медиа-шагов между проверками плана"
 
-#~ msgid "multimodal_model_must_be_vision"
-#~ msgstr ""
-#~ "Для мультимодального модуля нужна "
-#~ "Vision-модель (с mmproj), а не простая"
-#~ " чат-модель."
+#: app/settings_registry.py
+msgid "Attempts per step, verification included"
+msgstr "Попыток на шаг, включая проверку"
 
-#~ msgid "Crawler service is unavailable"
-#~ msgstr ""
-#~ "⚠️ Сервис изучения сайтов недоступен. "
-#~ "Проверьте, что запущен контейнер flai-"
-#~ "crawler."
+#: app/settings_registry.py
+msgid "Local edits after each generation attempt"
+msgstr "Локальных правок после каждой генерации"
 
-#~ msgid "No link found in your message"
-#~ msgstr ""
-#~ "⚠️ В вашем сообщении нет ссылки. "
-#~ "Отправьте адрес сайта, который нужно "
-#~ "изучить."
+#: app/settings_registry.py
+msgid "Redo passes for a rejected step"
+msgstr "Повторных проходов для отклонённого шага"
 
-#~ msgid "Indexing the collected materials…"
-#~ msgstr "Индексирую собранные материалы…"
+#: app/settings_registry.py
+msgid "Chat-free window before a step may run (seconds)"
+msgstr "Тишина в чате перед запуском шага (секунды)"
 
-#~ msgid "Could not read any pages from {domain}"
-#~ msgstr ""
-#~ "⚠️ Не удалось прочитать ни одной "
-#~ "страницы с {domain}. Попробуйте обычный "
-#~ "поиск."
+#: app/settings_registry.py
+msgid "Executor cycle interval (seconds)"
+msgstr "Интервал цикла исполнителя (секунды)"
 
-#~ msgid "Document quota reached — the collected materials were not saved"
-#~ msgstr "⚠️ Достигнут лимит документов — собранные материалы не сохранены."
+#: app/settings_registry.py
+msgid "Executor cycles between media subtask checks"
+msgstr "Циклов между проверками медиа-подзадачи"
 
-#~ msgid "Failed to save the collected materials"
-#~ msgstr "⚠️ Не удалось сохранить собранные материалы."
+#: app/settings_registry.py
+msgid "How long an unknown subtask state is tolerated"
+msgstr "Сколько терпеть неизвестное состояние подзадачи"
 
-#~ msgid ""
-#~ "Document quota exceeded: {count} / "
-#~ "{max_docs} documents. Delete some to "
-#~ "upload more."
-#~ msgstr ""
-#~ "Превышена квота документов: {count} из "
-#~ "{max_docs}. Удалите часть документов."
+#: app/settings_registry.py
+msgid "Build a visual continuity sheet for image series"
+msgstr "Собирать лист визуальной непрерывности для серий картинок"
 
-#~ msgid "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
-#~ msgstr ""
-#~ "Превышена квота хранилища документов: "
-#~ "использовано {used_mb:.0f}МБ из {max_mb}МБ."
+#: app/settings_registry.py
+msgid "Characters kept in the continuity sheet"
+msgstr "Символов в листе непрерывности"
 
-#~ msgid "Queued tasks cannot be cancelled"
-#~ msgstr "Задачи в очереди нельзя отменить"
+#: app/settings_registry.py
+msgid "VRAM wait before a task step gives up (seconds)"
+msgstr "Ожидание VRAM перед отказом шага (секунды)"
 
-#~ msgid ""
-#~ "The step has no image to edit: "
-#~ "no image is attached and no "
-#~ "earlier step produced one."
-#~ msgstr ""
-#~ "У шага нет изображения для "
-#~ "редактирования: изображение не приложено и "
-#~ "ни один из предыдущих шагов не "
-#~ "создал его."
+#: app/settings_registry.py
+msgid "LLM backend: llama-swap or direct llama.cpp"
+msgstr "Бэкенд LLM: llama-swap или прямой llama.cpp"
 
-# Tasks subsystem (v12.6): planning failures and terminal fallbacks
-#~ msgid "Task could not be planned: the plan template is unavailable."
-#~ msgstr "Задачу невозможно спланировать: шаблон планирования недоступен."
+#: app/settings_registry.py
+msgid "llama-swap API URL"
+msgstr "Адрес API llama-swap"
 
-#~ msgid ""
-#~ "Task could not be planned: the "
-#~ "planner returned an unreadable plan. "
-#~ "Please try again."
-#~ msgstr ""
-#~ "Задачу невозможно спланировать: планировщик "
-#~ "вернул нечитаемый план. Попробуйте ещё "
-#~ "раз."
+#: app/settings_registry.py
+msgid "Direct llama.cpp API URL"
+msgstr "Адрес API llama.cpp"
 
-#~ msgid ""
-#~ "The final answer could not be "
-#~ "generated; please check the step results"
-#~ " above."
-#~ msgstr ""
-#~ "Не удалось сформировать итоговый ответ; "
-#~ "проверьте промежуточные результаты шагов выше."
+#: app/settings_registry.py
+msgid "Share of the context window given to history"
+msgstr "Доля контекстного окна под историю"
 
-#~ msgid "Execution budget exhausted; the summary could not be generated."
-#~ msgstr "Время исполнения задачи исчерпано; сводку сформировать не удалось."
+#: app/settings_registry.py
+msgid "Tokens reserved below the context limit"
+msgstr "Резерв токенов ниже лимита контекста"
 
-# Tasks subsystem (v12.6): internal API (routes/tasks.py) and conversation
-# view
-#~ msgid "stage_indexing_document"
-#~ msgstr "Создаю индекс для документа..."
+#: app/settings_registry.py
+msgid "Tokens reserved for the prompt template"
+msgstr "Токенов на шаблон промпта"
 
-#~ msgid "Rebuild the visual continuity sheet"
-#~ msgstr "Пересобрать визуальную библию"
+#: app/settings_registry.py
+msgid "Characters per token used for estimates"
+msgstr "Символов на токен для оценок"
 
-#~ msgid "Style"
-#~ msgstr "Стиль"
+#: app/settings_registry.py
+msgid "Tokens charged for one attached image"
+msgstr "Токенов на одно вложенное изображение"
 
-#~ msgid "Rebuilding the visual continuity sheet..."
-#~ msgstr "📐 Пересобираю визуальную библию..."
+#: app/settings_registry.py
+msgid "Characters of media descriptions kept in context"
+msgstr "Символов описаний медиа в контексте"
 
+#: app/settings_registry.py
+msgid "Recent messages passed to the router"
+msgstr "Последних сообщений для роутера"
+
+#: app/settings_registry.py
+msgid "Characters per message passed to the router"
+msgstr "Символов на сообщение для роутера"
+
+#: app/settings_registry.py
+msgid "Long-term facts passed to the router"
+msgstr "Долговременных фактов для роутера"
+
+#: app/settings_registry.py
+msgid "Startup health-check attempts per service"
+msgstr "Попыток проверки сервиса при старте"
+
+#: app/settings_registry.py
+msgid "Delay between startup health checks (seconds)"
+msgstr "Пауза между проверками при старте (секунды)"
+
+#: app/settings_registry.py
+msgid "How long to wait for VRAM to free (seconds)"
+msgstr "Сколько ждать освобождения VRAM (секунды)"
+
+#: app/settings_registry.py
+msgid "Image generation wrapper URL"
+msgstr "Адрес обёртки генерации изображений"
+
+#: app/settings_registry.py
+msgid "Model used for image generation"
+msgstr "Модель для генерации изображений"
+
+#: app/settings_registry.py
+msgid "Model used for image editing"
+msgstr "Модель для редактирования изображений"
+
+#: app/settings_registry.py
+msgid "Image generation timeout (seconds)"
+msgstr "Таймаут генерации изображения (секунды)"
+
+#: app/settings_registry.py
+msgid "Default image width (pixels)"
+msgstr "Ширина изображения по умолчанию (пиксели)"
+
+#: app/settings_registry.py
+msgid "Default image height (pixels)"
+msgstr "Высота изображения по умолчанию (пиксели)"
+
+#: app/settings_registry.py
+msgid "Default diffusion steps"
+msgstr "Шагов диффузии по умолчанию"
+
+#: app/settings_registry.py
+msgid "Default classifier-free guidance scale"
+msgstr "Масштаб CFG по умолчанию"
+
+#: app/settings_registry.py
+msgid "Video generation wrapper URL"
+msgstr "Адрес обёртки генерации видео"
+
+#: app/settings_registry.py
+msgid "LTX-Video model file"
+msgstr "Файл модели LTX-Video"
+
+#: app/settings_registry.py
+msgid "Video generation timeout (seconds)"
+msgstr "Таймаут генерации видео (секунды)"
+
+#: app/settings_registry.py
+msgid "Largest single image side (pixels)"
+msgstr "Максимальная сторона изображения (пиксели)"
+
+#: app/settings_registry.py
+msgid "Largest image upload (MB)"
+msgstr "Максимальный размер изображения (МБ)"
+
+#: app/settings_registry.py
+msgid "Side limit when several images are attached"
+msgstr "Предел стороны при нескольких изображениях"
+
+#: app/settings_registry.py
+msgid "Maximum accepted image width"
+msgstr "Максимальная ширина изображения"
+
+#: app/settings_registry.py
+msgid "Maximum accepted image height"
+msgstr "Максимальная высота изображения"
+
+#: app/settings_registry.py
+msgid "Images per chat message"
+msgstr "Изображений на одно сообщение"
+
+#: app/settings_registry.py
+msgid "Audio attachments per chat message"
+msgstr "Аудиовложений на одно сообщение"
+
+#: app/settings_registry.py
+msgid "Largest audio upload (MB)"
+msgstr "Максимальный размер аудио (МБ)"
+
+#: app/settings_registry.py
+msgid "Largest voice message (MB)"
+msgstr "Максимальный размер голосового сообщения (МБ)"
+
+#: app/settings_registry.py
+msgid "Enable deep analysis"
+msgstr "Включить глубокий анализ"
+
+#: app/settings_registry.py
+msgid "Model driving the analysis loop"
+msgstr "Модель, ведущая цикл анализа"
+
+#: app/settings_registry.py
+msgid "Hard ceiling on analysis steps"
+msgstr "Жёсткий предел шагов анализа"
+
+#: app/settings_registry.py
+msgid "Wall-clock limit (0 = derived from the step budget)"
+msgstr "Лимит времени (0 — из бюджета шагов)"
+
+#: app/settings_registry.py
+msgid "Sandbox execution limit (seconds)"
+msgstr "Лимит выполнения в песочнице (секунды)"
+
+#: app/settings_registry.py
+msgid "Characters kept per observation"
+msgstr "Символов на одно наблюдение"
+
+#: app/settings_registry.py
+msgid "Tokens per sub-model call"
+msgstr "Токенов на вызов под-модели"
+
+#: app/settings_registry.py
+msgid "Web lookups per analysis"
+msgstr "Веб-запросов за анализ"
+
+#: app/settings_registry.py
+msgid "Largest corpus accepted (characters)"
+msgstr "Максимальный корпус (символы)"
+
+#: app/settings_registry.py
+msgid "Piper TTS service URL"
+msgstr "Адрес сервиса синтеза Piper"
+
+#: app/settings_registry.py
+msgid "Piper synthesis timeout (seconds)"
+msgstr "Таймаут синтеза Piper (секунды)"
+
+#: app/settings_registry.py
+msgid "Kokoro TTS service URL"
+msgstr "Адрес сервиса синтеза Kokoro"
+
+#: app/settings_registry.py
+msgid "Kokoro synthesis timeout (seconds)"
+msgstr "Таймаут синтеза Kokoro (секунды)"
+
+#: app/settings_registry.py
+msgid "Whisper speech-recognition URL"
+msgstr "Адрес распознавания речи Whisper"
+
+#: app/settings_registry.py
+msgid "Transcription timeout (seconds)"
+msgstr "Таймаут расшифровки (секунды)"
+
+#: app/settings_registry.py
+msgid "SuperLocalMemory service URL"
+msgstr "Адрес сервиса SuperLocalMemory"
+
+#: app/settings_registry.py
+msgid "Facts recalled per message"
+msgstr "Фактов на одно сообщение"
+
+#: app/settings_registry.py
+msgid "Minimum similarity for a recalled fact"
+msgstr "Порог похожести для факта"
+
+#: app/settings_registry.py
+msgid "Confidence below which a fact starts decaying"
+msgstr "Уверенность, ниже которой факт забывается"
+
+#: app/settings_registry.py
+msgid "Days after which a fact loses weight"
+msgstr "Дней до снижения веса факта"
+
+#: app/settings_registry.py
+msgid "Facts considered in one merge pass"
+msgstr "Фактов за один проход слияния"
+
+#: app/settings_registry.py
+msgid "Characters per merged fact"
+msgstr "Символов на объединённый факт"
+
+#: app/settings_registry.py
+msgid "Facts kept per merge batch"
+msgstr "Фактов в пакете слияния"
+
+#: app/settings_registry.py
+msgid "Facts that must fit the model window"
+msgstr "Фактов, помещающихся в окно модели"
+
+#: app/settings_registry.py
+msgid "Characters in a rolling session summary"
+msgstr "Символов в сводке сеанса"
+
+#: app/settings_registry.py
+msgid "Messages read when building a summary"
+msgstr "Сообщений для построения сводки"
+
+#: app/settings_registry.py
+msgid "Trimmed messages needed before summarizing"
+msgstr "Обрезанных сообщений до создания сводки"
+
+#: app/settings_registry.py
+msgid "History matches per search"
+msgstr "Совпадений в истории на поиск"
+
+#: app/settings_registry.py
+msgid "Characters of history context passed to the model"
+msgstr "Символов истории для модели"
+
+#: app/settings_registry.py
+msgid "Characters per history message"
+msgstr "Символов на сообщение истории"
+
+#: app/settings_registry.py
+msgid "Messages kept in the conversation window"
+msgstr "Сообщений в окне диалога"
+
+#: app/settings_registry.py
+msgid "Messages loaded per session by default"
+msgstr "Сообщений загружается по умолчанию"
+
+#: app/settings_registry.py
+msgid "Largest message page the API returns"
+msgstr "Максимальная страница сообщений в API"
+
+#: app/settings_registry.py
+msgid "Enable the public OpenAI-compatible API"
+msgstr "Включить публичный OpenAI-совместимый API"
+
+#: app/settings_registry.py
+msgid "Rate limits, e.g. 60 per minute;1000 per hour"
+msgstr "Лимиты, например 60 per minute;1000 per hour"
+
+#: app/settings_registry.py
+msgid "Synchronous API waiters per instance"
+msgstr "Одновременных ожиданий API на инстанс"
+
+#: app/settings_registry.py
+msgid "How long a synchronous request waits (seconds)"
+msgstr "Сколько ждёт синхронный запрос (секунды)"
+
+#: app/settings_registry.py
+msgid "Allowed origins for /v1, comma separated"
+msgstr "Разрешённые origin для /v1 через запятую"
+
+#: app/settings_registry.py
+msgid "How long API results stay in Redis (seconds)"
+msgstr "Сколько секунд результаты API живут в Redis"
+
+#: app/settings_registry.py
+msgid "Enable camera support"
+msgstr "Включить поддержку камер"
+
+#: app/settings_registry.py
+msgid "Room snapshot service URL"
+msgstr "Адрес сервиса снимков комнаты"
+
+#: app/settings_registry.py
+msgid "Camera service timeout (seconds)"
+msgstr "Таймаут сервиса камер (секунды)"
+
+#: app/settings_registry.py
+msgid "Camera availability check interval (seconds)"
+msgstr "Интервал проверки доступности камер (секунды)"
+
+#: app/settings_registry.py
+msgid "IANA timezone used for dates and monitoring"
+msgstr "Часовой пояс IANA для дат и мониторинга"
+
+#: app/settings_registry.py
+msgid "Token for gated Hugging Face repositories"
+msgstr "Токен для закрытых репозиториев Hugging Face"
+
+#: app/settings_registry.py
+msgid "Largest model file the Hub may download (GB)"
+msgstr "Максимальный файл модели для загрузки (ГБ)"
+
+#: app/settings_registry.py
+msgid "Free disk margin kept after a download (GB)"
+msgstr "Свободный запас диска после загрузки (ГБ)"
+
+#: app/settings_registry.py
+msgid "Results per Hugging Face search"
+msgstr "Результатов на поиск в Hugging Face"
+
+#: app/settings_registry.py
+msgid "Download timeout (seconds)"
+msgstr "Таймаут загрузки (секунды)"
+
+#: app/settings_registry.py
+msgid "Largest queue wait before a task is rejected (seconds)"
+msgstr "Максимальное ожидание в очереди (секунды)"
+
+#: app/settings_registry.py
+msgid "Expose the debug endpoints"
+msgstr "Открыть отладочные эндпоинты"
+
+#: app/settings_registry.py
+msgid "Log token-estimation details"
+msgstr "Логировать детали оценки токенов"
+
+#: app/settings_registry.py
+msgid "Merge full-text and vector search results (RRF)"
+msgstr "Объединять полнотекстовый и векторный поиск (RRF)"
+
+#: app/settings_registry.py
+msgid "Candidates fetched from each retriever before fusion"
+msgstr "Кандидатов из каждого поисковика до слияния"
+
+#: app/settings_registry.py
+msgid "RRF constant: lower values favour the top of each list"
+msgstr "Константа RRF: меньше — сильнее влияет верх списка"
+
+#: app/templates/admin.html
+msgid "Structural (by entries)"
+msgstr "Структурная (по записям)"
+
+#: app/settings_registry.py
+msgid "Reorder retrieved candidates with a cross-encoder"
+msgstr "Переупорядочивать найденные фрагменты кросс-энкодером"
+
+#: app/settings_registry.py
+msgid "Candidates scored by the reranker"
+msgstr "Кандидатов на вход реранкера"
+
+#: app/settings_registry.py
+msgid "Reranker request timeout (seconds)"
+msgstr "Таймаут запроса к реранкеру (секунды)"
+
+#: app/templates/admin.html
+msgid "Reranker"
+msgstr "Реранкер"
+
+#: app/templates/admin.html
+msgid "Cross-encoder reranking"
+msgstr "Реранкинг кросс-энкодером"
+
+#: app/templates/admin.html
+msgid "Candidates to rerank"
+msgstr "Кандидатов на реранк"
+
+#: app/templates/chat.html
+msgid "Search scope"
+msgstr "Область поиска"
+
+#: app/templates/chat.html
+msgid "All documents"
+msgstr "Все документы"
+
+#: app/templates/chat.html
+msgid "Folder"
+msgstr "Папка"
+
+#: app/templates/chat.html
+msgid "Uploaded from"
+msgstr "Загружено с"
+
+#: app/templates/chat.html
+msgid "Uploaded to"
+msgstr "Загружено по"
+
+#: app/templates/chat.html
+msgid "Apply"
+msgstr "Применить"
+
+#: app/templates/chat.html
+msgid "Clear"
+msgstr "Сбросить"
+
+#: app/templates/chat.html
+msgid "Unfiled"
+msgstr "Без папки"

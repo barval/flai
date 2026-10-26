@@ -1920,7 +1920,7 @@ def test_recall_slm_facts_formats_section(test_app):
             {"content": "session fact", "metadata": {"fact_type": "session_specific"}},
         ]
     )
-    out = recall_slm_facts(test_app, "составь меню", "valery", "ru")
+    out = recall_slm_facts(test_app, "составь меню", "demo", "ru")
     assert "Дополнительная информация из долговременной памяти:" in out
     assert "- session fact" in out and "- general fact" in out
     assert out.index("session fact") < out.index("general fact")
@@ -1931,7 +1931,7 @@ def test_recall_slm_facts_absent_module_is_empty(test_app):
     from app.tasks.runner import recall_slm_facts
 
     test_app.modules["slm"] = _fake_slm()
-    assert recall_slm_facts(test_app, "query", "valery", "ru") == ""
+    assert recall_slm_facts(test_app, "query", "demo", "ru") == ""
     assert recall_slm_facts(test_app, "query", "", "ru") == ""
 
 
@@ -1942,7 +1942,7 @@ def test_recall_slm_facts_recall_error_is_empty(test_app):
     slm = _fake_slm()
     slm.recall.side_effect = RuntimeError("slm down")
     test_app.modules["slm"] = slm
-    assert recall_slm_facts(test_app, "query", "valery", "ru") == ""
+    assert recall_slm_facts(test_app, "query", "demo", "ru") == ""
 
 
 def test_llm_step_prompt_contains_slm_facts(test_app):
@@ -1965,11 +1965,11 @@ def test_llm_step_prompt_contains_slm_facts(test_app):
             _llm_step(goal="Составь меню"),
             context_digest="",
             cancel_check=lambda: False,
-            user_id="valery",
+            user_id="demo",
             task_request="Составь меню на неделю",
         )
     assert "пользователь вегетарианец" in captured["prompt"]
-    assert test_app.modules["slm"].recall.call_args.kwargs["profile"] == "valery"
+    assert test_app.modules["slm"].recall.call_args.kwargs["profile"] == "demo"
 
 
 def test_llm_step_without_slm_module_has_no_placeholder(test_app):

@@ -681,7 +681,7 @@ wants to know what the server supports before it builds a request.
 
 ```json
 {
-  "login": "valery",
+  "login": "demo",
   "service_class": 2,
   "is_admin": true,
   "language": "en",

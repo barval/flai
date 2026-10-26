@@ -18,7 +18,7 @@ After starting the services, log in as admin and go to **Admin Panel → Models*
 
 - **Chunk Size (characters):** How documents are split into pieces for indexing.
 - **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
-- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
+- **Chunk Strategy:** `fixed` (by character count), `recursive` (by headings/paragraphs) or `structured` (one logical entry per chunk — see [Chunking strategies](#chunking-strategies)).
 - **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
 - **Threshold (documents):** Minimum similarity score for general document queries.
 - **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.
@@ -49,6 +49,97 @@ Once documents are indexed, asking about them is automatic:
 For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).
 
 ---
+
+## Reranking
+
+Retrieval decides which passages are candidates; a cross-encoder decides their order by reading the
+query and the passage together. `bge-reranker-v2-m3` (Q4_K_M, ~0.42 GB) runs as a **CPU-only**
+llama-server registered by the llama-swap config, so it never takes a GPU slot and a search never waits
+behind a chat request. The CPU group is declared `exclusive: false` and `persistent: true`, which keeps
+the reranker and the embedding model resident together — without that, the two evict each other and
+every query pays two model loads (3.5 s instead of 0.15 s).
+
+Enable it with `RAG_RERANK_ENABLED=true` (off by default, see the measurement below);
+`RAG_RERANK_CANDIDATES` (default 10) sets how many top candidates are reordered. The endpoint returns
+raw logits, so `app/reranker.py` sigmoids them and scales them to the best candidate for ordering; the
+search itself keeps each chunk's own cosine score. Applying an absolute relevance threshold to a
+relative scale collapsed a 20-chunk context to the top two and the answer lost almost every entry.
+
+Measured on the same 22-question set: in a narrow 5-chunk window (the `rag_search` tool used by deep
+analysis and tasks) it helps (nDCG 0.815 → 0.831, MRR 0.723 → 0.750), but in the 20-chunk chat and
+task windows with hybrid search on it lowers nDCG (0.965 → 0.922) and costs ~280 ms per search. That
+is why it stays off by default and is switched on per deployment only when the smaller window is the
+only consumer.
+
+Download (optional):
+
+```bash
+curl -L -o models/bge-reranker-v2-m3-Q4_K_M.gguf \
+  https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/resolve/main/bge-reranker-v2-m3-Q4_K_M.gguf
+```
+
+## Chunking strategies
+
+Three strategies are available in Admin Panel → Models → Chunks:
+
+| Strategy | Behaviour |
+|---|---|
+| `fixed` | Character windows with overlap; cheapest, cuts through sentences |
+| `recursive` | Splits by paragraphs, sentences and words; keeps sentences whole |
+| `structured` | Splits on logical entries: a dated entry (start date, organisation, city) or a dated block stays in one chunk, its closing date and city lines included; a block larger than the chunk size falls back to the recursive splitter |
+
+`structured` exists for counting questions ("how many jobs in this city"): when two
+entries share a chunk the model has to count inside a fragment and usually gets it
+wrong. The changelog entry for hybrid retrieval records the measurement — retrieval
+was no longer the bottleneck, chunking was.
+
+Changing the strategy re-chunks on the next index. Re-index existing documents with
+`flask rag-reindex --user <login>` (or `--doc <id>`); the old points are deleted
+first, so no orphan chunks survive.
+
+## Search scope
+
+The chat asks *which documents* a question may be answered from. The scope lives next to the input
+(🔍): a folder and an upload-date range (both ends inclusive), combined with AND. With nothing set the
+search is global, exactly as before.
+
+- **Resolution.** The scope is turned into a list of document ids in PostgreSQL before the question is
+  queued, so a re-queued task keeps its scope, moving a document between folders takes effect
+  immediately, and no payload change or re-index is needed.
+- **Isolation.** Retrieval never sees a document outside the scope. An **empty** match is a real
+  answer — the search returns nothing and the model says there is no data in the selected documents
+  instead of silently answering from the rest of the corpus.
+- **Attachments.** A document attached to the message is always part of the context; the scope narrows
+  only the rest of the search.
+- **Coverage.** The file-coverage pass (the guarantee that every indexed document gets a slot) is
+  limited to the same scope.
+- **Period** is the upload date, not a date found inside the document.
+- **API.** `POST /api/send_message` accepts `filter_folder`, `filter_from`, `filter_to` (multipart or
+  JSON). The public `/v1` API does not expose the scope yet.
+
+## Hybrid retrieval
+
+Search is dense by default: the query is embedded and Qdrant returns the closest chunks. That misses
+queries built around a rare word — "how many jobs in Moscow" ranks chat chatter about Moscow above the
+resume, because a vector blurs the one term that matters.
+
+With `RAG_HYBRID_ENABLED=true` every chunk is also mirrored into PostgreSQL (`rag_chunks`, a generated
+`tsvector` with Russian stemming) and both retrievers run: Qdrant by meaning, PostgreSQL full-text by
+terms. The two ranked lists are merged with **reciprocal rank fusion** (`RAG_RRF_K`, default 60), so a
+chunk both finders agree on outranks a chunk only one found. Lexical terms are chosen carefully:
+
+- proper nouns and Latin-script words are the discriminative ones (cities, companies, tool names);
+- terms that appear in a large share of the corpus are dropped (`ts_rank_cd` has no IDF, so a name
+  present in half the chunks would drown the city present in five);
+- matching is by prefix, because the Russian stemmer can map the nominative and the prepositional
+  case of one name to different lexemes;
+- a chunk from a document whose **title** matches the query gets a bonus — the resume is named after
+  the person, a chat export is not.
+
+Existing documents are mirrored with `flask rag-backfill-chunks --user <login>`; new uploads are
+mirrored automatically and deleted together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
+`RAG_HYBRID_CANDIDATES` (per-retriever candidate pool, default 30), `RAG_RRF_K`; all three are also in
+Admin Panel → Settings. Measure the effect with `docs/RAG_EVAL.md` before enabling it everywhere.
 
 ## 5. Documents attached in chat
 

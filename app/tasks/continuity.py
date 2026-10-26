@@ -55,9 +55,9 @@ def sanitize_reference_markers(text: str) -> str:
     return result.strip()
 
 
-# Quoted dialogue in a scene description («Не добуду куропатку…», "I will…")
-# is narrative content, not an instruction to letter the picture. The
-# diffusion model otherwise tries to render it and produces gibberish.
+# Quoted dialogue in a scene description (a remembered line, "I will…") is
+# narrative content, not an instruction to letter the picture. The diffusion
+# model otherwise tries to render it and produces gibberish.
 _TEXT_REQUEST_RE = re.compile(
     r"\b(?:надпис\w*|вывеск\w*|подпис\w*|текст\w*|шрифт\w*|inscription|lettering|caption|"
     r"sign|text|logo|watermark)\b",

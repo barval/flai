@@ -1,4 +1,4 @@
-# Руководство по релизам — ПЛИИ v12.6
+# Руководство по релизам — ПЛИИ v12.7
 
 В этом документе описывается процесс выпуска новой версии, обновления README и поддержания документации. Читайте его при подготовке нового релиза.
 
@@ -93,6 +93,16 @@ git push origin vX.Y        # gitea — authoritative remote for the version bra
 # merge into master (gitea) and main (github) only when promoting the release
 ```
 
+### 7. Пересоберите демонстрацию интерфейса:
+```bash
+# после повышения версии и последней правки интерфейса, и после резервной копии базы
+python -m demo.capture --lang all --base-url http://localhost:5000 --password '<пароль демо-аккаунтов>' --force
+python -m demo.build
+pytest tests/test_demo_pages.py -q   # падает, если закоммиченная страница устарела
+```
+Коммитьте `demo/snapshot`, `demo/media` и `docs/demo` вместе с релизом. Подробности →
+[DEMO-ru.md](DEMO-ru.md).
+
 ## Руководство по обновлению README
 При обновлении README.md и README-ru.md следуйте правилам из [LOCALIZATION-ru.md](LOCALIZATION-ru.md).
 
@@ -102,7 +112,7 @@ git push origin vX.Y        # gitea — authoritative remote for the version bra
   1. **Список возможностей** (`### ✨ Features`) — добавить новые возможности, убрать устаревшие
   2. **Список «Что нового»** (`### What's New in vX.X`) — обновить номер версии и добавить новые возможности
   3. **Таблица основных компонентов** (`### Core Components`) — добавить/убрать сервисы, обновить порты
-  4. **Уровни оборудования** (``### Hardware Tiers`) — обновить требования к VRAM/ОЗУ, если они изменились
+  4. **Уровни оборудования** (`### Hardware Tiers`) — обновить требования к VRAM/RAM, если они изменились
   5. **Бенчмарки моделей** (`### Model Benchmarks`) — добавить новые модели, обновить данные о производительности
   6. **Команды быстрого старта** (`### Quick Start`) — обновить флаги deploy.sh, если изменились профили
   7. **Профили Docker Compose** — перечислить все доступные профили с описаниями

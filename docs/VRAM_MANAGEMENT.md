@@ -1,4 +1,4 @@
-# VRAM Management — FLAI v12.6
+# VRAM Management — FLAI v12.7
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
 
@@ -45,6 +45,16 @@ Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning 
 - Polls `/running` + `nvidia-smi` (15s default timeout, `time.sleep(2)` between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll)
 - Returns `False` (never proceeds) if VRAM insufficient
 - Used by ALL model types: chat, reasoning, multimodal, embedding
+
+### CPU-only models: no VRAM, no GPU queue slot
+
+Two llama-swap entries never touch VRAM: `merge_cpu` (fact merge) and `reranker` (the cross-encoder).
+Both live in the `cpu_only` group (`members:`, `exclusive: false`, `persistent: true`), so llama-swap
+keeps them resident and they never evict a GPU model. The app never calls `ensure_vram_for()` for them
+and never takes `_gpu_lock`, so a reranked search never waits behind a chat request. The group is
+registered only when the GGUF file exists — an installation without the reranker is untouched. Cost:
+the reranker holds about **0.9 GB of RAM** while resident (measured RSS) and competes with the reasoning
+model for CPU cores on the CPU-only tier.
 
 ## Dynamic VRAM Estimation
 
@@ -109,7 +119,7 @@ Verified against tier/hardware combinations in `tests/test_autofit_context.py` (
 ## 5-Layer Protection
   1. **UI hint** (`app/static/js/admin-models.js:updateMemoryEstimation`): on model/ctx change, fetches `/admin/api/model-estimate` and displays colored tier indicator. Save button is **disabled** when `can_save=false`.
   2. **Server validation** (`app/routes/admin.py:update_model_config`): before saving, calls `_classify_model_fit()`. If `tier=impossible` or `tier=unknown` → returns 400 with `tier_message`. Defense in depth (UI is bypassable).
-  3. **Dry-load + admin-model rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
+  3. **Test load + admin-model rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
     + Sends tiny completion to llama-swap to trigger model load
     + Polls `/running` for 30s waiting for model
     + On success: unloads test instance (next user request reloads)

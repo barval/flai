@@ -398,8 +398,99 @@ def _init_postgresql():
     c.execute("""
         CREATE TABLE IF NOT EXISTS user_storage (
             user_id TEXT PRIMARY KEY,
-            used_bytes INTEGER DEFAULT 0
+            used_bytes INTEGER DEFAULT 0,
+            limit_bytes BIGINT
         )
+    """)
+    c.execute("ALTER TABLE user_storage ADD COLUMN IF NOT EXISTS limit_bytes BIGINT")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS storage_snapshots (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            taken_at TIMESTAMPTZ NOT NULL,
+            used_bytes BIGINT NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_snapshots_hour
+        ON storage_snapshots (user_id, taken_at)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS monitoring_archive (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            occurred_at TIMESTAMPTZ NOT NULL,
+            out_tokens BIGINT NOT NULL DEFAULT 0,
+            in_tokens BIGINT NOT NULL DEFAULT 0,
+            file_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_monitoring_archive_user_time
+        ON monitoring_archive (user_id, occurred_at)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS web_requests (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            provider TEXT,
+            request_count INTEGER NOT NULL DEFAULT 1,
+            occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_web_requests_user_time
+        ON web_requests (user_id, occurred_at)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_web_requests_time ON web_requests (occurred_at)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON documents(uploaded_at)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_chunks (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            filename TEXT,
+            text TEXT NOT NULL,
+            tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('russian', text)) STORED
+        )
+    """)
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk
+        ON rag_chunks (user_id, doc_id, chunk_index)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_by TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS settings_audit (
+            id BIGSERIAL PRIMARY KEY,
+            key TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            updated_by TEXT,
+            changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_settings_audit_time ON settings_audit (changed_at)
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS slm_import_progress (
@@ -478,6 +569,27 @@ def _init_postgresql():
             """,
                 (multimodal_model, mm_ctx, reasoning_model, rz_ctx),
             )
+
+    # Reranker (v12.7): a CPU-only cross-encoder whose GGUF is selectable like any
+    # other module. Seeded on every start so upgrades get the row too; a NULL
+    # model_name keeps the entry out of llama-swap until a file is chosen.
+    c.execute(
+        """
+        INSERT INTO model_configs (module, model_name, context_length, timeout, service_url)
+        VALUES ('reranker', NULL, 2048, 10, 'http://flai-llamacpp:8033')
+        ON CONFLICT (module) DO NOTHING
+        """
+    )
+
+    # Point an unset reranker at the legacy file once, so the Models card opens
+    # with a selected model and its metadata instead of an empty dropdown.
+    legacy_reranker = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+    if os.path.exists(legacy_reranker):
+        c.execute(
+            "UPDATE model_configs SET model_name = %s "
+            "WHERE module = 'reranker' AND (model_name IS NULL OR model_name = '')",
+            (os.path.basename(legacy_reranker)[: -len(".gguf")],),
+        )
 
     # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
@@ -713,6 +825,7 @@ def _init_postgresql():
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")

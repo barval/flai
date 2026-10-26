@@ -276,3 +276,17 @@ def test_hub_reachability(client, test_app):
         resp = client.get("/admin/api/hub/reachability")
     assert resp.status_code == 200
     assert resp.get_json()["reachable"] is False
+
+
+@pytest.mark.unit
+def test_hub_fields_follow_the_dark_theme():
+    """The context slider and the two text fields must not stay browser-white."""
+    from pathlib import Path
+
+    css = Path("app/static/css/dark-theme.css").read_text(encoding="utf-8")
+    block = css.split(".dark-theme .hub-context-value,", 1)[1].split("}", 1)[0]
+    assert "#hub-search-input" in block
+    assert "background: #2a2a2a" in block
+
+    slider = css.split(".dark-theme #hub-context-slider {", 1)[1].split("}", 1)[0]
+    assert "color-scheme: dark" in slider

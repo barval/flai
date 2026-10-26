@@ -51,6 +51,47 @@ def _mock_config(module, **overrides):
     return base
 
 
+class TestRerankerEntry:
+    """The reranker follows the admin's model choice, not a hardcoded file."""
+
+    @patch("app.llama_swap_config.get_model_config")
+    @patch("app.llama_swap_config.os.path.exists")
+    def test_entry_uses_the_configured_model(self, mock_exists, mock_get_config):
+        mock_get_config.return_value = {
+            "module": "reranker",
+            "model_name": "my-cross-encoder-Q4_K_M",
+            "context_length": 1024,
+        }
+        mock_exists.side_effect = lambda p: p == "/models/my-cross-encoder-Q4_K_M.gguf"
+
+        entry = LlamaSwapConfigGenerator().build_reranker_entry()
+
+        assert entry is not None
+        cmd = entry["reranker"]["cmd"]
+        assert "-m /models/my-cross-encoder-Q4_K_M.gguf" in cmd
+        assert "--ctx-size 1024" in cmd, "the configured window is used"
+        assert "--n-gpu-layers 0" in cmd, "the reranker stays on the CPU"
+
+    @patch("app.llama_swap_config.get_model_config")
+    @patch("app.llama_swap_config.os.path.exists")
+    def test_legacy_path_is_the_fallback(self, mock_exists, mock_get_config):
+        mock_get_config.return_value = {"module": "reranker", "model_name": None, "context_length": 2048}
+        mock_exists.side_effect = lambda p: p == LlamaSwapConfigGenerator.RERANKER_PATH
+
+        entry = LlamaSwapConfigGenerator().build_reranker_entry()
+
+        assert entry is not None
+        assert LlamaSwapConfigGenerator.RERANKER_PATH in entry["reranker"]["cmd"]
+
+    @patch("app.llama_swap_config.get_model_config")
+    @patch("app.llama_swap_config.os.path.exists")
+    def test_no_file_means_no_entry(self, mock_exists, mock_get_config):
+        mock_get_config.return_value = {"module": "reranker", "model_name": "missing", "context_length": 2048}
+        mock_exists.return_value = False
+
+        assert LlamaSwapConfigGenerator().build_reranker_entry() is None
+
+
 class TestGetModelPath:
     def setup_method(self):
         self.temp_dir = tempfile.mkdtemp()

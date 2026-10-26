@@ -1,6 +1,24 @@
 // app/static/js/admin.js
 // Admin panel JavaScript - handles user management, translations, and page-specific setup
 
+// Phone cards (CSS <=768px): the header row is hidden, so every cell needs its
+// own localized heading. The camera column only exists when rooms are configured.
+const USER_CARD_LABELS = [
+    'Status', 'Login', 'Password', 'Name', 'Class', 'Storage', 'Sessions', 'Tasks',
+    'Outgoing tokens', 'Incoming tokens', 'Messages', 'Files', 'Documents', 'SLM Facts',
+    'Internet requests', 'Tavily API', 'FLAI API',
+];
+
+function labelUserCardCells(row) {
+    const cells = Array.from(row.children);
+    const labels = cells.length === USER_CARD_LABELS.length + 2
+        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
+        : [...USER_CARD_LABELS, 'Actions'];
+    cells.forEach((cell, index) => {
+        if (labels[index]) cell.dataset.label = t(labels[index]);
+    });
+}
+
 let currentSortField = null;
 let currentSortDirection = 'asc';
 
@@ -131,9 +149,33 @@ function loadUsers() {
             classCell.appendChild(classSelect);
             row.appendChild(classCell);
             const storageCell = document.createElement('td');
+            storageCell.className = 'storage-cell';
             const storageUsedMb = (user.storage_used || 0) / (1024 * 1024);
             const storageLimitMb = user.storage_limit_mb || 500;
-            storageCell.textContent = `${storageUsedMb.toFixed(1)} / ${storageLimitMb} ${t('mb')}`;
+            const storageUsedText = document.createElement('span');
+            storageUsedText.className = 'storage-used';
+            storageUsedText.textContent = `${storageUsedMb.toFixed(1)} /`;
+            storageCell.appendChild(storageUsedText);
+
+            const storageLimitInput = document.createElement('input');
+            storageLimitInput.type = 'number';
+            storageLimitInput.min = '1';
+            storageLimitInput.step = '1';
+            storageLimitInput.className = 'storage-limit-input';
+            storageLimitInput.value = storageLimitMb;
+            storageLimitInput.dataset.default = user.storage_limit_default_mb || storageLimitMb;
+            storageLimitInput.placeholder = storageLimitInput.dataset.default;
+            storageLimitInput.title = t('storage_limit_hint').replace(
+                '{default}', storageLimitInput.dataset.default
+            );
+            storageLimitInput.addEventListener('change', () => saveStorageLimit(user.login, storageLimitInput));
+            storageCell.appendChild(storageLimitInput);
+
+            const storageUnit = document.createElement('span');
+            storageUnit.className = 'storage-unit';
+            storageUnit.textContent = t('mb');
+            storageCell.appendChild(storageUnit);
+
             if (storageUsedMb >= storageLimitMb) {
                 storageCell.classList.add('storage-over-quota');
             }
@@ -162,7 +204,11 @@ function loadUsers() {
             const slmCell = document.createElement('td');
             slmCell.textContent = user.slm_facts_count || 0;
             row.appendChild(slmCell);
-            // Column order must match admin.html: Tavily API, then FLAI API.
+            // Column order must match admin.html: Internet requests, Tavily API, then FLAI API.
+            const webRequestsCell = document.createElement('td');
+            webRequestsCell.textContent = user.web_requests_month || 0;
+            webRequestsCell.title = t('internet_requests_hint');
+            row.appendChild(webRequestsCell);
             const tavilyCell = document.createElement('td');
             tavilyCell.className = 'tavily-credits';
             tavilyCell.textContent = '…';
@@ -197,6 +243,7 @@ function loadUsers() {
             deleteBtn.onclick = () => deleteUser(user.login);
             actionsCell.appendChild(deleteBtn);
             row.appendChild(actionsCell);
+            labelUserCardCells(row);
             tbody.appendChild(row);
         });
         if (tavilyCells.size) {
@@ -228,6 +275,35 @@ function loadUsers() {
         }
     })
     .catch(err => console.error('Error loading users:', err));
+}
+
+function saveStorageLimit(login, input) {
+    const raw = String(input.value || '').trim();
+    let value = null;
+    if (raw !== '') {
+        value = parseInt(raw, 10);
+        if (!Number.isFinite(value) || value < 1) {
+            alert(t('storage_limit_invalid'));
+            input.value = input.dataset.default;
+            return;
+        }
+    }
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storage_limit_mb: value })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') {
+            alert(t('storage_limit_invalid'));
+            return;
+        }
+        if (result.storage_limit_mb === null) {
+            loadUsers();
+        }
+    }).catch(err => {
+        console.error('Storage limit update failed', err);
+        alert(t('storage_limit_invalid'));
+    });
 }
 
 function updateUserField(login, field, value) {

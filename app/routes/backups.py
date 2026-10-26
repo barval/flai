@@ -53,6 +53,11 @@ FULL_TABLES = [
     "branding_settings",
     "tasks",
     "task_steps",
+    "storage_snapshots",
+    "monitoring_archive",
+    "web_requests",
+    "settings",
+    "settings_audit",
 ]
 
 # Directories included in 'full' backup

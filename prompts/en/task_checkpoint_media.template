@@ -33,6 +33,8 @@ Prompt the generator received:
 Description of the produced image:
 {artifact_description}
 
+- Write the explanation strictly in the response language; text in another language is an error.
+
 # RESPONSE FORMAT
 Answer with exactly one JSON object, no text before or after:
 {{"verdict": true, "severity": "none", "repairable": false, "score": 100, "mismatches": [{{"entity": "...", "expected": "...", "seen": "...", "severity": "critical|minor"}}], "explanation": "..."}}

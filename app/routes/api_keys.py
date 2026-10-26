@@ -8,8 +8,8 @@ from app.tavily_keys import (
     STATUS_INVALID,
     STATUS_NO_KEY,
     STATUS_UNAVAILABLE,
+    cached_tavily_usage,
     delete_tavily_key,
-    fetch_tavily_usage,
     get_tavily_key,
     is_valid_tavily_key_shape,
     mask_tavily_key,
@@ -23,14 +23,21 @@ def _tavily_disabled() -> bool:
     return not current_app.config.get("TAVILY_ENABLED", True)
 
 
-def _tavily_usage(key: str) -> dict:
-    """Look up the credit quota, honoring the global kill switch."""
+def _tavily_usage(login: str, key: str) -> dict:
+    """Look up the credit quota, honoring the global kill switch.
+
+    Shares the short cache with the admin Users tab: an answered lookup lives
+    for the success TTL, an unreachable endpoint only for the failure TTL.
+    """
     if _tavily_disabled():
         return {"status": STATUS_UNAVAILABLE, "plan": None, "limit": None, "used": None, "remaining": None}
-    return fetch_tavily_usage(
+    return cached_tavily_usage(
+        login,
         key,
         current_app.config.get("TAVILY_API_URL", "https://api.tavily.com"),
         current_app.config.get("TAVILY_USAGE_TIMEOUT", 8),
+        current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300),
+        current_app.config.get("TAVILY_NEGATIVE_CACHE_TTL", 60),
     )
 
 
@@ -87,7 +94,7 @@ def get_tavily():
     key = get_tavily_key(login)
     if not key:
         return jsonify({"has_key": False, "masked_key": "", "status": STATUS_NO_KEY})
-    return jsonify({"has_key": True, "masked_key": mask_tavily_key(key), **_tavily_usage(key)})
+    return jsonify({"has_key": True, "masked_key": mask_tavily_key(key), **_tavily_usage(login, key)})
 
 
 @bp.route("/tavily", methods=["POST"])
@@ -102,7 +109,7 @@ def save_tavily():
         return jsonify({"error": "⚠️ " + _("Invalid Tavily API key format")}), 400
     if get_tavily_key(login):
         return jsonify({"error": "⚠️ " + _("You already have a Tavily key. Delete it before adding a new one.")}), 409
-    usage = _tavily_usage(key)
+    usage = _tavily_usage(login, key)
     if usage["status"] == STATUS_INVALID:
         return jsonify({"error": "⚠️ " + _("Tavily rejected the API key. Please check it and try again.")}), 400
     set_tavily_key(login, key)

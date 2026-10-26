@@ -202,6 +202,13 @@ def admin_panel():
     rag_threshold_default = current_app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
     rag_threshold_reasoning = current_app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.3)
 
+    # Reranker: a CPU cross-encoder chosen in the Models tab like any module.
+    # llama_swap_config.reranker_path() owns the file decision (configured model
+    # first, legacy path as the fallback).
+    rag_rerank_enabled = bool(current_app.config.get("RAG_RERANK_ENABLED", False))
+    rag_rerank_candidates = int(current_app.config.get("RAG_RERANK_CANDIDATES", 10))
+    rag_rerank_timeout = int(current_app.config.get("RAG_RERANK_TIMEOUT", 10))
+
     backend_type = current_app.config.get("LLAMACP_BACKEND", "llamacpp")
     llama_swap_url = current_app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
@@ -221,6 +228,9 @@ def admin_panel():
         max_top_k=max_top_k,
         rag_threshold_default=rag_threshold_default,
         rag_threshold_reasoning=rag_threshold_reasoning,
+        rag_rerank_enabled=rag_rerank_enabled,
+        rag_rerank_candidates=rag_rerank_candidates,
+        rag_rerank_timeout=rag_rerank_timeout,
         backend_type=backend_type,
         llama_swap_url=llama_swap_url,
     )
@@ -238,6 +248,19 @@ def get_users():
 
         # Build a single optimized query with all stats using JOINs
         with get_db() as conn:
+            monthly_requests: dict[str, int] = {}
+            storage_limits: dict[str, int] = {}
+            c = conn.cursor()
+            c.execute(
+                "SELECT user_id, COALESCE(SUM(request_count), 0) AS n FROM web_requests "
+                "WHERE occurred_at >= date_trunc('month', now()) GROUP BY user_id"
+            )
+            for row in c.fetchall():
+                monthly_requests[row["user_id"]] = int(row["n"])
+            c.execute("SELECT user_id, limit_bytes FROM user_storage WHERE limit_bytes IS NOT NULL")
+            for row in c.fetchall():
+                storage_limits[row["user_id"]] = int(row["limit_bytes"])
+
             for u in users:
                 # Single query with subqueries for all stats - no N+1
                 c = conn.cursor()
@@ -249,7 +272,7 @@ def get_users():
                         COALESCE(SUM(m.prompt_tokens), 0) as outgoing_tokens,
                         COALESCE(SUM(m.completion_tokens), 0) as incoming_tokens,
                         (SELECT COUNT(*) FROM documents
-                         WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                         WHERE user_id = %s) as documents_count,
                         (SELECT COUNT(DISTINCT m2.file_path)
                          FROM messages m2
                          JOIN chat_sessions cs2 ON m2.session_id = cs2.id
@@ -334,7 +357,16 @@ def get_users():
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
                 u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
-                u_dict["storage_limit_mb"] = current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500)
+                default_limit_mb = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500))
+                custom_limit = storage_limits.get(u["login"])
+                u_dict["storage_limit_custom"] = custom_limit is not None
+                u_dict["storage_limit_mb"] = (
+                    max(1, custom_limit // (1024 * 1024)) if custom_limit else default_limit_mb
+                )
+                u_dict["storage_limit_default_mb"] = default_limit_mb
+                # Outbound internet requests since the first day of this month:
+                # every search, page fetch and crawl page, Tavily or not.
+                u_dict["web_requests_month"] = monthly_requests.get(u["login"], 0)
 
                 # The raw Tavily key must never reach the admin payload.
                 u_dict["has_tavily_key"] = bool(u_dict.pop("tavily_api_key", None))
@@ -365,74 +397,175 @@ def get_users():
 def get_users_tavily_usage():
     """Return each user's Tavily credit state for the Users tab.
 
-    Quota values are cached in Redis so opening the admin page never performs one
-    Tavily round trip per user; keys without a cached entry are fetched in a
-    small thread pool. Key material is never included in the response.
+    Quota lookups go through ``cached_tavily_usage``: an answered lookup is
+    reused for the success TTL, and an unreachable endpoint is remembered only
+    for the short failure TTL — page reloads must not keep a block alive.
+    Key material is never included in the response.
     """
-    from app.api_bridge import get_redis_client
-    from app.tavily_keys import STATUS_EXHAUSTED, STATUS_NO_KEY, STATUS_OK, fetch_tavily_usage
+    from app.tavily_keys import STATUS_NO_KEY, cached_tavily_usage
 
     users = list_users(exclude_admin=True)
     api_url = current_app.config.get("TAVILY_API_URL", "https://api.tavily.com")
     timeout = current_app.config.get("TAVILY_USAGE_TIMEOUT", 8)
-    ttl = current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300)
+    ok_ttl = current_app.config.get("TAVILY_ADMIN_CACHE_TTL", 300)
+    fail_ttl = current_app.config.get("TAVILY_NEGATIVE_CACHE_TTL", 60)
+    app = current_app._get_current_object()
 
     # list_users() is a single SELECT *, so the key is already in memory here —
     # one query for every user instead of one query per user.
-    keys: dict[str, str] = {}
+    pending: dict[str, str] = {}
     result: dict[str, dict] = {}
     for user in users:
         key = user.get("tavily_api_key") or ""
         if not key:
             result[user["login"]] = {"has_key": False, "status": STATUS_NO_KEY, "remaining": None}
         else:
-            keys[user["login"]] = key
+            pending[user["login"]] = key
             result[user["login"]] = {"has_key": True, "status": None, "remaining": None}
-
-    if not keys:
-        return jsonify(result)
-
-    redis_client = None
-    try:
-        redis_client = get_redis_client()
-    except Exception as e:
-        logger.warning(f"Redis unavailable for Tavily usage cache: {e}")
-
-    pending: dict[str, str] = {}
-    for login in keys:
-        cached = None
-        if redis_client is not None:
-            try:
-                cached = redis_client.get(f"admin:tavily_usage:{login}")
-            except Exception as e:
-                logger.warning(f"Tavily usage cache read failed for {login}: {e}")
-        if cached:
-            try:
-                result[login].update(json.loads(cached))
-                continue
-            except (TypeError, ValueError):
-                logger.warning(f"Ignoring malformed Tavily usage cache entry for {login}")
-        pending[login] = keys[login]
 
     if pending:
 
         def _fetch(login: str) -> tuple[str, dict]:
-            return login, fetch_tavily_usage(pending[login], api_url, timeout)
+            with app.app_context():
+                usage = cached_tavily_usage(login, pending[login], api_url, timeout, ok_ttl, fail_ttl)
+            return login, usage
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             for login, usage in executor.map(_fetch, pending):
                 result[login].update(usage)
-                # Only successful lookups are cached. A transient WAF block or
-                # network failure must not freeze the cell on a stale status.
-                if usage.get("status") in (STATUS_OK, STATUS_EXHAUSTED) and redis_client is not None:
-                    try:
-                        redis_client.set(f"admin:tavily_usage:{login}", json.dumps(usage), ex=ttl)
-                    except Exception as e:
-                        logger.warning(f"Tavily usage cache write failed for {login}: {e}")
-    if redis_client is not None:
-        with suppress(Exception):
-            redis_client.close()
+
     return jsonify(result)
+
+
+@bp.route("/api/settings", methods=["GET"])
+@admin_required
+def get_settings():
+    """Schema and current values for the Settings tab (secrets are masked)."""
+    from app.settings_registry import build_schema
+
+    return jsonify({"groups": build_schema(current_app)})
+
+
+@bp.route("/api/settings", methods=["POST"])
+@admin_required
+def save_settings():
+    """Persist submitted settings and apply them without a restart."""
+    from app.settings_store import save_values
+
+    body = request.get_json(silent=True) or {}
+    values = body.get("values")
+    if not isinstance(values, dict) or not values:
+        return jsonify({"error": "⚠️ " + _("No settings to save")}), 400
+
+    saved, errors = save_values(current_app, values, session.get("login") or "admin")
+    if errors and not saved:
+        return jsonify({"error": "⚠️ " + _("Invalid settings"), "fields": errors}), 400
+    return jsonify({"status": "ok", "saved": saved, "errors": errors})
+
+
+@bp.route("/api/settings/reset", methods=["POST"])
+@admin_required
+def reset_settings():
+    """Drop overrides so the .env values apply again."""
+    from app.settings_store import reset_keys
+
+    body = request.get_json(silent=True) or {}
+    keys = body.get("keys")
+    if not isinstance(keys, list) or not keys:
+        return jsonify({"error": "⚠️ " + _("No settings to reset")}), 400
+
+    count = reset_keys(current_app, [str(key) for key in keys], session.get("login") or "admin")
+    return jsonify({"status": "ok", "reset": count})
+
+
+@bp.route("/api/settings/audit", methods=["GET"])
+@admin_required
+def get_settings_audit():
+    """Recent settings changes, newest first (secrets are already redacted)."""
+    limit = min(max(int(request.args.get("limit", 50)), 1), 200)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT key, old_value, new_value, updated_by, changed_at "
+            "FROM settings_audit ORDER BY changed_at DESC LIMIT %s",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    return jsonify(
+        [
+            {
+                "key": row["key"],
+                "old_value": row["old_value"],
+                "new_value": row["new_value"],
+                "updated_by": row["updated_by"],
+                "changed_at": row["changed_at"].isoformat(),
+            }
+            for row in rows
+        ]
+    )
+
+
+@bp.route("/api/monitoring", methods=["GET"])
+@admin_required
+def get_monitoring():
+    """Series for the Monitoring tab: one user or every non-admin user.
+
+    ``user=all`` means "the same list the Users tab shows" (admin excluded).
+    The payload is cached for ``MONITORING_CACHE_TTL`` seconds; Redis is
+    optional, and a failure degrades to computing the answer directly.
+    """
+    from app.monitoring.queries import build_payload
+    from app.monitoring.ranges import DEFAULT_RANGE, RANGE_SPECS
+
+    range_key = request.args.get("range", DEFAULT_RANGE)
+    if range_key not in RANGE_SPECS:
+        return jsonify({"error": _("Invalid period")}), 400
+
+    selectable = [user["login"] for user in list_users(exclude_admin=True)]
+    selected = request.args.get("user", "all")
+    if selected == "all":
+        logins = selectable
+    elif selected in selectable:
+        logins = [selected]
+    else:
+        return jsonify({"error": _("Unknown user")}), 400
+
+    redis_client = None
+    cache_key = f"admin:monitoring:{selected}:{range_key}"
+    try:
+        from app.api_bridge import get_redis_client
+
+        redis_client = get_redis_client()
+    except Exception as e:
+        logger.debug(f"Monitoring cache unavailable: {e}")
+        redis_client = None
+
+    try:
+        if redis_client is not None:
+            try:
+                cached = redis_client.get(cache_key)
+            except Exception as e:
+                logger.debug(f"Monitoring cache read failed: {e}")
+                cached = None
+            if isinstance(cached, (bytes, str)) and cached:
+                return current_app.response_class(cached, mimetype="application/json")
+
+        payload = build_payload(logins, range_key)
+        # The selector lists every monitorable account, not only the selected one.
+        payload["users"] = [{"login": login} for login in selectable]
+        body = json.dumps(payload)
+
+        if redis_client is not None:
+            try:
+                redis_client.setex(cache_key, current_app.config.get("MONITORING_CACHE_TTL", 60), body)
+            except Exception as e:
+                logger.debug(f"Monitoring cache write failed: {e}")
+
+        return current_app.response_class(body, mimetype="application/json")
+    finally:
+        if redis_client is not None:
+            with suppress(Exception):
+                redis_client.close()
 
 
 @bp.route("/api/users", methods=["POST"])
@@ -481,7 +614,7 @@ def add_user():
 def update_user_data(login):
     """Update user data."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get("name")
         service_class = data.get("service_class")
         is_active = data.get("is_active")
@@ -494,6 +627,23 @@ def update_user_data(login):
             is_active=is_active,
             camera_permissions=camera_permissions,
         )
+
+        if "storage_limit_mb" in data:
+            from app.db import set_user_storage_limit
+
+            raw = data.get("storage_limit_mb")
+            if raw in (None, ""):
+                set_user_storage_limit(login, None)
+                return jsonify({"status": "ok", "storage_limit_mb": None})
+            try:
+                limit_mb = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "⚠️ " + _("Invalid storage limit")}), 400
+            if limit_mb < 1 or limit_mb > 100000:
+                return jsonify({"error": "⚠️ " + _("Invalid storage limit")}), 400
+            set_user_storage_limit(login, limit_mb * 1024 * 1024)
+            return jsonify({"status": "ok", "storage_limit_mb": limit_mb})
+
         return jsonify({"status": "ok"})
     except Exception as e:
         logger.error(f"Error in update_user_data for {login}: {str(e)}", exc_info=True)
@@ -1044,7 +1194,7 @@ def llamacpp_models():
             base = base[: -len(".gguf")]
         meta = gguf_cache.get(base)
         if meta and meta.get("architecture"):
-            return classify_model_type(base, [str(meta["architecture"])])
+            return classify_model_type(base, [str(meta["architecture"])], str(meta.get("name") or ""))
         return classify_model_type(base)
 
     # If listing actual GGUF files from models directory
@@ -1611,7 +1761,7 @@ def update_model_config(module):
     # bump used to skip the check, letting OOM-ing configs (esp. on CPU) through.
     existing_cfg: dict = {}
     old_ctx: int | None = None
-    if module != "embedding" and (new_model_name is not None or new_ctx is not None):
+    if module not in ("embedding", "reranker") and (new_model_name is not None or new_ctx is not None):
         existing_cfg = get_model_config(module) or {}
         old_ctx = existing_cfg.get("context_length")
         # Tier classification blocks "impossible" models (file + KV > 70% RAM)
@@ -1723,7 +1873,7 @@ def update_model_config(module):
     # ── Schedule background dry-load + admin-model rollback on failure ──
     # A ctx-only change dry-loads the current model at the new context and
     # rolls back the context (not the model) if it can't load.
-    if module != "embedding" and (new_model_name or new_ctx):
+    if module not in ("embedding", "reranker") and (new_model_name or new_ctx):
         model_to_load = new_model_name or existing_cfg.get("model_name")
         if model_to_load:
             try:

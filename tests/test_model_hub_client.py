@@ -625,6 +625,19 @@ def test_classify_type_filename_fallback_when_no_arch():
     assert model_hub.classify_model_type("foo/plain-model", []) == "reasoning"
 
 
+def test_classify_type_reranker_from_the_model_name_or_the_file():
+    """A reranker is a bert-architecture encoder like an embedding model; only
+    its own name tells them apart, and the file may be renamed."""
+    assert model_hub.classify_model_type("BAAI/bge-reranker-v2-m3", ["BertModel"]) == "reranker"
+    assert model_hub.classify_model_type("renamed-file", ["bert"], "bge-reranker-v2-m3") == "reranker"
+    assert model_hub.classify_model_type("cross-encoder-ms-marco", []) == "reranker"
+
+
+def test_classify_type_embedding_is_not_mistaken_for_a_reranker():
+    assert model_hub.classify_model_type("bge-m3-Q8_0", ["bert"], "bge-m3") == "embedding"
+    assert model_hub.classify_model_type("nomic-embed", ["NomicBertModel"], "nomic-embed-text") == "embedding"
+
+
 def test_get_repo_arch_includes_max_ctx(monkeypatch):
     model_hub._arch_cache.clear()
 

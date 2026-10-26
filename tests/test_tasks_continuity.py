@@ -508,7 +508,10 @@ def test_planned_continuity_step_populates_and_disarms_guard(db_env, test_app, g
     monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: {"result": "continuity sheet is not a valid JSON object",
                                                                "exec_seconds": 0.1, "status": "error",
                                                                "checkpoint": None})
-    task2 = _mk_task(db_env, status="active", step_plan=plan, minutes_ago=10)
+    # Older than the first task on purpose: the executor runs the oldest active
+    # task first, and the first one still holds the slot with its queued
+    # image_gen step (the default 30 minutes would leave this one younger).
+    task2 = _mk_task(db_env, status="active", step_plan=plan, minutes_ago=40)
     _cycle(test_app)
     t2 = db_env.get_task(task2)
     assert t2["visual_bible_attempted"] is True and t2["visual_bible"] == {}
@@ -789,7 +792,9 @@ def _translations_catalog(lang: str) -> dict:
     "Extracting the visual continuity sheet...",
     "Could not build the visual continuity sheet — images continue without it.",
     "Visual continuity",
-    "Rebuild the visual continuity sheet",
+    # No "Rebuild the visual continuity sheet" entry: the rebuild control was
+    # removed from the task view (the sheet is an internal mechanism), so the
+    # label is an obsolete catalog entry — the API endpoint stays.
 ])
 def test_continuity_ui_strings_localized(msgid):
     ru = _translations_catalog("ru")

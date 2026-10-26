@@ -79,13 +79,25 @@ SEARXNG_TIMEOUT=10
 SEARXNG_MAX_RESULTS=7
 SEARXNG_MAX_RESULTS_CHARS=5000
 RAG_MAX_RESULTS_CHARS=5000
+RAG_CHUNK_SIZE=500             # Characters per chunk
+RAG_CHUNK_OVERLAP=50           # Overlap between consecutive chunks
+RAG_CHUNK_STRATEGY=fixed       # fixed | recursive | structured
+RAG_TOP_K=80                   # Chunks retrieved per query
+RAG_CONTEXT_PERCENT=30         # Share of the context window given to retrieved chunks
+RAG_HYBRID_ENABLED=true        # Merge dense and full-text retrieval with RRF (default on)
+RAG_HYBRID_CANDIDATES=30       # Candidates per retriever before fusion
+RAG_RRF_K=60                   # RRF constant
+RAG_RERANK_ENABLED=false       # Cross-encoder reranking of the top candidates (CPU, no VRAM)
+RAG_RERANK_CANDIDATES=10       # How many top candidates the reranker reorders
+RAG_RERANK_TIMEOUT=10          # Seconds before reranking is skipped and the original order is kept
 TAVILY_ENABLED=true               # Optional per-user Tavily keys; without a key the local SearXNG path is used
 TAVILY_API_URL=https://api.tavily.com
 TAVILY_TIMEOUT=20
 TAVILY_USAGE_TIMEOUT=8
 TAVILY_MAX_RESULTS=7
 TAVILY_SEARCH_DEPTH=basic
-TAVILY_ADMIN_CACHE_TTL=300
+TAVILY_ADMIN_CACHE_TTL=300     # How long an answered quota lookup is reused (Users tab and profile popup)
+TAVILY_NEGATIVE_CACHE_TTL=60   # How long an unreachable quota endpoint is remembered before retrying
 CRAWL_ENABLED=false               # Crawl4AI sidecar; enable with --with-crawler or this flag
 CRAWL4AI_API_TOKEN=flai-crawler-token  # Compose token; the web app receives it as CRAWL_API_TOKEN
 CRAWLER_URL=http://flai-crawler:11235
@@ -151,6 +163,44 @@ MODEL_HUB_SEARCH_LIMIT=20             # Max results per Hugging Face search
 MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
 HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 ```
+
+## Admin Panel Overrides
+
+Almost every variable above can also be edited in **Admin Panel → Settings** and is then stored in the
+database. The precedence is **database > `.env` > built-in default**: a value saved in the panel overrides
+the environment, and the ↺ button next to a field drops the override so the `.env` value applies again.
+
+- A saved value takes effect immediately, without a restart.
+- Values are grouped (Search and crawl, Documents and RAG, Tasks, Models and context, Media generation,
+  Deep analysis, Voice, Memory and history, API, Cameras, Service, Debug) and the search box filters by
+  name or environment key.
+- Secret values (`QDRANT_API_KEY`, `HUGGINGFACE_TOKEN`, `CRAWL_API_TOKEN`) are never sent back to the
+  browser: only a mask is shown, and an empty field means "leave unchanged".
+- Every change is written to `settings_audit` (who, when, old → new; secrets are redacted) and pruned
+  after 45 days. Both tables are included in full backups.
+- `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, the folder paths, `HTTPS_ENABLED`, `FLAI_PLATFORM` and the
+  developer `DEBUG_JS` / `DEBUG_TRANSLATIONS` flags stay in `.env` only — they are needed before the
+  database is reachable or define process behaviour.
+
+## Deployment Script and Stored Overrides
+
+`deploy.sh` (and its Russian twin `deploy-ru.sh`) still edit `.env`: `--with-search`,
+`--with-crawler`, `--with-slm` and the voice backend flags comment or uncomment `SEARXNG_URL`,
+`CRAWL_ENABLED`, `SLM_URL`, `KOKORO_URL` and `PIPER_URL`.
+
+Those five keys are editable in the admin panel and the database wins over `.env`, so the script
+asks the database first (the `flai-postgres` container and its `settings` table):
+
+- a key with no stored override is written to `.env` exactly as before;
+- a key saved in the panel is left untouched and the script warns that the panel owns it — change it
+  in **Admin Panel → Settings**, not in `.env`.
+
+On a fresh installation the database does not exist yet, so the flags behave as they always did.
+Bootstrap keys (`SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `DOCUMENTS_FOLDER`,
+`BRANDING_FOLDER`, `HTTPS_ENABLED`, `FLAI_PLATFORM`, `DEBUG_JS`, `DEBUG_TRANSLATIONS`) are never
+stored in the database, and `REDIS_URL` is supplied by Docker Compose.
+
+To hand a key back to `.env`, press ↺ next to its field.
 
 ## Domain Access and HTTPS (Reverse Proxy)
 

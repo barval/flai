@@ -214,6 +214,23 @@ def send_message():
 
     response_style = session.get("response_style", "neutral")
 
+    # Optional search scope for the RAG step: folder and upload dates. It is
+    # resolved to document ids here, so queued and re-queued tasks carry a plain
+    # list and never depend on folders changing later.
+    form_payload = request.form if request.form else (request.get_json(silent=True) or {})
+    scope: dict = {}
+    if "filter_folder" in form_payload:
+        scope["folder"] = form_payload.get("filter_folder")
+    if form_payload.get("filter_from"):
+        scope["from"] = form_payload.get("filter_from")
+    if form_payload.get("filter_to"):
+        scope["to"] = form_payload.get("filter_to")
+    scope_docs = None
+    if scope:
+        from app.rag_filters import resolve_scope
+
+        scope_docs = resolve_scope(user_id, scope)
+
     request_type = "text"
     if audio_parts or voice_file_data:
         # Audio first: every audio item is transcribed in order and the
@@ -511,6 +528,9 @@ def send_message():
             "response_style": response_style,
             "stream": True,
         }
+
+    if scope_docs is not None:
+        request_data["scope_docs"] = scope_docs
 
     request_id, position_info = current_app.request_queue.add_request(
         user_id, session_id, request_data, user_class, lang=session.get("language", "ru")

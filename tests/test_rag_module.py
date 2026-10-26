@@ -184,6 +184,49 @@ class TestRagModule:
         assert scores == [0.9, 0.8, 0.7, 0.4]
         assert fake_client.query_points.call_count == 2
 
+    @pytest.mark.unit
+    def test_lexical_terms_keep_the_content_words_of_a_question(self):
+        """Keeping only proper nouns left one common term per question, the
+        rarity gate dropped it, and the lexical half went silent for exactly
+        the person-centric questions it was built for (MRR 0.640 -> 0.744)."""
+        from modules.rag import RagModule
+
+        terms = RagModule._lexical_terms("Перечисли места работы Иванова по городам")
+
+        assert terms == ["перечисли", "места", "работы", "иванова", "городам"]
+
+    def test_rerank_reorders_without_replacing_the_cosine_scores(self, mock_app):
+        """The caller filters on absolute cosine scores (0.3); the reranker
+        only decides the order.
+
+        Its relative scale (best candidate = 1.0) once replaced the cosine
+        scores, so a live search kept 2 of 20 chunks and the answer lost every
+        employer except one.
+        """
+        from app import reranker
+
+        module = self._make_search_module(mock_app)
+        module.rerank_enabled = True
+        module.rerank_candidates = 3
+        module.rerank_timeout = 5
+        module.qdrant_client = MagicMock()
+        module.qdrant_client.query_points.return_value = MagicMock(
+            points=[
+                self._hit("d1", "cv.pdf", "one", 0.32),
+                self._hit("d1", "cv.pdf", "two", 0.34),
+                self._hit("d2", "chat.pdf", "three", 0.40),
+            ]
+        )
+
+        with (
+            patch("modules.rag.current_app", Mock(config={"LLAMA_SWAP_URL": "http://llama:8080"})),
+            patch.object(reranker, "rerank", return_value=[0.05, 0.9, 0.4]),
+        ):
+            chunks, scores = module.search("user", "query", top_k=3)
+
+        assert [chunk["text"] for chunk in chunks] == ["two", "three", "one"], "the reranker decides the order"
+        assert scores == pytest.approx([0.34, 0.40, 0.32]), "each chunk keeps its own cosine score"
+
     def test_search_file_coverage_skipped_when_too_many_missing(self, mock_app):
         """Coverage is bounded: when more than coverage_max_files documents are
         missing from the top-k, no extra per-document queries are issued."""

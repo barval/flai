@@ -5,8 +5,12 @@ The key must be presented to Tavily on every search, so it is stored as-is
 mask. Deleting the user removes the key with the row.
 """
 
+import hashlib
+import json
 import logging
+import random
 import time
+from contextlib import suppress
 
 import requests
 from requests.exceptions import RequestException
@@ -28,9 +32,11 @@ MASK_TAIL_CHARS = 4
 REQUEST_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
-USAGE_MAX_ATTEMPTS = 4
-USAGE_RETRY_DELAY = 0.5  # seconds between retries
-USAGE_TOTAL_TIMEOUT = 20  # wall-clock cap on the retry loop, in seconds
+USAGE_MAX_ATTEMPTS = 5
+USAGE_RETRY_DELAY = 0.8  # base of the exponential backoff, in seconds
+USAGE_RETRY_JITTER = 0.4  # random spread so parallel callers do not sync up
+USAGE_RETRY_MAX_DELAY = 8.0
+USAGE_TOTAL_TIMEOUT = 25  # wall-clock cap on the retry loop, in seconds
 
 STATUS_NO_KEY = "no_key"
 STATUS_OK = "ok"
@@ -138,12 +144,17 @@ def fetch_tavily_usage(api_key: str, api_url: str, timeout: int) -> dict:
         else:
             if response.status_code == 200 or response.status_code not in (401, 403, 429):
                 break
-        # 403/429 are the WAF/rate limiter, not a key verdict. Back off and
-        # retry (bounded by attempts and wall-clock). 401 is retried too because
-        # the WAF can mask it; only the final response decides.
+        # 403/429 are the WAF/rate limiter, not a key verdict. The edge refuses
+        # a share of the requests to this path even without a key, so the only
+        # way through is a patient, spread-out retry: an exponential backoff
+        # with jitter, honoring Retry-After when the limiter sends one.
         if attempt + 1 >= USAGE_MAX_ATTEMPTS or time.monotonic() >= deadline:
             break
-        time.sleep(USAGE_RETRY_DELAY)
+        delay = min(USAGE_RETRY_DELAY * (2 ** attempt), USAGE_RETRY_MAX_DELAY)
+        retry_after = response.headers.get("Retry-After") if response is not None else None
+        if retry_after and str(retry_after).strip().isdigit():
+            delay = min(float(retry_after), USAGE_RETRY_MAX_DELAY + 2)
+        time.sleep(delay + random.uniform(0, USAGE_RETRY_JITTER))
 
     if response is None:
         return result
@@ -193,3 +204,65 @@ def fetch_tavily_usage(api_key: str, api_url: str, timeout: int) -> dict:
         }
     )
     return result
+
+
+def _usage_cache_key(login: str, api_key: str) -> str:
+    """Cache key that changes with the key, so a replaced key never reads stale quota."""
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+    return f"tavily_usage:{login}:{digest}"
+
+
+def cached_tavily_usage(
+    login: str,
+    api_key: str,
+    api_url: str,
+    timeout: int,
+    ok_ttl: int,
+    fail_ttl: int,
+) -> dict:
+    """Quota lookup with a short-lived cache in Redis.
+
+    A lookup that answered is reused for ``ok_ttl`` seconds, so the column stays
+    current while the panel is open. A lookup that could not answer (edge block,
+    timeout) is remembered only for ``fail_ttl`` seconds: long enough that page
+    reloads stop hammering an endpoint that already refused us — retrying is
+    exactly what keeps the block alive — and short enough that the column
+    recovers by itself once the endpoint answers again.
+    """
+    if fail_ttl <= 0:
+        fail_ttl = 0
+    cache_key = _usage_cache_key(login, api_key)
+
+    client = None
+    try:
+        from app.api_bridge import get_redis_client
+
+        client = get_redis_client()
+    except Exception as exc:  # noqa: BLE001 — the cache is best effort
+        logger.debug(f"Tavily usage cache unavailable: {exc}")
+
+    if client is not None:
+        try:
+            cached = client.get(cache_key)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"Tavily usage cache read failed: {exc}")
+            cached = None
+        if cached:
+            try:
+                return json.loads(cached)
+            except (TypeError, ValueError):
+                logger.warning("Ignoring malformed Tavily usage cache entry")
+
+    usage = fetch_tavily_usage(api_key, api_url, timeout)
+
+    if client is not None:
+        answered = usage.get("status") in (STATUS_OK, STATUS_EXHAUSTED, STATUS_INVALID)
+        ttl = ok_ttl if answered else fail_ttl
+        if ttl > 0:
+            try:
+                client.set(cache_key, json.dumps(usage), ex=int(ttl))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"Tavily usage cache write failed: {exc}")
+        with suppress(Exception):
+            client.close()
+    return usage

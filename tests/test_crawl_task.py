@@ -13,7 +13,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _INDEX_OK = (True, "indexed", "embed-model", False)
 
 
-def queue_mod_site_blocked(url: str, max_pages: int | None = None, max_depth: int | None = None) -> list[dict]:
+def queue_mod_site_blocked(
+    url: str, user_id: str | None = None, max_pages: int | None = None, max_depth: int | None = None
+) -> list[dict]:
     """crawl_site stand-in that raises the anti-bot error."""
     from modules.crawler import SiteBlockedError
 
@@ -98,7 +100,7 @@ def _quota_db(documents, queries=None):
 def _crawl_task(task_id="t1", **data):
     payload = {"type": "crawl_task", "query": "q", "url": "https://docs.example.com", "response_style": "neutral"}
     payload.update(data)
-    return {"task_id": task_id, "user_id": "valery", "session_id": "s1", "lang": "ru", "data": payload}
+    return {"task_id": task_id, "user_id": "demo", "session_id": "s1", "lang": "ru", "data": payload}
 
 
 @pytest.fixture(autouse=True)
@@ -162,7 +164,7 @@ class TestCrawlTask:
         queue._process_crawl_task = Mock()
 
         result = queue._route_text_action(
-            "изучи https://docs.example.com", "s1", "valery", "2026-10-04 12:00:00", "ru", "neutral", 2, None, True
+            "изучи https://docs.example.com", "s1", "demo", "2026-10-04 12:00:00", "ru", "neutral", 2, None, True
         )
 
         queue._process_crawl_task.assert_not_called()
@@ -189,7 +191,7 @@ class TestCrawlTask:
         queue._route_text_action(
             "изучи https://docs.example.com/guide",
             "s1",
-            "valery",
+            "demo",
             "2026-10-04 12:00:00",
             "ru",
             "neutral",
@@ -265,10 +267,10 @@ class TestCrawlTask:
             patch("app.queue._run_document_indexing", return_value=_INDEX_OK),
         ):
             db.get_user_documents.return_value = [
-                {"id": "old-doc", "filename": "docs.example.com", "file_path": "valery/old.txt"}
+                {"id": "old-doc", "filename": "docs.example.com", "file_path": "demo/old.txt"}
             ]
             q._process_crawl_task(_crawl_task("t2"))
-            db.delete_document.assert_called_once_with("old-doc", "valery")
+            db.delete_document.assert_called_once_with("old-doc", "demo")
 
     def test_quota_full_is_a_persisted_localized_error(self, mock_app, saved_messages, tmp_path):
         q, _crawler = _queue(mock_app)
@@ -435,25 +437,25 @@ class TestCrawlQuotaAgainstReplacement:
     def test_recrawl_at_the_quota_boundary_proceeds(self, test_app):
         q, _result, db, queries = self._run(
             test_app,
-            [{"id": "old-doc", "filename": "docs.example.com", "file_path": "valery/old.txt"}],
+            [{"id": "old-doc", "filename": "docs.example.com", "file_path": "demo/old.txt"}],
         )
 
         # Both quota checks leave the replaced document out of count and size.
-        assert [params for _, params in queries] == [("valery", "old-doc")] * 2
+        assert [params for _, params in queries] == [("demo", "old-doc")] * 2
         assert all("id <> %s" in sql for sql, _ in queries)
-        db.delete_document.assert_called_once_with("old-doc", "valery")
+        db.delete_document.assert_called_once_with("old-doc", "demo")
         db.save_document.assert_called_once()
         q._requeue_reasoning_task.assert_called_once()
 
     def test_new_domain_at_the_quota_boundary_is_refused(self, test_app, saved_messages):
         q, result, db, queries = self._run(
             test_app,
-            [{"id": "other-doc", "filename": "other.example.com", "file_path": "valery/other.txt"}],
+            [{"id": "other-doc", "filename": "other.example.com", "file_path": "demo/other.txt"}],
         )
 
         # No document of this domain to replace, so nothing is excluded.
         assert all("id <> %s" not in sql for sql, _ in queries)
-        assert [params for _, params in queries] == [("valery",)]
+        assert [params for _, params in queries] == [("demo",)]
         db.save_document.assert_not_called()
         q._requeue_reasoning_task.assert_not_called()
         assert result["is_error"] is True

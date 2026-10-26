@@ -14,6 +14,14 @@ from requests.exceptions import Timeout as RequestsTimeout
 
 from app.mixins import TranslationMixin
 from app.tavily_keys import REQUEST_USER_AGENT
+from app.web_requests import (
+    KIND_PAGE,
+    KIND_SEARCH,
+    PROVIDER_SEARXNG,
+    PROVIDER_TAVILY,
+    PROVIDER_TRAFILATURA,
+    record_request,
+)
 
 _RU_MONTHS_GENITIVE = {
     1: "января",
@@ -177,7 +185,13 @@ class SearchModule(TranslationMixin):
             self.available = False
             return False
 
-    def search(self, query: str, lang: str = "ru", max_results: int | None = None) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        lang: str = "ru",
+        max_results: int | None = None,
+        user_id: str | None = None,
+    ) -> list[dict]:
         """Search the web via SearXNG JSON API.
 
         Args:
@@ -214,6 +228,7 @@ class SearchModule(TranslationMixin):
             self.logger.info(f"Search query date-normalized: '{query[:120]}' -> '{dated_query[:160]}'")
             query = dated_query
 
+        record_request(user_id, KIND_SEARCH, PROVIDER_SEARXNG)
         try:
             resp = requests.post(
                 f"{self.searxng_url}/search",
@@ -278,7 +293,10 @@ class SearchModule(TranslationMixin):
             if fetch_urls:
                 self.logger.debug(f"Fetching page content for {len(fetch_urls)} results (short/poor snippets)")
                 with ThreadPoolExecutor(max_workers=3) as executor:
-                    future_map = {executor.submit(self._fetch_page_content, url, 8): idx for idx, url in fetch_urls}
+                    future_map = {
+                        executor.submit(self._fetch_page_content, url, 8, user_id): idx
+                        for idx, url in fetch_urls
+                    }
                     for future in as_completed(future_map):
                         idx = future_map[future]
                         fetched = future.result()
@@ -315,7 +333,14 @@ class SearchModule(TranslationMixin):
             self.logger.error(f"SearXNG search failed: {e}")
             return []
 
-    def _search_tavily(self, query: str, lang: str, api_key: str, max_results: int) -> list[dict]:
+    def _search_tavily(
+        self,
+        query: str,
+        lang: str,
+        api_key: str,
+        max_results: int,
+        user_id: str | None = None,
+    ) -> list[dict]:
         """Search via the Tavily API with a user-supplied key.
 
         Tavily is an LLM-oriented engine: it resolves relative dates itself and
@@ -339,6 +364,7 @@ class SearchModule(TranslationMixin):
         }
         resp = None
         for attempt in range(2):
+            record_request(user_id, KIND_SEARCH, PROVIDER_TAVILY)
             try:
                 resp = requests.post(
                     f"{self.tavily_api_url}/search",
@@ -390,10 +416,12 @@ class SearchModule(TranslationMixin):
                 break
         if results:
             self.logger.info(f"Tavily search: '{query[:80]}' -> {len(results)} results")
-            self._enrich_short_results(results)
+            self._enrich_short_results(results, user_id=user_id)
         return results
 
-    def _enrich_short_results(self, results: list[dict], min_chars: int = 300) -> None:
+    def _enrich_short_results(
+        self, results: list[dict], min_chars: int = 300, user_id: str | None = None
+    ) -> None:
         """Fill results whose snippet is too short with the page's readable text."""
         targets = [
             (i, r["url"]) for i, r in enumerate(results) if r.get("url") and len(r.get("content", "")) < min_chars
@@ -402,7 +430,9 @@ class SearchModule(TranslationMixin):
             return
         self.logger.debug(f"Fetching page content for {len(targets)} thin results")
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future_map = {executor.submit(self._fetch_page_content, url, 8): idx for idx, url in targets}
+            future_map = {
+                executor.submit(self._fetch_page_content, url, 8, user_id): idx for idx, url in targets
+            }
             for future in as_completed(future_map):
                 fetched = future.result()
                 if fetched:
@@ -414,6 +444,7 @@ class SearchModule(TranslationMixin):
         lang: str = "ru",
         max_results: int | None = None,
         api_key: str | None = None,
+        user_id: str | None = None,
     ) -> tuple[list[dict], str]:
         """Search the web, preferring Tavily when the user supplied a key.
 
@@ -428,13 +459,13 @@ class SearchModule(TranslationMixin):
             # TAVILY_MAX_RESULTS is a ceiling on the Tavily request only; an explicit
             # caller limit below it still wins. SearXNG keeps `limit`.
             tavily_limit = min(limit, self.tavily_max_results)
-            results = self._search_tavily(query, lang, api_key, tavily_limit)
+            results = self._search_tavily(query, lang, api_key, tavily_limit, user_id=user_id)
             if results:
                 return results, "tavily"
             self.logger.debug(f"Tavily returned no results for '{query[:80]}' — falling back to SearXNG")
-        return self.search(query, lang=lang, max_results=limit), "searxng"
+        return self.search(query, lang=lang, max_results=limit, user_id=user_id), "searxng"
 
-    def _fetch_page_content(self, url: str, timeout: int = 8) -> str:
+    def _fetch_page_content(self, url: str, timeout: int = 8, user_id: str | None = None) -> str:
         """Download a page and extract readable text via trafilatura.
 
         Args:
@@ -444,6 +475,7 @@ class SearchModule(TranslationMixin):
         Returns:
             Extracted text content, or empty string on failure.
         """
+        record_request(user_id, KIND_PAGE, PROVIDER_TRAFILATURA)
         try:
             resp = requests.get(
                 url,

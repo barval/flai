@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import requests
 
 from app.crawler_guard import validate_url
+from app.web_requests import KIND_CRAWL, KIND_PAGE, PROVIDER_CRAWL4AI, record_request
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +46,10 @@ class CrawlerModule:
         token = self.app.config.get("CRAWL_API_TOKEN") or ""
         return {"Authorization": f"Bearer {token}"} if token else {}
 
-    def read_page(self, url: str, max_chars: int | None = None) -> str:
+    def read_page(self, url: str, max_chars: int | None = None, user_id: str | None = None) -> str:
         """Render one page in the browser and return its markdown."""
         clean = validate_url(url)
+        record_request(user_id, KIND_PAGE, PROVIDER_CRAWL4AI)
         limit = max_chars or int(self.app.config.get("CRAWL_MAX_PAGE_CHARS", 50000))
         resp = requests.post(
             f"{self.app.config['CRAWLER_URL']}/md",
@@ -59,7 +61,13 @@ class CrawlerModule:
         markdown = resp.json().get("markdown") or ""
         return markdown[:limit]
 
-    def crawl_site(self, url: str, max_pages: int | None = None, max_depth: int | None = None) -> list[dict]:
+    def crawl_site(
+        self,
+        url: str,
+        max_pages: int | None = None,
+        max_depth: int | None = None,
+        user_id: str | None = None,
+    ) -> list[dict]:
         """Crawl the starting URL up to the configured limits.
 
         The sidecar deliberately forbids deep-crawl strategies on untrusted
@@ -94,6 +102,7 @@ class CrawlerModule:
         collected: list[dict] = []
         seen: set[str] = set()
         used = 0
+        requests_made = 0
         frontier: list[tuple[str, int]] = [(clean, 0)]
         while frontier and len(collected) < pages_cap and used < total_cap:
             if time.monotonic() > deadline:
@@ -102,10 +111,12 @@ class CrawlerModule:
             if current in seen:
                 continue
             seen.add(current)
+            requests_made += 1
             try:
                 markdown = self._fetch_markdown(current)
             except SiteBlockedError:
                 if current == clean:
+                    record_request(user_id, KIND_CRAWL, PROVIDER_CRAWL4AI, count=requests_made)
                     raise  # the START page is blocked — the whole crawl is futile
                 continue  # a blocked inner page just drops out of the queue
             if not markdown:
@@ -119,6 +130,7 @@ class CrawlerModule:
                 break
             collected.append({"url": current, "markdown": trimmed})
             used += len(trimmed)
+        record_request(user_id, KIND_CRAWL, PROVIDER_CRAWL4AI, count=requests_made)
         return collected
 
     def _fetch_markdown(self, url: str) -> str:

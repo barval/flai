@@ -79,13 +79,25 @@ SEARXNG_TIMEOUT=10
 SEARXNG_MAX_RESULTS=7
 SEARXNG_MAX_RESULTS_CHARS=5000
 RAG_MAX_RESULTS_CHARS=5000
+RAG_CHUNK_SIZE=500             # Символов на фрагмент
+RAG_CHUNK_OVERLAP=50           # Перекрытие соседних фрагментов
+RAG_CHUNK_STRATEGY=fixed       # fixed | recursive | structured
+RAG_TOP_K=80                   # Сколько фрагментов извлекается на запрос
+RAG_CONTEXT_PERCENT=30         # Доля контекстного окна под найденные фрагменты
+RAG_HYBRID_ENABLED=true        # Сливать плотный и полнотекстовый поиск через RRF (по умолчанию включено)
+RAG_HYBRID_CANDIDATES=30       # Кандидатов от каждого поисковика до слияния
+RAG_RRF_K=60                   # Константа RRF
+RAG_RERANK_ENABLED=false       # Реранкинг верхних кандидатов кросс-энкодером (CPU, без VRAM)
+RAG_RERANK_CANDIDATES=10       # Сколько верхних кандидатов переупорядочивает реранкер
+RAG_RERANK_TIMEOUT=10          # Секунды до отказа от реранкинга с сохранением исходного порядка
 TAVILY_ENABLED=true               # Необязательные личные ключи Tavily; без ключа используется локальный SearXNG
 TAVILY_API_URL=https://api.tavily.com
 TAVILY_TIMEOUT=20
 TAVILY_USAGE_TIMEOUT=8
 TAVILY_MAX_RESULTS=7
 TAVILY_SEARCH_DEPTH=basic
-TAVILY_ADMIN_CACHE_TTL=300
+TAVILY_ADMIN_CACHE_TTL=300     # Сколько секунд переиспользуется успешный ответ о квоте (вкладка «Пользователи» и попап профиля)
+TAVILY_NEGATIVE_CACHE_TTL=60   # Сколько секунд помнится недоступность эндпоинта квоты перед повторной попыткой
 CRAWL_ENABLED=false               # Sidecar Crawl4AI; включается флагом --with-crawler или этим параметром
 CRAWL4AI_API_TOKEN=flai-crawler-token  # Токен compose; веб-приложение получает его как CRAWL_API_TOKEN
 CRAWLER_URL=http://flai-crawler:11235
@@ -151,6 +163,44 @@ MODEL_HUB_SEARCH_LIMIT=20             # Max results per Hugging Face search
 MODEL_HUB_TIMEOUT_S=3600              # Download timeout (seconds)
 HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 ```
+
+## Переопределение из админ-панели
+
+Почти любую переменную из списка выше можно задать в **Админ-панель → Настройки** — тогда она хранится
+в базе. Приоритет: **база > `.env` > значение по умолчанию**. Значение, сохранённое в панели, важнее
+переменной окружения; кнопка ↺ рядом с полем удаляет переопределение и возвращает значение из `.env`.
+
+- Сохранённое значение применяется сразу, без перезапуска.
+- Параметры сгруппированы (Поиск и обход, Документы и RAG, Задачи, Модели и контекст, Генерация медиа,
+  Глубокий анализ, Голос, Память и история, API, Камеры, Служебное, Отладка), поиск фильтрует по
+  названию и env-ключу.
+- Секреты (`QDRANT_API_KEY`, `HUGGINGFACE_TOKEN`, `CRAWL_API_TOKEN`) никогда не возвращаются в браузер:
+  показывается только маска, а пустое поле означает «не менять».
+- Каждое изменение пишется в `settings_audit` (кто, когда, было → стало; секреты скрыты) и чистится
+  через 45 дней. Обе таблицы входят в полный бэкап.
+- `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, пути к папкам, `HTTPS_ENABLED`, `FLAI_PLATFORM` и
+  отладочные `DEBUG_JS` / `DEBUG_TRANSLATIONS` остаются только в `.env`: они нужны до подключения к базе
+  или определяют поведение процесса.
+
+## Скрипт развёртывания и сохранённые переопределения
+
+`deploy.sh` (и его русский близнец `deploy-ru.sh`) по-прежнему правит `.env`: флаги
+`--with-search`, `--with-crawler`, `--with-slm` и выбор голосового движка комментируют или
+раскомментируют `SEARXNG_URL`, `CRAWL_ENABLED`, `SLM_URL`, `KOKORO_URL` и `PIPER_URL`.
+
+Эти пять ключей редактируются в админ-панели, а база важнее `.env`, поэтому скрипт сначала
+спрашивает базу (контейнер `flai-postgres`, таблица `settings`):
+
+- ключ без сохранённого переопределения записывается в `.env` как раньше;
+- ключ, сохранённый в панели, не трогается, а скрипт предупреждает, что им владеет панель —
+  менять его нужно в **Админ-панель → Настройки**, а не в `.env`.
+
+На свежей установке базы ещё нет, поэтому флаги работают ровно как прежде.
+Bootstrap-ключи (`SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `DOCUMENTS_FOLDER`,
+`BRANDING_FOLDER`, `HTTPS_ENABLED`, `FLAI_PLATFORM`, `DEBUG_JS`, `DEBUG_TRANSLATIONS`) в базе не
+хранятся, а `REDIS_URL` передаёт Docker Compose.
+
+Чтобы вернуть ключ в `.env`, нажмите ↺ рядом с его полем.
 
 ## Доступ по домену и HTTPS (reverse proxy)
 

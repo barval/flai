@@ -108,8 +108,12 @@ def get_style_instruction(lang: str, response_style: str) -> str:
 
 
 def response_language_name(lang: str) -> str:
-    """Human-readable language name used in prompts."""
-    return "Russian" if lang == "ru" else "English"
+    """Language name used in prompts, written in that language.
+
+    A Russian template that said "Response language: Russian" nudged a weak
+    model towards an English answer; the native name removes that ambiguity.
+    """
+    return "русский" if lang == "ru" else "English"
 
 
 def wait_for_service(

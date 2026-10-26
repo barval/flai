@@ -598,3 +598,254 @@ def backfill_attachment_paths(dry_run):
         return
 
     click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
+
+
+@click.command("rag-eval")
+@click.option("--user", required=True, help="Login whose indexed documents are searched")
+@click.option("--dataset", required=True, type=click.Path(exists=True), help="JSONL question set")
+@click.option("--top-k", default=10, type=int, show_default=True)
+@click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
+@click.option("--answers", is_flag=True, help="End-to-end mode: answer each question, compare with its 'answer' field")
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--scope-folder", default="", help="Restrict retrieval to one folder id")
+@click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
+@click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
+@click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
+@with_appcontext
+def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope_docs, label, out):
+    """Measure retrieval quality (or end-to-end answer quality) on a fixed question set."""
+    from datetime import datetime
+
+    from app.rag_eval import evaluate, evaluate_answers, format_report, load_dataset, save_report
+
+    rag = current_app.modules.get("rag")
+    if rag is None:
+        raise click.ClickException("RAG module is not available")
+    if not rag.check_availability():
+        raise click.ClickException("Qdrant is not reachable")
+
+    items = load_dataset(dataset)
+    click.echo(f"Loaded {len(items)} questions from {dataset}")
+
+    scope: dict = {}
+    if scope_folder:
+        scope["folder"] = scope_folder
+    if scope_docs:
+        scope["docs"] = [value.strip() for value in scope_docs.split(",") if value.strip()]
+    scope_ids = None
+    if scope:
+        from app.rag_filters import resolve_scope
+
+        scope_ids = resolve_scope(user, scope)
+        click.echo(f"Scope: {len(scope_ids or [])} document(s)")
+
+    def search(query: str, limit: int) -> list[dict]:
+        chunks, _scores = rag.search(
+            user, query, top_k=limit, file_coverage=coverage, doc_ids=scope_ids
+        )
+        return chunks
+
+    config = {
+        key: current_app.config.get(key)
+        for key in ("RAG_TOP_K", "RAG_CHUNK_SIZE", "RAG_CHUNK_OVERLAP", "RAG_CHUNK_STRATEGY", "RAG_CONTEXT_PERCENT")
+    }
+    config["coverage"] = coverage
+    run_label = label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}"
+
+    if answers:
+        base = current_app.modules.get("base")
+        if base is None:
+            raise click.ClickException("LLM module is not available")
+        instruction = (
+            "Ответь на вопрос, используя ТОЛЬКО фрагменты ниже. Если вопрос требует подсчёта, "
+            "пересчитай подходящие записи по фрагментам и ответь числом. Если ответа в них нет, "
+            "ответь ровно: НЕТ ДАННЫХ. Ответь одной короткой фразой, без пояснений."
+        )
+
+        def answer_fn(question: str, context: str) -> str:
+            prompt = f"{instruction}\n\nВОПРОС: {question}\n\nФРАГМЕНТЫ:\n{context}"
+            reply = base.call_llamacpp(
+                [{"role": "user", "content": prompt}],
+                model_type=model,
+                lang="ru",
+                temperature=0.1,
+            )
+            return str(reply or "").strip()
+
+        report = evaluate_answers(items, answer_fn, search, top_k=top_k, label=run_label, config=config)
+    else:
+        report = evaluate(items, search, top_k=top_k, label=run_label, config=config)
+    click.echo("")
+    click.echo(format_report(report))
+
+    target = out or f"data/rag_eval/{datetime.now():%Y%m%d-%H%M%S}.json"
+    saved = save_report(report, target)
+    click.echo(f"\nReport saved: {saved}")
+
+
+@click.command("rag-eval-generate")
+@click.option("--user", required=True, help="Login whose indexed documents seed the questions")
+@click.option("--count", default=20, type=int, show_default=True)
+@click.option("--lang", default="ru", show_default=True)
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--doc", default="", help="Comma-separated document ids to sample from (default: all)")
+@click.option("--out", required=True, type=click.Path(), help="JSONL output path")
+@with_appcontext
+def rag_eval_generate(user, count, lang, model, doc, out):
+    """Build a question set from the user's indexed chunks (one LLM call each)."""
+    import json
+    import random
+    from pathlib import Path
+
+    rag = current_app.modules.get("rag")
+    base = current_app.modules.get("base")
+    if rag is None or base is None:
+        raise click.ClickException("RAG or LLM module is not available")
+    if not rag.check_availability():
+        raise click.ClickException("Qdrant is not reachable")
+
+    collection = rag._get_collection_name(user)
+    scroll_filter = None
+    wanted_docs = [value.strip() for value in str(doc or "").split(",") if value.strip()]
+    if wanted_docs:
+        from qdrant_client import models as qmodels
+
+        scroll_filter = qmodels.Filter(
+            must=[qmodels.FieldCondition(key="doc_id", match=qmodels.MatchAny(any=wanted_docs))]
+        )
+    points, _offset = rag.qdrant_client.scroll(
+        collection_name=collection, limit=max(count * 5, 50), with_payload=True, scroll_filter=scroll_filter
+    )
+    chunks = [point.payload for point in points if (point.payload or {}).get("text")]
+    random.shuffle(chunks)
+    if not chunks:
+        raise click.ClickException(f"No indexed chunks for {user}")
+
+    instruction = (
+        "Представь, что человек ищет этот фрагмент в базе документов. Задай один конкретный вопрос, "
+        "на который фрагмент полностью отвечает. Сформулируй его своими словами, как спросил бы живой "
+        "человек: не копируй формулировки и редкие термины из текста, без цитат. Верни только вопрос."
+        if lang == "ru"
+        else "Imagine a person searching a document base for this passage. Write one specific question "
+        "that the passage fully answers, in your own words as a real user would ask: do not copy the "
+        "wording or rare terms from the text, no quotes. Return only the question."
+    )
+    items: list[dict] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        if len(items) >= count:
+            break
+        text = str(chunk.get("text") or "").strip()
+        if len(text) < 200:
+            continue
+        answer = base.call_llamacpp(
+            [{"role": "user", "content": f"{instruction}\n\n---\n{text[:1500]}"}],
+            model_type=model,
+            lang=lang,
+            temperature=0.3,
+        )
+        question = str(answer or "").strip().strip('"')
+        # The model occasionally returns a backend error instead of a question.
+        if question.startswith("⚠️") or "http error" in question.lower()[:60]:
+            continue
+        if not question or len(question) < 12 or question.lower() in seen:
+            continue
+        seen.add(question.lower())
+        items.append(
+            {
+                "question": question,
+                "relevant": [str(chunk.get("doc_id") or chunk.get("filename") or "")],
+                "reference": text[:200],
+            }
+        )
+        click.echo(f"[{len(items)}/{count}] {question}")
+
+    if not items:
+        raise click.ClickException("No questions were generated")
+    target = Path(out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in items), encoding="utf-8")
+    click.echo(f"\nSaved {len(items)} questions to {target}")
+
+
+@click.command("rag-backfill-chunks")
+@click.option("--user", required=True, help="Login whose indexed chunks are mirrored")
+@with_appcontext
+def rag_backfill_chunks(user):
+    """Mirror already-indexed chunks into PostgreSQL for hybrid search."""
+    from app.database import get_db
+
+    rag = current_app.modules.get("rag")
+    if rag is None or not rag.check_availability():
+        raise click.ClickException("RAG module or Qdrant is not available")
+
+    collection = rag._get_collection_name(user)
+    by_doc: dict[str, list[tuple[int, str, str]]] = {}
+    offset = None
+    while True:
+        points, offset = rag.qdrant_client.scroll(
+            collection_name=collection, limit=200, offset=offset, with_payload=True
+        )
+        for point in points:
+            payload = point.payload or {}
+            doc_id = str(payload.get("doc_id") or "")
+            if not doc_id:
+                continue
+            by_doc.setdefault(doc_id, []).append(
+                (
+                    int(payload.get("chunk_index") or 0),
+                    str(payload.get("text") or ""),
+                    str(payload.get("filename") or ""),
+                )
+            )
+        if offset is None:
+            break
+
+    written = 0
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for doc_id, rows in by_doc.items():
+            rows.sort()
+            filename = rows[0][2]
+            cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user, doc_id))
+            for index, text, _name in rows:
+                cursor.execute(
+                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
+                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (user, doc_id, index, filename, text),
+                )
+                written += 1
+
+    click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
+
+
+@click.command("rag-reindex")
+@click.option("--user", required=True, help="Login whose documents are re-indexed")
+@click.option("--doc", default="", help="Only this document id")
+@with_appcontext
+def rag_reindex(user, doc):
+    """Re-index documents, e.g. after changing the chunking strategy."""
+    from app.db import get_user_documents
+
+    rag = current_app.modules.get("rag")
+    if rag is None or not rag.check_availability():
+        raise click.ClickException("RAG module or Qdrant is not available")
+
+    documents = get_user_documents(user) or []
+    if doc:
+        documents = [row for row in documents if str(row.get("id")) == doc]
+    if not documents:
+        raise click.ClickException("No documents to re-index")
+
+    folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
+    done = failed = 0
+    for row in documents:
+        path = f"{folder}/{row.get('file_path')}"
+        ok, message = rag.index_document(user, str(row["id"]), path)
+        if ok:
+            done += 1
+            click.echo(f"  ok   {row.get('filename')} — {message}")
+        else:
+            failed += 1
+            click.echo(f"  FAIL {row.get('filename')} — {message}")
+    click.echo(f"\nRe-indexed {done} documents, {failed} failed")

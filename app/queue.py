@@ -1203,6 +1203,20 @@ class RedisRequestQueue:
         }
 
     @staticmethod
+    def _rag_scope(data: dict) -> list[str] | None:
+        """Documents retrieval may look at: the user's filter plus attachments.
+
+        ``None`` means "no filter"; an empty list means the filter matched
+        nothing and the search must return nothing. A document attached to the
+        message is always visible, even when the filter points elsewhere.
+        """
+        scope = data.get("scope_docs")
+        attached = [str(value) for value in (data.get("doc_ids") or []) if value]
+        if scope is None:
+            return attached or None
+        return sorted(set(str(value) for value in scope) | set(attached))
+
+    @staticmethod
     def _is_llm_error_string(text: str) -> bool:
         """Check if a string from call_llamacpp/chat_stream is an error message.
 
@@ -2077,9 +2091,9 @@ class RedisRequestQueue:
         if continuity_sheet:
             generation_query = f"{continuity_sheet}\n\n{generation_query}"
         # Prompt hygiene (spec §9a): source-reference markers (document line
-        # ranges, «(источник: …)» citation stubs) left by the extractor reach
-        # the SD prompt as garbage text/CJK/digits. The sanitizer strips the
-        # markers from the ASSEMBLED query — scene numbering and quoted
+        # ranges, localized "(source: …)" citation stubs) left by the extractor
+        # reach the SD prompt as garbage text/CJK/digits. The sanitizer strips
+        # the markers from the ASSEMBLED query — scene numbering and quoted
         # inscriptions (legitimate text content) survive.
         from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
 
@@ -2863,7 +2877,13 @@ class RedisRequestQueue:
             if rag and rag.available:
                 try:
                     self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
-                    chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+                    chunks, scores = rag.search(
+                        user_id,
+                        query,
+                        top_k=20,
+                        file_coverage=True,
+                        doc_ids=self._rag_scope(request_data),
+                    )
                     if task and chunks:
                         self._publish_stream_event(
                             task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -2874,12 +2894,7 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        semantic_seen = 0
                         for i, chunk in enumerate(chunks):
-                            if not chunk.get("coverage"):
-                                if semantic_seen >= 15:  # top 15 semantic chunks
-                                    continue
-                                semantic_seen += 1
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
                             score = scores[i] if i < len(scores) else 0.0
@@ -3977,7 +3992,13 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+            chunks, scores = rag.search(
+                user_id,
+                query,
+                top_k=20,
+                file_coverage=True,
+                doc_ids=self._rag_scope((task or {}).get("data") or {}),
+            )
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -3989,12 +4010,11 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                semantic_seen = 0
+                # Retrieval bounds the list (top_k + coverage) and the token
+                # budget trims the prompt, so no extra count cap: a 15-chunk
+                # cut dropped the tail of a document's own chunks — the
+                # current employer among them.
                 for chunk, score in filtered:
-                    if not chunk.get("coverage"):
-                        if semantic_seen >= 15:
-                            continue
-                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
@@ -4088,7 +4108,9 @@ class RedisRequestQueue:
             )
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
-            results, provider = search.search_with_fallback(query, lang=lang, api_key=api_key)
+            results, provider = search.search_with_fallback(
+                query, lang=lang, api_key=api_key, user_id=user_id
+            )
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             if task and results:
                 self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
@@ -4103,7 +4125,7 @@ class RedisRequestQueue:
                 or not any(len((r.get("content") or "").strip()) > 500 for r in results)
             )
             if thin and provider != "searxng" and search.available:
-                supplemented = search.search(query, lang=lang)
+                supplemented = search.search(query, lang=lang, user_id=user_id)
                 if supplemented:
                     supplemented_ctx = search.format_results_context(
                         supplemented, lang=lang, max_chars=search_max_chars
@@ -4121,7 +4143,7 @@ class RedisRequestQueue:
                 self.app.logger.warning(
                     f"Web search returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
                 )
-                retried = search.search(retry_query, lang=lang)
+                retried = search.search(retry_query, lang=lang, user_id=user_id)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
@@ -4208,7 +4230,7 @@ class RedisRequestQueue:
         Honours the task cancel flag between page progress updates.
         """
         self._publish_stream_event(task, "task_progress", {"stage": "crawl_start"})
-        pages: list[dict] = crawler.crawl_site(url)
+        pages: list[dict] = crawler.crawl_site(url, user_id=str(task.get("user_id") or "") or None)
         total = len(pages)
         for count in range(1, total + 1):
             if count < total and task.get("id") and self._is_task_cancelled(task["id"]):
@@ -4598,7 +4620,13 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
-            chunks, scores = rag.search(user_id, query, top_k=20, file_coverage=True)
+            chunks, scores = rag.search(
+                user_id,
+                query,
+                top_k=20,
+                file_coverage=True,
+                doc_ids=self._rag_scope((task or {}).get("data") or {}),
+            )
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -4610,12 +4638,11 @@ class RedisRequestQueue:
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                semantic_seen = 0
+                # Retrieval bounds the list (top_k + coverage) and the token
+                # budget trims the prompt, so no extra count cap: a 15-chunk
+                # cut dropped the tail of a document's own chunks — the
+                # current employer among them.
                 for chunk, score in filtered:
-                    if not chunk.get("coverage"):
-                        if semantic_seen >= 15:
-                            continue
-                        semantic_seen += 1
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")

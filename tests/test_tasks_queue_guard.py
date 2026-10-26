@@ -323,9 +323,11 @@ class TestSubtaskPolling:
         assert task_row["accumulated_exec_seconds"] > 0, "budget grew by the subtask approximation"
         step = store.get_step(row_id)
         assert step["status"] == "passed"
-        # The artifact line is appended to the result text (the verifier judges
-        # text only) — the bare file_path when the envelope carries no file_name.
-        assert step["result"] == "image done\n/uploads/x.png"
+        # The artifact line is verifier-only: the visible body keeps the worker's
+        # response, the file name lives in extra["media"] (see
+        # test_media_step_body_never_shows_the_artifact_file_name).
+        assert step["result"] == "image done"
+        assert "/uploads/x.png" not in step["result"]
         assert step["extra"].get("media", {}).get("file_path") == "/uploads/x.png"
         assert task_row["status"] == "completed", "final step ran after the subtask passed"
 

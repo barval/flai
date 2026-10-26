@@ -82,7 +82,19 @@ bash services/ltx_video/download-t5-encoder.sh
 |-------|---------|---------|-------------|
 | **Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf** | Reasoning (all tiers) | [Qwen License](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal — chat/router/vision | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~1.1 GB |
+| **bge-reranker-v2-m3-Q4_K_M.gguf** | Reranker (optional, CPU) | [MIT License](https://huggingface.co/BAAI/bge-reranker-v2-m3) | ~0.42 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
+
+The reranker is optional: ~0.42 GB on disk, and a resident CPU llama-server holds about **0.9 GB of RAM**
+(measured RSS). It is never offloaded to GPU memory and does not reserve a GPU queue slot.
+
+**Choosing the reranker model.** It is a module like any other: Admin → Models → Reranker lists the GGUF
+files whose type is `reranker` (recognised from the model's own name and architecture, so a renamed file
+still appears in this card), shows the metadata read from the GGUF header and saves the choice together
+with `RAG_RERANK_ENABLED` / `RAG_RERANK_CANDIDATES` / `RAG_RERANK_TIMEOUT`. The file is registered in
+llama-swap's `cpu_only` group under the fixed name `reranker`; it must be a cross-encoder built with
+`--reranking`. When no file is chosen the legacy path `/models/bge-reranker-v2-m3-Q4_K_M.gguf` is used,
+so an existing installation keeps working.
 
 ### Image Generation Models (stable-diffusion.cpp)
 
@@ -200,6 +212,6 @@ services/llamacpp/models/
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
 | **Embedding** | bge-m3 Q8_0 (~0.6 GB) | — | Single model for all tiers |
 
-> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
+> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background test load (dry-load) of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---

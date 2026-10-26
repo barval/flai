@@ -437,26 +437,113 @@ def test_hub_type_labels_collapse_on_mobile():
     assert re.search(r"\.admin-tab-content\.active\s*\{[^}]*overflow-x:\s*auto", admin_css), "horizontal scroll"
 
 
-def test_mobile_model_hub_has_compact_controls_and_scrollable_table():
+def _mobile_media_block(css: str, needle: str) -> tuple[str, str]:
+    """The 768px media block that holds ``needle`` (and the CSS before it).
+
+    ``rindex`` alone was wrong: several 768px blocks exist, and the nearest
+    *preceding* one may end long before the needle — the Model Hub overrides
+    were then looked for in the hardware-table block.
+    """
+    position = css.index(needle)
+    index = 0
+    while True:
+        start = css.find("@media (max-width: 768px)", index)
+        if start == -1:
+            raise AssertionError(f"{needle!r} is not inside a 768px media block")
+        depth = 0
+        end = start
+        for end in range(start, len(css)):
+            if css[end] == "{":
+                depth += 1
+            elif css[end] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+        if start <= position <= end:
+            return css[:start], css[start : end + 1]
+        index = end + 1
+
+
+def test_the_hub_search_button_matches_the_download_buttons():
+    """They sit one above the other in the same tab and must be one height."""
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    media_start = admin_css.rindex("@media (max-width: 768px)")
-    media = admin_css[media_start:]
-    assert media_start > admin_css.index(".hub-filter-row { display: flex"), "mobile overrides must follow base styles"
-    assert media_start > admin_css.index(".hub-header { display: flex"), "mobile overrides must follow base styles"
+    rule = admin_css[admin_css.index(".hub-dl,\n.hub-del,"):]
+    rule = rule[: rule.index("}")]
+    assert "#hub-search-btn" in rule
+    assert "height: 33px;" in rule
+
+
+def test_mobile_model_hub_wraps_its_controls_and_renders_cards():
+    """The context field used to run off the right edge and the results table
+    needed a sideways viewport; both now fit a phone."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    before, media = _mobile_media_block(admin_css, ".hub-context-row {")
+    assert ".hub-filter-row { display: flex" in before, "mobile overrides must follow base styles"
+    assert ".hub-header { display: flex" in before, "mobile overrides must follow base styles"
     assert ".hub-filters {" in media
+
+    # Type chips stay one line and may scroll; the context row never does.
     assert re.search(r"\.hub-filter-row\s*\{[^}]*flex-wrap:\s*nowrap", media)
     assert re.search(r"\.hub-filter-row\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.hub-columns\s*\{[^}]*min-width:\s*", media)
-    assert re.search(r"table\.hub-files\s*\{[^}]*min-width:\s*", media)
+    context = media[media.index(".hub-context-row {") :]
+    assert re.search(r"\.hub-context-row\s*\{[^}]*flex-wrap:\s*nowrap", context), (
+        "the caption, slider and field share one line"
+    )
+    assert re.search(r"\.hub-context-row\s*\{[^}]*overflow-x:\s*visible", context)
+    assert re.search(r"\.hub-context-row #hub-context-slider\s*\{[^}]*flex:\s*1 1 auto", context)
+    assert ".hub-context-label-full { display: none; }" in context
+    assert ".hub-context-label-short { display: inline; }" in context
+    assert re.search(r"\.hub-context-label-short\s*\{\s*display:\s*none", admin_css), (
+        "the short caption exists for phones only"
+    )
+    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*width:\s*8ch", context), (
+        "seven digits must fit the field"
+    )
+    assert re.search(r"\.hub-context-row \.hub-context-value\s*\{[^}]*box-sizing:\s*content-box", context)
+
+    # Results: one card per file, no wide canvas, no column header.
+    assert re.search(r"\.hub-results-wrap\s*\{[^}]*overflow-x:\s*visible", media)
+    # The Hub is a scroll area: no bottom padding may separate it from the footer.
+    assert "#hub-tab { padding-bottom: 0; }" in media
+    assert ".hub-container { padding-bottom: 0; }" in media
+    assert ".admin-container:has(#hub-tab.active) { padding-bottom: 0; }" in media
+    assert re.search(r"\.hub-columns\s*\{\s*display:\s*none", media)
+    assert "min-width: 680px" not in media
+    cards = media[media.index(".hub-file-row {") :]
+    assert "grid-template-areas:" in cards
+    assert '"name   name"' in cards
+    assert re.search(r'"fit\s+size"', cards), "the fit verdict leads the line"
+    assert re.search(r"\.hub-file-row td:nth-child\(3\)\s*\{[^}]*white-space:\s*normal", cards)
+    # The desktop percentage widths (10/14/20 %) win by specificity and once
+    # collapsed the size cell to 6 px and the verdict to three lines.
+    for cell in (1, 2, 3, 4):
+        assert re.search(rf"\.hub-file-row td:nth-child\({cell}\)\s*\{{[^}}]*width:\s*auto", cards), (
+            f"cell {cell} must size itself in the card"
+        )
+    assert re.search(r'"action action"', cards)
 
 
-def test_mobile_downloaded_models_panel_scrolls_horizontally():
+def test_mobile_downloaded_models_panel_wraps_without_scroll():
+    """A phone must not scroll the whole page sideways for this panel.
+
+    One card per model: emoji, name and the delete button on the first line,
+    the footprint on the second, and a short hub badge instead of a sentence.
+    """
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
-    media = admin_css[admin_css.index("@media (max-width: 768px)") :]
-    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*auto", media)
-    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*", media)
-    assert re.search(r"\.installed-file\s*\{[^}]*flex-wrap:\s*nowrap", media)
+    _before, media = _mobile_media_block(admin_css, "#models-files { overflow-x: visible")
+    assert re.search(r"#models-files\s*\{[^}]*overflow-x:\s*visible", media)
+    assert re.search(r"\.models-files-list\s*\{[^}]*min-width:\s*0", media)
+    assert "min-width: 620px" not in media, "the panel no longer needs a wide canvas"
+    installed = media[media.index(".installed-file {") :]
+    assert "display: grid;" in installed
+    assert "grid-template-areas:" in installed
+    assert '"emoji name    del"' in installed
+    assert re.search(r'"\.\s+details details"', installed)
+    assert re.search(r"\.installed-file-details\s*\{[^}]*flex-wrap:\s*wrap", media)
+
+    models_src = (JS_DIR / "admin-models.js").read_text(encoding="utf-8")
+    assert "installed-file-badge" in models_src
+    assert "t('Model Hub')" in models_src, "the badge uses the short hub label"
 
 
 def test_hub_calculating_msgid_in_both_catalogs():
@@ -634,3 +721,87 @@ def test_on_message_new_marks_active_session_visited():
         "onMessageNew does not call updateLastVisit(currentSessionId) — "
         "read replies stay unread on the server and the envelope reappears"
     )
+
+
+def test_backups_table_columns_and_separators():
+    """Dashed separators like the Users table, and «Created» before the file."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    table = admin_css[admin_css.index(".backups-table th,\n.backups-table td {"):]
+    assert "border-right: 1px dashed #e2e2e2;" in table[:200]
+    assert ".backups-table th:last-child,\n.backups-table td:last-child {\n    border-right: none;" in admin_css
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    thead = html[html.index('<table id="backups-table"'):html.index("</thead>", html.index('<table id="backups-table"'))]
+    assert thead.index("{{ _('Created') }}") < thead.index("{{ _('Filename') }}")
+
+    js = (JS_DIR / "admin-backups.js").read_text(encoding="utf-8")
+    row = js[js.index("tr.innerHTML = `"):js.index("`;", js.index("tr.innerHTML = `"))]
+    assert row.index("formatDate(backup.created_at)") < row.index("escapeHtml(backup.filename)")
+
+
+def test_admin_buttons_darken_on_hover_and_share_one_height():
+    """One hover language: darken, never switch hue; one row for the backup
+    header, whose buttons used to sit 10 px apart."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".add-user-button:hover {\n    background-color: #2980b9;\n}" in admin_css
+    primary = admin_css[admin_css.index(".btn-primary {"):]
+    primary = primary[: primary.index("}")]
+    assert "margin-top" not in primary, "the 10 px margin put the button off the row"
+    assert ".btn-primary:hover {\n    background-color: #219a52;\n}" in admin_css
+
+    header = admin_css[admin_css.index(".backups-header {"):]
+    header = header[: header.index("}")]
+    assert "flex-wrap: wrap;" in header
+    assert ".backups-header .add-user-button,\n.backups-header .btn-primary,\n.backup-create select {\n    height: 38px;" in admin_css
+
+
+def test_the_backup_type_is_plain_text():
+    """The coloured pills competed with the row's action buttons."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".backup-type-badge.users" not in admin_css
+    assert ".backup-type-badge.full" not in admin_css
+
+    js = (JS_DIR / "admin-backups.js").read_text(encoding="utf-8")
+    assert 'class="backup-type-badge"' in js
+    assert 'class="backup-type-badge ${backup.type}"' not in js
+
+def test_the_phone_backup_card_keeps_every_desktop_column():
+    """A card lists the same fields in the same order as the desktop table,
+    and it never widens the page (no horizontal scrolling)."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    card = admin_css[admin_css.index("#backups-table tr {"):]
+    card = card[: card.index("}")]
+    for area in ("num", "created", "filename", "type", "size", "actions"):
+        assert area in card
+    assert '"num     created  created"' in card
+    assert '"filename filename filename"' in card
+    assert '"type    type     size"' in card
+    assert '"actions actions  actions"' in card
+    # The desktop rules stretch the row to 100 %; with card padding that
+    # overflowed the table and produced a horizontal scrollbar.
+    assert "width: auto;" in card
+    assert "box-sizing: border-box;" in card
+
+
+def test_the_download_link_centres_its_label_like_the_buttons():
+    """The download control is an <a>: as an inline-block its label sat at the
+    top edge instead of being centred next to the <button> elements."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    warning = admin_css[admin_css.index(".btn-warning {"):]
+    warning = warning[: warning.index("}")]
+    assert "display: inline-flex;" in warning
+    assert "align-items: center;" in warning
+    assert "justify-content: center;" in warning
+    assert "box-sizing: border-box;" in warning
+
+    actions = admin_css[admin_css.index("#backups-table td.actions-cell button,"):]
+    actions = actions[: actions.index("}")]
+    assert "#backups-table td.actions-cell a {" in actions
+    assert "height: 30px;" in actions
+
+def test_the_users_tab_action_buttons_darken_on_hover():
+    """«Change» and «Delete» in the Users table follow the same hover language
+    as every other admin button."""
+    admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
+    assert ".delete-user-btn:hover {\n    background-color: #c0392b;\n}" in admin_css
+    assert ".change-password-btn:hover {\n    background-color: #e67e22;\n}" in admin_css

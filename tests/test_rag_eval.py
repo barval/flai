@@ -1,0 +1,232 @@
+# tests/test_rag_eval.py
+"""RAG quality harness: dataset parsing, metrics and report shape."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from app.rag_eval import (
+    EvalItem,
+    answer_matches,
+    evaluate,
+    evaluate_item,
+    format_report,
+    load_dataset,
+    save_report,
+)
+
+pytestmark = pytest.mark.unit
+
+
+def _chunk(doc_id: str, text: str = "x" * 100) -> dict:
+    return {"doc_id": doc_id, "filename": f"{doc_id}.pdf", "text": text}
+
+
+def test_load_dataset_parses_jsonl(tmp_path: Path):
+    path = tmp_path / "set.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"question": "Q1?", "relevant": ["d1"]}),
+                "# a comment line",
+                json.dumps({"question": "Q2?", "relevant": ["d2", "d3"], "reference": "text"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    items = load_dataset(path)
+
+    assert [item.question for item in items] == ["Q1?", "Q2?"]
+    assert items[1].relevant == ["d2", "d3"]
+    assert items[1].reference == "text"
+
+
+def test_load_dataset_rejects_a_line_without_a_question(tmp_path: Path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text(json.dumps({"relevant": ["d1"]}), encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_dataset(path)
+
+
+def test_perfect_hit_scores_one():
+    result = evaluate_item(EvalItem("q", ["d1"]), lambda _q, _k: [_chunk("d1")], top_k=5)
+
+    assert (result.hit, result.recall, result.reciprocal_rank, result.ndcg) == (1.0, 1.0, 1.0, 1.0)
+
+
+def test_second_rank_halves_the_reciprocal_rank():
+    result = evaluate_item(
+        EvalItem("q", ["d1", "d2"]),
+        lambda _q, _k: [_chunk("other"), _chunk("d1")],
+        top_k=5,
+    )
+
+    assert result.hit == 1.0
+    assert result.recall == 0.5
+    assert result.reciprocal_rank == 0.5
+
+
+def test_a_miss_scores_zero():
+    result = evaluate_item(EvalItem("q", ["d1"]), lambda _q, _k: [_chunk("other")], top_k=5)
+
+    assert (result.hit, result.recall, result.reciprocal_rank, result.ndcg) == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_filename_also_counts_as_relevant():
+    chunk = {"doc_id": "unknown", "filename": "contract.pdf", "text": "t"}
+
+    result = evaluate_item(EvalItem("q", ["contract.pdf"]), lambda _q, _k: [chunk], top_k=5)
+
+    assert result.hit == 1.0
+
+
+def test_report_carries_metrics_config_and_per_question_rows():
+    items = [EvalItem("q1", ["d1"]), EvalItem("q2", ["d2"])]
+    chunks = {"q1": [_chunk("d1")], "q2": [_chunk("other")]}
+
+    report = evaluate(items, lambda q, _k: chunks[q], top_k=3, label="baseline", config={"RAG_TOP_K": 3})
+
+    assert report["label"] == "baseline"
+    assert report["questions"] == 2
+    assert report["config"] == {"RAG_TOP_K": 3}
+    assert report["metrics"]["hit_at_k"] == 0.5
+    assert report["metrics"]["recall_at_k"] == 0.5
+    assert report["metrics"]["latency_ms_p95"] >= 0
+    assert len(report["results"]) == 2
+    assert report["results"][0]["retrieved"] == ["d1"]
+
+
+def test_empty_dataset_is_rejected():
+    with pytest.raises(ValueError):
+        evaluate([], lambda _q, _k: [], top_k=3)
+
+
+def test_format_report_mentions_the_key_numbers():
+    report = evaluate([EvalItem("q", ["d1"])], lambda _q, _k: [_chunk("d1")], top_k=4)
+
+    text = format_report(report)
+
+    assert "hit@4" in text and "recall@4" in text and "MRR" in text
+
+
+def test_save_report_writes_json(tmp_path: Path):
+    report = evaluate([EvalItem("q", ["d1"])], lambda _q, _k: [_chunk("d1")], top_k=3)
+
+    target = save_report(report, tmp_path / "out" / "report.json")
+
+    assert json.loads(target.read_text(encoding="utf-8"))["metrics"]["hit_at_k"] == 1.0
+
+
+def test_ndcg_counts_a_document_once():
+    """Several chunks of the same relevant file must not push nDCG above 1."""
+    chunks = [_chunk("d1") for _ in range(5)]
+
+    result = evaluate_item(EvalItem("q", ["d1"]), lambda _q, _k: chunks, top_k=10)
+
+    assert result.hit == 1.0
+    assert result.recall == 1.0
+    assert result.ndcg == 1.0
+
+
+def test_reference_makes_the_check_chunk_level():
+    """The right document with the wrong passage is a miss when a reference exists."""
+    right = {"doc_id": "d1", "filename": "d1.pdf", "text": "The penalty is 5% per day of delay."}
+    wrong = {"doc_id": "d1", "filename": "d1.pdf", "text": "Section 1. General provisions."}
+    item = EvalItem("q", ["d1"], reference="The penalty is 5% per day")
+
+    hit = evaluate_item(item, lambda _q, _k: [right], top_k=5)
+    miss = evaluate_item(item, lambda _q, _k: [wrong], top_k=5)
+
+    assert hit.hit == 1.0
+    assert miss.hit == 0.0
+
+
+def test_any_ground_truth_passage_counts():
+    """A multi-hop answer may live in several chunks; hitting one is enough."""
+    chunks = [{"doc_id": "d1", "filename": "d1.pdf", "text": "Second fact lives here."}]
+    item = EvalItem("q", ["d1"], references=["First fact", "Second fact"])
+
+    result = evaluate_item(item, lambda _q, _k: chunks, top_k=5)
+
+    assert result.hit == 1.0
+
+
+def test_dataset_reads_a_references_list(tmp_path: Path):
+    path = tmp_path / "set.jsonl"
+    path.write_text(
+        json.dumps({"question": "Q?", "relevant": ["d1"], "references": ["a", "b"]}),
+        encoding="utf-8",
+    )
+
+    item = load_dataset(path)[0]
+
+    assert item.passages == ["a", "b"]
+
+
+def test_ndcg_uses_standard_position_weights():
+    """A single relevant result at rank 2 scores 1/log2(3), not 1.0."""
+    chunks = [_chunk("other"), _chunk("d1")]
+
+    result = evaluate_item(EvalItem("q", ["d1"]), lambda _q, _k: chunks, top_k=5)
+
+    assert round(result.ndcg, 4) == 0.6309
+
+
+def test_chunk_level_ground_truth_is_not_deduplicated_by_document():
+    """A matching chunk below a non-matching chunk of the same file still counts."""
+    chunks = [
+        {"doc_id": "d1", "filename": "d1.pdf", "text": "unrelated opening"},
+        {"doc_id": "d1", "filename": "d1.pdf", "text": "the exact passage"},
+    ]
+    item = EvalItem("q", ["d1"], reference="the exact passage")
+
+    result = evaluate_item(item, lambda _q, _k: chunks, top_k=5)
+
+    assert result.reciprocal_rank == 0.5
+    assert round(result.ndcg, 4) == 0.6309
+
+
+def test_answer_matches_counts_by_number():
+    assert answer_matches("2", "В Твери было 2 места работы") is True
+    assert answer_matches("2", "3") is False
+
+
+def test_answer_matches_accepts_no_data_for_an_expected_zero():
+    assert answer_matches("0", "НЕТ ДАННЫХ") is True
+    assert answer_matches("0", "В Твери было 1 место") is False
+
+
+def test_answer_mode_reports_accuracy_and_misses():
+    from app.rag_eval import evaluate_answers
+
+    items = [
+        EvalItem("сколько мест в Твери?", ["d1"], answer="0"),
+        EvalItem("сколько мест в Пскове?", ["d1"], answer="3"),
+    ]
+    answers = {"сколько мест в Твери?": "НЕТ ДАННЫХ", "сколько мест в Пскове?": "два"}
+
+    report = evaluate_answers(
+        items,
+        lambda question, _context: answers[question],
+        lambda _q, _k: [{"doc_id": "d1", "filename": "cv.pdf", "text": "t"}],
+        top_k=5,
+        label="answers",
+    )
+
+    assert report["mode"] == "answers"
+    assert report["metrics"]["answer_accuracy"] == 0.5
+    assert [row["match"] for row in report["results"]] == [True, False]
+
+
+def test_passage_match_survives_a_chunk_boundary_shift():
+    """Most of the passage in the chunk counts, exact bytes are not required."""
+    from app.rag_eval import _passage_match
+
+    passage = "Ноябрь 2023 — ООО «Альфа» настоящее время Тверь alfa.example 2 года 3 месяца"
+    shifted = "Опыт работы Ноябрь 2023 — ООО «Альфа» настоящее время Тверь, alfa.example/ 2 года 3 месяца"
+
+    assert _passage_match(passage, shifted.lower())
+    assert not _passage_match(passage, "совершенно другой текст про отпуск и погоду")

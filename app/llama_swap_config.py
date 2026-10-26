@@ -250,6 +250,75 @@ class LlamaSwapConfigGenerator:
         self.logger.info(f"Built model entry for merge_cpu: {entry}")
         return {"merge_cpu": entry}
 
+    RERANKER_PATH = "/models/bge-reranker-v2-m3-Q4_K_M.gguf"
+
+    def reranker_path(self) -> str | None:
+        """The GGUF the admin chose for the reranker, else the legacy file.
+
+        The model is a normal ``model_configs`` row (module ``reranker``), so
+        the file may be renamed, moved into a subdirectory, or swapped for
+        another cross-encoder without touching code.
+        """
+        try:
+            config = get_model_config("reranker") or {}
+        except Exception:  # noqa: BLE001 — the entry is optional, never fatal
+            config = {}
+        model_name = str(config.get("model_name") or "").strip()
+        if not model_name:
+            return self.RERANKER_PATH if os.path.exists(self.RERANKER_PATH) else None
+        path = self.get_model_path("reranker", model_name)
+        if path and os.path.exists(path):
+            return path
+        self.logger.warning(f"Reranker model not found on disk: {model_name}")
+        return None
+
+    def reranker_ctx_size(self) -> int:
+        """Context window for the cross-encoder (a query plus one passage)."""
+        try:
+            config = get_model_config("reranker") or {}
+            return max(512, int(config.get("context_length") or 2048))
+        except Exception:  # noqa: BLE001
+            return 2048
+
+    def build_reranker_entry(self) -> dict[str, Any] | None:
+        """CPU-only cross-encoder used to rerank the top RAG candidates.
+
+        It runs on the llama-swap host like merge_cpu: no VRAM, no GPU queue
+        slot, so a search never waits behind a chat request. Registered only
+        when the GGUF is present, so installations without it are unaffected.
+        """
+        path = self.reranker_path()
+        if not path:
+            return None
+        cmd_parts = [
+            "llama-server",
+            "--port",
+            "${PORT}",
+            "-m",
+            path,
+            "--host",
+            "0.0.0.0",
+            "--ctx-size",
+            str(self.reranker_ctx_size()),
+            "--n-gpu-layers",
+            "0",
+            "--flash-attn",
+            "off",
+            "--reranking",
+            "--reasoning_format",
+            "none",
+            "--jinja",
+        ]
+        entry = {
+            "cmd": " ".join(cmd_parts),
+            "ttl": 0,  # keep it resident: it is small, CPU-only and used on every search
+            "name": "reranker",
+            "group": "cpu_only",
+            "unlisted": True,
+        }
+        self.logger.info(f"Built model entry for reranker: {entry}")
+        return {"reranker": entry}
+
     def build_model_entry(self, module: str, ngl_override: int | None = None) -> dict[str, Any] | None:
         """Build llama-swap model entry from FLAI model config."""
         config = get_model_config(module)
@@ -406,9 +475,17 @@ class LlamaSwapConfigGenerator:
             },
             "cpu_only": {
                 "swap": False,
+                # The CPU group must not evict GPU models and must survive their
+                # loading: the reranker is queried on every search, and a reload
+                # costs ~1.6 s per query.
+                "exclusive": False,
+                "persistent": True,
                 "models": ["merge_cpu"],
             },
         }
+
+        if self.reranker_path():
+            groups["cpu_only"]["models"].append("reranker")
 
         lines.append("groups:")
         for group_name, group_config in groups.items():
@@ -416,10 +493,14 @@ class LlamaSwapConfigGenerator:
             if not group_config.get("swap", True):
                 lines.append(f"  {group_name}:")
                 lines.append("    swap: false")
-                lines.append(f"    models: [{models_list}]")
+                if group_config.get("exclusive") is False:
+                    lines.append("    exclusive: false")
+                if group_config.get("persistent"):
+                    lines.append("    persistent: true")
+                lines.append(f"    members: [{models_list}]")
             else:
                 lines.append(f"  {group_name}:")
-                lines.append(f"    models: [{models_list}]")
+                lines.append(f"    members: [{models_list}]")
         lines.append("")
 
         # Preload multimodal model at startup via llama-swap hooks
@@ -488,6 +569,18 @@ class LlamaSwapConfigGenerator:
                     lines.append(f"    {key}: {'true' if value else 'false'}")
                 elif isinstance(value, list):
                     lines.append(f"    {key}: {value}")
+                else:
+                    lines.append(f"    {key}: {value}")
+
+        reranker_entry = self.build_reranker_entry()
+        if reranker_entry:
+            entry = reranker_entry["reranker"]
+            lines.append("  reranker:")
+            for key, value in entry.items():
+                if isinstance(value, str):
+                    lines.append(f'    {key}: "{value}"')
+                elif isinstance(value, bool):
+                    lines.append(f"    {key}: {'true' if value else 'false'}")
                 else:
                     lines.append(f"    {key}: {value}")
 

@@ -16,7 +16,7 @@ from app.events import get_events_publisher
 
 def _task_event_payload(task: dict) -> dict:
     """Small, path-free task snapshot for the client."""
-    from app.routes.tasks import _token_totals_for
+    from app.routes.tasks import _add_plan_usage, _token_totals_for
 
     plan = task.get("step_plan") or {}
     steps = plan.get("steps", []) if isinstance(plan, dict) else (plan or [])
@@ -28,7 +28,11 @@ def _task_event_payload(task: dict) -> dict:
         "total_steps": len(steps or []),
         "abort_reason": task.get("abort_reason"),
         "exec_seconds": float(task.get("accumulated_exec_seconds") or 0.0),
-        "token_totals": _token_totals_for([task.get("id")]) or {"prompt_tokens": 0, "completion_tokens": 0},
+        "token_totals": _add_plan_usage(
+            task,
+            _token_totals_for([str(task.get("id"))]).get(str(task.get("id")))
+            or {"prompt_tokens": 0, "completion_tokens": 0},
+        ),
     }
     # Add queue position for queued tasks (the list renders the ⏳ position badge)
     if task.get("status") == "queued":

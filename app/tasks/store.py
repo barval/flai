@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from app.database import get_db
+from app.monitoring.archive import archive_task
 
 # Columns updated via update_task/update_step; values may be datetime objects
 # or ISO strings for timestamptz columns, dicts for JSONB columns.
@@ -168,6 +169,7 @@ def delete_task(task_id: str) -> None:
     """
     with get_db() as conn:
         c = conn.cursor()
+        archive_task(c, task_id)
         c.execute("DELETE FROM messages WHERE session_id = %s", (task_id,))
         c.execute("DELETE FROM task_steps WHERE task_id = %s", (task_id,))
         c.execute("DELETE FROM tasks WHERE id = %s", (task_id,))

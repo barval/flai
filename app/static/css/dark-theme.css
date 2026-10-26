@@ -3,6 +3,18 @@
 .dark-theme {
     background-color: #1e1e1e;
     color: #e0e0e0;
+    /* Native widgets — autofill, scrollbars, date pickers — follow the dark palette. */
+    color-scheme: dark;
+}
+/* Chrome paints autofilled fields with its own background and text colour; keep
+   the field's themed background (the transition never completes) and fix the text. */
+.dark-theme input:-webkit-autofill,
+.dark-theme input:-webkit-autofill:hover,
+.dark-theme input:-webkit-autofill:focus,
+.dark-theme textarea:-webkit-autofill {
+    -webkit-text-fill-color: #e0e0e0;
+    caret-color: #e0e0e0;
+    transition: background-color 9999s ease-in-out 0s;
 }
 .dark-theme header {
     background-color: #1a2632;
@@ -379,9 +391,27 @@
 .dark-theme .camera-checkboxes label {
     color: #e0e0e0;
 }
+.dark-theme input[type="checkbox"],
+.dark-theme input[type="radio"] {
+    /* accent-color only paints the checked state; without color-scheme the
+       browser still draws an unchecked box in its light appearance. */
+    color-scheme: dark;
+}
 .dark-theme .camera-checkboxes input[type="checkbox"] {
     accent-color: #3498db;
 }
+/* Model Hub filters: native text fields and the range slider follow the theme */
+.dark-theme .hub-context-value,
+.dark-theme #hub-search-input {
+    background: #2a2a2a;
+    color: #e0e0e0;
+    border-color: #555;
+}
+.dark-theme #hub-context-slider {
+    accent-color: #3498db;
+    color-scheme: dark;
+}
+
 /* Light grey text for database info in dark theme */
 .dark-theme .db-info {
     color: #cccccc;
@@ -706,4 +736,37 @@
 .dark-theme .branding-logo-preview {
     background: #3a3a3a;
     border-color: #555;
+}
+
+/* Search scope popover */
+.dark-theme #scope-toggle {
+    background: transparent;
+    color: #e0e0e0;
+}
+.dark-theme #scope-toggle:hover {
+    background: rgba(100, 181, 246, 0.12);
+}
+.dark-theme #scope-toggle.is-active {
+    background: #1b3a55;
+    box-shadow: inset 0 0 0 1px #64b5f6;
+    color: #64b5f6;
+}
+.dark-theme .scope-popover {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme .scope-row {
+    color: #e0e0e0;
+}
+.dark-theme .scope-row select,
+.dark-theme .scope-row input[type="date"] {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
+}
+.dark-theme .scope-actions button {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
 }

@@ -16,6 +16,11 @@ This list is not a commitment. Items move when their priority changes, and an it
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
   - Unified Docker Compose with per-platform profiles and env-driven deploy scripts
+- **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
+  engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
+  in containers, the low-VRAM throughput they claim (8 GB cards), multimodal and embedding support,
+  model formats, MIT licensing and maintenance risk. Deliverable: a short report with measurements
+  on the reference hardware and a go/no-go for the serving layer.
 
 ## Documented behaviour worth knowing
 

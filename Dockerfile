@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
 
 WORKDIR /app
 
@@ -19,9 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Installing Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Installing Python dependencies from the lock file.
+# requirements.txt is the editable manifest; requirements.lock is the exact set
+# installed in the image (regenerate it after a deliberate bump).
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Copying the code
 COPY . .

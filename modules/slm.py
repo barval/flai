@@ -158,6 +158,22 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM list failed: {e}")
             return []
 
+    def fact_meta_ids(self, profile: str, source: str) -> list[str]:
+        """Ids of facts written by one source, from the wrapper's metadata store."""
+        if not self.available and not self.check_availability():
+            return []
+        try:
+            resp = requests.post(
+                f"{self.url}/facts-by-source",
+                json={"profile": profile, "source": source},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("fact_ids", [])  # type: ignore[no-any-return]
+        except Exception as e:
+            self.logger.warning(f"SLM facts-by-source failed: {e}")
+        return []
+
     def delete_fact(self, fact_id: str, profile: str | None = None) -> bool:
         """Delete a specific fact by ID.
 

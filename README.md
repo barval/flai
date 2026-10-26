@@ -82,8 +82,8 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 Four self-contained pages show the interface without installing anything — download a file
 and open it in a browser; no server and no network are needed:
 
-- [Chat, English](docs/demo/chat-en.html) · [Chat, Russian](docs/demo/chat-ru.html)
-- [Admin panel, English](docs/demo/admin-en.html) · [Admin panel, Russian](docs/demo/admin-ru.html)
+- [Chat (English)](docs/demo/chat-en.html) · [Chat (Russian)](docs/demo/chat-ru.html)
+- [Admin panel (English)](docs/demo/admin-en.html) · [Admin panel (Russian)](docs/demo/admin-ru.html)
 
 Everything is fictional except the interface and the data of the machine the demo was built
 on; every button answers with a notice instead of doing anything. → [DEMO.md](docs/DEMO.md)

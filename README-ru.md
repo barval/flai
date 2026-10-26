@@ -20,7 +20,7 @@
 - **Мультимодальность, многоязычность, память.** Изображения и отсканированные PDF читает модель зрения, интерфейс на русском и английском, а долговременная память сохраняется между сессиями.
 - **Публичный OpenAI-совместимый API.** `/v1/chat/completions`, эмбеддинги, медиа, аудио, файлы и RLM, с персональными ключами и интерактивной справкой на `/v1/docs`. Чат с несколькими изображениями, глубокий анализ с изображениями и референсные изображения («нарисуй что-то похожее») работают через API так же, как в веб-чате.
 - **GPU или CPU.** 8 ГБ VRAM достаточно для базового стека; большие модели и видео в полноразмерном качестве требуют больше VRAM. Режим только CPU поддерживает тот же набор функций, медленнее, с автоматическим снижением разрешения медиа.
-- **Одна команда для развёртывания.** `./deploy.sh --download-models --with-image-gen …` собирает образы, скачивает модели и запускает всё.
+- **Одна команда для развёртывания.** `./deploy-ru.sh --download-models --with-image-gen …` собирает образы, скачивает модели и запускает всё.
 
 ## 📑 Содержание
 
@@ -82,8 +82,8 @@
 Четыре самодостаточные страницы показывают интерфейс без установки — скачайте файл и
 откройте его в браузере; ни сервер, ни сеть не нужны:
 
-- [Чат, русский](docs/demo/chat-ru.html) · [Чат, английский](docs/demo/chat-en.html)
-- [Админ-панель, русский](docs/demo/admin-ru.html) · [Админ-панель, английский](docs/demo/admin-en.html)
+- [Чат (русский)](docs/demo/chat-ru.html) · [Чат (английский)](docs/demo/chat-en.html)
+- [Админ-панель (русский)](docs/demo/admin-ru.html) · [Админ-панель (английский)](docs/demo/admin-en.html)
 
 Всё вымышлено, кроме интерфейса и данных машины, на которой собиралась демонстрация; каждая
 кнопка отвечает уведомлением вместо действия. → [DEMO-ru.md](docs/DEMO-ru.md)
@@ -286,7 +286,7 @@ hit@k, MRR, nDCG и задержку, а журнал решений — в [RAG
 
 ### Совместимость драйверов CUDA
 
-`deploy.sh` читает драйвер хоста и выбирает подходящие образы. **Минимальная поддерживаемая версия CUDA: 12.2 (драйвер 525.60.13+).**
+`deploy-ru.sh` читает драйвер хоста и выбирает подходящие образы. **Минимальная поддерживаемая версия CUDA: 12.2 (драйвер 525.60.13+).**
 
 | Версия CUDA (ветка драйвера) | Образы | Примечания |
 |------------------------------|--------|-------|
@@ -313,27 +313,27 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Ядро: чат, зрение, рассуждения, вызов инструментов
-./deploy.sh --download-models
+./deploy-ru.sh --download-models
 
 # + генерация и редактирование изображений
-./deploy.sh --download-models --with-image-gen
+./deploy-ru.sh --download-models --with-image-gen
 
 # + голос — выберите ОДИН бэкенд (Piper по умолчанию, --with-voice — алиас)
-./deploy.sh --download-models --with-image-gen --with-voice-piper
-./deploy.sh --download-models --with-image-gen --with-voice-kokoro
+./deploy-ru.sh --download-models --with-image-gen --with-voice-piper
+./deploy-ru.sh --download-models --with-image-gen --with-voice-kokoro
 
 # + поиск по документам (Qdrant)
-./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag
+./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag
 
 # + генерация видео (LTX-Video)
-./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
+./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
 
 # + долговременная память, + веб-поиск, + краулер сайтов
-./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \
+./deploy-ru.sh --download-models --with-image-gen --with-voice-piper --with-rag \
   --with-video --with-slm --with-search --with-crawler
 
 # Прогнать набор тестов после развёртывания
-./deploy.sh --download-models --with-image-gen --run-tests
+./deploy-ru.sh --download-models --with-image-gen --run-tests
 ```
 
 Нет NVIDIA GPU? Добавьте `--cpu`; тогда автоматически выбирается `docker-compose.cpu.yml`. Переключение между GPU и CPU не требует пересборки — образы имеют теги по бэкенду (CPU/GPU) и сосуществуют локально.

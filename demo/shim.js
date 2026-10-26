@@ -266,19 +266,34 @@
   }
 
   function enhancePdfPreview() {
-    // A PDF preview is a link on desktop; show its first page instead.
+    // The desktop preview loads the PDF itself in an iframe. A file:// page has
+    // no server to answer that URL, so the frame renders a broken-document icon.
+    // The capture stores rendered page images; show those in the frame's place.
     var box = document.getElementById("document-preview");
     if (!box || box.querySelector(".demo-page")) return;
     var link = box.querySelector(".document-preview-open");
-    if (!link) return;
-    var match = /\/api\/documents\/([^/]+)/.exec(link.getAttribute("href") || "");
+    var frame = box.querySelector(".document-preview-frame");
+    var source = (link && link.getAttribute("href")) || (frame && frame.getAttribute("src")) || "";
+    var match = /\/api\/documents\/([^/]+)\/preview\//.exec(source);
     if (!match) return;
-    var src = DEMO.assets["/api/documents/" + match[1] + "/preview/pdf-page/1"];
-    if (!src) return;
-    var image = document.createElement("img");
-    image.className = "document-preview-page demo-page";
-    image.src = src;
-    box.appendChild(image);
+    var pages = [];
+    for (var n = 1; n <= 30; n += 1) {
+      var src = DEMO.assets["/api/documents/" + match[1] + "/preview/pdf-page/" + n];
+      if (!src) break;
+      pages.push(src);
+    }
+    if (!pages.length) return;
+    var container = document.createElement("div");
+    container.className = "document-preview-pages demo-page";
+    pages.forEach(function (pageSrc, index) {
+      var image = document.createElement("img");
+      image.className = "document-preview-page";
+      image.src = pageSrc;
+      image.alt = (link ? link.textContent.trim() : "") + " " + (index + 1);
+      container.appendChild(image);
+    });
+    if (frame) box.replaceChild(container, frame);
+    else box.appendChild(container);
   }
 
   function rewrite(element) {

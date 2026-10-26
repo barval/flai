@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import time
@@ -212,6 +213,10 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             body = _synthetic_monitoring(body, range_key)
             body["users"] = [{"login": login} for login, _ in users]
             route["body"] = body
+        elif route.get("path") == "/api/sessions" and isinstance(route.get("body"), list):
+            # A freshly created account owns one empty conversation; it is not a
+            # demo scenario and would sit in the list as «New session».
+            route["body"] = [item for item in route["body"] if item.get("message_count")]
     return result
 
 
@@ -292,8 +297,8 @@ def _media_paths(payload: Any, collected: set[str]) -> None:
 
 
 PHOTO_PROMPT = {
-    "ru": "Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.",
-    "en": "Make a photo: a fridge shelf with eggs, milk, tomatoes, cheese and herbs.",
+    "ru": "Сделай фото: тарелка с яблоками и виноградом на деревянном столе у окна. Без упаковок и надписей.",
+    "en": "Make a photo: a plate of apples and grapes on a wooden table by the window. No packaging, no labels.",
 }
 
 VOICE_TEXT = {
@@ -302,6 +307,122 @@ VOICE_TEXT = {
 }
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+IMAGE_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+TEXT_CHECK_PROMPT = {
+    "ru": (
+        "Посмотри на изображение. Есть ли на нём ЛЮБЫЕ буквы, слова, надписи, цифры "
+        "или текстовые логотипы? Не описывай картинку. Ответь строго одним словом: ДА или НЕТ."
+    ),
+    "en": (
+        "Look at the image. Does it contain ANY letters, words, captions, numbers or text logos? "
+        "Do not describe the picture. Answer with exactly one word: YES or NO."
+    ),
+}
+
+TEXT_ANSWER_RE = re.compile(r"\b(да|нет|yes|no)\b", re.IGNORECASE)
+
+
+def _message_text(message: dict) -> str:
+    """Return the plain text of a stored message, whatever shape its content has."""
+    content = message.get("content") or ""
+    if isinstance(content, str) and content.lstrip().startswith("["):
+        try:
+            parts = json.loads(content)
+        except json.JSONDecodeError:
+            return content
+        return " ".join(str(part.get("text", "")) for part in parts if isinstance(part, dict))
+    return str(content)
+
+
+def text_found(answer: str) -> bool:
+    """Read the yes/no verdict of the image check; an unclear answer counts as a defect."""
+    match = TEXT_ANSWER_RE.search(answer or "")
+    if not match:
+        return True
+    return match.group(1).lower() in {"да", "yes"}
+
+
+def check_image_text(session: DemoSession, file_path: str, lang: str) -> tuple[bool, str]:
+    """Ask the product's own multimodal model whether a generated picture shows any text."""
+    try:
+        payload = session.get_bytes(f"/api/files/{file_path}")
+    except CaptureError:
+        print(f"skip missing image: {file_path}", flush=True)
+        return False, ""
+    check_id = session.post_json("/api/sessions/new", {})["id"]
+    try:
+        session.post_form(
+            "/api/send_message",
+            data={"message": TEXT_CHECK_PROMPT[lang], "session_id": check_id},
+            files={"file": (Path(file_path).name, payload, IMAGE_MIME.get(Path(file_path).suffix.lower(), "image/png"))},
+        )
+        messages = wait_for_idle(session, check_id, timeout_s=600.0)
+        answer = _message_text(messages[-1])
+        return text_found(answer), answer
+    finally:
+        with contextlib.suppress(CaptureError):
+            session.post_json(f"/api/sessions/{check_id}/delete", {})
+
+
+def _image_paths(payload: Any) -> list[str]:
+    """Collect every image referenced by a payload, in order, without duplicates."""
+    found: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == "file_path" and isinstance(item, str) and Path(item).suffix.lower() in IMAGE_SUFFIXES:
+                    if item not in found:
+                        found.append(item)
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(payload)
+    return found
+
+
+def _task_image_paths(payload: Any) -> list[str]:
+    """Pictures a task actually shows: the accepted step media and the final results.
+
+    Other paths in a task message are internal references — a repair source, for
+    example, is deleted once the repair is accepted and must not be fetched.
+    """
+    found: list[str] = []
+    for message in payload.get("messages") or []:
+        extra = message.get("extra") or {}
+        media = extra.get("media")
+        if isinstance(media, dict):
+            media = [media]
+        candidates = [item.get("file_path") for item in media or [] if isinstance(item, dict)]
+        candidates += [item.get("file_path") for item in extra.get("final_items") or [] if isinstance(item, dict)]
+        for path in candidates:
+            if isinstance(path, str) and Path(path).suffix.lower() in IMAGE_SUFFIXES and path not in found:
+                found.append(path)
+    return found
+
+
+def scenario_images(session: DemoSession, session_id: str, task_id: str) -> list[str]:
+    """Every picture a scenario produced: chat attachments and task artifacts."""
+    images: list[str] = []
+    if session_id:
+        messages = session.get_json(f"/api/sessions/{session_id}/messages?limit=100&offset=0")
+        images.extend(_image_paths(messages))
+    if task_id:
+        messages = session.get_json(f"/api/tasks/{task_id}/messages")
+        for path in _task_image_paths(messages):
+            if path not in images:
+                images.append(path)
+    return images
 
 
 def _latest_image(payload: Any) -> str:
@@ -378,7 +499,7 @@ def _run_scenario(
     document_ids: list,
     lang: str,
     prepared: dict,
-) -> None:
+) -> dict:
     kind = scenario.get("kind", "text")
     prompt = scenario["prompt"]
 
@@ -416,15 +537,17 @@ def _run_scenario(
                 {"message": scenario.get("interrupt_text", prompt), "session_id": session_id},
             )
             time.sleep(20)
-            return
+            return {"task_id": task_id, "interrupted": True}
         wait_for(
             lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
             in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
             timeout_s=2400.0,
             interval_s=10.0,
         )
+        return {"task_id": task_id}
     else:
         raise CaptureError(f"Unknown scenario kind: {kind}")
+    return {}
 
 
 def capture_language(
@@ -482,12 +605,69 @@ def capture_language(
         prepared["voice"] = prepare_voice(chat, lang)
 
     media: dict[str, str] = {}
+    unfinished: dict[str, dict] = {}
     for scenario in scenarios["scenarios"]:
-        session_id = chat.post_json("/api/sessions/new", {})["id"]
-        print(f"[{lang}] {scenario['kind']}: {scenario['title']}", flush=True)
-        _run_scenario(chat, session_id, scenario, document_ids, lang, prepared)
-        for path in _scenario_paths(session_id):
-            _record(routes, "GET", path, chat.get_json(path))
+        # A background task is not a conversation: creating a chat session for it
+        # leaves an empty "New session" entry in the demo session list.
+        needs_session = scenario.get("kind") != "task" or scenario.get("interrupt")
+        session_id = ""
+        for attempt in range(1, 4):
+            session_id = chat.post_json("/api/sessions/new", {})["id"] if needs_session else ""
+            attempt_note = f" (attempt {attempt})" if attempt > 1 else ""
+            print(f"[{lang}] {scenario['kind']}: {scenario['title']}{attempt_note}", flush=True)
+            result = _run_scenario(chat, session_id, scenario, document_ids, lang, prepared)
+            task_id = result.get("task_id", "")
+            images = scenario_images(chat, session_id, task_id)
+            defects = 0
+            for image in images:
+                found, answer = check_image_text(chat, image, lang)
+                verdict = "TEXT" if found else "clean"
+                print(f"[{lang}]   image {Path(image).name}: {verdict} — {answer[:80]}", flush=True)
+                defects += 1 if found else 0
+            if not defects:
+                if result.get("interrupted"):
+                    unfinished[task_id] = scenario
+                break
+            print(f"[{lang}] retry {scenario['title']}: text on {defects} of {len(images)} image(s)", flush=True)
+            if attempt == 3:
+                # Keep the last attempt: the demo must still show something, and the
+                # log has already reported that none of the pictures came out clean.
+                print(f"[{lang}] keeping the last attempt of {scenario['title']}", flush=True)
+                break
+            if "task_id" in result:
+                chat.post_json(f"/api/tasks/{task_id}/delete", {})
+            else:
+                chat.post_json(f"/api/sessions/{session_id}/delete", {})
+        if session_id:
+            for path in _scenario_paths(session_id):
+                _record(routes, "GET", path, chat.get_json(path))
+
+    for task_id, scenario in unfinished.items():
+        body = chat.get_json(f"/api/tasks/{task_id}/messages")["task"]
+        if body["status"] not in {"completed", "failed", "cancelled", "awaiting_user", "expired"}:
+            continue
+        retry = dict(scenario)
+        retry.pop("interrupt", None)
+        for _attempt in range(1, 4):
+            images = scenario_images(chat, "", task_id)
+            defects = 0
+            for image in images:
+                found, answer = check_image_text(chat, image, lang)
+                print(f"[{lang}]   image {Path(image).name}: {'TEXT' if found else 'clean'} — {answer[:80]}", flush=True)
+                defects += 1 if found else 0
+            if not defects:
+                break
+            print(f"[{lang}] retry {scenario['title']}: text on {defects} of {len(images)} image(s)", flush=True)
+            if _attempt == 3:
+                print(f"[{lang}] keeping the last attempt of {scenario['title']}", flush=True)
+                break
+            chat.post_json(f"/api/tasks/{task_id}/delete", {})
+            task_id = _run_scenario(chat, "", retry, document_ids, lang, prepared)["task_id"]
+
+    # The last scenarios are background tasks and own no chat session, so the
+    # lists recorded per scenario are stale by the end of the run.
+    _record(routes, "GET", "/api/sessions", [s for s in chat.get_json("/api/sessions") if s.get("message_count")])
+    _record(routes, "GET", "/api/tasks", chat.get_json("/api/tasks"))
 
     for task in chat.get_json("/api/tasks")["tasks"]:
         _record(routes, "GET", f"/api/tasks/{task['id']}/messages", chat.get_json(f"/api/tasks/{task['id']}/messages"))
@@ -523,6 +703,8 @@ def capture_language(
             (media_dir / name).write_bytes(chat.get_bytes(page_path))
             media[page_path] = f"media/{lang}/{name}"
 
+    compress_images(media)
+
     snapshot = {
         "lang": lang,
         "credentials": {
@@ -549,6 +731,22 @@ def capture_language(
 
 
 
+
+
+def compress_images(media: dict[str, str], base_dir: Path | None = None) -> None:
+    """Store pictures as WebP: the raw PNGs would push a page over its size limit."""
+    from PIL import Image
+
+    base = base_dir or DEMO_DIR
+    for path, relative in list(media.items()):
+        target = base / relative
+        if target.suffix.lower() not in {".png", ".jpg", ".jpeg"} or not target.is_file():
+            continue
+        webp = target.with_suffix(".webp")
+        with Image.open(target) as image:
+            image.save(webp, format="WEBP", quality=82, method=6)
+        target.unlink()
+        media[path] = str(Path(relative).with_suffix(".webp"))
 
 
 def _input_dir(lang: str) -> Path:

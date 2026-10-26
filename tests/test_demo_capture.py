@@ -2,7 +2,7 @@
 
 import pytest
 
-from demo.capture import CaptureTimeoutError, DemoSession, rewrite_for_publication, wait_for
+from demo.capture import CaptureTimeoutError, DemoSession, rewrite_for_publication, text_found, wait_for
 
 
 class Response:
@@ -70,3 +70,62 @@ def test_wait_for_returns_when_ready():
         return calls["count"] >= 2
 
     assert wait_for(ready, timeout_s=1, interval_s=0.01) is True
+
+
+def test_text_found_reads_the_yes_no_verdict():
+    assert text_found("ДА") is True
+    assert text_found("Да, на обложке слово SALE") is True
+    assert text_found("NO") is False
+    assert text_found("НЕТ") is False
+    assert text_found("На изображении нет текста.") is False
+
+
+def test_text_found_treats_an_unclear_answer_as_a_defect():
+    assert text_found("") is True
+    assert text_found("Мне нужно подумать") is True
+
+
+def test_image_paths_collects_images_only_and_keeps_order():
+    from demo.capture import _image_paths
+
+    payload = {
+        "messages": [
+            {"file_path": "a/one.png"},
+            {"extra": {"final_items": [{"file_path": "b/two.webp"}, {"file_path": "c/clip.mp4"}]}},
+            {"file_path": "a/one.png"},
+        ]
+    }
+    assert _image_paths(payload) == ["a/one.png", "b/two.webp"]
+
+
+def test_compress_images_replaces_png_with_webp(tmp_path):
+    from PIL import Image
+
+    from demo.capture import compress_images
+
+    folder = tmp_path / "media" / "ru"
+    folder.mkdir(parents=True)
+    Image.new("RGB", (8, 8), (200, 120, 40)).save(folder / "shot.png")
+    media = {"/api/files/shot.png": "media/ru/shot.png"}
+
+    compress_images(media, base_dir=tmp_path)
+
+    assert media == {"/api/files/shot.png": "media/ru/shot.webp"}
+    assert (folder / "shot.webp").is_file()
+    assert not (folder / "shot.png").exists()
+
+
+def test_publication_drops_the_empty_default_session():
+    snapshot = {
+        "routes": [
+            {
+                "path": "/api/sessions",
+                "body": [
+                    {"id": "a", "title": "Real", "message_count": 2},
+                    {"id": "b", "title": "", "message_count": 0},
+                ],
+            }
+        ]
+    }
+    out = rewrite_for_publication(snapshot, lang="ru")
+    assert [session["id"] for session in out["routes"][0]["body"]] == ["a"]

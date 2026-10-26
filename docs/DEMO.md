@@ -59,10 +59,12 @@ pytest tests/test_demo_pages.py -q
 
 The capture drives the running instance over HTTP with two throwaway accounts per
 language (`demo_<lang>_chat` and `demo_<lang>_admin`, created beforehand), records the
-responses, downloads the generated media and then removes the accounts. If it is
-interrupted, `python -m demo.capture --cleanup <manifest> --database-url <url>` finishes
-the removal; the background tasks of those logins must be deleted explicitly, because the
-product's account deletion leaves them behind.
+responses, downloads the generated media and then removes the accounts. Every generated
+picture is checked with the product's own multimodal model, and a picture that shows any
+text is generated again (up to three attempts). If the capture is interrupted,
+`python -m demo.capture --cleanup <manifest> --database-url <url>` finishes the removal;
+the background tasks of those logins must be deleted explicitly, because the product's
+account deletion leaves them behind.
 
 The documents are committed as PDFs. They are regenerated only when their fictional
 content changes:

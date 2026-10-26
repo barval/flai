@@ -43,7 +43,7 @@
     {
       "kind": "image",
       "title": "Image",
-      "prompt": "Make a poster for the school science fair in autumn colours. No text, no captions, no letters."
+      "prompt": "Draw an autumn park: maple leaves, a bench and an umbrella. No text, no captions, no letters."
     },
     {
       "kind": "video",
@@ -53,7 +53,7 @@
     {
       "kind": "text",
       "title": "Photo",
-      "prompt": "What can I cook with the ingredients in this photo? Suggest two simple dishes.",
+      "prompt": "What can I cook from the food in the photo? Suggest two simple dishes.",
       "attach": "generated-image"
     },
     {
@@ -76,7 +76,7 @@
     {
       "kind": "task",
       "title": "Album cover",
-      "prompt": "Make a cover for the school yearbook in autumn colours."
+      "prompt": "Draw an illustration for the school yearbook: the school yard in autumn and maple leaves. No text, no captions."
     },
     {
       "kind": "task",

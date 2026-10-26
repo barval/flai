@@ -16962,7 +16962,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Axis ticks must read as round numbers (0, 20 000, 40 000 …), never as the
     // raw maximum (67 304). The browser locale of the page keeps grouping and
-    // the compact suffix ("k", "тыс.") consistent with the active profile.
+    // the compact suffix ("k" or the localized thousands marker) consistent
+    // with the active profile.
     function axisLabel(value) {
         const abs = Math.abs(value);
         if (abs >= 10000) {

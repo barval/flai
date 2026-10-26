@@ -2091,9 +2091,9 @@ class RedisRequestQueue:
         if continuity_sheet:
             generation_query = f"{continuity_sheet}\n\n{generation_query}"
         # Prompt hygiene (spec §9a): source-reference markers (document line
-        # ranges, «(источник: …)» citation stubs) left by the extractor reach
-        # the SD prompt as garbage text/CJK/digits. The sanitizer strips the
-        # markers from the ASSEMBLED query — scene numbering and quoted
+        # ranges, localized "(source: …)" citation stubs) left by the extractor
+        # reach the SD prompt as garbage text/CJK/digits. The sanitizer strips
+        # the markers from the ASSEMBLED query — scene numbering and quoted
         # inscriptions (legitimate text content) survive.
         from app.tasks.continuity import sanitize_reference_markers, strip_speech_for_image, wants_text_in_image
 

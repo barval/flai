@@ -29,6 +29,7 @@ The README is a short overview plus quick start. Every topic below has a dedicat
 | Health endpoint, Prometheus metrics | `docs/MONITORING.md` | When touching `/health`, `flai_web_info`, monitoring UI |
 | Public OpenAI-compatible API, `/v1` endpoints, keys, errors | `docs/API.md` | When changing `/v1/*`, `app/api_bridge.py`, or the API key UI |
 | Code layout, tests, markers, CLI tools | `docs/DEVELOPMENT.md` | When writing or running tests, or adding a CLI command |
+| Offline interface demo | `docs/DEMO.md` | When touching `demo/`, `docs/demo/` or the capture pipeline |
 | Localization, `_tr()`, Flask-Babel, README translations | `docs/LOCALIZATION.md` | When adding user-facing strings or updating READMEs |
 | Troubleshooting common problems | `docs/TROUBLESHOOTING.md` | When a deployment fails or a feature misbehaves |
 | Frequently asked questions | `docs/FAQ.md` | When the answer belongs to user-facing onboarding |

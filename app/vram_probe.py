@@ -130,6 +130,24 @@ def _gpu_used_mb() -> int:
     return int(first[0]) if first and first[0].strip().isdigit() else 0
 
 
+def wait_for_idle_card(timeout: float = 60.0, tolerance_mb: int = 50) -> int:
+    """Wait until the used VRAM stops changing, then return it.
+
+    llama-swap reports a model as gone before the driver has finished releasing
+    its allocation; a baseline taken 2 s after that still holds the previous
+    model's tail, which is exactly how a 5.9 GB model was once measured at 2 MB.
+    """
+    last = _gpu_used_mb()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(1)
+        current = _gpu_used_mb()
+        if abs(current - last) <= tolerance_mb:
+            return current
+        last = current
+    return last
+
+
 def is_plausible_measurement(measured_mb: int, weights_mb: int, mmproj_mb: int = 0) -> bool:
     """Reject a sample that cannot be the model, while tolerating GGUF slack.
 
@@ -279,8 +297,7 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
         raise RuntimeError(
             f"cannot measure {module}: {[m.get('name') for m in running]} stayed resident after the unload"
         )
-    time.sleep(2)
-    baseline = _gpu_used_mb()
+    baseline = wait_for_idle_card()
 
     def _call(text: str, max_tokens: int) -> None:
         if module == "embedding":

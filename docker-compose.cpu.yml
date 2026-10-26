@@ -99,7 +99,7 @@ services:
   # LLAMA-SWAP (Required - LLM Proxy, CPU mode)
   # ============================================================
   llama-swap:
-    image: ghcr.io/mostlygeek/llama-swap:v255-cpu-b10991
+    image: ghcr.io/mostlygeek/llama-swap:v267-cpu-b11889
     container_name: flai-llamaswap
     volumes:
       - ./services/llamacpp/models:/models:ro

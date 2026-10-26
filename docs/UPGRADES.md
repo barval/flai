@@ -213,6 +213,30 @@ and previews correctly, and the web service answers under gunicorn 26.2.0.
 Because the image installs `requirements.lock`, a version bump is resolved from `requirements.txt` in
 a scratch container and then frozen into the lock — see `docs/DEVELOPMENT.md`.
 
+### Phase 2, second half (v12.8)
+
+| Change | Detail |
+|---|---|
+| llama-swap | v255 → **v267** (`v267-cuda-b11889`; the CPU line moves to `v267-cpu-b11889`) |
+| llama.cpp | b10991 → **b11889** |
+
+The audit named b11898, but the published v267 image bundles b11889 — the closest build available,
+and therefore where the upgrade stops.
+
+Gate on the new build:
+
+- multimodal answer with an attached image: **pass**;
+- reasoning with the CLI thinking budget (`--reasoning-budget 9830`): **pass** — the model answered
+  the two-segment arithmetic with the full derivation;
+- web-search tool call: **pass**;
+- `/v1/chat/completions` with a freshly issued API key: **pass** (200, «pong»); the key was revoked
+  afterwards;
+- task run: **pass** — plan → direct step → final answer, status `completed`;
+- RAG evaluation: identical to the Phase 0 baseline (hit@20 0.900, MRR 0.688, nDCG@20 0.765,
+  p50 44 ms), which also proves the embedding model loads and answers under b11889;
+- **MTP draft: not applicable** — the active reasoning model (`Qwen3.6-35B-A3B-UD-Q2_K_XL`) has
+  `supports_mtp = false` and the generated llama-swap config carries no draft model.
+
 ## Proposed update sequence
 
 The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**

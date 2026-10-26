@@ -108,3 +108,18 @@ def test_profile_block_is_bounded():
     block = merge_into_profile(facts)
 
     assert len(block.splitlines()) <= 12
+
+
+def test_extraction_template_renders_for_both_languages():
+    """JSON braces in the template must be escaped or str.format consumes them."""
+    from app.utils import format_prompt
+
+    for lang in ("ru", "en"):
+        out = format_prompt(
+            "memory_extract.template",
+            {"known_facts": "-", "user_message": "текст", "assistant_message": "ответ"},
+            lang=lang,
+        )
+        assert out, lang
+        assert '"fact"' in out, lang
+        assert "{known_facts}" not in out, lang

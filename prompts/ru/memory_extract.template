@@ -18,4 +18,4 @@
 
 # ФОРМАТ ОТВЕТА
 Верни только JSON-массив, без пояснений и без markdown:
-[{"fact": "…", "kind": "profile|preference|project|instruction", "confidence": 0.0}]
+[{{"fact": "…", "kind": "profile|preference|project|instruction", "confidence": 0.0}}]

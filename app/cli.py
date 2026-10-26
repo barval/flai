@@ -930,7 +930,7 @@ def memory_report(user, query, limit):
     facts = slm.list_facts(limit=limit, profile=user)
     kinds: collections.Counter = collections.Counter()
     for fact in facts:
-        kinds[str((fact.get("metadata") or {}).get("kind") or "unclassified")] += 1
+        kinds[str(fact.get("kind") or (fact.get("metadata") or {}).get("kind") or "unclassified")] += 1
 
     click.echo(f"facts: {len(facts)} for {user}")
     for kind, count in kinds.most_common():

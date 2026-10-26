@@ -88,28 +88,29 @@ def plan_unloads(
     return plan
 
 
-# CUDA context, compute buffers and the allocator's slack: everything that is
-# resident but is neither a weight nor a KV cell.
-FIXED_BUFFERS_MB = 400
+# q4_0 keeps 32 values in 18 bytes (one fp16 scale + 16 nibble bytes).
+KV_BYTES_PER_VALUE = 0.5625
 
 
-def derive_kv_per_token(
-    measured_mb: int,
-    weights_mb: int,
-    mmproj_mb: int,
-    ctx_size: int,
-) -> float | None:
-    """KV cost per token implied by a measured footprint.
+def kv_per_token_from_metadata(meta: dict[str, Any], bytes_per_value: float = KV_BYTES_PER_VALUE) -> float | None:
+    """KV cache size per token, straight from the GGUF architecture.
 
-    Returns None when the sample cannot be the model (the total is smaller than
-    its own weights), so a bad sample never overwrites a good constant.
+    ``blocks * kv_heads * (key_len + value_len) * bytes`` — the same arithmetic
+    llama.cpp does when it allocates the cache, so it holds for any model the
+    admin picks instead of being a per-module constant. Returns None when the
+    metadata does not carry the shapes (older cache rows, embedding models).
     """
-    if ctx_size <= 0 or measured_mb <= weights_mb + mmproj_mb:
+    try:
+        blocks = int(meta.get("block_count") or 0)
+        kv_heads = int(meta.get("head_count_kv") or 0)
+        key_len = int(meta.get("key_length") or 0)
+        value_len = int(meta.get("value_length") or 0)
+    except (TypeError, ValueError):
         return None
-    kv_total = measured_mb - weights_mb - mmproj_mb - FIXED_BUFFERS_MB
-    if kv_total <= 0:
+    if not (blocks and kv_heads and key_len and value_len):
         return None
-    return round(kv_total / ctx_size, 4)
+    per_token = blocks * kv_heads * (key_len + value_len) * bytes_per_value
+    return round(per_token / (1024 * 1024), 4)
 
 
 def _gpu_used_mb() -> int:
@@ -242,7 +243,7 @@ def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
 
     from app.database import upsert_vram_estimate
     from app.model_config import get_model_config
-    from app.utils import get_mmproj_size_mb
+    from app.utils import get_gguf_models_cached, get_mmproj_size_mb
 
     try:
         resp = requests.get(f"{swap_url}/running", timeout=3)
@@ -261,12 +262,13 @@ def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
     ctx_size = int(config.get("context_length") or 0)
     weights_mb = _weights_mb(module, model_name)
     mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
-    kv_per_token = derive_kv_per_token(used_mb, weights_mb, mmproj_mb, ctx_size)
-    if kv_per_token is None:
+    if used_mb <= (weights_mb + mmproj_mb) * 0.9:
         logger.debug(
             f"vram calibration skipped for {module}: {used_mb}MB vs {weights_mb}+{mmproj_mb}MB weights"
         )
         return None
+    meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+    kv_per_token = kv_per_token_from_metadata(meta)
 
     upsert_vram_estimate(
         module,
@@ -369,5 +371,9 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
         mmproj_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,
         ctx_size=ctx_size,
     )
+    from app.utils import get_gguf_models_cached
+
+    expected = kv_per_token_from_metadata(get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {}))
+    summary["kv_expected_mb"] = round(expected * ctx_size) if expected else 0
     summary.update({"module": module, "model": model_name, "ctx_size": ctx_size, "baseline_mb": baseline})
     return summary

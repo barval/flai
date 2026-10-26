@@ -856,7 +856,8 @@ def vram_probe(module, peak, peak_chars, store):
     click.echo(f"total:     {result['total_mb']} MB")
     click.echo(f"weights:   {result['weights_mb']} MB")
     click.echo(f"mmproj:    {result['mmproj_mb']} MB")
-    click.echo(f"kv+bufs:   {result['kv_and_buffers_mb']} MB ({result['kv_mb_per_token']} MB/token)")
+    click.echo(f"kv+bufs:   {result['kv_and_buffers_mb']} MB (residual, includes buffers)")
+    click.echo(f"kv shapes: {result['kv_expected_mb']} MB expected from the GGUF architecture")
 
     if store:
         upsert_vram_estimate(

@@ -874,6 +874,44 @@ def vram_probe(module, peak, peak_chars, store):
         click.echo("stored in model_vram_estimates")
 
 
+@click.command("vram-plan")
+@click.option(
+    "--module",
+    default="reasoning",
+    show_default=True,
+    type=click.Choice(["multimodal", "reasoning", "embedding"]),
+    help="Module that is about to be loaded",
+)
+@with_appcontext
+def vram_plan(module):
+    """Show what would stay resident and what would be evicted — changes nothing.
+
+    The same decision `ensure_vram_for()` makes: measured footprints, the
+    prefill headroom and the least-recently-used order.
+    """
+    import os
+
+    from app.resource_manager import get_resource_manager
+
+    swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+    rm = get_resource_manager()
+    needed = rm.get_vram_needed_mb(module)
+    loaded = rm._resident_modules(swap_url)  # noqa: SLF001 - read-only diagnosis
+    plan = rm._eviction_plan(module, needed, loaded)  # noqa: SLF001
+    mode = os.getenv("VRAM_CO_RESIDENCY", "auto")
+
+    click.echo(f"mode:      {mode}")
+    click.echo(f"card:      {rm.hardware.total_vram_mb} MB total, {rm.hardware.available_vram_mb} MB free")
+    click.echo(f"requested: {module}, {needed} MB")
+    if not loaded:
+        click.echo("resident:  none")
+    for entry in loaded:
+        mark = "evict" if entry["name"] in plan else "keep "
+        click.echo(f"  {mark} {entry['name']}: {entry['mb']} MB (last used {entry['last_used']:.0f})")
+    if not plan:
+        click.echo("result:    loads next to the residents, nothing is unloaded")
+
+
 @click.command("rag-lemmatize-chunks")
 @click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
 @click.option("--batch", default=200, show_default=True, help="Rows read per round")

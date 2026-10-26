@@ -338,7 +338,8 @@ class BaseModule(TranslationMixin):
         scored: list[dict[str, Any]] = []
         for fact in raw_facts or []:
             meta = fact.get("metadata") or {}
-            if meta.get("kind") == "profile":
+            kind = fact.get("kind") or meta.get("kind")
+            if kind == "profile":
                 profile.append(fact)
                 continue
             try:

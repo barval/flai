@@ -34,6 +34,72 @@ DAEMON_URL = "http://localhost:8765"
 # Single source of truth: the daemon database (named volume), one per profile.
 DAEMON_DB_PATH = os.environ.get("SLM_DAEMON_DB_PATH", "/root/.superlocalmemory/memory.db")
 
+# ── Fact metadata side store ───────────────────────────────────────────
+# The daemon accepts a ``metadata`` field and never persists it (its
+# ``atomic_facts`` table has no such column), so the kind/confidence the FLAI
+# extractor assigns were lost and every fact came back "unclassified". The
+# wrapper keeps them keyed by the fact id it gets back from /remember.
+META_DB_PATH = os.environ.get("SLM_META_DB_PATH", "/root/.superlocalmemory/flai_fact_meta.db")
+
+
+def _meta_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(META_DB_PATH, timeout=5)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS fact_meta ("
+        "fact_id TEXT PRIMARY KEY, profile TEXT, kind TEXT, confidence REAL, source TEXT, created_at TEXT)"
+    )
+    return conn
+
+
+def _save_fact_meta(fact_ids: list, profile: str, meta: dict) -> None:
+    if not fact_ids:
+        return
+    kind = str((meta or {}).get("kind") or "")
+    source = str((meta or {}).get("source") or "")
+    try:
+        confidence = float((meta or {}).get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    try:
+        with _meta_conn() as conn:
+            for fact_id in fact_ids:
+                if not fact_id:
+                    continue
+                conn.execute(
+                    "INSERT INTO fact_meta (fact_id, profile, kind, confidence, source, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(fact_id) DO UPDATE SET "
+                    "kind=excluded.kind, confidence=excluded.confidence, source=excluded.source",
+                    (str(fact_id), profile or "", kind, confidence, source, _time.strftime("%Y-%m-%dT%H:%M:%S")),
+                )
+    except Exception as exc:  # never break a write because of the side store
+        app.logger.warning(f"fact meta store failed: {exc}")
+
+
+def _attach_fact_meta(results: list) -> list:
+    """Add kind/confidence to recall results from the side store."""
+    if not results:
+        return results
+    ids = [str(r.get("fact_id")) for r in results if r.get("fact_id")]
+    if not ids:
+        return results
+    try:
+        with _meta_conn() as conn:
+            placeholders = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                f"SELECT fact_id, kind, confidence FROM fact_meta WHERE fact_id IN ({placeholders})",
+                ids,
+            ).fetchall()
+    except Exception:
+        return results
+    known = {str(row[0]): (row[1], row[2]) for row in rows}
+    for item in results:
+        meta = known.get(str(item.get("fact_id")))
+        if meta:
+            item["kind"] = meta[0]
+            item["kind_confidence"] = meta[1]
+    return results
+
+
 # ── Hybrid recall (keyword → semantic → latest) ────────────────────────
 # Borrowed technique from mem0 v3: keyword-first fast path avoids the
 # daemon's 300-800 ms embedding call on most turns.
@@ -769,10 +835,14 @@ def remember():
         # Profile may not exist yet — create it on the fly and retry once.
         result = _daemon_post("/remember?wait=true", body)
 
+    fact_ids = result.get("fact_ids", []) or []
+    if result.get("ok") and meta:
+        _save_fact_meta(fact_ids, profile or "", meta)
+
     return jsonify(
         {
             "success": result.get("ok", False),
-            "fact_ids": result.get("fact_ids", []),
+            "fact_ids": fact_ids,
             "error": result.get("error", ""),
         }
     )
@@ -800,7 +870,7 @@ def recall():
         else:
             results = _hybrid_recall_from_profile(query, limit, profile)
         # profile set → read ONLY from the profile, never the shared default
-        return jsonify({"success": True, "data": {"results": results or []}})
+        return jsonify({"success": True, "data": {"results": _attach_fact_meta(results or [])}})
 
     if not query:
         return jsonify({"success": False, "error": "Missing query"}), 400
@@ -1009,7 +1079,7 @@ def list_facts():
     if profile:
         results = _recall_latest_from_profile(profile, limit)
         if results is not None:
-            return jsonify({"success": True, "data": {"results": results}})
+            return jsonify({"success": True, "data": {"results": _attach_fact_meta(results)}})
 
     return jsonify({"success": True, "data": {"results": []}})
 

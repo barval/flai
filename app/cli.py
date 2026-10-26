@@ -820,6 +820,55 @@ def rag_backfill_chunks(user):
     click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
 
 
+@click.command("vram-probe")
+@click.option(
+    "--module",
+    default="multimodal",
+    show_default=True,
+    type=click.Choice(["multimodal", "reasoning", "embedding"]),
+    help="Module whose model is measured",
+)
+@click.option("--peak", is_flag=True, help="Also send a long prompt and record the prefill peak")
+@click.option("--peak-chars", default=16000, show_default=True, help="Prompt size for the peak run")
+@click.option("--store", is_flag=True, help="Write the result into model_vram_estimates")
+@with_appcontext
+def vram_probe(module, peak, peak_chars, store):
+    """Measure one model's real VRAM footprint (weights, vision encoder, KV, peak).
+
+    The analytical constant is a guess per module; the fitted context window and
+    the KV quantisation decide the truth. Measured numbers are what a
+    co-residency decision has to use — loading into the last megabyte lets the
+    model spill into host memory, which costs far more than a reload.
+    """
+    import os
+
+    from app.database import upsert_vram_estimate
+    from app.model_config import get_model_config
+    from app.vram_probe import probe_module
+
+    swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+    result = probe_module(module, swap_url, peak_prompt_chars=peak_chars if peak else 0)
+
+    config = get_model_config(module) or {}
+    click.echo(f"module:    {result['module']} ({result['model']})")
+    click.echo(f"context:   {result['ctx_size']}")
+    click.echo(f"baseline:  {result['baseline_mb']} MB")
+    click.echo(f"total:     {result['total_mb']} MB")
+    click.echo(f"weights:   {result['weights_mb']} MB")
+    click.echo(f"mmproj:    {result['mmproj_mb']} MB")
+    click.echo(f"kv+bufs:   {result['kv_and_buffers_mb']} MB ({result['kv_mb_per_token']} MB/token)")
+
+    if store:
+        upsert_vram_estimate(
+            module,
+            model_name=result["model"] or "",
+            context_length=result["ctx_size"],
+            n_gpu_layers=int(config.get("n_gpu_layers") or -1),
+            measured_mb=result["total_mb"],
+        )
+        click.echo("stored in model_vram_estimates")
+
+
 @click.command("rag-lemmatize-chunks")
 @click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
 @click.option("--batch", default=200, show_default=True, help="Rows read per round")

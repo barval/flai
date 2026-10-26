@@ -196,3 +196,14 @@ def test_a_full_measurement_is_plausible():
 def test_a_model_smaller_than_its_file_is_still_plausible():
     """bge-m3 Q8_0: 541 MB resident against a 605 MB file (tokenizer + padding)."""
     assert is_plausible_measurement(measured_mb=541, weights_mb=605, mmproj_mb=0) is True
+
+
+def test_parse_proc_status_rss_reads_kib_as_mib():
+    """Same-namespace installs (bare metal) offer RSS where the card is invisible."""
+    status = "Name:\tllama-server\nVmPeak:\t 9999999 kB\nVmRSS:\t 6144000 kB\n"
+
+    assert parse_proc_status_rss_mb(status) == 6000
+
+
+def test_parse_proc_status_rss_without_the_field_is_zero():
+    assert parse_proc_status_rss_mb("Name:\tllama-server\n") == 0

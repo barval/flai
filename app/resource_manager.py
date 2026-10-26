@@ -244,7 +244,7 @@ class ResourceManager:
     def measured_total_mb(self, model_type: str) -> int | None:
         """Footprint measured for this exact model at this exact window.
 
-        Stored by ``record_measured_vram()`` after a real load. A row from a
+        Written by ``flask vram-probe --store`` after a real load. A row from a
         different model, a different window or a card that no longer exists is
         ignored — a stale number is worse than the analytical estimate.
         """

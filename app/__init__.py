@@ -464,6 +464,7 @@ def create_app():
     app.cli.add_command(cli.rag_backfill_chunks)
     app.cli.add_command(cli.rag_lemmatize_chunks)
     app.cli.add_command(cli.vram_probe)
+    app.cli.add_command(cli.vram_plan)
     app.cli.add_command(cli.rag_reindex)
 
     # Additional camera routes

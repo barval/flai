@@ -88,29 +88,203 @@ def plan_unloads(
     return plan
 
 
+# CUDA context, compute buffers and the allocator's slack: everything that is
+# resident but is neither a weight nor a KV cell.
+FIXED_BUFFERS_MB = 400
+
+
+def derive_kv_per_token(
+    measured_mb: int,
+    weights_mb: int,
+    mmproj_mb: int,
+    ctx_size: int,
+) -> float | None:
+    """KV cost per token implied by a measured footprint.
+
+    Returns None when the sample cannot be the model (the total is smaller than
+    its own weights), so a bad sample never overwrites a good constant.
+    """
+    if ctx_size <= 0 or measured_mb <= weights_mb + mmproj_mb:
+        return None
+    kv_total = measured_mb - weights_mb - mmproj_mb - FIXED_BUFFERS_MB
+    if kv_total <= 0:
+        return None
+    return round(kv_total / ctx_size, 4)
+
+
 def _gpu_used_mb() -> int:
-    """Total VRAM in use, straight from the driver."""
+    """Total VRAM in use, straight from the driver (0 on a CPU-only host)."""
     import subprocess
 
-    out = subprocess.run(
-        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return 0
     first = (out.stdout or "").strip().splitlines()
     return int(first[0]) if first and first[0].strip().isdigit() else 0
 
 
-def _weights_mb(model_name: str) -> int:
+def _weights_mb(module: str, model_name: str) -> int:
+    """Size of the model file itself, resolved the same way llama-swap gets it."""
     import os
 
-    for root in ("/models", os.path.expanduser("~/models")):
-        candidate = os.path.join(root, model_name)
-        if os.path.exists(candidate):
-            return os.path.getsize(candidate) // (1024 * 1024)
+    if not model_name:
+        return 0
+    try:
+        from app.llama_swap_config import LlamaSwapConfigGenerator
+
+        path = LlamaSwapConfigGenerator().get_model_path(module, model_name)
+        if path and os.path.exists(path):
+            return os.path.getsize(path) // (1024 * 1024)
+    except Exception as e:
+        logger.debug(f"vram probe: cannot resolve {module} model path: {e}")
     return 0
+
+
+def parse_compute_apps(csv_text: str) -> int:
+    """VRAM held by llama-server processes, from `nvidia-smi --query-compute-apps`.
+
+    Sampling the whole card counts every other consumer (sd-cli, a stray CUDA
+    context); only the model server's own allocation belongs to the model.
+    """
+    total = 0
+    for line in (csv_text or "").strip().splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 3:
+            continue
+        if "llama" not in parts[1].lower():
+            continue
+        if parts[2].isdigit():
+            total += int(parts[2])
+    return total
+
+
+def llama_process_used_mb() -> int:
+    """VRAM currently held by llama-server processes (0 without CUDA)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return 0
+    return parse_compute_apps(out.stdout)
+
+
+def parse_proc_status_rss_mb(status_text: str) -> int:
+    """Resident set of a process from /proc/<pid>/status, in MiB."""
+    for line in (status_text or "").splitlines():
+        if line.startswith("VmRSS:"):
+            fields = line.split()
+            if len(fields) >= 2 and fields[1].isdigit():
+                return int(fields[1]) // 1024
+    return 0
+
+
+def llama_process_rss_mb() -> int:
+    """Resident memory of llama-server processes — the CPU-only footprint.
+
+    On a host without a GPU the weights and the KV cache live in RAM, so the
+    same measurement (weights + KV + buffers) is taken from /proc instead of
+    the driver. Only used when the platform is CPU; a llama-server running on a
+    GPU host with ``-ngl 0`` would count there too.
+    """
+    import os
+
+    total = 0
+    try:
+        pids = [name for name in os.listdir("/proc") if name.isdigit()]
+    except OSError:
+        return 0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/comm", encoding="utf-8") as handle:
+                if "llama" not in handle.read().strip().lower():
+                    continue
+            with open(f"/proc/{pid}/status", encoding="utf-8") as handle:
+                total += parse_proc_status_rss_mb(handle.read())
+        except OSError:
+            continue
+    return total
+
+
+def memory_used_mb() -> int:
+    """What the model servers occupy right now: VRAM on a GPU host, RSS on CPU."""
+    import os
+
+    platform = os.getenv("FLAI_PLATFORM", "").strip().lower()
+    if platform == "cpu":
+        return llama_process_rss_mb()
+    used = llama_process_used_mb()
+    return used if used > 0 else llama_process_rss_mb()
+
+
+def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
+    """Calibrate a module from the model that is loaded at this moment.
+
+    Called after a task finishes, while its model is still resident: no extra
+    load, no extra unload. Only the model server's own allocation is sampled, and
+    only when it is the single running model — otherwise the sample cannot be
+    attributed, and a wrong number is worse than the analytical constant.
+    """
+    import requests
+
+    from app.database import upsert_vram_estimate
+    from app.model_config import get_model_config
+    from app.utils import get_mmproj_size_mb
+
+    try:
+        resp = requests.get(f"{swap_url}/running", timeout=3)
+        running = resp.json().get("running", []) if resp.status_code == 200 else []
+    except Exception:
+        return None
+    if len(running) != 1 or running[0].get("name") != module:
+        return None
+
+    used_mb = memory_used_mb()
+    if used_mb <= 0:
+        return None
+
+    config = get_model_config(module) or {}
+    model_name = config.get("model_name") or ""
+    ctx_size = int(config.get("context_length") or 0)
+    weights_mb = _weights_mb(module, model_name)
+    mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
+    kv_per_token = derive_kv_per_token(used_mb, weights_mb, mmproj_mb, ctx_size)
+    if kv_per_token is None:
+        logger.debug(
+            f"vram calibration skipped for {module}: {used_mb}MB vs {weights_mb}+{mmproj_mb}MB weights"
+        )
+        return None
+
+    upsert_vram_estimate(
+        module,
+        model_name=model_name,
+        context_length=ctx_size,
+        n_gpu_layers=int(config.get("n_gpu_layers") or -1),
+        measured_mb=used_mb,
+    )
+    logger.info(
+        f"vram calibration: {module} = {used_mb}MB at ctx {ctx_size} "
+        f"(KV {kv_per_token} MB/token, weights {weights_mb}, mmproj {mmproj_mb})"
+    )
+    return {
+        "module": module,
+        "measured_mb": used_mb,
+        "ctx_size": ctx_size,
+        "kv_per_token": kv_per_token,
+    }
 
 
 def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars: int = 0) -> dict[str, Any]:
@@ -191,7 +365,7 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
     summary = summarize_probe(
         baseline_mb=baseline,
         loaded_mb=peak,
-        weights_mb=_weights_mb(model_name),
+        weights_mb=_weights_mb(module, model_name),
         mmproj_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,
         ctx_size=ctx_size,
     )

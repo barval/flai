@@ -81,6 +81,12 @@ class ResourceManager:
         # LTX-Video hang detection: 3 consecutive timeouts -> docker restart
         self._ltx_unload_consecutive_timeouts: int = 0
         self._ltx_restart_initiated_at: float = 0.0
+        # Measured KV cost per token, cached for a minute: compute_llamacpp_config
+        # runs on every admin action and the value only changes with a new sample.
+        self._measured_kv_cache: dict[str, tuple[float, float | None]] = {}
+        # Last time a module was asked for, used as the LRU order when a new
+        # model needs room and co-residency is allowed.
+        self._model_last_used: dict[str, float] = {}
 
     # ── Hardware detection ──
 
@@ -214,6 +220,46 @@ class ResourceManager:
     # (e.g. 9 GB IQ2_XXS) to be needlessly offloaded to CPU on 16 GB GPUs.
 
     # ── Adaptive config computation ──
+
+    def measured_kv_per_token(self, model_type: str) -> float | None:
+        """KV cost per token implied by a real measurement of this model.
+
+        A measurement is only valid for the model and the window it was taken
+        with: switching either in the admin panel invalidates it and the
+        analytical constant takes over again. ``record_measured_vram()`` refills
+        the row after the next successful load, so any model on any card
+        converges without a manual step.
+        """
+        now = time.time()
+        cached = self._measured_kv_cache.get(model_type)
+        if cached and now - cached[0] < 60:
+            return cached[1]
+
+        value: float | None = None
+        try:
+            from app.database import get_vram_estimate
+            from app.model_config import get_model_config
+            from app.utils import get_gguf_models_cached, get_mmproj_size_mb
+            from app.vram_probe import derive_kv_per_token
+
+            config = get_model_config(model_type) or {}
+            model_name = config.get("model_name") or ""
+            ctx_size = int(config.get("context_length") or 0)
+            row = get_vram_estimate(model_type) or {}
+            row_name = str(row.get("model_name") or "")
+            same_model = not row_name or row_name.replace(".gguf", "") == model_name.replace(".gguf", "")
+            same_window = int(row.get("context_length") or 0) == ctx_size
+            measured = int(row.get("measured_vram_mb") or 0)
+            if measured and same_model and same_window and ctx_size:
+                info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+                weights_mb = int(info.get("file_size_mb") or 0)
+                mmproj_mb = get_mmproj_size_mb(model_name) if model_type == "multimodal" else 0
+                value = derive_kv_per_token(measured, weights_mb, mmproj_mb, ctx_size)
+        except Exception as e:
+            logger.debug(f"measured_kv_per_token[{model_type}]: {e}")
+
+        self._measured_kv_cache[model_type] = (now, value)
+        return value
 
     def compute_llamacpp_config(self, model_type: str) -> dict[str, Any]:
         """Compute optimal llama-server parameters for given model type.
@@ -370,7 +416,8 @@ class ResourceManager:
                     * (0.95 if expert_count > 0 else 1.0)
                     * (1.15 if supports_mtp else 1.0)
                 )
-                est_kv = ctx_size * KV_PER_TOKEN_MB.get(model_type, 0.12)  # matches get_vram_needed_mb
+                kv_per_token = self.measured_kv_per_token(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
+                est_kv = ctx_size * kv_per_token  # matches get_vram_needed_mb
                 est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
                 est_total = est_weights + est_kv + est_overhead + mmproj_mb
                 if est_total <= available_for_model or effective_ngl == 0:
@@ -455,9 +502,9 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
-        # KV cache estimate (q4_0), calibrated per module on RTX 5060 Ti.
-        # See KV_PER_TOKEN_MB module docstring for derivation.
-        kv_per_token = KV_PER_TOKEN_MB.get(model_type, 0.12)
+        # KV cache estimate (q4_0): the module constant until a real measurement
+        # of this model at this window exists, then the measured value.
+        kv_per_token = self.measured_kv_per_token(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
@@ -533,16 +580,46 @@ class ResourceManager:
         except Exception:
             pass
 
-        # Model not loaded or different model active — full unload
-        logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
+        # Model not loaded or a different one is active. Decide what has to go:
+        # with co-residency allowed, residents that still fit next to the new
+        # model stay warm, and only the least recently used ones are evicted —
+        # one by one, stopping as soon as the new model fits.
+        self._model_last_used[model_type] = time.time()
+        loaded = self._resident_modules(llamacpp_url)
+        plan = self._eviction_plan(model_type, needed_mb, loaded)
+
+        if not plan:
+            self._poll_vram()
+            if self.hardware.available_vram_mb >= needed_mb:
+                logger.info(
+                    f"ensure_vram_for [{model_type}]: {needed_mb}MB fits next to "
+                    f"{[m['name'] for m in loaded]} — keeping them resident"
+                )
+                return True
+            logger.info(
+                f"ensure_vram_for [{model_type}]: residents fit on paper, but only "
+                f"{self.hardware.available_vram_mb}MB is free — falling back to a full unload"
+            )
+
         with self._lock:
             self._vram_wait_busy = True
         try:
-            self.unload_llamacpp_model(llamacpp_url)
+            if plan:
+                logger.info(
+                    f"ensure_vram_for [{model_type}]: unloading {plan} "
+                    f"(need {needed_mb}MB, keeping {[m['name'] for m in loaded if m['name'] not in plan]})"
+                )
+                for model_id in plan:
+                    self.unload_llamacpp_model(llamacpp_url, model_id=model_id)
+            else:
+                logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
+                self.unload_llamacpp_model(llamacpp_url)
 
             # 2. Unload video pipeline
             with contextlib.suppress(Exception):
                 self.unload_video_pipeline()
+
+            keep = {m["name"] for m in loaded if plan and m["name"] not in plan}
 
             # 3+4. Poll /running + platform VRAM until sufficient
             seen_empty = False
@@ -557,23 +634,29 @@ class ResourceManager:
                     pass
 
                 if models:
-                    # Anything in /running at this point was spawned by an
-                    # external actor (watchdog, dry-load) AFTER our unload —
-                    # it will not go away on its own. The unload POST is
-                    # idempotent, so re-issue it on every poll.
-                    if seen_empty:
-                        logger.warning(
-                            f"ensure_vram_for [{model_type}]: models reappeared during VRAM wait "
-                            f"({[m.get('name') for m in models]}) — unloading again"
-                        )
-                    else:
+                    unexpected = [m.get("name") for m in models if m.get("name") not in keep]
+                    # Anything in /running that we did not keep was spawned by an
+                    # external actor (watchdog, dry-load) AFTER our unload — it
+                    # will not go away on its own, and the POST is idempotent.
+                    if unexpected:
+                        if seen_empty:
+                            logger.warning(
+                                f"ensure_vram_for [{model_type}]: models reappeared during VRAM wait "
+                                f"({unexpected}) — unloading again"
+                            )
+                        else:
+                            logger.debug(
+                                f"ensure_vram_for [{model_type}]: {unexpected} still active — re-issuing unload"
+                            )
+                        for model_id in unexpected:
+                            self.unload_llamacpp_model(llamacpp_url, model_id=model_id)
+                        time.sleep(2)
+                        continue
+                    if not seen_empty:
                         logger.debug(
-                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active — re-issuing unload"
+                            f"ensure_vram_for [{model_type}]: keeping {keep} resident during the wait"
                         )
-                    self.unload_llamacpp_model(llamacpp_url)
-                    time.sleep(2)
-                    continue
-                seen_empty = True
+                    seen_empty = True
 
                 self._poll_vram()
                 free = self.hardware.available_vram_mb
@@ -925,11 +1008,13 @@ class ResourceManager:
         except Exception as e:
             logger.debug(f"Video VRAM measurement failed: {e}")
 
-    def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
-        """Force LLM backend to unload its current model from VRAM.
+    def unload_llamacpp_model(self, llamacpp_url: str | None = None, model_id: str | None = None) -> bool:
+        """Force LLM backend to unload its model from VRAM.
 
-        This is called before sd-cli starts to free ALL VRAM for image operations.
-        The model will be reloaded automatically on the next LLM request.
+        With ``model_id`` only that model leaves VRAM (llama-swap
+        ``POST /api/models/unload/:model_id``), which is what the co-residency
+        policy needs: free exactly enough for the next model and keep the rest
+        warm. Without it every model is unloaded, the pre-SD behaviour.
 
         Returns True if unload was successful or not needed.
         """
@@ -940,9 +1025,12 @@ class ResourceManager:
         if backend_type == "llama-swap":
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             try:
-                resp = requests.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
+                url = f"{swap_url.rstrip('/')}/api/models/unload"
+                if model_id:
+                    url = f"{url}/{model_id}"
+                resp = requests.post(url, timeout=30)
                 if resp.status_code == 200:
-                    logger.info("llama-swap: all models unloaded for SD")
+                    logger.info(f"llama-swap: unloaded {model_id or 'all models'}")
                     return True
                 logger.warning(f"llama-swap unload failed: {resp.status_code}")
                 return False

@@ -51,6 +51,41 @@ A wrong fact is worse than a missing one: measured before the change, the store
 held image-generation prompts and arithmetic tasks, and recall returned them at
 0.63 for "do I like apples?".
 
+**Hosts without a GPU.** The extraction call is one short generation on the
+model chat is already using; on a CPU-only host that is ~30 s of the same model,
+so `SLM_AUTO_EXTRACT=auto` (default) runs it only where a GPU keeps the model
+resident. `on` forces it, `off` disables it; the explicit "remember this" path
+works either way.
+
+**Profile consolidation.** Individual facts accumulate duplicates and
+contradictions ("lives in Tver" next to an older "lives in Sarov"). The profile
+block is the one place where that can be resolved once instead of on every
+request:
+
+```bash
+docker exec flai-web flask memory-profile --user <login>          # shows the block
+docker exec flai-web flask memory-profile --user <login> --apply  # stores it
+```
+
+The block is stored as a `kind=profile` fact and, being the newest, leads every
+recall. The individual facts stay in the store.
+
+**Measuring memory.** RAG has had `flask rag-eval` since v12.5; memory now has
+the same harness:
+
+```bash
+docker exec flai-web flask memory-eval --user <login> --dataset /app/data/q.jsonl
+docker exec flai-web flask memory-eval --user <login> --dataset /app/data/q.jsonl --no-profile
+```
+
+The dataset is JSONL with `{"question": "…", "expected": ["substring", …]}`. The
+report gives hit@k, MRR, the number of injected facts (the context cost) and
+recall latency. `--no-profile` scores recall alone: the always-injected profile
+otherwise takes rank 1 and distorts MRR. Measured on a five-question set over a
+live profile: hit@5 0.8, MRR 0.7, 1.6 facts per question, p50 4.5 ms — the one
+miss was a Russian question against an English fact, which is the lexical
+recall's real limit, not a threshold problem.
+
 ## Configuration
 
 ```bash

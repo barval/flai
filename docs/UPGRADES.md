@@ -243,6 +243,23 @@ Gate on the new build:
   serves `llamacpp:prompt_tokens_total`, `llamacpp:prompt_seconds_total` and the rest on its own port.
   Verified on the live container (`curl http://localhost:10003/metrics` inside `flai-llamaswap`). The
   endpoint is reachable only inside the Docker network; feeding the Monitoring tab is the follow-up.
+- **BM25 measured against the current hybrid, four variants** — same 30-question set, same harness, top-20:
+
+  | Retrieval | hit@20 | MRR | nDCG@20 |
+  |---|---|---|---|
+  | Product hybrid (dense + PostgreSQL full-text, RRF) | 0.900 | 0.688 | 0.765 |
+  | Dense only (bge-m3) | 0.900 | 0.787 | 0.847 |
+  | BM25, Qdrant-style tokenisation | 0.867 | 0.569 | 0.672 |
+  | BM25 with Russian lemmas | 0.933 | 0.702 | 0.791 |
+  | RRF(dense + BM25 with lemmas) | **0.933** | **0.802** | **0.872** |
+
+  Native Qdrant BM25 tokenises without stemming, so on this Russian corpus it would regress the
+  current hybrid (0.867/0.569) and would also pull in `fastembed`; it is not adopted. The lexical half
+  the product uses today is the weaker part: dense alone ranks better than the current fusion, and a
+  lemmatized BM25 fused with dense is the best row. Replacing the full-text ranking with BM25 over
+  pymorphy lemmas needs no new dependency — the `rag_chunks` mirror already holds every chunk — and is
+  the follow-up, to be confirmed on a second, paraphrase-heavy question set, because these questions
+  were generated from chunk text and therefore favour lexical matching.
 - **`--cache-reuse` and ngram speculation bring nothing measurable here** — measured from the API `timings` on the reasoning model, three runs each: baseline 110.4 tok/s, `--cache-reuse 256` 110.2, `--spec-type ngram-simple` 109.6. With a ~7k-token shared prefix, prompt processing is already cached by llama.cpp (1738 ms cold, then 54 ms with and 53 ms without `--cache-reuse`), so neither flag is enabled. BM25 in Qdrant is left open: it needs sparse-vector indexing, a re-index and a comparison against the PostgreSQL hybrid on the 30-question set, which is a feature-sized change rather than a flag.
 - **A spent thinking budget ends with a sentence** — the reasoning command now carries `--reasoning-budget-message`, so llama-server injects «Thinking budget reached. Stop analysing and answer now.» before the end-of-thinking tag instead of cutting the block silently. The flag is in the generated config and in the live `llama-server` argv (one argument, quotes handled by llama-swap); a full budget exhaustion was not exercised.
 - **CUDA 12.x drivers stay supported** — the v267 image still ships the CUDA 12.8.1 runtime and keeps

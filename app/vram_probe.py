@@ -15,7 +15,6 @@ model is loaded, so co-residency is a measured decision instead of a guess.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from typing import Any
@@ -243,78 +242,22 @@ def memory_used_mb() -> int:
     return used if used > 0 else llama_process_rss_mb()
 
 
-def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
-    """Calibrate a module from the model that is loaded at this moment.
-
-    Called after a task finishes, while its model is still resident: no extra
-    load, no extra unload. Only the model server's own allocation is sampled, and
-    only when it is the single running model — otherwise the sample cannot be
-    attributed, and a wrong number is worse than the analytical constant.
-    """
-    import requests
-
-    from app.database import upsert_vram_estimate
-    from app.model_config import get_model_config
-    from app.utils import get_gguf_models_cached, get_mmproj_size_mb
-
-    try:
-        resp = requests.get(f"{swap_url}/running", timeout=3)
-        running = resp.json().get("running", []) if resp.status_code == 200 else []
-    except Exception:
-        return None
-    if len(running) != 1 or running[0].get("name") != module:
-        return None
-
-    used_mb = memory_used_mb()
-    if used_mb <= 0:
-        return None
-
-    config = get_model_config(module) or {}
-    model_name = config.get("model_name") or ""
-    ctx_size = int(config.get("context_length") or 0)
-    weights_mb = _weights_mb(module, model_name)
-    mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
-    if not is_plausible_measurement(used_mb, weights_mb, mmproj_mb):
-        logger.debug(
-            f"vram calibration skipped for {module}: {used_mb}MB vs {weights_mb}+{mmproj_mb}MB weights"
-        )
-        return None
-    meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
-    kv_per_token = kv_per_token_from_metadata(meta)
-
-    upsert_vram_estimate(
-        module,
-        model_name=model_name,
-        context_length=ctx_size,
-        n_gpu_layers=int(config.get("n_gpu_layers") or -1),
-        measured_mb=used_mb,
-    )
-    logger.info(
-        f"vram calibration: {module} = {used_mb}MB at ctx {ctx_size} "
-        f"(KV {kv_per_token} MB/token, weights {weights_mb}, mmproj {mmproj_mb})"
-    )
-    return {
-        "module": module,
-        "measured_mb": used_mb,
-        "ctx_size": ctx_size,
-        "kv_per_token": kv_per_token,
-    }
-
-
 def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars: int = 0) -> dict[str, Any]:
-    """Measure one module's real footprint (VRAM, or RSS on a CPU-only host).
+    """Measure one module's real footprint (VRAM, or RSS on a same-namespace host).
 
-    Unloads every model first, then forces llama-swap to load the target and
-    samples the model server's own allocation — the maximum of those samples is
-    the peak, which is what co-residency has to budget for. The card-wide delta
-    is not used: it also counts the driver context and whatever else happens to
-    be on the GPU, neither of which belongs to the model.
+    Unloads every model first, records the card, then forces llama-swap to load
+    the target and samples while it happens — the peak is what co-residency has
+    to budget for. The card-wide delta is used because a container cannot see
+    another container's pids; on an install where the server shares the pid
+    namespace (bare metal) the per-process RSS is the fallback.
     """
+    import threading
+
     import requests
 
     from app.model_config import get_model_config
     from app.resource_manager import get_resource_manager
-    from app.utils import get_mmproj_size_mb
+    from app.utils import get_gguf_models_cached, get_mmproj_size_mb
 
     rm = get_resource_manager()
     config = get_model_config(module) or {}
@@ -358,32 +301,34 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
             timeout=900,
         )
 
-    peak = 0
     _call(".", 1)
-    with contextlib.suppress(Exception):
-        peak = memory_used_mb()
+
+    def _sample() -> int:
+        """Footprint above the empty-card baseline, in the unit this host offers."""
+        card = _gpu_used_mb()
+        if card > baseline:
+            return card - baseline
+        return memory_used_mb()
+
+    peak = _sample()
 
     if peak_prompt_chars:
         filler = "контекст " * (peak_prompt_chars // 10)
-        import threading
-
         stop = {"flag": False}
 
-        def _sample() -> None:
+        def _sampler() -> None:
             nonlocal peak
             while not stop["flag"]:
-                peak = max(peak, memory_used_mb())
+                peak = max(peak, _sample())
                 time.sleep(0.2)
 
-        sampler = threading.Thread(target=_sample, daemon=True)
-        sampler.start()
+        thread = threading.Thread(target=_sampler, daemon=True)
+        thread.start()
         try:
             _call(filler, 8)
         finally:
             stop["flag"] = True
-            sampler.join(timeout=2)
-
-    from app.utils import get_gguf_models_cached
+            thread.join(timeout=2)
 
     meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
     expected = kv_per_token_from_metadata(meta)

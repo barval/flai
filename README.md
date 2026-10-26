@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.7](#-whats-new-in-v127)
+- [🆕 What's New in v12.8](#-whats-new-in-v128)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,15 +73,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.7
-
-- **Document search that finds things** — hybrid retrieval (vectors + PostgreSQL full-text, fused with reciprocal rank fusion) is now on by default, and a **search scope** (folder + upload period) narrows the corpus before retrieval. On the 22-question set hybrid measured MRR 0.688 → 0.744 and nDCG 0.751 → 0.965 against dense-only, and the chat no longer cuts the retrieved list at fifteen fragments. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Structure-aware chunking** — the new `structured` strategy keeps one logical entry (dates, organisation, city) inside one chunk, which is what counting and listing questions need.
-- **CPU cross-encoder reranker (optional)** — `bge-reranker-v2-m3` is a regular module with a model picker; it stays off by default because it pays off only in a narrow context window and lowers ranking quality in a wide one. → [MODELS.md](docs/MODELS.md)
-- **Admin Monitoring tab** — storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h to 30 d, drawn as hand-written SVG bar charts with no chart library. → [MONITORING.md](docs/MONITORING.md)
-- **Admin Settings tab** — 139 of 149 environment variables are editable in the browser (database > `.env` > built-in default, applied without a restart); secrets stay masked and every change is audited. → [CONFIGURATION.md](docs/CONFIGURATION.md)
-- **Per-user storage limits and internet-request accounting** — an editable megabyte limit enforced on every upload path, and a month-to-date count of every outbound call (search, page fetch, crawl). → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
-- **A phone-first admin panel** — Users, Settings, Cameras, Backups, Model Hub results and Downloaded models render as cards that keep every desktop column, instead of tables that turned the page sideways.
+## 🆕 What's New in v12.8
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 

@@ -1,4 +1,4 @@
-# VRAM Management — FLAI v12.7
+# VRAM Management — FLAI v12.8
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
 

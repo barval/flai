@@ -1,5 +1,6 @@
 """Guard the committed demo pages: drift, size, offline assets and language purity."""
 
+import json
 import re
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from demo.build import build_all
 PAGES = Path("docs/demo")
 NAMES = ["chat-ru.html", "chat-en.html", "admin-ru.html", "admin-en.html"]
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+EN_SNAPSHOT = Path("demo/snapshot/en.json")
 
 pytestmark = pytest.mark.skipif(not PAGES.exists(), reason="demo pages are produced in Task 12")
 
@@ -53,6 +55,19 @@ def test_english_pages_have_no_cyrillic_text(name):
 @pytest.mark.parametrize("name", ["chat-ru.html", "admin-ru.html"])
 def test_russian_pages_keep_their_language(name):
     assert CYRILLIC.search((PAGES / name).read_text("utf-8"))
+
+
+def test_english_snapshot_has_no_cyrillic():
+    """The English demo is rendered from the English snapshot, so Russian text in
+    the capture (room names, titles, documents) reaches the page as-is — the page
+    guard above cannot see it, because the snapshot lives inside a script."""
+    snapshot = json.loads(EN_SNAPSHOT.read_text("utf-8"))
+    leaked = [
+        route["path"]
+        for route in snapshot["routes"]
+        if CYRILLIC.search(json.dumps(route.get("body"), ensure_ascii=False))
+    ]
+    assert not leaked, f"Russian text in the English snapshot: {leaked}"
 
 
 def test_login_and_notice_are_present():

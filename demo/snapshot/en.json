@@ -2905,8 +2905,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "балкон",
-            "балконе"
+            "balcony",
+            "balconies"
           ],
           "sort_order": 0,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2916,9 +2916,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "детская",
-            "детскую",
-            "детской"
+            "nursery",
+            "nurseries"
           ],
           "sort_order": 1,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2928,9 +2927,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "гостиная",
-            "гостиную",
-            "гостиной"
+            "living room",
+            "living rooms"
           ],
           "sort_order": 2,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2940,8 +2938,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "кабинет",
-            "кабинете"
+            "study",
+            "home office"
           ],
           "sort_order": 3,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2951,8 +2949,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "коридор",
-            "коридоре"
+            "hallway",
+            "hallways"
           ],
           "sort_order": 4,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2962,9 +2960,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "кухня",
-            "кухню",
-            "кухне"
+            "kitchen",
+            "kitchens"
           ],
           "sort_order": 5,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2974,9 +2971,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "прихожая",
-            "прихожую",
-            "прихожей"
+            "entrance hall",
+            "front hall"
           ],
           "sort_order": 6,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2986,9 +2982,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "спальня",
-            "спальню",
-            "спальне"
+            "bedroom",
+            "bedrooms"
           ],
           "sort_order": 7,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"
@@ -2998,8 +2993,8 @@
           "created_at": "Tue, 09 Jun 2026 22:57:03 GMT",
           "enabled": true,
           "name_forms": [
-            "тамбур",
-            "тамбуре"
+            "vestibule",
+            "vestibules"
           ],
           "sort_order": 8,
           "updated_at": "Wed, 10 Jun 2026 07:43:38 GMT"

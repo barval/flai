@@ -1,12 +1,19 @@
 {
   "assets": {
-    "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/14e3cd92088840479e8edac056c80c3b.png": "media/ru/14e3cd92088840479e8edac056c80c3b.png",
-    "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png": "media/ru/2d436e975c9c4f3fb0599437655d5298.png",
-    "27d0d5f6-21ce-48af-803b-6e02e9d8d657/6ebf3492d44d438db335aed3446eff08.png": "media/ru/6ebf3492d44d438db335aed3446eff08.png",
-    "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4": "media/ru/417bc455b2d2449ba03695aeec74110c.mp4",
-    "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/pdf-page/1": "media/ru/preview-57aeabf7-1.png",
-    "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/pdf-page/1": "media/ru/preview-21fa33b9-1.png",
-    "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/pdf-page/1": "media/ru/preview-d4109b49-1.png"
+    "/api/documents/359875fc-a163-4bb0-ac7d-5d29247e814a/preview/pdf-page/1": "media/ru/preview-359875fc-1.webp",
+    "/api/documents/6e576235-74f2-4fbf-819d-8bbc5b9b8eee/preview/pdf-page/1": "media/ru/preview-6e576235-1.webp",
+    "/api/documents/a181e3e1-033d-4af6-8b58-fcf950924ac2/preview/pdf-page/1": "media/ru/preview-a181e3e1-1.webp",
+    "00d96877-2ebb-4f98-ab75-a0654cf0fc11/693a1d03cb11479ba7144f04f9066c5d.png": "media/ru/693a1d03cb11479ba7144f04f9066c5d.webp",
+    "0626e970-d923-440b-969d-bbd286e5d550/2d4a4246790a4e87ae5964087c1a10bf.png": "media/ru/2d4a4246790a4e87ae5964087c1a10bf.webp",
+    "0626e970-d923-440b-969d-bbd286e5d550/d41738d9655147efa446090f9363d8ed.png": "media/ru/d41738d9655147efa446090f9363d8ed.webp",
+    "0626e970-d923-440b-969d-bbd286e5d550/ee98162ca4ef43bb87a6348452988d72.png": "media/ru/ee98162ca4ef43bb87a6348452988d72.webp",
+    "18133f15-2f64-4479-b8c8-7fe201963739/999cb307cddf4f3c86d3d4f2a9c91478.mp4": "media/ru/999cb307cddf4f3c86d3d4f2a9c91478.mp4",
+    "1e441b31-ba86-47c2-b604-aea9bc046c5d/dcceb8606726439393826f0eb5f97441.png": "media/ru/dcceb8606726439393826f0eb5f97441.webp",
+    "29bfe24c-862c-4657-b46b-d6296884f87e/4fc8bac2caf3485982bde11928780d09.png": "media/ru/4fc8bac2caf3485982bde11928780d09.webp",
+    "29bfe24c-862c-4657-b46b-d6296884f87e/a76b9a2e8e134eddb726dfc46a3796ca.png": "media/ru/a76b9a2e8e134eddb726dfc46a3796ca.webp",
+    "5cc5c070-86f5-4e31-91b0-39951ef4aeb9/ab04988e30ad4009a677dc40e8cc6a66.png": "media/ru/ab04988e30ad4009a677dc40e8cc6a66.webp",
+    "8c609190-9f32-454c-a593-e8b8bdbd1c65/121055c08af64f0381215a315ab88ddc.mp4": "media/ru/121055c08af64f0381215a315ab88ddc.mp4",
+    "8c609190-9f32-454c-a593-e8b8bdbd1c65/1570898c2eb14bc88058a3411d12612e.png": "media/ru/1570898c2eb14bc88058a3411d12612e.webp"
   },
   "credentials": {
     "admin": {
@@ -23,121 +30,225 @@
     {
       "body": [
         {
-          "created_at": "2026-10-25T23:38:04+03:00",
-          "has_unread": true,
-          "id": "d13027cd-3dc5-4ed0-b497-caf5e2cd1956",
-          "last_visit": "2026-10-25T23:38:04+03:00",
-          "message_count": 3,
-          "model_name": "auto",
-          "title": "Расшифруй голосовое сообщение и ответь н...",
-          "total_completion_tokens": 3421,
-          "total_prompt_tokens": 8856,
-          "unread_count": 2,
-          "updated_at": "2026-10-25T23:38:57+03:00"
-        },
-        {
-          "created_at": "2026-10-25T23:37:09+03:00",
+          "created_at": "2026-10-26T02:36:05+03:00",
           "has_unread": false,
-          "id": "07386624-320d-4d09-a6bb-078b3f3161f9",
-          "last_visit": "2026-10-25T23:38:04+03:00",
-          "message_count": 2,
+          "id": "0d603bee-bfe9-4ca7-bd82-937fa19e98b7",
+          "last_visit": "2026-10-26T02:36:05+03:00",
+          "message_count": 0,
           "model_name": "auto",
-          "title": "Найди текущий курс евро к рублю и посчит...",
-          "total_completion_tokens": 2214,
-          "total_prompt_tokens": 6622,
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:37:58+03:00"
+          "updated_at": "2026-10-26T02:36:05+03:00"
         },
         {
-          "created_at": "2026-10-25T23:34:06+03:00",
+          "created_at": "2026-10-26T02:25:59+03:00",
           "has_unread": false,
-          "id": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5",
-          "last_visit": "2026-10-25T23:35:39+03:00",
+          "id": "0bb315ef-3723-4b32-88be-7c90ed38938a",
+          "last_visit": "2026-10-26T02:36:05+03:00",
+          "message_count": 0,
+          "model_name": "auto",
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:25:59+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:23:30+03:00",
+          "has_unread": false,
+          "id": "0626e970-d923-440b-969d-bbd286e5d550",
+          "last_visit": "2026-10-26T02:25:59+03:00",
           "message_count": 4,
           "model_name": "auto",
           "title": "Сделай фото: полка холодильника с продук...",
-          "total_completion_tokens": 306,
-          "total_prompt_tokens": 7853,
+          "total_completion_tokens": 243,
+          "total_prompt_tokens": 9889,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:35:31+03:00"
+          "updated_at": "2026-10-26T02:25:52+03:00"
         },
         {
-          "created_at": "2026-10-25T23:29:42+03:00",
+          "created_at": "2026-10-26T02:14:42+03:00",
+          "has_unread": true,
+          "id": "17761db1-0ad3-4f3e-b4fd-00aec827df51",
+          "last_visit": "2026-10-26T02:15:47+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Сделай короткое видео: капли дождя на ст...",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 1,
+          "updated_at": "2026-10-26T02:17:43+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:15:47+03:00",
           "has_unread": false,
-          "id": "f79b7786-848b-42b8-bf53-18e6cbc67056",
-          "last_visit": "2026-10-25T23:34:06+03:00",
+          "id": "1914dc17-0df9-4b0a-a3cf-bd8c83cf2f72",
+          "last_visit": "2026-10-26T02:23:30+03:00",
+          "message_count": 0,
+          "model_name": "auto",
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:15:47+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:11:21+03:00",
+          "has_unread": false,
+          "id": "f5a6f456-8df3-4dba-9550-5bf019d1405c",
+          "last_visit": "2026-10-26T02:14:42+03:00",
+          "message_count": 0,
+          "model_name": "auto",
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:11:21+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:11:03+03:00",
+          "has_unread": false,
+          "id": "790780e5-ccda-4ced-9320-1557c090a335",
+          "last_visit": "2026-10-26T02:11:21+03:00",
+          "message_count": 3,
+          "model_name": "auto",
+          "title": "Расшифруй голосовое сообщение и ответь н...",
+          "total_completion_tokens": 101,
+          "total_prompt_tokens": 7115,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:11:14+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:10:06+03:00",
+          "has_unread": false,
+          "id": "57fe591d-a2b8-4c87-b974-4df3962c362b",
+          "last_visit": "2026-10-26T02:11:03+03:00",
+          "message_count": 2,
+          "model_name": "auto",
+          "title": "Найди текущий курс евро к рублю и посчит...",
+          "total_completion_tokens": 2673,
+          "total_prompt_tokens": 8113,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:10:56+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:08:05+03:00",
+          "has_unread": false,
+          "id": "6e6eecd6-e00d-44e4-9d08-5007dbd55ed8",
+          "last_visit": "2026-10-26T02:10:06+03:00",
+          "message_count": 0,
+          "model_name": "auto",
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:08:05+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:06:35+03:00",
+          "has_unread": false,
+          "id": "29bfe24c-862c-4657-b46b-d6296884f87e",
+          "last_visit": "2026-10-26T02:08:05+03:00",
+          "message_count": 4,
+          "model_name": "auto",
+          "title": "Сделай фото: полка холодильника с продук...",
+          "total_completion_tokens": 307,
+          "total_prompt_tokens": 7852,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T02:07:59+03:00"
+        },
+        {
+          "created_at": "2026-10-26T02:03:41+03:00",
+          "has_unread": false,
+          "id": "18133f15-2f64-4479-b8c8-7fe201963739",
+          "last_visit": "2026-10-26T02:06:35+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Короткое видео: осенние листья медленно ...",
-          "total_completion_tokens": 200,
-          "total_prompt_tokens": 5090,
+          "total_completion_tokens": 185,
+          "total_prompt_tokens": 5089,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:33:54+03:00"
+          "updated_at": "2026-10-26T02:06:22+03:00"
         },
         {
-          "created_at": "2026-10-25T23:28:17+03:00",
+          "created_at": "2026-10-26T02:02:20+03:00",
           "has_unread": false,
-          "id": "27d0d5f6-21ce-48af-803b-6e02e9d8d657",
-          "last_visit": "2026-10-25T23:29:42+03:00",
+          "id": "00d96877-2ebb-4f98-ab75-a0654cf0fc11",
+          "last_visit": "2026-10-26T02:03:41+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Сделай обложку для школьной газеты в осе...",
-          "total_completion_tokens": 130,
-          "total_prompt_tokens": 5377,
+          "total_completion_tokens": 159,
+          "total_prompt_tokens": 5426,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:29:34+03:00"
+          "updated_at": "2026-10-26T02:03:34+03:00"
         },
         {
-          "created_at": "2026-10-25T23:27:27+03:00",
+          "created_at": "2026-10-26T02:00:03+03:00",
           "has_unread": false,
-          "id": "c28e7649-c048-426c-ad0a-7b580ff7a085",
-          "last_visit": "2026-10-25T23:28:17+03:00",
+          "id": "c3645a34-a641-4452-9ca9-224e08bcbbfe",
+          "last_visit": "2026-10-26T02:02:20+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Проанализируй оба коммерческих предложен...",
-          "total_completion_tokens": 3805,
-          "total_prompt_tokens": 10544,
+          "total_completion_tokens": 11968,
+          "total_prompt_tokens": 66359,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:28:11+03:00"
+          "updated_at": "2026-10-26T02:02:12+03:00"
         },
         {
-          "created_at": "2026-10-25T23:27:03+03:00",
+          "created_at": "2026-10-26T01:59:43+03:00",
           "has_unread": false,
-          "id": "6e70b09c-6cd2-4b08-914e-ee2556b6cf64",
-          "last_visit": "2026-10-25T23:27:27+03:00",
+          "id": "a6dd41fe-9e66-4806-9d46-89e4acc69036",
+          "last_visit": "2026-10-26T02:00:03+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Сравни два коммерческих предложения на п...",
-          "total_completion_tokens": 1195,
-          "total_prompt_tokens": 4813,
+          "total_completion_tokens": 1055,
+          "total_prompt_tokens": 4812,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:27:20+03:00"
+          "updated_at": "2026-10-26T01:59:57+03:00"
         },
         {
-          "created_at": "2026-10-25T23:26:28+03:00",
+          "created_at": "2026-10-26T01:59:10+03:00",
           "has_unread": false,
-          "id": "51a5c14f-1803-4200-8e0c-261535463ede",
-          "last_visit": "2026-10-25T23:27:03+03:00",
+          "id": "7c16f826-1403-4d6f-bf23-63ea548a2575",
+          "last_visit": "2026-10-26T01:59:43+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Какая погода в Москве на выходные?",
-          "total_completion_tokens": 1626,
-          "total_prompt_tokens": 8705,
+          "total_completion_tokens": 1704,
+          "total_prompt_tokens": 7951,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:26:54+03:00"
+          "updated_at": "2026-10-26T01:59:35+03:00"
         },
         {
-          "created_at": "2026-10-25T23:26:14+03:00",
+          "created_at": "2026-10-26T01:58:56+03:00",
           "has_unread": false,
-          "id": "9f7310d6-2544-45e3-89c7-3e1edad06fe7",
-          "last_visit": "2026-10-25T23:26:28+03:00",
+          "id": "05cd28be-be68-4de8-8440-89a5d78d05ee",
+          "last_visit": "2026-10-26T01:59:10+03:00",
           "message_count": 2,
           "model_name": "auto",
           "title": "Что ты умеешь?",
-          "total_completion_tokens": 264,
-          "total_prompt_tokens": 6714,
+          "total_completion_tokens": 332,
+          "total_prompt_tokens": 6713,
           "unread_count": 0,
-          "updated_at": "2026-10-25T23:26:20+03:00"
+          "updated_at": "2026-10-26T01:59:03+03:00"
+        },
+        {
+          "created_at": "2026-10-26T01:58:42+03:00",
+          "has_unread": false,
+          "id": "777cdd17-4aa5-46da-b0ad-177c75d5c642",
+          "last_visit": "2026-10-26T01:58:56+03:00",
+          "message_count": 0,
+          "model_name": "auto",
+          "title": "Новый сеанс",
+          "total_completion_tokens": 0,
+          "total_prompt_tokens": 0,
+          "unread_count": 0,
+          "updated_at": "2026-10-26T01:58:42+03:00"
         }
       ],
       "method": "GET",
@@ -151,46 +262,46 @@
             "description_model": null,
             "embedding_model": "bge-m3-Q8_0.gguf",
             "file_ext": ".pdf",
-            "file_path": "demo_ru_chat/57aeabf7-8125-4364-93b1-bdbb67209f3c.pdf",
-            "file_size": 49412,
-            "filename": "КП №1 — ООО «Вектор-Тех».pdf",
-            "folder_id": null,
-            "id": "57aeabf7-8125-4364-93b1-bdbb67209f3c",
-            "index_status": "indexed",
-            "indexed_at": "2026-10-25T23:25:59+03:00",
-            "indexing_started_at": "2026-10-25T23:25:55+03:00",
-            "processing_time": 4.0,
-            "uploaded_at": "2026-10-25T23:25:55+03:00"
-          },
-          {
-            "description_model": null,
-            "embedding_model": "bge-m3-Q8_0.gguf",
-            "file_ext": ".pdf",
-            "file_path": "demo_ru_chat/21fa33b9-e782-4e36-b3c6-951885b4a5e6.pdf",
+            "file_path": "demo_ru_chat/6e576235-74f2-4fbf-819d-8bbc5b9b8eee.pdf",
             "file_size": 49384,
             "filename": "КП №2 — ООО «Смарт-Снаб».pdf",
             "folder_id": null,
-            "id": "21fa33b9-e782-4e36-b3c6-951885b4a5e6",
+            "id": "6e576235-74f2-4fbf-819d-8bbc5b9b8eee",
             "index_status": "indexed",
-            "indexed_at": "2026-10-25T23:26:02+03:00",
-            "indexing_started_at": "2026-10-25T23:25:59+03:00",
+            "indexed_at": "2026-10-26T01:58:49+03:00",
+            "indexing_started_at": "2026-10-26T01:58:46+03:00",
             "processing_time": 3.0,
-            "uploaded_at": "2026-10-25T23:25:55+03:00"
+            "uploaded_at": "2026-10-26T01:58:43+03:00"
           },
           {
             "description_model": null,
             "embedding_model": "bge-m3-Q8_0.gguf",
             "file_ext": ".pdf",
-            "file_path": "demo_ru_chat/d4109b49-c5db-4a50-873e-7e2b7b610e7d.pdf",
+            "file_path": "demo_ru_chat/359875fc-a163-4bb0-ac7d-5d29247e814a.pdf",
             "file_size": 33622,
             "filename": "Положение о закупках школы.pdf",
             "folder_id": null,
-            "id": "d4109b49-c5db-4a50-873e-7e2b7b610e7d",
+            "id": "359875fc-a163-4bb0-ac7d-5d29247e814a",
             "index_status": "indexed",
-            "indexed_at": "2026-10-25T23:26:06+03:00",
-            "indexing_started_at": "2026-10-25T23:26:02+03:00",
+            "indexed_at": "2026-10-26T01:58:52+03:00",
+            "indexing_started_at": "2026-10-26T01:58:49+03:00",
+            "processing_time": 3.0,
+            "uploaded_at": "2026-10-26T01:58:43+03:00"
+          },
+          {
+            "description_model": null,
+            "embedding_model": "bge-m3-Q8_0.gguf",
+            "file_ext": ".pdf",
+            "file_path": "demo_ru_chat/a181e3e1-033d-4af6-8b58-fcf950924ac2.pdf",
+            "file_size": 49412,
+            "filename": "КП №1 — ООО «Вектор-Тех».pdf",
+            "folder_id": null,
+            "id": "a181e3e1-033d-4af6-8b58-fcf950924ac2",
+            "index_status": "indexed",
+            "indexed_at": "2026-10-26T01:58:46+03:00",
+            "indexing_started_at": "2026-10-26T01:58:42+03:00",
             "processing_time": 4.0,
-            "uploaded_at": "2026-10-25T23:25:55+03:00"
+            "uploaded_at": "2026-10-26T01:58:42+03:00"
           }
         ],
         "folders": []
@@ -204,22 +315,131 @@
         "tasks": [
           {
             "abort_reason": null,
-            "completed_at": "2026-10-25T20:37:00.504379+00:00",
-            "created_at": "2026-10-25T20:35:39.269446+00:00",
-            "deep_analysis": false,
-            "doc_ids": [],
-            "exec_seconds": 77.19,
-            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc",
+            "completed_at": "2026-10-25T23:37:52.604939+00:00",
+            "created_at": "2026-10-25T23:36:05.846087+00:00",
+            "deep_analysis": true,
+            "doc_ids": [
+              "a181e3e1-033d-4af6-8b58-fcf950924ac2",
+              "6e576235-74f2-4fbf-819d-8bbc5b9b8eee",
+              "359875fc-a163-4bb0-ac7d-5d29247e814a"
+            ],
+            "exec_seconds": 105.74,
+            "id": "898a6f4c-7870-4683-afb6-957e0ffb5bf8",
             "images": [],
             "next_step_index": 1,
             "response_style": "neutral",
-            "started_at": "2026-10-25T20:35:42.716560+00:00",
+            "started_at": "2026-10-25T23:36:06.499124+00:00",
+            "status": "completed",
+            "task_class": 5,
+            "title": "Проанализируй оба коммерческих предложения и положение о закупках: где риски и что выбрать. Дай вывод с обоснованием.",
+            "token_totals": {
+              "completion_tokens": 9010,
+              "prompt_tokens": 16200
+            },
+            "total_steps": 1
+          },
+          {
+            "abort_reason": null,
+            "completed_at": "2026-10-25T23:36:02.254800+00:00",
+            "created_at": "2026-10-25T23:25:59.451934+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 601.23,
+            "id": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9",
+            "images": [],
+            "next_step_index": 5,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T23:25:59.661998+00:00",
+            "status": "completed",
+            "task_class": 5,
+            "title": "Составь план подготовки школы к осеннему празднику из пяти шагов и выполни его последовательно: расписание, оформление, рассылка, оборудование, отчёт.",
+            "token_totals": {
+              "completion_tokens": 21474,
+              "prompt_tokens": 16536
+            },
+            "total_steps": 5
+          },
+          {
+            "abort_reason": null,
+            "completed_at": null,
+            "created_at": "2026-10-25T23:15:47.607310+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 37.54,
+            "id": "d01c7f42-2187-4041-92ba-ba03154dd992",
+            "images": [],
+            "next_step_index": 0,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T23:22:46.092176+00:00",
+            "status": "awaiting_user",
+            "task_class": 5,
+            "title": "Сделай что-нибудь красивое для школы.",
+            "token_totals": {
+              "completion_tokens": 7608,
+              "prompt_tokens": 4896
+            },
+            "total_steps": 1
+          },
+          {
+            "abort_reason": null,
+            "completed_at": "2026-10-25T23:22:45.023331+00:00",
+            "created_at": "2026-10-25T23:14:42.374939+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 481.62,
+            "id": "8c609190-9f32-454c-a593-e8b8bdbd1c65",
+            "images": [],
+            "next_step_index": 2,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T23:14:42.812774+00:00",
+            "status": "completed",
+            "task_class": 5,
+            "title": "Сделай короткое видео: капли дождя на стекле.",
+            "token_totals": {
+              "completion_tokens": 8884,
+              "prompt_tokens": 7856
+            },
+            "total_steps": 2
+          },
+          {
+            "abort_reason": null,
+            "completed_at": "2026-10-25T23:14:40.720183+00:00",
+            "created_at": "2026-10-25T23:11:21.667303+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 194.11,
+            "id": "1e441b31-ba86-47c2-b604-aea9bc046c5d",
+            "images": [],
+            "next_step_index": 1,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T23:11:26.286281+00:00",
+            "status": "completed",
+            "task_class": 5,
+            "title": "Сделай обложку для школьного альбома в осенних тонах.",
+            "token_totals": {
+              "completion_tokens": 11201,
+              "prompt_tokens": 5494
+            },
+            "total_steps": 1
+          },
+          {
+            "abort_reason": null,
+            "completed_at": "2026-10-25T23:10:00.556256+00:00",
+            "created_at": "2026-10-25T23:08:05.893587+00:00",
+            "deep_analysis": false,
+            "doc_ids": [],
+            "exec_seconds": 108.55,
+            "id": "3cc90fe5-2926-4c03-8546-12f33fba8b82",
+            "images": [],
+            "next_step_index": 1,
+            "response_style": "neutral",
+            "started_at": "2026-10-25T23:08:11.350600+00:00",
             "status": "completed",
             "task_class": 5,
             "title": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
             "token_totals": {
-              "completion_tokens": 4681,
-              "prompt_tokens": 5105
+              "completion_tokens": 7801,
+              "prompt_tokens": 5378
             },
             "total_steps": 1
           }
@@ -244,7 +464,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4232,
+            "id": 4304,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -253,11 +473,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:26:14+03:00"
+            "timestamp": "2026-10-26T01:58:56+03:00"
           },
           {
-            "completion_tokens": 264,
-            "content": "Я — персональный ассистент 'Полностью Локальный ИИ (ПЛИИ)', и умею:\n\n- Отвечать на вопросы и вести диалог, используя историю переписки.\n- Генерировать изображения по описанию.\n- Редактировать загруженные изображения по запросу.\n- Анализировать изображения и отвечать на вопросы по ним.\n- Создавать видео из изображений.\n- Распознавать голосовые сообщения и выполнять задачи на их основе.\n- Распознавать аудиофайлы — переводить в текст.\n- Показывать снимки с камер видеонаблюдения (если подключены) и отвечать на вопросы по ним.\n- Искать информацию в загруженных документах.\n- Использовать инструменты: калькулятор, поиск в интернете, камеры, текущее время.\n\nЕсли нужно — могу помочь с расчётами, датами, информацией из интернета или файлов. Просто скажи, что тебе нужно!",
+            "completion_tokens": 332,
+            "content": "Я — персональный ассистент 'Полностью Локальный ИИ (ПЛИИ)', и умею многое! Вот что я могу:\n\n1. 📬 Отвечать на вопросы и вести диалог, используя историю разговора.\n2. 🎨 Генерировать изображения по описанию.\n3. 🔧 Редактировать загруженные изображения (например, изменить что-то в фото).\n4. 🔍 Анализировать изображения — отвечать на вопросы по ним.\n5. 🎬 Создавать видео из серии изображений.\n6. 🎤 Распознавать голосовые сообщения и выполнять задачи на их основе.\n7. 🔊 Распознавать аудиофайлы и переводить их в текст.\n8. 📹 Показывать снимки с камер видеонаблюдения (если они подключены) и отвечать на вопросы по ним.\n9. 📚 Искать информацию в загруженных документах.\n10. 💡 Использовать инструменты:\n    - Калькулятор для расчётов,\n    - Поиск в интернете (новости, погода, цены и т.д.),\n    - Поиск в документах,\n    - Камеры,\n    - Текущее время.\n\nЕсли нужно что-то конкретное — просто скажи!",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -265,22 +485,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4233,
+            "id": 4305,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
             "model_type": "multimodal",
-            "prompt_tokens": 6714,
+            "prompt_tokens": 6713,
             "response_style": "neutral",
-            "response_time": 6.3,
+            "response_time": 6.9,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:26:20+03:00"
+            "timestamp": "2026-10-26T01:59:03+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/9f7310d6-2544-45e3-89c7-3e1edad06fe7/messages?limit=100&offset=0",
+      "path": "/api/sessions/05cd28be-be68-4de8-8440-89a5d78d05ee/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -300,6 +520,24 @@
     },
     {
       "body": {
+        "total_queued": 0,
+        "user_queued": 0
+      },
+      "method": "GET",
+      "path": "/api/queue/counts",
+      "status": 200
+    },
+    {
+      "body": {
+        "queued_tasks": 0,
+        "total_queued_tasks": 0
+      },
+      "method": "GET",
+      "path": "/api/tasks/queue-count",
+      "status": 200
+    },
+    {
+      "body": {
         "has_more": false,
         "limit": 100,
         "messages": [
@@ -313,7 +551,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4234,
+            "id": 4306,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -322,11 +560,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:26:28+03:00"
+            "timestamp": "2026-10-26T01:59:10+03:00"
           },
           {
-            "completion_tokens": 1626,
-            "content": "По данным прогноза на ближайшие выходные:\n\n**Суббота**\n• Днём: +8 °C (+6 по ощущениям)  \n• Ночью: +4…+5 °C  \n• Осадки: вероятность 17–26%, кратковременные дожди возможны  \n• Ветер: слабый, 0.5–3 м/с  \n• Влажность: ~90%\n\n**Воскресенье**\n• Днём: +7 °C (+4 по ощущениям)  \n• Ночью: +4…+5 °C  \n• Осадки: вероятность 21–41%, возможен более частый дождь  \n• Ветер: ~3 м/с  \n• Влажность: ~80–94%\n\n**Общая картина:** выходные пройдут в облачную погоду с прохладным воздухом и повышенной влажностью. Осадки вероятны, преимущественно кратковременные. Для комфортного пребывания на улице рекомендуется одежда, защищающая от ветра и влаги.",
+            "completion_tokens": 1704,
+            "content": "На предстоящие выходные в Москве прогнозируется прохладная погода без существенных осадков.\n\n**Суббота:** днём температура составит +8…+9 °C, ночью опустится до +4 °C. Небо будет облачным или пасмурным. Ветер слабый (около 1 м/с), влажность высокая (до 87%), атмосферное давление — около 755 мм рт. ст. Вероятность осадков низкая (20–30%).\n\n**Воскресенье:** днём ожидается +5…+8 °C, ночью около +4 °C. Условия аналогичны: пасмурно или облачно. Ветер усилится до 3 м/с с севера и северо-востока, влажность составит 86–92%, давление — 755–756 мм рт. ст. Осадков не ожидается.\n\nКраткий итог: выходные будут прохладными, без осадков и при облачном небе.",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -334,22 +572,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4235,
+            "id": 4307,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
             "model_type": "reasoning",
-            "prompt_tokens": 8705,
+            "prompt_tokens": 7951,
             "response_style": "neutral",
-            "response_time": 26.0,
+            "response_time": 25.0,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:26:54+03:00"
+            "timestamp": "2026-10-26T01:59:35+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/51a5c14f-1803-4200-8e0c-261535463ede/messages?limit=100&offset=0",
+      "path": "/api/sessions/7c16f826-1403-4d6f-bf23-63ea548a2575/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -367,7 +605,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4236,
+            "id": 4308,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -376,11 +614,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:27:03+03:00"
+            "timestamp": "2026-10-26T01:59:43+03:00"
           },
           {
-            "completion_tokens": 1195,
-            "content": "В данном диалоге не представлены сами коммерческие предложения (ни в виде текста, ни в виде файлов). Я не вижу данных о ценах, технических характеристиках ноутбуков и условиях поставщика.\n\nЧтобы я мог выполнить задачу, пожалуйста:\n1. **Загрузите файлы** с коммерческими предложениями в чат.\n2. Или **скопируйте текст** предложений сюда.\n\nКак только данные появятся, я проанализирую стоимость комплектации (процессор, оперативная память, SSD), условия доставки и гарантии, чтобы определить наиболее выгодный вариант для школы.",
+            "completion_tokens": 1055,
+            "content": "Для проведения сравнения мне необходимы тексты или файлы с самими коммерческими предложениями. В текущем контексте нет информации об условиях поставок, стоимости ноутбуков или характеристиках оборудования от разных поставщиков.\n\nПожалуйста, загрузите документы с обоими вариантами предложений в чат (или скопируйте их текст), и я смогу проанализировать их по следующим критериям:\n1. Общая стоимость заказа для школы.\n2. Соответствие технических характеристик ноутбуков учебному процессу.\n3. Условия доставки, оплаты, постгарантийного обслуживания и поддержки.",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -388,22 +626,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4237,
+            "id": 4309,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
             "model_type": "reasoning",
-            "prompt_tokens": 4813,
+            "prompt_tokens": 4812,
             "response_style": "neutral",
-            "response_time": 17.0,
+            "response_time": 14.0,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:27:20+03:00"
+            "timestamp": "2026-10-26T01:59:57+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/6e70b09c-6cd2-4b08-914e-ee2556b6cf64/messages?limit=100&offset=0",
+      "path": "/api/sessions/a6dd41fe-9e66-4806-9d46-89e4acc69036/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -421,7 +659,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4238,
+            "id": 4310,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -430,11 +668,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:27:27+03:00"
+            "timestamp": "2026-10-26T02:00:03+03:00"
           },
           {
-            "completion_tokens": 3805,
-            "content": "## Анализ коммерческих предложений и рекомендации\n\n### Таблица сравнения\n\n| Критерий | КП №1 — ООО «Вектор-Тех» | КП №2 — ООО «Смарт-СнаБ» |\n|----------|---------------------------|---------------------------|\n| **Стоимость** | 1 278 000 руб. | 1 248 500 руб. |\n| Ноутбук (шт.) | 54 900 руб. × 20 = 1 098 000 | 52 400 руб. × 20 = 1 048 000 |\n| Док-станция (шт.) | 8 400 руб. × 20 = 168 000 | 9 100 руб. × 20 = 182 000 |\n| Доставка и настройка | 12 000 руб. | 18 500 руб. (только доставка) |\n| **Гарантия** | 24 месяца | 36 месяцев, сервис на территории заказчика |\n| **Срок поставки** | 14 рабочих дней | 21 рабочий день |\n| **Условия оплаты** | 50% аванс, 50% после приёмки | 100% по факту поставки и приёмки |\n| **Неустойка за просрочку** | 0.1%/день (макс. 10%) | 0.05%/день (макс. 5%) |\n\n### Расчёт баллов по критериям Положения о закупках школы №7\n\nСогласно пункту 3 Положения, при закупке от 600 000 руб. требуется не менее двух коммерческих предложений и оценка проводится по трём критериям: **цена — 60%, гарантийный срок — 25%, срок поставки — 15%**.\n\n| Критерий (вес) | КП №1 — Вектор-Тех | КП №2 — Смарт-СнаБ |\n|----------------|---------------------|---------------------|\n| Цена (60%) | **58.62** балла | **60.00** баллов |\n| Гарантия (25%) | **16.67** балла | **25.00** баллов |\n| Срок поставки (15%) | **15.00** баллов | **10.00** баллов |\n| **ИТОГО** | **90.28** | **95.00** |\n\n### Рекомендация\n\n**Рекомендуется выбрать ООО «Смарт-СнаБ» (КП №2).**\n\nОбоснование:\n1. **Ниже общая стоимость** — экономия 29 500 руб. по сравнению с Вектор-Тех.\n2. **Дольше гарантийный срок** — 36 месяцев вместо 24, плюс сервис на территории заказчика (без дополнительных расходов).\n3. По критерию «срок поставки» КП №1 выигрывает (быстрее), но этот критерий имеет меньший вес (15%) и не компенсирует преимущества Смарт-СнаБ по цене и гарантии.\n\n**Дополнительные соображения:**\n- Оплата 100% после приёмки у Смарт-СнаБ снижает финансовые риски школы.\n- Недостаток: подъём на этаж в стоимость не входит (КП №2), тогда как Вектор-Тех включает доставку до кабинета и настройку — это может быть учтено при подписании договора.",
+            "completion_tokens": 11968,
+            "content": "## Анализ коммерческих предложений и рекомендации для МБОУ «Школа № 7»\n\n### Исходные данные:\nЗакупка на сумму свыше 600 000 руб., поэтому согласно п.3 Положения о закупках требуется не менее двух коммерческих предложений с оценкой по трём критериям: цена (60%), гарантийный срок (25%), срок поставки (15%).\n\n---\n\n### Сравнительная таблица\n\n| Критерий | Вектор-Тех (КП №1) | Смарт-Снаб (КП №2) |\n|----------|---------------------|---------------------|\n| **Стоимость, руб.** | 1 278 000 | 1 248 500 |\n| Ноутбук (20 шт × цена) | 20 × 54 900 = 1 098 000 | 20 × 52 400 = 1 048 000 |\n| Док-станция USB-C (20 шт × цена) | 20 × 8 400 = 168 000 | 20 × 9 100 = 182 000 |\n| Доставка и настройка | 12 000 | 18 500 |\n| **Гарантия, мес.** | 24 | 36 |\n| **Срок поставки, раб. дней** | 14 | 21 |\n| Условия оплаты | 50% аванс / 50% после приёмки | 100% по факту поставки и приёмки |\n| Неустойка за просрочку | 0,1%/день (макс. 10%) | 0,05%/день (макс. 5%) |\n\n---\n\n### Оценка по критериям Положения о закупках\n\n**Расчёт баллов (шкала 0–100):**\n- По цене: чем ниже цена — тем выше балл. Минимальная цена = 1 248 500 руб.\n- По гарантии: чем больше месяцев — тем выше балл. Максимум = 36 мес.\n- По сроку поставки: чем меньше дней — тем выше балл. Минимум = 14 дней\n\n| Критерий | Вес | Вектор-Тех (баллы) | Смарт-Снаб (баллы) |\n|----------|-----|---------------------|---------------------|\n| Цена | 60% | (1 248 500 / 1 278 000) × 100 = **97,7** | (1 248 500 / 1 248 500) × 100 = **100,0** |\n| Гарантия | 25% | (24 / 36) × 100 = **66,7** | (36 / 36) × 100 = **100,0** |\n| Срок поставки | 15% | (14 / 14) × 100 = **100,0** | (14 / 21) × 100 = **66,7** |\n\n---\n\n### Взвешенные итоги:\n\n- **Вектор-Тех:** 97,7 × 0,6 + 66,7 × 0,25 + 100,0 × 0,15 = 58,6 + 16,7 + 15,0 = **90,3**\n- **Смарт-Снаб:** 100,0 × 0,6 + 100,0 × 0,25 + 66,7 × 0,15 = 60,0 + 25,0 + 10,0 = **95,0**\n\n---\n\n### Рекомендация:\n\n**Победитель — ООО «Смарт-Снаб» (КП №2) с итоговым баллом 95,0.**\n\nОбоснование:\n1. **Цена:** Смарт-Снаб предлагает меньшую общую стоимость на 29 500 руб. (экономия ~2,3%).\n2. **Гарантия:** На 50% больше — 36 месяцев против 24, с сервисом на территории заказчика. Это существенное преимущество для бюджетного учреждения.\n3. **Срок поставки:** Вектор-Тех быстрее (14 дней vs 21 день), но этот критерий имеет наименьший вес (15%).\n\n**Дополнительные соображения:**\n- Смарт-Снаб требует оплату 100% по факту, что снижает финансовые риски школы.\n- Вектор-Тех предлагает более жёсткую неустойку (0,1%/день), но это компенсируется меньшей стоимостью у Смарт-Снаб и большей гарантией.\n\n**Рекомендуемое действие:** Подготовить протокол комиссии о выборе ООО «Смарт-Снаб» и подписать договор в течение 10 рабочих дней согласно п.5 Положения.",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -442,22 +680,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4239,
+            "id": 4311,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
             "model_type": "rlm",
-            "prompt_tokens": 10544,
+            "prompt_tokens": 66359,
             "response_style": "neutral",
-            "response_time": 43.8,
+            "response_time": 128.4,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:28:11+03:00"
+            "timestamp": "2026-10-26T02:02:12+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/c28e7649-c048-426c-ad0a-7b580ff7a085/messages?limit=100&offset=0",
+      "path": "/api/sessions/c3645a34-a641-4452-9ca9-224e08bcbbfe/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -467,7 +705,7 @@
         "messages": [
           {
             "completion_tokens": null,
-            "content": "[{\"type\": \"text\", \"text\": \"Сделай обложку для школьной газеты в осенних тонах, без текста.\"}]",
+            "content": "[{\"type\": \"text\", \"text\": \"Сделай обложку для школьной газеты в осенних тонах. Без текста, без надписей и без букв.\"}]",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -475,7 +713,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4240,
+            "id": 4312,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -484,34 +722,34 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:28:17+03:00"
+            "timestamp": "2026-10-26T02:02:20+03:00"
           },
           {
-            "completion_tokens": 130,
-            "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай обложку для школьной газеты в осенних тонах, без текста.\"}",
+            "completion_tokens": 159,
+            "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай обложку для школьной газеты в осенних тонах. Без текста, без надписей и без букв.\"}",
             "file_data": null,
-            "file_name": "2026-10-25_20-29-31.png",
-            "file_path": "27d0d5f6-21ce-48af-803b-6e02e9d8d657/6ebf3492d44d438db335aed3446eff08.png",
-            "file_size": 1461039,
+            "file_name": "2026-10-25_23-03-31.png",
+            "file_path": "00d96877-2ebb-4f98-ab75-a0654cf0fc11/693a1d03cb11479ba7144f04f9066c5d.png",
+            "file_size": 2101150,
             "file_type": "image/png",
             "gen_model": null,
             "gen_time": null,
-            "id": 4241,
+            "id": 4313,
             "mm_model": null,
             "mm_time": null,
             "model_name": "z_image_turbo",
             "model_type": "image_gen",
-            "prompt_tokens": 5377,
+            "prompt_tokens": 5426,
             "response_style": "neutral",
-            "response_time": 76.9,
+            "response_time": 74.4,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:29:34+03:00"
+            "timestamp": "2026-10-26T02:03:34+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/27d0d5f6-21ce-48af-803b-6e02e9d8d657/messages?limit=100&offset=0",
+      "path": "/api/sessions/00d96877-2ebb-4f98-ab75-a0654cf0fc11/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -529,7 +767,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4242,
+            "id": 4314,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -538,34 +776,34 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:29:42+03:00"
+            "timestamp": "2026-10-26T02:03:41+03:00"
           },
           {
-            "completion_tokens": 200,
+            "completion_tokens": 185,
             "content": "{\"prefix\": \"🎬 Видео сгенерировано по запросу: \", \"text\": \"Короткое видео: осенние листья медленно падают в парке.\"}",
             "file_data": null,
-            "file_name": "2026-10-25_20-33-51.mp4",
-            "file_path": "f79b7786-848b-42b8-bf53-18e6cbc67056/417bc455b2d2449ba03695aeec74110c.mp4",
-            "file_size": 5378308,
+            "file_name": "2026-10-25_23-06-20.mp4",
+            "file_path": "18133f15-2f64-4479-b8c8-7fe201963739/999cb307cddf4f3c86d3d4f2a9c91478.mp4",
+            "file_size": 5756425,
             "file_type": "video/mp4",
             "gen_model": null,
             "gen_time": null,
-            "id": 4243,
+            "id": 4315,
             "mm_model": null,
             "mm_time": null,
             "model_name": "ltxv-2b-0.9.8-distilled",
             "model_type": "video",
-            "prompt_tokens": 5090,
+            "prompt_tokens": 5089,
             "response_style": "neutral",
-            "response_time": 251.2,
+            "response_time": 161.4,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:33:54+03:00"
+            "timestamp": "2026-10-26T02:06:22+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/f79b7786-848b-42b8-bf53-18e6cbc67056/messages?limit=100&offset=0",
+      "path": "/api/sessions/18133f15-2f64-4479-b8c8-7fe201963739/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -583,7 +821,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4244,
+            "id": 4316,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -592,40 +830,40 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:34:06+03:00"
+            "timestamp": "2026-10-26T02:06:35+03:00"
           },
           {
-            "completion_tokens": 107,
+            "completion_tokens": 141,
             "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.\"}",
             "file_data": null,
-            "file_name": "2026-10-25_20-35-23.png",
-            "file_path": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/14e3cd92088840479e8edac056c80c3b.png",
-            "file_size": 1647089,
+            "file_name": "2026-10-25_23-07-49.png",
+            "file_path": "29bfe24c-862c-4657-b46b-d6296884f87e/4fc8bac2caf3485982bde11928780d09.png",
+            "file_size": 1590707,
             "file_type": "image/png",
             "gen_model": null,
             "gen_time": null,
-            "id": 4245,
+            "id": 4317,
             "mm_model": null,
             "mm_time": null,
             "model_name": "z_image_turbo",
             "model_type": "image_gen",
-            "prompt_tokens": 5403,
+            "prompt_tokens": 5402,
             "response_style": "neutral",
-            "response_time": 79.6,
+            "response_time": 76.4,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:35:26+03:00"
+            "timestamp": "2026-10-26T02:07:51+03:00"
           },
           {
             "completion_tokens": null,
-            "content": "[{\"type\": \"text\", \"text\": \"Что можно приготовить из продуктов на фото? Предложи два простых блюда.\"}, {\"type\": \"image\", \"file_type\": \"image/png\", \"file_name\": \"photo.png\", \"file_path\": \"0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png\"}]",
+            "content": "[{\"type\": \"text\", \"text\": \"Что можно приготовить из продуктов на фото? Предложи два простых блюда.\"}, {\"type\": \"image\", \"file_type\": \"image/png\", \"file_name\": \"photo.png\", \"file_path\": \"29bfe24c-862c-4657-b46b-d6296884f87e/a76b9a2e8e134eddb726dfc46a3796ca.png\"}]",
             "file_data": null,
             "file_name": "photo.png",
-            "file_path": "0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/2d436e975c9c4f3fb0599437655d5298.png",
-            "file_size": 1647089,
+            "file_path": "29bfe24c-862c-4657-b46b-d6296884f87e/a76b9a2e8e134eddb726dfc46a3796ca.png",
+            "file_size": 1590707,
             "file_type": "image/png",
             "gen_model": null,
             "gen_time": null,
-            "id": 4246,
+            "id": 4318,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -634,11 +872,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:35:26+03:00"
+            "timestamp": "2026-10-26T02:07:55+03:00"
           },
           {
-            "completion_tokens": 199,
-            "content": "Из продуктов на фото можно приготовить:\n\n1. **Омлет с томатами и сыром** — разогрейте сковороду, добавьте масло, взбейте яйца с молоком и немного соли. Жарьте омлет до готовности, затем выложите на него помидоры и кусочки сыра. Подавайте горячим.\n\n2. **Салат из помидоров, зелени и сыра** — нарежьте помидоры, добавьте мелко порезанную зелень (петрушку или петрушки), нарезанный сыр и немного соли. Перемешайте и подавайте.\n\nОба блюда готовятся быстро и не требуют сложных ингредиентов — идеально для простого ужина или перекуса.",
+            "completion_tokens": 166,
+            "content": "Из продуктов на фото можно приготовить:\n\n1. **Омлет с овощами** — взбей яйца, добавь молоко (по желанию), обжаривай в сковороде, затем добавь нарезанные помидоры и зелень. Можно добавить немного сыра для вкуса.\n\n2. **Салат с сырной заправкой** — нарежь помидоры, зелень и сыр; смешай с молоком (или йогуртом) — получится кремообразная заправка. Добавь немного оливкового масла.\n\nОба блюда готовятся быстро и не требуют сложных ингредиентов.",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -646,22 +884,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4247,
+            "id": 4319,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
             "model_type": "multimodal",
             "prompt_tokens": 2450,
             "response_style": "neutral",
-            "response_time": 4.4,
+            "response_time": 3.8,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:35:31+03:00"
+            "timestamp": "2026-10-26T02:07:59+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/0b64f981-a1e9-4bbe-8b6c-38f38acff6a5/messages?limit=100&offset=0",
+      "path": "/api/sessions/29bfe24c-862c-4657-b46b-d6296884f87e/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -672,7 +910,7 @@
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/930f5eff-a2ed-43a0-b46f-32ca5a5850d9/messages?limit=100&offset=0",
+      "path": "/api/sessions/6e6eecd6-e00d-44e4-9d08-5007dbd55ed8/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -682,7 +920,7 @@
         "messages": [
           {
             "completion_tokens": null,
-            "content": "[{\"type\": \"text\", \"text\": \"Найди текущий курс евро к рублю и посчитай, сколько стоит партия из 40 ноутбуков по цене 54 900 рублей за штуку в евро.\"}]",
+            "content": "[{\"type\": \"text\", \"text\": \"Найди текущий курс евро к рублю и посчитай стоимость партии из 40 ноутбуков по 54 900 рублей за штуку. Ответь в рублях обычными числами, без формул.\"}]",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -690,7 +928,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4248,
+            "id": 4320,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -699,11 +937,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:37:09+03:00"
+            "timestamp": "2026-10-26T02:10:06+03:00"
           },
           {
-            "completion_tokens": 2214,
-            "content": "В предоставленных результатах поиска отсутствует актуальный курс евро к рублю, поэтому я не могу указать точное значение на текущую дату. Однако я рассчитал стоимость партии в рублях и подготовил формулу для пересчёта:\n\n- Стоимость одного ноутбука: 54 900 ₽\n- Количество единиц: 40 шт.\n- Общая сумма в рублях: `54 900 × 40 = 2 196 000 ₽`\n\nДля перевода в евро разделите полученную сумму на текущий курс EUR/RUB (например, если 1 € = X ₽, то стоимость партии составит `2 196 000 / X` €). \n\nПоскольку курсы валют обновляются ежедневно и зависят от источника (ЦБ РФ, межбанковский рынок или биржа), для точного расчёта рекомендуется взять актуальный курс из официального источника. Если укажете конкретный курс, я сразу выполню окончательный пересчёт в евро.",
+            "completion_tokens": 2673,
+            "content": "В предоставленных результатах поиска нет информации о текущем курсе евро к рублю (данные относятся к учебным задачам).\n\nСтоимость партии из 40 ноутбуков по 54 900 рублей составляет: 2196000 рублей.",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -711,22 +949,22 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4249,
+            "id": 4321,
             "mm_model": null,
             "mm_time": null,
             "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
             "model_type": "reasoning",
-            "prompt_tokens": 6622,
+            "prompt_tokens": 8113,
             "response_style": "neutral",
-            "response_time": 48.7,
+            "response_time": 49.5,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:37:58+03:00"
+            "timestamp": "2026-10-26T02:10:56+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/07386624-320d-4d09-a6bb-078b3f3161f9/messages?limit=100&offset=0",
+      "path": "/api/sessions/57fe591d-a2b8-4c87-b974-4df3962c362b/messages?limit=100&offset=0",
       "status": 200
     },
     {
@@ -744,7 +982,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4250,
+            "id": 4322,
             "mm_model": null,
             "mm_time": null,
             "model_name": null,
@@ -753,11 +991,11 @@
             "response_style": "neutral",
             "response_time": null,
             "role": "user",
-            "timestamp": "2026-10-25T23:38:04+03:00"
+            "timestamp": "2026-10-26T02:11:03+03:00"
           },
           {
             "completion_tokens": null,
-            "content": "{\"prefix\": \"🎤 Распознано: \", \"text\": \"Подскажи, сколько будет стоить партия и сорока ноутбуков, если один ноутбук стоит 54 900 рублей.\"}",
+            "content": "{\"prefix\": \"🎤 Распознано: \", \"text\": \"Подскажи сколько будет стоить партия из 40 ноутбуков, если один ноутбук стоит 54 900 рублей.\"}",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -765,7 +1003,7 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4251,
+            "id": 4323,
             "mm_model": null,
             "mm_time": null,
             "model_name": "whisper",
@@ -774,11 +1012,11 @@
             "response_style": "neutral",
             "response_time": 7.0,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:38:11+03:00"
+            "timestamp": "2026-10-26T02:11:10+03:00"
           },
           {
-            "completion_tokens": 3421,
-            "content": "Стоимость партии из сорока ноутбуков составит **2 196 000 рублей**.\n\nРасчет:\n$54\\,900 \\times 40 = 2\\,196\\,000$.",
+            "completion_tokens": 101,
+            "content": "Для расчёта стоимости партии из 40 ноутбуков по цене 54 900 рублей за штуку используем простое умножение:\n\n**40 × 54 900 = 2 196 000 рублей.**\n\nОтвет: **2 196 000 рублей.**",
             "file_data": null,
             "file_name": null,
             "file_path": null,
@@ -786,28 +1024,1701 @@
             "file_type": null,
             "gen_model": null,
             "gen_time": null,
-            "id": 4252,
+            "id": 4324,
             "mm_model": null,
             "mm_time": null,
-            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-            "model_type": "reasoning",
-            "prompt_tokens": 8856,
+            "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            "model_type": "multimodal",
+            "prompt_tokens": 7115,
             "response_style": "neutral",
-            "response_time": 45.1,
+            "response_time": 3.7,
             "role": "assistant",
-            "timestamp": "2026-10-25T23:38:57+03:00"
+            "timestamp": "2026-10-26T02:11:14+03:00"
           }
         ],
         "offset": 0
       },
       "method": "GET",
-      "path": "/api/sessions/d13027cd-3dc5-4ed0-b497-caf5e2cd1956/messages?limit=100&offset=0",
+      "path": "/api/sessions/790780e5-ccda-4ced-9320-1557c090a335/messages?limit=100&offset=0",
       "status": 200
     },
     {
       "body": {
-        "available_ram_mb": 19713,
-        "available_vram_mb": 7543,
+        "has_more": false,
+        "limit": 100,
+        "messages": [],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/f5a6f456-8df3-4dba-9550-5bf019d1405c/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Сделай короткое видео: капли дождя на стекле.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4325,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-26T02:15:27+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/17761db1-0ad3-4f3e-b4fd-00aec827df51/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/1914dc17-0df9-4b0a-a3cf-bd8c83cf2f72/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.\"}]",
+            "file_data": null,
+            "file_name": null,
+            "file_path": null,
+            "file_size": 0,
+            "file_type": null,
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4328,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-26T02:23:30+03:00"
+          },
+          {
+            "completion_tokens": 141,
+            "content": "{\"prefix\": \"🎨 Изображение сгенерировано по запросу: \", \"text\": \"Сделай фото: полка холодильника с продуктами — яйца, молоко, помидоры, сыр и зелень.\"}",
+            "file_data": null,
+            "file_name": "2026-10-25_23-24-39.png",
+            "file_path": "0626e970-d923-440b-969d-bbd286e5d550/d41738d9655147efa446090f9363d8ed.png",
+            "file_size": 1580749,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4329,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "prompt_tokens": 5402,
+            "response_style": "neutral",
+            "response_time": 72.6,
+            "role": "assistant",
+            "timestamp": "2026-10-26T02:24:43+03:00"
+          },
+          {
+            "completion_tokens": null,
+            "content": "[{\"type\": \"text\", \"text\": \"Измени фон на этом изображении на закатное небо, само фото не меняй.\"}, {\"type\": \"image\", \"file_type\": \"image/png\", \"file_name\": \"photo.png\", \"file_path\": \"0626e970-d923-440b-969d-bbd286e5d550/ee98162ca4ef43bb87a6348452988d72.png\"}]",
+            "file_data": null,
+            "file_name": "photo.png",
+            "file_path": "0626e970-d923-440b-969d-bbd286e5d550/ee98162ca4ef43bb87a6348452988d72.png",
+            "file_size": 1580749,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4330,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": null,
+            "model_type": null,
+            "prompt_tokens": null,
+            "response_style": "neutral",
+            "response_time": null,
+            "role": "user",
+            "timestamp": "2026-10-26T02:24:45+03:00"
+          },
+          {
+            "completion_tokens": 102,
+            "content": "{\"prefix\": \"🎨 Изображение отредактировано по запросу: \", \"text\": \"Измени фон на этом изображении на закатное небо, само фото не меняй.\"}",
+            "file_data": null,
+            "file_name": "2026-10-25_23-25-48_edit.png",
+            "file_path": "0626e970-d923-440b-969d-bbd286e5d550/2d4a4246790a4e87ae5964087c1a10bf.png",
+            "file_size": 1257038,
+            "file_type": "image/png",
+            "gen_model": null,
+            "gen_time": null,
+            "id": 4331,
+            "mm_model": null,
+            "mm_time": null,
+            "model_name": "flux-2-klein-4b",
+            "model_type": "image_edit",
+            "prompt_tokens": 4487,
+            "response_style": "neutral",
+            "response_time": 66.4,
+            "role": "assistant",
+            "timestamp": "2026-10-26T02:25:52+03:00"
+          }
+        ],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/0626e970-d923-440b-969d-bbd286e5d550/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/0bb315ef-3723-4b32-88be-7c90ed38938a/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "has_more": false,
+        "limit": 100,
+        "messages": [],
+        "offset": 0
+      },
+      "method": "GET",
+      "path": "/api/sessions/0d603bee-bfe9-4ca7-bd82-937fa19e98b7/messages?limit=100&offset=0",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "Приложенные документы: \nКП №1 — ООО «Вектор-Тех».pdf\nКП №2 — ООО «Смарт-Снаб».pdf\nПоложение о закупках школы.pdf",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Проанализируй оба коммерческих предложения и положение о закупках: где риски и что выбрать. Дай вывод с обоснованием.",
+            "created_at": "2026-10-25T23:36:05.846087+00:00",
+            "extra": {},
+            "id": "898a6f4c-7870-4683-afb6-957e0ffb5bf8:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1
+          },
+          {
+            "content": "План из 1 шагов:\n1. Проанализируй приложенные документы (КП №1 — ООО «Вектор-Тех».pdf, КП №2 — ООО «Смарт-Снаб».pdf, Положение о закупках школы.pdf), выяви риски в каждом предложении относительно Положения и дай обоснованный вывод с рекомендацией по выбору.",
+            "created_at": "2026-10-25T23:36:05.846087+00:00",
+            "exec_seconds": 20.59,
+            "extra": {},
+            "id": "898a6f4c-7870-4683-afb6-957e0ffb5bf8:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2041,
+              "prompt_tokens": 2411
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:37:19.687781+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Результат полностью соответствует критерию готовности: в ответе есть раздел «Риски по каждому предложению» для обоих КП, проведено сравнение условий с требованиями Положения (ссылки на пункты 1, 3, 5), дан четкий выбор победителя и приведена аргументация."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "🔬 Глубокий анализ:",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 1:\n🔬 Глубокий анализ:\n## Анализ коммерческих предложений относительно Положения о закупках МБОУ «Школа № 7»\n\n### Краткая сводка по критериям (согласно п.3 Положения)\n\n| Критерий | КП №1 — Вектор-Тех | КП №2 — Смарт-Снаб |\n|---|---|---|\n| **Цена** | 1 278 000 руб. | **1 248 500 руб.** (−3%) |\n| **Гарантия** | 24 мес. | **36 мес.** (+50%) |\n| **Срок поставки** | **14 раб. дней** | 21 раб. день |\n\n### Оценка по балльной системе (п.3 Положения)\n\n- **Цена — 60%**: Смарт-Снаб получает максимум баллов за наименьшую цену; Вектор-Тех — 97,7%.\n- **Гарантия — 25%**: Смарт-Снаб выигрывает (36 мес. против 24 мес.).\n- **Срок поставки — 15%**: Вектор-Тех опережает на 7 рабочих дней.\n\n**Итоговый балл: Смарт-Снаб — 95,00; Вектор-Тех — 90,28.** Разница — 4,72 балла в пользу «Смарт-Снаб».\n\n---\n\n### Риски по каждому предложению\n\n#### КП №1 — ООО «Вектор-Тех» (риск: **средний**)\n| Риск | Обоснование |\n|---|---|\n| **Высокая цена** (+29 500 руб. к Смарт-Снаб) | При равных условиях это прямая переплата из бюджетных средств. |\n| **Аванс 50%** | Пункт 1 Положения указывает на финансирование из бюджета; аванс создаёт риск неисполнения обязательств поставщиком и затрудняет возврат средств. |\n| **Гарантия 24 мес.** | На 33% меньше, чем у конкурента — выше вероятность расходов после окончания гарантии. |\n\n#### КП №2 — ООО «Смарт-Снаб» (риск: **низкий**)\n| Риск | Обоснование |\n|---|---|\n| **Долгий срок поставки** (+7 раб. дней) | Может повлиять на график оснащения компьютерного класса, но не является критичным при отсутствии жёстких дедлайнов. |\n| **Подъём на этаж — за доплату** | Потенциальная скрытая доплата; необходимо уточнить перед подписанием договора (п.5 Положения: существенные условия должны совпадать с предложением). |\n| **Низкая неустойка 0,05%** | Защита при просрочке слабее, чем у Вектор-Тех (0,1%), но компенсируется более длительной гарантией и оплатой по факту. |\n\n---\n\n### Рекомендация\n\n**Выбрать КП №2 — ООО «Смарт-Снаб».**\n\nОбоснование:\n1. **Наименьшая цена** даёт максимальный балл (60%) — это решающий критерий согласно Положению.\n2. **Гарантия 36 месяцев** обеспечивает лучшую защиту оборудования и снижает долгосрочные расходы школы.\n3. **Оплата по факту поставки** исключает риск авансирования бюджетных средств, что особенно важно при закупках из бюджета (п.1 Положения).\n4. Срок поставки в 21 рабочий день — приемлемый компромисс; его можно зафиксировать как существенное условие договора (п.5 Положения).\n\n**Необходимо:** перед подписанием договора уточнить у «Смарт-Снаб» стоимость подъёма на этаж и включить её в договор, чтобы условия полностью совпадали с предложением победителя (требование п.5 Положения).",
+            "created_at": "2026-10-25T23:36:27.236201+00:00",
+            "exec_seconds": 42.13,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:37:19.687781+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Результат полностью соответствует критерию готовности: в ответе есть раздел «Риски по каждому предложению» для обоих КП, проведено сравнение условий с требованиями Положения (ссылки на пункты 1, 3, 5), дан четкий выбор победителя и приведена аргументация."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 504,
+                "prompt_tokens": 1594
+              },
+              "current_kind": "gen",
+              "generations_used": 1,
+              "media": {},
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "model_type": "rlm",
+              "pending_action": null,
+              "subtask_queue_id": "df4034bb-0b3c-44b9-9efd-b52b9048a2e6",
+              "usage": {
+                "completion_tokens": 4121,
+                "prompt_tokens": 10599
+              },
+              "usage_total": {
+                "completion_tokens": 4121,
+                "prompt_tokens": 10599
+              }
+            },
+            "failure_reason": "Результат полностью соответствует критерию готовности: в ответе есть раздел «Риски по каждому предложению» для обоих КП, проведено сравнение условий с требованиями Положения (ссылки на пункты 1, 3, 5), дан четкий выбор победителя и приведена аргументация.",
+            "id": "8191eab8-217e-4da4-9a1d-d7dd604de833",
+            "kind": "subtask",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "rlm",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "rlm",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 4121,
+              "prompt_tokens": 10599
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "По результатам анализа документов рекомендовано выбрать КП №2 — ООО «Смарт-Снаб».\n\n**Обоснование выбора согласно п.3 Положения о закупках:**\n- Цена (60%): предложение «Смарт-Снаб» на 3% дешевле, что даёт максимальные баллы по критерию.\n- Гарантия (25%): у «Смарт-Снаб» она составляет 36 мес. против 24 мес., что снижает вероятность дополнительных расходов после окончания гарантийного срока.\n- Срок поставки (15%): «Вектор-Тех» быстрее на 7 дней, но разница не является критичной при отсутствии жёстких графиков оснащения.\n\nИтоговые баллы: «Смарт-Снаб» — 95,00, «Вектор-Тех» — 90,28. Разница в пользу второго предложения составляет 4,72 балла.\n\n**Риски относительно Положения:**\n- КП №1 («Вектор-Тех»): риск среднего уровня. Переплата бюджета на ~29 500 руб., аванс 50% создаёт риск неисполнения обязательств при возврате средств, гарантия короче конкурента.\n- КП №2 («Смарт-Снаб»): риск низкий. Срок поставки увеличен до 21 рабочего дня, но оплата по факту выполнения работ исключает риски авансирования бюджетных средств (соответствует п.1 Положения). Подъём на этаж указан как дополнительная услуга — требуется уточнить и зафиксировать стоимость в договоре для соответствия требованиям п.5 о существенных условиях.\n\n**Рекомендация:** заключить договор с ООО «Смарт-Снаб». Перед подписанием согласовать точную стоимость подъёма техники на этаж, чтобы условия договора полностью совпадали с победным предложением. Срок поставки 21 рабочий день соответствует нормативным рамкам и может быть оформлен как существенное условие договора.",
+            "created_at": "2026-10-25T23:37:52.596834+00:00",
+            "exec_seconds": 22.87,
+            "extra": {
+              "exec_seconds": 22.87,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "goal": "Проанализируй приложенные документы (КП №1 — ООО «Вектор-Тех».pdf, КП №2 — ООО «Смарт-Снаб».pdf, Положение о закупках школы.pdf), выяви риски в каждом предложении относительно Положения и дай обоснованный вывод с рекомендацией по выбору.",
+                  "seq": 1,
+                  "summary": "## Анализ коммерческих предложений относительно Положения о закупках МБОУ «Школа № 7» ### Краткая сводка по критериям (согласно п.3 Положения) | Критерий | КП №1 — Вектор-Тех | КП №2 — Смарт-Снаб | |---|---|---| | **Цена** | 1 278 000 руб. | **1 248 500 руб.** (−3%) | | **Гарантия** | 24 мес. |…",
+                  "summary_full": "## Анализ коммерческих предложений относительно Положения о закупках МБОУ «Школа № 7»\n\n### Краткая сводка по критериям (согласно п.3 Положения)\n\n| Критерий | КП №1 — Вектор-Тех | КП №2 — Смарт-Снаб |\n|---|---|---|\n| **Цена** | 1 278 000 руб. | **1 248 500 руб.** (−3%) |\n| **Гарантия** | 24 мес. | **36 мес.** (+50%) |\n| **Срок поставки** | **14 раб. дней** | 21 раб. день |\n\n### Оценка по балльной системе (п.3 Положения)\n\n- **Цена — 60%**: Смарт-Снаб получает максимум баллов за наименьшую цену; Вектор-Тех — 97,7%.\n- **Гарантия — 25%**: Смарт-Снаб выигрывает (36 мес. против 24 мес.).\n- **Срок поставки — 15%**: Вектор-Тех опережает на 7 рабочих дней.\n\n**Итоговый балл: Смарт-Снаб — 95,00; Вектор-Тех — 90,28.** Разница — 4,72 балла в пользу «Смарт-Снаб».\n\n---\n\n### Риски по каждому предложению\n\n#### КП №1 — ООО «Вектор-Тех» (риск: **средний**)\n| Риск | Обоснование |\n|---|---|\n| **Высокая цена** (+29 500 руб. к Смарт-Снаб) | При равных условиях это прямая переплата из бюджетных средств. |\n| **Аванс 50%** | Пункт 1 Положения указывает на финансирование из бюджета; аванс создаёт риск неисполнения обязательств поставщиком и затрудняет возврат средств. |\n| **Гарантия 24 мес.** | На 33% меньше, чем у конкурента — выше вероятность расходов после окончания гарантии. |\n\n#### КП №2 — ООО «Смарт-Снаб» (риск: **низкий**)\n| Риск | Обоснование |\n|---|---|\n| **Долгий срок поставки** (+7 раб. дней) | Может повлиять на график оснащения компьютерного класса, но не является критичным при отсутствии жёстких дедлайнов. |\n| **Подъём на этаж — за доплату** | Потенциальная скрытая доплата; необходимо уточнить перед подписанием договора (п.5 Положения: существенные условия должны совпадать с предложением). |\n| **Низкая неустойка 0,05%** | Защита при просрочке слабее, чем у Вектор-Тех (0,1%), но компенсируется более длительной гарантией и оплатой по факту. |\n\n---\n\n### Рекомендация\n\n**Выбрать КП №2 — ООО «Смарт-Снаб».**\n\nОбоснование:\n1. **Наименьшая цена** даёт максимальный балл (60%) — это решающий критерий согласно Положению.\n2. **Гарантия 36 месяцев** обеспечивает лучшую защиту оборудования и снижает долгосрочные расходы школы.\n3. **Оплата по факту поставки** исключает риск авансирования бюджетных средств, что особенно важно при закупках из бюджета (п.1 Положения).\n4. Срок поставки в 21 рабочий день — приемлемый компромисс; его можно зафиксировать как существенное условие договора (п.5 Положения).\n\n**Необходимо:** перед подписанием договора уточнить у «Смарт-Снаб» стоимость подъёма на этаж и включить её в договор, чтобы условия полностью совпадали с предложением победителя (требование п.5 Положения)."
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 2344,
+                "prompt_tokens": 1596
+              }
+            },
+            "failure_reason": "",
+            "id": "a97f801e-7056-4729-9d05-b8768a219c3e",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2344,
+              "prompt_tokens": 1596
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T23:37:52.604939+00:00",
+          "created_at": "2026-10-25T23:36:05.846087+00:00",
+          "deep_analysis": true,
+          "doc_ids": [
+            "a181e3e1-033d-4af6-8b58-fcf950924ac2",
+            "6e576235-74f2-4fbf-819d-8bbc5b9b8eee",
+            "359875fc-a163-4bb0-ac7d-5d29247e814a"
+          ],
+          "exec_seconds": 105.74,
+          "id": "898a6f4c-7870-4683-afb6-957e0ffb5bf8",
+          "images": [],
+          "next_step_index": 1,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:36:06.499124+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Проанализируй оба коммерческих предложения и положение о закупках: где риски и что выбрать. Дай вывод с обоснованием.",
+          "token_totals": {
+            "completion_tokens": 9010,
+            "prompt_tokens": 16200
+          },
+          "total_steps": 1
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/898a6f4c-7870-4683-afb6-957e0ffb5bf8/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Составь план подготовки школы к осеннему празднику из пяти шагов и выполни его последовательно: расписание, оформление, рассылка, оборудование, отчёт.",
+            "created_at": "2026-10-25T23:25:59.451934+00:00",
+            "extra": {},
+            "id": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 5
+          },
+          {
+            "content": "План из 5 шагов:\n1. Составь расписание подготовки к осеннему празднику в школе с указанием сроков и ответственных.\n2. Изобрази холл школы, украшенный осенними листьями, тыквами и гирляндами.\n3. Напиши текст информационной рассылки для родителей о предстоящем празднике и его программе.\n4. Составь перечень необходимого оборудования и реквизита для проведения школьного праздника.\n5. Напиши шаблон отчёта о проделанной работе по подготовке к осеннему празднику.",
+            "created_at": "2026-10-25T23:25:59.451934+00:00",
+            "exec_seconds": 51.37,
+            "extra": {},
+            "id": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 4859,
+              "prompt_tokens": 2433
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:27:14.400658+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Результат содержит расписание в виде таблицы с требуемыми колонками: даты/сроки, задачи и ответственные лица."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 5:\n# Расписание подготовки к осеннему празднику в школе\n\n| Дата / Срок | Задача | Ответственный |\n| :--- | :--- | :--- |\n| 27.10 – 30.10 | Утверждение финального сценария, утверждение сметы и бюджета мероприятия | Директор школы, Завуч по воспитательной работе |\n| 31.10 – 05.11 | Организация репетиций в кабинетах (разработка номеров, подготовка учеников) | Классные руководители, Учителя музыки и ИЗО |\n| 06.11 – 08.11 | Закупка расходных материалов для декора, заказ полиграфии (плакаты, билеты) | Завхоз, Педагог-организатор |\n| 09.11 – 12.11 | Изготовление костюмов и реквизита, сбор поделок от учащихся начальных классов | Учителя ИЗО, Актив школьного совета |\n| 13.11 (до обеда) | Монтаж декораций в холле и на сцене, проверка аудиовизуального оборудования | Технический персонал, Звукорежиссер |\n| 13.11 (после уроков) | Генеральная репетиция (без зрителей), финальная уборка и контроль безопасности | Администрация, Педагоги-организаторы |",
+            "created_at": "2026-10-25T23:26:51.456821+00:00",
+            "exec_seconds": 22.89,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:27:14.400658+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Результат содержит расписание в виде таблицы с требуемыми колонками: даты/сроки, задачи и ответственные лица."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 394,
+                "prompt_tokens": 908
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 394,
+                "prompt_tokens": 908
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 1930,
+                "prompt_tokens": 748
+              },
+              "usage_total": {
+                "completion_tokens": 1930,
+                "prompt_tokens": 748
+              }
+            },
+            "failure_reason": "Результат содержит расписание в виде таблицы с требуемыми колонками: даты/сроки, задачи и ответственные лица.",
+            "id": "69a35189-95b6-40b7-9463-08a195e0c67e",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 1930,
+              "prompt_tokens": 748
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:33:20.397640+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Изображение полностью соответствует цели и критерию шага: изображён школьный холл (коридор), украшенный осенними листьями, тыквами и гирляндами в тёплых тонах. Промпт генератора также выполнен корректно: присутствуют деревянные полы, доски для объявлений, реалистичный стиль и отсутствие текста."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "🖼️ Генерация изображения:",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 2 из 5:\n🖼️ Генерация изображения:\nИзобрази холл школы, украшенный осенними листьями, тыквами и гирляндами.",
+            "created_at": "2026-10-25T23:28:17.562967+00:00",
+            "exec_seconds": 255.79,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:33:20.397640+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Изображение полностью соответствует цели и критерию шага: изображён школьный холл (коридор), украшенный осенними листьями, тыквами и гирляндами в тёплых тонах. Промпт генератора также выполнен корректно: присутствуют деревянные полы, доски для объявлений, реалистичный стиль и отсутствие текста."
+                }
+              ],
+              "backend_params": {
+                "cfg_scale": 1.0,
+                "flow_shift": 2.0,
+                "height": 1024,
+                "negative_prompt": "",
+                "steps": 10,
+                "width": 1536
+              },
+              "backend_prompt": "School hallway decorated with autumn leaves, pumpkins, and string lights; warm indoor lighting, festive atmosphere, wooden floors and bulletin boards on walls, realistic style, high detail, sharp focus, masterpiece, clean illustration without any text, letters, numbers, captions or watermarks",
+              "candidates": [
+                {
+                  "at": "2026-10-25T23:33:20.377152+00:00",
+                  "attempt": 1,
+                  "explanation": "Изображение полностью соответствует цели и критерию шага: изображён школьный холл (коридор), украшенный осенними листьями, тыквами и гирляндами в тёплых тонах. Промпт генератора также выполнен корректно: присутствуют деревянные полы, доски для объявлений, реалистичный стиль и отсутствие текста.",
+                  "file_name": "2026-10-25_23-32-26.png",
+                  "file_path": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9/ab04988e30ad4009a677dc40e8cc6a66.png",
+                  "file_size": 2783637,
+                  "file_type": "image/png",
+                  "kind": "gen",
+                  "mismatches": [],
+                  "repairable": false,
+                  "score": 100,
+                  "severity": "none",
+                  "verdict": true
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 2736,
+                "prompt_tokens": 1431
+              },
+              "current_kind": "gen",
+              "generations_used": 1,
+              "media": {
+                "file_name": "2026-10-25_23-32-26.png",
+                "file_path": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9/ab04988e30ad4009a677dc40e8cc6a66.png",
+                "file_size": 2783637,
+                "file_type": "image/png"
+              },
+              "model_name": "z_image_turbo",
+              "model_type": "image_gen",
+              "pending_action": null,
+              "subtask_polls": 10,
+              "subtask_queue_id": "eb3a5bfe-4875-4cd4-88f3-b6dc747bd9eb",
+              "usage": {
+                "completion_tokens": 96,
+                "prompt_tokens": 1560
+              },
+              "usage_total": {
+                "completion_tokens": 96,
+                "prompt_tokens": 1560
+              }
+            },
+            "failure_reason": "Изображение полностью соответствует цели и критерию шага: изображён школьный холл (коридор), украшенный осенними листьями, тыквами и гирляндами в тёплых тонах. Промпт генератора также выполнен корректно: присутствуют деревянные полы, доски для объявлений, реалистичный стиль и отсутствие текста.",
+            "id": "d3986a77-bfd6-4dc1-8f67-ae1a2367e87e",
+            "kind": "subtask",
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "image_gen",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 96,
+              "prompt_tokens": 1560
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:33:54.298039+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "В результате присутствуют все требуемые элементы критерия: приветствие, дата, время и список мероприятий."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 3 из 5:\nТема письма: Информация о предстоящем осеннем празднике в школе\n\nУважаемые родители!\n\nИнформируем вас, что в нашей школе состоится торжественное мероприятие, посвященное осени. Мероприятие пройдет 25 ноября (пятница). Начало программы запланировано на 17:00. Место проведения — актовый зал школы и холл первого этажа.\n\nВ рамках праздничной программы предусмотрены следующие активности:\n- Концертная программа с участием учащихся (подготовка номеров под руководством учителей музыки);\n- Выставка поделок и творческих работ учеников начальных классов;\n- Экскурсия по оформлению школьного пространства, включающая декорации из осенних листьев, тыкв и гирлянд.\n\nПриглашаем вас разделить с детьми радость праздника. Вход для родителей свободный.",
+            "created_at": "2026-10-25T23:33:20.461333+00:00",
+            "exec_seconds": 33.79,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:33:54.298039+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "В результате присутствуют все требуемые элементы критерия: приветствие, дата, время и список мероприятий."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 406,
+                "prompt_tokens": 771
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 406,
+                "prompt_tokens": 771
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 3048,
+                "prompt_tokens": 1146
+              },
+              "usage_total": {
+                "completion_tokens": 3048,
+                "prompt_tokens": 1146
+              }
+            },
+            "failure_reason": "В результате присутствуют все требуемые элементы критерия: приветствие, дата, время и список мероприятий.",
+            "id": "30035368-0444-4820-b450-15afe2baef4a",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 3,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 3048,
+              "prompt_tokens": 1146
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:34:33.413112+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "В результате представлен перечень техники (микрофоны, проектор, ноутбук) и материалов/реквизита (костюмы, декорации), для каждого пункта указано количество, что полностью соответствует критерию готовности."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 4 из 5:\n# Перечень необходимого оборудования и реквизита\n\n**Аудиовизуальная техника:**\n*   Беспроводные микрофоны (на разных частотах) — 3 шт.\n*   Аудиосистема с микшерным пультом (колонки, усилитель) — 1 комплект.\n*   Ноутбук для управления звуком и демонстрации презентаций — 1 шт.\n*   Проектор и экран (для фона концерта и показа фото работ выставки) — 1 комплект.\n\n**Реквизит и расходные материалы:**\n*   Костюмы в осенней тематике (желтые, оранжевые тона) для участников — 30 комплектов.\n*   Искусственные листья, ветки с кленовыми листочками — 5 кг / 12 упаковок.\n*   Тыквы декоративные разных размеров — 15 шт.\n*   Гирлянды (бумажные или световые) для оформления сцены и зала — 6 рулонов.\n*   Бутафорские корзины, мешки на вышивке «Урожай» — 8 шт.\n*   Столы, стойки и скатерти для организации выставки поделок в холле — 3 стола, 4 стойки-вешалки.",
+            "created_at": "2026-10-25T23:34:03.834117+00:00",
+            "exec_seconds": 29.52,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:34:33.413112+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "В результате представлен перечень техники (микрофоны, проектор, ноутбук) и материалов/реквизита (костюмы, декорации), для каждого пункта указано количество, что полностью соответствует критерию готовности."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 582,
+                "prompt_tokens": 899
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 582,
+                "prompt_tokens": 899
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 1679,
+                "prompt_tokens": 1351
+              },
+              "usage_total": {
+                "completion_tokens": 1679,
+                "prompt_tokens": 1351
+              }
+            },
+            "failure_reason": "В результате представлен перечень техники (микрофоны, проектор, ноутбук) и материалов/реквизита (костюмы, декорации), для каждого пункта указано количество, что полностью соответствует критерию готовности.",
+            "id": "a85077ed-8f70-4f7b-b9eb-a68992e8da85",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 4,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 1679,
+              "prompt_tokens": 1351
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:35:12.911377+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Результат представляет собой структурированный шаблон отчета со всеми необходимыми разделами (статус задач, техническое обеспечение, финансы, проблемы/решения) и выводами. Формат соответствует цели."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 5 из 5:\n# Отчет о проделанной работе по подготовке к осеннему празднику\n\n**Дата отчета:** [Текущая дата]  \n**Ответственный исполнитель:** [ФИО, должность]  \n**Мероприятие:** Осенний праздник в школе  \n**Планируемая дата проведения:** 25 ноября  \n\n## 1. Статус выполнения задач по плану (Расписание)\n\n*   **Утверждение сценария и сметы (срок: до 30.10):** Выполнено. Финальный вариант согласован директором школы и завучем по воспитательной работе.\n*   **Организация репетиций (срок: 31.10 – 05.11):** Номера подготовлены классными руководителями, музыкальное сопровождение утверждено учителями музыки.\n*   **Закупка материалов и полиграфии (срок: до 08.11):** Расходные материалы для декора закуплены. Информационная рассылка родителям отправлена.\n*   **Изготовление реквизита и сбор поделок (срок: до 12.11):** Костюмы в осенней тематике сшиты, работы учащихся собраны для выставки.\n\n## 2. Техническое обеспечение и декорации\n\n**Аудиовизуальная техника:**\n*   Оборудование согласно перечню (микрофоны, проектор, ноутбук) доставлено и инвентаризировано.\n*   Требуется финальная проверка звука в актовом зале перед началом мероприятия.\n\n**Оформление пространства:**\n*   Холл школы декорирован искусственными листьями, тыквами и гирляндами.\n*   Организованы зоны для выставки поделок (столы, стойки).\n\n## 3. Финансовый раздел\n\n*   **Бюджет мероприятия:** [Сумма] руб.\n*   **Фактические расходы на данный момент:** [Сумма] руб.\n*   **Остаток средств / Перерасход:** [Указать сумму или «Отклонений нет»].\n\n## 4. Выявленные проблемы и решения\n\n*   *Возможные сложности:* (например, задержка поставки части реквизита).\n*   *Меры по устранению:* (замена поставщика или использование имеющихся запасов).\n*   *Информация о безопасности:* Проведен инструктаж технического персонала, пути эвакуации проверены.\n\n## 5. Заключение и выводы\n\nПодготовка к празднику завершена в соответствии с утвержденным планом. Техническое обеспечение готово, декорации смонтированы, приглашения разосланы. Мероприятие может быть проведено запланировано 25 ноября (пятница) в 17:00 в актовом зале школы и холле первого этажа.\n\n**Подпись исполнителя:** ____________________ / [Расшифровка подписи]  \n**Дата:** ______________",
+            "created_at": "2026-10-25T23:34:47.159929+00:00",
+            "exec_seconds": 25.69,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:35:12.911377+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Результат представляет собой структурированный шаблон отчета со всеми необходимыми разделами (статус задач, техническое обеспечение, финансы, проблемы/решения) и выводами. Формат соответствует цели."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 500,
+                "prompt_tokens": 1250
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 500,
+                "prompt_tokens": 1250
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 2030,
+                "prompt_tokens": 1670
+              },
+              "usage_total": {
+                "completion_tokens": 2030,
+                "prompt_tokens": 1670
+              }
+            },
+            "failure_reason": "Результат представляет собой структурированный шаблон отчета со всеми необходимыми разделами (статус задач, техническое обеспечение, финансы, проблемы/решения) и выводами. Формат соответствует цели.",
+            "id": "dd3cb7ca-3551-4bf1-a4ce-4fe07e398758",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 5,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 2030,
+              "prompt_tokens": 1670
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "План подготовки школы к осеннему празднику успешно сформирован и включает все необходимые разделы: расписание, визуализацию оформления, текст рассылки, перечень оборудования и шаблон отчета. Ниже приведены результаты выполнения каждого пункта плана.\n\n### 1. Расписание подготовки (Сроки и ответственность)\nПодготовлен график работ на период с 27 октября по 13 ноября:\n\n| Срок | Задача | Ответственный |\n| :--- | :--- | :--- |\n| **27.10 – 30.10** | Утверждение финального сценария, утверждение сметы и бюджета мероприятия | Директор школы, Завуч по воспитательной работе |\n| **31.10 – 05.11** | Организация репетиций в кабинетах (разработка номеров, подготовка учеников) | Классные руководители, Учителя музыки и ИЗО |\n| **06.11 – 08.11** | Закупка расходных материалов для декора, заказ полиграфии (плакаты, билеты) | Завхоз, Педагог-организатор |\n| **09.11 – 12.11** | Изготовление костюмов и реквизита, сбор поделок от учащихся начальных классов | Учителя ИЗО, Актив школьного совета |\n| **13.11 (до обеда)** | Монтаж декораций в холле и на сцене, проверка аудиовизуального оборудования | Технический персонал, Звукорежиссер |\n| **13.11 (после уроков)** | Генеральная репетиция без зрителей, финальная уборка и контроль безопасности | Администрация, Педагоги-организаторы |\n\n### 2. Оформление холла\nСоздано изображение оформления школьного холла с использованием осенних листьев, тыкв и гирлянд для наглядной демонстрации концепции декора.\n\n### 3. Информационная рассылка для родителей\nПодготовлен текст письма с приглашением:\n*   **Дата проведения:** 25 ноября (пятница).\n*   **Время начала:** 17:00.\n*   **Место:** Актовый зал и холл первого этажа.\n*   **Программа:** Концертная программа, выставка поделок учеников начальных классов, экскурсия по оформлению пространства.\n*   **Условия:** Вход для родителей свободный.\n\n### 4. Перечень оборудования и реквизита\nСформирован список необходимых ресурсов:\n*   **Аудиовизуальная техника:** Беспроводные микрофоны (3 шт.), аудиокомплект с микшерным пультом, ноутбук, проектор с экраном.\n*   **Реквизит и материалы:** Костюмы в осенней тематике (30 комплектов), искусственные листья, декоративные тыквы (15 шт.), гирлянды, бутафорские корзины («Урожай»), столы и стойки для выставки.\n\n### 5. Шаблон отчета о работе\nРазработана структура итогового документа, включающая разделы:\n*   Статус выполнения задач по расписанию (сценарий, репетиции, закупка).\n*   Техническое обеспечение и статус декораций.\n*   Финансовый блок (бюджет, расходы, отклонения).\n*   Блок проблем и решений (включая вопросы безопасности).\n*   Заключение с итогами готовности к мероприятию.\n\n**Итог:** План действий утвержден, материально-техническая база определена, коммуникация с родителями организована, формат отчетности согласован.",
+            "created_at": "2026-10-25T23:36:02.246028+00:00",
+            "exec_seconds": 31.8,
+            "extra": {
+              "exec_seconds": 31.8,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "goal": "Составь расписание подготовки к осеннему празднику в школе с указанием сроков и ответственных.",
+                  "seq": 1,
+                  "summary": "# Расписание подготовки к осеннему празднику в школе | Дата / Срок | Задача | Ответственный | | :--- | :--- | :--- | | 27.10 – 30.10 | Утверждение финального сценария, утверждение сметы и бюджета мероприятия | Директор школы, Завуч по воспитательной работе | | 31.10 – 05.11 | Организация репетиций…",
+                  "summary_full": "# Расписание подготовки к осеннему празднику в школе\n\n| Дата / Срок | Задача | Ответственный |\n| :--- | :--- | :--- |\n| 27.10 – 30.10 | Утверждение финального сценария, утверждение сметы и бюджета мероприятия | Директор школы, Завуч по воспитательной работе |\n| 31.10 – 05.11 | Организация репетиций в кабинетах (разработка номеров, подготовка учеников) | Классные руководители, Учителя музыки и ИЗО |\n| 06.11 – 08.11 | Закупка расходных материалов для декора, заказ полиграфии (плакаты, билеты) | Завхоз, Педагог-организатор |\n| 09.11 – 12.11 | Изготовление костюмов и реквизита, сбор поделок от учащихся начальных классов | Учителя ИЗО, Актив школьного совета |\n| 13.11 (до обеда) | Монтаж декораций в холле и на сцене, проверка аудиовизуального оборудования | Технический персонал, Звукорежиссер |\n| 13.11 (после уроков) | Генеральная репетиция (без зрителей), финальная уборка и контроль безопасности | Администрация, Педагоги-организаторы |"
+                },
+                {
+                  "attempts": 1,
+                  "file_name": "2026-10-25_23-32-26.png",
+                  "file_path": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9/ab04988e30ad4009a677dc40e8cc6a66.png",
+                  "file_type": "image/png",
+                  "goal": "Изобрази холл школы, украшенный осенними листьями, тыквами и гирляндами.",
+                  "seq": 2
+                },
+                {
+                  "attempts": 1,
+                  "goal": "Напиши текст информационной рассылки для родителей о предстоящем празднике и его программе.",
+                  "seq": 3,
+                  "summary": "Тема письма: Информация о предстоящем осеннем празднике в школе Уважаемые родители! Информируем вас, что в нашей школе состоится торжественное мероприятие, посвященное осени. Мероприятие пройдет 25 ноября (пятница). Начало программы запланировано на 17:00. Место проведения — актовый зал школы и…",
+                  "summary_full": "Тема письма: Информация о предстоящем осеннем празднике в школе\n\nУважаемые родители!\n\nИнформируем вас, что в нашей школе состоится торжественное мероприятие, посвященное осени. Мероприятие пройдет 25 ноября (пятница). Начало программы запланировано на 17:00. Место проведения — актовый зал школы и холл первого этажа.\n\nВ рамках праздничной программы предусмотрены следующие активности:\n- Концертная программа с участием учащихся (подготовка номеров под руководством учителей музыки);\n- Выставка поделок и творческих работ учеников начальных классов;\n- Экскурсия по оформлению школьного пространства, включающая декорации из осенних листьев, тыкв и гирлянд.\n\nПриглашаем вас разделить с детьми радость праздника. Вход для родителей свободный."
+                },
+                {
+                  "attempts": 1,
+                  "goal": "Составь перечень необходимого оборудования и реквизита для проведения школьного праздника.",
+                  "seq": 4,
+                  "summary": "# Перечень необходимого оборудования и реквизита **Аудиовизуальная техника:** * Беспроводные микрофоны (на разных частотах) — 3 шт. * Аудиосистема с микшерным пультом (колонки, усилитель) — 1 комплект. * Ноутбук для управления звуком и демонстрации презентаций — 1 шт. * Проектор и экран (для фона…",
+                  "summary_full": "# Перечень необходимого оборудования и реквизита\n\n**Аудиовизуальная техника:**\n*   Беспроводные микрофоны (на разных частотах) — 3 шт.\n*   Аудиосистема с микшерным пультом (колонки, усилитель) — 1 комплект.\n*   Ноутбук для управления звуком и демонстрации презентаций — 1 шт.\n*   Проектор и экран (для фона концерта и показа фото работ выставки) — 1 комплект.\n\n**Реквизит и расходные материалы:**\n*   Костюмы в осенней тематике (желтые, оранжевые тона) для участников — 30 комплектов.\n*   Искусственные листья, ветки с кленовыми листочками — 5 кг / 12 упаковок.\n*   Тыквы декоративные разных размеров — 15 шт.\n*   Гирлянды (бумажные или световые) для оформления сцены и зала — 6 рулонов.\n*   Бутафорские корзины, мешки на вышивке «Урожай» — 8 шт.\n*   Столы, стойки и скатерти для организации выставки поделок в холле — 3 стола, 4 стойки-вешалки."
+                },
+                {
+                  "attempts": 1,
+                  "goal": "Напиши шаблон отчёта о проделанной работе по подготовке к осеннему празднику.",
+                  "seq": 5,
+                  "summary": "# Отчет о проделанной работе по подготовке к осеннему празднику **Дата отчета:** [Текущая дата] **Ответственный исполнитель:** [ФИО, должность] **Мероприятие:** Осенний праздник в школе **Планируемая дата проведения:** 25 ноября ## 1. Статус выполнения задач по плану (Расписание) * **Утверждение…",
+                  "summary_full": "# Отчет о проделанной работе по подготовке к осеннему празднику\n\n**Дата отчета:** [Текущая дата]  \n**Ответственный исполнитель:** [ФИО, должность]  \n**Мероприятие:** Осенний праздник в школе  \n**Планируемая дата проведения:** 25 ноября  \n\n## 1. Статус выполнения задач по плану (Расписание)\n\n*   **Утверждение сценария и сметы (срок: до 30.10):** Выполнено. Финальный вариант согласован директором школы и завучем по воспитательной работе.\n*   **Организация репетиций (срок: 31.10 – 05.11):** Номера подготовлены классными руководителями, музыкальное сопровождение утверждено учителями музыки.\n*   **Закупка материалов и полиграфии (срок: до 08.11):** Расходные материалы для декора закуплены. Информационная рассылка родителям отправлена.\n*   **Изготовление реквизита и сбор поделок (срок: до 12.11):** Костюмы в осенней тематике сшиты, работы учащихся собраны для выставки.\n\n## 2. Техническое обеспечение и декорации\n\n**Аудиовизуальная техника:**\n*   Оборудование согласно перечню (микрофоны, проектор, ноутбук) доставлено и инвентаризировано.\n*   Требуется финальная проверка звука в актовом зале перед началом мероприятия.\n\n**Оформление пространства:**\n*   Холл школы декорирован искусственными листьями, тыквами и гирляндами.\n*   Организованы зоны для выставки поделок (столы, стойки).\n\n## 3. Финансовый раздел\n\n*   **Бюджет мероприятия:** [Сумма] руб.\n*   **Фактические расходы на данный момент:** [Сумма] руб.\n*   **Остаток средств / Перерасход:** [Указать сумму или «Отклонений нет»].\n\n## 4. Выявленные проблемы и решения\n\n*   *Возможные сложности:* (например, задержка поставки части реквизита).\n*   *Меры по устранению:* (замена поставщика или использование имеющихся запасов).\n*   *Информация о безопасности:* Проведен инструктаж технического персонала, пути эвакуации проверены.\n\n## 5. Заключение и выводы\n\nПодготовка к празднику завершена в соответствии с утвержденным планом. Техническое обеспечение готово, декорации смонтированы, приглашения разосланы. Мероприятие может быть проведено запланировано 25 ноября (пятница) в 17:00 в актовом зале школы и холле первого этажа.\n\n**Подпись исполнителя:** ____________________ / [Расшифровка подписи]  \n**Дата:** ______________"
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 3214,
+                "prompt_tokens": 2369
+              }
+            },
+            "failure_reason": "",
+            "id": "5089db84-f457-4d49-a949-f26717f5c1cb",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 6,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 5,
+            "usage": {
+              "completion_tokens": 3214,
+              "prompt_tokens": 2369
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T23:36:02.254800+00:00",
+          "created_at": "2026-10-25T23:25:59.451934+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 601.23,
+          "id": "5cc5c070-86f5-4e31-91b0-39951ef4aeb9",
+          "images": [],
+          "next_step_index": 5,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:25:59.661998+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Составь план подготовки школы к осеннему празднику из пяти шагов и выполни его последовательно: расписание, оформление, рассылка, оборудование, отчёт.",
+          "token_totals": {
+            "completion_tokens": 21474,
+            "prompt_tokens": 16536
+          },
+          "total_steps": 5
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/5cc5c070-86f5-4e31-91b0-39951ef4aeb9/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Сделай что-нибудь красивое для школы.",
+            "created_at": "2026-10-25T23:15:47.607310+00:00",
+            "extra": {},
+            "id": "d01c7f42-2187-4041-92ba-ba03154dd992:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1
+          },
+          {
+            "content": "План из 1 шагов:\n1. Какое именно красивое изображение или видео вы хотите получить для школы?",
+            "created_at": "2026-10-25T23:15:47.607310+00:00",
+            "exec_seconds": 37.54,
+            "extra": {},
+            "id": "d01c7f42-2187-4041-92ba-ba03154dd992:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 3804,
+              "prompt_tokens": 2448
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "Какое именно красивое изображение или видео вы хотите получить для школы?",
+            "created_at": "2026-10-25T23:23:29.308602+00:00",
+            "exec_seconds": 0.0,
+            "extra": {
+              "exec_seconds": 37.54,
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "model_type": "reasoning",
+              "usage": {
+                "completion_tokens": 3804,
+                "prompt_tokens": 2448
+              }
+            },
+            "failure_reason": "",
+            "id": "496ee9f6-e8e4-4437-8ce8-fed01ab50d62",
+            "kind": "question",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 1,
+            "status": "awaiting_user",
+            "tool": "llm",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 3804,
+              "prompt_tokens": 2448
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": null,
+          "created_at": "2026-10-25T23:15:47.607310+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 37.54,
+          "id": "d01c7f42-2187-4041-92ba-ba03154dd992",
+          "images": [],
+          "next_step_index": 0,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:22:46.092176+00:00",
+          "status": "awaiting_user",
+          "task_class": 5,
+          "title": "Сделай что-нибудь красивое для школы.",
+          "token_totals": {
+            "completion_tokens": 7608,
+            "prompt_tokens": 4896
+          },
+          "total_steps": 1
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/d01c7f42-2187-4041-92ba-ba03154dd992/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Сделай короткое видео: капли дождя на стекле.",
+            "created_at": "2026-10-25T23:14:42.374939+00:00",
+            "extra": {},
+            "id": "8c609190-9f32-454c-a593-e8b8bdbd1c65:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 2
+          },
+          {
+            "content": "План из 2 шагов:\n1. Создай реалистичное изображение капель дождя крупным планом на стекле.\n2. Анимируй капли воды, медленно стекающие по поверхности стекла вниз.",
+            "created_at": "2026-10-25T23:14:42.374939+00:00",
+            "exec_seconds": 27.39,
+            "extra": {},
+            "id": "8c609190-9f32-454c-a593-e8b8bdbd1c65:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 2,
+            "usage": {
+              "completion_tokens": 2771,
+              "prompt_tokens": 2283
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:18:14.169898+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Изображение полностью соответствует цели и критерию шага: показан реалистичный крупный план капель дождя на стекле с эффектом стекающей воды."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "🖼️ Генерация изображения:",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 2:\n🖼️ Генерация изображения:\nСоздай реалистичное изображение капель дождя крупным планом на стекле.",
+            "created_at": "2026-10-25T23:15:10.353433+00:00",
+            "exec_seconds": 71.07,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:18:14.169898+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Изображение полностью соответствует цели и критерию шага: показан реалистичный крупный план капель дождя на стекле с эффектом стекающей воды."
+                }
+              ],
+              "backend_params": {
+                "cfg_scale": 1.0,
+                "flow_shift": 2.0,
+                "height": 1024,
+                "negative_prompt": "",
+                "steps": 10,
+                "width": 1024
+              },
+              "backend_prompt": "Close-up of raindrops on glass, water droplets forming and sliding down a transparent surface, high detail, sharp focus, masterpiece, clean illustration without any text, letters, numbers, captions or watermarks",
+              "candidates": [
+                {
+                  "at": "2026-10-25T23:18:14.147385+00:00",
+                  "attempt": 1,
+                  "explanation": "Изображение полностью соответствует цели и критерию шага: показан реалистичный крупный план капель дождя на стекле с эффектом стекающей воды.",
+                  "file_name": "2026-10-25_23-16-17.png",
+                  "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/1570898c2eb14bc88058a3411d12612e.png",
+                  "file_size": 1864704,
+                  "file_type": "image/png",
+                  "kind": "gen",
+                  "mismatches": [],
+                  "repairable": false,
+                  "score": 100,
+                  "severity": "none",
+                  "verdict": true
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 1732,
+                "prompt_tokens": 1269
+              },
+              "current_kind": "gen",
+              "generations_used": 1,
+              "media": {
+                "file_name": "2026-10-25_23-16-17.png",
+                "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/1570898c2eb14bc88058a3411d12612e.png",
+                "file_size": 1864704,
+                "file_type": "image/png"
+              },
+              "model_name": "z_image_turbo",
+              "model_type": "image_gen",
+              "pending_action": null,
+              "subtask_polls": 6,
+              "subtask_queue_id": "4e5d0eb8-6307-45c5-895f-76ebfa847983",
+              "usage": {
+                "completion_tokens": 83,
+                "prompt_tokens": 1115
+              },
+              "usage_total": {
+                "completion_tokens": 83,
+                "prompt_tokens": 1115
+              }
+            },
+            "failure_reason": "Изображение полностью соответствует цели и критерию шага: показан реалистичный крупный план капель дождя на стекле с эффектом стекающей воды.",
+            "id": "2b4054aa-213c-4c94-bb62-3fcf23754e8f",
+            "kind": "subtask",
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "image_gen",
+            "total_steps": 2,
+            "usage": {
+              "completion_tokens": 83,
+              "prompt_tokens": 1115
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:21:55.878247+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Результат содержит видеофайл и описание, подтверждающее наличие анимации капель воды, стекающих по стеклу вниз, что полностью соответствует критерию готовности."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "🎬 Генерация видео:",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 2 из 2:\n🎬 Генерация видео:\nАнимируй капли воды, медленно стекающие по поверхности стекла вниз.",
+            "created_at": "2026-10-25T23:18:14.290045+00:00",
+            "exec_seconds": 184.75,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:21:55.878247+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Результат содержит видеофайл и описание, подтверждающее наличие анимации капель воды, стекающих по стеклу вниз, что полностью соответствует критерию готовности."
+                }
+              ],
+              "candidates": [
+                {
+                  "at": "2026-10-25T23:21:55.853945+00:00",
+                  "attempt": 1,
+                  "explanation": "Результат содержит видеофайл и описание, подтверждающее наличие анимации капель воды, стекающих по стеклу вниз, что полностью соответствует критерию готовности.",
+                  "file_name": "2026-10-25_23-21-08.mp4",
+                  "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/121055c08af64f0381215a315ab88ddc.mp4",
+                  "file_size": 872644,
+                  "file_type": "video/mp4",
+                  "kind": "gen",
+                  "mismatches": [],
+                  "repairable": false,
+                  "score": null,
+                  "severity": null,
+                  "verdict": true
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 723,
+                "prompt_tokens": 783
+              },
+              "current_kind": "gen",
+              "generations_used": 1,
+              "media": {
+                "file_name": "2026-10-25_23-21-08.mp4",
+                "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/121055c08af64f0381215a315ab88ddc.mp4",
+                "file_size": 872644,
+                "file_type": "video/mp4"
+              },
+              "model_name": "ltxv-2b-0.9.8-distilled",
+              "model_type": "video",
+              "pending_action": null,
+              "subtask_polls": 15,
+              "subtask_queue_id": "51c98b03-7a23-49c3-8429-e627e13b2ba7",
+              "usage": {
+                "completion_tokens": 208,
+                "prompt_tokens": 1784
+              },
+              "usage_total": {
+                "completion_tokens": 208,
+                "prompt_tokens": 1784
+              }
+            },
+            "failure_reason": "Результат содержит видеофайл и описание, подтверждающее наличие анимации капель воды, стекающих по стеклу вниз, что полностью соответствует критерию готовности.",
+            "id": "0810cb1d-403b-481b-9834-4cd650459a3f",
+            "kind": "subtask",
+            "model_name": "ltxv-2b-0.9.8-distilled",
+            "model_type": "video",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "video_gen",
+            "total_steps": 2,
+            "usage": {
+              "completion_tokens": 208,
+              "prompt_tokens": 1784
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "Короткое видео с каплями дождя на стекле создано. Результат представляет собой анимацию капель воды, медленно стекающих по поверхности стекла вниз.",
+            "created_at": "2026-10-25T23:22:45.016294+00:00",
+            "exec_seconds": 31.88,
+            "extra": {
+              "exec_seconds": 31.88,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "file_name": "2026-10-25_23-16-17.png",
+                  "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/1570898c2eb14bc88058a3411d12612e.png",
+                  "file_type": "image/png",
+                  "goal": "Создай реалистичное изображение капель дождя крупным планом на стекле.",
+                  "seq": 1
+                },
+                {
+                  "attempts": 1,
+                  "file_name": "2026-10-25_23-21-08.mp4",
+                  "file_path": "8c609190-9f32-454c-a593-e8b8bdbd1c65/121055c08af64f0381215a315ab88ddc.mp4",
+                  "file_type": "video/mp4",
+                  "goal": "Анимируй капли воды, медленно стекающие по поверхности стекла вниз.",
+                  "seq": 2
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 3367,
+                "prompt_tokens": 622
+              }
+            },
+            "failure_reason": "",
+            "id": "abce8010-2c18-41ab-bd9c-18bc6dab4bef",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 3,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 2,
+            "usage": {
+              "completion_tokens": 3367,
+              "prompt_tokens": 622
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T23:22:45.023331+00:00",
+          "created_at": "2026-10-25T23:14:42.374939+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 481.62,
+          "id": "8c609190-9f32-454c-a593-e8b8bdbd1c65",
+          "images": [],
+          "next_step_index": 2,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:14:42.812774+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Сделай короткое видео: капли дождя на стекле.",
+          "token_totals": {
+            "completion_tokens": 8884,
+            "prompt_tokens": 7856
+          },
+          "total_steps": 2
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/8c609190-9f32-454c-a593-e8b8bdbd1c65/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Сделай обложку для школьного альбома в осенних тонах.",
+            "created_at": "2026-10-25T23:11:21.667303+00:00",
+            "extra": {},
+            "id": "1e441b31-ba86-47c2-b604-aea9bc046c5d:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1
+          },
+          {
+            "content": "План из 1 шагов:\n1. Создай изображение обложки школьного альбома в осенних тонах.",
+            "created_at": "2026-10-25T23:11:21.667303+00:00",
+            "exec_seconds": 26.23,
+            "extra": {},
+            "id": "1e441b31-ba86-47c2-b604-aea9bc046c5d:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2400,
+              "prompt_tokens": 2336
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:13:48.734895+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Изображение полностью соответствует цели и критерию шага: присутствуют визуальные элементы осени (листья, теплые тона) и ассоциация со школьным альбомом (книги, карандаши, текст 'School'). Присутствие текста не противоречит задаче создания обложки. Расхождение с промптом генератора о запрете текста игнорируется в соответствии с правилами верификации."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "🖼️ Генерация изображения:",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 1:\n🖼️ Генерация изображения:\nСоздай изображение обложки школьного альбома в осенних тонах.",
+            "created_at": "2026-10-25T23:11:52.646576+00:00",
+            "exec_seconds": 72.01,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:13:48.734895+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Изображение полностью соответствует цели и критерию шага: присутствуют визуальные элементы осени (листья, теплые тона) и ассоциация со школьным альбомом (книги, карандаши, текст 'School'). Присутствие текста не противоречит задаче создания обложки. Расхождение с промптом генератора о запрете текста игнорируется в соответствии с правилами верификации."
+                }
+              ],
+              "backend_params": {
+                "cfg_scale": 1.0,
+                "flow_shift": 2.0,
+                "height": 1024,
+                "negative_prompt": "",
+                "steps": 10,
+                "width": 1024
+              },
+              "backend_prompt": "School album cover in autumn tones, featuring a smiling child holding a pencil and notebook, surrounded by falling leaves and school supplies, illustrated style with soft watercolor textures, warm golden hour lighting, centered composition with full view of the subject, high detail, sharp focus, masterpiece, clean illustration without any text, letters, numbers, captions or watermarks",
+              "candidates": [
+                {
+                  "at": "2026-10-25T23:13:48.714926+00:00",
+                  "attempt": 1,
+                  "explanation": "Изображение полностью соответствует цели и критерию шага: присутствуют визуальные элементы осени (листья, теплые тона) и ассоциация со школьным альбомом (книги, карандаши, текст 'School'). Присутствие текста не противоречит задаче создания обложки. Расхождение с промптом генератора о запрете текста игнорируется в соответствии с правилами верификации.",
+                  "file_name": "2026-10-25_23-13-00.png",
+                  "file_path": "1e441b31-ba86-47c2-b604-aea9bc046c5d/dcceb8606726439393826f0eb5f97441.png",
+                  "file_size": 1943838,
+                  "file_type": "image/png",
+                  "kind": "gen",
+                  "mismatches": [],
+                  "repairable": false,
+                  "score": 100,
+                  "severity": "none",
+                  "verdict": true
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 3729,
+                "prompt_tokens": 1442
+              },
+              "current_kind": "gen",
+              "generations_used": 1,
+              "media": {
+                "file_name": "2026-10-25_23-13-00.png",
+                "file_path": "1e441b31-ba86-47c2-b604-aea9bc046c5d/dcceb8606726439393826f0eb5f97441.png",
+                "file_size": 1943838,
+                "file_type": "image/png"
+              },
+              "model_name": "z_image_turbo",
+              "model_type": "image_gen",
+              "pending_action": null,
+              "subtask_polls": 7,
+              "subtask_queue_id": "8564cf25-fcab-4d0b-893d-e5c5d891b93e",
+              "usage": {
+                "completion_tokens": 111,
+                "prompt_tokens": 1113
+              },
+              "usage_total": {
+                "completion_tokens": 111,
+                "prompt_tokens": 1113
+              }
+            },
+            "failure_reason": "Изображение полностью соответствует цели и критерию шага: присутствуют визуальные элементы осени (листья, теплые тона) и ассоциация со школьным альбомом (книги, карандаши, текст 'School'). Присутствие текста не противоречит задаче создания обложки. Расхождение с промптом генератора о запрете текста игнорируется в соответствии с правилами верификации.",
+            "id": "daccf994-dd0f-4b43-89ea-ec6c78d39ecd",
+            "kind": "subtask",
+            "model_name": "z_image_turbo",
+            "model_type": "image_gen",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "image_gen",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 111,
+              "prompt_tokens": 1113
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "Изображение обложки школьного альбома в осенних тонах создано (Шаг 1).",
+            "created_at": "2026-10-25T23:14:40.712541+00:00",
+            "exec_seconds": 47.04,
+            "extra": {
+              "exec_seconds": 47.04,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "file_name": "2026-10-25_23-13-00.png",
+                  "file_path": "1e441b31-ba86-47c2-b604-aea9bc046c5d/dcceb8606726439393826f0eb5f97441.png",
+                  "file_type": "image/png",
+                  "goal": "Создай изображение обложки школьного альбома в осенних тонах.",
+                  "seq": 1
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 4961,
+                "prompt_tokens": 603
+              }
+            },
+            "failure_reason": "",
+            "id": "07e6ab7a-6441-424d-8154-2f7550f1ddb1",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 4961,
+              "prompt_tokens": 603
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T23:14:40.720183+00:00",
+          "created_at": "2026-10-25T23:11:21.667303+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 194.11,
+          "id": "1e441b31-ba86-47c2-b604-aea9bc046c5d",
+          "images": [],
+          "next_step_index": 1,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:11:26.286281+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Сделай обложку для школьного альбома в осенних тонах.",
+          "token_totals": {
+            "completion_tokens": 11201,
+            "prompt_tokens": 5494
+          },
+          "total_steps": 1
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/1e441b31-ba86-47c2-b604-aea9bc046c5d/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "messages": [
+          {
+            "attached_audio": "",
+            "attached_documents": "",
+            "attached_images": "",
+            "audio_transcripts": [],
+            "content": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
+            "created_at": "2026-10-25T23:08:05.893587+00:00",
+            "extra": {},
+            "id": "3cc90fe5-2926-4c03-8546-12f33fba8b82:request",
+            "kind": "request",
+            "role": "user",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1
+          },
+          {
+            "content": "План из 1 шагов:\n1. Составь расписание уроков на неделю для 7 класса с пятью учебными днями и шестью уроками в день без повторов предметов внутри одного дня.",
+            "created_at": "2026-10-25T23:08:05.893587+00:00",
+            "exec_seconds": 53.05,
+            "extra": {},
+            "id": "3cc90fe5-2926-4c03-8546-12f33fba8b82:plan",
+            "kind": "plan",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "reasoning",
+            "role": "assistant",
+            "seq": 0,
+            "status": null,
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2501,
+              "prompt_tokens": 2495
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 1,
+            "attempts_log": [
+              {
+                "at": "2026-10-25T23:09:39.935371+00:00",
+                "n": 1,
+                "ok": true,
+                "reason": "Расписание представлено в виде таблицы с понедельника по пятницу, каждый день содержит ровно шесть уроков, и все предметы в пределах каждого дня уникальны (повторов нет). Критерий выполнен полностью."
+              }
+            ],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": true,
+            "best_effort_count": 0,
+            "checkpoint_verdict": true,
+            "content": "Шаг 1 из 1:\nНиже представлено расписание уроков на неделю для 7 класса. В расписании использованы стандартные предметы школьной программы, каждый из которых встречается не чаще одного раза в пределах учебного дня.\n\n**Расписание уроков (Понедельник — Пятница)**\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Алгебра | Русский язык и литература | Английский язык | История | Биология | Физкультура |\n| **Вторник** | Геометрия | Алгебра | География | Русский язык и литература | Английский язык | История |\n| **Среда** | Биология | Геометрия | Физкультура | Алгебра | География | Русский язык и литература |\n| **Четверг** | Английский язык | История | Биология | Геометрия | Музыка | Алгебра |\n| **Пятница** | Русский язык и литература | География | Английский язык | Биология | Физкультура | Геометрия |\n\n*Примечание: В расписании использован набор из 9 предметов (Алгебра, Геометрия, Русский язык и литература, Английский язык, История, Биология, География, Физкультура, Музыка), что позволяет заполнить 6 уроков без повторов в каждом учебном дне.*",
+            "created_at": "2026-10-25T23:09:04.760857+00:00",
+            "exec_seconds": 35.13,
+            "extra": {
+              "attempts_log": [
+                {
+                  "at": "2026-10-25T23:09:39.935371+00:00",
+                  "n": 1,
+                  "ok": true,
+                  "reason": "Расписание представлено в виде таблицы с понедельника по пятницу, каждый день содержит ровно шесть уроков, и все предметы в пределах каждого дня уникальны (повторов нет). Критерий выполнен полностью."
+                }
+              ],
+              "checkpoint_usage": {
+                "completion_tokens": 635,
+                "prompt_tokens": 990
+              },
+              "checkpoint_usage_total": {
+                "completion_tokens": 635,
+                "prompt_tokens": 990
+              },
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 2984,
+                "prompt_tokens": 754
+              },
+              "usage_total": {
+                "completion_tokens": 2984,
+                "prompt_tokens": 754
+              }
+            },
+            "failure_reason": "Расписание представлено в виде таблицы с понедельника по пятницу, каждый день содержит ровно шесть уроков, и все предметы в пределах каждого дня уникальны (повторов нет). Критерий выполнен полностью.",
+            "id": "2337a709-a45b-48ab-8418-be9f2d32e8ad",
+            "kind": "direct",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 1,
+            "status": "passed",
+            "tool": "llm",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 2984,
+              "prompt_tokens": 754
+            }
+          },
+          {
+            "artifact_note": "",
+            "attempts": 0,
+            "attempts_log": [],
+            "attempts_max": 3,
+            "badge": "",
+            "best_effort": false,
+            "best_effort_accepted": false,
+            "best_effort_count": 0,
+            "checkpoint_verdict": null,
+            "content": "Ниже представлено расписание уроков на неделю для 7 класса, составленное с учетом требований: 5 учебных дней по 6 уроков без повторов предметов внутри одного дня. Для формирования расписания использован набор из 9 стандартных школьных предметов (Алгебра, Геометрия, Русский язык и литература, Английский язык, История, Биология, География, Физкультура, Музыка).\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Алгебра | Русский язык и литература | Английский язык | История | Биология | Физкультура |\n| **Вторник** | Геометрия | Алгебра | География | Русский язык и литература | Английский язык | История |\n| **Среда** | Биология | Геометрия | Физкультура | Алгебра | География | Русский язык и литература |\n| **Четверг** | Английский язык | История | Биология | Геометрия | Музыка | Алгебра |\n| **Пятница** | Русский язык и литература | География | Английский язык | Биология | Физкультура | Геометрия |\n\nРасписание успешно сформировано, все условия выполнены.",
+            "created_at": "2026-10-25T23:10:00.549089+00:00",
+            "exec_seconds": 16.36,
+            "extra": {
+              "exec_seconds": 16.36,
+              "final_failures": [],
+              "final_items": [
+                {
+                  "attempts": 1,
+                  "goal": "Составь расписание уроков на неделю для 7 класса с пятью учебными днями и шестью уроками в день без повторов предметов внутри одного дня.",
+                  "seq": 1,
+                  "summary": "Ниже представлено расписание уроков на неделю для 7 класса. В расписании использованы стандартные предметы школьной программы, каждый из которых встречается не чаще одного раза в пределах учебного дня. **Расписание уроков (Понедельник — Пятница)** | День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 |…",
+                  "summary_full": "Ниже представлено расписание уроков на неделю для 7 класса. В расписании использованы стандартные предметы школьной программы, каждый из которых встречается не чаще одного раза в пределах учебного дня.\n\n**Расписание уроков (Понедельник — Пятница)**\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Алгебра | Русский язык и литература | Английский язык | История | Биология | Физкультура |\n| **Вторник** | Геометрия | Алгебра | География | Русский язык и литература | Английский язык | История |\n| **Среда** | Биология | Геометрия | Физкультура | Алгебра | География | Русский язык и литература |\n| **Четверг** | Английский язык | История | Биология | Геометрия | Музыка | Алгебра |\n| **Пятница** | Русский язык и литература | География | Английский язык | Биология | Физкультура | Геометрия |\n\n*Примечание: В расписании использован набор из 9 предметов (Алгебра, Геометрия, Русский язык и литература, Английский язык, История, Биология, География, Физкультура, Музыка), что позволяет заполнить 6 уроков без повторов в каждом учебном дне.*"
+                }
+              ],
+              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+              "usage": {
+                "completion_tokens": 1681,
+                "prompt_tokens": 1139
+              }
+            },
+            "failure_reason": "",
+            "id": "fa199013-c36b-4b8f-b76e-dcd6e3e39080",
+            "kind": "final",
+            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+            "model_type": "",
+            "role": "assistant",
+            "seq": 2,
+            "status": "passed",
+            "tool": "",
+            "total_steps": 1,
+            "usage": {
+              "completion_tokens": 1681,
+              "prompt_tokens": 1139
+            }
+          }
+        ],
+        "task": {
+          "abort_reason": null,
+          "completed_at": "2026-10-25T23:10:00.556256+00:00",
+          "created_at": "2026-10-25T23:08:05.893587+00:00",
+          "deep_analysis": false,
+          "doc_ids": [],
+          "exec_seconds": 108.55,
+          "id": "3cc90fe5-2926-4c03-8546-12f33fba8b82",
+          "images": [],
+          "next_step_index": 1,
+          "response_style": "neutral",
+          "started_at": "2026-10-25T23:08:11.350600+00:00",
+          "status": "completed",
+          "task_class": 5,
+          "title": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
+          "token_totals": {
+            "completion_tokens": 7801,
+            "prompt_tokens": 5378
+          },
+          "total_steps": 1
+        }
+      },
+      "method": "GET",
+      "path": "/api/tasks/3cc90fe5-2926-4c03-8546-12f33fba8b82/messages",
+      "status": 200
+    },
+    {
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "КП №2 — ООО «Смарт-Снаб».pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/6e576235-74f2-4fbf-819d-8bbc5b9b8eee/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/6e576235-74f2-4fbf-819d-8bbc5b9b8eee/preview/file"
+      },
+      "method": "GET",
+      "path": "/api/documents/6e576235-74f2-4fbf-819d-8bbc5b9b8eee/preview",
+      "status": 200
+    },
+    {
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "Положение о закупках школы.pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/359875fc-a163-4bb0-ac7d-5d29247e814a/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/359875fc-a163-4bb0-ac7d-5d29247e814a/preview/file"
+      },
+      "method": "GET",
+      "path": "/api/documents/359875fc-a163-4bb0-ac7d-5d29247e814a/preview",
+      "status": 200
+    },
+    {
+      "body": {
+        "ext": ".pdf",
+        "extracted": false,
+        "filename": "КП №1 — ООО «Вектор-Тех».pdf",
+        "kind": "pdf",
+        "max_pages": 30,
+        "mime": "application/pdf",
+        "page_url": "/api/documents/a181e3e1-033d-4af6-8b58-fcf950924ac2/preview/pdf-page/",
+        "pages": 1,
+        "truncated": false,
+        "url": "/api/documents/a181e3e1-033d-4af6-8b58-fcf950924ac2/preview/file"
+      },
+      "method": "GET",
+      "path": "/api/documents/a181e3e1-033d-4af6-8b58-fcf950924ac2/preview",
+      "status": 200
+    },
+    {
+      "body": {
+        "available_ram_mb": 20359,
+        "available_vram_mb": 3284,
         "cpu_count": 12,
         "cpu_name": "AMD Ryzen 5 7500F 6-Core Processor",
         "cuda_detected": true,
@@ -1198,9 +3109,9 @@
     },
     {
       "body": {
-        "chat_db_size": 6045696,
+        "chat_db_size": 8216576,
         "documents_db_size": 3424398,
-        "files_db_size": 129097735,
+        "files_db_size": 157126585,
         "user_db_size": 196608
       },
       "method": "GET",
@@ -2779,26 +4690,23 @@
       "status": 200
     },
     {
-      "method": "GET",
-      "path": "/admin/api/monitoring?range=1h",
-      "status": 200,
       "body": {
         "bucket_seconds": 300,
         "buckets": [
-          "2026-10-24T21:00:00+00:00",
-          "2026-10-24T22:00:00+00:00",
-          "2026-10-24T23:00:00+00:00",
-          "2026-10-25T00:00:00+00:00",
-          "2026-10-25T01:00:00+00:00",
-          "2026-10-25T02:00:00+00:00",
-          "2026-10-25T03:00:00+00:00",
-          "2026-10-25T04:00:00+00:00",
-          "2026-10-25T05:00:00+00:00",
-          "2026-10-25T06:00:00+00:00",
-          "2026-10-25T07:00:00+00:00",
-          "2026-10-25T08:00:00+00:00"
+          "2026-10-25T22:40:00+00:00",
+          "2026-10-25T22:45:00+00:00",
+          "2026-10-25T22:50:00+00:00",
+          "2026-10-25T22:55:00+00:00",
+          "2026-10-25T23:00:00+00:00",
+          "2026-10-25T23:05:00+00:00",
+          "2026-10-25T23:10:00+00:00",
+          "2026-10-25T23:15:00+00:00",
+          "2026-10-25T23:20:00+00:00",
+          "2026-10-25T23:25:00+00:00",
+          "2026-10-25T23:30:00+00:00",
+          "2026-10-25T23:35:00+00:00"
         ],
-        "from": "2026-10-24T21:00:00+00:00",
+        "from": "2026-10-25T22:40:00+00:00",
         "range": "1h",
         "series": {
           "documents": [
@@ -2929,11 +4837,11 @@
           ]
         },
         "storage": {
-          "current_bytes": 128947517,
+          "current_bytes": 156711529,
           "limit_bytes": 5242880000,
           "since": "2026-10-23T06:00:00+00:00"
         },
-        "to": "2026-10-25T21:00:00+00:00",
+        "to": "2026-10-25T23:40:00+00:00",
         "totals": {
           "documents": 0,
           "files": 0,
@@ -2941,9 +4849,9 @@
           "messages": 7,
           "outgoing_tokens": 22750,
           "sessions": 0,
+          "storage_bytes": 1597800000,
           "tasks": 0,
-          "web_requests": 11,
-          "storage_bytes": 1597800000
+          "web_requests": 11
         },
         "users": [
           {
@@ -2956,41 +4864,41 @@
             "login": "maria"
           }
         ]
-      }
+      },
+      "method": "GET",
+      "path": "/admin/api/monitoring?range=1h",
+      "status": 200
     },
     {
-      "method": "GET",
-      "path": "/admin/api/monitoring?range=6h",
-      "status": 200,
       "body": {
         "bucket_seconds": 900,
         "buckets": [
-          "2026-10-24T21:00:00+00:00",
-          "2026-10-24T22:00:00+00:00",
-          "2026-10-24T23:00:00+00:00",
-          "2026-10-25T00:00:00+00:00",
-          "2026-10-25T01:00:00+00:00",
-          "2026-10-25T02:00:00+00:00",
-          "2026-10-25T03:00:00+00:00",
-          "2026-10-25T04:00:00+00:00",
-          "2026-10-25T05:00:00+00:00",
-          "2026-10-25T06:00:00+00:00",
-          "2026-10-25T07:00:00+00:00",
-          "2026-10-25T08:00:00+00:00",
-          "2026-10-25T09:00:00+00:00",
-          "2026-10-25T10:00:00+00:00",
-          "2026-10-25T11:00:00+00:00",
-          "2026-10-25T12:00:00+00:00",
-          "2026-10-25T13:00:00+00:00",
-          "2026-10-25T14:00:00+00:00",
-          "2026-10-25T15:00:00+00:00",
-          "2026-10-25T16:00:00+00:00",
-          "2026-10-25T17:00:00+00:00",
+          "2026-10-25T17:45:00+00:00",
           "2026-10-25T18:00:00+00:00",
+          "2026-10-25T18:15:00+00:00",
+          "2026-10-25T18:30:00+00:00",
+          "2026-10-25T18:45:00+00:00",
           "2026-10-25T19:00:00+00:00",
-          "2026-10-25T20:00:00+00:00"
+          "2026-10-25T19:15:00+00:00",
+          "2026-10-25T19:30:00+00:00",
+          "2026-10-25T19:45:00+00:00",
+          "2026-10-25T20:00:00+00:00",
+          "2026-10-25T20:15:00+00:00",
+          "2026-10-25T20:30:00+00:00",
+          "2026-10-25T20:45:00+00:00",
+          "2026-10-25T21:00:00+00:00",
+          "2026-10-25T21:15:00+00:00",
+          "2026-10-25T21:30:00+00:00",
+          "2026-10-25T21:45:00+00:00",
+          "2026-10-25T22:00:00+00:00",
+          "2026-10-25T22:15:00+00:00",
+          "2026-10-25T22:30:00+00:00",
+          "2026-10-25T22:45:00+00:00",
+          "2026-10-25T23:00:00+00:00",
+          "2026-10-25T23:15:00+00:00",
+          "2026-10-25T23:30:00+00:00"
         ],
-        "from": "2026-10-24T21:00:00+00:00",
+        "from": "2026-10-25T17:45:00+00:00",
         "range": "6h",
         "series": {
           "documents": [
@@ -3229,11 +5137,11 @@
           ]
         },
         "storage": {
-          "current_bytes": 128947517,
+          "current_bytes": 156711529,
           "limit_bytes": 5242880000,
           "since": "2026-10-23T06:00:00+00:00"
         },
-        "to": "2026-10-25T21:00:00+00:00",
+        "to": "2026-10-25T23:45:00+00:00",
         "totals": {
           "documents": 0,
           "files": 0,
@@ -3241,9 +5149,9 @@
           "messages": 76,
           "outgoing_tokens": 147748,
           "sessions": 16,
+          "storage_bytes": 3323280000,
           "tasks": 0,
-          "web_requests": 89,
-          "storage_bytes": 3323280000
+          "web_requests": 89
         },
         "users": [
           {
@@ -3256,18 +5164,15 @@
             "login": "maria"
           }
         ]
-      }
+      },
+      "method": "GET",
+      "path": "/admin/api/monitoring?range=6h",
+      "status": 200
     },
     {
-      "method": "GET",
-      "path": "/admin/api/monitoring?range=24h",
-      "status": 200,
       "body": {
         "bucket_seconds": 3600,
         "buckets": [
-          "2026-10-24T21:00:00+00:00",
-          "2026-10-24T22:00:00+00:00",
-          "2026-10-24T23:00:00+00:00",
           "2026-10-25T00:00:00+00:00",
           "2026-10-25T01:00:00+00:00",
           "2026-10-25T02:00:00+00:00",
@@ -3288,9 +5193,12 @@
           "2026-10-25T17:00:00+00:00",
           "2026-10-25T18:00:00+00:00",
           "2026-10-25T19:00:00+00:00",
-          "2026-10-25T20:00:00+00:00"
+          "2026-10-25T20:00:00+00:00",
+          "2026-10-25T21:00:00+00:00",
+          "2026-10-25T22:00:00+00:00",
+          "2026-10-25T23:00:00+00:00"
         ],
-        "from": "2026-10-24T21:00:00+00:00",
+        "from": "2026-10-25T00:00:00+00:00",
         "range": "24h",
         "series": {
           "documents": [
@@ -3529,11 +5437,11 @@
           ]
         },
         "storage": {
-          "current_bytes": 128947517,
+          "current_bytes": 156711529,
           "limit_bytes": 5242880000,
           "since": "2026-10-23T06:00:00+00:00"
         },
-        "to": "2026-10-25T21:00:00+00:00",
+        "to": "2026-10-26T00:00:00+00:00",
         "totals": {
           "documents": 1,
           "files": 1,
@@ -3541,9 +5449,9 @@
           "messages": 341,
           "outgoing_tokens": 584998,
           "sessions": 107,
+          "storage_bytes": 3322320000,
           "tasks": 15,
-          "web_requests": 378,
-          "storage_bytes": 3322320000
+          "web_requests": 378
         },
         "users": [
           {
@@ -3556,45 +5464,45 @@
             "login": "maria"
           }
         ]
-      }
+      },
+      "method": "GET",
+      "path": "/admin/api/monitoring?range=24h",
+      "status": 200
     },
     {
-      "method": "GET",
-      "path": "/admin/api/monitoring?range=7d",
-      "status": 200,
       "body": {
         "bucket_seconds": 21600,
         "buckets": [
-          "b0",
-          "b1",
-          "b2",
-          "b3",
-          "b4",
-          "b5",
-          "b6",
-          "b7",
-          "b8",
-          "b9",
-          "b10",
-          "b11",
-          "b12",
-          "b13",
-          "b14",
-          "b15",
-          "b16",
-          "b17",
-          "b18",
-          "b19",
-          "b20",
-          "b21",
-          "b22",
-          "b23",
-          "b24",
-          "b25",
-          "b26",
-          "b27"
+          "2026-10-19T00:00:00+00:00",
+          "2026-10-19T06:00:00+00:00",
+          "2026-10-19T12:00:00+00:00",
+          "2026-10-19T18:00:00+00:00",
+          "2026-10-20T00:00:00+00:00",
+          "2026-10-20T06:00:00+00:00",
+          "2026-10-20T12:00:00+00:00",
+          "2026-10-20T18:00:00+00:00",
+          "2026-10-21T00:00:00+00:00",
+          "2026-10-21T06:00:00+00:00",
+          "2026-10-21T12:00:00+00:00",
+          "2026-10-21T18:00:00+00:00",
+          "2026-10-22T00:00:00+00:00",
+          "2026-10-22T06:00:00+00:00",
+          "2026-10-22T12:00:00+00:00",
+          "2026-10-22T18:00:00+00:00",
+          "2026-10-23T00:00:00+00:00",
+          "2026-10-23T06:00:00+00:00",
+          "2026-10-23T12:00:00+00:00",
+          "2026-10-23T18:00:00+00:00",
+          "2026-10-24T00:00:00+00:00",
+          "2026-10-24T06:00:00+00:00",
+          "2026-10-24T12:00:00+00:00",
+          "2026-10-24T18:00:00+00:00",
+          "2026-10-25T00:00:00+00:00",
+          "2026-10-25T06:00:00+00:00",
+          "2026-10-25T12:00:00+00:00",
+          "2026-10-25T18:00:00+00:00"
         ],
-        "from": "2026-10-24T21:00:00+00:00",
+        "from": "2026-10-19T00:00:00+00:00",
         "range": "7d",
         "series": {
           "documents": [
@@ -3869,11 +5777,11 @@
           ]
         },
         "storage": {
-          "current_bytes": 128947517,
+          "current_bytes": 156711529,
           "limit_bytes": 5242880000,
           "since": "2026-10-23T06:00:00+00:00"
         },
-        "to": "2026-10-25T21:00:00+00:00",
+        "to": "2026-10-26T00:00:00+00:00",
         "totals": {
           "documents": 8,
           "files": 14,
@@ -3881,9 +5789,9 @@
           "messages": 2312,
           "outgoing_tokens": 3869995,
           "sessions": 762,
+          "storage_bytes": 3924200000,
           "tasks": 192,
-          "web_requests": 2733,
-          "storage_bytes": 3924200000
+          "web_requests": 2733
         },
         "users": [
           {
@@ -3896,47 +5804,47 @@
             "login": "maria"
           }
         ]
-      }
+      },
+      "method": "GET",
+      "path": "/admin/api/monitoring?range=7d",
+      "status": 200
     },
     {
-      "method": "GET",
-      "path": "/admin/api/monitoring?range=30d",
-      "status": 200,
       "body": {
         "bucket_seconds": 86400,
         "buckets": [
-          "b0",
-          "b1",
-          "b2",
-          "b3",
-          "b4",
-          "b5",
-          "b6",
-          "b7",
-          "b8",
-          "b9",
-          "b10",
-          "b11",
-          "b12",
-          "b13",
-          "b14",
-          "b15",
-          "b16",
-          "b17",
-          "b18",
-          "b19",
-          "b20",
-          "b21",
-          "b22",
-          "b23",
-          "b24",
-          "b25",
-          "b26",
-          "b27",
-          "b28",
-          "b29"
+          "2026-09-26T00:00:00+00:00",
+          "2026-09-27T00:00:00+00:00",
+          "2026-09-28T00:00:00+00:00",
+          "2026-09-29T00:00:00+00:00",
+          "2026-09-30T00:00:00+00:00",
+          "2026-10-01T00:00:00+00:00",
+          "2026-10-02T00:00:00+00:00",
+          "2026-10-03T00:00:00+00:00",
+          "2026-10-04T00:00:00+00:00",
+          "2026-10-05T00:00:00+00:00",
+          "2026-10-06T00:00:00+00:00",
+          "2026-10-07T00:00:00+00:00",
+          "2026-10-08T00:00:00+00:00",
+          "2026-10-09T00:00:00+00:00",
+          "2026-10-10T00:00:00+00:00",
+          "2026-10-11T00:00:00+00:00",
+          "2026-10-12T00:00:00+00:00",
+          "2026-10-13T00:00:00+00:00",
+          "2026-10-14T00:00:00+00:00",
+          "2026-10-15T00:00:00+00:00",
+          "2026-10-16T00:00:00+00:00",
+          "2026-10-17T00:00:00+00:00",
+          "2026-10-18T00:00:00+00:00",
+          "2026-10-19T00:00:00+00:00",
+          "2026-10-20T00:00:00+00:00",
+          "2026-10-21T00:00:00+00:00",
+          "2026-10-22T00:00:00+00:00",
+          "2026-10-23T00:00:00+00:00",
+          "2026-10-24T00:00:00+00:00",
+          "2026-10-25T00:00:00+00:00"
         ],
-        "from": "2026-10-24T21:00:00+00:00",
+        "from": "2026-09-26T00:00:00+00:00",
         "range": "30d",
         "series": {
           "documents": [
@@ -4229,11 +6137,11 @@
           ]
         },
         "storage": {
-          "current_bytes": 128947517,
+          "current_bytes": 156711529,
           "limit_bytes": 5242880000,
           "since": "2026-10-23T06:00:00+00:00"
         },
-        "to": "2026-10-25T21:00:00+00:00",
+        "to": "2026-10-26T00:00:00+00:00",
         "totals": {
           "documents": 36,
           "files": 28,
@@ -4241,9 +6149,9 @@
           "messages": 10356,
           "outgoing_tokens": 17279994,
           "sessions": 3444,
+          "storage_bytes": 4233900000,
           "tasks": 843,
-          "web_requests": 11421,
-          "storage_bytes": 4233900000
+          "web_requests": 11421
         },
         "users": [
           {
@@ -4256,249 +6164,10 @@
             "login": "maria"
           }
         ]
-      }
-    },
-    {
+      },
       "method": "GET",
-      "path": "/api/queue/counts",
-      "status": 200,
-      "body": {
-        "user_queued": 0,
-        "total_queued": 0
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/tasks/queue-count",
-      "status": 200,
-      "body": {
-        "queued_tasks": 0,
-        "total_queued_tasks": 0
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview",
-      "status": 200,
-      "body": {
-        "ext": ".pdf",
-        "extracted": false,
-        "filename": "КП №1 — ООО «Вектор-Тех».pdf",
-        "kind": "pdf",
-        "max_pages": 30,
-        "mime": "application/pdf",
-        "page_url": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/pdf-page/",
-        "pages": 1,
-        "truncated": false,
-        "url": "/api/documents/57aeabf7-8125-4364-93b1-bdbb67209f3c/preview/file"
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview",
-      "status": 200,
-      "body": {
-        "ext": ".pdf",
-        "extracted": false,
-        "filename": "КП №2 — ООО «Смарт-Снаб».pdf",
-        "kind": "pdf",
-        "max_pages": 30,
-        "mime": "application/pdf",
-        "page_url": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/pdf-page/",
-        "pages": 1,
-        "truncated": false,
-        "url": "/api/documents/21fa33b9-e782-4e36-b3c6-951885b4a5e6/preview/file"
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview",
-      "status": 200,
-      "body": {
-        "ext": ".pdf",
-        "extracted": false,
-        "filename": "Положение о закупках школы.pdf",
-        "kind": "pdf",
-        "max_pages": 30,
-        "mime": "application/pdf",
-        "page_url": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/pdf-page/",
-        "pages": 1,
-        "truncated": false,
-        "url": "/api/documents/d4109b49-c5db-4a50-873e-7e2b7b610e7d/preview/file"
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/tasks/1193b9c1-d47d-466a-8f52-9227a02943cc/messages",
-      "status": 200,
-      "body": {
-        "messages": [
-          {
-            "attached_audio": "",
-            "attached_documents": "",
-            "attached_images": "",
-            "audio_transcripts": [],
-            "content": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
-            "created_at": "2026-10-25T20:35:39.269446+00:00",
-            "extra": {},
-            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc:request",
-            "kind": "request",
-            "role": "user",
-            "seq": 0,
-            "status": null,
-            "tool": "",
-            "total_steps": 1
-          },
-          {
-            "content": "План из 1 шагов:\n1. Составь расписание уроков на неделю для семиклассников: пять учебных дней по шесть уроков без повторов одного предмета в день.",
-            "created_at": "2026-10-25T20:35:39.269446+00:00",
-            "exec_seconds": 32.71,
-            "extra": {},
-            "id": "1193b9c1-d47d-466a-8f52-9227a02943cc:plan",
-            "kind": "plan",
-            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-            "model_type": "reasoning",
-            "role": "assistant",
-            "seq": 0,
-            "status": null,
-            "tool": "",
-            "total_steps": 1,
-            "usage": {
-              "completion_tokens": 770,
-              "prompt_tokens": 2478
-            }
-          },
-          {
-            "artifact_note": "",
-            "attempts": 1,
-            "attempts_log": [
-              {
-                "at": "2026-10-25T20:36:40.523092+00:00",
-                "n": 1,
-                "ok": true,
-                "reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются."
-              }
-            ],
-            "attempts_max": 3,
-            "badge": "",
-            "best_effort": false,
-            "best_effort_accepted": true,
-            "best_effort_count": 0,
-            "checkpoint_verdict": true,
-            "content": "Шаг 1 из 1:\nВот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |",
-            "created_at": "2026-10-25T20:36:15.728760+00:00",
-            "exec_seconds": 24.75,
-            "extra": {
-              "attempts_log": [
-                {
-                  "at": "2026-10-25T20:36:40.523092+00:00",
-                  "n": 1,
-                  "ok": true,
-                  "reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются."
-                }
-              ],
-              "checkpoint_usage": {
-                "completion_tokens": 178,
-                "prompt_tokens": 885
-              },
-              "checkpoint_usage_total": {
-                "completion_tokens": 178,
-                "prompt_tokens": 885
-              },
-              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-              "usage": {
-                "completion_tokens": 2238,
-                "prompt_tokens": 730
-              },
-              "usage_total": {
-                "completion_tokens": 2238,
-                "prompt_tokens": 730
-              }
-            },
-            "failure_reason": "Результат содержит таблицу с пятью днями (понедельник–пятница), в каждом дне ровно по 6 уроков. В пределах каждого дня предметы не повторяются.",
-            "id": "efb8a5c3-9665-4eed-9bc8-ba849e5831ff",
-            "kind": "direct",
-            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-            "model_type": "",
-            "role": "assistant",
-            "seq": 1,
-            "status": "passed",
-            "tool": "llm",
-            "total_steps": 1,
-            "usage": {
-              "completion_tokens": 2238,
-              "prompt_tokens": 730
-            }
-          },
-          {
-            "artifact_note": "",
-            "attempts": 0,
-            "attempts_log": [],
-            "attempts_max": 3,
-            "badge": "",
-            "best_effort": false,
-            "best_effort_accepted": false,
-            "best_effort_count": 0,
-            "checkpoint_verdict": null,
-            "content": "Вот готовое расписание уроков на неделю для 7 класса:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |\n\nРасписание включает 5 учебных дней по 6 уроков. Предметы распределены так, чтобы не было повторов одних и тех же занятий внутри одного дня.",
-            "created_at": "2026-10-25T20:37:00.496752+00:00",
-            "exec_seconds": 14.99,
-            "extra": {
-              "exec_seconds": 14.99,
-              "final_failures": [],
-              "final_items": [
-                {
-                  "attempts": 1,
-                  "goal": "Составь расписание уроков на неделю для семиклассников: пять учебных дней по шесть уроков без повторов одного предмета в день.",
-                  "seq": 1,
-                  "summary": "Вот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня: | День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 | | :--- | :--- | :--- | :--- | :--- | :--- | :--- | | **Понедельник** |…",
-                  "summary_full": "Вот примерное расписание уроков на неделю для 7 класса, составленное с учетом отсутствия повторения одних и тех же предметов внутри одного учебного дня:\n\n| День недели | Урок 1 | Урок 2 | Урок 3 | Урок 4 | Урок 5 | Урок 6 |\n| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n| **Понедельник** | Математика | Русский язык | Литература | Английский язык | История | Физкультура |\n| **Вторник** | Информатика | Математика | Физика | Биология | География | Химия |\n| **Среда** | Русский язык | Литература | Обществознание | Английский язык | История | Технология |\n| **Четверг** | Математика | Информатика | Физкультура | Биология | География | ИЗО/Музыка |\n| **Пятница** | Русский язык | Химия | Литература | Английский язык | История | Физика |"
-                }
-              ],
-              "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-              "usage": {
-                "completion_tokens": 1495,
-                "prompt_tokens": 1012
-              }
-            },
-            "failure_reason": "",
-            "id": "541b35d5-28d6-477b-b053-8c262132f49c",
-            "kind": "final",
-            "model_name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
-            "model_type": "",
-            "role": "assistant",
-            "seq": 2,
-            "status": "passed",
-            "tool": "",
-            "total_steps": 1,
-            "usage": {
-              "completion_tokens": 1495,
-              "prompt_tokens": 1012
-            }
-          }
-        ],
-        "task": {
-          "abort_reason": null,
-          "completed_at": "2026-10-25T20:37:00.504379+00:00",
-          "created_at": "2026-10-25T20:35:39.269446+00:00",
-          "deep_analysis": false,
-          "doc_ids": [],
-          "exec_seconds": 77.19,
-          "id": "1193b9c1-d47d-466a-8f52-9227a02943cc",
-          "images": [],
-          "next_step_index": 1,
-          "response_style": "neutral",
-          "started_at": "2026-10-25T20:35:42.716560+00:00",
-          "status": "completed",
-          "task_class": 5,
-          "title": "Составь расписание уроков на неделю для 7 класса: 5 учебных дней, по 6 уроков, без повторов одного предмета в день.",
-          "token_totals": {
-            "completion_tokens": 4681,
-            "prompt_tokens": 5105
-          },
-          "total_steps": 1
-        }
-      }
+      "path": "/admin/api/monitoring?range=30d",
+      "status": 200
     }
   ]
 }

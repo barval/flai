@@ -35,6 +35,7 @@ The README is a short overview plus quick start. Every topic below has a dedicat
 | Frequently asked questions | `docs/FAQ.md` | When the answer belongs to user-facing onboarding |
 | How to contribute | `CONTRIBUTING.md` | When preparing a pull request |
 | Planned and in-progress work | `docs/ROADMAP.md` | When deciding whether a feature is planned |
+| Dependency, image and platform update audit | `docs/UPGRADES.md` | When planning a release upgrade, checking a known vulnerability, or moving a component to a new version |
 | Release process, version bumps, README updates | `docs/RELEASE_GUIDE.md` | When preparing a new version |
 | Historical changes, bug fixes, migration notes | `CHANGELOG.md` | When debugging or understanding why it works this way |
 

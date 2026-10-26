@@ -85,9 +85,15 @@ def recall_slm_facts(app: Flask, query: str, user_id: str, lang: str, limit: int
         return ""
     if not raw:
         return ""
-    session_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
-    general_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
-    all_facts = (session_facts + general_facts)[:limit]
+    base = app.modules.get("base")
+    if base is not None and hasattr(base, "select_recalled_facts"):
+        all_facts = base.select_recalled_facts(
+            raw,
+            limit=limit,
+            min_score=float(app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
+        )
+    else:
+        all_facts = raw[:limit]
     if not all_facts:
         return ""
     header = (

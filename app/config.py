@@ -111,6 +111,7 @@ def load_config(app):
 
     # SLM rule-based extraction and merge settings
     app.config["SLM_SIMILARITY_THRESHOLD"] = float(os.getenv("SLM_SIMILARITY_THRESHOLD", 0.85))
+    app.config["SLM_MIN_RECALL_SCORE"] = float(os.getenv("SLM_MIN_RECALL_SCORE", "0.5"))
     app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))
     app.config["SLM_MIN_CONFIDENCE_FOR_DECAY"] = float(os.getenv("SLM_MIN_CONFIDENCE_FOR_DECAY", 0.5))
 

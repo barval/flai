@@ -13,7 +13,9 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 ```bash
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
-VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
+VRAM_WAIT_TIMEOUT_S=120                     # Сколько секунд ждать занятую GPU (ensure_vram_for / очередь / видеогейт), прежде чем сообщить о недоступности
+VRAM_CO_RESIDENCY=auto                      # 'auto' оставляет резидентные модели, если новая помещается рядом; 'off' выгружает всё (поведение до v12.8)
+VRAM_HEADROOM_MB=1200                       # Сколько VRAM оставлять свободной под буферы префилла при решении о совместном размещении
 ```
 
 **URL сервисов:**

@@ -22,15 +22,15 @@ Computes VRAM needed from:
 
 **Formula**: `file_size × (ngl/block_count) × moe × mtp + ctx_size × kv_factor + overhead + mmproj`
 
-**Per-module KV calibration** (`KV_PER_TOKEN_MB` in `resource_manager.py`): the old single-value 0.12 MB/token overestimated VRAM for reasoning (+636 MB vs measured) and under-counted multimodal because it ignored the mmproj entirely (−751 MB). Calibrated per module against empirical measurements on RTX 5060 Ti (q4_0 KV cache):
-
-| Module | MB/token | Derivation |
-|--------|----------|------------|
-| multimodal | 0.10 | (7912 − 4795 weights − 1105 mmproj − 400 overhead) / 16384 ctx ≈ 0.098 |
-| reasoning  | 0.08 | (13084 − 11135 weights − 619 overhead) / 16384 ctx ≈ 0.081 |
-| embedding  | 0.05 | conservative for an embedding model |
-
-Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning → 13065 vs 13084 (+0.15%).
+**KV cost comes from the model's own shapes.** `blocks × kv_heads × (key + value) × bytes`
+(the arithmetic llama.cpp uses when it allocates the cache, `kv_per_token_from_metadata()` in
+`app/vram_probe.py`), scaled by the cache type (`q4_0` 0.5625 B/value, `q8_0` 1.0625, f16 2.0).
+The per-module constants of `KV_PER_TOKEN_MB` stay only as a fallback for a model whose metadata
+carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning model needs
+**0.022 MB/token** and the multimodal one **0.0396**, where the old constants said 0.08 and 0.10 —
++1.4 GB and +2.0 GB of phantom VRAM in every fit verdict, enough to turn "fits on the GPU" into
+"partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
+measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
 **mmproj accounting:** llama-server loads the mmproj (vision encoder) file fully into VRAM — `--n-gpu-layers-mmproj` is not configured, so it is a fixed constant independent of `n_gpu_layers`. `get_mmproj_size_mb()` in `app/utils.py` resolves the path via `LlamaSwapConfigGenerator` (`get_model_path` + `get_mmproj_path`) and returns the file size; `0` when no mmproj is present. It is subtracted from the model's VRAM budget (`available_for_model`), added to the "needs more VRAM" and 16 GB branch checks, and added to the degradation-loop estimate.
 
@@ -40,11 +40,46 @@ Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning 
 
 ### `ensure_vram_for(model_type)`
 
-- Unloads ALL models
-- Flushes CUDA cache
-- Polls `/running` + `nvidia-smi` (15s default timeout, `time.sleep(2)` between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll)
-- Returns `False` (never proceeds) if VRAM insufficient
+- **Keeps the residents that still fit.** The decision is made on measured footprints: if
+  `sum(resident) + needed + headroom ≤ total_vram`, the new model loads next to them and nothing is
+  unloaded. Otherwise the least recently used residents are evicted **one at a time** through
+  `POST /api/models/unload/:model_id`, stopping as soon as the new model fits. `VRAM_CO_RESIDENCY=off`
+  restores the old all-or-nothing behaviour, `VRAM_HEADROOM_MB` (default 1200) is the room kept for
+  the prefill buffers of a long prompt.
+- Flushes the video pipeline when it is running (a video transaction needs the whole card)
+- Polls `/running` + `nvidia-smi` (default timeout `VRAM_WAIT_TIMEOUT_S` = 120 s, `time.sleep(2)`
+  between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll,
+  except the ones the plan deliberately kept)
+- Returns `False` (never proceeds) if VRAM is still insufficient
 - Used by ALL model types: chat, reasoning, multimodal, embedding
+
+Why it matters on this card: a RAG search needs the embedding model (1.2 GB). Without co-residency it
+evicted the 7.6 GB chat model and the next router call paid a cold start; with it, both stay resident
+(7 648 + 1 209 + 1 200 < 16 311). A reasoning answer still needs the whole card (7 648 + 11 577 + 1 200
+> 16 311), so the chat model is evicted, exactly as before.
+
+### Measurement
+
+Two commands, both read-only unless asked to store:
+
+```bash
+# Measure one model: unloads everything, loads it, samples the peak (optionally with a long prompt)
+docker exec flai-web flask vram-probe --module reasoning --peak --peak-chars 16000 --store
+
+# Show the decision for the next load without touching the card
+docker exec flai-web flask vram-plan --module embedding
+```
+
+`vram-probe` writes `model_vram_estimates` keyed by `(module, model_name, context_length)`, so
+switching the model or the window in the admin panel invalidates it and the analytical estimate takes
+over until the next measurement. The runtime and the admin verdicts prefer a matching measurement over
+the formula. Measurement is card-wide (a container cannot see another container's PIDs); on a
+bare-metal install where the server shares the namespace the model server's RSS is used instead.
+
+**CPU-only hosts.** There is no VRAM to fit into: the same numbers are paid out of RAM, so
+`_autofit_context()` checks `file + KV + mmproj ≤ 70 % of RAM − 2 GB` and the admin verdict classifies
+the model as `cpu_offload` or `impossible` against free RAM. The KV cache still comes from the model's
+shapes, which is what makes a large window visibly expensive on a CPU host.
 
 ### CPU-only models: no VRAM, no GPU queue slot
 

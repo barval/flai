@@ -44,19 +44,6 @@
           "updated_at": "2026-10-26T12:02:14+03:00"
         },
         {
-          "created_at": "2026-10-26T11:43:59+03:00",
-          "has_unread": false,
-          "id": "c893ecc6-026f-469c-9786-90578eb5c374",
-          "last_visit": "2026-10-26T11:59:28+03:00",
-          "message_count": 2,
-          "model_name": "auto",
-          "title": "Сделай короткое видео: капли дождя на ст...",
-          "total_completion_tokens": 0,
-          "total_prompt_tokens": 0,
-          "unread_count": 0,
-          "updated_at": "2026-10-26T11:49:58+03:00"
-        },
-        {
           "created_at": "2026-10-26T11:37:34+03:00",
           "has_unread": false,
           "id": "8b5cc0a2-6d49-473b-987e-08ea56bcbaa6",
@@ -952,39 +939,6 @@
       },
       "method": "GET",
       "path": "/api/sessions/8b5cc0a2-6d49-473b-987e-08ea56bcbaa6/messages?limit=100&offset=0",
-      "status": 200
-    },
-    {
-      "body": {
-        "has_more": false,
-        "limit": 100,
-        "messages": [
-          {
-            "completion_tokens": null,
-            "content": "[{\"type\": \"text\", \"text\": \"Сделай короткое видео: капли дождя на стекле.\"}]",
-            "file_data": null,
-            "file_name": null,
-            "file_path": null,
-            "file_size": 0,
-            "file_type": null,
-            "gen_model": null,
-            "gen_time": null,
-            "id": 4510,
-            "mm_model": null,
-            "mm_time": null,
-            "model_name": null,
-            "model_type": null,
-            "prompt_tokens": null,
-            "response_style": "neutral",
-            "response_time": null,
-            "role": "user",
-            "timestamp": "2026-10-26T11:44:44+03:00"
-          }
-        ],
-        "offset": 0
-      },
-      "method": "GET",
-      "path": "/api/sessions/c893ecc6-026f-469c-9786-90578eb5c374/messages?limit=100&offset=0",
       "status": 200
     },
     {

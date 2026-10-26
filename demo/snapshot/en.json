@@ -43,19 +43,6 @@
           "updated_at": "2026-10-26T12:55:56+03:00"
         },
         {
-          "created_at": "2026-10-26T12:42:49+03:00",
-          "has_unread": false,
-          "id": "fc60ee2c-a666-4404-a1fa-3868d8e83963",
-          "last_visit": "2026-10-26T12:53:20+03:00",
-          "message_count": 2,
-          "model_name": "auto",
-          "title": "Make a short video: raindrops on a windo...",
-          "total_completion_tokens": 236,
-          "total_prompt_tokens": 3501,
-          "unread_count": 0,
-          "updated_at": "2026-10-26T12:48:28+03:00"
-        },
-        {
           "created_at": "2026-10-26T12:39:03+03:00",
           "has_unread": false,
           "id": "089fd5a8-8c45-4bd0-9b6e-500010260c85",
@@ -951,39 +938,6 @@
       },
       "method": "GET",
       "path": "/api/sessions/089fd5a8-8c45-4bd0-9b6e-500010260c85/messages?limit=100&offset=0",
-      "status": 200
-    },
-    {
-      "body": {
-        "has_more": false,
-        "limit": 100,
-        "messages": [
-          {
-            "completion_tokens": null,
-            "content": "[{\"type\": \"text\", \"text\": \"Make a short video: raindrops on a window.\"}]",
-            "file_data": null,
-            "file_name": null,
-            "file_path": null,
-            "file_size": 0,
-            "file_type": null,
-            "gen_model": null,
-            "gen_time": null,
-            "id": 4558,
-            "mm_model": null,
-            "mm_time": null,
-            "model_name": null,
-            "model_type": null,
-            "prompt_tokens": null,
-            "response_style": "neutral",
-            "response_time": null,
-            "role": "user",
-            "timestamp": "2026-10-26T12:43:34+03:00"
-          }
-        ],
-        "offset": 0
-      },
-      "method": "GET",
-      "path": "/api/sessions/fc60ee2c-a666-4404-a1fa-3868d8e83963/messages?limit=100&offset=0",
       "status": 200
     },
     {

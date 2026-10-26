@@ -638,6 +638,11 @@ def capture_language(
                 chat.post_json(f"/api/tasks/{task_id}/delete", {})
             else:
                 chat.post_json(f"/api/sessions/{session_id}/delete", {})
+        if result.get("interrupted") and session_id:
+            # The interruption message leaves a conversation with a question and no
+            # answer: it exists only to preempt the task, not to be shown.
+            chat.post_json(f"/api/sessions/{session_id}/delete", {})
+            session_id = ""
         if session_id:
             for path in _scenario_paths(session_id):
                 _record(routes, "GET", path, chat.get_json(path))

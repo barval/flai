@@ -28,12 +28,12 @@
     {
       "kind": "text",
       "title": "Quotes",
-      "prompt": "Compare the two quotes for 20 laptops for a school: which one is better value and why?"
+      "prompt": "Compare the two quotes in my documents for 20 school laptops: which is better value and why?"
     },
     {
       "kind": "rlm",
       "title": "Deep analysis",
-      "prompt": "Analyse both quotes and the procurement policy, build a comparison table and give a recommendation.",
+      "prompt": "Analyse both quotes and the procurement policy, build a short comparison table (at most six rows) and give a recommendation in two or three sentences.",
       "documents": [
         "quote-a",
         "quote-b",
@@ -103,7 +103,7 @@
     {
       "kind": "task",
       "title": "Document analysis",
-      "prompt": "Analyse both quotes and the procurement policy: where are the risks and what should we choose? Give a justified conclusion.",
+      "prompt": "Analyse both quotes and the procurement policy: name the main risk and give one justified recommendation. Keep it to five sentences and a table of at most six rows.",
       "deep_analysis": true
     }
   ]

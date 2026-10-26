@@ -37,6 +37,22 @@ def looks_personal(text: str) -> bool:
     return bool(_PERSONAL_MARKERS.search(body) or _EXPLICIT_REMEMBER.search(body))
 
 
+def auto_extract_enabled(mode: str, platform: str) -> bool:
+    """Whether automatic extraction may run on this host.
+
+    ``auto`` means "only where a model is already resident and fast": on a
+    CPU-only host the same call costs ~30 s of the model that chat is using, so
+    the explicit "remember this" path stays available but the per-message
+    extraction does not run unless the admin forces it with ``SLM_AUTO_EXTRACT=on``.
+    """
+    value = (mode or "auto").strip().lower()
+    if value in ("off", "0", "false", "no"):
+        return False
+    if value in ("on", "1", "true", "yes"):
+        return True
+    return (platform or "").strip().lower() != "cpu"
+
+
 def _clean(text: str) -> str:
     body = " ".join(str(text).split())
     if len(body) > MAX_FACT_CHARS:

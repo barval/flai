@@ -5265,6 +5265,15 @@ class RedisRequestQueue:
         if not self.app.config.get("SLM_URL"):
             return None
         try:
+            from app.memory_facts import auto_extract_enabled
+            from app.resource_manager import get_resource_manager
+
+            if not auto_extract_enabled(
+                self.app.config.get("SLM_AUTO_EXTRACT", "auto"),
+                get_resource_manager().hardware.platform,
+            ):
+                return None
+
             import uuid as _uuid
 
             task_id = str(_uuid.uuid4())

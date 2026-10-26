@@ -988,6 +988,124 @@ def memory_purge(user, source, yes):
     click.echo(f"deleted {removed} facts")
 
 
+@click.command("memory-profile")
+@click.option("--user", required=True, help="Login whose profile is consolidated")
+@click.option("--lang", default="ru", type=click.Choice(["ru", "en"]), show_default=True)
+@click.option("--limit", default=200, show_default=True, help="Facts to consider")
+@click.option("--apply", is_flag=True, help="Store the result as the profile block")
+@with_appcontext
+def memory_profile(user, lang, limit, apply):
+    """Rewrite the user's facts into one compact profile block.
+
+    The block is what recall always injects, so it is the only place where
+    duplicates and contradictions can be resolved once instead of on every
+    request. Individual facts stay in the store.
+    """
+    from app.utils import format_prompt
+    from modules.base import response_language_name
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    material = [
+        fact
+        for fact in facts
+        if str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
+        and (fact.get("content") or fact.get("text"))
+    ]
+    if len(material) < 3:
+        click.echo(f"only {len(material)} usable facts — nothing to consolidate yet")
+        return
+
+    lines = "\n".join(f"- {str(fact.get('content') or fact.get('text'))[:200]}" for fact in material)
+    prompt = format_prompt(
+        "memory_profile.template",
+        {"facts": lines, "response_language": response_language_name(lang)},
+        lang=lang,
+    )
+    if not prompt:
+        raise click.ClickException("profile template failed to render")
+
+    raw = current_app.modules["base"].call_llamacpp(
+        [{"role": "user", "content": prompt}],
+        model_type="multimodal",
+        lang=lang,
+        temperature=0.2,
+    )
+    block = " ".join(str(raw).split())[:1200]
+    if not block or block.startswith("⚠"):
+        raise click.ClickException(f"profile consolidation failed: {block[:200]}")
+
+    click.echo(block)
+    click.echo(f"({len(block)} chars, from {len(material)} facts)")
+    if not apply:
+        click.echo("dry run — pass --apply to store it")
+        return
+    stored = slm.remember(
+        block,
+        metadata={"kind": "profile", "confidence": 1.0, "source": "profile_consolidation"},
+        profile=user,
+    )
+    click.echo("stored" if stored else "store failed")
+
+
+@click.command("memory-eval")
+@click.option("--user", required=True, help="Login whose memory is evaluated")
+@click.option("--dataset", required=True, help="JSONL with {question, expected[]}")
+@click.option("--k", default=5, show_default=True, help="Facts considered per question")
+@click.option("--out", default="", help="Write the metrics to this JSON file")
+@click.option("--no-profile", is_flag=True, help="Score recall alone, without the always-injected profile")
+@with_appcontext
+def memory_eval(user, dataset, k, out, no_profile):
+    """Score recall against a question set: hit@k, MRR and the injection cost."""
+    import json
+    import time
+
+    from modules.base import BaseModule
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    records = []
+    with open(dataset, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+
+    min_score = float(current_app.config.get("SLM_MIN_RECALL_SCORE", 0.5))
+
+    def recall(question: str, top_k: int):
+        started = time.time()
+        try:
+            raw = slm.recall(question, limit=max(top_k * 2, 6), profile=user)
+        except Exception:
+            raw = []
+        selected = BaseModule.select_recalled_facts(raw, limit=top_k, min_score=min_score)
+        if no_profile:
+            # The profile block is always injected, so scoring it together with
+            # recall saturates hit@k: every question "hits" the same block.
+            selected = [fact for fact in selected if str(fact.get("kind") or "") != "profile"]
+        return [str(fact.get("content") or fact.get("text") or "") for fact in selected], time.time() - started
+
+    from app.memory_eval import evaluate_memory
+
+    result = evaluate_memory(records, recall, k=k)
+    click.echo(f"questions: {result['questions']}")
+    click.echo(f"hit@{k}:    {result['hit']}")
+    click.echo(f"MRR:       {result['mrr']}")
+    click.echo(f"injected:  {result['avg_facts']} facts per question")
+    click.echo(f"latency:   p50 {result['p50_ms']} ms")
+
+    if out:
+        with open(out, "w", encoding="utf-8") as handle:
+            json.dump({"user": user, "k": k, **result}, handle, ensure_ascii=False, indent=2)
+        click.echo(f"written to {out}")
+
+
 @click.command("rag-lemmatize-chunks")
 @click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
 @click.option("--batch", default=200, show_default=True, help="Rows read per round")

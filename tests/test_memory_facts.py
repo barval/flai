@@ -123,3 +123,16 @@ def test_extraction_template_renders_for_both_languages():
         assert out, lang
         assert '"fact"' in out, lang
         assert "{known_facts}" not in out, lang
+
+
+def test_profile_template_renders_for_both_languages():
+    from app.utils import format_prompt
+
+    for lang in ("ru", "en"):
+        out = format_prompt(
+            "memory_profile.template",
+            {"facts": "- живёт в Твери", "response_language": "Русский"},
+            lang=lang,
+        )
+        assert out, lang
+        assert "Твери" in out, lang

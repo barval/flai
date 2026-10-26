@@ -467,6 +467,8 @@ def create_app():
     app.cli.add_command(cli.vram_plan)
     app.cli.add_command(cli.memory_report)
     app.cli.add_command(cli.memory_purge)
+    app.cli.add_command(cli.memory_profile)
+    app.cli.add_command(cli.memory_eval)
     app.cli.add_command(cli.rag_reindex)
 
     # Additional camera routes

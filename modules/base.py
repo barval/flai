@@ -321,6 +321,34 @@ class BaseModule(TranslationMixin):
         finally:
             _release_summary_guard(session_id)
 
+    @staticmethod
+    def select_recalled_facts(
+        raw_facts: list[dict[str, Any]],
+        limit: int = 7,
+        min_score: float = 0.5,
+    ) -> list[dict[str, Any]]:
+        """Facts worth injecting: the always-useful profile plus scored recalls.
+
+        Measured on the live store, keyword recall returned image-generation
+        prompts at 0.63 for "do I like apples?" — anything below the floor is
+        noise that costs tokens and misleads the model. A ``kind=profile`` fact is
+        the consolidated block about the user and is always worth its place.
+        """
+        profile: list[dict[str, Any]] = []
+        scored: list[dict[str, Any]] = []
+        for fact in raw_facts or []:
+            meta = fact.get("metadata") or {}
+            if meta.get("kind") == "profile":
+                profile.append(fact)
+                continue
+            try:
+                score = float(fact.get("score") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            if score >= min_score:
+                scored.append(fact)
+        return (profile[:1] + scored)[:limit]
+
     def _get_context_for_model(
         self,
         session_id: str,
@@ -364,14 +392,15 @@ class BaseModule(TranslationMixin):
                 # Single recall with doubled limit, then local filter by type
                 raw_facts = slm.recall(
                     current_query,
-                    limit=slm_recall_limit * 2,
+                    limit=max(slm_recall_limit * 2, 6),
                     profile=user_id,
                 )
 
-                session_facts = [f for f in raw_facts if f.get("metadata", {}).get("fact_type") == "session_specific"]
-                general_facts = [f for f in raw_facts if f.get("metadata", {}).get("fact_type") != "session_specific"]
-
-                all_facts = session_facts + general_facts
+                all_facts = self.select_recalled_facts(
+                    raw_facts,
+                    limit=slm_recall_limit,
+                    min_score=float(self.app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
+                )
 
         # Step 3: Build SLM string and measure its real token cost
         slm_facts_str = ""

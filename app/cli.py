@@ -912,6 +912,45 @@ def vram_plan(module):
         click.echo("result:    loads next to the residents, nothing is unloaded")
 
 
+@click.command("memory-report")
+@click.option("--user", required=True, help="Login whose long-term memory is reported")
+@click.option("--query", default="", help="Show what would be injected for this query")
+@click.option("--limit", default=300, show_default=True, help="Facts to inspect")
+@with_appcontext
+def memory_report(user, query, limit):
+    """Show what long-term memory holds for a user and what it would inject."""
+    import collections
+
+    from modules.base import BaseModule
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    kinds: collections.Counter = collections.Counter()
+    for fact in facts:
+        kinds[str((fact.get("metadata") or {}).get("kind") or "unclassified")] += 1
+
+    click.echo(f"facts: {len(facts)} for {user}")
+    for kind, count in kinds.most_common():
+        click.echo(f"  {kind:14s} {count}")
+
+    if query:
+        raw = slm.recall(query, limit=int(current_app.config.get("SLM_RECALL_LIMIT", 7)) * 2, profile=user)
+        selected = BaseModule.select_recalled_facts(
+            raw,
+            limit=int(current_app.config.get("SLM_RECALL_LIMIT", 7)),
+            min_score=float(current_app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
+        )
+        chosen = {id(fact) for fact in selected}
+        click.echo(f"recall for {query!r}: {len(raw)} candidates, {len(selected)} injected")
+        for fact in raw:
+            mark = "+" if id(fact) in chosen else "-"
+            score = fact.get("score")
+            click.echo(f"  {mark} {str(score if score is not None else '-')[:6]:>6}  {str(fact.get('content'))[:90]}")
+
+
 @click.command("rag-lemmatize-chunks")
 @click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
 @click.option("--batch", default=200, show_default=True, help="Rows read per round")

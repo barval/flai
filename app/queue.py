@@ -77,48 +77,6 @@ def _parse_remember_json(llm_response: str) -> list[str]:
         return []
 
 
-def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: str, lang: str) -> None:
-    """Extract facts from Q&A in a background thread (CPU-only, no GPU lock).
-
-    Called by daemon threads after reasoning/chat responses. Catches all
-    exceptions to prevent silent thread crashes.
-    """
-    try:
-        slm = app.modules.get("slm")
-        if not slm or not slm.available:
-            return
-
-        from app.slm_extract import extract_facts_from_exchange
-
-        existing = slm.list_facts(limit=50, profile=user_id)
-        facts = extract_facts_from_exchange(query, response, existing, lang=lang)
-
-        for fact in facts:
-            try:
-                similarity = slm.check_similarity(fact["text"], profile=user_id)
-                if similarity >= 0.85:
-                    continue
-            except Exception:
-                pass
-
-            slm.remember(
-                fact["text"],
-                metadata={
-                    "session_id": session_id,
-                    "fact_type": fact.get("fact_type", "general"),
-                    "category": fact.get("category", "context"),
-                    "source": "extraction",
-                },
-                profile=user_id,
-            )
-
-        if facts:
-            app.logger.info(f"Background fact extraction: {len(facts)} facts for {user_id}")
-
-    except Exception as e:
-        app.logger.warning(f"Background fact extraction failed: {e}")
-
-
 def _publish_document_index_event(app, user_id: str, doc_id: str, index_status: str) -> None:
     """Publish a document_indexed event to the user's SSE stream (module-level)."""
     publisher = get_events_publisher()
@@ -511,6 +469,8 @@ class RedisRequestQueue:
             return "slow"  # Indexing can be slow
         if task_type == "fact_merge_task":
             return "background"  # Background task — runs only in idle, no GPU lock
+        if task_type == "memory_extract_task":
+            return "background"  # LLM extraction — idle only, takes the GPU lock itself
         if task_type == "fact_extraction_task":
             return "slow"  # LLM-based extraction is slow
         # Also check type inside data (for index_document from documents.py)
@@ -716,6 +676,8 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
+        if task_type == "memory_extract_task":
+            return "multimodal"  # LLM fact extraction on the resident model
         if task_type == "camera_task":
             return "multimodal"  # snapshot analysis via the resident multimodal model
         if task_type == "vision_task":
@@ -1081,8 +1043,14 @@ class RedisRequestQueue:
                         if task is None:
                             self.logger.error("Slow worker: failed to deserialize background task")
                             continue
-                        # Background tasks (CPU merge) — no GPU lock needed
-                        self._process_single_task(task, self.background_processing_key)
+                        # Background tasks are CPU-only except the LLM fact
+                        # extraction, which needs the resident model and must
+                        # therefore wait for the GPU like any other call.
+                        if task.get("type") == "memory_extract_task":
+                            with self._gpu_lock:
+                                self._process_single_task(task, self.background_processing_key)
+                        else:
+                            self._process_single_task(task, self.background_processing_key)
                         continue
 
             except Exception as e:
@@ -3016,13 +2984,10 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Extract facts in background thread (CPU-only, no GPU lock)
+        # Memory extraction runs on the background queue, idle only: the resident
+        # model does the reasoning, so the old regex thread is retired.
         if full_response.strip() and len(full_response) > 20:
-            threading.Thread(
-                target=_extract_facts_bg,
-                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
-                daemon=True,
-            ).start()
+            self.add_memory_extract_task(user_id, session_id, query, full_response[:3000], lang)
 
         # The multimodal model is restored by _cleanup_vram_after_task() once the
         # task leaves the worker. Doing it here held the slow-worker slot for the
@@ -5207,13 +5172,10 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Extract facts in background thread (CPU-only, no GPU lock)
+        # Memory extraction runs on the background queue, idle only: the resident
+        # model does the reasoning, so the old regex thread is retired.
         if full_response.strip() and len(full_response) > 20:
-            threading.Thread(
-                target=_extract_facts_bg,
-                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
-                daemon=True,
-            ).start()
+            self.add_memory_extract_task(user_id, session_id, query, full_response[:3000], lang)
 
         return result
 
@@ -5285,6 +5247,117 @@ class RedisRequestQueue:
             lang,
             response_style,
         )
+
+    def add_memory_extract_task(
+        self,
+        user_id: str,
+        session_id: str,
+        query: str,
+        response: str,
+        lang: str = "ru",
+    ) -> str | None:
+        """Queue LLM fact extraction on the background queue (idle only).
+
+        Never counted against the user's queue counters, never published as a
+        chat message: the user sees nothing, the memory simply improves.
+        """
+        if not self.app.config.get("SLM_URL"):
+            return None
+        try:
+            import uuid as _uuid
+
+            task_id = str(_uuid.uuid4())
+            task = {
+                "id": task_id,
+                "user_id": user_id,
+                "session_id": session_id,
+                "type": "memory_extract_task",
+                "user_class": 3,
+                "data": {
+                    "type": "memory_extract_task",
+                    "query": (query or "")[:4000],
+                    "response": (response or "")[:2000],
+                },
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            return task_id
+        except Exception as e:
+            self.logger.debug(f"memory extract enqueue failed: {e}")
+            return None
+
+    def _process_memory_extract(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Extract durable facts about the user with the resident multimodal model.
+
+        Runs on the background queue (idle only) under ``_gpu_lock``: the model is
+        already resident, so the call costs one short generation and never forces
+        a swap. The model's answer is parsed strictly — questions, low-confidence
+        guesses and duplicates never reach the store.
+        """
+        try:
+            data = task.get("data", {})
+            query = str(data.get("query") or "").strip()
+            response = str(data.get("response") or "").strip()
+            user_id = task["user_id"]
+            session_id = task.get("session_id") or ""
+            lang = task.get("lang", "ru")
+
+            slm = self.app.modules.get("slm")
+            if not slm or not slm.available:
+                return {"status": "ok"}
+
+            from app.memory_facts import looks_personal, parse_memory_facts
+
+            if not looks_personal(query):
+                return {"status": "ok", "skipped": "not personal"}
+
+            existing = slm.list_facts(limit=50, profile=user_id)
+            known = "\n".join(f"- {str(f.get('text') or f.get('content') or '')[:200]}" for f in existing[:30])
+            prompt = format_prompt(
+                "memory_extract.template",
+                {
+                    "known_facts": known or "-",
+                    "user_message": query,
+                    "assistant_message": response[:1500],
+                },
+                lang=lang,
+            )
+            if not prompt:
+                return {"status": "ok"}
+
+            raw = self.app.modules["base"].call_llamacpp(
+                [{"role": "user", "content": prompt}],
+                model_type="multimodal",
+                lang=lang,
+                temperature=0.1,
+            )
+            facts = parse_memory_facts(raw if isinstance(raw, str) else "")
+
+            stored = 0
+            for fact in facts:
+                try:
+                    if slm.check_similarity(fact["fact"], profile=user_id) >= 0.85:
+                        continue
+                except Exception:
+                    pass
+                if slm.remember(
+                    fact["fact"],
+                    metadata={
+                        "session_id": session_id,
+                        "kind": fact["kind"],
+                        "confidence": fact["confidence"],
+                        "source": "llm_extract",
+                    },
+                    profile=user_id,
+                ):
+                    stored += 1
+            if stored:
+                self.app.logger.info(f"Memory extraction: {stored} facts for {user_id}")
+            return {"status": "ok", "facts_extracted": stored}
+        except Exception as e:
+            self.app.logger.warning(f"Memory extraction failed: {e}")
+            return {"status": "ok"}
 
     def _process_fact_extraction(self, task: dict[str, Any]) -> dict[str, Any]:
         """Extract facts from Q&A via rule-based patterns (CPU-only, no GPU)."""
@@ -5445,6 +5518,7 @@ class RedisRequestQueue:
             "reindex_all_embeddings",
             "fact_extraction_task",
             "fact_merge_task",
+            "memory_extract_task",
             "api_embedding",
             "api_transcribe",
         ):
@@ -5484,6 +5558,8 @@ class RedisRequestQueue:
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
             return self._process_fact_merge(task)
+        if task_type == "memory_extract_task":
+            return self._process_memory_extract(task)
         if task_type == "api_embedding":
             return self._process_api_embedding_task(task)
         if task_type == "api_transcribe":
@@ -6684,7 +6760,7 @@ class RedisRequestQueue:
 
     # Task types that run in the background and are invisible to the user.
     # They should not trigger ⚡ or ⏳ indicators in the UI.
-    _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task"})
+    _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task", "memory_extract_task"})
 
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
         """Get status of user's requests (processing, queued, completed).

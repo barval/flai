@@ -307,3 +307,42 @@ def test_classify_cpu_huge_context_suggests_a_window_that_fits(monkeypatch):
     assert res["tier"] == "cpu_offload"
     assert 0 < res["ctx_recommended"] < 262144
     assert str(res["ctx_recommended"]) in res["message"]
+
+
+def test_classify_prefers_a_measured_footprint(monkeypatch):
+    """A measured footprint beats the formula: it already includes the buffers."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with (
+        patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-32768ctx": meta}),
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={
+                "model_name": "Test-4700MB-32768ctx.gguf",
+                "context_length": 32768,
+                "measured_vram_mb": 7700,
+            },
+        ),
+    ):
+        res = _classify(monkeypatch, vram=(0, 9050), free_ram=32768, file_mb=4700, blocks=36, ctx=32768)
+
+    # 7 700 > 0.85 × 9 050, while the formula alone (7 598) would have said "good".
+    assert res["tier"] == "cpu_offload"
+    assert res["vram_mb"] == 7700
+
+
+def test_classify_ignores_a_measurement_from_another_window(monkeypatch):
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with (
+        patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-32768ctx": meta}),
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={
+                "model_name": "Test-4700MB-32768ctx.gguf",
+                "context_length": 8192,
+                "measured_vram_mb": 5000,
+            },
+        ),
+    ):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=4700, blocks=36, ctx=32768)
+
+    assert res["vram_mb"] != 5000

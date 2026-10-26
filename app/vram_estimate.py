@@ -369,6 +369,20 @@ def _classify_model_fit(
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])
 
+    # A real measurement of this model at this window already contains the
+    # compute buffers the formula only approximates; it wins when it is current.
+    try:
+        from app.database import get_vram_estimate
+
+        row = get_vram_estimate(module, model_name=model_name) or {}
+        same_model = (row.get("model_name") or "").replace(".gguf", "") == str(model_name).replace(".gguf", "")
+        same_window = int(row.get("context_length") or 0) == int(context_length)
+        candidate = int(row.get("measured_vram_mb") or 0)
+        if same_model and same_window and candidate and (not total_vram or candidate <= total_vram):
+            vram_full_mb = candidate
+    except Exception:
+        pass
+
     # 2. Tier classification
     # On a GPU-less host a model can only be "CPU" (fits in free RAM) or
     # "impossible" — never "good", since there is no VRAM to fit into.

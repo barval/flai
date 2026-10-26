@@ -241,6 +241,59 @@ class ResourceManager:
             logger.debug(f"kv_per_token_for[{model_type}]: {e}")
             return None
 
+    def _resident_modules(self, swap_url: str) -> list[dict[str, Any]]:
+        """Models currently in VRAM, with the footprint and the last request time.
+
+        The footprint is what ``get_vram_needed_mb()`` reports — a measured value
+        when one exists for this model and window, the analytical estimate
+        otherwise, so an unmeasured resident is budgeted conservatively.
+        """
+        import requests
+
+        try:
+            resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=3)
+            items = resp.json().get("running", []) if resp.status_code == 200 else []
+        except Exception as e:
+            logger.debug(f"_resident_modules: {e}")
+            return []
+
+        resident: list[dict[str, Any]] = []
+        for item in items:
+            name = str(item.get("name") or "")
+            if name not in ("reasoning", "multimodal", "embedding", "reranker"):
+                continue
+            resident.append(
+                {
+                    "name": name,
+                    "mb": self.get_vram_needed_mb(name),
+                    "last_used": self._model_last_used.get(name, 0.0),
+                }
+            )
+        return resident
+
+    def _eviction_plan(self, model_type: str, needed_mb: int, loaded: list[dict[str, Any]]) -> list[str]:
+        """Which residents have to go before ``model_type`` can load.
+
+        ``VRAM_CO_RESIDENCY=off`` restores the old all-or-nothing behaviour. In
+        ``auto`` the plan keeps every resident that still leaves room for the new
+        model plus the headroom a long prompt needs; the least recently used ones
+        go first, one at a time.
+        """
+        mode = os.getenv("VRAM_CO_RESIDENCY", "auto").strip().lower()
+        if mode in ("off", "0", "false", "no") or not self.hardware.total_vram_mb:
+            return [entry["name"] for entry in loaded]
+
+        from app.vram_probe import DEFAULT_HEADROOM_MB, plan_unloads
+
+        headroom = int(os.getenv("VRAM_HEADROOM_MB", str(DEFAULT_HEADROOM_MB)))
+        return plan_unloads(
+            loaded,
+            needed_mb=needed_mb,
+            total_mb=self.hardware.total_vram_mb,
+            headroom_mb=headroom,
+            protect={model_type},
+        )
+
     def measured_total_mb(self, model_type: str) -> int | None:
         """Footprint measured for this exact model at this exact window.
 

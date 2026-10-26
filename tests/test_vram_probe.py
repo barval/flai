@@ -207,3 +207,44 @@ def test_parse_proc_status_rss_reads_kib_as_mib():
 
 def test_parse_proc_status_rss_without_the_field_is_zero():
     assert parse_proc_status_rss_mb("Name:\tllama-server\n") == 0
+
+
+def _manager(total_mb=16311):
+    from app.resource_manager import ResourceManager
+
+    rm = ResourceManager()
+    rm.hardware.total_vram_mb = total_mb
+    rm.get_vram_needed_mb = lambda name: {  # type: ignore[method-assign]
+        "multimodal": 7700,
+        "embedding": 1100,
+        "reasoning": 12100,
+    }.get(name, 0)
+    return rm
+
+
+def test_eviction_plan_off_restores_the_old_all_or_nothing_mode(monkeypatch):
+    monkeypatch.setenv("VRAM_CO_RESIDENCY", "off")
+    rm = _manager()
+    loaded = [{"name": "multimodal", "mb": 7700, "last_used": 100.0}]
+
+    assert rm._eviction_plan("reasoning", 12100, loaded) == ["multimodal"]
+
+
+def test_eviction_plan_auto_keeps_a_model_that_still_fits(monkeypatch):
+    monkeypatch.setenv("VRAM_CO_RESIDENCY", "auto")
+    rm = _manager()
+    loaded = [{"name": "multimodal", "mb": 7700, "last_used": 100.0}]
+
+    assert rm._eviction_plan("embedding", 1100, loaded) == []
+
+
+def test_eviction_plan_auto_evicts_when_the_card_is_too_small(monkeypatch):
+    monkeypatch.setenv("VRAM_CO_RESIDENCY", "auto")
+    rm = _manager()
+    loaded = [
+        {"name": "multimodal", "mb": 7700, "last_used": 100.0},
+        {"name": "embedding", "mb": 1100, "last_used": 50.0},
+    ]
+
+    # 7700 + 1100 + 12100 + 1200 headroom > 16311: the older one goes first.
+    assert rm._eviction_plan("reasoning", 12100, loaded) == ["embedding", "multimodal"]

@@ -5342,10 +5342,13 @@ class RedisRequestQueue:
             if not slm or not slm.available:
                 return {"status": "ok"}
 
-            from app.memory_facts import looks_personal, parse_memory_facts
+            from app.memory_facts import detect_language, looks_personal, parse_memory_facts
 
             if not looks_personal(query):
                 return {"status": "ok", "skipped": "not personal"}
+            # The prompt follows the message, not the interface: an English UI
+            # answered "[]" to a Russian personal statement.
+            lang = detect_language(query, fallback=lang)
 
             existing = slm.list_facts(limit=50, profile=user_id)
             known = "\n".join(f"- {str(f.get('text') or f.get('content') or '')[:200]}" for f in existing[:30])
@@ -5366,6 +5369,7 @@ class RedisRequestQueue:
             # interruption is worth). An aborted extraction writes nothing and
             # puts its task back at the head of the background queue.
             chunks: list[str] = []
+            last_check = 0.0
             for chunk in self.app.modules["base"].llamacpp.chat_stream(
                 [{"role": "user", "content": prompt}],
                 model_type="multimodal",
@@ -5376,7 +5380,14 @@ class RedisRequestQueue:
                 chunks.append(chunk)
                 if sum(len(part) for part in chunks) > 4000:
                     break
-                if len(chunks) % 20 == 0 and self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY):
+                # Throttled to twice a second: a Redis round-trip per token would
+                # cost more than the interruption saves, and a short answer is
+                # over before the 20-chunk check would ever run.
+                now = time.monotonic()
+                interrupted = now - last_check > 0.5 and self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY)
+                if now - last_check > 0.5:
+                    last_check = now
+                if interrupted:
                     self.logger.info("Memory extraction interrupted by a user request — re-queued")
                     self.redis.lpush(self.background_queue_key, self._serialize(task))
                     return {"status": "interrupted"}

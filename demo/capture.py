@@ -302,8 +302,8 @@ PHOTO_PROMPT = {
 }
 
 VOICE_TEXT = {
-    "ru": "Подскажи, сколько будет стоить партия из сорока ноутбуков, если один ноутбук стоит пятьдесят четыре тысячи девятьсот рублей.",
-    "en": "Could you tell me how much a batch of forty laptops costs if one laptop is eight hundred and ninety nine pounds?",
+    "ru": "Подскажи, что поставить на стол для осенней ярмарки в школе: нужно угощение для младших классов.",
+    "en": "What should we put on the table for the school autumn fair? We need a snack for the younger classes.",
 }
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -619,6 +619,11 @@ def capture_language(
             task_id = result.get("task_id", "")
             images = scenario_images(chat, session_id, task_id)
             defects = 0
+            if not images and scenario.get("kind") == "image":
+                # The router occasionally answers an image request with text;
+                # without a picture the scenario has nothing to show.
+                print(f"[{lang}] no picture produced", flush=True)
+                defects += 1
             for image in images:
                 found, answer = check_image_text(chat, image, lang)
                 verdict = "TEXT" if found else "clean"

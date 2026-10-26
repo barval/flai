@@ -43,7 +43,7 @@
     {
       "kind": "image",
       "title": "Image",
-      "prompt": "Draw an autumn park: maple leaves, a bench and an umbrella. No text, no captions, no letters."
+      "prompt": "Draw a picture of a golden autumn park: yellow and orange maple leaves, a wooden bench and an umbrella. No text, no captions, no letters."
     },
     {
       "kind": "video",
@@ -92,7 +92,7 @@
     {
       "kind": "text",
       "title": "Photo edit",
-      "prompt": "Change the background of this image to a sunset sky, keep the photo itself.",
+      "prompt": "Replace only the background with a sunset sky. Keep everything else unchanged: the same plate of apples and grapes, the same wooden table, the same angle and lighting. Photorealistic, like a real photograph, not a drawing or a stylised picture.",
       "attach": "generated-image"
     },
     {

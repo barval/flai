@@ -2,7 +2,7 @@
 
 Audit date: **2026-10-26**. This document records what is out of date in the shipped stack, which
 updates carry security fixes, which upstream features are worth adopting, and how the upgrades
-should be sequenced. It is an input to the `features/v12.7-dependency-updates` branch, not a
+should be sequenced. It is an input to the `features/v12.8-dependency-updates` branch, not a
 commitment to update everything at once.
 
 ## Purpose
@@ -150,23 +150,26 @@ the roadmap are therefore close; LTX-Video and the deployment layer are the real
 
 ## Proposed update sequence
 
-**Phase 0 — baseline (no code changes).** Back up PostgreSQL and the Qdrant volume. Record a RAG
+The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**
+takes Phase 2 and Phase 3, and **v13.0** takes Phase 4.
+
+**Phase 0 — baseline (no code changes, v12.8).** Back up PostgreSQL and the Qdrant volume. Record a RAG
 evaluation baseline, current throughput figures and a model dry-load log. Add `pip-audit` and a
 container scanner to CI.
 
-**Phase 1 — security.** Pillow 13, python-dotenv 1.2.4, urllib3 2.8, Werkzeug 3.1.9, Redis 8.4.8,
+**Phase 1 — security (v12.8).** Pillow 13, python-dotenv 1.2.4, urllib3 2.8, Werkzeug 3.1.9, Redis 8.4.8,
 PostgreSQL 18.6, Crawl4AI 0.9.5. Add a lock file and pin the floating image tags. Gate: image
 upload and resize, PDF page render, document import, search and crawl, a full queue run.
 
-**Phase 2 — runtime.** Qdrant server and client 1.20.0, gunicorn 26.2.0, gevent 26.9.0,
+**Phase 2 — runtime (v12.9).** Qdrant server and client 1.20.0, gunicorn 26.2.0, gevent 26.9.0,
 trafilatura 2.3.1, python-docx 1.2.0, psycopg2 2.9.13. Then llama-swap v267 (or v260 while the v267
 images are missing) with llama.cpp b11898. Gate: reasoning with the thinking budget, MTP draft,
 multimodal, tool calls, tasks, `/v1` API, RAG evaluation against the Phase 0 baseline.
 
-**Phase 3 — capabilities.** Benchmark Qdrant BM25 against the PostgreSQL hybrid; try ngram
+**Phase 3 — capabilities (v12.9).** Benchmark Qdrant BM25 against the PostgreSQL hybrid; try ngram
 speculation and `--cache-reuse`; wire `--metrics`; evaluate `--reasoning-budget-message`.
 
-**Phase 4 — platforms.** Compose profiles and `deploy.sh` detection for AMD/Intel, VRAM accounting
+**Phase 4 — platforms (v13.0).** Compose profiles and `deploy.sh` detection for AMD/Intel, VRAM accounting
 for non-NVIDIA GPUs, SD Vulkan, LTX ROCm. macOS stays a separate research task (native install).
 
 ## Risks

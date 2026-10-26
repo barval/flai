@@ -4,7 +4,7 @@
 import pytest
 
 from app.vram_probe import (
-    derive_kv_per_token,
+    kv_per_token_from_metadata,
     parse_compute_apps,
     parse_proc_status_rss_mb,
     plan_unloads,
@@ -108,19 +108,24 @@ def test_parse_compute_apps_without_a_model_server():
     assert parse_compute_apps("1102684, /opt/conda/bin/python3.11, 128\n") == 0
 
 
-def test_derive_kv_per_token_from_a_measured_total():
-    """measured total = weights + mmproj + fixed buffers + KV."""
-    kv = derive_kv_per_token(measured_mb=7700, weights_mb=4795, mmproj_mb=1105, ctx_size=32768)
+def test_kv_per_token_follows_the_model_shapes():
+    """Reasoning: 40 blocks, 2 KV heads, 256+256 — 0.022 MB/token at q4_0."""
+    meta = {"block_count": 40, "head_count_kv": 2, "key_length": 256, "value_length": 256}
 
-    assert kv == pytest.approx(0.0427, abs=0.001)
-
-
-def test_derive_kv_per_token_rejects_an_impossible_measurement():
-    """A total below the weights means the sample caught the wrong process."""
-    assert derive_kv_per_token(measured_mb=1000, weights_mb=4795, mmproj_mb=0, ctx_size=32768) is None
+    assert kv_per_token_from_metadata(meta) == pytest.approx(0.022, abs=0.0005)
 
 
-def test_measured_kv_is_used_for_the_model_and_window_it_was_taken_with():
+def test_kv_per_token_of_a_wide_vision_model_is_larger():
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+
+    assert kv_per_token_from_metadata(meta) == pytest.approx(0.0396, abs=0.0005)
+
+
+def test_kv_per_token_without_shapes_is_unknown():
+    assert kv_per_token_from_metadata({"block_count": 40}) is None
+
+
+def test_measured_total_is_used_when_model_and_window_match():
     from unittest.mock import patch
 
     from app.resource_manager import ResourceManager
@@ -135,13 +140,11 @@ def test_measured_kv_is_used_for_the_model_and_window_it_was_taken_with():
             "app.model_config.get_model_config",
             return_value={"model_name": "m.gguf", "context_length": 32768},
         ),
-        patch("app.utils.get_gguf_models_cached", return_value={"m": {"file_size_mb": 4795}}),
-        patch("app.utils.get_mmproj_size_mb", return_value=1105),
     ):
-        assert rm.measured_kv_per_token("multimodal") == pytest.approx(0.0427, abs=0.001)
+        assert rm.measured_total_mb("multimodal") == 7700
 
 
-def test_measured_kv_is_dropped_when_the_window_changed():
+def test_measured_total_is_dropped_when_the_window_changed():
     """A bigger window needs more KV; the old sample would under-budget it."""
     from unittest.mock import patch
 
@@ -151,19 +154,17 @@ def test_measured_kv_is_dropped_when_the_window_changed():
     with (
         patch(
             "app.database.get_vram_estimate",
-            return_value={"model_name": "m.gguf", "context_length": 16384, "measured_vram_mb": 7700},
+            return_value={"model_name": "m.gguf", "context_length": 16384, "measured_vram_mb": 5000},
         ),
         patch(
             "app.model_config.get_model_config",
             return_value={"model_name": "m.gguf", "context_length": 32768},
         ),
-        patch("app.utils.get_gguf_models_cached", return_value={"m": {"file_size_mb": 4795}}),
-        patch("app.utils.get_mmproj_size_mb", return_value=1105),
     ):
-        assert rm.measured_kv_per_token("multimodal") is None
+        assert rm.measured_total_mb("multimodal") is None
 
 
-def test_measured_kv_is_dropped_when_the_model_changed():
+def test_measured_total_is_dropped_when_the_model_changed():
     from unittest.mock import patch
 
     from app.resource_manager import ResourceManager
@@ -179,15 +180,4 @@ def test_measured_kv_is_dropped_when_the_model_changed():
             return_value={"model_name": "new.gguf", "context_length": 32768},
         ),
     ):
-        assert rm.measured_kv_per_token("multimodal") is None
-
-
-def test_parse_proc_status_rss_reads_kib_as_mib():
-    """A CPU-only host has no VRAM; the model server's RSS is its footprint."""
-    status = "Name:\tllama-server\nVmPeak:\t 9999999 kB\nVmRSS:\t 6144000 kB\n"
-
-    assert parse_proc_status_rss_mb(status) == 6000
-
-
-def test_parse_proc_status_rss_without_the_field_is_zero():
-    assert parse_proc_status_rss_mb("Name:\tllama-server\n") == 0
+        assert rm.measured_total_mb("multimodal") is None

@@ -211,15 +211,12 @@ def _autofit_context(
         except Exception:
             mmproj_mb = 0
 
-    # A real measurement of this model at its window wins over the module
-    # constant — on a GPU host it is VRAM, on a CPU-only host the same number is
-    # the model server's RSS (weights + KV + buffers live in RAM there).
-    try:
-        from app.resource_manager import get_resource_manager
+    # KV per token from the model's own shapes (q4_0), not a per-module constant:
+    # the reasoning model needs 0.022 MB/token while the multimodal one needs
+    # 0.0396, and a CPU-only host pays the same number out of RAM.
+    from app.vram_probe import kv_per_token_from_metadata
 
-        kv_per_token = get_resource_manager().measured_kv_per_token(module) or KV_PER_TOKEN_MB.get(module, 0.08)
-    except Exception:
-        kv_per_token = KV_PER_TOKEN_MB.get(module, 0.08)
+    kv_per_token = kv_per_token_from_metadata(meta) or KV_PER_TOKEN_MB.get(module, 0.08)
     vram_budget = (total_vram_mb or 0) * 0.85
     ram_budget = (total_ram_mb * 0.70) - 2048
 

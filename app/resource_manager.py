@@ -221,45 +221,54 @@ class ResourceManager:
 
     # ── Adaptive config computation ──
 
-    def measured_kv_per_token(self, model_type: str) -> float | None:
-        """KV cost per token implied by a real measurement of this model.
+    def kv_per_token_for(self, model_type: str) -> float | None:
+        """KV cost per token of this model, from its own GGUF shapes (q4_0).
 
-        A measurement is only valid for the model and the window it was taken
-        with: switching either in the admin panel invalidates it and the
-        analytical constant takes over again. ``record_measured_vram()`` refills
-        the row after the next successful load, so any model on any card
-        converges without a manual step.
+        ``blocks * kv_heads * (key_len + value_len) * bytes`` — the arithmetic
+        llama.cpp itself uses, so it follows whatever model the admin picks.
+        None when the metadata cache has no shapes for it.
         """
-        now = time.time()
-        cached = self._measured_kv_cache.get(model_type)
-        if cached and now - cached[0] < 60:
-            return cached[1]
-
-        value: float | None = None
         try:
-            from app.database import get_vram_estimate
             from app.model_config import get_model_config
-            from app.utils import get_gguf_models_cached, get_mmproj_size_mb
-            from app.vram_probe import derive_kv_per_token
+            from app.utils import get_gguf_models_cached
+            from app.vram_probe import kv_per_token_from_metadata
 
             config = get_model_config(model_type) or {}
             model_name = config.get("model_name") or ""
+            meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+            return kv_per_token_from_metadata(meta)
+        except Exception as e:
+            logger.debug(f"kv_per_token_for[{model_type}]: {e}")
+            return None
+
+    def measured_total_mb(self, model_type: str) -> int | None:
+        """Footprint measured for this exact model at this exact window.
+
+        Stored by ``record_measured_vram()`` after a real load. A row from a
+        different model, a different window or a card that no longer exists is
+        ignored — a stale number is worse than the analytical estimate.
+        """
+        try:
+            from app.database import get_vram_estimate
+            from app.model_config import get_model_config
+
+            config = get_model_config(model_type) or {}
+            model_name = (config.get("model_name") or "").replace(".gguf", "")
             ctx_size = int(config.get("context_length") or 0)
             row = get_vram_estimate(model_type) or {}
-            row_name = str(row.get("model_name") or "")
-            same_model = not row_name or row_name.replace(".gguf", "") == model_name.replace(".gguf", "")
-            same_window = int(row.get("context_length") or 0) == ctx_size
             measured = int(row.get("measured_vram_mb") or 0)
-            if measured and same_model and same_window and ctx_size:
-                info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
-                weights_mb = int(info.get("file_size_mb") or 0)
-                mmproj_mb = get_mmproj_size_mb(model_name) if model_type == "multimodal" else 0
-                value = derive_kv_per_token(measured, weights_mb, mmproj_mb, ctx_size)
+            if not measured or not ctx_size:
+                return None
+            if (row.get("model_name") or "").replace(".gguf", "") != model_name:
+                return None
+            if int(row.get("context_length") or 0) != ctx_size:
+                return None
+            if self.hardware.total_vram_mb and measured > self.hardware.total_vram_mb:
+                return None
+            return measured
         except Exception as e:
-            logger.debug(f"measured_kv_per_token[{model_type}]: {e}")
-
-        self._measured_kv_cache[model_type] = (now, value)
-        return value
+            logger.debug(f"measured_total_mb[{model_type}]: {e}")
+            return None
 
     def compute_llamacpp_config(self, model_type: str) -> dict[str, Any]:
         """Compute optimal llama-server parameters for given model type.
@@ -416,7 +425,7 @@ class ResourceManager:
                     * (0.95 if expert_count > 0 else 1.0)
                     * (1.15 if supports_mtp else 1.0)
                 )
-                kv_per_token = self.measured_kv_per_token(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
+                kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
                 est_kv = ctx_size * kv_per_token  # matches get_vram_needed_mb
                 est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
                 est_total = est_weights + est_kv + est_overhead + mmproj_mb
@@ -459,6 +468,10 @@ class ResourceManager:
         """
         from app.model_config import get_model_config
         from app.utils import get_gguf_models_cached
+
+        measured = self.measured_total_mb(model_type)
+        if measured and ctx_size is None:
+            return measured
 
         config = get_model_config(model_type)
         model_name = config.get("model_name", "") if config else ""
@@ -504,7 +517,7 @@ class ResourceManager:
 
         # KV cache estimate (q4_0): the module constant until a real measurement
         # of this model at this window exists, then the measured value.
-        kv_per_token = self.measured_kv_per_token(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
+        kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))

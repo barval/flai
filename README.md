@@ -28,7 +28,9 @@
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
 - [🆕 What's New in v12.7](#-whats-new-in-v127)
+- [🖼 Demo](#-demo)
 - [✨ Features](#-features)
+- [🔎 Working with document search](#-working-with-document-search)
 - [🏗 Architecture Overview](#-architecture-overview)
 - [🧭 Types of Requests & Search Mechanisms](#-types-of-requests--search-mechanisms)
 - [📋 System Requirements](#-system-requirements)
@@ -82,6 +84,17 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 - **A phone-first admin panel** — Users, Settings, Cameras, Backups, Model Hub results and Downloaded models render as cards that keep every desktop column, instead of tables that turned the page sideways.
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
+
+## 🖼 Demo
+
+Four self-contained pages show the interface without installing anything — download a file
+and open it in a browser; no server and no network are needed:
+
+- [Chat, English](docs/demo/chat-en.html) · [Chat, Russian](docs/demo/chat-ru.html)
+- [Admin panel, English](docs/demo/admin-en.html) · [Admin panel, Russian](docs/demo/admin-ru.html)
+
+Everything is fictional except the interface and the data of the machine the demo was built
+on; every button answers with a notice instead of doing anything. → [DEMO.md](docs/DEMO.md)
 
 ## ✨ Features
 

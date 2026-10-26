@@ -93,6 +93,16 @@ git push origin vX.Y        # gitea — authoritative remote for the version bra
 # merge into master (gitea) and main (github) only when promoting the release
 ```
 
+### 7. Rebuild the interface demo:
+```bash
+# after the version bump and the last interface change, and after a database backup
+python -m demo.capture --lang all --base-url http://localhost:5000 --password '<demo password>' --force
+python -m demo.build
+pytest tests/test_demo_pages.py -q   # fails when a committed page is stale
+```
+Commit `demo/snapshot`, `demo/media` and `docs/demo` together with the release. Details →
+[DEMO.md](DEMO.md).
+
 ## README Update Guide
 When updating README.md and README-ru.md, follow the rules in `docs/LOCALIZATION.md`.
 

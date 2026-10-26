@@ -93,6 +93,16 @@ git push origin vX.Y        # gitea — authoritative remote for the version bra
 # merge into master (gitea) and main (github) only when promoting the release
 ```
 
+### 7. Пересоберите демонстрацию интерфейса:
+```bash
+# после повышения версии и последней правки интерфейса, и после резервной копии базы
+python -m demo.capture --lang all --base-url http://localhost:5000 --password '<пароль демо-аккаунтов>' --force
+python -m demo.build
+pytest tests/test_demo_pages.py -q   # падает, если закоммиченная страница устарела
+```
+Коммитьте `demo/snapshot`, `demo/media` и `docs/demo` вместе с релизом. Подробности →
+[DEMO-ru.md](DEMO-ru.md).
+
 ## Руководство по обновлению README
 При обновлении README.md и README-ru.md следуйте правилам из [LOCALIZATION-ru.md](LOCALIZATION-ru.md).
 

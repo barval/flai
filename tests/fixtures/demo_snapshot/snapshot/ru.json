@@ -1,0 +1,117 @@
+{
+  "lang": "ru",
+  "version": "12.7",
+  "credentials": {
+    "user": {
+      "login": "user",
+      "password": "user"
+    },
+    "admin": {
+      "login": "admin",
+      "password": "admin"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/sessions",
+      "status": 200,
+      "body": [
+        {
+          "id": "s1",
+          "title": "Demo session",
+          "updated_at": "2026-10-20T10:00:00",
+          "message_count": 2,
+          "response_style": "neutral"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/documents",
+      "status": 200,
+      "body": {
+        "folders": [],
+        "documents": [
+          {
+            "id": "d1",
+            "filename": "doc.pdf",
+            "index_status": "indexed"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks",
+      "status": 200,
+      "body": {
+        "tasks": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api/model_configs",
+      "status": 200,
+      "body": {
+        "embedding": {
+          "model_name": "bge-m3"
+        },
+        "reasoning": {
+          "context_length": 24576
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api/stats",
+      "status": 200,
+      "body": {
+        "chat_db_size": 1,
+        "user_db_size": 2,
+        "files_db_size": 3,
+        "documents_db_size": 4
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api/settings",
+      "status": 200,
+      "body": {
+        "groups": [
+          {
+            "id": "rag",
+            "label": "RAG",
+            "fields": [
+              {
+                "key": "RAG_CHUNK_SIZE",
+                "value": 500
+              },
+              {
+                "key": "RAG_CHUNK_OVERLAP",
+                "value": 50
+              },
+              {
+                "key": "RAG_CHUNK_STRATEGY",
+                "value": "structured"
+              },
+              {
+                "key": "RAG_TOP_K",
+                "value": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api/cameras",
+      "status": 200,
+      "body": []
+    }
+  ],
+  "assets": {
+    "/api/files/px.png": "media/ru/px.png"
+  }
+}

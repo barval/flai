@@ -1,0 +1,110 @@
+{
+  "lang": "en",
+  "documents": [
+    {
+      "source": "pdfs/en/quote-a.pdf",
+      "name": "Quote A — Northfield IT Supplies Ltd.pdf"
+    },
+    {
+      "source": "pdfs/en/quote-b.pdf",
+      "name": "Quote B — Brightline Office Systems Ltd.pdf"
+    },
+    {
+      "source": "pdfs/en/policy.pdf",
+      "name": "Procurement Policy.pdf"
+    }
+  ],
+  "scenarios": [
+    {
+      "kind": "text",
+      "title": "Capabilities",
+      "prompt": "What can you do?"
+    },
+    {
+      "kind": "text",
+      "title": "Weather",
+      "prompt": "What is the weather in London this weekend?"
+    },
+    {
+      "kind": "text",
+      "title": "Quotes",
+      "prompt": "Compare the two quotes in my documents for 20 school laptops: which is better value and why?"
+    },
+    {
+      "kind": "rlm",
+      "title": "Deep analysis",
+      "prompt": "Analyse both quotes and the procurement policy, build a short comparison table (at most six rows) and give a recommendation in two or three sentences.",
+      "documents": [
+        "quote-a",
+        "quote-b",
+        "policy"
+      ]
+    },
+    {
+      "kind": "image",
+      "title": "Image",
+      "prompt": "Draw a picture of a golden autumn park: yellow and orange maple leaves, a wooden bench and an umbrella. No text, no captions, no letters."
+    },
+    {
+      "kind": "video",
+      "title": "Video",
+      "prompt": "Short video: rain running down a window."
+    },
+    {
+      "kind": "text",
+      "title": "Photo",
+      "prompt": "What can I cook from the food in the photo? Suggest two simple dishes.",
+      "attach": "generated-image"
+    },
+    {
+      "kind": "task",
+      "title": "Timetable",
+      "prompt": "Draft a weekly timetable for Year 7: five school days, six lessons a day, no subject twice in one day."
+    },
+    {
+      "kind": "text",
+      "title": "Rate",
+      "prompt": "Find the current GBP to EUR rate and work out what a batch of 40 laptops at 899 pounds each costs in euros. Answer in pounds with plain numbers, without formulas."
+    },
+    {
+      "kind": "text",
+      "title": "Voice",
+      "prompt": "Transcribe this voice message and answer the question in it.",
+      "attach": "tts",
+      "voice": true
+    },
+    {
+      "kind": "task",
+      "title": "Album cover",
+      "prompt": "Draw an illustration for the school yearbook: the school yard in autumn and maple leaves. No text, no captions."
+    },
+    {
+      "kind": "task",
+      "title": "Video task",
+      "prompt": "Make a short video: raindrops on a window.",
+      "interrupt": true
+    },
+    {
+      "kind": "task",
+      "title": "Clarification",
+      "prompt": "Make something nice for the school."
+    },
+    {
+      "kind": "text",
+      "title": "Photo edit",
+      "prompt": "Replace only the background with a sunset sky. Keep everything else unchanged: the same plate of apples and grapes, the same wooden table, the same angle and lighting. Photorealistic, like a real photograph, not a drawing or a stylised picture.",
+      "attach": "generated-image"
+    },
+    {
+      "kind": "task",
+      "title": "Fair plan",
+      "prompt": "Draft a five-step plan for the school autumn fair and carry it out in order: schedule, decorations, mailing, equipment, report."
+    },
+    {
+      "kind": "task",
+      "title": "Document analysis",
+      "prompt": "Analyse both quotes and the procurement policy: name the main risk and give one justified recommendation. Keep it to five sentences and a table of at most six rows.",
+      "deep_analysis": true
+    }
+  ]
+}

@@ -906,6 +906,12 @@ class TestStepValidationAndFinalResults:
         assert "final_items" in CHAT_TASKS
         assert "final_failures" in CHAT_TASKS
 
+    def test_final_results_render_a_video_as_a_player(self):
+        # A task can deliver a video; an <img> pointed at an mp4 is a broken card.
+        block = CHAT_TASKS.split("function appendFinalResults(div, m) {", 1)[1].split("\nfunction ", 1)[0]
+        assert "startsWith('video/')" in block
+        assert "createElement('video')" in block
+
     def test_step_message_serializes_the_validation_state(self):
         for field in (
             '"attempts":',

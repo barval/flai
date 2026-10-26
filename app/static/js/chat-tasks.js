@@ -730,14 +730,25 @@ function appendFinalResults(div, m) {
             mediaItems.forEach(function(it, i) {
                 const card = document.createElement('div');
                 card.className = 'task-final-card';
-                const img = document.createElement('img');
-                img.src = '/api/files/' + it.file_path;
-                img.className = 'attached-image';
-                img.loading = 'lazy';
-                img.alt = it.file_name || t('image');
-                img.title = t('click_to_enlarge');
-                img.onclick = function() { openImageModal(img.src, it.file_name || t('image')); };
-                card.appendChild(img);
+                const fileUrl = '/api/files/' + it.file_path;
+                let preview;
+                if (String(it.file_type || '').startsWith('video/')) {
+                    // A task can deliver a video: an <img> pointed at an mp4 is a broken card.
+                    preview = document.createElement('video');
+                    preview.src = fileUrl;
+                    preview.className = 'attached-image';
+                    preview.controls = true;
+                    preview.preload = 'metadata';
+                } else {
+                    preview = document.createElement('img');
+                    preview.src = fileUrl;
+                    preview.className = 'attached-image';
+                    preview.loading = 'lazy';
+                    preview.alt = it.file_name || t('image');
+                    preview.title = t('click_to_enlarge');
+                    preview.onclick = function() { openImageModal(preview.src, it.file_name || t('image')); };
+                }
+                card.appendChild(preview);
                 const cap = document.createElement('div');
                 cap.className = 'task-final-caption';
                 const capText = document.createElement('span');

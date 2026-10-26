@@ -3,7 +3,13 @@
 
 import pytest
 
-from app.vram_probe import plan_unloads, summarize_probe
+from app.vram_probe import (
+    derive_kv_per_token,
+    parse_compute_apps,
+    parse_proc_status_rss_mb,
+    plan_unloads,
+    summarize_probe,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -89,3 +95,99 @@ def test_plan_unloads_keeps_the_protected_model_while_possible():
 
 def test_plan_unloads_with_nothing_loaded_is_a_no_op():
     assert plan_unloads([], needed_mb=13736, total_mb=16311, headroom_mb=1200) == []
+
+
+def test_parse_compute_apps_sums_only_the_model_server():
+    """A stray CUDA context on the card is not part of the model's footprint."""
+    csv = "1102684, /opt/conda/bin/python3.11, 128\n1530235, llama-server, 7694\n"
+
+    assert parse_compute_apps(csv) == 7694
+
+
+def test_parse_compute_apps_without_a_model_server():
+    assert parse_compute_apps("1102684, /opt/conda/bin/python3.11, 128\n") == 0
+
+
+def test_derive_kv_per_token_from_a_measured_total():
+    """measured total = weights + mmproj + fixed buffers + KV."""
+    kv = derive_kv_per_token(measured_mb=7700, weights_mb=4795, mmproj_mb=1105, ctx_size=32768)
+
+    assert kv == pytest.approx(0.0427, abs=0.001)
+
+
+def test_derive_kv_per_token_rejects_an_impossible_measurement():
+    """A total below the weights means the sample caught the wrong process."""
+    assert derive_kv_per_token(measured_mb=1000, weights_mb=4795, mmproj_mb=0, ctx_size=32768) is None
+
+
+def test_measured_kv_is_used_for_the_model_and_window_it_was_taken_with():
+    from unittest.mock import patch
+
+    from app.resource_manager import ResourceManager
+
+    rm = ResourceManager()
+    with (
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={"model_name": "m.gguf", "context_length": 32768, "measured_vram_mb": 7700},
+        ),
+        patch(
+            "app.model_config.get_model_config",
+            return_value={"model_name": "m.gguf", "context_length": 32768},
+        ),
+        patch("app.utils.get_gguf_models_cached", return_value={"m": {"file_size_mb": 4795}}),
+        patch("app.utils.get_mmproj_size_mb", return_value=1105),
+    ):
+        assert rm.measured_kv_per_token("multimodal") == pytest.approx(0.0427, abs=0.001)
+
+
+def test_measured_kv_is_dropped_when_the_window_changed():
+    """A bigger window needs more KV; the old sample would under-budget it."""
+    from unittest.mock import patch
+
+    from app.resource_manager import ResourceManager
+
+    rm = ResourceManager()
+    with (
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={"model_name": "m.gguf", "context_length": 16384, "measured_vram_mb": 7700},
+        ),
+        patch(
+            "app.model_config.get_model_config",
+            return_value={"model_name": "m.gguf", "context_length": 32768},
+        ),
+        patch("app.utils.get_gguf_models_cached", return_value={"m": {"file_size_mb": 4795}}),
+        patch("app.utils.get_mmproj_size_mb", return_value=1105),
+    ):
+        assert rm.measured_kv_per_token("multimodal") is None
+
+
+def test_measured_kv_is_dropped_when_the_model_changed():
+    from unittest.mock import patch
+
+    from app.resource_manager import ResourceManager
+
+    rm = ResourceManager()
+    with (
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={"model_name": "old.gguf", "context_length": 32768, "measured_vram_mb": 7700},
+        ),
+        patch(
+            "app.model_config.get_model_config",
+            return_value={"model_name": "new.gguf", "context_length": 32768},
+        ),
+    ):
+        assert rm.measured_kv_per_token("multimodal") is None
+
+
+def test_parse_proc_status_rss_reads_kib_as_mib():
+    """A CPU-only host has no VRAM; the model server's RSS is its footprint."""
+    status = "Name:\tllama-server\nVmPeak:\t 9999999 kB\nVmRSS:\t 6144000 kB\n"
+
+    assert parse_proc_status_rss_mb(status) == 6000
+
+
+def test_parse_proc_status_rss_without_the_field_is_zero():
+    assert parse_proc_status_rss_mb("Name:\tllama-server\n") == 0

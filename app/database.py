@@ -211,7 +211,15 @@ def _autofit_context(
         except Exception:
             mmproj_mb = 0
 
-    kv_per_token = KV_PER_TOKEN_MB.get(module, 0.08)
+    # A real measurement of this model at its window wins over the module
+    # constant — on a GPU host it is VRAM, on a CPU-only host the same number is
+    # the model server's RSS (weights + KV + buffers live in RAM there).
+    try:
+        from app.resource_manager import get_resource_manager
+
+        kv_per_token = get_resource_manager().measured_kv_per_token(module) or KV_PER_TOKEN_MB.get(module, 0.08)
+    except Exception:
+        kv_per_token = KV_PER_TOKEN_MB.get(module, 0.08)
     vram_budget = (total_vram_mb or 0) * 0.85
     ram_budget = (total_ram_mb * 0.70) - 2048
 

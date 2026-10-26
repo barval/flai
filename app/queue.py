@@ -788,6 +788,20 @@ class RedisRequestQueue:
                 module = self.app.modules.get(module_name)
                 if module and hasattr(module, "llamacpp"):
                     module.llamacpp.reset_active_model()
+            # Calibrate the module's VRAM footprint from the model that is still
+            # resident: measured numbers are what the next co-residency decision
+            # uses, and a new model on a new card converges without a manual step.
+            module = self._get_model_for_task(task)
+            if module in ("reasoning", "multimodal", "embedding"):
+                try:
+                    from app.vram_probe import record_measured_vram
+
+                    record_measured_vram(
+                        module,
+                        os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/"),
+                    )
+                except Exception as e:
+                    self.logger.debug(f"VRAM calibration skipped: {e}")
             # Preload multimodal model in background so the next router call is instant
             self._preload_chat_model_background()
         except Exception as e:

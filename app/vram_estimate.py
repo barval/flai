@@ -236,6 +236,31 @@ def _get_llama_swap_running_ram_mb() -> int:
 
 
 # Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
+def _largest_fitting_ctx(
+    vram_budget_mb: float,
+    model_vram_mb: float,
+    compute_mb: float,
+    mmproj_mb: float,
+    kv_per_token: float,
+    floor: int = 2048,
+    step: int = 1024,
+) -> int | None:
+    """Largest context window at which the model still fits fully on the GPU.
+
+    KV cache grows linearly with the window and cannot be offloaded layer by
+    layer the way weights can, so an oversized window is its own failure mode:
+    the model fits, the window does not. Returns None when even ``floor`` does
+    not fit, or when the model itself already exceeds the budget.
+    """
+    if kv_per_token <= 0:
+        return None
+    room = vram_budget_mb - model_vram_mb - compute_mb - mmproj_mb
+    if room < floor * kv_per_token:
+        return None
+    largest = int(room / kv_per_token / step) * step
+    return largest if largest >= floor else None
+
+
 TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
 TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
 
@@ -348,8 +373,31 @@ def _classify_model_fit(
     # On a GPU-less host a model can only be "CPU" (fits in free RAM) or
     # "impossible" — never "good", since there is no VRAM to fit into.
     if not has_gpu:
-        needed = int(file_mb + kv_cache_mb)
+        # The whole model lives in RAM: weights + KV cache + compute buffers.
+        needed = int(file_mb + kv_cache_mb + 400)
         ram_budget = max(0, free_ram_mb - TIER_RAM_HEADROOM_MB)
+        kv_per_token = (kv_cache_mb / context_length) if context_length else 0
+        ctx_fit = _largest_fitting_ctx(ram_budget, file_mb, 400, mmproj_mb, float(kv_per_token))
+        if ctx_fit is not None and ctx_fit < int(context_length) and needed > ram_budget:
+            return {
+                "tier": "cpu_offload",
+                "can_save": True,
+                "ngl_recommended": 0,
+                "ngl_total": ngl_total,
+                "vram_mb": vram_full_mb,
+                "file_mb": round(file_mb, 1),
+                "kv_cache_mb": kv_cache_mb,
+                "total_vram_mb": 0,
+                "system_ram_mb": total_ram,
+                "free_ram_mb": free_ram_mb,
+                "platform": "cpu",
+                "arch_max_ctx": arch_max_ctx,
+                "ctx_recommended": ctx_fit,
+                "message": _(
+                    "⚠ Fits only with a smaller context: {fit} instead of {requested} "
+                    "({kv} MB of KV cache at the requested window)."
+                ).format(fit=ctx_fit, requested=int(context_length), kv=kv_cache_mb),
+            }
         if needed <= ram_budget:
             tier = "cpu_offload"
             ngl_recommended = 0
@@ -389,6 +437,38 @@ def _classify_model_fit(
         message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=vram_full_mb, total=total_vram)
         can_save = True
     else:
+        # An oversized window is its own failure mode: KV cannot be offloaded
+        # layer by layer, so check whether a smaller window makes the model fit
+        # fully before falling back to a partial CPU offload of the weights.
+        kv_per_token = (kv_cache_mb / context_length) if context_length else 0
+        ctx_fit = _largest_fitting_ctx(
+            vram_budget, est["model_vram_mb"], 400, mmproj_mb, float(kv_per_token)
+        )
+        if ctx_fit is not None and ctx_fit < int(context_length):
+            tier = "cpu_offload"
+            ngl_recommended = ngl_total
+            can_save = True
+            message = _(
+                "⚠ Fits only with a smaller context: {fit} instead of {requested} "
+                "({kv} MB of KV cache at the requested window)."
+            ).format(fit=ctx_fit, requested=int(context_length), kv=kv_cache_mb)
+            return {
+                "tier": tier,
+                "can_save": can_save,
+                "ngl_recommended": ngl_recommended,
+                "ngl_total": ngl_total,
+                "vram_mb": vram_full_mb,
+                "file_mb": round(file_mb, 1),
+                "kv_cache_mb": kv_cache_mb,
+                "total_vram_mb": total_vram,
+                "system_ram_mb": total_ram,
+                "free_ram_mb": free_ram_mb,
+                "platform": "gpu",
+                "arch_max_ctx": arch_max_ctx,
+                "ctx_recommended": ctx_fit,
+                "message": message,
+            }
+
         # Try to find the largest ngl where both VRAM and RAM fit.
         # weights_on_gpu = file × (ngl/ngl_total)
         # weights_on_ram = file × (1 - ngl/ngl_total) = file - weights_on_gpu

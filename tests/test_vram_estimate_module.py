@@ -260,3 +260,50 @@ def test_admin_estimate_matches_the_measured_multimodal_footprint():
             kv_per_token=_kv_per_token_for_module("multimodal", "q4_0", "Qwen3VL-8B"),
         )
     assert abs(est["total_mb"] - 7699) / 7699 < 0.03
+
+
+def test_classify_huge_context_suggests_a_window_that_fits(monkeypatch):
+    """A 262k window on a 16 GB card needs more KV than the card has.
+
+    The model itself fits; the window is the blocker, so the verdict must name
+    the largest window that does fit instead of calling the model impossible.
+    """
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=4700, blocks=36, ctx=262144)
+
+    assert res["tier"] == "cpu_offload"
+    assert res["can_save"] is True
+    assert 0 < res["ctx_recommended"] < 262144
+    assert str(res["ctx_recommended"]) in res["message"]
+
+
+def test_classify_impossible_when_not_even_the_smallest_window_fits(monkeypatch):
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-15000MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 8192), free_ram=1024, file_mb=15000, blocks=36, ctx=262144)
+
+    assert res["tier"] == "impossible"
+    assert res["can_save"] is False
+
+
+def test_classify_tight_fit_is_not_reported_as_good(monkeypatch):
+    """85% of the card is the ceiling: a fit that leaves no room for the driver
+    is a partial offload, not a green verdict."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-13000MB-8192ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=13000, blocks=36, ctx=8192)
+
+    assert res["tier"] != "good"
+    assert res["vram_mb"] > 16311 * 0.85
+
+
+def test_classify_cpu_huge_context_suggests_a_window_that_fits(monkeypatch):
+    """A CPU-only host pays the KV cache out of RAM — the same advice applies."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(None, None), free_ram=12288, file_mb=4700, blocks=36, ctx=262144)
+
+    assert res["tier"] == "cpu_offload"
+    assert 0 < res["ctx_recommended"] < 262144
+    assert str(res["ctx_recommended"]) in res["message"]

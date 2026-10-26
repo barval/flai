@@ -154,11 +154,12 @@ def test_selection_keeps_the_limit_with_the_profile_first():
 
     facts = [{"content": f"Факт {i}", "score": 0.9, "metadata": {"kind": "preference"}} for i in range(10)]
     facts.append({"content": "Профиль пользователя", "score": 0.0, "metadata": {"kind": "profile"}})
+    facts.append({"content": "Живёт в Твери", "score": 0.0, "metadata": {"kind": "profile"}})
 
     selected = BaseModule.select_recalled_facts(facts, limit=3, min_score=0.5)
 
     assert len(selected) == 3
-    assert selected[0]["content"] == "Профиль пользователя"
+    assert {selected[0]["content"], selected[1]["content"]} == {"Профиль пользователя", "Живёт в Твери"}
 
 
 @pytest.mark.unit

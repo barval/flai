@@ -29,12 +29,27 @@ Without `SLM_URL` the instance is fully functional — facts are simply never ex
 
 ## How a fact is remembered
 
-1. **Extraction (background, CPU-only).** After a user message is answered, a background thread runs the rule-based extractor over the message text. It splits sentences, scores them by category patterns (preferences, facts, instructions, personality) and keeps what scores high enough. No LLM is involved — this is why extraction does not take a GPU slot or count against the user quota.
-2. **Dedup and merge (background queue).** New facts are compared against existing ones. Semantic similarity above `SLM_SIMILARITY_THRESHOLD` (0.85) means "same fact" and the pair is merged rather than stored twice. Near-duplicates are also folded in by edit distance, and fragment facts are merged into a stronger existing statement.
-3. **Temporal decay.** Facts older than `SLM_TEMPORAL_DECAY_DAYS` (90) with confidence below `SLM_MIN_CONFIDENCE_FOR_DECAY` (0.5) are auto-archived.
-4. **Recall.** When the reasoning model builds its context, up to `SLM_RECALL_LIMIT` facts are fetched first and measured for real token cost before anything else is added. The router additionally sees up to `ROUTER_SLM_FACTS` (2) facts when deciding what a message is about.
+1. **Candidate check (CPU, no model).** After an answer the exchange is queued only
+   when the message looks personal (a first-person marker or an explicit "remember").
+   This is a cost filter, not a router: a missed fact is cheaper than a model call on
+   every message about the weather.
+2. **Extraction (background queue, the resident multimodal model).** A strict JSON
+   schema asks only for durable facts about the user — profile, preferences,
+   projects, standing instructions. Questions, task text, the assistant's answer,
+   one-off numbers and third-party facts are rejected by the prompt *and* by the
+   parser (`app/memory_facts.py`), and low-confidence entries never reach the store.
+   The rule-based extractor this replaced fired on 0 of 30 real messages.
+3. **Dedup and merge.** A new fact is compared against the store (`0.85` similarity)
+   before it is written; near-duplicates are folded in by edit distance, and
+   fragment facts are merged into a stronger existing statement.
+4. **Recall.** The profile block (the newest `kind=profile` facts) is injected on
+   every request regardless of the query wording; other facts only above
+   `SLM_MIN_RECALL_SCORE` (0.5), so a recalled sentence that did not score costs
+   neither tokens nor attention. Up to `SLM_RECALL_LIMIT` facts in total.
 
-An explicit request to remember something — "remember that I do not eat mushrooms" — is parsed by the extractor's explicit-remember path rather than being left to the scoring heuristics.
+A wrong fact is worse than a missing one: measured before the change, the store
+held image-generation prompts and arithmetic tasks, and recall returned them at
+0.63 for "do I like apples?".
 
 ## Configuration
 
@@ -42,6 +57,7 @@ An explicit request to remember something — "remember that I do not eat mushro
 # Recall
 SLM_URL=http://flai-slm:8766
 SLM_RECALL_LIMIT=7
+SLM_MIN_RECALL_SCORE=0.5
 ROUTER_SLM_FACTS=2
 
 # Rule-based extraction and merge
@@ -63,6 +79,20 @@ MERGE_MAX_FIT_FACTS=62
 Each FLAI account owns one SLM profile, keyed by the user's login. Deleting a user erases the corresponding SLM profile in the same operation (`userdb.delete_user()` calls the wrapper's `/delete-profile` route and warns if it fails), along with the on-disk profile directory under `data/slm/<login>/`. This is part of the GDPR erasure path — see [ADMINISTRATION.md](ADMINISTRATION.md).
 
 ## Maintenance
+
+Inspect what the store holds and what would be injected:
+
+```bash
+docker exec flai-web flask memory-report --user <login> --query "what do I avoid?"
+```
+
+Remove facts written by one source (the history import stored every user message
+verbatim):
+
+```bash
+docker exec flai-web flask memory-purge --user <login> --source auto_import        # dry run
+docker exec flai-web flask memory-purge --user <login> --source auto_import --yes  # delete
+```
 
 Import past conversations into memory:
 

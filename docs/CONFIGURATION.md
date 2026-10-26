@@ -135,6 +135,7 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+SLM_MIN_RECALL_SCORE=0.5     # Non-profile facts below this recall score are not injected
 ROUTER_SLM_FACTS=2           # Long-term-memory facts added to the router context
 ```
 

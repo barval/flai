@@ -75,6 +75,69 @@ def _save_fact_meta(fact_ids: list, profile: str, meta: dict) -> None:
         app.logger.warning(f"fact meta store failed: {exc}")
 
 
+def _profile_block(profile: str, limit: int = 3) -> list:
+    """Newest long-term facts about the user, independent of the query wording.
+
+    Recall is lexical, so a Russian question never matched the English profile
+    facts the extractor wrote and the model lost the basics. These are prepended
+    to every recall: a handful of short statements, worth their tokens.
+    """
+    if not profile:
+        return []
+    try:
+        with _meta_conn() as conn:
+            ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT fact_id FROM fact_meta WHERE profile = ? AND kind = 'profile' "
+                    "ORDER BY rowid DESC LIMIT ?",
+                    (profile, limit),
+                ).fetchall()
+            ]
+    except Exception:
+        return []
+    if not ids:
+        return []
+    db_path = _daemon_db_path()
+    if not db_path:
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT fact_id, content, confidence, created_at FROM atomic_facts "
+            f"WHERE fact_id IN ({placeholders}) AND lifecycle = 'active'",
+            ids,
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+    by_id = {str(row[0]): row for row in rows}
+    block = []
+    for fact_id in ids:
+        row = by_id.get(str(fact_id))
+        if row:
+            block.append(
+                {
+                    "content": row[1],
+                    "score": 1.0,
+                    "confidence": row[2] if row[2] is not None else 0.5,
+                    "fact_id": row[0],
+                    "created_at": row[3],
+                    "kind": "profile",
+                }
+            )
+    return block
+
+
+def _with_profile_block(results: list, profile: str) -> list:
+    block = _profile_block(profile)
+    if not block:
+        return results
+    known = {str(item.get("fact_id")) for item in results}
+    return [item for item in block if str(item.get("fact_id")) not in known] + results
+
+
 def _attach_fact_meta(results: list) -> list:
     """Add kind/confidence to recall results from the side store."""
     if not results:
@@ -869,8 +932,10 @@ def recall():
                 results = _recall_latest_from_profile(profile, limit)
         else:
             results = _hybrid_recall_from_profile(query, limit, profile)
-        # profile set → read ONLY from the profile, never the shared default
-        return jsonify({"success": True, "data": {"results": _attach_fact_meta(results or [])}})
+        # profile set → read ONLY from the profile, never the shared default.
+        # The profile block always leads, whatever the query wording was.
+        merged = _with_profile_block(_attach_fact_meta(results or []), profile)
+        return jsonify({"success": True, "data": {"results": merged}})
 
     if not query:
         return jsonify({"success": False, "error": "Missing query"}), 400
@@ -1067,6 +1132,28 @@ def delete_profile_route():
     finally:
         if switched and restore_to != profile:
             _daemon_post(f"/api/profiles/{restore_to}/switch", {})
+
+
+@app.route("/facts-by-source", methods=["POST"])
+def facts_by_source():
+    """Ids of facts written by one extractor source (e.g. auto_import)."""
+    data = request.get_json(force=True)
+    profile = data.get("profile") or ""
+    source = data.get("source") or ""
+    if not profile or not source:
+        return jsonify({"success": False, "error": "Missing profile or source"}), 400
+    try:
+        with _meta_conn() as conn:
+            ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT fact_id FROM fact_meta WHERE profile = ? AND source = ?",
+                    (profile, source),
+                ).fetchall()
+            ]
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+    return jsonify({"success": True, "fact_ids": ids})
 
 
 @app.route("/list", methods=["POST"])

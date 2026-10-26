@@ -951,6 +951,43 @@ def memory_report(user, query, limit):
             click.echo(f"  {mark} {str(score if score is not None else '-')[:6]:>6}  {str(fact.get('content'))[:90]}")
 
 
+@click.command("memory-purge")
+@click.option("--user", required=True, help="Login whose facts are removed")
+@click.option("--source", required=True, help="Only facts written by this source (e.g. auto_import)")
+@click.option("--yes", is_flag=True, help="Actually delete; without it only lists")
+@with_appcontext
+def memory_purge(user, source, yes):
+    """Delete facts of one source from a user's memory.
+
+    The history import stored every user message verbatim, so a profile filled
+    that way is mostly questions and task text. This removes exactly those rows
+    and leaves everything the extractor distilled.
+    """
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=1000, profile=user)
+    meta_ids = slm.fact_meta_ids(profile=user, source=source) if hasattr(slm, "fact_meta_ids") else []
+    targets = [f for f in facts if str(f.get("fact_id")) in set(meta_ids)]
+    if not meta_ids:
+        click.echo("no facts of that source recorded — nothing to do")
+        return
+
+    click.echo(f"{len(targets)} facts of source {source!r} for {user}:")
+    for fact in targets[:20]:
+        click.echo(f"  {str(fact.get('content'))[:80]}")
+    if not yes:
+        click.echo("dry run — pass --yes to delete")
+        return
+
+    removed = 0
+    for fact in targets:
+        if slm.delete_fact(str(fact.get("fact_id")), profile=user):
+            removed += 1
+    click.echo(f"deleted {removed} facts")
+
+
 @click.command("rag-lemmatize-chunks")
 @click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
 @click.option("--batch", default=200, show_default=True, help="Rows read per round")

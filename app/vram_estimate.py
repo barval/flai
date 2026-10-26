@@ -101,12 +101,33 @@ def _estimate_model_vram(
     }
 
 
-def _kv_per_token_for_module(module: str, cache_type: str = "q4_0") -> float:
-    """Return the calibrated per-token KV cache cost (MB) for a module.
+# Bytes per cached value in llama.cpp: q4_0 keeps 32 values in 18 bytes, q8_0 in
+# 34, f16 keeps a plain half per value.
+_KV_BYTES_PER_VALUE = {"q4_0": 0.5625, "q4_1": 0.5625, "q8_0": 1.0625, "f16": 2.0, "bf16": 2.0}
 
-    Uses the same per-module values as resource_manager.KV_PER_TOKEN_MB so that
-    the admin estimate and the runtime VRAM accounting agree.
+
+def _kv_per_token_for_module(module: str, cache_type: str = "q4_0", model_name: str = "") -> float:
+    """Per-token KV cache cost (MB) of the model that is actually selected.
+
+    Computed from the GGUF shapes — ``blocks × kv_heads × (key + value) × bytes``
+    — so it follows whatever the admin picks: measured on the live card, the
+    reasoning model needs 0.022 MB/token where the old module constant said 0.08
+    (+1.4 GB of phantom VRAM in the fit verdict), and the multimodal model needs
+    0.0396 where it said 0.10 (+2 GB). The module constant stays as a fallback
+    for models without metadata.
     """
+    if cache_type in _KV_BYTES_PER_VALUE and model_name:
+        try:
+            from app.utils import get_gguf_models_cached
+            from app.vram_probe import kv_per_token_from_metadata
+
+            meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+            value = kv_per_token_from_metadata(meta, bytes_per_value=_KV_BYTES_PER_VALUE[cache_type])
+            if value:
+                return value
+        except Exception:
+            pass
+
     from app.resource_manager import KV_PER_TOKEN_MB
 
     if module in KV_PER_TOKEN_MB:
@@ -318,7 +339,7 @@ def _classify_model_fit(
         ctx_size=max(int(context_length), 1),
         supports_mtp=cached.get("supports_mtp", False),
         mmproj_size_mb=mmproj_mb,
-        kv_per_token=_kv_per_token_for_module(module),
+        kv_per_token=_kv_per_token_for_module(module, "q4_0", model_name),
     )
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])

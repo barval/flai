@@ -6,6 +6,8 @@ The admin module re-exports them so existing callers keep working.
 
 from unittest.mock import patch
 
+import pytest
+
 
 def test_classify_is_re_exported_by_admin():
     from app.routes.admin import _classify_model_fit as admin_classify
@@ -189,3 +191,72 @@ def test_classify_unknown_includes_platform_and_free_ram(monkeypatch):
     res = _classify(monkeypatch, vram=(0, 8192), free_ram=24576, file_mb=None, blocks=None, ctx=8192)
     assert res["tier"] == "unknown"
     assert res["platform"] in ("gpu", "cpu")
+
+
+def test_kv_estimate_follows_the_selected_model_shapes():
+    """The module constant said 0.08 MB/token for reasoning; the model needs 0.022."""
+    from app.vram_estimate import _kv_per_token_for_module
+
+    meta = {"block_count": 40, "head_count_kv": 2, "key_length": 256, "value_length": 256}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3.6-35B": meta}):
+        assert _kv_per_token_for_module("reasoning", "q4_0", "Qwen3.6-35B.gguf") == 0.022
+
+
+def test_kv_estimate_scales_with_the_cache_type():
+    """q8_0 stores two bytes per value where q4_0 stores nibbles."""
+    from app.vram_estimate import _kv_per_token_for_module
+
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3VL-8B": meta}):
+        q4 = _kv_per_token_for_module("multimodal", "q4_0", "Qwen3VL-8B")
+        q8 = _kv_per_token_for_module("multimodal", "q8_0", "Qwen3VL-8B")
+    assert q4 == 0.0396
+    assert q8 == pytest.approx(q4 * (1.0625 / 0.5625), abs=0.0002)
+
+
+def test_kv_estimate_falls_back_to_the_module_constant_without_metadata():
+    from app.vram_estimate import _kv_per_token_for_module
+
+    with patch("app.utils.get_gguf_models_cached", return_value={}):
+        assert _kv_per_token_for_module("multimodal", "q4_0", "Unknown") == 0.10
+
+
+def test_admin_estimate_matches_the_measured_reasoning_footprint():
+    """Measured on the live card: 12 104 MB at ctx 24 576 for this model."""
+    from app.vram_estimate import _estimate_model_vram, _kv_per_token_for_module
+
+    meta = {
+        "block_count": 40,
+        "head_count_kv": 2,
+        "key_length": 256,
+        "value_length": 256,
+        "expert_count": 256,
+        "file_size_mb": 11721,
+    }
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3.6-35B": meta}):
+        est = _estimate_model_vram(
+            file_size_mb=11721,
+            block_count=40,
+            ngl=40,
+            expert_count=256,
+            ctx_size=24576,
+            kv_per_token=_kv_per_token_for_module("reasoning", "q4_0", "Qwen3.6-35B"),
+        )
+    assert abs(est["total_mb"] - 12104) / 12104 < 0.03
+
+
+def test_admin_estimate_matches_the_measured_multimodal_footprint():
+    """Measured on the live card: 7 699 MB at ctx 32 768 (weights + mmproj + KV)."""
+    from app.vram_estimate import _estimate_model_vram, _kv_per_token_for_module
+
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3VL-8B": meta}):
+        est = _estimate_model_vram(
+            file_size_mb=4794,
+            block_count=36,
+            ngl=36,
+            ctx_size=32768,
+            mmproj_size_mb=1105,
+            kv_per_token=_kv_per_token_for_module("multimodal", "q4_0", "Qwen3VL-8B"),
+        )
+    assert abs(est["total_mb"] - 7699) / 7699 < 0.03

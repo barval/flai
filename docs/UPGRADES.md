@@ -237,6 +237,19 @@ Gate on the new build:
 - **MTP draft: not applicable** — the active reasoning model (`Qwen3.6-35B-A3B-UD-Q2_K_XL`) has
   `supports_mtp = false` and the generated llama-swap config carries no draft model.
 
+### Phase 3, started (v12.8)
+
+- **Prometheus metrics** — every generated `llama-server` command now carries `--metrics`, so each backend
+  serves `llamacpp:prompt_tokens_total`, `llamacpp:prompt_seconds_total` and the rest on its own port.
+  Verified on the live container (`curl http://localhost:10003/metrics` inside `flai-llamaswap`). The
+  endpoint is reachable only inside the Docker network; feeding the Monitoring tab is the follow-up.
+- **CUDA 12.x drivers stay supported** — the v267 image still ships the CUDA 12.8.1 runtime and keeps
+  `NVIDIA_REQUIRE_CUDA=cuda>=12.8`, exactly like v255, so the existing waiver path is unchanged:
+  `deploy.sh` sets `LLAMA_SWAP_DISABLE_REQUIRE=1` for drivers 12.2–12.7 and the container was re-run with
+  `NVIDIA_DISABLE_REQUIRE=1` to confirm that the multimodal model still preloads and passes its health
+  check. `deploy.sh`, `deploy-ru.sh` and both READMEs now pin v267 instead of v255, so a fresh
+  deployment installs the same build the compose files use.
+
 ## Proposed update sequence
 
 The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**

@@ -617,3 +617,18 @@ class TestGetOriginalNgl:
         gen = LlamaSwapConfigGenerator()
         ngl = gen._get_original_ngl("multimodal")
         assert ngl == 36
+
+
+class TestMetricsEndpoint:
+    """llama-server publishes Prometheus metrics on its own backend port."""
+
+    @patch("app.resource_manager.get_resource_manager")
+    @patch("app.llama_swap_config.get_model_config")
+    def test_command_enables_metrics(self, mock_get_config, mock_get_rm):
+        mock_get_config.return_value = {"context_length": 8192}
+        mock_rm = MagicMock()
+        mock_rm.compute_llamacpp_config.return_value = {"flash_attn": True, "n_gpu_layers": -1}
+        mock_get_rm.return_value = mock_rm
+        gen = LlamaSwapConfigGenerator()
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
+        assert "--metrics" in cmd, "the monitoring tab needs the Prometheus endpoint"

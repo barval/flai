@@ -447,6 +447,10 @@ class LlamaSwapConfigGenerator:
         except Exception:
             pass
 
+        # Prometheus metrics on the backend port (llama-server /metrics). The web
+        # app can scrape it inside the Docker network; it is never published.
+        cmd_parts.append("--metrics")
+
         # Enable Jinja templating for native tool calling support (Qwen3, etc.)
         cmd_parts.append("--jinja")
 

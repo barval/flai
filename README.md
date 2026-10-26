@@ -288,7 +288,7 @@ Measured throughput for the default stack and every candidate model: [BENCHMARKS
 
 | CUDA version (driver branch) | Images | Notes |
 |------------------------------|--------|-------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard |
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v267-cuda13-b11889` | Standard |
 | 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard |
 | 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |
 | 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |

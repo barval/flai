@@ -546,10 +546,10 @@ except Exception as e:
 detect_cuda() {
     CUDA_VERSION_SD=""
     UBUNTU_VERSION_SD=""
-    # Pinned llama-swap version (v255): the :cuda/:cuda13 floating tags move
+    # Pinned llama-swap version (v267): the :cuda/:cuda13 floating tags move
     # with every upstream release, and major format changes (e.g. v243 macro
     # engine) then break deployments silently. Upgrade deliberately.
-    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991"
+    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda-b11889"
     LLAMA_SWAP_DISABLE_REQUIRE=0
     LTX_DISABLE_REQUIRE=0
     SD_DISABLE_REQUIRE=0
@@ -570,7 +570,7 @@ detect_cuda() {
 
     if [[ "$cuda_major" -ge 13 ]]; then
         CUDA_VERSION_SD="13.0.1"; UBUNTU_VERSION_SD="24.04"
-        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda13-b10991"
+        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda13-b11889"
         info "CUDA driver ${cuda_full}: using CUDA 13 images (standard deployment)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"

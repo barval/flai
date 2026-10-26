@@ -5381,7 +5381,10 @@ class RedisRequestQueue:
                     self.redis.lpush(self.background_queue_key, self._serialize(task))
                     return {"status": "interrupted"}
 
-            facts = parse_memory_facts("".join(chunks))
+            answer = "".join(chunks)
+            facts = parse_memory_facts(answer)
+            if not facts:
+                self.app.logger.info(f"Memory extraction: no facts (answer: {answer[:160]!r})")
 
             stored = 0
             for fact in facts:

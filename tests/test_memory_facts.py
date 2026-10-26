@@ -136,3 +136,11 @@ def test_profile_template_renders_for_both_languages():
         )
         assert out, lang
         assert "Твери" in out, lang
+
+
+def test_language_follows_the_message_not_the_interface():
+    from app.memory_facts import detect_language
+
+    assert detect_language("Я увлекаюсь астрономией", fallback="en") == "ru"
+    assert detect_language("I collect vinyl records", fallback="ru") == "en"
+    assert detect_language("", fallback="en") == "en"

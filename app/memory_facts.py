@@ -37,6 +37,27 @@ def looks_personal(text: str) -> bool:
     return bool(_PERSONAL_MARKERS.search(body) or _EXPLICIT_REMEMBER.search(body))
 
 
+_CYRILLIC = re.compile(r"[а-яё]", re.IGNORECASE)
+_LATIN = re.compile(r"[a-z]", re.IGNORECASE)
+
+
+def detect_language(text: str, fallback: str = "ru") -> str:
+    """Language of the message itself, not of the interface.
+
+    The extraction used the account's UI language, so a Russian message on an
+    English account went through the English prompt — and the model answered
+    ``[]`` for "I collect vinyl and listen to jazz" while the same prompt in
+    Russian extracted two facts. Facts are stored in the language they were
+    spoken in, which also keeps lexical recall matching.
+    """
+    body = text or ""
+    cyrillic = len(_CYRILLIC.findall(body))
+    latin = len(_LATIN.findall(body))
+    if cyrillic == 0 and latin == 0:
+        return fallback
+    return "ru" if cyrillic >= latin else "en"
+
+
 def auto_extract_enabled(mode: str, platform: str) -> bool:
     """Whether automatic extraction may run on this host.
 

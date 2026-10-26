@@ -52,7 +52,7 @@ setup_env() {
 # ── Data directories ──
 setup_dirs() {
     info "Creating data directories..."
-    mkdir -p data/uploads data/documents data/db_backups data/slm
+    mkdir -p data/uploads data/documents data/db_backups data/slm data/branding
     chown -R 1000:1000 data 2>/dev/null || warn "Could not chown data/ — run with sudo if needed."
 }
 
@@ -62,76 +62,97 @@ validate_env() {
         warn ".env not found — run deploy.sh to create it first."
         return
     fi
-    local errors=0
-    grep -qP '^SECRET_KEY=\S+' .env 2>/dev/null || { warn "SECRET_KEY is not set in .env"; errors=1; }
-    grep -qP '^DATABASE_URL=\S+' .env 2>/dev/null || { warn "DATABASE_URL is not set in .env"; errors=1; }
+    local errors=0 key
+    # These keys never move to the admin panel: the app needs them before the
+    # database is reachable, or they point at a mounted volume. REDIS_URL is
+    # left out on purpose — Docker Compose supplies it to the web service.
+    for key in SECRET_KEY DATABASE_URL UPLOAD_FOLDER DOCUMENTS_FOLDER; do
+        grep -qP "^${key}=\S+" .env 2>/dev/null || { warn "$key is not set in .env"; errors=1; }
+    done
+    grep -qP '^BRANDING_FOLDER=\S+' .env 2>/dev/null \
+        || info "BRANDING_FOLDER is not set in .env — the default data/branding is used."
+    for key in HTTPS_ENABLED FLAI_PLATFORM DEBUG_JS DEBUG_TRANSLATIONS; do
+        grep -q "^${key}=" .env 2>/dev/null || warn "$key is missing from .env — the built-in default applies."
+    done
     if [[ "$errors" -ge 1 ]]; then
         warn "Edit .env with your settings before proceeding."
     fi
 }
 
+# ── Settings overrides and .env feature toggles ──
+# A value saved in Admin Panel → Settings lives in the database and wins over
+# .env, so editing such a key here changes nothing while the script would claim
+# the feature was enabled. Every toggle therefore asks the database first.
+settings_override_exists() {
+    local key="$1" pg_user pg_db count
+    command -v docker &>/dev/null || return 1
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'flai-postgres' || return 1
+    pg_user=$(sed -n 's/^POSTGRES_USER=\(.*\)/\1/p' .env 2>/dev/null | head -1)
+    pg_db=$(sed -n 's/^POSTGRES_DB=\(.*\)/\1/p' .env 2>/dev/null | head -1)
+    count=$(docker exec -T flai-postgres psql -U "${pg_user:-flai}" -d "${pg_db:-flai}" -tAc \
+        "SELECT count(*) FROM settings WHERE key = '$key'" 2>/dev/null | tr -d '[:space:]')
+    [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 ))
+}
+
+warn_env_override() {
+    warn "$1 is set in Admin Panel → Settings and overrides .env — change it there, not in .env."
+}
+
+# Enable a key: uncomment its .env line, optionally replacing the value.
+enable_env_key() {
+    local key="$1" message="$2" value="${3:-}"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    grep -qE "^${key}=" .env 2>/dev/null && return 0
+    grep -qE "^# ?${key}=" .env 2>/dev/null || return 0
+    info "$message"
+    if [[ -n "$value" ]]; then
+        sed -Ei "s|^#? ?${key}=.*|${key}=${value}|" .env
+    else
+        sed -Ei "s|^#? ?${key}=|${key}=|" .env
+    fi
+}
+
+# Disable a key: comment out its active line, keeping the value.
+disable_env_key() {
+    local key="$1" message="$2"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    grep -qE "^${key}=" .env 2>/dev/null || return 0
+    info "$message"
+    sed -Ei "s|^${key}=|# ${key}=|" .env
+}
+
 # ── Enable features in .env ──
 enable_env_features() {
     if [[ "$WITH_SEARCH" == "true" ]]; then
-        if grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
-            info "Enabling web search (SearXNG) in .env..."
-            sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
-        fi
+        enable_env_key SEARXNG_URL "Enabling web search (SearXNG) in .env..."
     else
-        if grep -q '^SEARXNG_URL=' .env 2>/dev/null; then
-            info "Disabling web search (SearXNG) in .env..."
-            sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
-        fi
+        disable_env_key SEARXNG_URL "Disabling web search (SearXNG) in .env..."
     fi
     if [[ "$WITH_CRAWLER" == "true" ]]; then
-        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
-            info "Enabling deep web crawl (Crawl4AI) in .env..."
-            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=true|' .env
-        fi
+        enable_env_key CRAWL_ENABLED "Enabling deep web crawl (Crawl4AI) in .env..." true
     else
-        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
-            info "Disabling deep web crawl (Crawl4AI) in .env..."
-            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=false|' .env
-        fi
+        disable_env_key CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
-        if grep -q '^# SLM_URL=' .env 2>/dev/null; then
-            info "Enabling long-term memory (SLM) in .env..."
-            sed -i 's|^# SLM_URL=|SLM_URL=|' .env
-        fi
+        enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
     else
-        if grep -q '^SLM_URL=' .env 2>/dev/null; then
-            info "Disabling long-term memory (SLM) in .env..."
-            sed -i 's|^SLM_URL=|# SLM_URL=|' .env
-        fi
+        disable_env_key SLM_URL "Disabling long-term memory (SLM) in .env..."
     fi
     if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
-        if grep -q '^# KOKORO_URL=' .env 2>/dev/null; then
-            info "Enabling TTS (Kokoro) in .env..."
-            sed -i 's|^# KOKORO_URL=|KOKORO_URL=|' .env
-        fi
-        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
-            info "Disabling TTS (Piper) in .env..."
-            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
-        fi
+        enable_env_key KOKORO_URL "Enabling TTS (Kokoro) in .env..."
+        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
     elif [[ "$VOICE_BACKEND" == "piper" ]]; then
-        if grep -q '^# PIPER_URL=' .env 2>/dev/null; then
-            info "Enabling TTS (Piper) in .env..."
-            sed -i 's|^# PIPER_URL=|PIPER_URL=|' .env
-        fi
-        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
-            info "Disabling TTS (Kokoro) in .env..."
-            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
-        fi
+        enable_env_key PIPER_URL "Enabling TTS (Piper) in .env..."
+        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
     else
-        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
-            info "Disabling TTS (Kokoro) in .env..."
-            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
-        fi
-        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
-            info "Disabling TTS (Piper) in .env..."
-            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
-        fi
+        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
+        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
     fi
 }
 
@@ -618,6 +639,9 @@ show_start_hints() {
     echo "============================================"
     echo "  Web UI:     http://localhost:5000"
     echo "  Health:     http://localhost:5000/health"
+    echo ""
+    echo "  Settings:   Admin Panel → Settings is stored in the database and"
+    echo "              overrides .env; the flags above still edit .env."
     echo ""
     echo "  How to start:"
     echo "  1. Open http://localhost:5000 in a browser (LAN: http://<server-IP>:5000)"

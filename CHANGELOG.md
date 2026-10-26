@@ -4,7 +4,7 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [v12.7] — Unreleased
+## [v12.7] — 2026-10-26
 
 ### Added
 
@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **Deploy flags and the admin panel no longer contradict each other** — `deploy.sh` toggled `SEARXNG_URL`, `CRAWL_ENABLED`, `SLM_URL`, `KOKORO_URL` and `PIPER_URL` by editing `.env`, but those keys are editable in Admin Panel → Settings and the database wins over `.env`, so after an admin saved one the flag printed «enabled» and changed nothing. The script now asks the `settings` table first: a key without an override is written to `.env` as before, a key owned by the panel is left alone with a warning that points at the panel. `validate_env()` also checks the bootstrap keys (`UPLOAD_FOLDER`, `DOCUMENTS_FOLDER`, `BRANDING_FOLDER`, `HTTPS_ENABLED`, `FLAI_PLATFORM`, `DEBUG_JS`, `DEBUG_TRANSLATIONS`), `setup_dirs()` creates `data/branding`, `BRANDING_FOLDER` is documented in `.env.example`, and both READMEs list the «Working with document search» section in the table of contents. Docs: `docs/CONFIGURATION.md` (+ ru). Tests: `tests/test_deploy_scripts.py`.
 - **The login screen names the action, not the field** — the heading and the submit button shared the `Login` msgid, whose Russian translation is the noun for a user name, so the same word labelled the input field, the button, the Users column and the admin modal titles; translating the button alone would have renamed the column too. The button now has its own key (`Log in`, the Russian imperative "sign in") and the heading reads `Sign in` (the Russian noun for "entry"), while the field label and every admin label keep `Login`. Both catalogs recompiled.
 - **The multimodal validation alert is translated again** — `admin-models.js` asked for `multimodal_model_must_be_vision`, a key no template exposed (only an obsolete catalog entry had survived), so refusing a plain chat model for the multimodal module printed the raw key. The key is injected in both languages again, the hardware table's `CPU` label reads its own key instead of falling back to the raw string, and the catalogs were regenerated: two stale entries dropped, 93 obsolete blocks removed, `.mo` files recompiled. Tests: `tests/test_translations.py` (a new guard fails the build when a `t('…')` key has no template map entry).
 - **The 30-day storage chart is no longer empty on a fresh install** — storage buckets were matched against their START, so a daily bucket opened at midnight ignored every snapshot taken during that day: with snapshots only for today the 30-day series was entirely `null` while the hourly ranges looked fine. Each bucket now reports the value as of the end of its window. Tests: `tests/test_monitoring_snapshots.py`.

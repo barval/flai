@@ -182,6 +182,26 @@ the environment, and the ↺ button next to a field drops the override so the `.
   developer `DEBUG_JS` / `DEBUG_TRANSLATIONS` flags stay in `.env` only — they are needed before the
   database is reachable or define process behaviour.
 
+## Deployment Script and Stored Overrides
+
+`deploy.sh` (and its Russian twin `deploy-ru.sh`) still edit `.env`: `--with-search`,
+`--with-crawler`, `--with-slm` and the voice backend flags comment or uncomment `SEARXNG_URL`,
+`CRAWL_ENABLED`, `SLM_URL`, `KOKORO_URL` and `PIPER_URL`.
+
+Those five keys are editable in the admin panel and the database wins over `.env`, so the script
+asks the database first (the `flai-postgres` container and its `settings` table):
+
+- a key with no stored override is written to `.env` exactly as before;
+- a key saved in the panel is left untouched and the script warns that the panel owns it — change it
+  in **Admin Panel → Settings**, not in `.env`.
+
+On a fresh installation the database does not exist yet, so the flags behave as they always did.
+Bootstrap keys (`SECRET_KEY`, `DATABASE_URL`, `UPLOAD_FOLDER`, `DOCUMENTS_FOLDER`,
+`BRANDING_FOLDER`, `HTTPS_ENABLED`, `FLAI_PLATFORM`, `DEBUG_JS`, `DEBUG_TRANSLATIONS`) are never
+stored in the database, and `REDIS_URL` is supplied by Docker Compose.
+
+To hand a key back to `.env`, press ↺ next to its field.
+
 ## Domain Access and HTTPS (Reverse Proxy)
 
 By default the web interface is available at `http://<server-ip>:5000` — the web service publishes port `5000` (`"5000:5000"` in `docker-compose.gpu.yml` / `docker-compose.cpu.yml`) and Gunicorn listens on `0.0.0.0:5000`.

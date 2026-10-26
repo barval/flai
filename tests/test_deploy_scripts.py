@@ -69,3 +69,25 @@ def test_pip_install_flags_suppress_root_warning():
             if stripped.startswith("pip install"):
                 assert "--root-user-action=ignore" in stripped, f"{script.name}: {line}"
                 assert "--disable-pip-version-check" in stripped, f"{script.name}: {line}"
+
+
+def test_env_toggles_consult_stored_settings_first():
+    """A key saved in Admin Panel → Settings lives in the database and wins over
+    .env, so a deploy flag that writes .env for it would silently do nothing.
+    Both helpers must ask the database before touching the file."""
+    for script in (DEPLOY_SH, DEPLOY_RU_SH):
+        src = script.read_text(encoding="utf-8")
+        assert "settings_override_exists() {" in src, f"{script.name}: missing the override probe"
+        assert src.count('if settings_override_exists "$key"; then') == 2, (
+            f"{script.name}: enable_env_key and disable_env_key must both check the database"
+        )
+
+
+def test_deploy_scripts_create_the_branding_folder():
+    """BRANDING_FOLDER stays in .env and points at a mounted volume, so the
+    deploy script has to create it next to the other data directories."""
+    for script in (DEPLOY_SH, DEPLOY_RU_SH):
+        src = script.read_text(encoding="utf-8")
+        assert "mkdir -p data/uploads data/documents data/db_backups data/slm data/branding" in src, (
+            f"{script.name}: data/branding is missing from setup_dirs"
+        )

@@ -30,6 +30,7 @@
 - [🆕 What's New in v12.7](#-whats-new-in-v127)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
+- [🔎 Working with document search](#-working-with-document-search)
 - [🏗 Architecture Overview](#-architecture-overview)
 - [🧭 Types of Requests & Search Mechanisms](#-types-of-requests--search-mechanisms)
 - [📋 System Requirements](#-system-requirements)

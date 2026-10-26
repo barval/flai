@@ -55,7 +55,7 @@ setup_env() {
 # ── Директории данных ──
 setup_dirs() {
     info "Создаю директории данных..."
-    mkdir -p data/uploads data/documents data/db_backups data/slm
+    mkdir -p data/uploads data/documents data/db_backups data/slm data/branding
     chown -R 1000:1000 data 2>/dev/null || warn "Не удалось изменить владельца data/ — выполните с sudo."
 }
 
@@ -65,76 +65,97 @@ validate_env() {
         warn ".env не найден — сначала запустите deploy.sh."
         return
     fi
-    local errors=0
-    grep -qP '^SECRET_KEY=\S+' .env 2>/dev/null || { warn "SECRET_KEY не задан в .env"; errors=1; }
-    grep -qP '^DATABASE_URL=\S+' .env 2>/dev/null || { warn "DATABASE_URL не задан в .env"; errors=1; }
+    local errors=0 key
+    # Эти ключи не переезжают в админ-панель: они нужны приложению до подключения
+    # к базе или указывают на смонтированный том. REDIS_URL сюда не входит —
+    # его передаёт веб-сервису Docker Compose.
+    for key in SECRET_KEY DATABASE_URL UPLOAD_FOLDER DOCUMENTS_FOLDER; do
+        grep -qP "^${key}=\S+" .env 2>/dev/null || { warn "$key не задан в .env"; errors=1; }
+    done
+    grep -qP '^BRANDING_FOLDER=\S+' .env 2>/dev/null \
+        || info "BRANDING_FOLDER не задан в .env — используется значение по умолчанию data/branding."
+    for key in HTTPS_ENABLED FLAI_PLATFORM DEBUG_JS DEBUG_TRANSLATIONS; do
+        grep -q "^${key}=" .env 2>/dev/null || warn "$key отсутствует в .env — применится встроенное значение."
+    done
     if [[ "$errors" -ge 1 ]]; then
         warn "Отредактируйте .env перед продолжением."
     fi
 }
 
+# ── Переопределения из админ-панели и флаги .env ──
+# Значение, сохранённое в Админ-панель → Настройки, лежит в базе и важнее .env,
+# поэтому правка такого ключа здесь ничего не изменит, а скрипт сообщил бы, что
+# функция включена. Каждый переключатель сначала спрашивает базу.
+settings_override_exists() {
+    local key="$1" pg_user pg_db count
+    command -v docker &>/dev/null || return 1
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'flai-postgres' || return 1
+    pg_user=$(sed -n 's/^POSTGRES_USER=\(.*\)/\1/p' .env 2>/dev/null | head -1)
+    pg_db=$(sed -n 's/^POSTGRES_DB=\(.*\)/\1/p' .env 2>/dev/null | head -1)
+    count=$(docker exec -T flai-postgres psql -U "${pg_user:-flai}" -d "${pg_db:-flai}" -tAc \
+        "SELECT count(*) FROM settings WHERE key = '$key'" 2>/dev/null | tr -d '[:space:]')
+    [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 ))
+}
+
+warn_env_override() {
+    warn "$1 задан в Админ-панель → Настройки и перекрывает .env — меняйте там, а не в .env."
+}
+
+# Включить ключ: раскомментировать строку в .env, при необходимости заменив значение.
+enable_env_key() {
+    local key="$1" message="$2" value="${3:-}"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    grep -qE "^${key}=" .env 2>/dev/null && return 0
+    grep -qE "^# ?${key}=" .env 2>/dev/null || return 0
+    info "$message"
+    if [[ -n "$value" ]]; then
+        sed -Ei "s|^#? ?${key}=.*|${key}=${value}|" .env
+    else
+        sed -Ei "s|^#? ?${key}=|${key}=|" .env
+    fi
+}
+
+# Отключить ключ: закомментировать активную строку, сохранив значение.
+disable_env_key() {
+    local key="$1" message="$2"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    grep -qE "^${key}=" .env 2>/dev/null || return 0
+    info "$message"
+    sed -Ei "s|^${key}=|# ${key}=|" .env
+}
+
 # ── Включение/отключение опций в .env ──
 enable_env_features() {
     if [[ "$WITH_SEARCH" == "true" ]]; then
-        if grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
-            info "Включаю веб-поиск (SearXNG) в .env..."
-            sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
-        fi
+        enable_env_key SEARXNG_URL "Включаю веб-поиск (SearXNG) в .env..."
     else
-        if grep -q '^SEARXNG_URL=' .env 2>/dev/null; then
-            info "Отключаю веб-поиск (SearXNG) в .env..."
-            sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
-        fi
+        disable_env_key SEARXNG_URL "Отключаю веб-поиск (SearXNG) в .env..."
     fi
     if [[ "$WITH_CRAWLER" == "true" ]]; then
-        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
-            info "Включаю глубокий обход веба (Crawl4AI) в .env..."
-            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=true|' .env
-        fi
+        enable_env_key CRAWL_ENABLED "Включаю глубокий обход веба (Crawl4AI) в .env..." true
     else
-        if grep -q '^CRAWL_ENABLED=' .env 2>/dev/null; then
-            info "Отключаю глубокий обход веба (Crawl4AI) в .env..."
-            sed -i 's|^CRAWL_ENABLED=.*|CRAWL_ENABLED=false|' .env
-        fi
+        disable_env_key CRAWL_ENABLED "Отключаю глубокий обход веба (Crawl4AI) в .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
-        if grep -q '^# SLM_URL=' .env 2>/dev/null; then
-            info "Включаю долговременную память (SLM) в .env..."
-            sed -i 's|^# SLM_URL=|SLM_URL=|' .env
-        fi
+        enable_env_key SLM_URL "Включаю долговременную память (SLM) в .env..."
     else
-        if grep -q '^SLM_URL=' .env 2>/dev/null; then
-            info "Отключаю долговременную память (SLM) в .env..."
-            sed -i 's|^SLM_URL=|# SLM_URL=|' .env
-        fi
+        disable_env_key SLM_URL "Отключаю долговременную память (SLM) в .env..."
     fi
     if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
-        if grep -q '^# KOKORO_URL=' .env 2>/dev/null; then
-            info "Включаю TTS (Kokoro) в .env..."
-            sed -i 's|^# KOKORO_URL=|KOKORO_URL=|' .env
-        fi
-        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
-            info "Отключаю TTS (Piper) в .env..."
-            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
-        fi
+        enable_env_key KOKORO_URL "Включаю TTS (Kokoro) в .env..."
+        disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
     elif [[ "$VOICE_BACKEND" == "piper" ]]; then
-        if grep -q '^# PIPER_URL=' .env 2>/dev/null; then
-            info "Включаю TTS (Piper) в .env..."
-            sed -i 's|^# PIPER_URL=|PIPER_URL=|' .env
-        fi
-        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
-            info "Отключаю TTS (Kokoro) в .env..."
-            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
-        fi
+        enable_env_key PIPER_URL "Включаю TTS (Piper) в .env..."
+        disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
     else
-        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
-            info "Отключаю TTS (Kokoro) в .env..."
-            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
-        fi
-        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
-            info "Отключаю TTS (Piper) в .env..."
-            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
-        fi
+        disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
+        disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
     fi
 }
 
@@ -602,6 +623,9 @@ show_start_hints() {
     echo "============================================"
     echo "  Веб-интерфейс: http://localhost:5000"
     echo "  Здоровье:      http://localhost:5000/health"
+    echo ""
+    echo "  Настройки:     значения из Админ-панель → Настройки хранятся в базе"
+    echo "                и перекрывают .env; флаги выше по-прежнему правят .env."
     echo ""
     echo "  Как начать:"
     echo "  1. Откройте интерфейс в браузере: http://localhost:5000 (в сети — http://<IP-сервера>:5000)"

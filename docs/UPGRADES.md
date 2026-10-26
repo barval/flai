@@ -195,6 +195,24 @@ Corrected during the work: the audit listed Redis **8.4.8** as the image to use,
 publishes only up to **8.4.7** in the 8.4 line, so the image stops there; the 8.4.8 source fix arrives
 with the next published image.
 
+### Phase 2, first half (v12.8)
+
+| Change | Detail |
+|---|---|
+| Qdrant | server and client 1.19.0 → **1.20.0** |
+| gunicorn | 26.1.0 → **26.2.0** |
+| python-docx | 1.1.0 → **1.2.0** |
+
+The Qdrant volume was backed up before the first start. The collections came up green with every
+point in place (`user_valery` 350 points) and no migration error in the log, and the RAG evaluation
+after the upgrade reproduces the Phase 0 baseline exactly: hit@20 0.900, recall@20 0.900, MRR 0.688,
+nDCG@20 0.765, p50 39 ms and p95 63 ms once the server is warm (the first run after the restart
+showed p95 359 ms while the index was cold). A DOCX built with python-docx 1.2.0 imports, indexes
+and previews correctly, and the web service answers under gunicorn 26.2.0.
+
+Because the image installs `requirements.lock`, a version bump is resolved from `requirements.txt` in
+a scratch container and then frozen into the lock — see `docs/DEVELOPMENT.md`.
+
 ## Proposed update sequence
 
 The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**

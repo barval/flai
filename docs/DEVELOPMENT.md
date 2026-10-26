@@ -29,13 +29,16 @@ mypy app/ modules/               # CI runs with `|| true` — does not block
 ## Dependencies and the lock file
 
 `requirements.txt` and `pyproject.toml` hold the ranges a human edits; `requirements.lock` pins the
-exact set the image installs. Change a range in both manifests, rebuild the image, freeze the result
-into the lock, then rebuild once more so the image is proven to match the lock:
+exact set the image installs. Because the image installs the lock, a bump is resolved from the
+manifest in a scratch container, frozen into the lock, and then rebuilt so the image is proven to
+match it:
 
 ```bash
+docker run --rm -v "$PWD":/src -w /src python:3.11-slim \
+  sh -c "pip install -q --no-cache-dir -r requirements.txt && pip freeze" > requirements.lock
 docker compose -f docker-compose.gpu.yml build web
-docker run --rm flai-web:latest pip freeze > requirements.lock
-docker compose -f docker-compose.gpu.yml build web
+docker run --rm flai-web:latest pip freeze > /tmp/lock-check
+diff <(sort requirements.lock) <(sort /tmp/lock-check)   # must be empty
 ```
 
 CI audits `requirements.lock` with `pip-audit` and scans the pinned images with Trivy, so a version

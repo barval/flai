@@ -44,17 +44,24 @@ def test_cameras_tab_becomes_a_card_list():
 def test_backups_tab_becomes_a_card_list():
     block = _mobile_block("#backups-table tr {")
     assert "display: grid;" in block
-    assert '"filename filename"' in block
-    assert '"actions  actions"' in block
-    assert "#backups-table td:nth-child(1) {\n        display: none;" in block, "row numbers go away"
+    assert '"filename filename filename"' in block, "the filename spans the whole card width"
+    assert '"actions actions' in block
+    assert "#backups-table td:nth-child(1) {\n        grid-area: num;" in block, "the row number stays"
     assert "overflow-wrap: anywhere;" in block
+
+
+def _rule_block(selector: str) -> str:
+    """One rule from a 768px block: a media query also holds rules of the other tab."""
+    block = _mobile_block(selector)
+    start = block.index(selector)
+    return block[start : block.index("}", start) + 1]
 
 
 def test_neither_tab_widens_the_page():
     block = _mobile_block("#cameras-tab,")
     assert "#cameras-tab,\n    #backups-tab {\n        overflow-x: visible;" in block
-    assert "min-width:" not in _mobile_block("#cameras-table tr {"), "no forced table width"
-    assert "min-width:" not in _mobile_block("#backups-table tr {")
+    assert "min-width:" not in _rule_block("#cameras-table tr {"), "no forced table width"
+    assert "min-width:" not in _rule_block("#backups-table tr {")
 
 
 def test_the_hub_badge_uses_a_translated_short_label():

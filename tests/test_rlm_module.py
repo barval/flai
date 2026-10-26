@@ -338,6 +338,19 @@ class ScriptedLlamacpp:
         self.calls.append({"messages": messages, "tools": tools})
         return self.script.pop(0)
 
+    def chat_stream(self, messages, model_type="multimodal", lang="ru", validate=True, tools=None, temperature=None):
+        """The RLM runs every turn through the streaming path (see modules/rlm.py:_chat_turn)."""
+        self.calls.append({"messages": messages, "tools": tools})
+        response = self.script.pop(0)
+        if isinstance(response, str):
+            yield response
+            return
+        content = response.get("content") or ""
+        if content:
+            yield content
+        if response.get("tool_calls"):
+            yield {"type": "tool_calls", "tool_calls": response["tool_calls"]}
+
 
 def _make_module(script):
     module = RlmModule.__new__(RlmModule)
@@ -593,7 +606,7 @@ def test_web_fetch_dedup_repeated_queries(test_app):
     queries = []
     search = MagicMock()
     search.available = True
-    search.search_with_fallback.side_effect = lambda query, lang="ru", max_results=3, api_key=None: (
+    search.search_with_fallback.side_effect = lambda query, lang="ru", max_results=3, api_key=None, user_id=None: (
         queries.append(query) or ([{"title": "t", "url": "u", "content": "page"}], "tavily")
     )
     module.app.modules["search"] = search
@@ -727,7 +740,7 @@ def test_save_progress_stores_count_for_rlm_step():
 def test_build_system_prompt_injects_response_language(test_app):
     with test_app.app_context():
         module = RlmModule.__new__(RlmModule)
-        assert "Russian" in module.build_system_prompt("ru")
+        assert "русский" in module.build_system_prompt("ru")
         assert "English" in module.build_system_prompt("en")
 
 

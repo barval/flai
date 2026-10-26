@@ -111,6 +111,7 @@ def load_config(app):
 
     # SLM rule-based extraction and merge settings
     app.config["SLM_SIMILARITY_THRESHOLD"] = float(os.getenv("SLM_SIMILARITY_THRESHOLD", 0.85))
+    app.config["MEMORY_EXTRACT_QUIET_S"] = int(os.getenv("MEMORY_EXTRACT_QUIET_S", "45"))
     app.config["SLM_AUTO_EXTRACT"] = os.getenv("SLM_AUTO_EXTRACT", "auto")
     app.config["SLM_MIN_RECALL_SCORE"] = float(os.getenv("SLM_MIN_RECALL_SCORE", "0.5"))
     app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))

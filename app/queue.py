@@ -301,6 +301,11 @@ class RedisRequestQueue:
             return
         try:
             chat_activity_now(self.redis)
+            # Any user-facing request preempts a memory extraction: it is the
+            # lowest-priority GPU job and a half-generated extraction is worth
+            # nothing, so the task is re-queued and runs after the quiet window.
+            quiet_s = int(self.app.config.get("MEMORY_EXTRACT_QUIET_S", 45))
+            self.redis.set(self.MEMORY_EXTRACT_INTERRUPT_KEY, "1", ex=quiet_s)
             # Mid-step abort (v12.6): every running task step must die when a
             # chat request arrives. The executor publishes one pointer per
             # running task (task:running_step:<task_id> + the
@@ -309,6 +314,25 @@ class RedisRequestQueue:
             self._raise_step_cancel_flags()
         except Exception as e:
             self.logger.warning(f"chat activity signal failed: {e}")
+
+    def background_gate_open(self) -> bool:
+        """True when only idle work is waiting and no chat has been seen recently.
+
+        Memory extraction is the lowest-priority GPU job: any queued chat or API
+        request goes first, and a request in the last ``MEMORY_EXTRACT_QUIET_S``
+        seconds keeps it parked in the queue (the extractor aborts its own
+        generation mid-stream and re-queues, so nothing half-written survives).
+        """
+        try:
+            return (
+                self.redis.llen(self.background_queue_key) > 0
+                and self.redis.llen(self.queue_key) == 0
+                and self.redis.llen(self.slow_queue_key) == 0
+                and not self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY)
+            )
+        except Exception as e:
+            self.logger.debug(f"background gate check failed: {e}")
+            return False
 
     def _drop_orphan_subtask(self, task: dict[str, Any]) -> bool:
         """Drop a Tasks-subsystem media sub-task whose step is gone (v12.6).
@@ -1034,8 +1058,9 @@ class RedisRequestQueue:
                         self._process_single_task(task, self.slow_processing_key)
                     continue
 
-                # Priority 2: background queue (only when fast queue is empty)
-                if self.redis.llen(self.background_queue_key) > 0 and self.redis.llen(self.queue_key) == 0:
+                # Priority 2: background queue (idle only — any chat or API
+                # request in the quiet window keeps it parked)
+                if self.background_gate_open():
                     result = self.redis.blpop(self.background_queue_key, timeout=5)
                     if result:
                         _, task_data = result
@@ -5336,13 +5361,27 @@ class RedisRequestQueue:
             if not prompt:
                 return {"status": "ok"}
 
-            raw = self.app.modules["base"].call_llamacpp(
+            # Streamed so that a chat request can cut it short: checked every
+            # 20 chunks (a Redis round-trip per token would cost more than the
+            # interruption is worth). An aborted extraction writes nothing and
+            # puts its task back at the head of the background queue.
+            chunks: list[str] = []
+            for chunk in self.app.modules["base"].llamacpp.chat_stream(
                 [{"role": "user", "content": prompt}],
                 model_type="multimodal",
                 lang=lang,
-                temperature=0.1,
-            )
-            facts = parse_memory_facts(raw if isinstance(raw, str) else "")
+            ):
+                if isinstance(chunk, dict):
+                    break
+                chunks.append(chunk)
+                if sum(len(part) for part in chunks) > 4000:
+                    break
+                if len(chunks) % 20 == 0 and self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY):
+                    self.logger.info("Memory extraction interrupted by a user request — re-queued")
+                    self.redis.lpush(self.background_queue_key, self._serialize(task))
+                    return {"status": "interrupted"}
+
+            facts = parse_memory_facts("".join(chunks))
 
             stored = 0
             for fact in facts:
@@ -6771,6 +6810,10 @@ class RedisRequestQueue:
     # Task types that run in the background and are invisible to the user.
     # They should not trigger ⚡ or ⏳ indicators in the UI.
     _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task", "memory_extract_task"})
+
+    # Set by every user-facing request; the memory extraction (and the idle
+    # merge queue behind it) waits it out.
+    MEMORY_EXTRACT_INTERRUPT_KEY = "memory_extract:interrupt"
 
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
         """Get status of user's requests (processing, queued, completed).

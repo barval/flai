@@ -722,7 +722,7 @@ class ResourceManager:
                         logger.debug(
                             f"ensure_vram_for [{model_type}]: keeping {keep} resident during the wait"
                         )
-                    seen_empty = True
+                seen_empty = True
 
                 self._poll_vram()
                 free = self.hardware.available_vram_mb

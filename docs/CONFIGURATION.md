@@ -14,6 +14,8 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
 VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
+VRAM_CO_RESIDENCY=auto                      # 'auto' keeps residents that fit next to the new model, 'off' unloads everything (pre-v12.8 behaviour)
+VRAM_HEADROOM_MB=1200                       # VRAM kept free for prefill buffers when a co-residency decision is made
 ```
 
 **Service URLs:**

@@ -498,9 +498,14 @@ def capture_language(
     media_dir = DEMO_DIR / "media" / lang
     media_dir.mkdir(parents=True, exist_ok=True)
     for file_path in sorted(collected):
-        try:
-            payload_bytes = chat.get_bytes(f"/api/files/{file_path}")
-        except CaptureError:
+        payload_bytes = None
+        for _attempt in range(3):
+            try:
+                payload_bytes = chat.get_bytes(f"/api/files/{file_path}")
+                break
+            except CaptureError:
+                time.sleep(3)
+        if payload_bytes is None:
             print(f"[{lang}] skip missing media: {file_path}", flush=True)
             continue
         target = media_dir / Path(file_path).name

@@ -102,6 +102,9 @@
         if (route.q && queryMatches(route.q, search)) return Promise.resolve(jsonResponse(route.b));
         if (!route.q && bare === null) bare = route;
       }
+      if (path === "/api/sessions/demo-new/messages") {
+        return Promise.resolve(jsonResponse({ messages: [], limit: 100, offset: 0, has_more: false }));
+      }
       return Promise.resolve(jsonResponse(bare ? bare.b : {}));
     }
     if (path.indexOf("/set-theme/") === 0) {
@@ -117,6 +120,10 @@
         }
       }
       return Promise.resolve(jsonResponse({ status: "ok" }));
+    }
+    if (path === "/api/sessions/new") {
+      // A fresh conversation must look like one, not like an empty object.
+      return Promise.resolve(jsonResponse({ id: "demo-new", title: "" }));
     }
     if (isNavigationRequest(path)) {
       return Promise.resolve(jsonResponse({ status: "ok" }));

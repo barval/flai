@@ -51,6 +51,14 @@ A wrong fact is worse than a missing one: measured before the change, the store
 held image-generation prompts and arithmetic tasks, and recall returned them at
 0.63 for "do I like apples?".
 
+**Extraction is the lowest-priority job in the system.** It runs on the
+background queue only while the fast and slow queues are empty, and any chat or
+API request interrupts it: the flag `memory_extract:interrupt` (TTL
+`MEMORY_EXTRACT_QUIET_S`, default 45 s) is refreshed by every user-facing
+request, the extractor checks it between streamed chunks, and an interrupted run
+writes nothing and puts its task back at the head of the queue. It therefore
+resumes after the quiet window instead of competing with the conversation.
+
 **Hosts without a GPU.** The extraction call is one short generation on the
 model chat is already using; on a CPU-only host that is ~30 s of the same model,
 so `SLM_AUTO_EXTRACT=auto` (default) runs it only where a GPU keeps the model

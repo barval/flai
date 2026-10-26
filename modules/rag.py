@@ -23,6 +23,7 @@ from app.utils import (
     chunk_text_structured,
     estimate_tokens,
     extract_text_from_file,
+    format_chunk_entry,
     format_prompt,
     get_current_time_in_timezone,
 )
@@ -644,12 +645,12 @@ class RagModule:
 
         # 2. Prepare context string WITH filename sources
         context_parts = []
-        for chunk_data, score in filtered:
+        for chunk_data, _score in filtered:
             # Extract filename and text from chunk metadata
             filename = chunk_data.get("filename", "unknown") if isinstance(chunk_data, dict) else "unknown"
             text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
-            # Add source indicator to each chunk (include score for debugging)
-            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+            # One header per chunk: source file, no relevance score
+            context_parts.append(format_chunk_entry(source_label, filename, text))
         context = "\n\n".join(context_parts)
 
         # Logging the structure of the RAG context WITH RELEVANCE SCORES
@@ -702,10 +703,10 @@ class RagModule:
                 with current_app.app_context(), force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for chunk_data, score in filtered:
+                for chunk_data, _score in filtered:
                     filename = chunk_data.get("filename", "unknown") if isinstance(chunk_data, dict) else "unknown"
                     text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 context = "\n\n".join(context_parts)
                 context_tokens = self._estimate_tokens(context)
             self.logger.info(

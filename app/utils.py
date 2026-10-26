@@ -352,6 +352,26 @@ SAFETY_MARGIN = 0.85
 # Overhead for template text and system instructions
 TEMPLATE_OVERHEAD = 800
 
+# Share of the window a prompt may occupy: 75% of the history budget times the
+# 85% safety margin. `_get_context_for_model()` allocates against this figure.
+CONTEXT_FILL_RATIO = 0.64
+
+# Room kept for the visible answer after the thinking budget is spent.
+REASONING_ANSWER_RESERVE_TOKENS = 1500
+
+
+def reasoning_budget_tokens(ctx_size: int) -> int:
+    """Thinking budget that still leaves room for the answer inside ``ctx_size``.
+
+    The prompt already takes up to 64% of the window, so a flat ``ctx * 0.4``
+    budget (9830 on a 24k window) can only be spent by eating the answer: the
+    server stops at the context limit with an empty ``content`` — the historical
+    "Failed to get an answer from the reasoning model".
+    """
+    prompt_room = int(ctx_size * CONTEXT_FILL_RATIO)
+    spare = ctx_size - prompt_room - REASONING_ANSWER_RESERVE_TOKENS
+    return max(1024, min(int(ctx_size * 0.4), spare))
+
 
 def get_current_time_in_timezone(app=None) -> str | None:
     """Returns current time in configured timezone in readable format."""
@@ -1169,6 +1189,15 @@ def estimate_tokens(
     # Apply safety margin to estimation
     estimated = len(text) / coeff + 1
     return int(estimated)
+
+
+def format_chunk_entry(source_label: str, filename: str, text: str) -> str:
+    """One retrieved chunk as the model sees it.
+
+    The cosine score used to be printed here. It costs a few tokens per chunk
+    and invites the model to reason about a number it cannot interpret.
+    """
+    return f"[{source_label}: {filename}]\n{text}"
 
 
 def build_context_prompt(history: list[dict[str, str]], lang: str = "ru") -> str:

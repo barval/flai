@@ -80,7 +80,9 @@ docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlo
 docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({'profile':'<login>'}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"
 ```
 
-The SLM container is healthy when `GET http://localhost:8766/health` answers. In `docker-compose.gpu.yml` its healthcheck polls port **8766** while the container is configured with `SLM_PORT=8765` — check the healthcheck output before assuming memory is broken:
+The SLM container runs two processes: the SuperLocalMemory daemon on **8765** and the profile wrapper
+that FLAI talks to on **8766**. The healthcheck polls the wrapper, which is the only port the web
+container uses. Check it before assuming memory is broken:
 
 ```bash
 docker inspect --format '{{.State.Health.Status}}' flai-slm

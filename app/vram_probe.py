@@ -132,13 +132,15 @@ def _gpu_used_mb() -> int:
 
 
 def is_plausible_measurement(measured_mb: int, weights_mb: int, mmproj_mb: int = 0) -> bool:
-    """A model cannot occupy less than its own weights.
+    """Reject a sample that cannot be the model, while tolerating GGUF slack.
 
-    Below that the sample caught the wrong moment — usually a model that was
-    still resident when the baseline was taken, so the delta is another model's
-    tail. Such a number must never replace the estimate.
+    The file is not a floor: a Q8_0 embedding model with a 250k-token vocabulary
+    measured 541 MB against a 605 MB file, because the file also carries the
+    tokenizer and padding. Half the file is a safe lower bound — a sample taken
+    while the previous model was still resident lands at a few MB, which is what
+    this has to catch.
     """
-    return measured_mb > 0 and measured_mb >= (weights_mb + mmproj_mb) * 0.9
+    return measured_mb > 0 and measured_mb >= (weights_mb + mmproj_mb) * 0.5
 
 
 def _weights_mb(module: str, model_name: str) -> int:
@@ -272,7 +274,7 @@ def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
     ctx_size = int(config.get("context_length") or 0)
     weights_mb = _weights_mb(module, model_name)
     mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
-    if used_mb <= (weights_mb + mmproj_mb) * 0.9:
+    if not is_plausible_measurement(used_mb, weights_mb, mmproj_mb):
         logger.debug(
             f"vram calibration skipped for {module}: {used_mb}MB vs {weights_mb}+{mmproj_mb}MB weights"
         )

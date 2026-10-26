@@ -191,3 +191,8 @@ def test_a_measurement_below_the_weights_is_not_plausible():
 
 def test_a_full_measurement_is_plausible():
     assert is_plausible_measurement(measured_mb=7700, weights_mb=4794, mmproj_mb=1105) is True
+
+
+def test_a_model_smaller_than_its_file_is_still_plausible():
+    """bge-m3 Q8_0: 541 MB resident against a 605 MB file (tokenizer + padding)."""
+    assert is_plausible_measurement(measured_mb=541, weights_mb=605, mmproj_mb=0) is True

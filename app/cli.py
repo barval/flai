@@ -774,6 +774,7 @@ def rag_eval_generate(user, count, lang, model, doc, out):
 def rag_backfill_chunks(user):
     """Mirror already-indexed chunks into PostgreSQL for hybrid search."""
     from app.database import get_db
+    from app.lemmatizer import lemmas as lemmatize
 
     rag = current_app.modules.get("rag")
     if rag is None or not rag.check_availability():
@@ -810,13 +811,42 @@ def rag_backfill_chunks(user):
             cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user, doc_id))
             for index, text, _name in rows:
                 cursor.execute(
-                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
-                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                    (user, doc_id, index, filename, text),
+                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (user, doc_id, index, filename, text, lemmatize(text)),
                 )
                 written += 1
 
     click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
+
+
+@click.command("rag-lemmatize-chunks")
+@click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
+@click.option("--batch", default=200, show_default=True, help="Rows read per round")
+@with_appcontext
+def rag_lemmatize_chunks(user, batch):
+    """Fill ``rag_chunks.lemmas`` for chunks mirrored before BM25 replaced ts_rank_cd."""
+    from app.database import get_db
+    from app.lemmatizer import lemmas as lemmatize
+
+    updated = 0
+    while True:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, text FROM rag_chunks WHERE user_id = %s AND lemmas IS NULL LIMIT %s",
+                (user, batch),
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                break
+            for row in rows:
+                cursor.execute(
+                    "UPDATE rag_chunks SET lemmas = %s WHERE id = %s",
+                    (lemmatize(row["text"] or ""), row["id"]),
+                )
+                updated += 1
+    click.echo(f"Lemmatized {updated} chunks for {user}")
 
 
 @click.command("rag-reindex")

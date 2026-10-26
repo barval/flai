@@ -398,6 +398,12 @@ class LlamaSwapConfigGenerator:
             if ctx_size and ctx_size > 0:
                 budget = max(1024, int(ctx_size * 0.4))
                 cmd_parts.extend(["--reasoning-budget", str(budget)])
+                # End the thinking block with a sentence instead of a silent stop
+                # (llama-server injects it before the end-of-thinking tag). Single
+                # quotes keep the words inside one argv entry after YAML parsing.
+                cmd_parts.extend(
+                    ["--reasoning-budget-message", "'Thinking budget reached. Stop analysing and answer now.'"]
+                )
         elif module == "multimodal":
             cmd_parts.extend(["--reasoning_format", "none"])
 
@@ -446,6 +452,10 @@ class LlamaSwapConfigGenerator:
                 cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])
         except Exception:
             pass
+
+        # Prometheus metrics on the backend port (llama-server /metrics). The web
+        # app can scrape it inside the Docker network; it is never published.
+        cmd_parts.append("--metrics")
 
         # Enable Jinja templating for native tool calling support (Qwen3, etc.)
         cmd_parts.append("--jinja")

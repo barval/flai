@@ -99,7 +99,7 @@ services:
   # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
   llama-swap:
-    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991}
+    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:v267-cuda-b11889}
     container_name: flai-llamaswap
     volumes:
       - ./services/llamacpp/models:/models:ro
@@ -426,7 +426,7 @@ services:
   # QDRANT (Optional - Vector DB for RAG)
   # ============================================================
   qdrant:
-    image: qdrant/qdrant:v1.19.0
+    image: qdrant/qdrant:v1.20.0
     container_name: flai-qdrant
     volumes:
       - qdrant_data:/qdrant/storage

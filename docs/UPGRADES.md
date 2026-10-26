@@ -195,6 +195,79 @@ Corrected during the work: the audit listed Redis **8.4.8** as the image to use,
 publishes only up to **8.4.7** in the 8.4 line, so the image stops there; the 8.4.8 source fix arrives
 with the next published image.
 
+### Phase 2, first half (v12.8)
+
+| Change | Detail |
+|---|---|
+| Qdrant | server and client 1.19.0 → **1.20.0** |
+| gunicorn | 26.1.0 → **26.2.0** |
+| python-docx | 1.1.0 → **1.2.0** |
+
+The Qdrant volume was backed up before the first start. The collections came up green with every
+point in place (`user_valery` 350 points) and no migration error in the log, and the RAG evaluation
+after the upgrade reproduces the Phase 0 baseline exactly: hit@20 0.900, recall@20 0.900, MRR 0.688,
+nDCG@20 0.765, p50 39 ms and p95 63 ms once the server is warm (the first run after the restart
+showed p95 359 ms while the index was cold). A DOCX built with python-docx 1.2.0 imports, indexes
+and previews correctly, and the web service answers under gunicorn 26.2.0.
+
+Because the image installs `requirements.lock`, a version bump is resolved from `requirements.txt` in
+a scratch container and then frozen into the lock — see `docs/DEVELOPMENT.md`.
+
+### Phase 2, second half (v12.8)
+
+| Change | Detail |
+|---|---|
+| llama-swap | v255 → **v267** (`v267-cuda-b11889`; the CPU line moves to `v267-cpu-b11889`) |
+| llama.cpp | b10991 → **b11889** |
+
+The audit named b11898, but the published v267 image bundles b11889 — the closest build available,
+and therefore where the upgrade stops.
+
+Gate on the new build:
+
+- multimodal answer with an attached image: **pass**;
+- reasoning with the CLI thinking budget (`--reasoning-budget 9830`): **pass** — the model answered
+  the two-segment arithmetic with the full derivation;
+- web-search tool call: **pass**;
+- `/v1/chat/completions` with a freshly issued API key: **pass** (200, «pong»); the key was revoked
+  afterwards;
+- task run: **pass** — plan → direct step → final answer, status `completed`;
+- RAG evaluation: identical to the Phase 0 baseline (hit@20 0.900, MRR 0.688, nDCG@20 0.765,
+  p50 44 ms), which also proves the embedding model loads and answers under b11889;
+- **MTP draft: not applicable** — the active reasoning model (`Qwen3.6-35B-A3B-UD-Q2_K_XL`) has
+  `supports_mtp = false` and the generated llama-swap config carries no draft model.
+
+### Phase 3, started (v12.8)
+
+- **Prometheus metrics** — every generated `llama-server` command now carries `--metrics`, so each backend
+  serves `llamacpp:prompt_tokens_total`, `llamacpp:prompt_seconds_total` and the rest on its own port.
+  Verified on the live container (`curl http://localhost:10003/metrics` inside `flai-llamaswap`). The
+  endpoint is reachable only inside the Docker network; feeding the Monitoring tab is the follow-up.
+- **BM25 measured against the current hybrid, four variants** — same 30-question set, same harness, top-20:
+
+  | Retrieval | hit@20 | MRR | nDCG@20 |
+  |---|---|---|---|
+  | Product hybrid (dense + PostgreSQL full-text, RRF) | 0.900 | 0.688 | 0.765 |
+  | Dense only (bge-m3) | 0.900 | 0.787 | 0.847 |
+  | BM25, Qdrant-style tokenisation | 0.867 | 0.569 | 0.672 |
+  | BM25 with Russian lemmas | 0.933 | 0.702 | 0.791 |
+  | RRF(dense + BM25 with lemmas) | **0.933** | **0.802** | **0.872** |
+
+  Native Qdrant BM25 tokenises without stemming, so on this Russian corpus it would regress the
+  current hybrid (0.867/0.569) and would also pull in `fastembed`; it is not adopted. The lexical half
+  the product uses today is the weaker part: dense alone ranks better than the current fusion, and a
+  lemmatized BM25 fused with dense is the best row. The follow-up was implemented: the lexical half is
+  now BM25 over pymorphy lemmas, and the second set (paraphrases, mean word overlap 0.46) reproduced the
+  result — fused MRR 0.811 and nDCG@20 0.872 there, 0.802 and 0.872 on the generated set.
+- **`--cache-reuse` and ngram speculation bring nothing measurable here** — measured from the API `timings` on the reasoning model, three runs each: baseline 110.4 tok/s, `--cache-reuse 256` 110.2, `--spec-type ngram-simple` 109.6. With a ~7k-token shared prefix, prompt processing is already cached by llama.cpp (1738 ms cold, then 54 ms with and 53 ms without `--cache-reuse`), so neither flag is enabled. BM25 in Qdrant is left open: it needs sparse-vector indexing, a re-index and a comparison against the PostgreSQL hybrid on the 30-question set, which is a feature-sized change rather than a flag.
+- **A spent thinking budget ends with a sentence** — the reasoning command now carries `--reasoning-budget-message`, so llama-server injects «Thinking budget reached. Stop analysing and answer now.» before the end-of-thinking tag instead of cutting the block silently. The flag is in the generated config and in the live `llama-server` argv (one argument, quotes handled by llama-swap); a full budget exhaustion was not exercised.
+- **CUDA 12.x drivers stay supported** — the v267 image still ships the CUDA 12.8.1 runtime and keeps
+  `NVIDIA_REQUIRE_CUDA=cuda>=12.8`, exactly like v255, so the existing waiver path is unchanged:
+  `deploy.sh` sets `LLAMA_SWAP_DISABLE_REQUIRE=1` for drivers 12.2–12.7 and the container was re-run with
+  `NVIDIA_DISABLE_REQUIRE=1` to confirm that the multimodal model still preloads and passes its health
+  check. `deploy.sh`, `deploy-ru.sh` and both READMEs now pin v267 instead of v255, so a fresh
+  deployment installs the same build the compose files use.
+
 ## Proposed update sequence
 
 The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**

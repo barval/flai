@@ -123,21 +123,24 @@ Search is dense by default: the query is embedded and Qdrant returns the closest
 queries built around a rare word — "how many jobs in Moscow" ranks chat chatter about Moscow above the
 resume, because a vector blurs the one term that matters.
 
-With `RAG_HYBRID_ENABLED=true` every chunk is also mirrored into PostgreSQL (`rag_chunks`, a generated
-`tsvector` with Russian stemming) and both retrievers run: Qdrant by meaning, PostgreSQL full-text by
-terms. The two ranked lists are merged with **reciprocal rank fusion** (`RAG_RRF_K`, default 60), so a
-chunk both finders agree on outranks a chunk only one found. Lexical terms are chosen carefully:
+With `RAG_HYBRID_ENABLED=true` every chunk is also mirrored into PostgreSQL (`rag_chunks`, plus a
+`lemmas` array built with pymorphy3) and both retrievers run: Qdrant by meaning, PostgreSQL by **BM25
+over lemmas**. The two ranked lists are merged with **reciprocal rank fusion** (`RAG_RRF_K`, default
+60), so a chunk both finders agree on outranks a chunk only one found.
 
-- proper nouns and Latin-script words are the discriminative ones (cities, companies, tool names);
-- terms that appear in a large share of the corpus are dropped (`ts_rank_cd` has no IDF, so a name
-  present in half the chunks would drown the city present in five);
-- matching is by prefix, because the Russian stemmer can map the nominative and the prepositional
-  case of one name to different lexemes;
-- a chunk from a document whose **title** matches the query gets a bonus — the resume is named after
-  the person, a chat export is not.
+`ts_rank_cd` was replaced because it has neither IDF nor length normalisation: it needed a rarity gate
+that dropped common words, a prefix hack for the stemmer's case inconsistencies, and a title bonus to
+stop small talk from outranking a resume. BM25 carries all of that in the formula, so the lexical half
+now scores every lemma of the query against the chunks that contain at least one of them.
 
-Existing documents are mirrored with `flask rag-backfill-chunks --user <login>`; new uploads are
-mirrored automatically and deleted together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
+Measured on two 30-question sets — the generated one and its paraphrase (mean word overlap 0.46) — the
+fused MRR rose from 0.688/0.653 to 0.802/0.811 and nDCG@20 from 0.765/0.742 to 0.872. Dense alone
+already scored better than the old fusion (MRR 0.787/0.786), which is what pointed at the lexical half;
+a BM25 without lemmatization (what Qdrant's native BM25 would give) was worse than both (0.569/0.500).
+
+Existing documents are lemmatized with `flask rag-lemmatize-chunks --user <login>` (or re-mirrored
+with `flask rag-backfill-chunks --user <login>`); new uploads are mirrored automatically and deleted
+together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
 `RAG_HYBRID_CANDIDATES` (per-retriever candidate pool, default 30), `RAG_RRF_K`; all three are also in
 Admin Panel → Settings. Measure the effect with `docs/RAG_EVAL.md` before enabling it everywhere.
 

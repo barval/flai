@@ -29,14 +29,16 @@ mypy app/ modules/               # CI runs with `|| true` — does not block
 ## Зависимости и lock-файл
 
 Диапазоны версий, которые правит человек, лежат в `requirements.txt` и `pyproject.toml`; точный
-набор, который ставится в образ, закреплён в `requirements.lock`. Меняйте диапазон в обоих
-манифестах, пересоберите образ, зафиксируйте результат в lock-файле и пересоберите ещё раз, чтобы
-образ гарантированно соответствовал lock-файлу:
+набор, который ставится в образ, закреплён в `requirements.lock`. Поскольку образ ставится из
+lock-файла, повышение версии разрешается из манифеста в отдельном контейнере, фиксируется в
+lock-файле и затем пересобирается, чтобы образ гарантированно ему соответствовал:
 
 ```bash
+docker run --rm -v "$PWD":/src -w /src python:3.11-slim \
+  sh -c "pip install -q --no-cache-dir -r requirements.txt && pip freeze" > requirements.lock
 docker compose -f docker-compose.gpu.yml build web
-docker run --rm flai-web:latest pip freeze > requirements.lock
-docker compose -f docker-compose.gpu.yml build web
+docker run --rm flai-web:latest pip freeze > /tmp/lock-check
+diff <(sort requirements.lock) <(sort /tmp/lock-check)   # должно быть пусто
 ```
 
 CI проверяет `requirements.lock` через `pip-audit` и сканирует закреплённые образы через Trivy,

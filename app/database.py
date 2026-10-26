@@ -471,6 +471,15 @@ def _init_postgresql():
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
     """)
+    # BM25 over lemmatized words replaced ts_rank_cd (which has no IDF); the
+    # column is filled by _store_chunks and by `flask rag-lemmatize-chunks`
+    # for chunks indexed before the change.
+    c.execute("""
+        ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS lemmas TEXT[]
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_rag_chunks_lemmas ON rag_chunks USING GIN (lemmas)
+    """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,

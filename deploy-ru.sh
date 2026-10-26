@@ -530,10 +530,10 @@ except Exception as e:
 detect_cuda() {
     CUDA_VERSION_SD=""
     UBUNTU_VERSION_SD=""
-    # Зафиксированная версия llama-swap (v255): плавающие теги :cuda/:cuda13
+    # Зафиксированная версия llama-swap (v267): плавающие теги :cuda/:cuda13
     # переезжают с каждым релизом апстрима, и крупные изменения формата
     # (например, макро-движок v243) ломают развёртывание. Обновляем осознанно.
-    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991"
+    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda-b11889"
     LLAMA_SWAP_DISABLE_REQUIRE=0
     LTX_DISABLE_REQUIRE=0
     SD_DISABLE_REQUIRE=0
@@ -554,7 +554,7 @@ detect_cuda() {
 
     if [[ "$cuda_major" -ge 13 ]]; then
         CUDA_VERSION_SD="13.0.1"; UBUNTU_VERSION_SD="24.04"
-        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda13-b10991"
+        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda13-b11889"
         info "CUDA драйвер ${cuda_full}: использую CUDA 13 образы (штатное развертывание)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"

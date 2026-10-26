@@ -183,5 +183,5 @@ class TestPatterns:
         assert NAME_PATTERN.match("John Doe")
 
     def test_module_types(self):
-        """MODULE_TYPES should contain all types."""
-        assert {"reasoning", "multimodal", "embedding"} == MODULE_TYPES
+        """MODULE_TYPES should contain all types, including the v12.7 reranker."""
+        assert {"reasoning", "multimodal", "embedding", "reranker"} == MODULE_TYPES

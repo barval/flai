@@ -9,6 +9,7 @@ from app.llama_swap_config import (
     LlamaSwapConfigGenerator,
     generate_and_write,
 )
+from app.utils import reasoning_budget_tokens
 
 
 def _mock_config(module, **overrides):
@@ -373,7 +374,9 @@ class TestBuildCmd:
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("reasoning", "/models/gpt-oss-20b-mxfp4.gguf")
         assert "--reasoning_format auto" in cmd
-        assert "--reasoning-budget 3276" in cmd
+        # 8192 ctx: the prompt may take 64%, so the old ctx*0.4 (3276) left
+        # less than the 1500-token answer reserve.
+        assert f"--reasoning-budget {reasoning_budget_tokens(8192)}" in cmd
 
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")
@@ -389,7 +392,9 @@ class TestBuildCmd:
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("reasoning", "/models/test.gguf")
         assert "--reasoning_format deepseek" in cmd
-        assert "--reasoning-budget 3276" in cmd
+        # 8192 ctx: the prompt may take 64%, so the old ctx*0.4 (3276) left
+        # less than the 1500-token answer reserve.
+        assert f"--reasoning-budget {reasoning_budget_tokens(8192)}" in cmd
 
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")

@@ -423,7 +423,7 @@ class BaseModule(TranslationMixin):
                 f"SLM: {slm_tokens}, Available: {available_tokens} — returning search+SLM without history"
             )
             summary_section = self._get_session_summary_section(session_id, None, lang)
-            context = search_section + slm_facts_str + summary_section
+            context = search_section + summary_section + slm_facts_str
             return context.lstrip()
 
         # Step 6: Load history with SQL-level limit based on remaining budget.
@@ -439,7 +439,10 @@ class BaseModule(TranslationMixin):
         if (hist_meta.get("dropped_count") or 0) >= self.summary_min_messages:
             summary_section = self._get_session_summary_section(session_id, hist_meta.get("oldest_kept_id"), lang)
 
-        context = search_section + slm_facts_str + summary_section + history_str
+        # Facts come last on purpose: the recalled set changes with every query,
+        # and anything after it in the system prompt would lose its llama.cpp
+        # prefix cache each turn (the transcript alone is ~5k tokens).
+        context = search_section + summary_section + history_str + slm_facts_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 

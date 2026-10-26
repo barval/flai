@@ -41,6 +41,7 @@ from .utils import (
     current_usage_account_id,
     estimate_tokens,
     finish_usage_account,
+    format_chunk_entry,
     format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
@@ -2894,11 +2895,10 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        for i, chunk in enumerate(chunks):
+                        for chunk in chunks:
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
-                            score = scores[i] if i < len(scores) else 0.0
-                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                            context_parts.append(format_chunk_entry(source_label, filename, text))
                         rag_context = "\n\n".join(context_parts)
                         rag_source = "rag"
                         self.app.logger.info(
@@ -3024,12 +3024,9 @@ class RedisRequestQueue:
                 daemon=True,
             ).start()
 
-        # The user requires the multimodal (router + chat + vision) model to be
-        # loaded back immediately after the reasoning answer, so the next router
-        # call doesn't hit a cold start. llama-swap unloads reasoning after its
-        # TTL; reload multimodal synchronously before responding.
-        self._preload_multimodal_sync()
-
+        # The multimodal model is restored by _cleanup_vram_after_task() once the
+        # task leaves the worker. Doing it here held the slow-worker slot for the
+        # whole reload (5-10 s) after the answer had already been delivered.
         return result
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -4014,10 +4011,10 @@ class RedisRequestQueue:
                 # budget trims the prompt, so no extra count cap: a 15-chunk
                 # cut dropped the tail of a document's own chunks — the
                 # current employer among them.
-                for chunk, score in filtered:
+                for chunk, _score in filtered:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG _process_rag_task: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "
@@ -4642,10 +4639,10 @@ class RedisRequestQueue:
                 # budget trims the prompt, so no extra count cap: a 15-chunk
                 # cut dropped the tail of a document's own chunks — the
                 # current employer among them.
-                for chunk, score in filtered:
+                for chunk, _score in filtered:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG _process_rag_task_stream: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "

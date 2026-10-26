@@ -11,6 +11,7 @@ Task: Answer the user's request.
 
 # INPUT DATA
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'".
+Current date and time: {current_time_str}.
 {skills_section}
 User request: "{reasoning_query}".
 Conversation history:

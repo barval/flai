@@ -983,6 +983,11 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None, ret
             result.append({**msg, "content": text_content})
             total += tokens
         kept = list(reversed(result))
+        # The cut is made from the front, so the oldest kept message can be an
+        # answer whose question was dropped — the model then reads a reply to
+        # nothing. Drop such orphan answers (and any duplicate roles after them).
+        while kept and kept[0]["role"] != "user":
+            kept.pop(0)
     else:
         kept = messages
 

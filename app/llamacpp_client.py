@@ -1046,7 +1046,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         # control, but sending it here doesn't hurt and may help with newer builds).
         if model_type == "reasoning":
             ctx = config.get("context_length", 4096)
-            payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
+            from app.utils import reasoning_budget_tokens
+
+            payload["reasoning_budget"] = reasoning_budget_tokens(ctx)
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 

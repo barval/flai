@@ -243,7 +243,10 @@ def test_rag_step_formats_fragments_and_scopes_documents(test_app):
             doc_ids=["d1", "d2"],
         )
     assert out["status"] == "passed"
-    assert "contract.pdf (score: 0.91)" in out["result"]
+    # The header carries the source file only: a cosine value in the prompt
+    # costs tokens and the model cannot interpret it.
+    assert "contract.pdf" in out["result"]
+    assert "score:" not in out["result"]
     assert "Работы: 100" in out["result"] and "Итого: 200" in out["result"]
     kwargs = test_app.modules["rag"].search.call_args.kwargs
     assert kwargs["doc_ids"] == ["d1", "d2"]

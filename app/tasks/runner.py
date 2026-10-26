@@ -34,7 +34,7 @@ from typing import Any
 from flask import Flask
 
 from app.model_config import get_model_config
-from app.utils import begin_usage_account, finish_usage_account
+from app.utils import begin_usage_account, finish_usage_account, format_chunk_entry
 
 logger = logging.getLogger(__name__)
 
@@ -519,14 +519,14 @@ def _run_rag_step(
         source_label = _("Source")
     parts = []
     semantic_seen = 0
-    for chunk, score in filtered:
+    for chunk, _score in filtered:
         if not chunk.get("coverage"):
             if semantic_seen >= 15:
                 continue
             semantic_seen += 1
         filename = chunk.get("filename", "?")
         text = chunk.get("text", str(chunk))
-        parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+        parts.append(format_chunk_entry(source_label, filename, text))
     return "\n\n".join(parts)
 
 

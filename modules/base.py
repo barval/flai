@@ -348,7 +348,7 @@ class BaseModule(TranslationMixin):
                 score = 0.0
             if score >= min_score:
                 scored.append(fact)
-        return (profile[:1] + scored)[:limit]
+        return (profile[:3] + scored)[:limit]
 
     def _get_context_for_model(
         self,

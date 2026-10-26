@@ -5230,7 +5230,8 @@ class RedisRequestQueue:
                 fact,
                 metadata={
                     "session_id": session_id,
-                    "fact_type": "general",
+                    "kind": "profile",
+                    "confidence": 1.0,
                     "category": "instruction",
                     "source": "user_request",
                 },

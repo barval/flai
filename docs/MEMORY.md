@@ -59,6 +59,12 @@ request, the extractor checks it between streamed chunks, and an interrupted run
 writes nothing and puts its task back at the head of the queue. It therefore
 resumes after the quiet window instead of competing with the conversation.
 
+The interruption is checked before the call and between streamed chunks; in
+practice a short extraction (~3 s of generation) runs to the end because the
+client's loop guard holds back 1500 characters before emitting anything, so an
+already-started run is effectively atomic. What the gate does guarantee is that
+it never *starts* while a conversation is live.
+
 **Hosts without a GPU.** The extraction call is one short generation on the
 model chat is already using; on a CPU-only host that is ~30 s of the same model,
 so `SLM_AUTO_EXTRACT=auto` (default) runs it only where a GPU keeps the model

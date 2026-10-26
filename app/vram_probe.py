@@ -302,11 +302,13 @@ def record_measured_vram(module: str, swap_url: str) -> dict[str, Any] | None:
 
 
 def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars: int = 0) -> dict[str, Any]:
-    """Measure one module's real VRAM footprint (and optionally its prefill peak).
+    """Measure one module's real footprint (VRAM, or RSS on a CPU-only host).
 
-    Unloads every model first, samples the baseline, then forces llama-swap to
-    load the target and samples while it happens — the maximum of those samples
-    is the peak, which is what co-residency has to budget for.
+    Unloads every model first, then forces llama-swap to load the target and
+    samples the model server's own allocation — the maximum of those samples is
+    the peak, which is what co-residency has to budget for. The card-wide delta
+    is not used: it also counts the driver context and whatever else happens to
+    be on the GPU, neither of which belongs to the model.
     """
     import requests
 
@@ -356,10 +358,10 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
             timeout=900,
         )
 
-    peak = baseline
+    peak = 0
     _call(".", 1)
     with contextlib.suppress(Exception):
-        peak = max(peak, _gpu_used_mb())
+        peak = memory_used_mb()
 
     if peak_prompt_chars:
         filler = "контекст " * (peak_prompt_chars // 10)
@@ -370,7 +372,7 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
         def _sample() -> None:
             nonlocal peak
             while not stop["flag"]:
-                peak = max(peak, _gpu_used_mb())
+                peak = max(peak, memory_used_mb())
                 time.sleep(0.2)
 
         sampler = threading.Thread(target=_sample, daemon=True)
@@ -386,7 +388,7 @@ def probe_module(module: str, swap_url: str, lang: str = "ru", peak_prompt_chars
     meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
     expected = kv_per_token_from_metadata(meta)
     summary = summarize_probe(
-        baseline_mb=baseline,
+        baseline_mb=0,
         loaded_mb=peak,
         weights_mb=_weights_mb(module, model_name),
         mmproj_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,

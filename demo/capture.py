@@ -22,6 +22,22 @@ FICTIONAL_USERS = {
     "en": [("alex", "Alex"), ("priya", "Priya"), ("tom", "Tom")],
 }
 
+# Camera room names belong to the host that ran the capture, so the English demo
+# would otherwise show the Russian rooms of that machine. An unknown code falls
+# back to the code itself, which keeps the page free of Cyrillic either way.
+CAMERA_ROOMS_EN = {
+    "bal": ["balcony", "balconies"],
+    "det": ["nursery", "nurseries"],
+    "gos": ["living room", "living rooms"],
+    "kab": ["study", "home office"],
+    "kor": ["hallway", "hallways"],
+    "kuh": ["kitchen", "kitchens"],
+    "pri": ["entrance hall", "front hall"],
+    "spa": ["bedroom", "bedrooms"],
+    "tam": ["vestibule", "vestibules"],
+    "tst": ["test"],
+}
+
 
 class CaptureError(RuntimeError):
     """Raised when the capture cannot continue."""
@@ -213,6 +229,10 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             body = _synthetic_monitoring(body, range_key)
             body["users"] = [{"login": login} for login, _ in users]
             route["body"] = body
+        elif route.get("path") == "/admin/api/cameras" and isinstance(route.get("body"), list):
+            for room in route["body"]:
+                if lang == "en" and isinstance(room, dict):
+                    room["name_forms"] = CAMERA_ROOMS_EN.get(room.get("code"), [str(room.get("code") or "room")])
         elif route.get("path") == "/api/sessions" and isinstance(route.get("body"), list):
             # A freshly created account owns one empty conversation; it is not a
             # demo scenario and would sit in the list as «New session».

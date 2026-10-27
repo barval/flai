@@ -550,7 +550,11 @@ class LlamaSwapConfigGenerator:
             if gguf_cache.get(model_key, {}).get("supports_mtp") and not is_cpu:
                 cmd_parts.extend(["--spec-type", "draft-mtp"])
 
-            if ngl is not None and ngl >= 0:
+            if ngl is not None:
+                # Always explicit: llama-server's default is "auto", which decides
+                # by free VRAM at load time and silently keeps most layers in RAM
+                # when something else is resident — measured live at 1.9 GB VRAM
+                # and 5.5 GB RSS for a model that was fully offloaded before.
                 cmd_parts.extend(["--n-gpu-layers", str(ngl)])
 
             if config.get("offload_kqv") and not is_cpu:

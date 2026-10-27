@@ -269,6 +269,12 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
     if not logins:
         limit_bytes = default_limit_bytes
 
+    # Host load is system-wide, not per user: it rides along with every payload.
+    from app.monitoring.system import system_series
+
+    host = system_series(starts, size)
+    series.update(host["series"])
+
     return {
         "range": range_key,
         "bucket_seconds": size,
@@ -277,6 +283,7 @@ def build_payload(logins: list[str], range_key: str, now: datetime | None = None
         "users": [{"login": login} for login in logins],
         "buckets": [start.isoformat() for start in starts],
         "series": series,
+        "system": host["latest"],
         "totals": {key: int(sum(series[key])) for key in SERIES_KEYS if key != "storage_bytes"},
         "storage": {
             "current_bytes": current_bytes,

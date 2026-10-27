@@ -247,6 +247,14 @@ msgstr "Не удалось распознать речь"
 msgid "Task cancelled"
 msgstr "Задача отменена"
 
+#: app/queue.py
+msgid ""
+"Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+"{available} MB available."
+msgstr ""
+"Не хватает RAM для слоёв, оставленных на CPU: нужно ~{needed} МБ, доступно "
+"{available} МБ."
+
 # GPU memory error messages
 #: app/queue.py:1792 app/queue.py:2037 app/queue.py:3074 app/queue.py:3268
 #: modules/multimodal.py:317
@@ -3883,6 +3891,38 @@ msgstr "Не удалось подключиться к сервису гене�
 #: app/tasks/runner.py
 msgid "the verifier answered in another language"
 msgstr "верификатор ответил на другом языке"
+
+#: app/templates/admin.html
+msgid "CPU load"
+msgstr "Загрузка CPU"
+
+#: app/templates/admin.html
+msgid "RAM load"
+msgstr "Загрузка RAM"
+
+#: app/templates/admin.html
+msgid "GPU load"
+msgstr "Загрузка GPU"
+
+#: app/templates/admin.html
+msgid "VRAM load"
+msgstr "Загрузка VRAM"
+
+#: app/templates/admin.html
+msgid "Host CPU utilisation of the whole server, sampled every minute."
+msgstr "Загрузка CPU всего сервера, замер раз в минуту."
+
+#: app/templates/admin.html
+msgid "Used of total system memory, including the model page cache."
+msgstr "Использовано из всей памяти системы, включая кэш страниц моделей."
+
+#: app/templates/admin.html
+msgid "GPU utilisation; empty on a host without a GPU."
+msgstr "Загрузка GPU; пусто на хосте без видеокарты."
+
+#: app/templates/admin.html
+msgid "Used of total video memory; empty on a host without a GPU."
+msgstr "Использовано из всей видеопамяти; пусто на хосте без видеокарты."
 
 #: app/templates/admin.html
 msgid "Monitoring"

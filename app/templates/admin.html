@@ -107,6 +107,38 @@
             </div>
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
+                    <h3>{{ _('CPU load') }}</h3>
+                    <span id="monitoring-value-cpu" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-cpu" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Host CPU utilisation of the whole server, sampled every minute.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('RAM load') }}</h3>
+                    <span id="monitoring-value-ram" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-ram" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Used of total system memory, including the model page cache.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('GPU load') }}</h3>
+                    <span id="monitoring-value-gpu" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-gpu" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('GPU utilisation; empty on a host without a GPU.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('VRAM load') }}</h3>
+                    <span id="monitoring-value-vram" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-vram" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Used of total video memory; empty on a host without a GPU.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
                     <h3>{{ _('Sessions') }}</h3>
                     <span id="monitoring-value-sessions" class="monitoring-value"></span>
                 </div>

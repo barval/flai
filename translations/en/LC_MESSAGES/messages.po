@@ -240,6 +240,14 @@ msgstr "Failed to recognize speech"
 msgid "Task cancelled"
 msgstr "Task cancelled"
 
+#: app/queue.py
+msgid ""
+"Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+"{available} MB available."
+msgstr ""
+"Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+"{available} MB available."
+
 # GPU memory error messages
 #: app/queue.py:1792 app/queue.py:2037 app/queue.py:3074 app/queue.py:3268
 #: modules/multimodal.py:317
@@ -3850,6 +3858,38 @@ msgstr "Could not connect to video generation service"
 #: app/tasks/runner.py
 msgid "the verifier answered in another language"
 msgstr "the verifier answered in another language"
+
+#: app/templates/admin.html
+msgid "CPU load"
+msgstr "CPU load"
+
+#: app/templates/admin.html
+msgid "RAM load"
+msgstr "RAM load"
+
+#: app/templates/admin.html
+msgid "GPU load"
+msgstr "GPU load"
+
+#: app/templates/admin.html
+msgid "VRAM load"
+msgstr "VRAM load"
+
+#: app/templates/admin.html
+msgid "Host CPU utilisation of the whole server, sampled every minute."
+msgstr "Host CPU utilisation of the whole server, sampled every minute."
+
+#: app/templates/admin.html
+msgid "Used of total system memory, including the model page cache."
+msgstr "Used of total system memory, including the model page cache."
+
+#: app/templates/admin.html
+msgid "GPU utilisation; empty on a host without a GPU."
+msgstr "GPU utilisation; empty on a host without a GPU."
+
+#: app/templates/admin.html
+msgid "Used of total video memory; empty on a host without a GPU."
+msgstr "Used of total video memory; empty on a host without a GPU."
 
 #: app/templates/admin.html
 msgid "Monitoring"

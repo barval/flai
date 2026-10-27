@@ -32,6 +32,12 @@ carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning 
 "partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
 measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
+**Model Hub before download.** A model that is not on disk has no GGUF cache entry, so the fit verdict
+reads the KV shapes from the repo's `config.json` (`num_key_value_heads`, `head_dim`, or
+`hidden_size / num_attention_heads`) and, when that is missing, from the GGUF header over a range
+request (`attention.head_count_kv`, `attention.key_length`). Without them the estimate fell back to the
+module constant and over-reserved 1.4–2 GB before the download even started.
+
 **mmproj accounting:** llama-server loads the mmproj (vision encoder) file fully into VRAM — `--n-gpu-layers-mmproj` is not configured, so it is a fixed constant independent of `n_gpu_layers`. `get_mmproj_size_mb()` in `app/utils.py` resolves the path via `LlamaSwapConfigGenerator` (`get_model_path` + `get_mmproj_path`) and returns the file size; `0` when no mmproj is present. It is subtracted from the model's VRAM budget (`available_for_model`), added to the "needs more VRAM" and 16 GB branch checks, and added to the degradation-loop estimate.
 
 **`.gguf` key fix:** GGUF metadata is cached under model names **without** the `.gguf` suffix, but `model_configs.model_name` keeps it. All cache lookups strip the suffix first; pre-fix the lookup silently missed the entry and `_get_original_ngl()` fell back to default layer counts, defeating n_gpu_layers degradation.

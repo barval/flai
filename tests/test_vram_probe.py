@@ -248,3 +248,71 @@ def test_eviction_plan_auto_evicts_when_the_card_is_too_small(monkeypatch):
 
     # 7700 + 1100 + 12100 + 1200 headroom > 16311: the older one goes first.
     assert rm._eviction_plan("reasoning", 12100, loaded) == ["embedding", "multimodal"]
+
+
+def _rm_with_config(total_vram=16311, available_vram=15000, available_ram=16384):
+    from app.resource_manager import ResourceManager
+
+    rm = ResourceManager()
+    rm.hardware.total_vram_mb = total_vram
+    rm.hardware.available_vram_mb = available_vram
+    rm.hardware.total_ram_mb = 32768
+    rm.hardware.available_ram_mb = available_ram
+    rm.hardware.platform = "nvidia"
+    rm.hardware.cuda_detected = True
+    return rm
+
+
+def test_cpu_ram_estimate_is_zero_when_everything_is_on_the_gpu(monkeypatch):
+    """A fully offloaded model keeps no weights in RAM."""
+    rm = _rm_with_config()
+    monkeypatch.setattr(
+        rm,
+        "compute_llamacpp_config",
+        lambda module: {"n_gpu_layers": -1},
+    )
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {"m": {"file_size_mb": 12000, "block_count": 40}})
+    monkeypatch.setattr("app.model_config.get_model_config", lambda module: {"model_name": "m.gguf"})
+
+    assert rm.estimate_cpu_ram_mb("reasoning") == 0
+
+
+def test_cpu_ram_estimate_counts_the_layers_left_on_cpu(monkeypatch):
+    """Half the layers on CPU means half the file is read from RAM."""
+    rm = _rm_with_config()
+    monkeypatch.setattr(rm, "compute_llamacpp_config", lambda module: {"n_gpu_layers": 20})
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {"m": {"file_size_mb": 12000, "block_count": 40}})
+    monkeypatch.setattr("app.model_config.get_model_config", lambda module: {"model_name": "m.gguf"})
+
+    assert rm.estimate_cpu_ram_mb("reasoning") == 6400  # 6000 weights + 400 buffers
+
+
+def test_ensure_vram_refuses_a_partial_offload_that_cannot_fit_in_ram(monkeypatch):
+    """Starting it would page weights from disk or OOM on the KV allocation."""
+    from unittest.mock import MagicMock
+
+    rm = _rm_with_config(available_ram=4000)
+    monkeypatch.setattr(rm, "estimate_cpu_ram_mb", lambda module: 6000)
+    monkeypatch.setattr(
+        "app.resource_manager.requests.get",
+        lambda *a, **k: MagicMock(status_code=200, json=lambda: {"running": []}),
+    )
+
+    assert rm.ensure_vram_for("reasoning", needed_mb=100) is False
+
+
+def test_ensure_vram_accepts_an_already_loaded_model_even_when_ram_is_tight(monkeypatch):
+    from unittest.mock import MagicMock
+
+    rm = _rm_with_config(available_ram=4000)
+    monkeypatch.setattr(rm, "estimate_cpu_ram_mb", lambda module: 6000)
+    monkeypatch.setattr("app.model_config.get_model_config", lambda module: {"model_name": "m.gguf"})
+    monkeypatch.setattr(
+        "app.resource_manager.requests.get",
+        lambda *a, **k: MagicMock(
+            status_code=200,
+            json=lambda: {"running": [{"name": "reasoning", "cmd": "llama-server -m /models/m.gguf"}]},
+        ),
+    )
+
+    assert rm.ensure_vram_for("reasoning", needed_mb=100) is True

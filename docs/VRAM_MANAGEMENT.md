@@ -32,6 +32,13 @@ carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning 
 "partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
 measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
+**When the card holds everything, nothing unloads.** `_gpu_models_coexist()` checks the three
+footprints plus the headroom against the card: on 16 GB it is false (7 648 + 11 577 + 1 209 >
+16 311), so the reasoning model keeps its 10 s TTL and yields the card; on a 24 GB card it is true
+and the reasoning model's TTL becomes 0 — an answer is no longer followed by an 11.6 GB reload. The
+arbiter still evicts it when a video or an image generation needs the whole card, because those
+paths unload explicitly.
+
 **On a CPU host with RAM to spare, both big models stay resident.** When
 `multimodal + reasoning + CPU_RAM_RESERVE_MB <= total RAM`, the group is emitted with `swap: false`
 too, so a reasoning answer no longer evicts the chat model — they alternate without touching the

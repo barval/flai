@@ -208,6 +208,27 @@ class LlamaSwapConfigGenerator:
         except Exception:
             return 0
 
+    def _gpu_models_coexist(self) -> bool:
+        """True when the card can hold all three models at once.
+
+        On 16 GB it cannot (7 648 + 11 577 + 1 209 MB + headroom), so the
+        reasoning model keeps its short TTL and yields the card. On a 24 GB card
+        it fits, and there is no reason to reload 11.6 GB after every answer —
+        the arbiter will still evict it when a video or image needs the card.
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            total_vram = int(rm.hardware.total_vram_mb or 0)
+            if total_vram <= 0:
+                return False
+            needed = sum(rm.get_vram_needed_mb(module) for module in ("multimodal", "reasoning", "embedding"))
+            headroom = int(os.getenv("VRAM_HEADROOM_MB", "1200"))
+            return bool(needed and needed + headroom <= total_vram)
+        except Exception:
+            return False
+
     def _cpu_models_coexist(self) -> bool:
         """True when the CPU host can hold the chat and reasoning models at once.
 
@@ -264,6 +285,9 @@ class LlamaSwapConfigGenerator:
 
         if self._platform_is_cpu():
             return self._cpu_ttl(module)
+        if module == "reasoning" and self._gpu_models_coexist():
+            # Everything fits on the card: keep it warm, the arbiter owns eviction.
+            return 0
         return DEFAULT_TTL.get(module, 300)
 
     def get_ctx_size(self, module: str) -> int:

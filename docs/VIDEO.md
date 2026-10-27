@@ -27,7 +27,9 @@ Choosing one is a deploy-time decision; the two profiles are mutually exclusive:
 ```
 
 The script writes `VIDEO_BACKEND=ltx|wan` into `.env`. Switching later means re-running the
-script with the other flag; the models of the inactive backend stay on disk.
+script with the other flag, or saving the same key in **Admin Panel → Settings**, which applies
+without a restart (the module re-reads the backend, wrapper URL, model and timeout on every
+request); the models of the inactive backend stay on disk and both containers can run at once.
 
 ## Generation parameters
 

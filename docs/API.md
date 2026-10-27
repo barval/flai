@@ -516,15 +516,16 @@ accepted; more references than the cap return `400`.
   `metadata` must be an **integer** inside its range; anything else is rejected
   with `400 invalid_video_options`.
 
-  | Option | Range | Default |
+  | Option | Range | Default (LTX / Wan) |
   |---|---|---|
-  | `width`, `height` | 256–1024, multiples of 32 | 768, 512 |
-  | `num_frames` | 9–240 | 240 |
+  | `width`, `height` | 256–1024, multiples of 32 | 768×512 / 832×480 |
+  | `num_frames` | 9–240 (LTX) or 9–121 (Wan) | 240 (10 s) / 121 (5 s) |
   | `frame_rate` | 6, 12, 16 or 24 | 24 |
   | `seed` | -1 … 2³¹−1 | model default |
 
-  Total pixels are capped at `768x512x240` and the duration at 10 s
-  (`num_frames <= frame_rate * 10`); exceeding either is `400`.
+  Total pixels are capped at `1280x704x121` and the frame count at the active
+  backend's maximum (`VIDEO_BACKEND`: 240 for LTX, 121 for Wan); exceeding
+  either is `400`.
 - When the image or video module is missing or unavailable the endpoints
   return `503 service_unavailable`.
 - Every response carries the prompt in the task record, and the conversation

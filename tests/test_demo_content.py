@@ -21,10 +21,11 @@ def test_russian_scenarios_have_cyrillic():
     assert CYRILLIC.search(json.dumps(_scenarios("ru"), ensure_ascii=False))
 
 
-def test_ten_scenarios_and_three_documents_per_language():
+def test_scenario_and_document_counts_per_language():
     for lang in ("ru", "en"):
         data = _scenarios(lang)
-        assert len(data["scenarios"]) == 16
+        # Ten conversations plus seven background tasks.
+        assert len(data["scenarios"]) == 17
         assert len(data["documents"]) == 3
 
 

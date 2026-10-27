@@ -18,7 +18,7 @@ When releasing a new version, update these files **in order**:
 
 ### 1. README.md and README-ru.md — "What's New" section
 
-- Located in the Architecture section (under `### What's New in vX.X`)
+- Located near the top of the README — the `## 🆕 What's New in vX.Y` section, right after the documentation table
 - List only the **most impactful changes** from the new version
 - Keep the current bullet-list format used by the READMEs: `- **Feature name** — brief description`. Do not switch to a table.
 - Keep entries concise (1-2 lines per feature)
@@ -71,10 +71,9 @@ When releasing a new version:
   - Remove features that are no longer new
   - Keep entries concise (1-2 lines per feature)
 
-### 3. Update "Roadmap → Completed" section in both READMEs:
-  - Add significant new features and major changes
-  - Do NOT add minor fixes, test changes, or internal refactoring
-  - Format: `- **Feature name** — brief description`
+### 3. Reconcile `docs/ROADMAP.md` and `docs/ROADMAP-ru.md`:
+  - Remove items this release delivered (their record is the CHANGELOG entry) and rewrite the ones it only advanced
+  - There is no "Completed" section: delivered work lives in `CHANGELOG.md`
 
 ### 4. Update model list if models changed:
   - Add new models to benchmark table
@@ -102,6 +101,18 @@ pytest tests/test_demo_pages.py -q   # fails when a committed page is stale
 ```
 Commit `demo/snapshot`, `demo/media` and `docs/demo` together with the release. Details →
 [DEMO.md](DEMO.md).
+
+### 8. Secrets and personal data (release blocker):
+```bash
+python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
+```
+A release publishes every tracked file: the demo pages and snapshots are downloadable by anyone.
+No real account, password hash, API key, token, E-mail/Tavily identifier, session dump, backup
+file or private path may remain in them. Any hit is a blocker: remove it, rebuild the artefact
+instead of editing it, fix the pipeline that produced it, add a guard test, and **rotate the
+credential** — a public file may already have been copied. If the value is in pushed history,
+report the commits and branches to the user and rewrite history only with approval (mirror
+backup → `git filter-repo --replace-text` → force-push to every remote).
 
 ## README Update Guide
 When updating README.md and README-ru.md, follow the rules in `docs/LOCALIZATION.md`.

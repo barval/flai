@@ -260,16 +260,23 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
 
     for route in result.get("routes", []):
         if route.get("path") == "/admin/api/users":
-            template = (route.get("body") or [{}])[0] or {}
+            # Built from an explicit allowlist, never by copying the captured row:
+            # the template carried a real `password_hash`, the Tavily key
+            # timestamp and the row's own dates into a page anyone can download.
             rows = []
             for index, (login, name) in enumerate(users):
-                row = dict(template)
-                row.update(
+                rows.append(
                     {
+                        "id": index + 1,
                         "login": login,
                         "name": name,
                         "is_active": True,
+                        "is_admin": False,
+                        "language": lang,
                         "service_class": 2,
+                        "theme": "light",
+                        "voice_gender": "male",
+                        "response_style": "neutral",
                         "sessions_count": 3 + index,
                         "tasks_count": index,
                         "messages_count": 12 + index * 5,
@@ -279,13 +286,17 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
                         "documents_count": 1 + index,
                         "api_keys_count": 0,
                         "storage_used": 1024 * 1024 * (5 + index),
+                        "storage_limit_default_mb": 500,
+                        "storage_limit_mb": 500,
+                        "storage_limit_custom": False,
                         "web_requests_month": 0,
                         "has_tavily_key": False,
                         "slm_facts_count": 0,
                         "camera_permissions": [],
+                        "created_at": "Mon, 05 Jan 2026 09:00:00 GMT",
+                        "updated_at": "Mon, 05 Jan 2026 09:00:00 GMT",
                     }
                 )
-                rows.append(row)
             route["body"] = rows
         elif str(route.get("path", "")).startswith("/admin/api/monitoring"):
             body = route.get("body") or {}
@@ -301,7 +312,40 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             # A freshly created account owns one empty conversation; it is not a
             # demo scenario and would sit in the list as «New session».
             route["body"] = [item for item in route["body"] if item.get("message_count")]
-    return result
+    return _scrub(result)
+
+
+# Any field whose name says "secret" is dropped, whatever route it comes from:
+# a new admin endpoint must not be able to leak through the demo by accident.
+SENSITIVE_KEY_RE = re.compile(
+    r"(password|passwd|secret|token|api_key|apikey|private_key|credential|tavily)", re.IGNORECASE
+)
+# Values that look like a credential even under an innocent key.
+SECRET_VALUE_RE = re.compile(
+    r"(scrypt:|\$argon2|pbkdf2:sha256|tvly-[A-Za-z0-9]{8,}|flai_[A-Za-z0-9]{16,}"
+    r"|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}"
+    r"|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY)",
+)
+
+
+def _scrub(value: Any, key: str = "") -> Any:
+    """Drop credential-shaped fields and values from captured data.
+
+    Counters and flags are kept (`api_keys_count`, `has_tavily_key`) because the
+    interface renders them; anything that could hold a real credential is not.
+    """
+    if isinstance(value, dict):
+        cleaned: dict = {}
+        for name, item in value.items():
+            if SENSITIVE_KEY_RE.search(name) and not isinstance(item, (bool, int, float)):
+                continue
+            cleaned[name] = _scrub(item, name)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub(item, key) for item in value]
+    if isinstance(value, str) and SECRET_VALUE_RE.search(value):
+        return ""
+    return value
 
 
 def wait_for_completion(session: DemoSession, request_id: str, timeout_s: float = 900.0) -> dict:
@@ -386,8 +430,8 @@ PHOTO_PROMPT = {
 }
 
 VOICE_TEXT = {
-    "ru": "Подскажи, что поставить на стол для осенней ярмарки в школе: нужно угощение для младших классов.",
-    "en": "What should we put on the table for the school autumn fair? We need a snack for the younger classes.",
+    "ru": "что поставят на стол для осенней ярмарки в школе",
+    "en": "what will be served at the table for the school autumn fair",
 }
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -564,12 +608,50 @@ def prepare_voice(session: DemoSession, lang: str) -> Path:
     return target
 
 
+def _save_generated_image(session: DemoSession, file_path: str, lang: str) -> Path:
+    """Download a generated picture so the next scenario can attach it."""
+    suffix = Path(file_path).suffix.lower() or ".png"
+    target = _input_dir(lang) / f"previous{suffix}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(session.get_bytes(f"/api/files/{file_path}"))
+    return target
+
+
+def set_video_backend(admin: DemoSession, backend: str) -> None:
+    """Select the video backend through the admin settings API.
+
+    ``VIDEO_BACKEND`` is a saved setting, so the change applies without a
+    restart and ``VideoModule`` picks it up on the next request. Resetting the
+    key restores the value from `.env`.
+    """
+    if backend == "wan":
+        admin.post_json("/admin/api/settings", {"values": {"VIDEO_BACKEND": "wan"}})
+    else:
+        admin.post_json("/admin/api/settings/reset", {"keys": ["VIDEO_BACKEND"]})
+    print(f"[settings] VIDEO_BACKEND={backend}", flush=True)
+
+
 def _attachment_files(scenario: dict, prepared: dict, lang: str) -> dict:
     attach = scenario.get("attach")
     if not attach:
         return {}
     if attach == "generated-image":
         return {"file": (prepared["photo"].name, prepared["photo"].read_bytes(), "image/png")}
+    if attach == "previous-image":
+        # The picture the previous scenario produced (e.g. video from the image
+        # drawn one step earlier), downloaded and attached like a user would.
+        path = prepared.get("previous_image")
+        if path is None or not Path(path).is_file():
+            # The image scenario can fail to return a picture; the run must not
+            # die on the missing attachment — fall back to the prepared photo,
+            # or send the request without one.
+            path = prepared.get("photo")
+            if path is None or not Path(path).is_file():
+                print(f"[{lang}] no picture to attach for '{scenario.get('title')}'", flush=True)
+                return {}
+            print(f"[{lang}] previous picture missing — attaching the prepared photo", flush=True)
+        mime = IMAGE_MIME.get(path.suffix.lower(), "image/png")
+        return {"file": (path.name, path.read_bytes(), mime)}
     if attach == "tts":
         mime = "audio/wav" if prepared["voice"].suffix == ".wav" else "audio/mpeg"
         return {"voice": (prepared["voice"].name, prepared["voice"].read_bytes(), mime)}
@@ -622,12 +704,21 @@ def _run_scenario(
             )
             time.sleep(20)
             return {"task_id": task_id, "interrupted": True}
-        wait_for(
-            lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
-            in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
-            timeout_s=2400.0,
-            interval_s=10.0,
-        )
+        try:
+            wait_for(
+                lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
+                in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
+                # A task that generates several artifacts (two images and two
+                # videos) spends most of an hour inside the queue and the
+                # verifier; 40 minutes cut a healthy run short.
+                timeout_s=5400.0,
+                interval_s=10.0,
+            )
+        except CaptureTimeoutError:
+            # Keep the task and carry on: it may still finish before the run
+            # records /api/tasks at the end, and losing the remaining scenarios
+            # over one slow task is worse than showing it mid-flight.
+            print(f"[task] {scenario.get('title')} did not finish in time — keeping it as is", flush=True)
         return {"task_id": task_id}
     else:
         raise CaptureError(f"Unknown scenario kind: {kind}")
@@ -690,7 +781,12 @@ def capture_language(
 
     media: dict[str, str] = {}
     unfinished: dict[str, dict] = {}
+    current_backend = "ltx"
     for scenario in scenarios["scenarios"]:
+        desired_backend = scenario.get("video_backend", "ltx")
+        if desired_backend != current_backend:
+            set_video_backend(admin, desired_backend)
+            current_backend = desired_backend
         # A background task is not a conversation: creating a chat session for it
         # leaves an empty "New session" entry in the demo session list.
         needs_session = scenario.get("kind") != "task" or scenario.get("interrupt")
@@ -713,6 +809,10 @@ def capture_language(
                 verdict = "TEXT" if found else "clean"
                 print(f"[{lang}]   image {Path(image).name}: {verdict} — {answer[:80]}", flush=True)
                 defects += 1 if found else 0
+            if images and scenario.get("kind") == "image":
+                # Keep it for the next scenario that attaches the previous picture
+                # (video from the image drawn one step earlier).
+                prepared["previous_image"] = _save_generated_image(chat, images[-1], lang)
             if not defects:
                 if result.get("interrupted"):
                     unfinished[task_id] = scenario
@@ -735,6 +835,9 @@ def capture_language(
         if session_id:
             for path in _scenario_paths(session_id):
                 _record(routes, "GET", path, chat.get_json(path))
+
+    if current_backend != "ltx":
+        set_video_backend(admin, "ltx")
 
     for task_id, scenario in unfinished.items():
         body = chat.get_json(f"/api/tasks/{task_id}/messages")["task"]

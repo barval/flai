@@ -1578,14 +1578,17 @@ class RedisRequestQueue:
 
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        video_module = self.app.modules.get("video")
+        video_backend = getattr(video_module, "backend", None)
         min_free = (
             rm.estimate_video_vram_needed(
                 video_params.get("width") if video_params else None,
                 video_params.get("height") if video_params else None,
                 video_params.get("num_frames") if video_params else None,
+                backend=video_backend,
             )
             if video_params
-            else rm.estimate_video_vram_needed()
+            else rm.estimate_video_vram_needed(backend=video_backend)
         )
 
         self._unload_llamacpp_models()

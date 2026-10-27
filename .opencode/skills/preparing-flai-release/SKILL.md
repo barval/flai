@@ -25,9 +25,10 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_release_branches.p
 python3 .opencode/skills/preparing-flai-release/scripts/check_translations.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 ```
 
-The branch, translation and TOC scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+The branch, translation, TOC and secrets scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -128,6 +129,27 @@ git status --short translations
 
 - No empty `msgstr`, no fuzzy entries, both `en` and `ru`.
 - `.po` and `.mo` are committed.
+
+### Secrets and real data in published artefacts
+
+A release publishes everything that is committed: demo pages and snapshots are downloadable by
+anyone. **No real account, password hash, API key, token, Tavily/E-mail identifier, session dump,
+backup file or private path may reach a tracked file** — the demonstration and the fixtures included.
+
+```bash
+python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
+```
+
+Classify every hit: a placeholder (`flai_xxxxxxxx…`, `tvly-abcdefgh12345678`) is expected in docs and
+fixtures; anything else is a blocker. For a real hit:
+
+1. Remove it from the working tree and rebuild the artefact (a demo page is generated, never edited).
+2. Fix the pipeline that produced it, and add a guard test so it cannot come back.
+3. **Rotate the credential** (password, key, token) — a public artefact may already have been copied,
+   so removing the file is not enough.
+4. Assess git history (`git log -S <value> --all`). If the value is in pushed commits, report the
+   branches and commits to the user and rewrite history only with explicit approval (a mirror backup
+   first, then `git filter-repo --replace-text`, then a force-push to every remote).
 
 ### Dead code and unused symbols
 
@@ -270,6 +292,7 @@ Check and record evidence:
 | Version consistent | `pytest tests/test_app_version.py` | PASS / NOT VERIFIED |
 | English-only | Cyrillic scan + classification | PASS / FAIL |
 | Translations complete | `check_translations.py`, `pybabel compile` | PASS / FAIL |
+| No secrets or real data | `check_secrets.py` + classification | PASS / FAIL |
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
 | Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |

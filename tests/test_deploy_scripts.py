@@ -74,12 +74,13 @@ def test_pip_install_flags_suppress_root_warning():
 def test_env_toggles_consult_stored_settings_first():
     """A key saved in Admin Panel → Settings lives in the database and wins over
     .env, so a deploy flag that writes .env for it would silently do nothing.
-    Both helpers must ask the database before touching the file."""
+    Every helper that writes .env must ask the database first."""
     for script in (DEPLOY_SH, DEPLOY_RU_SH):
         src = script.read_text(encoding="utf-8")
         assert "settings_override_exists() {" in src, f"{script.name}: missing the override probe"
-        assert src.count('if settings_override_exists "$key"; then') == 2, (
-            f"{script.name}: enable_env_key and disable_env_key must both check the database"
+        assert src.count('if settings_override_exists "$key"; then') == 3, (
+            f"{script.name}: enable_env_key, disable_env_key and set_env_key_value "
+            "must all check the database"
         )
 
 

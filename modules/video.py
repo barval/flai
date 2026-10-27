@@ -170,26 +170,7 @@ class VideoModule(TranslationMixin):
     def init_app(self, app):
         """Initialize module with Flask app"""
         self.app = app
-        self.backend = str(app.config.get("VIDEO_BACKEND", BACKEND_LTX)).strip().lower()
-        if self.backend not in VIDEO_BACKENDS:
-            self.logger.warning(f"Unknown VIDEO_BACKEND '{self.backend}' — falling back to '{BACKEND_LTX}'")
-            self.backend = BACKEND_LTX
-
-        if self.backend == BACKEND_WAN:
-            self.wrapper_url = app.config.get("WAN_VIDEO_URL", "http://flai-sd:7861")
-            self.timeout = app.config.get("WAN_VIDEO_TIMEOUT", 1800)
-            self.model_type = app.config.get("WAN_VIDEO_MODEL", "wan2.2-ti2v-5b-turbo-Q4_K_M.gguf")
-            self.steps = app.config.get("WAN_VIDEO_STEPS", 4)
-            self.cfg_scale = app.config.get("WAN_VIDEO_CFG_SCALE", 1.0)
-            self.flow_shift = app.config.get("WAN_VIDEO_FLOW_SHIFT", 3.0)
-            self.allow_cpu = bool(app.config.get("WAN_VIDEO_ALLOW_CPU", False))
-            self.service_name = "sd-wrapper"
-        else:
-            self.wrapper_url = app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
-            self.timeout = app.config.get("LTX_VIDEO_TIMEOUT", 600)
-            self.model_type = app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-            self.steps = self.CPU_STEPS_DEFAULT
-            self.service_name = "ltx-wrapper"
+        self._refresh_backend()
 
         self.logger.info(
             f"VideoModule initialized: backend={self.backend}, wrapper={self.wrapper_url}, "
@@ -208,11 +189,54 @@ class VideoModule(TranslationMixin):
                 "Will retry on each request."
             )
 
+    def _refresh_backend(self) -> None:
+        """Re-read the backend selection from the live config.
+
+        ``VIDEO_BACKEND`` can be saved in Admin Panel → Settings, which updates
+        ``app.config`` without a restart (``settings_store.save_values``). Caching
+        the wrapper URL, model and timeout at boot would keep sending requests to
+        the previous container, so every entry point refreshes them first.
+        """
+        app = self.app
+        backend = str(app.config.get("VIDEO_BACKEND", BACKEND_LTX)).strip().lower()
+        if backend not in VIDEO_BACKENDS:
+            self.logger.warning(f"Unknown VIDEO_BACKEND '{backend}' — falling back to '{BACKEND_LTX}'")
+            backend = BACKEND_LTX
+        self.backend = backend
+
+        if backend == BACKEND_WAN:
+            self.wrapper_url = app.config.get("WAN_VIDEO_URL", "http://flai-sd:7861")
+            self.timeout = app.config.get("WAN_VIDEO_TIMEOUT", 1800)
+            self.model_type = app.config.get("WAN_VIDEO_MODEL", "wan2.2-ti2v-5b-turbo-Q4_K_M.gguf")
+            self.steps = app.config.get("WAN_VIDEO_STEPS", 4)
+            self.cfg_scale = app.config.get("WAN_VIDEO_CFG_SCALE", 1.0)
+            self.flow_shift = app.config.get("WAN_VIDEO_FLOW_SHIFT", 3.0)
+            self.allow_cpu = bool(app.config.get("WAN_VIDEO_ALLOW_CPU", False))
+            self.service_name = "sd-wrapper"
+        else:
+            self.wrapper_url = app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+            self.timeout = app.config.get("LTX_VIDEO_TIMEOUT", 600)
+            self.model_type = app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            self.steps = self.CPU_STEPS_DEFAULT
+            self.allow_cpu = False
+            self.service_name = "ltx-wrapper"
+
     @property
     def default_params(self) -> dict[str, Any]:
         """Default generation parameters for the active backend."""
         params = WAN_DEFAULT_PARAMS if self.backend == BACKEND_WAN else LTX_DEFAULT_PARAMS
         return dict(params)
+
+    @property
+    def vram_margin_mb(self) -> int:
+        """Safety margin on top of the estimated peak (MB).
+
+        Wan's figure is a measured peak — 15 003 MB of pipeline against 15 511 MB
+        free on the reference 16 GB card — so a 1 GB margin would reject a clip
+        that demonstrably runs. LTX keeps 1 GB because its estimate comes from
+        the pipeline's measured total, not from the exact requested resolution.
+        """
+        return 300 if self.backend == BACKEND_WAN else 1000
 
     @property
     def max_frames(self) -> int:
@@ -226,6 +250,7 @@ class VideoModule(TranslationMixin):
 
     def check_availability(self):
         """Check the active backend's wrapper availability."""
+        self._refresh_backend()
         if not self.wrapper_url:
             self.logger.error(f"{self.service_name} URL not configured")
             return False
@@ -256,6 +281,7 @@ class VideoModule(TranslationMixin):
         """
         from app.resource_manager import get_resource_manager
 
+        self._refresh_backend()
         if self.backend == BACKEND_WAN:
             params = prompt_data or WAN_DEFAULT_PARAMS
             total_vram = total_vram_mb
@@ -482,7 +508,7 @@ class VideoModule(TranslationMixin):
             return False
         rm._poll_vram()
         available = rm.hardware.available_vram_mb
-        needed = self.estimate_vram_mb(prompt_data) + 1000
+        needed = self.estimate_vram_mb(prompt_data) + self.vram_margin_mb
         if available > 0 and available < needed:
             self.logger.warning(f"VRAM too low for video ({available}MB available, ~{needed}MB needed)")
             return False
@@ -498,6 +524,7 @@ class VideoModule(TranslationMixin):
         time doubles — so the clip is shortened with a user-facing notice.
         LTX accepts up to 240 frames (10 s) as is.
         """
+        self._refresh_backend()
         params = dict(prompt_data)
         if self.backend != BACKEND_WAN:
             return params, None
@@ -590,7 +617,9 @@ class VideoModule(TranslationMixin):
         # The gate empties the card before generation, so the budget is what the
         # card can offer once the LLM is gone — not what is free right now.
         if isinstance(total, int) and total > 0:
-            free = max(free if isinstance(free, int) else 0, total - 1000)
+            # 500 MB covers the idle desktop context (measured 337 MB) instead of
+            # the 1 GB reserve the LTX path uses.
+            free = max(free if isinstance(free, int) else 0, total - 500)
         if not isinstance(free, int) or free <= 0:
             return prompt_data
 
@@ -602,7 +631,7 @@ class VideoModule(TranslationMixin):
                 params["width"] > requested_w or params["num_frames"] > requested_frames
             ):
                 continue
-            if self.estimate_vram_mb(params, total_vram_mb=total) + 1000 <= free:
+            if self.estimate_vram_mb(params, total_vram_mb=total) + self.vram_margin_mb <= free:
                 if preset is not None:
                     self.logger.info(
                         f"Wan VRAM fit ({free}MB free): reduced video to "
@@ -627,6 +656,7 @@ class VideoModule(TranslationMixin):
         """
         from app.resource_manager import get_resource_manager
 
+        self._refresh_backend()
         rm = get_resource_manager()
 
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
@@ -654,7 +684,7 @@ class VideoModule(TranslationMixin):
             # was still unloading (same class of bug as ensure_vram_for).
             timeout = int(self.app.config.get("VRAM_WAIT_TIMEOUT_S", 120))
             deadline = time.time() + timeout
-            video_needed = self.estimate_vram_mb(prompt_data) + 1000
+            video_needed = self.estimate_vram_mb(prompt_data) + self.vram_margin_mb
             while time.time() < deadline:
                 rm._poll_vram()
                 try:
@@ -690,7 +720,7 @@ class VideoModule(TranslationMixin):
                     lang,
                 ).format(
                     free=rm.hardware.available_vram_mb,
-                    need=int(self.estimate_vram_mb(prompt_data) + 1000),
+                    need=int(self.estimate_vram_mb(prompt_data) + self.vram_margin_mb),
                 )
                 self.logger.warning(f"Video generation skipped: {err_msg}")
                 return {"success": False, "error": err_msg}

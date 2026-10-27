@@ -290,6 +290,9 @@ different from LTX:
 - **Preset chain:** 832×480×121 → 640×384×121 → 512×288×121 → 512×288×49. `_fit_wan_to_vram()`
   walks it from the requested size downwards against the free VRAM; the wrapper repeats the same
   step-down on an out-of-memory error, exactly like image generation does with offload levels.
+- **Margin:** the estimate is a measured peak, so Wan uses a 300 MB safety margin and assumes a
+  500 MB desktop context (`total - 500`), where LTX keeps 1 GB on both. With a 1 GB margin the
+  measured 15 003 MB clip would be rejected on the 16 GB reference card that runs it.
 - **No unload needed:** `sd-cli` is a one-shot process, so `unload_video_pipeline()` returns
   immediately for this backend — there is no resident pipeline, and the wrapper's VRAM is released
   by the driver when the process exits. Nothing calls the ltxvideo container, which is not running

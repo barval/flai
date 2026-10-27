@@ -75,6 +75,12 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 ## 🆕 What's New in v12.8
 
+- **Two video backends.** LTX-Video 2B stays the default (fast, clips up to 10 s, 3.1 GB of VRAM); Wan 2.2 TI2V 5B Turbo joins it as the quality option (5 s, better motion, measured 209 s and 15.0 GB on a 16 GB card). One `VIDEO_BACKEND` switch, `--with-video` / `--with-video-wan` at deploy time, and a VRAM preset chain that keeps a full clip on 8 and 12 GB cards. → [VIDEO.md](docs/VIDEO.md)
+- **Long-term memory extracts facts with the model.** The rule-based extractor produced zero facts from 30 real messages; extraction now runs on the background queue with a strict JSON schema, keeps `kind`/`confidence`, injects a consolidated profile block and is measurable with `flask memory-eval`. → [MEMORY.md](docs/MEMORY.md)
+- **VRAM is measured, not guessed.** The KV cache comes from each model's own GGUF shapes (the old constants over-counted 1.4–2 GB), measured footprints win over formulas, models that fit stay resident together, and `flask vram-probe` / `flask vram-plan` show the numbers before a save. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **Hybrid retrieval is BM25 over lemmas.** `ts_rank_cd` is gone; fused MRR rose 0.688 → 0.802 and nDCG@20 0.765 → 0.872 on two 30-question sets. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Security and dependency refresh.** Pillow 13.0.0, python-dotenv 1.2.4, urllib3 2.8.0, Werkzeug 3.1.9, PostgreSQL 18.6, Redis 8.4.7, Qdrant 1.20, gunicorn 26.2.0, a locked 88-package image, and `pip-audit` + Trivy in CI. → [UPGRADES.md](docs/UPGRADES.md)
+
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## 🖼 Demo

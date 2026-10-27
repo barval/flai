@@ -221,13 +221,23 @@ class TestFallbackChain:
         assert params["width"] <= 832
         assert params["num_frames"] == 121
 
-    def test_8gb_card_picks_the_smallest_preset(self):
+    def test_default_preset_fits_a_16gb_card(self):
+        """Measured: 15 003 MB of pipeline against 15 511 MB free, so it must stay 480p."""
+        module = _module()
+        rm = MagicMock()
+        rm.hardware.total_vram_mb = 16_311
+        rm.hardware.available_vram_mb = 337
+        params = module._fit_wan_to_vram(rm, dict(WAN_DEFAULT_PARAMS))
+        assert params["width"] == 832
+        assert params["num_frames"] == 121
+
+    def test_8gb_card_steps_down_to_360p(self):
         module = _module()
         rm = MagicMock()
         rm.hardware.total_vram_mb = 8_000
         rm.hardware.available_vram_mb = 500
         params = module._fit_wan_to_vram(rm, dict(WAN_DEFAULT_PARAMS))
-        assert params["width"] == 512
+        assert params["width"] == 640
         assert params["num_frames"] == 121
 
     def test_chain_sizes_stay_valid_for_wan(self):
@@ -348,3 +358,25 @@ class TestWanWrapper:
             assert width % 32 == 0 and height % 32 == 0
             assert (frames - 1) % 4 == 0
             assert frames <= wrapper.WAN_MAX_FRAMES
+
+
+@pytest.mark.unit
+class TestRuntimeBackendSwitch:
+    """VIDEO_BACKEND is a saved admin setting: switching it must not need a restart."""
+
+    def test_config_change_moves_requests_to_the_other_wrapper(self):
+        app = _make_app()
+        with patch("modules.video.requests.get", return_value=MagicMock(status_code=200)):
+            module = VideoModule(app)
+        assert module.backend == "wan"
+        assert module.wrapper_url == "http://test-sd:7861"
+
+        app.config["VIDEO_BACKEND"] = "ltx"
+        module._refresh_backend()
+        assert module.backend == "ltx"
+        assert module.wrapper_url == "http://test-ltx:7872"
+        assert module.steps == module.CPU_STEPS_DEFAULT
+
+    def test_margin_follows_the_backend(self):
+        assert _module().vram_margin_mb == 300
+        assert _module(VIDEO_BACKEND="ltx").vram_margin_mb == 1000

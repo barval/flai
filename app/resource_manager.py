@@ -1121,6 +1121,7 @@ class ResourceManager:
         width: int | None = None,
         height: int | None = None,
         num_frames: int | None = None,
+        backend: str | None = None,
     ) -> int:
         """VRAM threshold for the active video backend (MB).
 
@@ -1132,7 +1133,7 @@ class ResourceManager:
           3. Compute from local filesystem (if /app/models is mounted)
           4. Env var LTX_VIDEO_VRAM_MB fallback (default 8500)
         """
-        if os.getenv("VIDEO_BACKEND", "ltx").strip().lower() == "wan":
+        if (backend or os.getenv("VIDEO_BACKEND", "ltx")).strip().lower() == "wan":
             from app.vram_estimate import wan_video_vram_mb
 
             total = self.hardware.total_vram_mb

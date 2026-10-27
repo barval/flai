@@ -18,9 +18,16 @@ The recalled fact set changes with every query while the transcript only grows, 
 last keeps the llama.cpp prefix cache intact: anything after them is re-processed on every turn (the
 transcript alone is ~5k tokens, ~1.5 s of prefill on a 16 GB GPU).
 
-The reasoning prompt is a single `user` message that also tells the model the **current date and
-time** (`{current_time_str}`) — history deliberately carries no timestamps, so without that anchor
-questions about "today" or "this week" have nothing to resolve against.
+The reasoning prompt is two messages: a `system` turn with the rules, role, **current date and time**
+(`{current_time_str}`) and the skills list, and one `user` turn where the evidence comes first and the
+question is the last thing the model reads. It used to be a single `user` message with the question
+above the transcript, so the model read the question first and the evidence it had to ground sat
+mid-prompt. History deliberately carries no timestamps — the system turn is the only time anchor.
+
+The rolling summary is **not** regenerated in the request. When history is trimmed, the request reads
+the stored summary and queues a refresh (`session_summary_task`, idle work, one per session); the old
+path loaded the multimodal model inside the reasoning request, summarised, and then loaded the
+reasoning model — a second model swap on the critical path.
 
 The thinking budget is derived from the same fill ratio rather than from the window alone:
 `reasoning_budget_tokens(ctx) = max(1024, min(ctx × 0.4, ctx − 64% × ctx − 1500))`. A flat

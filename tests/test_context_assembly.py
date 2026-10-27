@@ -175,3 +175,59 @@ def test_context_does_not_inject_an_unscored_fact(base_module):
         ctx = base_module._get_context_for_model("s1", "multimodal", "что я люблю?", user_id="u1")
 
     assert "яблоками" not in ctx
+
+
+@pytest.mark.unit
+def test_reasoning_messages_are_system_plus_user_with_the_question_last(base_module):
+    """The prompt used to be one user turn: question first, evidence buried."""
+    messages = base_module.build_reasoning_messages(
+        "сколько стоит билет?",
+        "2026-10-27 10:00 (Europe/Moscow)",
+        "ru",
+        "neutral",
+        "Найденная информация из документов:\nЦена 500 рублей",
+    )
+
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert "2026-10-27 10:00" in messages[0]["content"]
+    assert "500 рублей" in messages[0]["content"] or "500 рублей" in messages[1]["content"]
+
+    user = messages[1]["content"]
+    assert user.index("500 рублей") < user.index("сколько стоит билет?")
+    assert user.rstrip().endswith("сколько стоит билет?")
+
+
+@pytest.mark.unit
+def test_reasoning_messages_use_the_english_label(base_module):
+    messages = base_module.build_reasoning_messages("how much is the ticket?", "2026-10-27", "en", "neutral", "")
+
+    assert messages[1]["content"].rstrip().endswith("how much is the ticket?")
+    assert "REQUEST" in messages[1]["content"]
+
+
+@pytest.mark.unit
+def test_session_summary_is_read_from_storage_not_generated_inline(base_module):
+    """Regenerating it inside the request loaded the multimodal model mid-answer."""
+    base_module.app.request_queue = MagicMock()
+    stored = {"summary": "Кратко: выбрали ламинат", "summary_upto_id": 10}
+
+    with (
+        patch("modules.base.get_session_summary", return_value=stored),
+        patch.object(base_module, "_summarize_session_history") as summarize,
+    ):
+        section = base_module._get_session_summary_section("s1", 40, "ru")
+
+    assert "ламинат" in section
+    summarize.assert_not_called()
+    base_module.app.request_queue.add_session_summary_task.assert_called_once_with("s1", 40, "ru")
+
+
+@pytest.mark.unit
+def test_session_summary_is_not_rescheduled_when_it_already_covers_the_cut(base_module):
+    base_module.app.request_queue = MagicMock()
+    stored = {"summary": "Кратко: всё покрыто", "summary_upto_id": 40}
+
+    with patch("modules.base.get_session_summary", return_value=stored):
+        base_module._get_session_summary_section("s1", 40, "ru")
+
+    base_module.app.request_queue.add_session_summary_task.assert_not_called()

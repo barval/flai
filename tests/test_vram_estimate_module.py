@@ -346,3 +346,30 @@ def test_classify_ignores_a_measurement_from_another_window(monkeypatch):
         res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=4700, blocks=36, ctx=32768)
 
     assert res["vram_mb"] != 5000
+
+
+def test_hub_fit_uses_the_repo_config_shapes_before_download(monkeypatch):
+    """A model that is not on disk has no GGUF cache: config.json still has the shapes."""
+    from app.vram_estimate import _classify_model_fit
+
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {})
+    monkeypatch.setattr("app.utils.get_mmproj_size_mb", lambda name: 0)
+    monkeypatch.setattr("app.database.get_vram_estimate", lambda *a, **k: {})
+    monkeypatch.setattr("app.vram_estimate._get_actual_vram_mb", lambda: (0, 16311))
+    monkeypatch.setattr("app.vram_estimate._get_free_ram_mb", lambda: 32768)
+    monkeypatch.setattr("app.vram_estimate._get_total_ram_mb", lambda: 32768)
+    monkeypatch.setattr("app.vram_estimate._find_gguf_path", lambda name: None)
+    from app import vram_estimate
+
+    monkeypatch.setattr(vram_estimate.os.path, "exists", lambda p: False)
+
+    with_shapes = _classify_model_fit(
+        "Qwen3VL-like", 32768, file_size_mb=4700, block_count=36,
+        module="multimodal", kv_heads=8, head_dim=128,
+    )
+    without = _classify_model_fit(
+        "Qwen3VL-like", 32768, file_size_mb=4700, block_count=36, module="multimodal",
+    )
+
+    assert with_shapes["kv_cache_mb"] < without["kv_cache_mb"]
+    assert with_shapes["kv_cache_mb"] == pytest.approx(32768 * 0.0396, abs=2)

@@ -271,6 +271,8 @@ def _classify_model_fit(
     file_size_mb: float | None = None,
     block_count: int | None = None,
     module: str = "multimodal",
+    kv_heads: int | None = None,
+    head_dim: int | None = None,
 ) -> dict:
     """Classify whether a model can be loaded and in what mode.
 
@@ -356,6 +358,23 @@ def _classify_model_fit(
     from app.utils import get_mmproj_size_mb
 
     mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
+    # A model that is not on disk (Model Hub) has no GGUF cache entry: the repo's
+    # config.json carries the KV shapes, so the estimate can still use them.
+    kv_per_token = None
+    if kv_heads and head_dim and block_count:
+        from app.vram_probe import kv_per_token_from_metadata
+
+        kv_per_token = kv_per_token_from_metadata(
+            {
+                "block_count": int(block_count),
+                "head_count_kv": int(kv_heads),
+                "key_length": int(head_dim),
+                "value_length": int(head_dim),
+            }
+        )
+    if not kv_per_token:
+        kv_per_token = _kv_per_token_for_module(module, "q4_0", model_name)
+
     est = _estimate_model_vram(
         file_size_mb=file_mb,
         block_count=block_count,
@@ -364,7 +383,7 @@ def _classify_model_fit(
         ctx_size=max(int(context_length), 1),
         supports_mtp=cached.get("supports_mtp", False),
         mmproj_size_mb=mmproj_mb,
-        kv_per_token=_kv_per_token_for_module(module, "q4_0", model_name),
+        kv_per_token=kv_per_token,
     )
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])

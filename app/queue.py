@@ -717,9 +717,9 @@ class RedisRequestQueue:
         if req_type == "api_image_edit" or task_type == "api_image_edit":
             return "multimodal"
         if task_type == "transcribe_audio":
-            return "whisper" if self.app.config.get("WHISPER_GPU") else "none"
+            return "whisper" if getattr(self.app, "config", {}).get("WHISPER_GPU") else "none"
         if req_type == "api_transcribe":
-            return "whisper" if self.app.config.get("WHISPER_GPU") else "none"
+            return "whisper" if getattr(self.app, "config", {}).get("WHISPER_GPU") else "none"
 
         if action_type == "rag":
             return "reasoning"
@@ -6364,28 +6364,30 @@ class RedisRequestQueue:
 
         # A CPU transcription loads ~1.7 GB of model; the GPU profile needs the
         # card. Both go through the guards so the wait is explicit, not a swap
-        # storm or an OOM kill.
-        from app.resource_manager import get_resource_manager
+        # storm or an OOM kill. A queue object without a config is a test stub.
+        config = getattr(self.app, "config", None)
+        if config is not None:
+            from app.resource_manager import get_resource_manager
 
-        rm = get_resource_manager()
-        if self.app.config.get("WHISPER_GPU"):
-            if not rm.ensure_vram_for("whisper"):
-                error_msg = self._gpu_refusal_message(lang, "GPU memory unavailable. Try again in a moment.")
+            rm = get_resource_manager()
+            if config.get("WHISPER_GPU"):
+                if not rm.ensure_vram_for("whisper"):
+                    error_msg = self._gpu_refusal_message(lang, "GPU memory unavailable. Try again in a moment.")
+                    save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
+                    return {"error": error_msg, "session_id": session_id, "is_error": True}
+                rm._model_last_used["whisper"] = time.time()
+            elif not rm.ensure_ram_for("whisper"):
+                refusal = rm.last_refusal or {}
+                error_msg = self.app.modules["base"]._(
+                    "Not enough RAM for {service}: {needed} MB needed, {available} MB available.",
+                    lang=lang,
+                ).format(
+                    service="Whisper",
+                    needed=refusal.get("needed_mb"),
+                    available=refusal.get("available_mb"),
+                )
                 save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
                 return {"error": error_msg, "session_id": session_id, "is_error": True}
-            rm._model_last_used["whisper"] = time.time()
-        elif not rm.ensure_ram_for("whisper"):
-            refusal = rm.last_refusal or {}
-            error_msg = self.app.modules["base"]._(
-                "Not enough RAM for {service}: {needed} MB needed, {available} MB available.",
-                lang=lang,
-            ).format(
-                service="Whisper",
-                needed=refusal.get("needed_mb"),
-                available=refusal.get("available_mb"),
-            )
-            save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
-            return {"error": error_msg, "session_id": session_id, "is_error": True}
 
         # Every audio item of the message in attachment order (the route puts a
         # voice recording first); a legacy single-audio payload — a requeued

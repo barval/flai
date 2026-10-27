@@ -32,6 +32,12 @@ carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning 
 "partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
 measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
+**On a CPU host with RAM to spare, both big models stay resident.** When
+`multimodal + reasoning + CPU_RAM_RESERVE_MB <= total RAM`, the group is emitted with `swap: false`
+too, so a reasoning answer no longer evicts the chat model — they alternate without touching the
+disk. That is the whole point of the CPU TTL policy: measured reload of the reasoning model is
+11+ GB from disk. When they do not fit, the swap stays and llama-swap is the guard.
+
 **Who decides what stays resident.** Exactly one arbiter per platform:
 
 - **GPU** — `ensure_vram_for()`. The `llm_fast` llama-swap group is emitted with `swap: false`, so

@@ -54,6 +54,7 @@ FULL_TABLES = [
     "tasks",
     "task_steps",
     "storage_snapshots",
+    "system_samples",
     "monitoring_archive",
     "web_requests",
     "settings",

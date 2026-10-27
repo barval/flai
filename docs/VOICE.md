@@ -16,21 +16,29 @@ docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 ### Whisper on the GPU (optional)
 
-CPU is the default and needs no VRAM. When transcriptions are frequent or long
-and the card has room, use the override:
+CPU is the default and needs no VRAM. The ASR part is selected by its own profile,
+separate from the TTS backend:
 
 ```bash
-docker compose -f docker-compose.gpu.yml -f docker-compose.whisper-gpu.yml \
-  --profile with-voice-piper up -d
-# then in .env: WHISPER_GPU=true, restart flai-web
+# CPU (default, unchanged): Whisper CPU + Piper
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
+# or the ASR part alone, then a TTS backend of your choice
+docker compose -f docker-compose.gpu.yml --profile with-whisper-cpu --profile with-tts-piper up -d
+
+# GPU: Whisper on the card + Piper, without the CPU ASR container
+docker compose -f docker-compose.gpu.yml \
+  --profile with-whisper-gpu --profile with-tts-piper up -d
+# then WHISPER_GPU=true in .env and restart flai-web
 ```
 
-The ASR container then runs with `ASR_DEVICE=cuda`, the app routes every
-transcription through the GPU queue (it takes `_gpu_lock` and calls
-`ensure_vram_for("whisper")` with the `WHISPER_VRAM_MB` budget), and the container
-counts as a resident VRAM consumer in the eviction plan — evicting it means
-restarting it, because only a restart releases its CUDA context. Keep
-`WHISPER_GPU=false` unless chat and Whisper fit together on the card.
+The two ASR containers have different names (`flai-whisper`, `flai-whisper-gpu`)
+because compose profiles are additive: a second service cannot reuse a container
+name, and selecting both families would otherwise put two servers on one port.
+The app picks the endpoint from `WHISPER_GPU` unless `WHISPER_API_URL` is set
+explicitly. With the GPU profile the transcription takes `_gpu_lock`, calls
+`ensure_vram_for("whisper")` with the `WHISPER_VRAM_MB` budget, and the container
+counts as a resident VRAM consumer whose eviction is a restart (only that releases
+its CUDA context). Keep `WHISPER_GPU=false` unless chat and Whisper fit together.
 
 ### Cost of the voice services (measured)
 

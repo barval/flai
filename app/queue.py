@@ -282,6 +282,8 @@ class RedisRequestQueue:
             "describe_document_pdf",
             "fact_extraction_task",
             "fact_merge_task",
+            "memory_extract_task",
+            "session_summary_task",
         }
     )
 
@@ -495,6 +497,8 @@ class RedisRequestQueue:
             return "background"  # Background task — runs only in idle, no GPU lock
         if task_type == "memory_extract_task":
             return "background"  # LLM extraction — idle only, takes the GPU lock itself
+        if task_type == "session_summary_task":
+            return "background"  # rolling summary refresh — idle only, GPU lock
         if task_type == "fact_extraction_task":
             return "slow"  # LLM-based extraction is slow
         # Also check type inside data (for index_document from documents.py)
@@ -700,8 +704,8 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
-        if task_type == "memory_extract_task":
-            return "multimodal"  # LLM fact extraction on the resident model
+        if task_type in ("memory_extract_task", "session_summary_task"):
+            return "multimodal"  # both run on the resident model
         if task_type == "camera_task":
             return "multimodal"  # snapshot analysis via the resident multimodal model
         if task_type == "vision_task":
@@ -1071,7 +1075,7 @@ class RedisRequestQueue:
                         # Background tasks are CPU-only except the LLM fact
                         # extraction, which needs the resident model and must
                         # therefore wait for the GPU like any other call.
-                        if task.get("type") == "memory_extract_task":
+                        if task.get("type") in ("memory_extract_task", "session_summary_task"):
                             with self._gpu_lock:
                                 self._process_single_task(task, self.background_processing_key)
                         else:
@@ -5322,6 +5326,79 @@ class RedisRequestQueue:
             self.logger.debug(f"memory extract enqueue failed: {e}")
             return None
 
+    def add_session_summary_task(self, session_id: str, cut_id: int, lang: str = "ru") -> str | None:
+        """Queue a rolling-summary refresh, one per session at a time.
+
+        Called from the request path instead of summarising there: the refresh
+        needs the multimodal model, and loading it inside a reasoning request
+        cost a second model swap on the critical path.
+        """
+        if not session_id or cut_id <= 0:
+            return None
+        try:
+            import uuid as _uuid
+
+            if not self.redis.set(f"summary:pending:{session_id}", "1", nx=True, ex=3600):
+                return None
+            task_id = str(_uuid.uuid4())
+            task = {
+                "id": task_id,
+                "user_id": "",
+                "session_id": session_id,
+                "type": "session_summary_task",
+                "user_class": 3,
+                "data": {"type": "session_summary_task", "cut_id": int(cut_id)},
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            return task_id
+        except Exception as e:
+            self.logger.debug(f"session summary enqueue failed: {e}")
+            return None
+
+    def _process_session_summary(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Fold the messages older than the cut into the stored summary."""
+        session_id = task.get("session_id") or ""
+        try:
+            from app.db import get_session_messages, get_session_summary, update_session_summary
+
+            cut_id = int((task.get("data") or {}).get("cut_id") or 0)
+            lang = task.get("lang", "ru")
+            if not session_id or cut_id <= 0:
+                return {"status": "ok"}
+
+            base = self.app.modules.get("base")
+            existing = get_session_summary(session_id) or {}
+            previous = existing.get("summary")
+            previous_upto = int(existing.get("summary_upto_id") or 0)
+            if previous_upto >= cut_id:
+                return {"status": "ok"}
+
+            fetched = get_session_messages(session_id, limit=base.summary_max_fetch)
+            new_part = [
+                message
+                for message in fetched
+                if previous_upto < int(message.get("id") or 0) < cut_id
+            ]
+            if not new_part:
+                return {"status": "ok"}
+
+            summary = base._summarize_session_history(new_part, lang, previous)
+            if summary:
+                update_session_summary(session_id, summary, cut_id)
+                self.app.logger.info(f"Session summary refreshed: {len(new_part)} messages folded in")
+            return {"status": "ok", "summarized": len(new_part)}
+        except Exception as e:
+            self.app.logger.warning(f"Session summary failed: {e}")
+            return {"status": "ok"}
+        finally:
+            try:
+                if session_id:
+                    self.redis.delete(f"summary:pending:{session_id}")
+            except Exception:
+                pass
+
     def _process_memory_extract(self, task: dict[str, Any]) -> dict[str, Any]:
         """Extract durable facts about the user with the resident multimodal model.
 
@@ -5582,6 +5659,7 @@ class RedisRequestQueue:
             "fact_extraction_task",
             "fact_merge_task",
             "memory_extract_task",
+            "session_summary_task",
             "api_embedding",
             "api_transcribe",
         ):
@@ -5623,6 +5701,8 @@ class RedisRequestQueue:
             return self._process_fact_merge(task)
         if task_type == "memory_extract_task":
             return self._process_memory_extract(task)
+        if task_type == "session_summary_task":
+            return self._process_session_summary(task)
         if task_type == "api_embedding":
             return self._process_api_embedding_task(task)
         if task_type == "api_transcribe":
@@ -6823,7 +6903,9 @@ class RedisRequestQueue:
 
     # Task types that run in the background and are invisible to the user.
     # They should not trigger ⚡ or ⏳ indicators in the UI.
-    _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task", "memory_extract_task"})
+    _BACKGROUND_TASK_TYPES = frozenset(
+        {"fact_extraction_task", "fact_merge_task", "memory_extract_task", "session_summary_task"}
+    )
 
     # Set by every user-facing request; the memory extraction (and the idle
     # merge queue behind it) waits it out.

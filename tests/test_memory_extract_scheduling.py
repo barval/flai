@@ -23,6 +23,7 @@ def _queue():
     queue.queue_key = "request_queue"
     queue.slow_queue_key = "slow_request_queue"
     queue.background_queue_key = "background_queue"
+    queue.hmac_key = b"test-key"
     return queue, queue.redis
 
 
@@ -73,3 +74,25 @@ def test_gate_is_closed_when_there_is_nothing_to_do():
     redis.exists.return_value = 0
 
     assert queue.background_gate_open() is False
+
+
+def test_summary_task_is_background_idle_work():
+    queue, _ = _queue()
+    assert queue._classify_task({"type": "session_summary_task", "data": {}}) == "background"
+
+
+def test_summary_task_is_deduplicated_per_session():
+    queue, redis = _queue()
+    redis.set.return_value = False  # already pending
+
+    assert queue.add_session_summary_task("s1", 40) is None
+    redis.rpush.assert_not_called()
+
+
+def test_summary_task_is_queued_once():
+    queue, redis = _queue()
+    redis.set.return_value = True
+
+    assert queue.add_session_summary_task("s1", 40) is not None
+    redis.rpush.assert_called_once()
+    assert redis.rpush.call_args[0][0] == queue.background_queue_key

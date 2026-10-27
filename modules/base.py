@@ -1,6 +1,5 @@
 # modules/base.py
 import logging
-import threading
 import time
 from collections.abc import Callable, Generator
 from typing import Any
@@ -8,7 +7,6 @@ from typing import Any
 from app.db import (
     get_session_summary,
     get_session_text_history,
-    update_session_summary,
 )
 from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
@@ -22,24 +20,6 @@ from app.utils import (
 )
 
 # Sessions currently being summarized — serializes regeneration so that
-# concurrent context builds don't run duplicate (and GPU-expensive) summaries.
-_SUMMARY_IN_PROGRESS: set[str] = set()
-_SUMMARY_LOCK = threading.Lock()
-
-
-def _acquire_summary_guard(session_id: str) -> bool:
-    with _SUMMARY_LOCK:
-        if session_id in _SUMMARY_IN_PROGRESS:
-            return False
-        _SUMMARY_IN_PROGRESS.add(session_id)
-        return True
-
-
-def _release_summary_guard(session_id: str) -> None:
-    with _SUMMARY_LOCK:
-        _SUMMARY_IN_PROGRESS.discard(session_id)
-
-
 STYLE_INSTRUCTIONS = {
     "ru": {
         "neutral": (
@@ -283,43 +263,27 @@ class BaseModule(TranslationMixin):
         return summary
 
     def _get_session_summary_section(self, session_id: str, oldest_kept_id: int | None, lang: str = "ru") -> str:
-        """Return an up-to-date rolling summary section for the session.
+        """Return the stored rolling summary and schedule a refresh if it is behind.
 
-        If history was trimmed by the token budget and the stored summary does
-        not yet cover the trimmed prefix, regenerate it with the multimodal
-        model (covers only the newly-trimmed tail, folded into the previous
-        summary). A module-level lock serializes regeneration per session to
-        avoid duplicate concurrent generations.
+        The summary used to be regenerated *inside* the request: a reasoning
+        answer that overflowed its history had to load the multimodal model,
+        summarise, and only then load the reasoning model — a second model swap
+        on the critical path. The request now only reads what is stored and
+        queues the refresh as idle work; the cost is one turn with a slightly
+        stale summary, the gain is a swap per long conversation.
         """
         existing = get_session_summary(session_id)
         prev_summary = existing.get("summary") if existing else None
         prev_upto = existing.get("summary_upto_id") if existing and existing.get("summary_upto_id") else 0
 
-        # Summary already covers every message that got trimmed → nothing to do.
-        if oldest_kept_id is not None and prev_upto >= oldest_kept_id:
+        if oldest_kept_id is None or prev_upto >= oldest_kept_id:
             return self._format_summary_section(prev_summary, lang)
 
-        if oldest_kept_id is None:
-            return self._format_summary_section(prev_summary, lang)
-
-        # Only summarize messages that are NOT already in the stored summary.
-        if not _acquire_summary_guard(session_id):
-            return self._format_summary_section(prev_summary, lang)
-        try:
-            from app.db import get_session_messages
-
-            fetched = get_session_messages(session_id, limit=self.summary_max_fetch)
-            dropped = [m for m in fetched if m["id"] < oldest_kept_id]
-            new_part = [m for m in dropped if m.get("id", 0) > prev_upto]
-            if not new_part:
-                return self._format_summary_section(prev_summary, lang)
-            new_summary = self._summarize_session_history(new_part, lang, prev_summary)
-            if not new_summary:
-                return self._format_summary_section(prev_summary, lang)
-            update_session_summary(session_id, new_summary, oldest_kept_id)
-            return self._format_summary_section(new_summary, lang)
-        finally:
-            _release_summary_guard(session_id)
+        queue = getattr(self.app, "request_queue", None)
+        schedule = getattr(queue, "add_session_summary_task", None)
+        if callable(schedule):
+            schedule(session_id, int(oldest_kept_id), lang)
+        return self._format_summary_section(prev_summary, lang)
 
     @staticmethod
     def select_recalled_facts(
@@ -793,6 +757,43 @@ class BaseModule(TranslationMixin):
 
         return {"action": "none", "query": original_query, "needs_reasoning": False}
 
+    def build_reasoning_messages(
+        self,
+        query: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str,
+        context_str: str,
+    ) -> list[dict[str, str]] | None:
+        """System instructions + one user message: context first, question last.
+
+        The prompt used to be a single ``user`` message with the question above
+        the transcript, so the model read the question first and the answer it
+        had to ground was buried mid-prompt. Roles and order now match how the
+        chat template is meant to be used: rules and role in the system message,
+        evidence first and the question at the end of the user turn.
+        """
+        system_content = format_prompt(
+            "reasoning.template",
+            {
+                "current_time_str": current_time_str,
+                "response_language": response_language_name(lang),
+                "response_style": get_style_instruction(lang, response_style),
+            },
+            lang=lang,
+        )
+        user_content = format_prompt(
+            "reasoning_user.template",
+            {"conversation_history": (context_str or "").strip(), "reasoning_query": query},
+            lang=lang,
+        )
+        if not system_content or not user_content:
+            return None
+        return [
+            {"role": "system", "content": system_content.strip()},
+            {"role": "user", "content": user_content.strip()},
+        ]
+
     def process_reasoning(
         self,
         query: str,
@@ -805,7 +806,6 @@ class BaseModule(TranslationMixin):
         rag_source: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
-        response_language = response_language_name(lang)
         context_str = self._get_context_for_model(
             session_id or "",
             "reasoning",
@@ -815,32 +815,18 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
         )
-        style_instruction = get_style_instruction(lang, response_style)
-
-        reasoning_prompt = format_prompt(
-            "reasoning.template",
-            {
-                "current_time_str": current_time_str,
-                "reasoning_query": query,
-                "response_language": response_language,
-                "conversation_history": context_str,
-                "response_style": style_instruction,
-            },
-            lang=lang,
-        )
-
-        if not reasoning_prompt:
+        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        if not messages:
             return "⚠️ " + self._("Error loading prompt template", lang)
 
-        # Validate final prompt before sending
+        # Validate the whole prompt (system + user) before sending
+        reasoning_prompt = "\n\n".join(message["content"] for message in messages)
         error = self._validate_final_prompt(reasoning_prompt, "reasoning", lang)
         if error:
             return "⚠️ " + error
 
         self.logger.info(f"Sending request to reasoning model: {query[:100]}...")
-        response = self.call_llamacpp(
-            [{"role": "user", "content": reasoning_prompt}], model_type="reasoning", lang=lang
-        )
+        response = self.call_llamacpp(messages, model_type="reasoning", lang=lang)
         self.logger.info(f"Reasoning model response: {str(response)[:100]}...")
         return str(response)
 
@@ -864,7 +850,6 @@ class BaseModule(TranslationMixin):
         ensure_vram=False reuses an already-loaded reasoning model (used by the
         empty-output retry in queue.py to avoid an unload/reload between attempts).
         """
-        response_language = response_language_name(lang)
         context_str = self._get_context_for_model(
             session_id or "",
             "reasoning",
@@ -874,23 +859,11 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
         )
-        style_instruction = get_style_instruction(lang, response_style)
-
-        prompt = format_prompt(
-            "reasoning.template",
-            {
-                "current_time_str": current_time_str,
-                "reasoning_query": query,
-                "response_language": response_language,
-                "conversation_history": context_str,
-                "response_style": style_instruction,
-            },
-            lang=lang,
-        )
-
-        if not prompt:
+        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        if not messages:
             yield "⚠️ " + self._("Error loading prompt template", lang)
             return
+        prompt = "\n\n".join(message["content"] for message in messages)
 
         error = self._validate_final_prompt(prompt, "reasoning", lang)
         if error:
@@ -899,7 +872,7 @@ class BaseModule(TranslationMixin):
 
         self.logger.info(f"Streaming reasoning response for query: {query[:100]}...")
         yield from self.llamacpp.chat_stream(
-            [{"role": "user", "content": prompt}],
+            messages,
             model_type="reasoning",
             lang=lang,
             ensure_vram=ensure_vram,

@@ -87,7 +87,9 @@ def load_config(app):
     app.config["OCR_TIME_BUDGET_S"] = int(os.getenv("OCR_TIME_BUDGET_S", 1800))
 
     # Whisper ASR settings
-    app.config["WHISPER_API_URL"] = os.getenv("WHISPER_API_URL", "http://flai-whisper:9000/asr")
+    # Empty means "derive from WHISPER_GPU": the CPU and the GPU ASR containers
+    # have different names, because profiles are additive and both can run.
+    app.config["WHISPER_API_URL"] = os.getenv("WHISPER_API_URL", "")
 
     # Timeouts for services (not model-specific, used for HTTP requests)
     app.config["WHISPER_API_TIMEOUT"] = int(os.getenv("WHISPER_API_TIMEOUT", 120))

@@ -270,6 +270,7 @@ services:
       - with-voice
       - with-voice-piper
       - with-voice-kokoro
+      - with-whisper-cpu
 
   # ============================================================
   # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
@@ -313,6 +314,7 @@ services:
         max-file: "3"
     profiles:
       - with-voice-kokoro
+      - with-tts-kokoro
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis, selectable backend)
@@ -351,6 +353,7 @@ services:
     profiles:
       - with-voice
       - with-voice-piper
+      - with-tts-piper
 
   # ============================================================
   # SEARXNG (Optional - Web Search)

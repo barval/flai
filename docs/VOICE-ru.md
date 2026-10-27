@@ -16,20 +16,28 @@ docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 ### Whisper на GPU (опционально)
 
-По умолчанию CPU — видеопамять не нужна. Если транскрипции частые или длинные и на карте есть
-место, используйте override:
+По умолчанию CPU — видеопамять не нужна. ASR выбирается собственным профилем,
+отдельно от TTS-бэкенда:
 
 ```bash
-docker compose -f docker-compose.gpu.yml -f docker-compose.whisper-gpu.yml \
-  --profile with-voice-piper up -d
-# затем в .env: WHISPER_GPU=true и перезапуск flai-web
+# CPU (по умолчанию, без изменений): Whisper CPU + Piper
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
+# или только ASR, а TTS-бэкенд — отдельным профилем
+docker compose -f docker-compose.gpu.yml --profile with-whisper-cpu --profile with-tts-piper up -d
+
+# GPU: Whisper на карте + Piper, без CPU-контейнера ASR
+docker compose -f docker-compose.gpu.yml \
+  --profile with-whisper-gpu --profile with-tts-piper up -d
+# затем WHISPER_GPU=true в .env и перезапуск flai-web
 ```
 
-ASR-контейнер запускается с `ASR_DEVICE=cuda`, приложение направляет каждую транскрипцию через
-GPU-очередь (берёт `_gpu_lock` и вызывает `ensure_vram_for("whisper")` с бюджетом
-`WHISPER_VRAM_MB`), а контейнер считается резидентным потребителем VRAM в плане вытеснения —
-его вытеснение означает рестарт, потому что только он освобождает CUDA-контекст. Держите
-`WHISPER_GPU=false`, если чат и Whisper не помещаются на карте вместе.
+У контейнеров ASR разные имена (`flai-whisper`, `flai-whisper-gpu`), потому что профили
+compose аддитивны: второй сервис не может занять то же имя контейнера, а выбор обоих
+семейств профилей иначе поставил бы два сервера на один порт. Приложение выбирает адрес по
+`WHISPER_GPU`, если `WHISPER_API_URL` не задан явно. С GPU-профилем транскрипция берёт
+`_gpu_lock`, вызывает `ensure_vram_for("whisper")` с бюджетом `WHISPER_VRAM_MB`, а контейнер
+считается резидентным потребителем VRAM, чьё вытеснение — рестарт (только он освобождает
+CUDA-контекст). Держите `WHISPER_GPU=false`, если чат и Whisper не помещаются вместе.
 
 ### Стоимость голосовых сервисов (измерено)
 

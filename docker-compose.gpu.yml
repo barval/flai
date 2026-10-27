@@ -277,6 +277,54 @@ services:
       - with-voice
       - with-voice-piper
       - with-voice-kokoro
+      - with-whisper-cpu
+
+  # ============================================================
+  # WHISPER ON THE GPU (Optional, replaces the CPU container above)
+  # ============================================================
+  # Profile ``with-whisper-gpu`` instead of ``with-voice*`` for the ASR part:
+  #   docker compose -f docker-compose.gpu.yml \
+  #     --profile with-whisper-gpu --profile with-tts-piper up -d
+  # Set WHISPER_GPU=true in .env so the app routes transcriptions through the GPU
+  # queue and budgets WHISPER_VRAM_MB. The two Whisper containers have different
+  # names on purpose: profiles are additive, so both would run if both profile
+  # families were selected, and only one may answer on a port.
+  whisper-gpu:
+    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    container_name: flai-whisper-gpu
+    runtime: nvidia
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      - ASR_MODEL=medium
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cuda
+    volumes:
+      - ./data/hf-cache/hub:/root/.cache/whisper
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-whisper-gpu
 
   # ============================================================
   # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
@@ -318,6 +366,7 @@ services:
         max-file: "3"
     profiles:
       - with-voice-kokoro
+      - with-tts-kokoro
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis, selectable backend)
@@ -356,6 +405,7 @@ services:
     profiles:
       - with-voice
       - with-voice-piper
+      - with-tts-piper
 
   # ============================================================
   # SEARXNG (Optional - Web Search)

@@ -706,3 +706,32 @@ def test_an_admin_ttl_override_wins_on_any_platform(monkeypatch):
     )
 
     assert gen.get_ttl("reasoning") == 120
+
+
+def test_gpu_group_does_not_swap_behind_the_resource_manager(monkeypatch):
+    """On a GPU `ensure_vram_for()` is the arbiter; the group must not evict."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: False)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" in block
+    assert "exclusive: false" in block
+
+
+def test_cpu_group_keeps_llama_swap_in_charge_of_swapping(monkeypatch):
+    """Without VRAM accounting, one-model-at-a-time is the only RAM guard."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: True)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" not in block

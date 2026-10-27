@@ -544,9 +544,16 @@ class LlamaSwapConfigGenerator:
             "",
         ]
 
+        # Exactly one arbiter decides what stays in memory:
+        # - GPU: `ensure_vram_for()` (measured footprints, LRU eviction), so the
+        #   group must NOT swap behind its back — otherwise a RAG search evicts
+        #   the chat model even when both fit.
+        # - CPU: there is no VRAM accounting, so llama-swap's one-at-a-time swap
+        #   is the only guard against loading two models into RAM.
         groups = {
             "llm_fast": {
-                "swap": True,
+                "swap": self._platform_is_cpu(),
+                "exclusive": False,
                 "models": ["embedding", "reasoning", "multimodal"],
             },
             "cpu_only": {

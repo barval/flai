@@ -260,8 +260,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          # faster-whisper is CPU-bound: measured 11.7 s for 20 s of speech on two
+          # cores (RTF 0.55). The host has 12; the queue serialises transcriptions,
+          # so the extra cores only exist while one runs.
+          cpus: '6.0'
+          memory: 3G
         reservations:
           cpus: '0.5'
           memory: 1G

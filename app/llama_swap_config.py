@@ -213,14 +213,20 @@ class LlamaSwapConfigGenerator:
             return DEFAULT_TTL.get(module, 300)
 
         total_ram = self._total_ram_mb()
-        if not total_ram:
-            return int(os.getenv("CPU_REASONING_TTL", "600"))
         multimodal_mb = self._model_file_mb("multimodal")
         reasoning_mb = self._model_file_mb("reasoning")
         reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
-        if reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram:
-            return 0
-        return int(os.getenv("CPU_REASONING_TTL", "600"))
+        fits = bool(total_ram and reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram)
+        # Fits: the swap group stops the chat model when reasoning starts, so the
+        # cheap reload is the small chat model — keep the big one warm.
+        # Does not fit: the two never coexist anyway (the llm_fast group swaps
+        # them), so the big model must not sit on RAM the host cannot spare.
+        ttl = 0 if fits else int(os.getenv("CPU_REASONING_TTL", "60"))
+        self.logger.info(
+            f"CPU TTL policy for reasoning: multimodal {multimodal_mb}MB + reasoning {reasoning_mb}MB "
+            f"+ reserve {reserve_mb}MB vs RAM {total_ram}MB -> ttl={ttl} ({'fits' if fits else 'does not fit'})"
+        )
+        return ttl
 
     def get_ttl(self, module: str) -> int:
         """Get TTL for model from config or use the platform default."""

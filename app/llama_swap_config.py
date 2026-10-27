@@ -165,16 +165,75 @@ class LlamaSwapConfigGenerator:
         self.logger.warning(f"No mmproj found in {base_dir}")
         return None
 
+    def _platform_is_cpu(self) -> bool:
+        try:
+            from app.resource_manager import get_resource_manager
+
+            return get_resource_manager().hardware.platform == "cpu"
+        except Exception:
+            return os.getenv("FLAI_PLATFORM", "").strip().lower() == "cpu"
+
+    @staticmethod
+    def _total_ram_mb() -> int:
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith("MemTotal:"):
+                        return int(line.split()[1]) // 1024
+        except (OSError, ValueError):
+            pass
+        return 0
+
+    @staticmethod
+    def _model_file_mb(module: str) -> int:
+        """On-disk size of the module's model, from the GGUF cache."""
+        try:
+            from app.model_config import get_model_config as _get_config
+            from app.utils import get_gguf_models_cached
+
+            config = _get_config(module) or {}
+            name = str(config.get("model_name") or "").replace(".gguf", "")
+            meta = get_gguf_models_cached("/models").get(name, {})
+            return int(meta.get("file_size_mb") or 0)
+        except Exception:
+            return 0
+
+    def _cpu_ttl(self, module: str) -> int:
+        """TTL policy for a host without a GPU.
+
+        There is no VRAM to free, so unloading a model only costs the reload. The
+        chat model stays resident as before; the embedding model is small and used
+        on every search; the reasoning model stays resident only when the RAM can
+        hold it next to the chat model with room for the OS — otherwise it waits
+        ``CPU_REASONING_TTL`` seconds (10 minutes) before giving its RAM back.
+        """
+        if module in ("multimodal", "embedding"):
+            return 0
+        if module != "reasoning":
+            return DEFAULT_TTL.get(module, 300)
+
+        total_ram = self._total_ram_mb()
+        if not total_ram:
+            return int(os.getenv("CPU_REASONING_TTL", "600"))
+        multimodal_mb = self._model_file_mb("multimodal")
+        reasoning_mb = self._model_file_mb("reasoning")
+        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        if reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram:
+            return 0
+        return int(os.getenv("CPU_REASONING_TTL", "600"))
+
     def get_ttl(self, module: str) -> int:
-        """Get TTL for model from config or use default."""
+        """Get TTL for model from config or use the platform default."""
         config = get_model_config(module)
         if not config:
-            return DEFAULT_TTL.get(module, 300)
+            return self._cpu_ttl(module) if self._platform_is_cpu() else DEFAULT_TTL.get(module, 300)
 
         ttl = config.get("ttl")
         if ttl is not None:
             return ttl  # type: ignore[no-any-return]
 
+        if self._platform_is_cpu():
+            return self._cpu_ttl(module)
         return DEFAULT_TTL.get(module, 300)
 
     def get_ctx_size(self, module: str) -> int:

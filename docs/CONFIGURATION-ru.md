@@ -135,6 +135,8 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+CPU_REASONING_TTL=600         # Только CPU: секунды простоя до выгрузки модели рассуждений из RAM (не используется, если она помещается рядом с чат-моделью)
+CPU_RAM_RESERVE_MB=4096       # Сколько RAM оставлять ОС, решая, помещаются ли обе модели
 MEMORY_EXTRACT_QUIET_S=45    # Извлечение в память прерывается любым запросом чата/API и ждёт столько секунд тишины
 SLM_AUTO_EXTRACT=auto        # 'auto' — извлекать после каждого личного сообщения там, где GPU держит модель резидентной; 'on' — и на CPU
 SLM_MIN_RECALL_SCORE=0.5     # Non-profile facts below this recall score are not injected

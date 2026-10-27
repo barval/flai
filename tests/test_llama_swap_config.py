@@ -654,3 +654,55 @@ class TestReasoningBudgetMessage:
         assert "--reasoning-budget" in cmd
         assert "--reasoning-budget-message" in cmd
         assert "Thinking budget reached" in cmd
+
+
+def _ttl_generator(monkeypatch, *, cpu: bool, ram_mb: int, sizes: dict, overrides: dict | None = None):
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: cpu)
+    monkeypatch.setattr(gen, "_total_ram_mb", lambda: ram_mb)
+    monkeypatch.setattr(gen, "_model_file_mb", lambda module: sizes.get(module, 0))
+    monkeypatch.setattr(
+        mod,
+        "get_model_config",
+        lambda module: {"model_name": f"{module}.gguf", "context_length": 8192, "ttl": (overrides or {}).get(module)},
+    )
+    return gen
+
+
+def test_cpu_keeps_the_reasoning_model_resident_when_ram_allows(monkeypatch):
+    """On CPU the 10 s TTL means reloading 11 GB from disk for every reasoning answer."""
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=32768, sizes={"multimodal": 2500, "reasoning": 11300})
+
+    assert gen.get_ttl("reasoning") == 0
+
+
+def test_cpu_unloads_reasoning_when_ram_is_tight(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=16384, sizes={"multimodal": 4700, "reasoning": 11700})
+
+    assert gen.get_ttl("reasoning") == 600
+
+
+def test_cpu_keeps_the_embedding_model_resident(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=16384, sizes={"multimodal": 4700, "reasoning": 11700})
+
+    assert gen.get_ttl("embedding") == 0
+
+
+def test_gpu_ttls_are_unchanged(monkeypatch):
+    """On a GPU the reasoning model must yield VRAM to the chat model."""
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+
+    assert gen.get_ttl("reasoning") == 10
+    assert gen.get_ttl("embedding") == 1
+    assert gen.get_ttl("multimodal") == 0
+
+
+def test_an_admin_ttl_override_wins_on_any_platform(monkeypatch):
+    gen = _ttl_generator(
+        monkeypatch, cpu=True, ram_mb=32768, sizes={"multimodal": 2500, "reasoning": 11300},
+        overrides={"reasoning": 120},
+    )
+
+    assert gen.get_ttl("reasoning") == 120

@@ -230,7 +230,7 @@ services:
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0
     container_name: flai-whisper
     # libctranslate2 in this image is built with an executable-stack
     # (PT_GNU_STACK) flag; hardened hosts (AppArmor on Ubuntu 23.10+/24.04)
@@ -239,7 +239,7 @@ services:
     security_opt:
       - apparmor=unconfined
     environment:
-      - ASR_MODEL=medium
+      - ASR_MODEL=large-v3-turbo
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
     volumes:

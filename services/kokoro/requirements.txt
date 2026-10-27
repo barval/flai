@@ -1,5 +1,6 @@
 flask==3.0.0
-kokoro>=0.9.0
+# Pinned: the model package is the part whose API the wrapper depends on.
+kokoro==0.9.4
 soundfile>=0.12.1
 torch>=2.0.0
 ruaccent>=1.5.0

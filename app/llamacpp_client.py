@@ -1748,6 +1748,13 @@ class LlamaCppClient:
         if not model:
             return None
 
+        # Embeddings used to rely on llama-swap's group swap to make room; with
+        # co-residency the group no longer evicts, so the embedding load goes
+        # through the same measured decision as every other model call.
+        if not self._ensure_vram(model_type):
+            self.logger.warning("get_embeddings: VRAM unavailable for the embedding model")
+            return None
+
         timeout = config.get("timeout", 120)
         self.logger.info(f"get_embeddings: calling backend with model={model}")
         result = self.backend.get_embeddings(texts, model, config, timeout)

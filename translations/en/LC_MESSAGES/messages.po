@@ -248,6 +248,10 @@ msgstr ""
 "Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
 "{available} MB available."
 
+#: app/queue.py
+msgid "Not enough RAM for {service}: {needed} MB needed, {available} MB available."
+msgstr "Not enough RAM for {service}: {needed} MB needed, {available} MB available."
+
 # GPU memory error messages
 #: app/queue.py:1792 app/queue.py:2037 app/queue.py:3074 app/queue.py:3268
 #: modules/multimodal.py:317

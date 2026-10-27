@@ -171,16 +171,80 @@ def _series_value(key: str, index: int, bucket_seconds: int, range_key: str) -> 
     return int(per_bucket * (0.3 + wobble))
 
 
+HOST_SERIES = {
+    # (base, spread) in percent; the wobble is deterministic per bucket.
+    "cpu_pct": (8, 24),
+    "ram_pct": (36, 11),
+    "gpu_pct": (2, 22),
+    "vram_pct": (12, 38),
+}
+
+
+def _host_profile() -> dict:
+    """Totals of the machine that captured the snapshot (RAM, then VRAM)."""
+    ram_total = 0
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemTotal:"):
+                    ram_total = int(line.split()[1]) // 1024
+                    break
+    except OSError:
+        ram_total = 0
+    vram_total = 0
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        first = (out.stdout or "").strip().splitlines()
+        vram_total = int(first[0]) if first and first[0].strip().isdigit() else 0
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        vram_total = 0
+    return {"ram_total_mb": ram_total or 16384, "vram_total_mb": vram_total or 8192}
+
+
+def _host_series_value(key: str, index: int, range_key: str) -> float:
+    base, spread = HOST_SERIES[key]
+    seed = (sum(ord(char) for char in range_key) + len(key)) % 5
+    return round(base + ((index * 3 + seed * 2) % spread), 1)
+
+
 def _synthetic_monitoring(body: dict, range_key: str) -> dict:
     """Give every monitoring range plausible, distinct numbers."""
     count = len(body.get("buckets") or []) or 24
     bucket_seconds = int(body.get("bucket_seconds") or 3600)
     series = body.get("series") or {}
-    for key in series:
-        series[key] = [_series_value(key, index, bucket_seconds, range_key) for index in range(count)]
+    for key in HOST_SERIES:
+        # A snapshot captured before the host cards existed has no such series.
+        series.setdefault(key, [None] * count)
+    for key in list(series):
+        if key in HOST_SERIES:
+            series[key] = [_host_series_value(key, index, range_key) for index in range(count)]
+        else:
+            series[key] = [_series_value(key, index, bucket_seconds, range_key) for index in range(count)]
+
+    # The four host cards read their value labels from this block.
+    profile = _host_profile()
+    last_ram = series.get("ram_pct") or [40]
+    last_vram = series.get("vram_pct") or [20]
     body["series"] = series
+    body["system"] = {
+        "ram_total_mb": profile["ram_total_mb"],
+        "ram_used_mb": round(profile["ram_total_mb"] * last_ram[-1] / 100),
+        "vram_total_mb": profile["vram_total_mb"],
+        "vram_used_mb": round(profile["vram_total_mb"] * last_vram[-1] / 100),
+    }
+
     totals = body.get("totals") or {}
     for key, values in series.items():
+        if key in HOST_SERIES:
+            continue
         if key in {"documents", "files"}:
             totals[key] = values[-1] if values else 0
         else:

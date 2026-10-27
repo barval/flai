@@ -14,6 +14,23 @@
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 ```
 
+### Whisper на GPU (опционально)
+
+По умолчанию CPU — видеопамять не нужна. Если транскрипции частые или длинные и на карте есть
+место, используйте override:
+
+```bash
+docker compose -f docker-compose.gpu.yml -f docker-compose.whisper-gpu.yml \
+  --profile with-voice-piper up -d
+# затем в .env: WHISPER_GPU=true и перезапуск flai-web
+```
+
+ASR-контейнер запускается с `ASR_DEVICE=cuda`, приложение направляет каждую транскрипцию через
+GPU-очередь (берёт `_gpu_lock` и вызывает `ensure_vram_for("whisper")` с бюджетом
+`WHISPER_VRAM_MB`), а контейнер считается резидентным потребителем VRAM в плане вытеснения —
+его вытеснение означает рестарт, потому что только он освобождает CUDA-контекст. Держите
+`WHISPER_GPU=false`, если чат и Whisper не помещаются на карте вместе.
+
 ### Стоимость голосовых сервисов (измерено)
 
 | Сервис | Где работает | Резидентность модели | Замер |

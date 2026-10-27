@@ -257,6 +257,8 @@ class ResourceManager:
             from app.model_config import get_model_config
             from app.utils import get_gguf_models_cached
 
+            if model_type not in ("multimodal", "reasoning", "embedding"):
+                return 0
             config = get_model_config(model_type) or {}
             model_name = str(config.get("model_name") or "").replace(".gguf", "")
             meta = get_gguf_models_cached("/models").get(model_name, {})
@@ -270,6 +272,61 @@ class ResourceManager:
         except Exception as e:
             logger.debug(f"estimate_cpu_ram_mb[{model_type}]: {e}")
             return 0
+
+    RAM_BUDGETS_MB = {"whisper": 2000, "slm": 2000, "postgres": 1024, "kokoro": 2000, "reranker": 1000}
+
+    def ram_need_for(self, service: str) -> int:
+        """Resident RAM a non-llama service needs, overridable per deployment."""
+        env = {
+            "whisper": "WHISPER_RAM_MB",
+            "slm": "SLM_RAM_MB",
+            "postgres": "POSTGRES_RAM_MB",
+            "kokoro": "KOKORO_RAM_MB",
+            "reranker": "RERANKER_RAM_MB",
+        }.get(service, f"{service.upper()}_RAM_MB")
+        return int(os.getenv(env, str(self.RAM_BUDGETS_MB.get(service, 1024))))
+
+    def _refresh_ram(self) -> None:
+        self.hardware.available_ram_mb = self._detect_available_ram_mb()
+        if not self.hardware.total_ram_mb:
+            self.hardware.total_ram_mb = self._detect_total_ram_mb()
+
+    def ensure_ram_for(self, service: str, needed_mb: int | None = None) -> bool:
+        """Make room in RAM for a non-llama service (Whisper, SLM, Postgres).
+
+        The biggest lever is the llama models: they only hold RAM as mapped file
+        pages, and their weights live in VRAM on a GPU host, so unloading them is
+        cheap and frees gigabytes. If that is not enough, the caller gets ``False``
+        and a recorded reason instead of a silent swap storm.
+        """
+        needed = int(needed_mb or self.ram_need_for(service))
+        reserve = int(os.getenv("RAM_RESERVE_MB", "1024"))
+        self.last_refusal = None
+        self._refresh_ram()
+        if self.hardware.available_ram_mb >= needed + reserve:
+            return True
+
+        logger.warning(
+            f"ensure_ram_for [{service}]: need {needed}MB + {reserve}MB reserve, "
+            f"{self.hardware.available_ram_mb}MB free — unloading idle LLMs"
+        )
+        with contextlib.suppress(Exception):
+            self.unload_llamacpp_model()
+        self._refresh_ram()
+        if self.hardware.available_ram_mb >= needed + reserve:
+            return True
+
+        self.last_refusal = {
+            "code": "service_ram_short",
+            "service": service,
+            "needed_mb": needed,
+            "available_mb": self.hardware.available_ram_mb,
+        }
+        logger.error(
+            f"ensure_ram_for [{service}]: still short after unloading LLMs — "
+            f"{self.hardware.available_ram_mb}MB free, need {needed + reserve}MB"
+        )
+        return False
 
     def _resident_modules(self, swap_url: str) -> list[dict[str, Any]]:
         """Models currently in VRAM, with the footprint and the last request time.
@@ -297,6 +354,15 @@ class ResourceManager:
                     "name": name,
                     "mb": self.get_vram_needed_mb(name),
                     "last_used": self._model_last_used.get(name, 0.0),
+                }
+            )
+
+        if os.getenv("WHISPER_GPU", "").strip().lower() in ("1", "true", "yes"):
+            resident.append(
+                {
+                    "name": "whisper",
+                    "mb": self.get_vram_needed_mb("whisper"),
+                    "last_used": self._model_last_used.get("whisper", 0.0),
                 }
             )
         return resident
@@ -563,6 +629,11 @@ class ResourceManager:
         """
         from app.model_config import get_model_config
         from app.utils import get_gguf_models_cached
+
+        if model_type == "whisper":
+            # Whisper is not managed by llama-swap: its footprint is the CUDA
+            # context of the ASR container, configured by the deployment.
+            return int(os.getenv("WHISPER_VRAM_MB", "3000"))
 
         measured = self.measured_total_mb(model_type)
         if measured and ctx_size is None:
@@ -1000,6 +1071,24 @@ class ResourceManager:
         logger.warning("Force-restarting LTX-Video container to free CUDA context")
         self._restart_ltx_container()
 
+    def _restart_whisper_container(self) -> None:
+        """Restart flai-whisper to release the VRAM its CUDA context holds."""
+        try:
+            result = subprocess.run(
+                ["docker", "restart", "flai-whisper"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                logger.info("flai-whisper restarted to release GPU memory")
+            else:
+                logger.error(f"Whisper restart failed (rc={result.returncode}): {result.stderr}")
+        except FileNotFoundError:
+            logger.error("Docker CLI not found in container — cannot restart flai-whisper")
+        except Exception as e:
+            logger.error(f"Failed to restart flai-whisper: {e}")
+
     def _restart_ltx_container(self) -> None:
         """Restart the flai-ltxvideo container via Docker socket."""
         try:
@@ -1149,6 +1238,12 @@ class ResourceManager:
         Returns True if unload was successful or not needed.
         """
         import os
+
+        if model_id == "whisper":
+            # The ASR container has no unload endpoint: only a restart releases
+            # the CUDA context it holds while the model is resident.
+            self._restart_whisper_container()
+            return True
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 

@@ -421,6 +421,21 @@ def _init_postgresql():
         ON storage_snapshots (user_id, taken_at)
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS system_samples (
+            id BIGSERIAL PRIMARY KEY,
+            taken_at TIMESTAMPTZ NOT NULL,
+            cpu_pct REAL,
+            ram_used_mb INTEGER,
+            ram_total_mb INTEGER,
+            gpu_pct REAL,
+            vram_used_mb INTEGER,
+            vram_total_mb INTEGER
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_system_samples_time ON system_samples (taken_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS monitoring_archive (
             id BIGSERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,

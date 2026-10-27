@@ -87,6 +87,9 @@ class ResourceManager:
         # Last time a module was asked for, used as the LRU order when a new
         # model needs room and co-residency is allowed.
         self._model_last_used: dict[str, float] = {}
+        # Why the last ensure_vram_for() refused, so the caller can show a
+        # localized reason instead of the generic "GPU memory unavailable".
+        self.last_refusal: dict[str, Any] | None = None
 
     # ── Hardware detection ──
 
@@ -653,6 +656,7 @@ class ResourceManager:
         very next attempt freeing 15301 MB in 245 ms, while the task died with
         «GPU memory unavailable» for a GPU that was merely busy.
         """
+        self.last_refusal = None
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
         if timeout is None:
@@ -694,6 +698,11 @@ class ResourceManager:
                 f"ensure_vram_for [{model_type}]: {cpu_ram_mb}MB of CPU-offloaded layers "
                 f"do not fit in {self.hardware.available_ram_mb}MB of available RAM"
             )
+            self.last_refusal = {
+                "code": "ram_short",
+                "needed_mb": cpu_ram_mb,
+                "available_mb": self.hardware.available_ram_mb,
+            }
             return False
 
         # Model not loaded or a different one is active. Decide what has to go:
@@ -787,6 +796,11 @@ class ResourceManager:
                 f"ensure_vram_for [{model_type}]: TIMEOUT after {timeout}s — "
                 f"{self.hardware.available_vram_mb}MB free, need {needed_mb}MB"
             )
+            self.last_refusal = {
+                "code": "vram_timeout",
+                "needed_mb": needed_mb,
+                "available_mb": self.hardware.available_vram_mb,
+            }
             return False
         finally:
             with self._lock:

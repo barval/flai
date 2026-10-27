@@ -1615,6 +1615,29 @@ class RedisRequestQueue:
         self.logger.warning(f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, models={loaded_count}")
         return False
 
+    def _gpu_refusal_message(self, lang: str, fallback: str = "") -> str:
+        """Localized reason for a refused model load.
+
+        The generic "GPU memory unavailable" is wrong when the model itself would
+        fit but the layers left on the CPU exceed the RAM; the resource manager
+        records why it refused and this turns that into a user-facing sentence.
+        """
+        base = self.app.modules["base"]
+        try:
+            from app.resource_manager import get_resource_manager
+
+            refusal = getattr(get_resource_manager(), "last_refusal", None) or {}
+        except Exception:
+            refusal = {}
+        if refusal.get("code") == "ram_short":
+            message = base._(
+                "Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+                "{available} MB available.",
+                lang=lang,
+            )
+            return message.format(needed=refusal.get("needed_mb"), available=refusal.get("available_mb"))
+        return base._(fallback or "GPU memory unavailable. Try again in a moment.", lang=lang)
+
     def _unload_llamacpp_models(self):
         """Unload all llama.cpp models via llama-swap proxy.
 
@@ -2631,8 +2654,8 @@ class RedisRequestQueue:
             if not rm.ensure_vram_for("multimodal"):
                 return self._build_error_response(
                     session_id,
-                    self.app.modules["base"]._(
-                        "Reasoning model unavailable: GPU memory check failed. Try again.", lang
+                    self._gpu_refusal_message(
+                        lang, "Reasoning model unavailable: GPU memory check failed. Try again."
                     ),
                     0,
                     lang,
@@ -2679,7 +2702,9 @@ class RedisRequestQueue:
         if not rm.ensure_vram_for_reasoning():
             return self._build_error_response(
                 session_id,
-                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                self._gpu_refusal_message(
+                    lang, "Reasoning model unavailable: GPU memory check failed. Try again."
+                ),
                 0,
                 lang,
             )
@@ -2916,8 +2941,8 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM check for reasoning failed: {e}")
 
         if not vram_ok:
-            error_msg = self.app.modules["base"]._(
-                "Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang
+            error_msg = self._gpu_refusal_message(
+                lang, "Reasoning model unavailable: GPU memory check failed. Try again."
             )
             return self._build_error_response(session_id, error_msg, 0, lang)
 

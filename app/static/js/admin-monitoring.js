@@ -12,7 +12,11 @@
         incoming_tokens: 'incoming_tokens',
         files: 'files',
         documents: 'documents',
-        web_requests: 'web_requests'
+        web_requests: 'web_requests',
+        cpu: 'cpu_pct',
+        ram: 'ram_pct',
+        gpu: 'gpu_pct',
+        vram: 'vram_pct'
     };
     const METRICS = Object.keys(SERIES_OF);
     const POLL_MS = 60000;
@@ -210,6 +214,36 @@
                 scale: 1 / (1024 * 1024),
                 format: (value) => axisLabel(value) + ' MB',
                 tooltip: (value) => formatMb(value)
+            });
+            return;
+        }
+
+        if (metric === 'cpu' || metric === 'gpu') {
+            const samples = values.filter((value) => value !== null && value !== undefined);
+            const last = samples.length ? samples[samples.length - 1] : null;
+            valueBox.textContent = last === null ? t('monitoring_no_data') : last.toFixed(1) + '%';
+            renderChart(svg, buckets, values, {
+                scale: 1,
+                format: (value) => value + '%',
+                tooltip: (value) => value.toFixed(1) + '%'
+            });
+            return;
+        }
+
+        if (metric === 'ram' || metric === 'vram') {
+            const system = data.system || {};
+            const usedKey = metric === 'ram' ? 'ram_used_mb' : 'vram_used_mb';
+            const totalKey = metric === 'ram' ? 'ram_total_mb' : 'vram_total_mb';
+            const used = system[usedKey] || 0;
+            const total = system[totalKey] || 0;
+            valueBox.textContent = total
+                ? formatMb(used * 1024 * 1024) + ' / ' + formatMb(total * 1024 * 1024) +
+                  ' (' + ((used / total) * 100).toFixed(1) + '%)'
+                : t('monitoring_no_data');
+            renderChart(svg, buckets, values, {
+                scale: 1,
+                format: (value) => value + '%',
+                tooltip: (value) => value.toFixed(1) + '%'
             });
             return;
         }

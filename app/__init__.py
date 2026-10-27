@@ -358,8 +358,11 @@ def create_app():
     if not _is_cli_process():
         try:
             from app.monitoring.snapshots import start_snapshotter
+            from app.monitoring.system import start_system_sampler
 
             start_snapshotter(app)
+            # Host load (CPU/RAM/GPU/VRAM) once a minute for the Monitoring tab.
+            start_system_sampler(app)
         except Exception as e:
             app.logger.warning(f"Could not start monitoring snapshotter: {e}")
 

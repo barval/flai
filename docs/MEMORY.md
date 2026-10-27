@@ -65,11 +65,11 @@ client's loop guard holds back 1500 characters before emitting anything, so an
 already-started run is effectively atomic. What the gate does guarantee is that
 it never *starts* while a conversation is live.
 
-**Hosts without a GPU.** The extraction call is one short generation on the
-model chat is already using; on a CPU-only host that is ~30 s of the same model,
-so `SLM_AUTO_EXTRACT=auto` (default) runs it only where a GPU keeps the model
-resident. `on` forces it, `off` disables it; the explicit "remember this" path
-works either way.
+**Hosts without a GPU.** The chat model already stays resident there (`ttl: 0`), so the
+extraction is not a reload — it is one short generation that occupies the same CPU
+model chat is using. On the CPU tier that generation is ~30 s, so
+`SLM_AUTO_EXTRACT=auto` (default) runs it only where a GPU keeps the model fast.
+`on` forces it, `off` disables it; the explicit "remember this" path works either way.
 
 **Profile consolidation.** Individual facts accumulate duplicates and
 contradictions ("lives in Tver" next to an older "lives in Sarov"). The profile

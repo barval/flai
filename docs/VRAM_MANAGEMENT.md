@@ -32,6 +32,14 @@ carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning 
 "partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
 measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
+**Model TTLs are platform-aware.** On a GPU the reasoning model unloads after 10 s idle — it
+must yield VRAM to the chat model. On a CPU-only host there is no VRAM to free, so the same
+TTL only costs the reload: the chat model stays resident, the embedding model stays resident
+(it is small and used on every search), and the reasoning model stays resident too **when the
+RAM can hold both next to the OS** (`CPU_RAM_RESERVE_MB`, default 4 GB); otherwise it releases
+its RAM after `CPU_REASONING_TTL` (600 s). An admin-set `ttl` in `model_configs` still wins on
+any platform.
+
 **Model Hub before download.** A model that is not on disk has no GGUF cache entry, so the fit verdict
 reads the KV shapes from the repo's `config.json` (`num_key_value_heads`, `head_dim`, or
 `hidden_size / num_attention_heads`) and, when that is missing, from the GGUF header over a range

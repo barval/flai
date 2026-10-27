@@ -135,6 +135,8 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+WHISPER_GPU=false           # Whisper на GPU (нужен docker-compose.whisper-gpu.yml); модель занимает WHISPER_VRAM_MB видеопамяти
+WHISPER_VRAM_MB=3000        # Бюджет VRAM для CUDA-контекста ASR-контейнера
 CPU_REASONING_TTL=60          # Только CPU: секунды простоя до выгрузки модели рассуждений из RAM (не используется, если она помещается рядом с чат-моделью)
 CPU_RAM_RESERVE_MB=4096       # Сколько RAM оставлять ОС, решая, помещаются ли обе модели
 MEMORY_EXTRACT_QUIET_S=45    # Извлечение в память прерывается любым запросом чата/API и ждёт столько секунд тишины

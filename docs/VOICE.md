@@ -14,6 +14,24 @@ A message may carry several audio items at once — one microphone recording plu
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 ```
 
+### Whisper on the GPU (optional)
+
+CPU is the default and needs no VRAM. When transcriptions are frequent or long
+and the card has room, use the override:
+
+```bash
+docker compose -f docker-compose.gpu.yml -f docker-compose.whisper-gpu.yml \
+  --profile with-voice-piper up -d
+# then in .env: WHISPER_GPU=true, restart flai-web
+```
+
+The ASR container then runs with `ASR_DEVICE=cuda`, the app routes every
+transcription through the GPU queue (it takes `_gpu_lock` and calls
+`ensure_vram_for("whisper")` with the `WHISPER_VRAM_MB` budget), and the container
+counts as a resident VRAM consumer in the eviction plan — evicting it means
+restarting it, because only a restart releases its CUDA context. Keep
+`WHISPER_GPU=false` unless chat and Whisper fit together on the card.
+
 ### Cost of the voice services (measured)
 
 | Service | Runs on | Model residency | Measured |

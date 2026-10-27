@@ -68,6 +68,22 @@ its RAM after `CPU_REASONING_TTL` (60 s). The `llm_fast` llama-swap group alread
 never blocked by a resident reasoning model — it only reloads its own small weights when a
 reasoning answer evicted it. An admin-set `ttl` in `model_configs` still wins on any platform.
 
+**RAM guard for the services that are not llama models.** Whisper, SLM, Postgres, Kokoro and
+the reranker are always resident and llama-swap knows nothing about them. `ensure_ram_for(service)`
+checks the host's available RAM against a per-service budget (`WHISPER_RAM_MB`, `SLM_RAM_MB`,
+`POSTGRES_RAM_MB`, `KOKORO_RAM_MB`, `RERANKER_RAM_MB`, each with a default), and when the host is
+short it unloads the idle llama models first — on a GPU host their weights live in VRAM and they
+only hold page cache, so that is the cheapest gigabyte to reclaim. If that is still not enough the
+call returns `False` with `last_refusal = {"code": "service_ram_short", ...}`, and the caller shows
+a translated sentence instead of starting a swap storm. The transcription path uses it before a
+voice message is recognized.
+
+**Whisper on the GPU (opt-in).** `docker-compose.whisper-gpu.yml` switches the ASR container to
+`ASR_DEVICE=cuda` with the NVIDIA runtime; `WHISPER_GPU=true` then routes every transcription
+through the GPU queue (`_gpu_lock` + `ensure_vram_for("whisper")`, budget `WHISPER_VRAM_MB`) and the
+ASR container counts as a resident VRAM consumer in the eviction plan — its "unload" is a container
+restart, the only thing that releases its CUDA context.
+
 **Partial offload is a RAM cost, and it is now checked.** When `compute_llamacpp_config()` cannot
 fit every layer on the card it leaves the rest on the CPU, where llama.cpp reads those layers
 from RAM (mapped from the GGUF) on every forward pass. Two things measure that part:

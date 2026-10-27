@@ -234,7 +234,7 @@ services:
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0
     container_name: flai-whisper
     # libctranslate2 in this image is built with an executable-stack
     # (PT_GNU_STACK) flag; hardened hosts (AppArmor on Ubuntu 23.10+/24.04)
@@ -243,7 +243,7 @@ services:
     security_opt:
       - apparmor=unconfined
     environment:
-      - ASR_MODEL=medium
+      - ASR_MODEL=large-v3-turbo
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
     volumes:
@@ -290,13 +290,15 @@ services:
   # names on purpose: profiles are additive, so both would run if both profile
   # families were selected, and only one may answer on a port.
   whisper-gpu:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    # The -gpu tag is the CUDA build; the plain image has no CUDA libraries and
+    # ASR_DEVICE=cuda would fail there.
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0-gpu
     container_name: flai-whisper-gpu
     runtime: nvidia
     security_opt:
       - apparmor=unconfined
     environment:
-      - ASR_MODEL=medium
+      - ASR_MODEL=large-v3-turbo
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cuda
     volumes:

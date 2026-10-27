@@ -27,7 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    "git+https://github.com/Lightricks/LTX-Video.git" \
+    # Pinned to the commit the running image was built from (package 0.1.2);
+    # a floating clone made every rebuild a different stack.
+    "git+https://github.com/Lightricks/LTX-Video.git@4b2d053057623ddd4d0a1d3e9cd28890e9ef487f" \
     flask \
     gunicorn \
     pyyaml \

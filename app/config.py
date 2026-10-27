@@ -117,6 +117,14 @@ def load_config(app):
     app.config["CAMERA_ENABLED"] = os.getenv("CAMERA_ENABLED", "true").lower() in ("true", "1", "yes")
     app.config["CAMERA_API_TIMEOUT"] = int(os.getenv("CAMERA_API_TIMEOUT", 15))
     app.config["CAMERA_CHECK_INTERVAL"] = int(os.getenv("CAMERA_CHECK_INTERVAL", 30))
+    # room-snapshot-api v1.3 authenticates every endpoint with a shared key.
+    app.config["CAMERA_API_KEY"] = os.getenv("CAMERA_API_KEY", "")
+    # Streamable-HTTP MCP endpoint of the same service (agent-mode seam).
+    app.config["CAMERA_MCP_URL"] = os.getenv("CAMERA_MCP_URL", "")
+    # Preview thumbnails are captured at this width (the service resizes).
+    app.config["CAMERA_SNAPSHOT_WIDTH"] = int(os.getenv("CAMERA_SNAPSHOT_WIDTH", 384))
+    # Parallel preview fetches per request (the service captures concurrently).
+    app.config["CAMERA_PREVIEW_WORKERS"] = int(os.getenv("CAMERA_PREVIEW_WORKERS", 4))
 
     # SuperLocalMemory (long-term memory) settings
     app.config["SLM_URL"] = os.getenv("SLM_URL")

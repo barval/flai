@@ -43,6 +43,10 @@ class CamModule(TranslationMixin):
         self.camera_api_url = app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
         self.timeout = app.config.get("CAMERA_API_TIMEOUT", 15)
         self.check_interval = app.config.get("CAMERA_CHECK_INTERVAL", 30)
+        self.api_key = app.config.get("CAMERA_API_KEY", "")
+        self.mcp_url = app.config.get("CAMERA_MCP_URL", "")
+        self.snapshot_width = app.config.get("CAMERA_SNAPSHOT_WIDTH", 384)
+        self.preview_workers = app.config.get("CAMERA_PREVIEW_WORKERS", 4)
         self.max_init_retries = app.config.get("CAMERA_MAX_INIT_RETRIES", 5)
         self.init_retry_delay = app.config.get("CAMERA_INIT_RETRY_DELAY", 2)
 
@@ -71,6 +75,105 @@ class CamModule(TranslationMixin):
             self.logger.warning(
                 f"CamModule initialized, but camera API unavailable ({self.camera_api_url}). Will retry on each request."
             )
+
+    def api_headers(self, lang: str | None = None, accept: str | None = None) -> dict[str, str]:
+        """Headers every room-snapshot-api call needs.
+
+        v1.3 authenticates REST and MCP with the same key and resolves room
+        labels from ``Accept-Language`` (its default is English, so a Russian
+        installation must ask for ``ru`` explicitly).
+        """
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        if lang:
+            headers["Accept-Language"] = lang
+        if accept:
+            headers["Accept"] = accept
+        return headers
+
+    def fetch_snapshot(
+        self, code: str, lang: str = "ru", width: int | None = None, etag: str | None = None
+    ) -> dict:
+        """Fetch one camera frame, honouring the service's ETag cache.
+
+        Returns ``{"status": 200|304|503, "content": bytes, "etag": str,
+        "content_type": str}``. A 304 means the caller already has this frame.
+        """
+        params: dict[str, str] = {"lang": lang}
+        if width:
+            params["width"] = str(width)
+        headers = self.api_headers(lang=lang, accept="image/jpeg,image/png,*/*")
+        if etag:
+            headers["If-None-Match"] = etag
+        url = f"{self.camera_api_url.rstrip('/')}/snapshot/{code}"
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=self.timeout)
+        except requests.exceptions.RequestException as exc:
+            self.logger.debug(f"Snapshot request failed for {code}: {exc}")
+            return {"status": 503, "content": b"", "etag": "", "content_type": "image/jpeg"}
+        if response.status_code == 304:
+            return {"status": 304, "content": b"", "etag": etag or "", "content_type": "image/jpeg"}
+        if response.status_code != 200:
+            return {"status": 503, "content": b"", "etag": "", "content_type": "image/jpeg"}
+        return {
+            "status": 200,
+            "content": response.content,
+            "etag": response.headers.get("ETag", ""),
+            "content_type": response.headers.get("content-type", "image/jpeg"),
+        }
+
+    def snapshot_many(self, codes: list[str], lang: str = "ru", width: int | None = None) -> dict[str, dict]:
+        """Capture several cameras in parallel (the service does the same).
+
+        One admin click should not wait for ten sequential ffmpeg runs: the
+        service captures concurrently and this fan-out keeps the browser at a
+        single request.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        unique = [code for code in dict.fromkeys(codes) if code]
+        if not unique:
+            return {}
+        workers = max(1, min(int(self.preview_workers or 4), len(unique)))
+        results: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(self.fetch_snapshot, code, lang, width): code for code in unique
+            }
+            for future in futures:
+                code = futures[future]
+                try:
+                    results[code] = future.result()
+                except Exception as exc:  # a broken camera must not fail the batch
+                    self.logger.debug(f"Preview failed for {code}: {exc}")
+                    results[code] = {"status": 503, "content": b"", "etag": "", "content_type": "image/jpeg"}
+        return results
+
+    def health_details(self) -> dict:
+        """Raw health payload plus a normalised status (v1.2 and v1.3 shapes)."""
+        try:
+            response = requests.get(
+                f"{self.camera_api_url.rstrip('/')}/health", headers=self.api_headers(), timeout=5
+            )
+        except requests.exceptions.RequestException:
+            return {"status": "unreachable", "cameras_online": 0, "cameras_total": 0}
+        if response.status_code != 200:
+            return {"status": "unreachable", "cameras_online": 0, "cameras_total": 0}
+        try:
+            body = response.json()
+        except ValueError:
+            return {"status": "unknown", "cameras_online": 0, "cameras_total": 0}
+        cameras = body.get("cameras") or []
+        detail = body.get("cameras_status") or {}
+        online = sum(1 for value in detail.values() if value) if detail else len(cameras)
+        return {
+            "status": body.get("status", "unknown"),
+            "cameras_online": online,
+            "cameras_total": len(cameras) or len(detail),
+            "ffmpeg": body.get("ffmpeg_available"),
+            "raw": body,
+        }
 
     def _load_rooms_from_db(self):
         """Load room definitions from the camera_rooms DB table.
@@ -162,7 +265,7 @@ class CamModule(TranslationMixin):
         for endpoint in health_endpoints:
             try:
                 self.logger.debug(f"Checking camera API availability: {endpoint}")
-                response = requests.get(endpoint, timeout=3)
+                response = requests.get(endpoint, timeout=3, headers=self.api_headers())
                 if response.status_code == 200:
                     try:
                         data = response.json()
@@ -187,7 +290,7 @@ class CamModule(TranslationMixin):
                 continue
 
         try:
-            response = requests.get(f"{self.camera_api_url}/rooms", timeout=3)
+            response = requests.get(f"{self.camera_api_url}/rooms", timeout=3, headers=self.api_headers())
             if response.status_code == 200:
                 self.available = True
                 self.last_check = current_time
@@ -215,13 +318,18 @@ class CamModule(TranslationMixin):
         }
         if self.available:
             try:
-                response = requests.get(f"{self.camera_api_url}/rooms", timeout=3)
+                response = requests.get(f"{self.camera_api_url}/rooms", timeout=3, headers=self.api_headers())
                 if response.status_code == 200:
                     api_rooms = response.json()
                     if isinstance(api_rooms, dict):
                         status["available_rooms"] = list(api_rooms.keys())
             except Exception:
                 pass
+            health = self.health_details()
+            status["health"] = health.get("status")
+            status["cameras_online"] = health.get("cameras_online")
+            status["cameras_total"] = health.get("cameras_total")
+            status["mcp_url"] = self.mcp_url
         return status
 
     def get_room_name(self, room_code, lang="ru"):
@@ -309,7 +417,10 @@ class CamModule(TranslationMixin):
                 try:
                     self.logger.info(f"Request to camera: {endpoint}, timeout: {self.timeout}s")
                     response = requests.get(
-                        endpoint, timeout=self.timeout, headers={"Accept": "image/jpeg,image/png,*/*"}
+                        endpoint,
+                        timeout=self.timeout,
+                        headers=self.api_headers(lang=lang, accept="image/jpeg,image/png,*/*"),
+                        params={"lang": lang, "width": str(self.snapshot_width)},
                     )
 
                     if response.status_code == 200:

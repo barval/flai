@@ -151,8 +151,8 @@ function loadCameras(syncing) {
                 img.src = cached;
                 previewCell.classList.add('cam-online');
             } else if (syncing) {
-                // Only fetch from proxy when user clicked "Update" button
-                img.src = proxyUrl;
+                // The batch below fills every cell in one round trip; the row
+                // only shows the spinner until it arrives.
                 previewCell.appendChild(spinner);
                 pendingLoads++;
             } else {
@@ -205,8 +205,14 @@ function loadCameras(syncing) {
             tbody.appendChild(row);
         });
 
-        // If all images were cached, no pending loads — stop syncing immediately
-        if (syncing && pendingLoads <= 0) {
+        // One fan-out for every visible camera: the service captures in
+        // parallel, so the table no longer waits for row-by-row requests.
+        if (syncing && pendingLoads > 0) {
+            refreshPreviews().finally(function() {
+                pendingLoads = 0;
+                setSyncing(btn, false);
+            });
+        } else if (syncing) {
             setSyncing(btn, false);
         }
     })
@@ -214,6 +220,47 @@ function loadCameras(syncing) {
         console.error('Error loading cameras:', err);
         if (syncing) setSyncing(btn, false);
     });
+}
+
+function refreshPreviews() {
+    const lang = (document.documentElement.lang || 'ru').slice(0, 2);
+    return fetch('/admin/api/cameras/previews?lang=' + encodeURIComponent(lang))
+        .then(r => r.json())
+        .then(payload => {
+            const previews = payload.previews || {};
+            Object.keys(previews).forEach(function(code) {
+                const cell = document.querySelector('.cam-preview-cell [alt="' + CSS.escape(code) + '"]');
+                if (!cell) return;
+                const img = cell;
+                const holder = img.parentElement;
+                const spinner = holder.querySelector('.cam-spinner');
+                if (spinner) spinner.remove();
+                const preview = previews[code];
+                if (preview && preview.ok && preview.image) {
+                    const src = 'data:' + (preview.content_type || 'image/jpeg') + ';base64,' + preview.image;
+                    img.src = src;
+                    img.style.display = '';
+                    holder.classList.add('cam-online');
+                    holder.classList.remove('cam-offline');
+                    try {
+                        localStorage.setItem(CAM_CACHE_PREFIX + code, JSON.stringify({ data: src, ts: Date.now() }));
+                    } catch (e) {
+                        clearImageCache();
+                    }
+                } else {
+                    img.style.display = 'none';
+                    holder.classList.remove('cam-online');
+                    holder.classList.add('cam-offline');
+                    if (!holder.querySelector('.cam-preview-error')) {
+                        const placeholder = document.createElement('span');
+                        placeholder.className = 'cam-preview-error';
+                        placeholder.textContent = '—';
+                        holder.appendChild(placeholder);
+                    }
+                }
+            });
+        })
+        .catch(err => console.error('Error loading camera previews:', err));
 }
 
 function getCachedImage(code) {

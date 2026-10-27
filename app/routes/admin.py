@@ -2114,33 +2114,86 @@ def sync_cameras():
 @bp.route("/api/cameras/<code>/proxy", methods=["GET"])
 @admin_required
 def proxy_camera_snapshot(code):
-    """Proxy snapshot from room-snapshot-api for preview thumbnails.
+    """Proxy one snapshot for the preview cell, honouring the service cache.
 
-    Returns the raw JPEG image from GET {camera_api_url}/snapshot/{code}.
+    The room-snapshot-api answers with an ``ETag``; forwarding ``If-None-Match``
+    lets the browser revalidate a thumbnail in one round trip instead of waiting
+    for ffmpeg to capture the same frame again.
     """
-    import requests as req
+    from flask import Response
 
-    camera_api_url = current_app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
-    timeout = current_app.config.get("CAMERA_API_TIMEOUT", 15)
+    cam = current_app.modules.get("cam") if hasattr(current_app, "modules") else None
+    if cam is None:
+        return jsonify({"error": _("Camera integration is not available")}), 503
 
-    endpoints = [
-        f"{camera_api_url.rstrip('/')}/snapshot/{code}",
-        f"{camera_api_url.rstrip('/')}/api/snapshot/{code}",
-        f"{camera_api_url.rstrip('/')}/camera/{code}",
-    ]
+    lang = request.args.get("lang") or "ru"
+    width = request.args.get("width", type=int) or current_app.config.get("CAMERA_SNAPSHOT_WIDTH", 384)
+    etag = request.headers.get("If-None-Match", "")
+    result = cam.fetch_snapshot(code, lang=lang, width=width, etag=etag)
+    if result["status"] == 304:
+        response = Response(status=304)
+        if result["etag"]:
+            response.headers["ETag"] = result["etag"]
+        response.headers["Cache-Control"] = "private, max-age=5"
+        return response
+    if result["status"] != 200:
+        return jsonify({"error": _("Camera unavailable")}), 503
+    response = Response(result["content"], mimetype=result["content_type"])
+    if result["etag"]:
+        response.headers["ETag"] = result["etag"]
+    response.headers["Cache-Control"] = "private, max-age=5"
+    return response
 
-    for endpoint in endpoints:
-        try:
-            resp = req.get(endpoint, timeout=timeout, headers={"Accept": "image/jpeg,image/png,*/*"})
-            if resp.status_code == 200:
-                content_type = resp.headers.get("content-type", "image/jpeg")
-                from flask import Response
 
-                return Response(resp.content, mimetype=content_type)
-        except req.exceptions.RequestException:
-            continue
+@bp.route("/api/cameras/previews", methods=["GET"])
+@admin_required
+def camera_previews():
+    """Capture every enabled camera in parallel and return the thumbnails.
 
-    return jsonify({"error": _("Camera unavailable")}), 503
+    The admin table used to open one request per row, which the browser
+    serialised through its per-host connection limit while ffmpeg ran
+    sequentially on the other side. The service captures concurrently, so one
+    fan-out here turns "Update" into a single round trip.
+    """
+    import base64
+
+    cam = current_app.modules.get("cam") if hasattr(current_app, "modules") else None
+    if cam is None:
+        return jsonify({"error": _("Camera integration is not available")}), 503
+
+    from app.cameradb import get_all_camera_rooms
+
+    rooms = [room for room in get_all_camera_rooms(enabled_only=True)]
+    codes = [str(room["code"]) for room in rooms if room.get("code")]
+    lang = request.args.get("lang") or "ru"
+    width = request.args.get("width", type=int) or current_app.config.get("CAMERA_SNAPSHOT_WIDTH", 384)
+
+    shots = cam.snapshot_many(codes, lang=lang, width=width)
+    previews: dict[str, dict] = {}
+    for code, shot in shots.items():
+        if shot["status"] == 200 and shot["content"]:
+            previews[code] = {
+                "ok": True,
+                "etag": shot["etag"],
+                "content_type": shot["content_type"],
+                "image": base64.b64encode(shot["content"]).decode("ascii"),
+            }
+        else:
+            previews[code] = {"ok": False, "etag": "", "content_type": "", "image": ""}
+    return jsonify({"rooms": len(codes), "previews": previews})
+
+
+@bp.route("/api/cameras/mcp", methods=["GET"])
+@admin_required
+def camera_mcp_status():
+    """MCP server availability and tool list (agent-mode seam)."""
+    from modules.cam_mcp import CamMCPClient
+
+    client = CamMCPClient(
+        current_app.config.get("CAMERA_MCP_URL", ""),
+        api_key=current_app.config.get("CAMERA_API_KEY", ""),
+    )
+    return jsonify(client.status())
 
 
 # ── Branding (Personalization tab) ──────────────────────────────

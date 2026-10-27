@@ -100,7 +100,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ### 🎨 Media
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
-- **Video generation** — LTX-Video 2B, 8-step distilled inference, text or image+text prompts. → [VIDEO.md](docs/VIDEO.md)
+- **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
@@ -192,7 +192,7 @@ Browser / API client
                                   ▲
                           _gpu_lock (single)
                                   │
-   modules/ ── llama.cpp (multimodal, reasoning, embedding) · sd.cpp · LTX-Video
+   modules/ ── llama.cpp (multimodal, reasoning, embedding) · sd.cpp (+ Wan video) · LTX-Video
           ── Whisper · Piper/Kokoro · SearXNG/Tavily/Crawl4AI · SuperLocalMemory
 ```
 
@@ -219,7 +219,7 @@ Every message is classified by the router model into one of these categories. Th
 | `[-CRAWL-]` | **Deep site study** | Crawl4AI crawls the site → replaces the domain document → indexes it → reasons over the corpus | Crawled pages as `## <url>` sections (budget-capped) + SLM + summary + history |
 | `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current frame; the vision model analyses it | Snapshot description + SLM + history |
 | `[-REMEMBER-]` | **Remember a fact** | Rule-based SLM extraction (background, CPU-only) | — (writes to long-term memory) |
-| `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp / LTX-Video in their own GPU containers | — (no LLM context) |
+| `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp (images, and Wan video) / LTX-Video in their own GPU containers | — (no LLM context) |
 | `none` | **Chat with tools** | Multimodal model + native tool calling | Tool results + SLM + history |
 
 **How it behaves in practice:**
@@ -252,13 +252,33 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-**Optional components add to this budget.** The CPU reranker (`bge-reranker-v2-m3`, off by default) costs
-~0.42 GB of disk and holds about **0.9 GB of RAM** while resident: it runs in llama-swap's `cpu_only` group,
-never touches VRAM and never takes a GPU queue slot, but on the CPU-only tier it competes with the reasoning
-model for cores (a warm query costs ~150 ms, the first one ~1.5 s). Hybrid search adds a PostgreSQL mirror of
-the chunks — a few MB per thousand chunks, no GPU memory.
+### What each optional profile costs
 
-Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis, the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
+Every service is a compose profile. These are measured footprints, not estimates — the numbers
+behind the planner in `resource_manager.py`. Add them to the base tier you run.
+
+| Profile | RAM | VRAM | Notes |
+|---|---|---|---|
+| **Core** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time |
+| **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded |
+| **Kokoro TTS** (`with-voice-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
+| **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; the planner budgets `WHISPER_RAM_MB` |
+| **Image generation** (`with-image-gen`) | ~1.5 GB | up to ~10 GB | sd.cpp, Z-Image Turbo Q8; SD and video never overlap |
+| **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |
+| **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card |
+| **SuperLocalMemory** (`with-slm`) | ~0.5 GB (planner budget 2 GB) | — | CPU embeddings |
+| **Reranker** (optional, off by default) | ~0.9 GB | — | `bge-reranker-v2-m3`, `cpu_only` group, never takes a GPU slot |
+
+The TTS profiles are mutually exclusive (Piper is the default, Kokoro the quality option), and so
+are the video profiles (LTX is the default, Wan the quality option). Both TTS backends run on the
+CPU on every tier — including GPU hosts — so they never compete for VRAM.
+
+Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis,
+the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack
+is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its
+own headroom: on CPU it dominates (LTX planning starts at ~17.4 GB static and downgrades the format
+to fit both RAM and a wall-clock budget), and Wan is refused there entirely — a 5-second 480p clip
+measured ~98 s for a single 256×192 second and needs more than 12 GB of RAM at any useful size.
 
 ### What works at each tier
 
@@ -268,7 +288,8 @@ Only one llama.cpp model is resident at a time, so the RAM budget covers the OS,
 | Reasoning | ⚠️ partial CPU offload (~15–20 tok/s) | ✅ ~70–90 tok/s | ✅ ~107 tok/s | ✅ MXFP4 model, slow |
 | Image generation | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution halved |
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
-| Video generation | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
+| Video — LTX (up to 10 s) | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
+| Video — Wan (5 s) | ⚠️ 512×288×121, encoder offloaded | ✅ 832×480×121, encoder offloaded | ✅ 832×480×121 (209 s) | ❌ refused (needs a GPU) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -323,8 +344,11 @@ cd flai
 # + document search (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag
 
-# + video generation (LTX-Video)
+# + video generation — pick ONE backend
+#   LTX: fast, clips up to 10 s (default)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
+#   Wan: slower, 5 s, better motion (GPU only)
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
 # + long-term memory, + web search, + site crawler
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \

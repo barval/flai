@@ -820,22 +820,24 @@ def video_generations():
             return api_error(400, "invalid_request_error", "invalid_video_options", _("Unsupported video frame rate"))
         options[key] = value
 
-    width = options.get("width", 768)
-    height = options.get("height", 512)
-    num_frames = options.get("num_frames", 240)
-    frame_rate = options.get("frame_rate", 24)
-    if width * height * num_frames > 768 * 512 * 240 or num_frames > frame_rate * 10:
+    video_module = current_app.modules.get("video")
+    multimodal = current_app.modules.get("multimodal")
+    if video_module is None or multimodal is None:
+        return api_error(503, "service_unavailable", "video_unavailable", _("Video generation module unavailable"))
+
+    # Defaults and the duration ceiling follow the active backend: LTX runs up
+    # to 240 frames (10 s at 24 fps), Wan tops out at 121 (5 s).
+    defaults = video_module.default_params
+    width = options.get("width", defaults["width"])
+    height = options.get("height", defaults["height"])
+    num_frames = options.get("num_frames", defaults["num_frames"])
+    if num_frames > video_module.max_frames or width * height * num_frames > 1280 * 704 * 121:
         return api_error(
             400,
             "invalid_request_error",
             "invalid_video_options",
             _("Video output exceeds the supported size or duration"),
         )
-
-    video_module = current_app.modules.get("video")
-    multimodal = current_app.modules.get("multimodal")
-    if video_module is None or multimodal is None:
-        return api_error(503, "service_unavailable", "video_unavailable", _("Video generation module unavailable"))
     video_module.check_availability()
     if not video_module.available or not multimodal.available:
         return api_error(503, "service_unavailable", "video_unavailable", _("Video generation module unavailable"))

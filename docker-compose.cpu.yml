@@ -40,6 +40,9 @@ services:
       # CPU video is 4-6x slower than GPU: 1.5x the shared .env value (10800)
       # so long generations are not killed mid-run.
       - LTX_VIDEO_TIMEOUT=10800
+      # The CPU video planner runs in the web process, so the cap it must
+      # respect has to be visible here (it mirrors the sd container limit).
+      - WAN_VIDEO_RAM_LIMIT_MB=16384
     networks:
       - flai_network
     restart: unless-stopped
@@ -168,6 +171,7 @@ services:
       start_period: 10s
     profiles:
       - with-image-gen
+      - with-video-wan
     logging:
       driver: "json-file"
       options:

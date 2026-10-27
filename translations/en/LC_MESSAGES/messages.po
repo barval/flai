@@ -4751,3 +4751,83 @@ msgstr "Clear"
 #: app/templates/chat.html
 msgid "Unfiled"
 msgstr "Unfiled"
+
+#: modules/video.py
+msgid "Wan generates clips up to {max_seconds} seconds — shortened the video from {requested_seconds} s to {actual_seconds} s."
+msgstr "Wan generates clips up to {max_seconds} seconds — shortened the video from {requested_seconds} s to {actual_seconds} s."
+
+#: modules/video.py
+msgid "Wan video generation requires a GPU. This host runs on CPU — switch VIDEO_BACKEND to 'ltx' or enable WAN_VIDEO_ALLOW_CPU=1 to attempt it anyway (very slow)."
+msgstr "Wan video generation requires a GPU. This host runs on CPU — switch VIDEO_BACKEND to 'ltx' or enable WAN_VIDEO_ALLOW_CPU=1 to attempt it anyway (very slow)."
+
+#: modules/video.py
+msgid "Video service returned no video data"
+msgstr "Video service returned no video data"
+
+#: modules/multimodal.py
+msgid "121 (≈5 seconds at 24 fps), 81 (≈3 seconds), 49 (≈2 seconds)"
+msgstr "121 (≈5 seconds at 24 fps), 81 (≈3 seconds), 49 (≈2 seconds)"
+
+#: modules/multimodal.py
+msgid "240 (≈10 seconds at 24 fps), 120 (≈5 seconds)"
+msgstr "240 (≈10 seconds at 24 fps), 120 (≈5 seconds)"
+
+#: app/settings_registry.py
+msgid "Video backend (ltx or wan)"
+msgstr "Video backend (ltx or wan)"
+
+#: app/settings_registry.py
+msgid "LTX-Video wrapper URL"
+msgstr "LTX-Video wrapper URL"
+
+#: app/settings_registry.py
+msgid "LTX-Video generation timeout (seconds)"
+msgstr "LTX-Video generation timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Wan video wrapper URL (sd.cpp container)"
+msgstr "Wan video wrapper URL (sd.cpp container)"
+
+#: app/settings_registry.py
+msgid "Wan 2.2 model file"
+msgstr "Wan 2.2 model file"
+
+#: app/settings_registry.py
+msgid "Wan generation timeout (seconds)"
+msgstr "Wan generation timeout (seconds)"
+
+#: app/settings_registry.py
+msgid "Wan denoising steps (4 for Turbo)"
+msgstr "Wan denoising steps (4 for Turbo)"
+
+#: app/settings_registry.py
+msgid "Wan classifier-free guidance scale"
+msgstr "Wan classifier-free guidance scale"
+
+#: app/settings_registry.py
+msgid "Wan flow shift"
+msgstr "Wan flow shift"
+
+#: app/settings_registry.py
+msgid "Allow Wan video generation on a CPU-only host"
+msgstr "Allow Wan video generation on a CPU-only host"
+
+#: app/settings_registry.py
+msgid "Run Whisper transcription on the GPU"
+msgstr "Run Whisper transcription on the GPU"
+
+#: app/settings_registry.py
+msgid "VRAM budget for the Whisper container (MB)"
+msgstr "VRAM budget for the Whisper container (MB)"
+
+#: app/settings_registry.py
+msgid "Automatic fact extraction mode (auto, on, off)"
+msgstr "Automatic fact extraction mode (auto, on, off)"
+
+#: app/settings_registry.py
+msgid "Minimum recall score for non-profile facts"
+msgstr "Minimum recall score for non-profile facts"
+
+#: app/settings_registry.py
+msgid "Quiet window before fact extraction starts (seconds)"
+msgstr "Quiet window before fact extraction starts (seconds)"

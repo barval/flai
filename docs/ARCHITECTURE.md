@@ -62,7 +62,7 @@ All slow-worker GPU tasks are requeued there — the fast worker never runs gene
 ### Slow Worker (GPU-heavy)
 - Multimodal (Qwen3VL-8B on 12GB+ GPU tiers, Qwen3VL-4B on 8 GB and CPU)
 - Text chat / reasoning answers
-- SD (Stable Diffusion)
+- SD (Stable Diffusion; also serves the Wan video backend)
 - LTX-Video
 - **Reasoning** (Qwen3.6-35B-A3B-UD on GPU tiers; gpt-oss-20b-mxfp4 native MXFP4 in CPU-only mode)
 - **RAG generation** (via reasoning model)
@@ -117,7 +117,8 @@ All llama.cpp models share a single group with `swap: true` in llama-swap. At mo
 
 Multimodal model preloaded at startup via `hooks.on_startup.preload: ["multimodal"]`. After a reasoning task, `_preload_multimodal_sync()` reloads multimodal synchronously before responding (no cold start on the next request).
 
-SD and LTX-Video use separate GPU contexts.
+SD and LTX-Video use separate GPU contexts. Both video backends (`VIDEO_BACKEND=ltx|wan`) run
+strictly one at a time under the same GPU lock; see `docs/VIDEO.md`.
 
 ### Sequence of Models
 
@@ -127,7 +128,7 @@ SD and LTX-Video use separate GPU contexts.
 
 3. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — runs on the fast worker (RAG search only). TTL=1s → unloaded 1 second after use.
 
-4. **SD / LTX-Video** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~6 GiB VRAM (multimodal + mmproj). LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free CUDA context (~3 GB). Multimodal is then reloaded via `_preload_multimodal_sync()`.
+4. **SD / LTX-Video / Wan** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~6 GiB VRAM (multimodal + mmproj). The LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free its CUDA context (~3 GB). Wan needs no restart: it runs as a one-shot `sd-cli` process in the sd.cpp container, so `unload_video_pipeline()` returns immediately for that backend and the driver reclaims the VRAM. Multimodal is then reloaded via `_preload_multimodal_sync()`.
 
 ### Example: Video Generation Request
 router (multimodal, resident) → [-VIDEO-] → multimodal generates video params (still resident)
@@ -138,7 +139,7 @@ router (multimodal, resident) → [-VIDEO-] → multimodal generates video param
 
 ### CPU-only mode: Video Parameters
 
-On a CPU-only deployment (`app/queue.py:_plan_cpu_video` → `modules/video.py:plan_cpu_generation`) the requested 768×512×240 is planned against **two** budgets before generation:
+On a CPU-only deployment (`app/queue.py:_apply_video_limits` → `modules/video.py:plan_cpu_generation`) the requested 768×512×240 is planned against **two** budgets before generation:
 
 - **RAM** — smaller of host free RAM (`MemAvailable`, `resource_manager._detect_available_ram_mb`) and the LTX-Video container's memory cap from `LTX_VIDEO_RAM_LIMIT_MB` (set in `docker-compose.cpu.yml`); the container cap is binding because an OOM there kills the container despite free host RAM.
 - **Time** — `LTX_VIDEO_CPU_TIME_BUDGET_S` (default 85% of `LTX_VIDEO_TIMEOUT`) so the generation reliably finishes before the client request times out. `estimate_cpu_generation_time_s()` predicts wall-clock from a linear per-voxel CPU throughput calibration (`CPU_VOXELS_PER_STEP_S=24_000`, ~495 s/step observed for 384×256×120 on a 12-core host), a per-frame VAE decode/assembly cost (`CPU_VAE_SECONDS_PER_FRAME=45`, calibrated from a 256×192×57 run whose VAE decode alone took ~43 min), and a fixed `CPU_TIME_OVERHEAD_S=300` (T5 encode + upscaler + I/O).

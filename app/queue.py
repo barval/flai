@@ -1555,7 +1555,9 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int | None = None) -> bool:
+    def _wait_for_vram_full(
+        self, timeout: int | None = None, video_params: dict[str, Any] | None = None
+    ) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
@@ -1576,7 +1578,15 @@ class RedisRequestQueue:
 
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        min_free = rm.estimate_video_vram_needed()
+        min_free = (
+            rm.estimate_video_vram_needed(
+                video_params.get("width") if video_params else None,
+                video_params.get("height") if video_params else None,
+                video_params.get("num_frames") if video_params else None,
+            )
+            if video_params
+            else rm.estimate_video_vram_needed()
+        )
 
         self._unload_llamacpp_models()
 
@@ -1661,19 +1671,28 @@ class RedisRequestQueue:
 
         return success
 
-    def _plan_cpu_video(
+    def _apply_video_limits(
         self, task: dict[str, Any] | None, prompt_data: dict[str, Any] | None, lang: str, session_id: str
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """On CPU-only hosts, downgrade video params when RAM is insufficient.
+        """Apply backend caps and, on CPU-only hosts, downgrade to fit RAM.
 
-        Called AFTER the multimodal model was unloaded, so available RAM reflects
-        real headroom. Persists the notice via save_message() (rendered to the
-        chat through the message_new SSE event) and returns None when generation
-        is impossible even at the fallback resolution.
+        Backend caps first: Wan 2.2 5B was trained on 121 frames (5 s), so a
+        10-second request is shortened with a user-facing notice. Then the CPU
+        planner runs — it is a no-op on a GPU host. Called AFTER the multimodal
+        model was unloaded, so available RAM reflects real headroom. Notices are
+        persisted via save_message() (rendered through the message_new SSE
+        event); returns None when generation is impossible even at the fallback
+        resolution.
         """
         video_module = self.app.modules.get("video")
         if not prompt_data or not video_module:
             return prompt_data, None
+
+        notices: list[str] = []
+        limited, limit_notice = video_module.apply_backend_limits(prompt_data, lang=lang)
+        if limit_notice:
+            prompt_data = limited
+            notices.append(limit_notice)
 
         override, notice, error = video_module.plan_cpu_generation(prompt_data, lang=lang)
         if error:
@@ -1683,15 +1702,18 @@ class RedisRequestQueue:
             prompt_data = {**prompt_data, **override}
 
         if notice:
+            notices.append(notice)
+
+        for notice_text in notices:
             # Persist via save_message() only: it publishes a message_new SSE
             # event carrying the REAL DB id, so the client dedups (displayedMessageIds)
             # and a later loadMessages() skips the row. Publishing a separate
             # "notice" SSE event with a synthetic id here used to render a second
             # copy of the same notice (observed on CPU video degrade).
             try:
-                save_message(session_id, "assistant", notice, model_name="system", response_time="0")
+                save_message(session_id, "assistant", notice_text, model_name="system", response_time="0")
             except Exception:
-                self.logger.warning("Failed to persist video memory notice", exc_info=True)
+                self.logger.warning("Failed to persist video notice", exc_info=True)
 
         return prompt_data, None
 
@@ -3150,13 +3172,13 @@ class RedisRequestQueue:
             # Verify VRAM is truly free for video pipeline — must check BOTH:
             # (a) no LLM models loaded via llama-swap /running
             # (b) sufficient raw VRAM (estimated peak from files/measurements)
-            if not self._wait_for_vram_full():
+            if not self._wait_for_vram_full(video_params=prompt_data):
                 error_msg = self.app.modules["base"]._(
                     "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
-            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            prompt_data, cpu_error = self._apply_video_limits(task, prompt_data, lang, session_id)
             if cpu_error:
                 return self._build_error_response(session_id, cpu_error, 0, lang)
 
@@ -3202,12 +3224,16 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-                rm.measure_video_vram_peak(video_model_name)
+                video_module = self.app.modules["video"]
+                # Wan runs as a one-shot sd-cli process: by the time the clip is
+                # back the VRAM is already released, so a post-hoc reading would
+                # store ~0 and poison the LTX measurement.
+                if video_module.backend == "ltx":
+                    rm.measure_video_vram_peak(video_module.model_type)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.modules["video"].model_type
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -3342,7 +3368,7 @@ class RedisRequestQueue:
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
             self._unload_llamacpp_models()
 
-            if not self._wait_for_vram_full():
+            if not self._wait_for_vram_full(video_params=prompt_data):
                 error_msg = self.app.modules["base"]._(
                     "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
@@ -3351,9 +3377,19 @@ class RedisRequestQueue:
             # Resize the source image up-front so the resize notice reaches the
             # user BEFORE the memory-degradation decision below.
             if image_data:
-                from modules.video import MAX_VIDEO_SOURCE_SIZE, resize_video_source_image
+                from modules.video import (
+                    MAX_VIDEO_SOURCE_SIZE,
+                    WAN_MAX_VIDEO_SOURCE_SIZE,
+                    resize_video_source_image,
+                )
 
-                resized_image, resized_meta = resize_video_source_image(image_data)
+                video_module = self.app.modules.get("video")
+                source_limit = (
+                    WAN_MAX_VIDEO_SOURCE_SIZE
+                    if video_module is not None and video_module.backend == "wan"
+                    else MAX_VIDEO_SOURCE_SIZE
+                )
+                resized_image, resized_meta = resize_video_source_image(image_data, source_limit)
                 if resized_image is not None:
                     image_data = resized_image
                 if resized_meta.get("resized"):
@@ -3368,8 +3404,8 @@ class RedisRequestQueue:
                                 lang=lang,
                             )
                             .format(
-                                max_w=MAX_VIDEO_SOURCE_SIZE,
-                                max_h=MAX_VIDEO_SOURCE_SIZE,
+                                max_w=source_limit,
+                                max_h=source_limit,
                                 orig_w=orig_w,
                                 orig_h=orig_h,
                                 new_w=new_w,
@@ -3378,7 +3414,7 @@ class RedisRequestQueue:
                         )
                     save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
 
-            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            prompt_data, cpu_error = self._apply_video_limits(task, prompt_data, lang, session_id)
             if cpu_error:
                 return self._build_error_response(session_id, cpu_error, 0, lang)
 
@@ -3425,8 +3461,12 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-                rm.measure_video_vram_peak(video_model_name)
+                video_module = self.app.modules["video"]
+                # Wan runs as a one-shot sd-cli process: by the time the clip is
+                # back the VRAM is already released, so a post-hoc reading would
+                # store ~0 and poison the LTX measurement.
+                if video_module.backend == "ltx":
+                    rm.measure_video_vram_peak(video_module.model_type)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
@@ -3453,7 +3493,7 @@ class RedisRequestQueue:
                     )
                 resize_notice = resize_text
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.modules["video"].model_type
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)

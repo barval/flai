@@ -15,7 +15,6 @@ from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
 from app.utils import build_context_prompt, estimate_tokens, format_prompt
 from modules.base import get_style_instruction, response_language_name
-from modules.video import DEFAULT_VIDEO_PARAMS
 
 _JSON_OBJECT_RE = re.compile(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}")
 
@@ -441,6 +440,50 @@ class MultimodalModule(TranslationMixin):
 
         return prompt_data, None
 
+    def _video_backend(self) -> str:
+        """Active video backend name (``ltx`` or ``wan``)."""
+        from modules.video import BACKEND_LTX, VIDEO_BACKENDS
+
+        backend = str(self.app.config.get("VIDEO_BACKEND", BACKEND_LTX)).strip().lower()
+        return backend if backend in VIDEO_BACKENDS else BACKEND_LTX
+
+    def _video_defaults(self) -> dict[str, Any]:
+        """Default clip parameters for the active backend."""
+        from modules.video import LTX_DEFAULT_PARAMS, WAN_DEFAULT_PARAMS
+
+        return dict(WAN_DEFAULT_PARAMS if self._video_backend() == "wan" else LTX_DEFAULT_PARAMS)
+
+    def _video_template_vars(self, lang: str) -> dict[str, Any]:
+        """Backend-specific values for the video prompt templates.
+
+        Wan 2.2 5B works on 4n+1 frames and steps in 32-pixel multiples, and it
+        was trained for 5-second clips — the model must ask for 121 frames at
+        832×480, not LTX's 240 at 768×512.
+        """
+        defaults = self._video_defaults()
+        if self._video_backend() == "wan":
+            resolutions = {"square": "640×640", "landscape": "832×480", "portrait": "480×832"}
+            model_name = "Wan 2.2 TI2V 5B"
+            frames_rule = self._(
+                "121 (≈5 seconds at 24 fps), 81 (≈3 seconds), 49 (≈2 seconds)", lang
+            )
+        else:
+            resolutions = {"square": "512×512", "landscape": "768×512", "portrait": "512×768"}
+            model_name = "LTX-Video 2B"
+            frames_rule = self._("240 (≈10 seconds at 24 fps), 120 (≈5 seconds)", lang)
+        return {
+            "video_model": model_name,
+            "video_res_square": resolutions["square"],
+            "video_res_landscape": resolutions["landscape"],
+            "video_res_portrait": resolutions["portrait"],
+            "video_default_res": f"{defaults['width']}×{defaults['height']}",
+            "video_frames_rule": frames_rule,
+            "video_fps": str(defaults["frame_rate"]),
+            "video_default_width": str(defaults["width"]),
+            "video_default_height": str(defaults["height"]),
+            "video_default_frames": str(defaults["num_frames"]),
+        }
+
     def generate_video_params(
         self, user_query: str, lang: str = "ru", response_style: str = "neutral"
     ) -> tuple[dict[str, Any] | None, str | None]:
@@ -453,6 +496,7 @@ class MultimodalModule(TranslationMixin):
             {
                 "video_query": user_query,
                 "response_style": "",
+                **self._video_template_vars(lang),
             },
             lang=lang,
         )
@@ -518,6 +562,7 @@ class MultimodalModule(TranslationMixin):
             {
                 "video_query": user_query,
                 "response_style": "",
+                **self._video_template_vars(lang),
             },
             lang=lang,
         )
@@ -547,12 +592,16 @@ class MultimodalModule(TranslationMixin):
             img = Image.open(BytesIO(base64.b64decode(image_base64)))
             w, h = img.size
             aspect = w / h
-            if aspect > 1.2:
-                prompt_data["width"], prompt_data["height"] = 768, 512
-            elif aspect < 0.8:
-                prompt_data["width"], prompt_data["height"] = 512, 768
+            if self._video_backend() == "wan":
+                landscape, portrait, square = (832, 480), (480, 832), (640, 640)
             else:
-                prompt_data["width"], prompt_data["height"] = 512, 512
+                landscape, portrait, square = (768, 512), (512, 768), (512, 512)
+            if aspect > 1.2:
+                prompt_data["width"], prompt_data["height"] = landscape
+            elif aspect < 0.8:
+                prompt_data["width"], prompt_data["height"] = portrait
+            else:
+                prompt_data["width"], prompt_data["height"] = square
             self.logger.info(
                 f"Video aspect ratio adjusted to match source image: "
                 f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
@@ -580,10 +629,10 @@ class MultimodalModule(TranslationMixin):
         return data
 
     def _apply_video_param_defaults(self, prompt_data: dict[str, Any], user_query: str) -> None:
-        """Fill missing video generation parameters with shared defaults."""
+        """Fill missing video generation parameters with backend defaults."""
         if "prompt" not in prompt_data or not str(prompt_data.get("prompt", "")).strip():
             prompt_data["prompt"] = user_query
-        for key, value in DEFAULT_VIDEO_PARAMS.items():
+        for key, value in self._video_defaults().items():
             prompt_data.setdefault(key, value)
 
     def _call_multimodal(

@@ -974,6 +974,13 @@ class ResourceManager:
           - 3 consecutive HTTP timeouts trigger docker restart of flai-ltxvideo
             via the mounted /var/run/docker.sock
         """
+        if os.getenv("VIDEO_BACKEND", "ltx").strip().lower() == "wan":
+            # Wan runs as a one-shot sd-cli process inside flai-sd: it exits
+            # after the clip is written and the driver reclaims the VRAM, so
+            # there is no resident pipeline to unload and no ltxvideo request
+            # to make (that container is not even running in this profile).
+            return True
+
         ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
 
         # Cache: skip repeat unload if it succeeded within the last 30s
@@ -1109,16 +1116,33 @@ class ResourceManager:
         except Exception as e:
             logger.error(f"Failed to restart flai-ltxvideo: {e}")
 
-    def estimate_video_vram_needed(self) -> int:
-        """VRAM threshold for LTX-Video pipeline loading.
+    def estimate_video_vram_needed(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+        num_frames: int | None = None,
+    ) -> int:
+        """VRAM threshold for the active video backend (MB).
 
-        Resolution order:
+        Wan is computed from the clip size (its footprint grows visibly between
+        480p and 720p). LTX resolution order:
           1. Measured peak from previous successful gen (model_vram_estimates table)
           2. Query ltxvideo's /v1/vram_info endpoint for component file sizes
              (text_encoder stays on CPU per ltx_wrapper.py:159)
           3. Compute from local filesystem (if /app/models is mounted)
           4. Env var LTX_VIDEO_VRAM_MB fallback (default 8500)
         """
+        if os.getenv("VIDEO_BACKEND", "ltx").strip().lower() == "wan":
+            from app.vram_estimate import wan_video_vram_mb
+
+            total = self.hardware.total_vram_mb
+            return wan_video_vram_mb(
+                width if width is not None else 832,
+                height if height is not None else 480,
+                num_frames if num_frames is not None else 121,
+                encoder_out_of_vram=isinstance(total, int) and 0 < total < 12_000,
+            )
+
         try:
             from app.database import get_vram_estimate
 

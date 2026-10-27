@@ -38,12 +38,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /sd.cpp
 
-# Clone the official repository at runtime
-RUN git clone --depth 1 --recurse-submodules https://github.com/leejet/stable-diffusion.cpp.git .
+# Pin the runtime: a floating clone made every rebuild a different engine (the
+# image we ran was master-908, upstream was master-1017 = 109 commits ahead).
+ARG SD_CPP_COMMIT=be486498eadc29dc3cd234d944c2180ed42b1415
+RUN git init -q . \
+    && git remote add origin https://github.com/leejet/stable-diffusion.cpp.git \
+    && git fetch -q --depth 1 origin "${SD_CPP_COMMIT}" \
+    && git checkout -q FETCH_HEAD \
+    && git submodule update --init --recursive --depth 1
 
 ARG SD_BACKEND
+# CUDA arch for the CUDA build. Docker has no GPU during `build`, so ggml's
+# "-arch=native" cannot resolve and silently falls back to a default arch (the
+# runner then JIT-compiles for sm_120 on first use). Pass the real one:
+#   docker build --build-arg CUDA_ARCHITECTURES=120 ...
+# or "86;89;120" for an image that runs on every supported tier.
+ARG CUDA_ARCHITECTURES=native
 RUN if [ "${SD_BACKEND}" = "cuda" ]; then \
-        cmake . -B ./build -DSD_CUDA=ON -DCUDACXX=/usr/local/cuda/bin/nvcc; \
+        cmake . -B ./build -DSD_CUDA=ON -DCUDACXX=/usr/local/cuda/bin/nvcc \
+              -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}; \
     elif [ "${SD_BACKEND}" = "vulkan" ]; then \
         cmake . -B ./build -DSD_VULKAN=ON; \
     else \

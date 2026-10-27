@@ -119,6 +119,23 @@ enable_env_key() {
 }
 
 # Отключить ключ: закомментировать активную строку, сохранив значение.
+set_env_key_value() {
+    # Безусловный сеттер: в отличие от enable_env_key() перезаписывает
+    # существующее значение — это нужно для переключения VIDEO_BACKEND.
+    local key="$1" value="$2"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    if grep -qE "^${key}=" .env 2>/dev/null; then
+        sed -Ei "s|^${key}=.*|${key}=${value}|" .env
+    elif grep -qE "^# ?${key}=" .env 2>/dev/null; then
+        sed -Ei "s|^#? ?${key}=.*|${key}=${value}|" .env
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
 disable_env_key() {
     local key="$1" message="$2"
     if settings_override_exists "$key"; then
@@ -156,6 +173,15 @@ enable_env_features() {
     else
         disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
         disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
+    fi
+    if [[ "$WITH_VIDEO" == "true" ]]; then
+        if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+            set_env_key_value VIDEO_BACKEND wan
+            info "Видеобэкенд: Wan 2.2 TI2V 5B (качество, клипы 5 с)"
+        else
+            set_env_key_value VIDEO_BACKEND ltx
+            info "Видеобэкенд: LTX-Video 2B (скорость, клипы до 10 с)"
+        fi
     fi
 }
 
@@ -432,6 +458,42 @@ download_tts_models() {
     fi
 }
 
+download_wan_video_models() {
+    info "Скачиваю модели Wan 2.2 TI2V 5B (Apache-2.0)..."
+    local SD_DIR="services/sd_cpp/models"
+
+    # Turbo GGUF: 4 шага денойза при CFG 1.0. Обычный Wan 2.2 5B требует ~20
+    # шагов и в разы медленнее на том же клипе.
+    if [[ ! -f "$SD_DIR/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf" ]]; then
+        info "Скачиваю Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf (~3,4 ГБ)..."
+        HF_DOWNLOAD "hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF" \
+            "Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf" \
+            "$SD_DIR/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf"
+    else
+        warn "wan2.2-ti2v-5b-turbo-Q4_K_M.gguf уже есть — пропускаю."
+    fi
+
+    if [[ ! -f "$SD_DIR/vae/Wan2.2_VAE.safetensors" ]]; then
+        info "Скачиваю Wan2.2_VAE.safetensors (~1,4 ГБ)..."
+        HF_DOWNLOAD "QuantStack/Wan2.2-TI2V-5B-GGUF" \
+            "VAE/Wan2.2_VAE.safetensors" \
+            "$SD_DIR/vae/Wan2.2_VAE.safetensors"
+    else
+        warn "Wan2.2_VAE.safetensors уже есть — пропускаю."
+    fi
+
+    # umt5-xxl — текстовый энкодер Wan; он живёт на GPU, если карта не меньше
+    # 12 ГБ, иначе обёртка стримит его из RAM.
+    if [[ ! -f "$SD_DIR/text_encoders/umt5-xxl-encoder-Q8_0.gguf" ]]; then
+        info "Скачиваю umt5-xxl-encoder-Q8_0.gguf (~6 ГБ)..."
+        HF_DOWNLOAD "city96/umt5-xxl-encoder-gguf" \
+            "umt5-xxl-encoder-Q8_0.gguf" \
+            "$SD_DIR/text_encoders/umt5-xxl-encoder-Q8_0.gguf"
+    else
+        warn "umt5-xxl-encoder-Q8_0.gguf уже есть — пропускаю."
+    fi
+}
+
 download_kokoro_models() {
     local KOKORO_DIR="services/kokoro"
 
@@ -595,7 +657,13 @@ resolve_stack() {
     [[ "$VOICE_BACKEND" == "piper" ]]  && PROFILES="$PROFILES --profile with-voice-piper"
     [[ "$VOICE_BACKEND" == "kokoro" ]] && PROFILES="$PROFILES --profile with-voice-kokoro"
     [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
-    [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
+    if [[ "$WITH_VIDEO" == "true" ]]; then
+        if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+            PROFILES="$PROFILES --profile with-video-wan"
+        else
+            PROFILES="$PROFILES --profile with-video"
+        fi
+    fi
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
@@ -612,6 +680,12 @@ resolve_stack() {
         else
             info "Режим GPU — используется GPU compose файл."
         fi
+    fi
+
+    if [[ "$COMPOSE_FILE" == *cpu.yml && "$VIDEO_BACKEND" == "wan" ]]; then
+        error "Wan 2.2 требует GPU: 5-секундный клип 480p на CPU идёт ~90 минут и не влезает в RAM контейнера."
+        error "На CPU используйте --with-video (LTX-Video) или WAN_VIDEO_ALLOW_CPU=1 в .env, чтобы попробовать всё равно."
+        exit 1
     fi
 }
 
@@ -750,7 +824,9 @@ FLAI v12.8 — Скрипт развёртывания
   --with-rag          Развернуть Qdrant для RAG (поиск по документам)
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
                       (по умолчанию: отключено, используйте этот флаг для включения)
-  --with-video        Развернуть LTX-Video для генерации видео
+  --with-video        Развернуть LTX-Video (быстрый бэкенд, клипы до 10 с)
+  --with-video-wan    Развернуть Wan 2.2 TI2V 5B (качественный бэкенд, клипы 5 с)
+                      (взаимоисключающе с --with-video; требуется GPU)
 --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: выключено, используйте флаг для включения)
   --cpu               Принудительный режим только CPU (GPU не требуется)
@@ -772,6 +848,8 @@ FLAI v12.8 — Скрипт развёртывания
   Генерация изображений (Z-Image Turbo) ~6,5 ГБ
   Редактирование (Flux.2 Klein 4B)    ~5 ГБ
   Видео (LTX-Video 2B)                ~5,9 ГБ
+  Видео (Wan 2.2 TI2V 5B)             ~3,4 ГБ (Q4_K_M GGUF)
+  Wan VAE + энкодер umt5-xxl          ~1,4 ГБ + ~6 ГБ
   T5 text encoder (PixArt T5-XXL)     ~18 ГБ (на диске, float32)
   TTS (Piper)                         ~0,2 ГБ
   TTS (Kokoro)                        ~1 ГБ
@@ -799,7 +877,8 @@ for arg in "$@"; do
         --with-voice-kokoro)             VOICE_KOKORO=true ;;
         --with-rag)                      WITH_RAG=true ;;
         --with-image-gen)                WITH_IMAGE_GEN=true ;;
-        --with-video)                    WITH_VIDEO=true ;;
+        --with-video)                    WITH_VIDEO=true; VIDEO_USE_LTX=true ;;
+        --with-video-wan)                WITH_VIDEO=true; VIDEO_USE_WAN=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
@@ -814,6 +893,14 @@ if [[ "$VOICE_PIPER" == "true" && "$VOICE_KOKORO" == "true" ]]; then
     error "--with-voice-piper и --with-voice-kokoro взаимоисключающие — выберите один бэкенд TTS."
     exit 1
 fi
+
+if [[ "${VIDEO_USE_WAN:-false}" == "true" && "${VIDEO_USE_LTX:-false}" == "true" ]]; then
+    error "--with-video и --with-video-wan взаимоисключающие — выберите один видеобэкенд."
+    exit 1
+fi
+
+VIDEO_BACKEND="ltx"
+[[ "${VIDEO_USE_WAN:-false}" == "true" ]] && VIDEO_BACKEND="wan"
 
 VOICE_BACKEND=""
 [[ "$VOICE_PIPER" == "true" ]] && VOICE_BACKEND="piper"
@@ -840,7 +927,13 @@ main() {
         download_llamacpp_models
         download_sd_cpp_models
         download_tts_models
-        [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
+        if [[ "$WITH_VIDEO" == "true" ]]; then
+            if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+                download_wan_video_models
+            else
+                download_ltx_video_models
+            fi
+        fi
         [[ "$VOICE_BACKEND" != "" ]] && download_whisper_models
     fi
 

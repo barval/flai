@@ -41,6 +41,24 @@ The CPU column in the table below was measured **live on the previous 12-core CP
 
 > **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways.
 
+## Media generation (measured)
+
+Video and image generation run in their own containers with the LLM unloaded, so these numbers are
+independent of the chat throughput above. Measured on the same **RTX 5060 Ti 16 GB**.
+
+| Backend | Clip | Steps | Time | Peak VRAM (card-wide) |
+|---|---|---|---|---|
+| **LTX-Video 2B 0.9.8 distilled** | 768×512×120 @ 24 fps (5 s) | 8 | tens of seconds | ~3.1 GB |
+| **Wan 2.2 TI2V 5B Turbo Q4_K_M** | 832×480×121 @ 24 fps (5 s) | 4 | **209 s** (128 s of it is the VAE decode) | **15.3 GB** |
+| Wan 2.2 TI2V 5B Turbo Q4_K_M | 704×480×33 @ 16 fps (2 s) | 4 | 93.6 s | ~11 GB |
+
+The Wan figures assume the umt5-xxl text encoder sits on the GPU. Below 12 GB of VRAM the wrapper
+streams it from RAM (`--offload-to-cpu`), which removes ~6 GB from the peak and adds time.
+
+Wan on a CPU-only host was measured once and rejected: 256×192×17 at 4 steps took **98 s** and
+~12 GB of RAM, and 512×288×49 already exceeded a 12 GB container cap. A 5-second 480p clip
+extrapolates to ~90 minutes, so the backend is refused there by default.
+
 ---
 
 See also [VRAM_MANAGEMENT.md](VRAM_MANAGEMENT.md) for how a model is fitted to a GPU at deployment time.

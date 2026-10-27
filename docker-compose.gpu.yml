@@ -38,6 +38,8 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - PYTHONDONTWRITEBYTECODE=1
       - CRAWL_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
+      # Mirrors the sd container limit: the Wan planner runs in this process.
+      - WAN_VIDEO_RAM_LIMIT_MB=12288
     networks:
       - flai_network
     restart: unless-stopped
@@ -131,6 +133,9 @@ services:
 
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
+  # Also serves the Wan 2.2 5B video backend: the same container answers
+  # POST /v1/video/generations when FLAI runs with VIDEO_BACKEND=wan, so
+  # `--profile with-video-wan` starts it without image generation.
   # ============================================================
   sd_cpp:
     image: flai-sd_cpp:cuda
@@ -157,7 +162,9 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 10G
+          # 12G: on a <12 GB card the Wan wrapper streams the umt5 encoder
+          # from RAM (--offload-to-cpu), which needs the extra headroom.
+          memory: 12G
         reservations:
           cpus: '2.0'
           memory: 4G
@@ -174,6 +181,7 @@ services:
       start_period: 10s
     profiles:
       - with-image-gen
+      - with-video-wan
     logging:
       driver: "json-file"
       options:

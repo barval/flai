@@ -275,6 +275,28 @@ RLM analysis is one serialized GPU task. `_process_rlm_task()` marks it busy wit
 
 **If VRAM isn't freed within the timeout, the task returns an error instead of proceeding into OOM.**
 
+## Wan Video Footprint (v12.8)
+
+Wan 2.2 TI2V 5B runs in the **sd.cpp container**, not in a PyTorch process, so its VRAM model is
+different from LTX:
+
+- **Estimate:** `app/vram_estimate.py:wan_video_vram_mb()` — a fixed base (Q4 transformer 3.4 GB +
+  Wan VAE 0.4 GB + umt5-xxl encoder 6.0 GB + CUDA context = 9 800 MB) plus **0.1075 MB per latent
+  unit**, where a unit is `(width/16) × (height/16) × ((frames-1)/4 + 1)`.
+- **Calibration:** measured 15 340 MB of card-wide usage for 832×480×121 at 4 steps (a 16 GB card),
+  i.e. ~15.0 GB for the pipeline; the formula returns 14 998 MB.
+- **Encoder offload:** below 12 GB of VRAM the wrapper adds `--offload-to-cpu`, and the estimator
+  subtracts the 6 GB encoder. A 12 GB card therefore runs 832×480×121 in ~9 GB instead of refusing.
+- **Preset chain:** 832×480×121 → 640×384×121 → 512×288×121 → 512×288×49. `_fit_wan_to_vram()`
+  walks it from the requested size downwards against the free VRAM; the wrapper repeats the same
+  step-down on an out-of-memory error, exactly like image generation does with offload levels.
+- **No unload needed:** `sd-cli` is a one-shot process, so `unload_video_pipeline()` returns
+  immediately for this backend — there is no resident pipeline, and the wrapper's VRAM is released
+  by the driver when the process exits. Nothing calls the ltxvideo container, which is not running
+  in this profile.
+- **CPU:** refused by default. Measured 98 s and ~12 GB of RAM for 256×192×17; 512×288×49 exceeded
+  a 12 GB cap. `WAN_VIDEO_ALLOW_CPU=1` re-enables it through the same RAM/time planner.
+
 ## LTX-Video Unload Optimization (v8.8+)
 Three-part fix in `resource_manager.py:unload_video_pipeline()`:
 
@@ -345,7 +367,7 @@ Replaces v8.8 cap-only approach.
 In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvideo`) is limited by **system RAM, not VRAM**. The worker runs a pre-flight memory plan before any generation:
 
 - `estimate_peak_ram_mb(width, height, num_frames)` in `modules/video.py`: `peak_mb ≈ 17400 + units × 3.0`, with `units = (w//32)·(h//32)·(((frames−2)//8)+1)` and a +1024 MB safety margin. Calibrated against a measured 19.25 GB peak for 384×256×49.
-- `_plan_cpu_video()` in `app/queue.py` reads `/proc/meminfo` `MemAvailable` (with a hard minimum below swap) and picks the largest step that fits:
+- `_apply_video_limits()` in `app/queue.py` reads `/proc/meminfo` `MemAvailable` (with a hard minimum below swap) and picks the largest step that fits:
   1. requested resolution (default 768×512×240 @ 24 fps),
   2. **384×256×120 @ 12 fps**,
   3. **256×192×57 @ 6 fps**.

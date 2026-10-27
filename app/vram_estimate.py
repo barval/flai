@@ -558,3 +558,33 @@ def _classify_model_fit(
         "arch_max_ctx": arch_max_ctx,
         "message": message,
     }
+
+
+# ── Wan 2.2 TI2V 5B video footprint ──
+# Latent volume: VAE stride 16 spatially and 4 temporally (4n+1 frames).
+# Measured on the live 16 GB card (nvidia-smi polled every 2 s during the run):
+# 832×480×121 at 4 steps peaked at 15 340 MB of card-wide usage, i.e. ~15.0 GB
+# for the pipeline. The fixed part is the Q4 transformer (3.4 GB) + Wan VAE
+# (0.4 GB) + umt5-xxl encoder (6.0 GB, loaded to the GPU by default) + CUDA
+# context; the remainder scales with the latent volume. The same slope puts
+# 640×384×121 at ~13.0 GB and 720p (1280×704×121) at ~21 GB — both measured
+# against the same base, which is why 720p needs --offload-to-cpu on 16 GB.
+WAN_VIDEO_VRAM_BASE_MB = 9_800
+WAN_VIDEO_VRAM_MB_PER_LATENT_UNIT = 0.1075
+# The umt5-xxl text encoder is ~6 GB of that base. Below 12 GB of VRAM the
+# sd.cpp wrapper streams it from RAM instead (--offload-to-cpu), which is what
+# makes a full 480p clip possible on an 8 GB card at the cost of speed.
+WAN_VIDEO_TEXT_ENCODER_MB = 6_000
+
+
+def wan_video_vram_mb(
+    width: int, height: int, num_frames: int, encoder_out_of_vram: bool = False
+) -> int:
+    """Estimated peak VRAM (MB) for one Wan 2.2 5B clip at the given size."""
+    latents = (
+        max(1, int(width) // 16)
+        * max(1, int(height) // 16)
+        * max(1, (int(num_frames) - 1) // 4 + 1)
+    )
+    base = WAN_VIDEO_VRAM_BASE_MB - (WAN_VIDEO_TEXT_ENCODER_MB if encoder_out_of_vram else 0)
+    return int(base + latents * WAN_VIDEO_VRAM_MB_PER_LATENT_UNIT)

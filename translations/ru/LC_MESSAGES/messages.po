@@ -4784,3 +4784,83 @@ msgstr "Сбросить"
 #: app/templates/chat.html
 msgid "Unfiled"
 msgstr "Без папки"
+
+#: modules/video.py
+msgid "Wan generates clips up to {max_seconds} seconds — shortened the video from {requested_seconds} s to {actual_seconds} s."
+msgstr "Wan генерирует клипы до {max_seconds} с — видео сокращено с {requested_seconds} с до {actual_seconds} с."
+
+#: modules/video.py
+msgid "Wan video generation requires a GPU. This host runs on CPU — switch VIDEO_BACKEND to 'ltx' or enable WAN_VIDEO_ALLOW_CPU=1 to attempt it anyway (very slow)."
+msgstr "Генерация видео Wan требует GPU. Этот хост работает на CPU — переключите VIDEO_BACKEND на 'ltx' или задайте WAN_VIDEO_ALLOW_CPU=1, чтобы всё равно попробовать (очень медленно)."
+
+#: modules/video.py
+msgid "Video service returned no video data"
+msgstr "Сервис видео не вернул данные видео"
+
+#: modules/multimodal.py
+msgid "121 (≈5 seconds at 24 fps), 81 (≈3 seconds), 49 (≈2 seconds)"
+msgstr "121 (≈5 секунд при 24 fps), 81 (≈3 секунды), 49 (≈2 секунды)"
+
+#: modules/multimodal.py
+msgid "240 (≈10 seconds at 24 fps), 120 (≈5 seconds)"
+msgstr "240 (≈10 секунд при 24 fps), 120 (≈5 секунд)"
+
+#: app/settings_registry.py
+msgid "Video backend (ltx or wan)"
+msgstr "Видеобэкенд (ltx или wan)"
+
+#: app/settings_registry.py
+msgid "LTX-Video wrapper URL"
+msgstr "URL обёртки LTX-Video"
+
+#: app/settings_registry.py
+msgid "LTX-Video generation timeout (seconds)"
+msgstr "Таймаут генерации LTX-Video (сек)"
+
+#: app/settings_registry.py
+msgid "Wan video wrapper URL (sd.cpp container)"
+msgstr "URL обёртки видео Wan (контейнер sd.cpp)"
+
+#: app/settings_registry.py
+msgid "Wan 2.2 model file"
+msgstr "Файл модели Wan 2.2"
+
+#: app/settings_registry.py
+msgid "Wan generation timeout (seconds)"
+msgstr "Таймаут генерации Wan (сек)"
+
+#: app/settings_registry.py
+msgid "Wan denoising steps (4 for Turbo)"
+msgstr "Шаги денойза Wan (4 для Turbo)"
+
+#: app/settings_registry.py
+msgid "Wan classifier-free guidance scale"
+msgstr "Масштаб classifier-free guidance Wan"
+
+#: app/settings_registry.py
+msgid "Wan flow shift"
+msgstr "Flow shift Wan"
+
+#: app/settings_registry.py
+msgid "Allow Wan video generation on a CPU-only host"
+msgstr "Разрешить генерацию видео Wan на хосте только с CPU"
+
+#: app/settings_registry.py
+msgid "Run Whisper transcription on the GPU"
+msgstr "Выполнять транскрипцию Whisper на GPU"
+
+#: app/settings_registry.py
+msgid "VRAM budget for the Whisper container (MB)"
+msgstr "Бюджет VRAM для контейнера Whisper (МБ)"
+
+#: app/settings_registry.py
+msgid "Automatic fact extraction mode (auto, on, off)"
+msgstr "Режим автоматического извлечения фактов (auto, on, off)"
+
+#: app/settings_registry.py
+msgid "Minimum recall score for non-profile facts"
+msgstr "Минимальный балл recall для фактов, кроме профиля"
+
+#: app/settings_registry.py
+msgid "Quiet window before fact extraction starts (seconds)"
+msgstr "Тихий интервал перед извлечением фактов (сек)"

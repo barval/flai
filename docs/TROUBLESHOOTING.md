@@ -93,6 +93,25 @@ That was the old CPU path: full resolution on a CPU does not finish inside `SD_C
 
 CPU video is 4–6× slower than GPU. The planner picks the largest format that fits both available RAM and the wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) and tells you the format it chose. If even the smallest step does not fit, it stops with an explicit message instead of hanging — check the numbers before retrying.
 
+### Wan says «Wan video generation requires a GPU»
+
+Wan 2.2 5B is GPU-only by design: on a CPU host a 5-second 480p clip takes ~90 minutes and needs
+more than 12 GB of RAM (measured: 98 s for a single 256×192 second, and 512×288×49 already exceeded
+a 12 GB cap). Either switch back to LTX (`./deploy.sh --with-video`, `VIDEO_BACKEND=ltx`) or, if you
+accept the wait, set `WAN_VIDEO_ALLOW_CPU=1` and raise `WAN_VIDEO_TIMEOUT`.
+
+### The Wan clip is shorter or smaller than requested
+
+Both are the preset chain doing its job. Wan is trained for 121 frames, so a longer request is cut
+to 5 seconds with a notice in the chat. If the free VRAM cannot hold 832×480×121, the chain steps down
+to 640×384×121, then 512×288×121, then 512×288×49 — the last two fit 12 GB and 8 GB cards with the
+umt5 encoder offloaded to RAM. Check the size it picked in `docker logs flai-sd`.
+
+### `flai-sd` fails with «ffmpeg is not installed»
+
+The Wan path converts sd.cpp's avi to mp4. Rebuild the image after pulling the update:
+`docker compose -f docker-compose.gpu.yml build sd_cpp`.
+
 ### LTX-Video needs a newer driver
 
 On CUDA 12.2 the deploy script sets `LTX_DISABLE_REQUIRE=1`, which waives the image requirement but does not guarantee video works. If video generation fails on an old-but-supported driver, this is why — upgrade the driver.

@@ -48,6 +48,27 @@ LTX_VIDEO_TIMEOUT=10800         # Максимальное время генер
 OCR_TIME_BUDGET_S=1800          # Scanned-PDF OCR budget per document task (0 = unlimited)
 ```
 
+**Видеобэкенд:**
+```bash
+VIDEO_BACKEND=ltx               # ltx (быстро, до 10 с) | wan (качество, 5 с, только GPU)
+# LTX-Video (flai-ltxvideo, PyTorch)
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_CPU_TIME_BUDGET_S=0   # только CPU; 0 = 85 % от LTX_VIDEO_TIMEOUT
+# Wan 2.2 TI2V 5B (flai-sd, stable-diffusion.cpp)
+WAN_VIDEO_URL=http://flai-sd:7861
+WAN_VIDEO_MODEL=wan2.2-ti2v-5b-turbo-Q4_K_M.gguf
+WAN_VIDEO_TIMEOUT=1800          # измерено 209 с на 832×480×121
+WAN_VIDEO_STEPS=4               # Turbo-чекпойнт
+WAN_VIDEO_CFG_SCALE=1.0
+WAN_VIDEO_FLOW_SHIFT=3.0
+WAN_VIDEO_ALLOW_CPU=0           # 1 = разрешить Wan на хосте только с CPU (очень медленно)
+```
+
+Лимиты на стороне контейнеров: `WAN_CLI_TIMEOUT` (1800 с на GPU, 7200 с на CPU),
+`WAN_OFFLOAD_BELOW_VRAM_MB` (12000 — ниже этого порога энкодер umt5 стримится из RAM),
+`SD_CLI_TIMEOUT` (генерация изображений).
+
 **Настройки повторных попыток подключения к сервисам:**
 ```bash
 SERVICE_RETRY_ATTEMPTS=5

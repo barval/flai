@@ -267,7 +267,7 @@ class TestBuildCmd:
         assert "-m /models/test.gguf" in cmd
         assert "--ctx-size 8192" in cmd
         assert "--flash-attn on" in cmd
-        assert "--n-gpu-layers" not in cmd
+        assert "--n-gpu-layers -1" in cmd
         assert "--kv-offload" not in cmd
 
     @patch("app.resource_manager.get_resource_manager")
@@ -766,3 +766,20 @@ def test_gpu_reasoning_keeps_its_ttl_when_the_card_is_full(monkeypatch):
     monkeypatch.setattr(gen, "_gpu_models_coexist", lambda: False)
 
     assert gen.get_ttl("reasoning") == 10
+
+
+def test_full_offload_is_explicit_never_llama_cpp_auto(monkeypatch):
+    """`auto` silently keeps layers in RAM when the card looked busy at load."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(mod, "get_model_config", lambda module: {"model_name": "m.gguf", "context_length": 8192})
+    monkeypatch.setattr(gen, "get_model_path", lambda module, name: "/models/m.gguf")
+    rm = MagicMock()
+    rm.compute_llamacpp_config.return_value = {"n_gpu_layers": -1, "flash_attn": True, "offload_kqv": True}
+    monkeypatch.setattr("app.resource_manager.get_resource_manager", lambda: rm)
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {})
+
+    cmd = gen.build_cmd("multimodal", "/models/m.gguf")
+
+    assert "--n-gpu-layers -1" in cmd

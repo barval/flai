@@ -4831,3 +4831,7 @@ msgstr "Minimum recall score for non-profile facts"
 #: app/settings_registry.py
 msgid "Quiet window before fact extraction starts (seconds)"
 msgstr "Quiet window before fact extraction starts (seconds)"
+
+#: app/queue.py
+msgid "Transcribed from the voice message"
+msgstr "Transcribed from the voice message"

@@ -6481,8 +6481,14 @@ class RedisRequestQueue:
         process_time = round(process_time, 1)
 
         # The question: the typed text first, then every transcript in order.
+        # The transcript carries an explicit label: without it the model reads
+        # the typed instruction ("transcribe the voice message") literally and
+        # answers that no audio was attached (observed on the English demo).
         typed = str(request_data.get("text") or "").strip()
-        question = f"{typed}\n\n{transcribed_text}" if typed else transcribed_text
+        with force_locale(lang):
+            transcript_label = self.app.modules["base"]._("Transcribed from the voice message", lang)
+        labelled = f"{transcript_label}: {transcribed_text}"
+        question = f"{typed}\n\n{labelled}" if typed else labelled
         preview = (
             (transcribed_text[:50] + "...")
             if transcribed_text

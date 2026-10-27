@@ -43,12 +43,12 @@
     {
       "kind": "image",
       "title": "Picture",
-      "prompt": "Draw an autumn park: maple leaves, a bench and an umbrella. No text, no labels and no letters."
+      "prompt": "Draw an image of an autumn park: maple leaves, a bench and an umbrella. No text, no labels and no letters."
     },
     {
       "kind": "video",
       "title": "Video from the image",
-      "prompt": "Make a video from the image: autumn leaves slowly falling in the park.",
+      "prompt": "Make a video from the image: a light breeze is blowing.",
       "attach": "previous-image"
     },
     {
@@ -72,7 +72,7 @@
     {
       "kind": "text",
       "title": "Photo edit",
-      "prompt": "Make a photo: a plate of apples and grapes on a wooden table by the window. No packaging, no labels. Replace only the apples with oranges. Keep everything else unchanged.",
+      "prompt": "Make a photo: a plate of apples and grapes on a wooden table by the window. No packaging, no labels. Replace only the apples with pears. Keep everything else unchanged.",
       "attach": "generated-image"
     },
     {
@@ -94,17 +94,17 @@
     {
       "kind": "task",
       "title": "Mars",
-      "prompt": "Draw an astronaut walking on the surface of the Moon. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
+      "prompt": "Draw a realistic photo of an astronaut walking on the surface of the Moon. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
     },
     {
       "kind": "task",
       "title": "Illustration",
-      "prompt": "Draw an illustration for the school yearbook: an autumn schoolyard and maple leaves. No text and no labels."
+      "prompt": "Draw an illustration for the school yearbook: an autumn schoolyard and maple leaves. Without people, text or any labels."
     },
     {
       "kind": "task",
       "title": "Café",
-      "prompt": "Make a short video: a European street café in summer. It is raining.",
+      "prompt": "Make a video: an empty European street café early in the morning in summer. A light breeze.",
       "video_backend": "wan"
     },
     {

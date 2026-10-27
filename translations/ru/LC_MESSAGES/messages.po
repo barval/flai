@@ -4864,3 +4864,7 @@ msgstr "Минимальный балл recall для фактов, кроме �
 #: app/settings_registry.py
 msgid "Quiet window before fact extraction starts (seconds)"
 msgstr "Тихий интервал перед извлечением фактов (сек)"
+
+#: app/queue.py
+msgid "Transcribed from the voice message"
+msgstr "Расшифровка голосового сообщения"

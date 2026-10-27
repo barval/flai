@@ -681,7 +681,7 @@ def test_cpu_keeps_the_reasoning_model_resident_when_ram_allows(monkeypatch):
 def test_cpu_unloads_reasoning_when_ram_is_tight(monkeypatch):
     gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=16384, sizes={"multimodal": 4700, "reasoning": 11700})
 
-    assert gen.get_ttl("reasoning") == 600
+    assert gen.get_ttl("reasoning") == 60
 
 
 def test_cpu_keeps_the_embedding_model_resident(monkeypatch):

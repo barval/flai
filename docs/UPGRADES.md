@@ -344,6 +344,45 @@ FLAI never asks for it) — hence the 300 s health start period.
 Open items: rebuild stable-diffusion.cpp from a pinned commit (109 commits of
 fixes since ours) and, on a 24 GB card, evaluate LTX-Video 0.9.8 13B.
 
+### Video backend evaluation (2026-10-27)
+
+LTX-Video 0.9.8 2B is the weakest tier of the current video models, so two
+alternatives were checked against this card.
+
+**WanGP (github.com/deepbeepmeep/WanGP)** — a Gradio super-app (Wan 2.1/2.2,
+LTX-2/2.3/2.5, HunyuanVideo, audio, 3D) with MMGP offloading and a Python API.
+It is **not shippable as a dependency**: its WanGP Community License 2.0 is not
+an OSI licence — it forbids embedding/white-labelling in a paid product and
+paid API/SaaS access without a commercial licence, and requires disclosure.
+Bundling it would put a non-permissive licence on the whole distribution. It is
+also a second application with its own updater, Gradio stack and Sage/Triton
+kernels, duplicating the image pipeline that already runs in sd.cpp. A
+"bring your own WanGP endpoint" connector is possible later; nothing is bundled.
+
+**Wan 2.2 TI2V 5B (Apache-2.0) through the existing sd.cpp** — the most
+promising route, and the models were already on disk. Measured on the live card
+with the pinned engine (`master-1017`, commit `be48649`), turbo Q4_K_M from
+`hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF`, 4 steps, CFG 1.0, Euler, flow-shift 3.0,
+704×480, 33 frames @16 fps:
+
+- **93.6 s** of generation for a 2-second clip (VRAM ~11 GB with the chat model
+  unloaded), and the frames are coherent: stable subject, plausible anatomy and
+  lighting across the clip.
+- The `-m` flag fails with «get sd version from file failed»; diffusion-only
+  models need `--diffusion-model`. That was the only blocker — the engine
+  supports Wan 2.2 in both the old and the new build.
+- For reference, LTX 0.9.8 2B produces a comparable-length clip faster but with
+  visibly weaker motion and detail.
+
+**LTX-2.5 (22B)** is supported by sd.cpp since 2026-08, but the smallest usable
+quantisation is Q2/Q3 (7.9–10.5 GB) plus a Gemma-4-12B text encoder (on the CPU)
+and a conv VAE: it fits 16 GB only with offloading and runs several times slower
+than Wan 5B. It is the option for a 24 GB card, not this one.
+
+Conclusion: keep LTX as the fast backend, add Wan 2.2 5B as the quality backend
+behind a `VIDEO_BACKEND` switch (sd.cpp endpoint + `--diffusion-model`, models
+fetched by the deploy script), and leave WanGP out of the distribution.
+
 ## Keeping this document current
 
 ```bash

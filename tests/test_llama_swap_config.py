@@ -723,15 +723,31 @@ def test_gpu_group_does_not_swap_behind_the_resource_manager(monkeypatch):
     assert "exclusive: false" in block
 
 
-def test_cpu_group_keeps_llama_swap_in_charge_of_swapping(monkeypatch):
+def test_cpu_group_keeps_llama_swap_in_charge_when_models_do_not_fit(monkeypatch):
     """Without VRAM accounting, one-model-at-a-time is the only RAM guard."""
     from app import llama_swap_config as mod
 
     gen = mod.LlamaSwapConfigGenerator()
     monkeypatch.setattr(gen, "_platform_is_cpu", lambda: True)
+    monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: False)
     monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
 
     yaml_str = gen.generate_yaml(include_preload=False)
     block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
 
     assert "swap: false" not in block
+
+
+def test_cpu_group_does_not_swap_when_both_models_fit_in_ram(monkeypatch):
+    """With RAM to spare, a reasoning answer must not evict the chat model."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: True)
+    monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: True)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" in block

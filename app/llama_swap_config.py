@@ -165,6 +165,16 @@ class LlamaSwapConfigGenerator:
         self.logger.warning(f"No mmproj found in {base_dir}")
         return None
 
+    def _cpu_swap_enabled(self) -> bool:
+        """Whether llama-swap must keep only one of the three models loaded.
+
+        A CPU host can hold both big models when the RAM allows it — then the
+        models stay resident and alternate without a reload, and llama-swap must
+        not evict behind the TTL policy's back. When they do not fit, the swap is
+        the only guard against loading both into RAM.
+        """
+        return self._platform_is_cpu() and not self._cpu_models_coexist()
+
     def _platform_is_cpu(self) -> bool:
         try:
             from app.resource_manager import get_resource_manager
@@ -198,6 +208,20 @@ class LlamaSwapConfigGenerator:
         except Exception:
             return 0
 
+    def _cpu_models_coexist(self) -> bool:
+        """True when the CPU host can hold the chat and reasoning models at once.
+
+        Measured on the live CPU tier, that is the difference between reloading
+        11 GB from disk on every reasoning answer and never reloading it. The
+        reserve covers the services that are always resident (Whisper, SLM,
+        Postgres, Qdrant, Redis) plus the OS.
+        """
+        total_ram = self._total_ram_mb()
+        multimodal_mb = self._model_file_mb("multimodal")
+        reasoning_mb = self._model_file_mb("reasoning")
+        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        return bool(total_ram and reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram)
+
     def _cpu_ttl(self, module: str) -> int:
         """TTL policy for a host without a GPU.
 
@@ -216,7 +240,7 @@ class LlamaSwapConfigGenerator:
         multimodal_mb = self._model_file_mb("multimodal")
         reasoning_mb = self._model_file_mb("reasoning")
         reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
-        fits = bool(total_ram and reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram)
+        fits = self._cpu_models_coexist()
         # Fits: the swap group stops the chat model when reasoning starts, so the
         # cheap reload is the small chat model — keep the big one warm.
         # Does not fit: the two never coexist anyway (the llm_fast group swaps
@@ -552,7 +576,7 @@ class LlamaSwapConfigGenerator:
         #   is the only guard against loading two models into RAM.
         groups = {
             "llm_fast": {
-                "swap": self._platform_is_cpu(),
+                "swap": self._cpu_swap_enabled(),
                 "exclusive": False,
                 "models": ["embedding", "reasoning", "multimodal"],
             },

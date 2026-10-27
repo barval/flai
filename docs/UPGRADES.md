@@ -312,6 +312,38 @@ for non-NVIDIA GPUs, SD Vulkan, LTX ROCm. macOS stays a separate research task (
 - stable-diffusion.cpp is cloned from `master` at build time. Pin a commit and record it in the
   image label.
 
+## Service stack audit (2026-10-27)
+
+The application and its libraries were audited in Phase 1-3; this pass covers the
+sidecar services, the model runtimes and the models themselves.
+
+| Component | What we ran | Latest upstream | Verdict |
+|---|---|---|---|
+| Whisper image | `onerahmet/openai-whisper-asr-webservice:v1.9.1` (2025-07) | **v1.10.0** (2026-08) | **updated** |
+| Whisper model | `medium` | `large-v3-turbo` | **updated** — faster and more accurate |
+| Whisper on GPU | plain image + `ASR_DEVICE=cuda` | `v1.10.0-gpu` | **fixed** — the plain image has no CUDA libraries |
+| Piper | `piper-tts==1.2.0` (MIT) | `1.8.0` (**GPL-3.0-or-later**) | **blocked by policy** — copyleft is forbidden; stay on 1.2.0 |
+| Piper voices | `ru_RU-dmitri-medium`, `ru_RU-irina-medium` | the same set plus `denis`, `ruslan` (all `medium`) | current |
+| Kokoro | `kokoro>=0.9.0` | `0.9.4` | **pinned** `==0.9.4`; models `Kokoro-82M` (2025-04) current |
+| Image models | FLUX.2 klein 4B Q8, Z-Image Turbo Q8, Wan 2.2 TI2V 5B, encoders Qwen3-4B / gemma-3-12b / umt5-xxl | the same generation | current |
+| Image runtime | stable-diffusion.cpp `master-908-88411ef` | `master-1017-be48649` (2026-10-26) | **109 commits behind**, build unpinned — open |
+| Video runtime | `ltx-video 0.1.2` from a floating git URL | `0.1.2` is the latest package | **pinned** to commit `4b2d053` |
+| Video models | LTX-Video 0.9.8 2B distilled + spatial upscaler | LTX-2.5 / LTX-2.3 (22B), LTX-Video 0.9.8 13B | 22B needs ~22 GB VRAM — not viable on 16 GB; 13B is a 24 GB option |
+
+Measured effect of the Whisper update (same 12 s Russian clip, six cores):
+
+| Model | Latency | RTF |
+|---|---|---|
+| `medium` (v1.9.1) | 5.2 s | 0.42 |
+| `large-v3-turbo` (v1.10.0) | **4.1–4.3 s** | **0.33** |
+
+Costs: the image grows to 8.19 GB (from 7.56), and the first start downloads
+~1.3 GB of extra models (the image pulls pyannote for diarization even though
+FLAI never asks for it) — hence the 300 s health start period.
+
+Open items: rebuild stable-diffusion.cpp from a pinned commit (109 commits of
+fixes since ours) and, on a 24 GB card, evaluate LTX-Video 0.9.8 13B.
+
 ## Keeping this document current
 
 ```bash

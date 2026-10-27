@@ -751,3 +751,18 @@ def test_cpu_group_does_not_swap_when_both_models_fit_in_ram(monkeypatch):
     block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
 
     assert "swap: false" in block
+
+
+def test_gpu_reasoning_stays_resident_when_the_card_holds_everything(monkeypatch):
+    """On a 24 GB card reloading 11.6 GB after every answer is pure loss."""
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+    monkeypatch.setattr(gen, "_gpu_models_coexist", lambda: True)
+
+    assert gen.get_ttl("reasoning") == 0
+
+
+def test_gpu_reasoning_keeps_its_ttl_when_the_card_is_full(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+    monkeypatch.setattr(gen, "_gpu_models_coexist", lambda: False)
+
+    assert gen.get_ttl("reasoning") == 10

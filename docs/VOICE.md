@@ -14,6 +14,34 @@ A message may carry several audio items at once — one microphone recording plu
 docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 ```
 
+### Cost of the voice services (measured)
+
+| Service | Runs on | Model residency | Measured |
+|---|---|---|---|
+| Whisper (`medium`, faster_whisper) | **CPU**, 6 cores / 3 GB | loaded once in the container | 12 s of speech → **5.2 s** (RTF 0.42); on the old 2-core limit it was 11.7 s |
+| Piper | **CPU**, 2 cores / 1 GB | loaded once | 12 s of speech → **2.0–2.5 s** (RTF 0.17–0.20) |
+| Kokoro | **CPU** (`map_location="cpu"`), 6 GB | loaded once | one phrase well under a second |
+
+None of them takes a GPU slot, `_gpu_lock` or VRAM: they are ordinary CPU
+services, and the queue still serialises them, so two transcriptions never run
+at once.
+
+**Should Whisper run on a GPU when the card allows it?** It would cut RTF to
+~0.05–0.1 (a one-minute message: ~25 s now, ~3–6 s then), but it needs three
+things beyond flipping a flag: the NVIDIA runtime on the container, a CUDA build
+of `ctranslate2` (the current image is CPU-oriented, `ASR_DEVICE=cpu`), and the
+transcription routed through the GPU queue (`_gpu_lock` + `ensure_vram_for`) so a
+voice message cannot collide with the chat or reasoning model. On a 16 GB card
+`medium` (~2 GB) could live next to the chat model, not next to the reasoning
+model, so the arbiter would evict it between turns. With the 6-core budget above,
+CPU latency is one wait per voice message; the GPU path is worth it only for
+long recordings and only as an opt-in profile.
+
+Piper and Kokoro are not worth moving to the GPU at all: Piper is a small ONNX
+model already running faster than real time, and Kokoro's 82M-parameter model
+synthesises a phrase in well under a second on CPU — the GPU would save
+milliseconds while taking VRAM the chat model needs.
+
 ## Piper TTS
 
 Uses ONNX Piper models for text-to-speech.

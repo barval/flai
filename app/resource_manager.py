@@ -241,6 +241,33 @@ class ResourceManager:
             logger.debug(f"kv_per_token_for[{model_type}]: {e}")
             return None
 
+    def estimate_cpu_ram_mb(self, model_type: str) -> int:
+        """RAM the CPU-offloaded part of a model needs (weights + buffers).
+
+        With partial offload llama.cpp keeps the layers that are not on the GPU
+        mapped from the GGUF file; they are read from RAM on every forward pass,
+        so an estimate larger than the available RAM means paging from disk
+        (10-100× slower) or an OOM kill on the KV allocation, not a clean error.
+        Zero when every layer is on the GPU.
+        """
+        try:
+            from app.model_config import get_model_config
+            from app.utils import get_gguf_models_cached
+
+            config = get_model_config(model_type) or {}
+            model_name = str(config.get("model_name") or "").replace(".gguf", "")
+            meta = get_gguf_models_cached("/models").get(model_name, {})
+            file_mb = float(meta.get("file_size_mb") or 0)
+            blocks = int(meta.get("block_count") or 0)
+            ngl = self.compute_llamacpp_config(model_type).get("n_gpu_layers", -1)
+            if ngl == -1 or not file_mb or not blocks:
+                return 0
+            ratio = min(1.0, max(0, int(ngl)) / blocks)
+            return int(file_mb * (1.0 - ratio)) + 400
+        except Exception as e:
+            logger.debug(f"estimate_cpu_ram_mb[{model_type}]: {e}")
+            return 0
+
     def _resident_modules(self, swap_url: str) -> list[dict[str, Any]]:
         """Models currently in VRAM, with the footprint and the last request time.
 
@@ -508,6 +535,18 @@ class ResourceManager:
             else:
                 result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
 
+        # Partial offload keeps the remaining layers in RAM (read on every
+        # forward pass). Say so before the model is ever loaded — the admin
+        # panel shows this warning, and the runtime check refuses a load that
+        # cannot fit at all.
+        final_ngl = result["n_gpu_layers"]
+        if hw.available_ram_mb and block_count and final_ngl not in (-1, None):
+            cpu_ratio = 1.0 - min(1.0, max(0, int(final_ngl)) / block_count)
+            cpu_ram_mb = int((file_size_mb or 0) * cpu_ratio) + 400
+            if cpu_ram_mb > hw.available_ram_mb - 1024:
+                note = f"CPU-offloaded layers need ~{cpu_ram_mb}MB RAM, {hw.available_ram_mb}MB available"
+                result["warning"] = f"{result['warning']}; {note}" if result["warning"] else note
+
         return result
 
     # ── Dynamic VRAM estimation ──
@@ -645,6 +684,17 @@ class ResourceManager:
                         return True
         except Exception:
             pass
+
+        # Partial offload moves the remaining layers into RAM. If even the
+        # weights do not fit there, starting the server means paging from disk
+        # or an OOM kill — refuse with a precise reason instead.
+        cpu_ram_mb = self.estimate_cpu_ram_mb(model_type)
+        if cpu_ram_mb and self.hardware.available_ram_mb and cpu_ram_mb > self.hardware.available_ram_mb:
+            logger.error(
+                f"ensure_vram_for [{model_type}]: {cpu_ram_mb}MB of CPU-offloaded layers "
+                f"do not fit in {self.hardware.available_ram_mb}MB of available RAM"
+            )
+            return False
 
         # Model not loaded or a different one is active. Decide what has to go:
         # with co-residency allowed, residents that still fit next to the new

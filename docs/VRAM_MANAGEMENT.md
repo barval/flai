@@ -68,6 +68,16 @@ its RAM after `CPU_REASONING_TTL` (60 s). The `llm_fast` llama-swap group alread
 never blocked by a resident reasoning model — it only reloads its own small weights when a
 reasoning answer evicted it. An admin-set `ttl` in `model_configs` still wins on any platform.
 
+**Partial offload is a RAM cost, and it is now checked.** When `compute_llamacpp_config()` cannot
+fit every layer on the card it leaves the rest on the CPU, where llama.cpp reads those layers
+from RAM (mapped from the GGUF) on every forward pass. Two things measure that part:
+`estimate_cpu_ram_mb()` (weights left on the CPU + 400 MB buffers, `0` when everything is on the
+GPU) adds a warning to the generated config when it exceeds the free RAM minus 1 GB, and
+`ensure_vram_for()` refuses the load outright when the CPU part does not fit in the RAM that is
+actually available — the alternative is paging from disk (10–100× slower) or an OOM kill on the KV
+allocation, with no clean error. A model that is already loaded is never rejected, even if RAM has
+tightened since.
+
 **Model Hub before download.** A model that is not on disk has no GGUF cache entry, so the fit verdict
 reads the KV shapes from the repo's `config.json` (`num_key_value_heads`, `head_dim`, or
 `hidden_size / num_attention_heads`) and, when that is missing, from the GGUF header over a range

@@ -44,7 +44,7 @@ its CUDA context). Keep `WHISPER_GPU=false` unless chat and Whisper fit together
 
 | Service | Runs on | Model residency | Measured |
 |---|---|---|---|
-| Whisper (`medium`, faster_whisper) | **CPU**, 6 cores / 3 GB | loaded once in the container | 12 s of speech → **5.2 s** (RTF 0.42); on the old 2-core limit it was 11.7 s |
+| Whisper (`medium`, faster_whisper) | **CPU**, 6 cores / 3 GB | loaded once in the container | 12 s of speech → **4.1–4.3 s** (RTF 0.33, `large-v3-turbo`); with `medium` it was 5.2 s, and 11.7 s on the old 2-core limit |
 | Piper | **CPU**, 2 cores / 1 GB | loaded once | 12 s of speech → **2.0–2.5 s** (RTF 0.17–0.20) |
 | Kokoro | **CPU** (`map_location="cpu"`), 6 GB | loaded once | one phrase well under a second |
 

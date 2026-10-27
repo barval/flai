@@ -38,7 +38,18 @@ class TTSModule(TranslationMixin):
                 f"TTSModule initialized ({self.backend} backend, URL: {self.tts_url}), timeout: {self.timeout}s"
             )
         else:
-            self.logger.warning(f"TTSModule initialized, but TTS unavailable ({self.tts_url})")
+            # The backend is chosen by URL, while the container is chosen by the
+            # compose profile: starting `with-tts-kokoro` without KOKORO_URL is a
+            # silent no-TTS, so name the fix in the log.
+            other = (
+                "KOKORO_URL=http://flai-kokoro:8888/tts"
+                if self.backend == "piper"
+                else "PIPER_URL=http://flai-piper:8888/tts"
+            )
+            self.logger.warning(
+                f"TTSModule initialized, but TTS unavailable ({self.tts_url}). "
+                f"If you started a different TTS profile, set {other} in .env and restart flai-web."
+            )
 
     def check_availability(self):
         if not self.tts_url:

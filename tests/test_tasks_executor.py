@@ -179,6 +179,36 @@ def test_queued_to_active(db_env, test_app, gate_open, monkeypatch):
     assert store.get_task(other_id)["status"] == "queued", "one active task at a time"
 
 
+def test_rag_step_without_attachments_searches_all_documents(db_env, test_app, gate_open, monkeypatch):
+    """An empty task corpus means "all documents", not "the scope matched nothing"."""
+    store = db_env
+    plan = {
+        "steps": [
+            {
+                "seq": 1,
+                "tool": "rag",
+                "goal": "Найди работы за 2024-2026",
+                "checkpoint_criteria": "фрагменты",
+                "user_input_expected": False,
+            }
+        ]
+    }
+    _mk_task(store, step_plan=plan, minutes_ago=30)
+    seen = {}
+
+    def fake(*args, **kwargs):
+        seen.update(kwargs)
+        return _ok_step_result()
+
+    monkeypatch.setattr(ex, "run_direct_step", fake)
+    monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final")
+
+    _cycle(test_app)
+
+    assert "doc_ids" in seen, "the rag step receives the corpus"
+    assert seen["doc_ids"] is None, "no attachments must reach the runner as None (all documents)"
+
+
 def test_selection_order_class_then_created(db_env, test_app, gate_open, monkeypatch):
     """Queued selection: lowest task_class first, then earliest created_at."""
     store = db_env

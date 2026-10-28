@@ -14,14 +14,14 @@ The answer always matches your language, and the actor must actually work throug
 
 **How to use it:**
 1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
-2. In the **Documents** panel, check the documents you want included. The checkboxes are a single picker shared with the move actions: with the 🔬 toggle **on**, checking a document marks it for Deep Analysis (it gets a green frame and a check mark, and the counter next to the toggle shows how many are selected); with the toggle **off** the same checkboxes drive document moves instead. Un-checking the toggle clears the green selection instantly, and un-checking any document removes it from the analysis set in either mode.
+2. In the **Documents** panel, check the documents you want included. The checkboxes are the shared corpus for chat RAG, Deep Analysis and tasks: a folder checkbox picks every document inside it, and **Unfiled** picks the documents in the root. The 🔬 toggle only changes the tool — it does not clear the selection, and the same ticked set scopes ordinary questions and tasks.
 3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
 4. *(Optional)* Attach up to 4 images as well: the multimodal model produces a detailed text description of each and every description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photos against clause 4 of the contract". Chat-attached documents join the corpus too, so the Documents-panel selection is optional when you attach files directly in the message.
 5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
 
 ## Notes
 - Without selected documents **and** without attachments (images or a chat-attached document), or if there is no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
-- The analysis works on the selected documents only (no full-text search over unrelated uploads).
+- The analysis works on the corpus only: the ticked documents, or — for a task with 🔬 on and no attachments — every indexed document of the user (no full-text search over unrelated uploads when a corpus is ticked).
 - The sandbox provides `re` and `math` already — the actor never writes `import` and never uses `lambda` (plain functions/loops instead). A failing python call must be fixed in the next step; repeating the same failing code wastes the step budget.
 - On the final step only the `final` tool is reachable, and tool calls printed as plain text (instead of the structured call format) are parsed back and executed instead of being shown to the user — including the unclosed `<tool_call><function=final> answer="…"` shape; when the model repeats an answer it already printed as a leaked `final`, the complete printed copy wins and the markup tail is stripped. The analysis never answers with the model's internal dialogue.
 - To stop it: press **Cancel** — the task is checked for cancellation on every step.

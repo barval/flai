@@ -19,6 +19,29 @@ from app.utils import (
 bp = Blueprint("messages", __name__, url_prefix="/api")
 
 
+def _corpus_doc_ids(raw, user_id: str) -> list[str]:
+    """The Documents-panel snapshot sent with a chat message.
+
+    The client sends the ticked document ids (a JSON string in multipart, a
+    list in JSON). Only the user's own documents survive: a forged id must not
+    widen or redirect the search scope.
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "[]")
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(raw, list):
+        return []
+    wanted = [str(value) for value in raw if value]
+    if not wanted:
+        return []
+    from app.db import get_user_documents
+
+    owned = {str(doc["id"]) for doc in (get_user_documents(user_id) or []) if doc.get("id")}
+    return [doc_id for doc_id in wanted if doc_id in owned]
+
+
 @bp.route("/sessions/<session_id>/messages", methods=["GET"])
 def api_get_messages(session_id):
     if "login" not in session:
@@ -230,6 +253,10 @@ def send_message():
         from app.rag_filters import resolve_scope
 
         scope_docs = resolve_scope(user_id, scope)
+
+    # The ticked Documents-panel snapshot. It is not a filter: the chat RAG
+    # searches exactly these documents (plus any attachment of this message).
+    corpus_ids = _corpus_doc_ids(form_payload.get("doc_ids"), user_id)
 
     request_type = "text"
     if audio_parts or voice_file_data:
@@ -529,6 +556,8 @@ def send_message():
             "stream": True,
         }
 
+    if corpus_ids and request_type in ("text", "doc_chat", "audio"):
+        request_data["doc_ids"] = corpus_ids
     if scope_docs is not None:
         request_data["scope_docs"] = scope_docs
 

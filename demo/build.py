@@ -28,7 +28,9 @@ def build_page(lang: str, kind: str, demo_dir: Path = DEMO_DIR) -> str:
     """Render one page from the snapshot, with no database, network or GPU access."""
     snapshot = load_snapshot(demo_dir / "snapshot" / f"{lang}.json")
     credentials = snapshot.get("credentials", {}).get(CREDENTIAL_KEY[kind], {})
-    login_name = credentials.get("login", "user")
+    # The admin pages must show the admin account on the locked login form; the
+    # snapshots carry no credentials map, so the fallback is per page kind.
+    login_name = credentials.get("login", "admin" if kind == "admin" else "user")
 
     context = chat_context(snapshot) if kind == "chat" else admin_context(snapshot)
     context["session"] = {

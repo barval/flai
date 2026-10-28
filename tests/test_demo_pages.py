@@ -157,3 +157,16 @@ def test_scrubber_drops_credentials_and_keeps_the_interface_fields():
     assert row["has_tavily_key"] is False
     assert row["api_keys_count"] == 2
     assert row["note"] == ""
+
+
+@pytest.mark.parametrize("name,login", [("admin-ru.html", "admin"), ("admin-en.html", "admin")])
+def test_admin_pages_log_in_as_admin(name, login):
+    """The locked demo login must not say "user" on an admin panel."""
+    html = (PAGES / name).read_text("utf-8")
+    assert f'id="login" name="login" value="{login}"' in html
+
+
+@pytest.mark.parametrize("name,login", [("chat-ru.html", "user"), ("chat-en.html", "user")])
+def test_chat_pages_log_in_as_user(name, login):
+    html = (PAGES / name).read_text("utf-8")
+    assert f'id="login" name="login" value="{login}"' in html

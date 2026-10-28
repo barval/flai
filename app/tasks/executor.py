@@ -3049,7 +3049,12 @@ class TaskExecutor:
                     task_request=self._task_request(task),
                     plan_text=plan_text,
                     user_answers=user_answers,
-                    doc_ids=task.get("doc_ids") or [],
+                    # ``None`` means "no attached documents — search all of the
+                    # user's documents". An empty list is the explicit "the
+                    # scope matched nothing" sentinel inside RagModule, so
+                    # passing ``[]`` here made a task without attachments find
+                    # nothing at all.
+                    doc_ids=[str(d) for d in (task.get("doc_ids") or []) if d] or None,
                 )
             except StepAborted:
                 elapsed = round(time.monotonic() - start, 2)

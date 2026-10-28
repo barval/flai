@@ -43,3 +43,31 @@ def test_documents_exist_and_are_pdf():
             path = DEMO / document["source"]
             assert path.read_bytes().startswith(b"%PDF")
             assert path.stat().st_size > 20_000
+
+
+def test_demo_snapshots_have_no_system_errors():
+    for lang in ("ru", "en"):
+        raw = (DEMO / f"snapshot/{lang}.json").read_text("utf-8")
+        for marker in ("⚠️", "Память GPU", "GPU memory", "План обновлён", "Plan updated"):
+            assert marker not in raw, f"{lang}: {marker}"
+
+
+def test_video_messages_name_a_real_backend():
+    backends = ("wan2.2-ti2v-5b-turbo", "ltxv-2b-0.9.8-distilled")
+    for lang in ("ru", "en"):
+        snapshot = json.loads((DEMO / f"snapshot/{lang}.json").read_text("utf-8"))
+
+        def walk(value, lang=lang):
+            if isinstance(value, dict):
+                if str(value.get("file_type", "")).startswith("video"):
+                    model = str(value.get("model_name") or "")
+                    assert "injected" not in model, f"{lang}: {value.get('file_path')} has no backend label"
+                    assert any(name in model for name in backends), f"{lang}: {model}"
+                    assert value.get("gen_model") == value.get("model_name")
+                for child in value.values():
+                    walk(child)
+            elif isinstance(value, list):
+                for child in value:
+                    walk(child)
+
+        walk(snapshot)

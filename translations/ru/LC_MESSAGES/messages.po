@@ -4884,3 +4884,19 @@ msgstr "Ширина превью, запрашиваемая у сервиса 
 #: app/settings_registry.py
 msgid "Parallel camera captures per preview refresh"
 msgstr "Параллельных захватов камер за обновление превью"
+
+#: app/templates/chat.html
+msgid "Folders"
+msgstr "Папки"
+
+#: app/templates/chat.html
+msgid "folders ({count})"
+msgstr "папок ({count})"
+
+#: app/templates/chat.html
+msgid "documents ({count})"
+msgstr "документов ({count})"
+
+#: app/templates/chat.html
+msgid "No documents match the selected folders and dates."
+msgstr "По выбранным папкам и датам документы не найдены."

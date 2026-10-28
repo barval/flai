@@ -974,13 +974,6 @@ class ResourceManager:
           - 3 consecutive HTTP timeouts trigger docker restart of flai-ltxvideo
             via the mounted /var/run/docker.sock
         """
-        if os.getenv("VIDEO_BACKEND", "ltx").strip().lower() == "wan":
-            # Wan runs as a one-shot sd-cli process inside flai-sd: it exits
-            # after the clip is written and the driver reclaims the VRAM, so
-            # there is no resident pipeline to unload and no ltxvideo request
-            # to make (that container is not even running in this profile).
-            return True
-
         ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
 
         # Cache: skip repeat unload if it succeeded within the last 30s
@@ -999,6 +992,9 @@ class ResourceManager:
                     self._last_ltx_unload_at = time.time()
                     self._ltx_unload_consecutive_timeouts = 0
                     return True
+        except requests.ConnectionError:
+            logger.debug("LTX-Video container is not reachable — nothing to unload")
+            return True
         except Exception as e:
             logger.debug(f"LTX-Video pre-flight check failed: {e}")
             # Continue with regular flow on pre-flight failure (container may be

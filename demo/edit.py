@@ -70,6 +70,7 @@ def inject_media(
     media: Path,
     *,
     answer: str = "",
+    model_name: str = "",
     snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Put a ready image/video into a scenario, replacing its answer.
@@ -77,11 +78,19 @@ def inject_media(
     The user can generate the artifact however they like (the web UI, an external
     tool) and hand the file over: the scenario keeps its prompt and session, and
     the answer becomes the artifact instead of whatever the automatic run made.
+
+    A task route keeps its plan and steps — the artifact is appended as one more
+    result. Every injected message carries ``extra.media`` because the task view
+    renders media only from there; a top-level ``file_path`` alone stays invisible.
     """
     snap = snapshot or load_snapshot(lang)
     route = find_scenario_route(snap, prompt)
     if route is None:
         raise LookupError(f"scenario not found in the {lang} snapshot: {prompt[:40]}")
+
+    file_type = MIME_BY_SUFFIX[media.suffix.lower()]
+    if file_type.startswith("video/") and not model_name:
+        raise ValueError("a video artifact needs the real backend name (model_name)")
 
     asset_key, relative = _store_media(lang, media)
     payload = media.read_bytes()
@@ -92,29 +101,35 @@ def inject_media(
     if not isinstance(messages, list):
         raise ValueError(f"route {route.get('path')} has no messages to edit")
 
-    # A task route holds planner steps, not a user turn: the artifact becomes
-    # one more step result at the end. A chat route keeps its user turn and the
-    # old answer is replaced.
+    media_entry = {
+        "file_path": asset_key,
+        "file_name": media.name,
+        "file_type": file_type,
+        "file_size": len(payload),
+    }
+    entry = {
+        "role": "assistant",
+        "content": answer,
+        **media_entry,
+        "model_name": model_name,
+        "mm_time": None,
+        "gen_time": None,
+        "response_time": None,
+        "extra": {"media": dict(media_entry), "media_all": [dict(media_entry)]},
+    }
+
+    # A task route holds planner steps, not a user turn: keep them all and append
+    # the artifact. A chat route keeps its user turn and replaces the old answer.
+    is_task = str(route.get("path") or "").startswith("/api/tasks/") or "task" in body
+    if is_task:
+        body["messages"] = list(messages) + [entry]
+        return snap
     user_index = next(
         (i for i, m in enumerate(messages) if m.get("role") == "user" and prompt[:40] in json.dumps(m.get("content"), ensure_ascii=False)),
         None,
     )
     kept = list(messages) if user_index is None else messages[: user_index + 1]
-    kept.append(
-        {
-            "role": "assistant",
-            "content": answer,
-            "file_type": MIME_BY_SUFFIX[media.suffix.lower()],
-            "file_name": media.name,
-            "file_path": asset_key,
-            "file_size": len(payload),
-            "model_name": "injected",
-            "mm_time": None,
-            "gen_time": None,
-            "response_time": None,
-        }
-    )
-    body["messages"] = kept
+    body["messages"] = kept + [entry]
     return snap
 
 
@@ -136,10 +151,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt", required=True, help="the scenario prompt (a unique prefix is enough)")
     parser.add_argument("--file", required=True, type=Path, help="image or video to put into the answer")
     parser.add_argument("--answer", default="", help="text that goes with the artifact")
+    parser.add_argument(
+        "--model",
+        default="",
+        help="real backend name recorded with a video artifact (required for video)",
+    )
     parser.add_argument("--no-build", action="store_true", help="only edit the snapshot")
     args = parser.parse_args(argv)
 
-    snap = inject_media(args.lang, args.prompt, args.file, answer=args.answer)
+    snap = inject_media(args.lang, args.prompt, args.file, answer=args.answer, model_name=args.model)
     save_snapshot(args.lang, snap)
     print(f"{args.lang}: injected {args.file.name}")
     if not args.no_build:

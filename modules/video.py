@@ -244,10 +244,13 @@ class VideoModule(TranslationMixin):
 
         Wan's figure is a measured peak — 15 003 MB of pipeline against 15 511 MB
         free on the reference 16 GB card — so a 1 GB margin would reject a clip
-        that demonstrably runs. LTX keeps 1 GB because its estimate comes from
-        the pipeline's measured total, not from the exact requested resolution.
+        that demonstrably runs. The estimate itself already sits ~130 MB above
+        that measured peak, so a 200 MB margin keeps ~330 MB of real headroom
+        while leaving room for a container's residual CUDA context. LTX keeps
+        1 GB because its estimate comes from the pipeline's measured total, not
+        from the exact requested resolution.
         """
-        return 300 if self.backend == BACKEND_WAN else 1000
+        return 200 if self.backend == BACKEND_WAN else 1000
 
     @property
     def max_frames(self) -> int:

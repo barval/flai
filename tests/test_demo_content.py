@@ -57,7 +57,7 @@ def test_video_messages_name_a_real_backend():
     for lang in ("ru", "en"):
         snapshot = json.loads((DEMO / f"snapshot/{lang}.json").read_text("utf-8"))
 
-        def walk(value):
+        def walk(value, lang=lang):
             if isinstance(value, dict):
                 if str(value.get("file_type", "")).startswith("video"):
                     model = str(value.get("model_name") or "")

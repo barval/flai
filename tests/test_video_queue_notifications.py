@@ -27,7 +27,7 @@ def test_video_image_resize_notice_is_not_emitted_twice():
     queue._get_vram_needed = Mock(return_value=1)
     queue._check_vram_ready = Mock(return_value=True)
     queue._wait_for_vram_full = Mock(return_value=True)
-    queue._plan_cpu_video = Mock(return_value=({"prompt": "animate"}, "stop after resize"))
+    queue._apply_video_limits = Mock(return_value=({"prompt": "animate"}, "stop after resize"))
     queue._preload_multimodal_sync = Mock()
 
     task = {"id": "video-resize", "session_id": "s1", "user_id": "u1"}
@@ -53,6 +53,7 @@ def test_cpu_video_notice_is_emitted_via_message_new_single_channel():
     queue = RedisRequestQueue.__new__(RedisRequestQueue)
     queue.app = Mock()
     video = Mock()
+    video.apply_backend_limits.side_effect = lambda params, lang=None: (params, None)
     video.plan_cpu_generation.return_value = (None, "⚠ CPU preview", None)
     queue.app.modules = {"video": video}
     queue.logger = Mock()
@@ -62,7 +63,7 @@ def test_cpu_video_notice_is_emitted_via_message_new_single_channel():
     with (
         patch("app.queue.save_message", return_value=144) as save_message,
     ):
-        result = queue._plan_cpu_video(task, {"width": 768}, "ru", "s1")
+        result = queue._apply_video_limits(task, {"width": 768}, "ru", "s1")
 
     assert result == ({"width": 768}, None)
     save_message.assert_called_once()

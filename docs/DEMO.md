@@ -59,7 +59,11 @@ pytest tests/test_demo_pages.py -q
 
 The capture drives the running instance over HTTP with two throwaway accounts per
 language (`demo_<lang>_chat` and `demo_<lang>_admin`, created beforehand), records the
-responses, downloads the generated media and then removes the accounts. Every generated
+responses, downloads the generated media and then removes the accounts. A scenario may pin
+`"video_backend": "wan"` to record a clip from the quality backend; the capture saves that key
+through the admin settings API and restores the `.env` value afterwards. `"attach":
+"previous-image"` sends the picture the previous image scenario produced, which is how the
+video-from-image scenario gets its source. Every generated
 picture is checked with the product's own multimodal model, and a picture that shows any
 text is generated again (up to three attempts). If the capture is interrupted,
 `python -m demo.capture --cleanup <manifest> --database-url <url>` finishes the removal;

@@ -504,10 +504,17 @@ def get_repo_arch(repo: str) -> dict | None:
                 cfg = _hf_get(f"{HF_DL}/{repo}/resolve/main/{path}", timeout=30).json()
                 break
         if cfg:
+            hidden = int(cfg.get("hidden_size") or 0)
+            heads = int(cfg.get("num_attention_heads") or 0)
+            head_dim = int(cfg.get("head_dim") or 0) or (hidden // heads if hidden and heads else None)
             result = {
                 "block_count": int(cfg.get("num_hidden_layers") or 0) or None,
                 "expert_count": int(cfg.get("num_local_experts") or 0),
                 "arch": cfg.get("architectures") or [],
+                # KV heads decide the cache size; without them the estimate is
+                # a per-module constant instead of this model's own cost.
+                "n_kv_heads": int(cfg.get("num_key_value_heads") or heads or 0) or None,
+                "head_dim": head_dim,
             }
             max_ctx = int(cfg.get("max_position_embeddings") or 0) or 0
             rope = (cfg.get("rope_scaling") or {}).get("factor") or 1.0
@@ -578,6 +585,10 @@ def _parse_gguf_arch(data: bytes) -> dict | None:
                 f"{architecture}.block_count": "block_count",
                 f"{architecture}.context_length": "arch_max_ctx",
                 f"{architecture}.expert_count": "expert_count",
+                # KV shapes: without them the fit estimate falls back to a
+                # per-module constant that over-reserved 1.4-2 GB on the live card.
+                f"{architecture}.attention.head_count_kv": "n_kv_heads",
+                f"{architecture}.attention.key_length": "head_dim",
             }
             if architecture and key in wanted and value_type in (4, 10):
                 if value_type == 4:
@@ -592,7 +603,7 @@ def _parse_gguf_arch(data: bytes) -> dict | None:
             else:
                 offset = skip_value(offset, value_type)
 
-            if result.get("block_count") and result.get("arch_max_ctx") and result.get("expert_count"):
+            if result.get("block_count") and result.get("arch_max_ctx") and result.get("n_kv_heads"):
                 break
         except (struct.error, UnicodeDecodeError, OverflowError):
             break
@@ -706,6 +717,8 @@ def estimate_fit(repo: str, file_path: str, module: str = "multimodal", context_
         file_size_mb=_runtime_size_mb(repo, file_path),
         block_count=int(arch["block_count"]),
         module=module,
+        kv_heads=arch.get("n_kv_heads"),
+        head_dim=arch.get("head_dim"),
     )
     fit["expert_count"] = int(arch["expert_count"] or 0)
     fit["block_count"] = int(arch["block_count"])

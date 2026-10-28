@@ -1,0 +1,13 @@
+# TASK
+Below are facts the system has remembered about the user. Write a short profile from them: who they are, where they live, what they do, what they prefer and what to avoid. This block is always visible to the model, so what matters must survive and repetitions must disappear.
+
+# RULES
+- Do not invent anything that is not in the facts.
+- Remove duplicates and contradictions: when facts disagree, keep the newer one.
+- At most 900 characters, plain text, no markdown, no lists, no headings.
+- Write in the response language: {response_language}.
+
+# FACTS
+{facts}
+
+# PROFILE

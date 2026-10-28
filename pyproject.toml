@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flai"
-version = "12.7.0"
+version = "12.8.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,17 +17,19 @@ dependencies = [
     "flask>=3.0",
     "flask-wtf>=1.2.1",
     "flask-limiter>=3.5.0",
-    "python-dotenv==1.0.0",
+    "python-dotenv>=1.2.2",
     "requests>=2.33.0",
-    "gunicorn==26.1.0",
+    "urllib3>=2.8.0",
+    "Werkzeug>=3.1.9",
+    "gunicorn==26.2.0",
     "gevent>=23.9.0",
-    "Pillow>=10.1.0",
+    "Pillow>=13.0.0",
     "pytz>=2023.3",
     "redis>=7.0,<9",
     "Flask-Babel>=3.0",
-    "qdrant-client==1.19.0",
+    "qdrant-client==1.20.0",
     "pdfplumber>=0.11.0",
-    "python-docx==1.1.0",
+    "python-docx==1.2.0",
     "python-magic==0.4.27",
     "ebooklib>=0.17",
     "odfpy>=1.4.0",

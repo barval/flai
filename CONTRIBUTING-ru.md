@@ -6,10 +6,10 @@
 
 ## Где работать
 
-Разработка ведётся в пронумерованной основной ветке (`v12.6`, `v12.7`, …), а не в `master`. Именование веток:
+Разработка ведётся в пронумерованной основной ветке (`v12.7`, `v12.8`, …), а не в `master`. Именование веток:
 
-- Новая функция: `features/v12.7-<краткое-описание>`
-- Исправление: `fix/v12.7-<краткое-описание>`
+- Новая функция: `features/v12.8-<краткое-описание>`
+- Исправление: `fix/v12.8-<краткое-описание>`
 
 Не коммитьте в `master` — он продвигается только через слияния `--no-ff` из ветки разработки и только после ревью.
 
@@ -24,17 +24,17 @@ cd flai
 pip install -e ".[dev]"
 
 # 3. Ветка от текущей основной ветки разработки
-git checkout v12.7
-git checkout -b features/v12.7-my-feature
+git checkout v12.8
+git checkout -b features/v12.8-my-feature
 
 # 4. Внесите изменение и проверьте его
 ruff check .
 mypy app/ modules/
 pytest -m unit
 
-# 5. Коммит, пуш, Pull Request в v12.7
+# 5. Коммит, пуш, Pull Request в v12.8
 git commit -m "feat(module): краткое описание изменения"
-git push origin features/v12.7-my-feature
+git push origin features/v12.8-my-feature
 ```
 
 ## Жёсткие ограничения

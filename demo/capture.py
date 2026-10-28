@@ -171,16 +171,80 @@ def _series_value(key: str, index: int, bucket_seconds: int, range_key: str) -> 
     return int(per_bucket * (0.3 + wobble))
 
 
+HOST_SERIES = {
+    # (base, spread) in percent; the wobble is deterministic per bucket.
+    "cpu_pct": (8, 24),
+    "ram_pct": (36, 11),
+    "gpu_pct": (2, 22),
+    "vram_pct": (12, 38),
+}
+
+
+def _host_profile() -> dict:
+    """Totals of the machine that captured the snapshot (RAM, then VRAM)."""
+    ram_total = 0
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemTotal:"):
+                    ram_total = int(line.split()[1]) // 1024
+                    break
+    except OSError:
+        ram_total = 0
+    vram_total = 0
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        first = (out.stdout or "").strip().splitlines()
+        vram_total = int(first[0]) if first and first[0].strip().isdigit() else 0
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        vram_total = 0
+    return {"ram_total_mb": ram_total or 16384, "vram_total_mb": vram_total or 8192}
+
+
+def _host_series_value(key: str, index: int, range_key: str) -> float:
+    base, spread = HOST_SERIES[key]
+    seed = (sum(ord(char) for char in range_key) + len(key)) % 5
+    return round(base + ((index * 3 + seed * 2) % spread), 1)
+
+
 def _synthetic_monitoring(body: dict, range_key: str) -> dict:
     """Give every monitoring range plausible, distinct numbers."""
     count = len(body.get("buckets") or []) or 24
     bucket_seconds = int(body.get("bucket_seconds") or 3600)
     series = body.get("series") or {}
-    for key in series:
-        series[key] = [_series_value(key, index, bucket_seconds, range_key) for index in range(count)]
+    for key in HOST_SERIES:
+        # A snapshot captured before the host cards existed has no such series.
+        series.setdefault(key, [None] * count)
+    for key in list(series):
+        if key in HOST_SERIES:
+            series[key] = [_host_series_value(key, index, range_key) for index in range(count)]
+        else:
+            series[key] = [_series_value(key, index, bucket_seconds, range_key) for index in range(count)]
+
+    # The four host cards read their value labels from this block.
+    profile = _host_profile()
+    last_ram = series.get("ram_pct") or [40]
+    last_vram = series.get("vram_pct") or [20]
     body["series"] = series
+    body["system"] = {
+        "ram_total_mb": profile["ram_total_mb"],
+        "ram_used_mb": round(profile["ram_total_mb"] * last_ram[-1] / 100),
+        "vram_total_mb": profile["vram_total_mb"],
+        "vram_used_mb": round(profile["vram_total_mb"] * last_vram[-1] / 100),
+    }
+
     totals = body.get("totals") or {}
     for key, values in series.items():
+        if key in HOST_SERIES:
+            continue
         if key in {"documents", "files"}:
             totals[key] = values[-1] if values else 0
         else:
@@ -196,16 +260,23 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
 
     for route in result.get("routes", []):
         if route.get("path") == "/admin/api/users":
-            template = (route.get("body") or [{}])[0] or {}
+            # Built from an explicit allowlist, never by copying the captured row:
+            # the template carried a real `password_hash`, the Tavily key
+            # timestamp and the row's own dates into a page anyone can download.
             rows = []
             for index, (login, name) in enumerate(users):
-                row = dict(template)
-                row.update(
+                rows.append(
                     {
+                        "id": index + 1,
                         "login": login,
                         "name": name,
                         "is_active": True,
+                        "is_admin": False,
+                        "language": lang,
                         "service_class": 2,
+                        "theme": "light",
+                        "voice_gender": "male",
+                        "response_style": "neutral",
                         "sessions_count": 3 + index,
                         "tasks_count": index,
                         "messages_count": 12 + index * 5,
@@ -215,13 +286,17 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
                         "documents_count": 1 + index,
                         "api_keys_count": 0,
                         "storage_used": 1024 * 1024 * (5 + index),
+                        "storage_limit_default_mb": 500,
+                        "storage_limit_mb": 500,
+                        "storage_limit_custom": False,
                         "web_requests_month": 0,
                         "has_tavily_key": False,
                         "slm_facts_count": 0,
                         "camera_permissions": [],
+                        "created_at": "Mon, 05 Jan 2026 09:00:00 GMT",
+                        "updated_at": "Mon, 05 Jan 2026 09:00:00 GMT",
                     }
                 )
-                rows.append(row)
             route["body"] = rows
         elif str(route.get("path", "")).startswith("/admin/api/monitoring"):
             body = route.get("body") or {}
@@ -237,7 +312,114 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             # A freshly created account owns one empty conversation; it is not a
             # demo scenario and would sit in the list as «New session».
             route["body"] = [item for item in route["body"] if item.get("message_count")]
+    result = _scrub(result)
+    _drop_missing_assets(result)
     return result
+
+
+def _drop_missing_assets(snapshot: dict) -> None:
+    """Clear attachment references whose bytes were never captured.
+
+    A task step can produce a picture that is deleted when the step is retried;
+    the message keeps its path, the asset list does not, and the static page
+    would render a broken image. Dropping the path leaves a text-only message.
+    """
+    # Asset keys are either "<session>/<file>" or "/api/documents/…"; message
+    # paths are the bare relative form, so compare with the leading slash removed.
+    known = {str(asset).lstrip("/") for asset in snapshot.get("assets", {})}
+
+    def key(path: str) -> str:
+        return path.lstrip("/")
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            path = value.get("file_path")
+            if isinstance(path, str) and path and key(path) not in known:
+                value["file_path"] = None
+                value["file_name"] = None
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(snapshot.get("routes"))
+
+
+# Any field whose name says "secret" is dropped, whatever route it comes from:
+# a new admin endpoint must not be able to leak through the demo by accident.
+SENSITIVE_KEY_RE = re.compile(
+    r"(password|passwd|secret|token|api_key|apikey|private_key|credential|tavily)", re.IGNORECASE
+)
+# Values that look like a credential even under an innocent key.
+SECRET_VALUE_RE = re.compile(
+    r"(scrypt:|\$argon2|pbkdf2:sha256|tvly-[A-Za-z0-9]{8,}|flai_[A-Za-z0-9]{16,}"
+    r"|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}"
+    r"|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY)",
+)
+
+
+def _scrub(value: Any, key: str = "") -> Any:
+    """Drop credential-shaped fields and values from captured data.
+
+    Counters and flags are kept (`api_keys_count`, `has_tavily_key`) because the
+    interface renders them; anything that could hold a real credential is not.
+    """
+    if isinstance(value, dict):
+        cleaned: dict = {}
+        for name, item in value.items():
+            if SENSITIVE_KEY_RE.search(name) and not isinstance(item, (bool, int, float)):
+                continue
+            cleaned[name] = _scrub(item, name)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub(item, key) for item in value]
+    if isinstance(value, str) and SECRET_VALUE_RE.search(value):
+        return ""
+    return value
+
+
+def _merge_partial(fresh: dict, lang: str, prompts: list[str]) -> dict:
+    """Fold a partial run into the committed snapshot.
+
+    Re-running one scenario must not erase the other sixteen. The fresh run owns
+    the routes of the scenarios it captured plus the two global lists; every
+    other route and asset comes from the previous snapshot, and the old copy of
+    a re-run scenario is dropped by its prompt.
+    """
+    path = DEMO_DIR / "snapshot" / f"{lang}.json"
+    if not path.is_file():
+        return fresh
+    old = json.loads(path.read_text(encoding="utf-8"))
+    needles = [prompt[:60] for prompt in prompts]
+    kept = [
+        route
+        for route in old.get("routes", [])
+        if not any(needle in json.dumps(route.get("body"), ensure_ascii=False) for needle in needles)
+    ]
+    # The global lists are re-recorded by every run; an empty account (the demo
+    # logins are wiped between releases) must not blank the captured lists.
+    def _has_content(route: dict) -> bool:
+        body = route.get("body")
+        if route.get("path") == "/api/tasks":
+            return bool(isinstance(body, dict) and body.get("tasks"))
+        return bool(body)
+
+    fresh_lists = [
+        route
+        for route in fresh.get("routes", [])
+        if route.get("path") in ("/api/sessions", "/api/tasks") and _has_content(route)
+    ]
+    fresh_others = [
+        route for route in fresh.get("routes", []) if route.get("path") not in ("/api/sessions", "/api/tasks")
+    ]
+    replaced_lists = {route["path"] for route in fresh_lists}
+    kept = [route for route in kept if route.get("path") not in replaced_lists]
+    merged = {**old}
+    merged["routes"] = kept + fresh_others + fresh_lists
+    merged["assets"] = {**old.get("assets", {}), **fresh.get("assets", {})}
+    print(f"[{lang}] partial merge: {len(kept)} kept + {len(fresh.get('routes', []))} fresh routes", flush=True)
+    return merged
 
 
 def wait_for_completion(session: DemoSession, request_id: str, timeout_s: float = 900.0) -> dict:
@@ -309,6 +491,15 @@ def _media_paths(payload: Any, collected: set[str]) -> None:
                 and not value.startswith(ACCOUNT_PREFIX)
             ):
                 collected.add(value)
+            elif isinstance(value, str) and '"file_path"' in value:
+                # Task steps and message parts keep their attachments inside a
+                # JSON string; the walker used to miss every task artifact.
+                try:
+                    _media_paths(json.loads(value), collected)
+                except ValueError:
+                    for match in FILE_PATH_RE.findall(value):
+                        if match and not match.lower().endswith(".pdf"):
+                            collected.add(match)
             else:
                 _media_paths(value, collected)
     elif isinstance(payload, list):
@@ -322,11 +513,13 @@ PHOTO_PROMPT = {
 }
 
 VOICE_TEXT = {
-    "ru": "Подскажи, что поставить на стол для осенней ярмарки в школе: нужно угощение для младших классов.",
-    "en": "What should we put on the table for the school autumn fair? We need a snack for the younger classes.",
+    "ru": "что поставят на стол для осенней ярмарки в школе",
+    "en": "what will be served at the table for the school autumn fair",
 }
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_SUFFIXES = {".mp4", ".webm", ".avi"}
+FILE_PATH_RE = re.compile(r'"file_path"\s*:\s*"([^"]+)"')
 
 IMAGE_MIME = {
     ".png": "image/png",
@@ -431,6 +624,16 @@ def _task_image_paths(payload: Any) -> list[str]:
     return found
 
 
+def _has_video(session: DemoSession, session_id: str, task_id: str, lang: str) -> bool:
+    """True when the scenario produced a clip (chat attachment or task artifact)."""
+    paths: set[str] = set()
+    if session_id:
+        _media_paths(session.get_json(f"/api/sessions/{session_id}/messages?limit=100&offset=0"), paths)
+    if task_id:
+        _media_paths(session.get_json(f"/api/tasks/{task_id}/messages"), paths)
+    return any(str(path).lower().endswith(tuple(VIDEO_SUFFIXES)) for path in paths)
+
+
 def scenario_images(session: DemoSession, session_id: str, task_id: str) -> list[str]:
     """Every picture a scenario produced: chat attachments and task artifacts."""
     images: list[str] = []
@@ -500,12 +703,55 @@ def prepare_voice(session: DemoSession, lang: str) -> Path:
     return target
 
 
+def _save_generated_image(session: DemoSession, file_path: str, lang: str) -> Path:
+    """Download a generated picture so the next scenario can attach it."""
+    suffix = Path(file_path).suffix.lower() or ".png"
+    target = _input_dir(lang) / f"previous{suffix}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(session.get_bytes(f"/api/files/{file_path}"))
+    return target
+
+
+def set_video_backend(admin: DemoSession, backend: str) -> None:
+    """Select the video backend through the admin settings API.
+
+    ``VIDEO_BACKEND`` is a saved setting, so the change applies without a
+    restart and ``VideoModule`` picks it up on the next request. Resetting the
+    key restores the value from `.env`.
+    """
+    if backend == "wan":
+        admin.post_json("/admin/api/settings", {"values": {"VIDEO_BACKEND": "wan"}})
+    else:
+        admin.post_json("/admin/api/settings/reset", {"keys": ["VIDEO_BACKEND"]})
+    print(f"[settings] VIDEO_BACKEND={backend}", flush=True)
+
+
 def _attachment_files(scenario: dict, prepared: dict, lang: str) -> dict:
     attach = scenario.get("attach")
     if not attach:
         return {}
     if attach == "generated-image":
         return {"file": (prepared["photo"].name, prepared["photo"].read_bytes(), "image/png")}
+    if attach == "previous-image" and prepared.get("force_attach"):
+        path = Path(prepared["force_attach"])
+        if path.is_file():
+            mime = IMAGE_MIME.get(path.suffix.lower(), "image/png")
+            return {"file": (path.name, path.read_bytes(), mime)}
+    if attach == "previous-image":
+        # The picture the previous scenario produced (e.g. video from the image
+        # drawn one step earlier), downloaded and attached like a user would.
+        path = prepared.get("previous_image")
+        if path is None or not Path(path).is_file():
+            # The image scenario can fail to return a picture; the run must not
+            # die on the missing attachment — fall back to the prepared photo,
+            # or send the request without one.
+            path = prepared.get("photo")
+            if path is None or not Path(path).is_file():
+                print(f"[{lang}] no picture to attach for '{scenario.get('title')}'", flush=True)
+                return {}
+            print(f"[{lang}] previous picture missing — attaching the prepared photo", flush=True)
+        mime = IMAGE_MIME.get(path.suffix.lower(), "image/png")
+        return {"file": (path.name, path.read_bytes(), mime)}
     if attach == "tts":
         mime = "audio/wav" if prepared["voice"].suffix == ".wav" else "audio/mpeg"
         return {"voice": (prepared["voice"].name, prepared["voice"].read_bytes(), mime)}
@@ -558,12 +804,21 @@ def _run_scenario(
             )
             time.sleep(20)
             return {"task_id": task_id, "interrupted": True}
-        wait_for(
-            lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
-            in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
-            timeout_s=2400.0,
-            interval_s=10.0,
-        )
+        try:
+            wait_for(
+                lambda: session.get_json(f"/api/tasks/{task_id}/messages")["task"]["status"]
+                in {"completed", "failed", "cancelled", "awaiting_user", "expired"},
+                # A task that generates several artifacts (two images and two
+                # videos) spends most of an hour inside the queue and the
+                # verifier; 40 minutes cut a healthy run short.
+                timeout_s=5400.0,
+                interval_s=10.0,
+            )
+        except CaptureTimeoutError:
+            # Keep the task and carry on: it may still finish before the run
+            # records /api/tasks at the end, and losing the remaining scenarios
+            # over one slow task is worse than showing it mid-flight.
+            print(f"[task] {scenario.get('title')} did not finish in time — keeping it as is", flush=True)
         return {"task_id": task_id}
     else:
         raise CaptureError(f"Unknown scenario kind: {kind}")
@@ -578,6 +833,8 @@ def capture_language(
     force: bool = False,
     transport: Any = None,
     timeout_s: float = 900.0,
+    only: list[str] | None = None,
+    attach_file: str = "",
 ) -> dict:
     """Drive the running instance through the demo scenarios and return the snapshot."""
     if not force:
@@ -587,6 +844,17 @@ def capture_language(
     if not scenarios_path.is_file():
         raise CaptureError(f"Scenario file is missing: {scenarios_path}")
     scenarios = json.loads(scenarios_path.read_text(encoding="utf-8"))
+    if only:
+        wanted = {w.strip().lower() for w in only}
+        kept = []
+        for index, item in enumerate(scenarios["scenarios"], 1):
+            title = str(item.get("title", "")).strip().lower()
+            if str(index) in wanted or any(w and w in title for w in wanted):
+                kept.append(item)
+        if not kept:
+            raise CaptureError(f"no scenario matches: {', '.join(only)}")
+        print(f"[{lang}] partial capture: {len(kept)} of {len(scenarios['scenarios'])} scenarios", flush=True)
+        scenarios = {**scenarios, "scenarios": kept}
 
     chat = DemoSession(base_url, transport=transport)
     chat.login(f"{ACCOUNT_PREFIX}{lang}_chat", password)
@@ -626,7 +894,14 @@ def capture_language(
 
     media: dict[str, str] = {}
     unfinished: dict[str, dict] = {}
+    if attach_file:
+        prepared["force_attach"] = attach_file
+    current_backend = "ltx"
     for scenario in scenarios["scenarios"]:
+        desired_backend = scenario.get("video_backend", "ltx")
+        if desired_backend != current_backend:
+            set_video_backend(admin, desired_backend)
+            current_backend = desired_backend
         # A background task is not a conversation: creating a chat session for it
         # leaves an empty "New session" entry in the demo session list.
         needs_session = scenario.get("kind") != "task" or scenario.get("interrupt")
@@ -644,11 +919,24 @@ def capture_language(
                 # without a picture the scenario has nothing to show.
                 print(f"[{lang}] no picture produced", flush=True)
                 defects += 1
-            for image in images:
+            if scenario.get("kind") == "video" and not _has_video(chat, session_id, task_id, lang):
+                # Same for video: an answer without a clip means the router or
+                # the pipeline dropped it, and the page would show text only.
+                print(f"[{lang}] no video produced", flush=True)
+                defects += 1
+            # A video scenario attaches a *source* picture; OCRing the user's own
+            # photo is not a defect check (it used to fail every attempt and the
+            # retry threw away the clip). Only the produced clip matters there.
+            checkable = [] if scenario.get("kind") == "video" else images
+            for image in checkable:
                 found, answer = check_image_text(chat, image, lang)
                 verdict = "TEXT" if found else "clean"
                 print(f"[{lang}]   image {Path(image).name}: {verdict} — {answer[:80]}", flush=True)
                 defects += 1 if found else 0
+            if images and scenario.get("kind") == "image":
+                # Keep it for the next scenario that attaches the previous picture
+                # (video from the image drawn one step earlier).
+                prepared["previous_image"] = _save_generated_image(chat, images[-1], lang)
             if not defects:
                 if result.get("interrupted"):
                     unfinished[task_id] = scenario
@@ -671,6 +959,9 @@ def capture_language(
         if session_id:
             for path in _scenario_paths(session_id):
                 _record(routes, "GET", path, chat.get_json(path))
+
+    if current_backend != "ltx":
+        set_video_backend(admin, "ltx")
 
     for task_id, scenario in unfinished.items():
         body = chat.get_json(f"/api/tasks/{task_id}/messages")["task"]
@@ -746,6 +1037,8 @@ def capture_language(
     }
     snapshot["routes"].extend(capture_admin(admin)["routes"])
     snapshot = rewrite_for_publication(snapshot, lang)
+    if only:
+        snapshot = _merge_partial(snapshot, lang, [sc["prompt"] for sc in scenarios["scenarios"]])
     save_snapshot(DEMO_DIR / "snapshot" / f"{lang}.json", snapshot)
 
     manifest_path = _manifest_path(lang)
@@ -799,6 +1092,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", choices=("ru", "en", "all"), default="all")
     parser.add_argument("--password", required=True, help="password of the demo accounts")
     parser.add_argument("--force", action="store_true", help="confirm writing into the live database")
+    parser.add_argument(
+        "--attach-file",
+        default="",
+        help="image to attach to a re-captured scenario that normally takes the "
+        "previous picture (partial runs have no previous scenario)",
+    )
+    parser.add_argument(
+        "--only",
+        default="",
+        help="re-capture only these scenarios (comma-separated titles or indexes); "
+        "the rest of the snapshot is kept",
+    )
     parser.add_argument("--cleanup", default="", help="finish the removal of an interrupted capture")
     parser.add_argument("--database-url", default="", help="delete the orphan background tasks")
     args = parser.parse_args(argv)
@@ -810,7 +1115,15 @@ def main(argv: list[str] | None = None) -> int:
 
     languages = ("ru", "en") if args.lang == "all" else (args.lang,)
     for lang in languages:
-        snapshot = capture_language(args.base_url, lang, password=args.password, force=args.force)
+        only = [item for item in args.only.split(",") if item.strip()]
+        snapshot = capture_language(
+            args.base_url,
+            lang,
+            password=args.password,
+            force=args.force,
+            only=only or None,
+            attach_file=args.attach_file,
+        )
         print(f"{lang}: {len(snapshot['routes'])} routes, {len(snapshot['assets'])} assets")
     return 0
 

@@ -358,8 +358,11 @@ def create_app():
     if not _is_cli_process():
         try:
             from app.monitoring.snapshots import start_snapshotter
+            from app.monitoring.system import start_system_sampler
 
             start_snapshotter(app)
+            # Host load (CPU/RAM/GPU/VRAM) once a minute for the Monitoring tab.
+            start_system_sampler(app)
         except Exception as e:
             app.logger.warning(f"Could not start monitoring snapshotter: {e}")
 
@@ -462,6 +465,13 @@ def create_app():
     app.cli.add_command(cli.rag_eval)
     app.cli.add_command(cli.rag_eval_generate)
     app.cli.add_command(cli.rag_backfill_chunks)
+    app.cli.add_command(cli.rag_lemmatize_chunks)
+    app.cli.add_command(cli.vram_probe)
+    app.cli.add_command(cli.vram_plan)
+    app.cli.add_command(cli.memory_report)
+    app.cli.add_command(cli.memory_purge)
+    app.cli.add_command(cli.memory_profile)
+    app.cli.add_command(cli.memory_eval)
     app.cli.add_command(cli.rag_reindex)
 
     # Additional camera routes

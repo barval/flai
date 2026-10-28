@@ -1,4 +1,4 @@
-# VRAM Management — FLAI v12.7
+# VRAM Management — FLAI v12.8
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
 
@@ -22,15 +22,83 @@ Computes VRAM needed from:
 
 **Formula**: `file_size × (ngl/block_count) × moe × mtp + ctx_size × kv_factor + overhead + mmproj`
 
-**Per-module KV calibration** (`KV_PER_TOKEN_MB` in `resource_manager.py`): the old single-value 0.12 MB/token overestimated VRAM for reasoning (+636 MB vs measured) and under-counted multimodal because it ignored the mmproj entirely (−751 MB). Calibrated per module against empirical measurements on RTX 5060 Ti (q4_0 KV cache):
+**KV cost comes from the model's own shapes.** `blocks × kv_heads × (key + value) × bytes`
+(the arithmetic llama.cpp uses when it allocates the cache, `kv_per_token_from_metadata()` in
+`app/vram_probe.py`), scaled by the cache type (`q4_0` 0.5625 B/value, `q8_0` 1.0625, f16 2.0).
+The per-module constants of `KV_PER_TOKEN_MB` stay only as a fallback for a model whose metadata
+carries no shapes. Measured on the live card (RTX 5060 Ti, q4_0): the reasoning model needs
+**0.022 MB/token** and the multimodal one **0.0396**, where the old constants said 0.08 and 0.10 —
++1.4 GB and +2.0 GB of phantom VRAM in every fit verdict, enough to turn "fits on the GPU" into
+"partial offload" on an 8 or 12 GB card. Parity after the change: reasoning 12 076 vs 12 104 MB
+measured (0.2 %), multimodal 7 597 vs 7 699 MB (1.3 %).
 
-| Module | MB/token | Derivation |
-|--------|----------|------------|
-| multimodal | 0.10 | (7912 − 4795 weights − 1105 mmproj − 400 overhead) / 16384 ctx ≈ 0.098 |
-| reasoning  | 0.08 | (13084 − 11135 weights − 619 overhead) / 16384 ctx ≈ 0.081 |
-| embedding  | 0.05 | conservative for an embedding model |
+**When the card holds everything, nothing unloads.** `_gpu_models_coexist()` checks the three
+footprints plus the headroom against the card: on 16 GB it is false (7 648 + 11 577 + 1 209 >
+16 311), so the reasoning model keeps its 10 s TTL and yields the card; on a 24 GB card it is true
+and the reasoning model's TTL becomes 0 — an answer is no longer followed by an 11.6 GB reload. The
+arbiter still evicts it when a video or an image generation needs the whole card, because those
+paths unload explicitly.
 
-Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning → 13065 vs 13084 (+0.15%).
+**On a CPU host with RAM to spare, both big models stay resident.** When
+`multimodal + reasoning + CPU_RAM_RESERVE_MB <= total RAM`, the group is emitted with `swap: false`
+too, so a reasoning answer no longer evicts the chat model — they alternate without touching the
+disk. That is the whole point of the CPU TTL policy: measured reload of the reasoning model is
+11+ GB from disk. When they do not fit, the swap stays and llama-swap is the guard.
+
+**Who decides what stays resident.** Exactly one arbiter per platform:
+
+- **GPU** — `ensure_vram_for()`. The `llm_fast` llama-swap group is emitted with `swap: false`, so
+  llama-swap does not evict anything on its own request path; it just starts what it is asked to
+  start. The resource manager evicts by measurement (footprints, headroom, LRU) and keeps the rest.
+  Embeddings go through the same check as chat and reasoning.
+- **CPU** — llama-swap. There is no VRAM accounting on a CPU host, so the group keeps its default
+  `swap: true` (one model at a time) as the only guard against loading two models into RAM; the
+  platform-aware TTLs above decide how long an idle model keeps its memory.
+
+Measured on a 16 GB card: an embedding request now leaves both `embedding` and `multimodal` in
+`/running` (`1 209 MB fits next to ['multimodal']`), and a reasoning request evicts only the chat
+model, keeping the small embedding model (`11 695 MB fits next to ['embedding']`).
+
+**Model TTLs are platform-aware.** On a GPU the reasoning model unloads after 10 s idle — it
+must yield VRAM to the chat model. On a CPU-only host there is no VRAM to free, so the same
+TTL only costs the reload: the chat model stays resident, the embedding model stays resident
+(it is small and used on every search), and the reasoning model stays resident too **when the
+RAM can hold both next to the OS** (`CPU_RAM_RESERVE_MB`, default 4 GB); otherwise it releases
+its RAM after `CPU_REASONING_TTL` (60 s). The `llm_fast` llama-swap group already swaps the three models, so the chat model is
+never blocked by a resident reasoning model — it only reloads its own small weights when a
+reasoning answer evicted it. An admin-set `ttl` in `model_configs` still wins on any platform.
+
+**RAM guard for the services that are not llama models.** Whisper, SLM, Postgres, Kokoro and
+the reranker are always resident and llama-swap knows nothing about them. `ensure_ram_for(service)`
+checks the host's available RAM against a per-service budget (`WHISPER_RAM_MB`, `SLM_RAM_MB`,
+`POSTGRES_RAM_MB`, `KOKORO_RAM_MB`, `RERANKER_RAM_MB`, each with a default), and when the host is
+short it unloads the idle llama models first — on a GPU host their weights live in VRAM and they
+only hold page cache, so that is the cheapest gigabyte to reclaim. If that is still not enough the
+call returns `False` with `last_refusal = {"code": "service_ram_short", ...}`, and the caller shows
+a translated sentence instead of starting a swap storm. The transcription path uses it before a
+voice message is recognized.
+
+**Whisper on the GPU (opt-in).** `docker-compose.whisper-gpu.yml` switches the ASR container to
+`ASR_DEVICE=cuda` with the NVIDIA runtime; `WHISPER_GPU=true` then routes every transcription
+through the GPU queue (`_gpu_lock` + `ensure_vram_for("whisper")`, budget `WHISPER_VRAM_MB`) and the
+ASR container counts as a resident VRAM consumer in the eviction plan — its "unload" is a container
+restart, the only thing that releases its CUDA context.
+
+**Partial offload is a RAM cost, and it is now checked.** When `compute_llamacpp_config()` cannot
+fit every layer on the card it leaves the rest on the CPU, where llama.cpp reads those layers
+from RAM (mapped from the GGUF) on every forward pass. Two things measure that part:
+`estimate_cpu_ram_mb()` (weights left on the CPU + 400 MB buffers, `0` when everything is on the
+GPU) adds a warning to the generated config when it exceeds the free RAM minus 1 GB, and
+`ensure_vram_for()` refuses the load outright when the CPU part does not fit in the RAM that is
+actually available — the alternative is paging from disk (10–100× slower) or an OOM kill on the KV
+allocation, with no clean error. A model that is already loaded is never rejected, even if RAM has
+tightened since.
+
+**Model Hub before download.** A model that is not on disk has no GGUF cache entry, so the fit verdict
+reads the KV shapes from the repo's `config.json` (`num_key_value_heads`, `head_dim`, or
+`hidden_size / num_attention_heads`) and, when that is missing, from the GGUF header over a range
+request (`attention.head_count_kv`, `attention.key_length`). Without them the estimate fell back to the
+module constant and over-reserved 1.4–2 GB before the download even started.
 
 **mmproj accounting:** llama-server loads the mmproj (vision encoder) file fully into VRAM — `--n-gpu-layers-mmproj` is not configured, so it is a fixed constant independent of `n_gpu_layers`. `get_mmproj_size_mb()` in `app/utils.py` resolves the path via `LlamaSwapConfigGenerator` (`get_model_path` + `get_mmproj_path`) and returns the file size; `0` when no mmproj is present. It is subtracted from the model's VRAM budget (`available_for_model`), added to the "needs more VRAM" and 16 GB branch checks, and added to the degradation-loop estimate.
 
@@ -40,11 +108,46 @@ Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning 
 
 ### `ensure_vram_for(model_type)`
 
-- Unloads ALL models
-- Flushes CUDA cache
-- Polls `/running` + `nvidia-smi` (15s default timeout, `time.sleep(2)` between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll)
-- Returns `False` (never proceeds) if VRAM insufficient
+- **Keeps the residents that still fit.** The decision is made on measured footprints: if
+  `sum(resident) + needed + headroom ≤ total_vram`, the new model loads next to them and nothing is
+  unloaded. Otherwise the least recently used residents are evicted **one at a time** through
+  `POST /api/models/unload/:model_id`, stopping as soon as the new model fits. `VRAM_CO_RESIDENCY=off`
+  restores the old all-or-nothing behaviour, `VRAM_HEADROOM_MB` (default 1200) is the room kept for
+  the prefill buffers of a long prompt.
+- Flushes the video pipeline when it is running (a video transaction needs the whole card)
+- Polls `/running` + `nvidia-smi` (default timeout `VRAM_WAIT_TIMEOUT_S` = 120 s, `time.sleep(2)`
+  between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll,
+  except the ones the plan deliberately kept)
+- Returns `False` (never proceeds) if VRAM is still insufficient
 - Used by ALL model types: chat, reasoning, multimodal, embedding
+
+Why it matters on this card: a RAG search needs the embedding model (1.2 GB). Without co-residency it
+evicted the 7.6 GB chat model and the next router call paid a cold start; with it, both stay resident
+(7 648 + 1 209 + 1 200 < 16 311). A reasoning answer still needs the whole card (7 648 + 11 577 + 1 200
+> 16 311), so the chat model is evicted, exactly as before.
+
+### Measurement
+
+Two commands, both read-only unless asked to store:
+
+```bash
+# Measure one model: unloads everything, loads it, samples the peak (optionally with a long prompt)
+docker exec flai-web flask vram-probe --module reasoning --peak --peak-chars 16000 --store
+
+# Show the decision for the next load without touching the card
+docker exec flai-web flask vram-plan --module embedding
+```
+
+`vram-probe` writes `model_vram_estimates` keyed by `(module, model_name, context_length)`, so
+switching the model or the window in the admin panel invalidates it and the analytical estimate takes
+over until the next measurement. The runtime and the admin verdicts prefer a matching measurement over
+the formula. Measurement is card-wide (a container cannot see another container's PIDs); on a
+bare-metal install where the server shares the namespace the model server's RSS is used instead.
+
+**CPU-only hosts.** There is no VRAM to fit into: the same numbers are paid out of RAM, so
+`_autofit_context()` checks `file + KV + mmproj ≤ 70 % of RAM − 2 GB` and the admin verdict classifies
+the model as `cpu_offload` or `impossible` against free RAM. The KV cache still comes from the model's
+shapes, which is what makes a large window visibly expensive on a CPU host.
 
 ### CPU-only models: no VRAM, no GPU queue slot
 
@@ -172,6 +275,31 @@ RLM analysis is one serialized GPU task. `_process_rlm_task()` marks it busy wit
 
 **If VRAM isn't freed within the timeout, the task returns an error instead of proceeding into OOM.**
 
+## Wan Video Footprint (v12.8)
+
+Wan 2.2 TI2V 5B runs in the **sd.cpp container**, not in a PyTorch process, so its VRAM model is
+different from LTX:
+
+- **Estimate:** `app/vram_estimate.py:wan_video_vram_mb()` — a fixed base (Q4 transformer 3.4 GB +
+  Wan VAE 0.4 GB + umt5-xxl encoder 6.0 GB + CUDA context = 9 800 MB) plus **0.1075 MB per latent
+  unit**, where a unit is `(width/16) × (height/16) × ((frames-1)/4 + 1)`.
+- **Calibration:** measured 15 340 MB of card-wide usage for 832×480×121 at 4 steps (a 16 GB card),
+  i.e. ~15.0 GB for the pipeline; the formula returns 14 998 MB.
+- **Encoder offload:** below 12 GB of VRAM the wrapper adds `--offload-to-cpu`, and the estimator
+  subtracts the 6 GB encoder. A 12 GB card therefore runs 832×480×121 in ~9 GB instead of refusing.
+- **Preset chain:** 832×480×121 → 640×384×121 → 512×288×121 → 512×288×49. `_fit_wan_to_vram()`
+  walks it from the requested size downwards against the free VRAM; the wrapper repeats the same
+  step-down on an out-of-memory error, exactly like image generation does with offload levels.
+- **Margin:** the estimate is a measured peak, so Wan uses a 300 MB safety margin and assumes a
+  500 MB desktop context (`total - 500`), where LTX keeps 1 GB on both. With a 1 GB margin the
+  measured 15 003 MB clip would be rejected on the 16 GB reference card that runs it.
+- **No unload needed:** `sd-cli` is a one-shot process, so `unload_video_pipeline()` returns
+  immediately for this backend — there is no resident pipeline, and the wrapper's VRAM is released
+  by the driver when the process exits. Nothing calls the ltxvideo container, which is not running
+  in this profile.
+- **CPU:** refused by default. Measured 98 s and ~12 GB of RAM for 256×192×17; 512×288×49 exceeded
+  a 12 GB cap. `WAN_VIDEO_ALLOW_CPU=1` re-enables it through the same RAM/time planner.
+
 ## LTX-Video Unload Optimization (v8.8+)
 Three-part fix in `resource_manager.py:unload_video_pipeline()`:
 
@@ -242,7 +370,7 @@ Replaces v8.8 cap-only approach.
 In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvideo`) is limited by **system RAM, not VRAM**. The worker runs a pre-flight memory plan before any generation:
 
 - `estimate_peak_ram_mb(width, height, num_frames)` in `modules/video.py`: `peak_mb ≈ 17400 + units × 3.0`, with `units = (w//32)·(h//32)·(((frames−2)//8)+1)` and a +1024 MB safety margin. Calibrated against a measured 19.25 GB peak for 384×256×49.
-- `_plan_cpu_video()` in `app/queue.py` reads `/proc/meminfo` `MemAvailable` (with a hard minimum below swap) and picks the largest step that fits:
+- `_apply_video_limits()` in `app/queue.py` reads `/proc/meminfo` `MemAvailable` (with a hard minimum below swap) and picks the largest step that fits:
   1. requested resolution (default 768×512×240 @ 24 fps),
   2. **384×256×120 @ 12 fps**,
   3. **256×192×57 @ 6 fps**.

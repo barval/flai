@@ -59,7 +59,12 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
-### Video Generation Models (LTX-Video 2B)
+### Video Generation Models
+
+Two backends are available; `VIDEO_BACKEND` selects one and the deploy script
+(`--with-video` / `--with-video-wan`) downloads the matching files.
+
+**LTX-Video 2B (default, `--with-video`):**
 
 ```bash
 # Create models directory
@@ -71,6 +76,23 @@ wget -O services/ltx_video/models/ltxv-2b-0.9.8-distilled.safetensors \
 
 # T5 text encoder (run the download script)
 bash services/ltx_video/download-t5-encoder.sh
+```
+
+**Wan 2.2 TI2V 5B Turbo (quality option, `--with-video-wan`):** the files live in the
+stable-diffusion.cpp model directories, next to the image models:
+
+```bash
+SD=services/sd_cpp/models
+mkdir -p "$SD/diffusion_models" "$SD/vae" "$SD/text_encoders"
+
+wget -O "$SD/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf" \
+  "https://huggingface.co/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF/resolve/main/Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf"
+
+wget -O "$SD/vae/Wan2.2_VAE.safetensors" \
+  "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/VAE/Wan2.2_VAE.safetensors"
+
+wget -O "$SD/text_encoders/umt5-xxl-encoder-Q8_0.gguf" \
+  "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q8_0.gguf"
 ```
 
 ## Models, licenses and sizes
@@ -117,6 +139,9 @@ so an existing installation keeps working.
 |-------|---------|---------|-------------|
 | **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
 | **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
+| **wan2.2-ti2v-5b-turbo-Q4_K_M.gguf** | Wan 2.2 TI2V 5B Turbo diffusion transformer | [Apache-2.0](https://huggingface.co/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF) | ~3.4 GB |
+| **Wan2.2_VAE.safetensors** | Wan 2.2 VAE | [Apache-2.0](https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF) | ~1.4 GB |
+| **umt5-xxl-encoder-Q8_0.gguf** | Wan text encoder | [Apache-2.0](https://huggingface.co/city96/umt5-xxl-encoder-gguf) | ~6 GB |
 
 ### Long-term Memory Models
 
@@ -151,6 +176,7 @@ so an existing installation keeps working.
 | + Image editing | ~32 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
 | + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
+| Video generation switched to Wan 2.2 5B instead | ~41 GB *(no 18 GB T5 encoder; Wan adds ~11 GB)* |
 | + Long-term memory (SLM embedding model) | ~59.5 GB *(SLM adds ~500 MB)* |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.

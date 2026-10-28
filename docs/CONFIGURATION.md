@@ -14,6 +14,8 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
 VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
+VRAM_CO_RESIDENCY=auto                      # 'auto' keeps residents that fit next to the new model, 'off' unloads everything (pre-v12.8 behaviour)
+VRAM_HEADROOM_MB=1200                       # VRAM kept free for prefill buffers when a co-residency decision is made
 ```
 
 **Service URLs:**
@@ -45,6 +47,26 @@ MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=10800         # Max video generation time (seconds)
 OCR_TIME_BUDGET_S=1800          # Scanned-PDF OCR budget per document task (0 = unlimited)
 ```
+
+**Video backend:**
+```bash
+VIDEO_BACKEND=ltx               # ltx (fast, up to 10 s) | wan (quality, 5 s, GPU only)
+# LTX-Video (flai-ltxvideo, PyTorch)
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_CPU_TIME_BUDGET_S=0   # CPU only; 0 = 85 % of LTX_VIDEO_TIMEOUT
+# Wan 2.2 TI2V 5B (flai-sd, stable-diffusion.cpp)
+WAN_VIDEO_URL=http://flai-sd:7861
+WAN_VIDEO_MODEL=wan2.2-ti2v-5b-turbo-Q4_K_M.gguf
+WAN_VIDEO_TIMEOUT=1800          # measured 209 s for 832×480×121
+WAN_VIDEO_STEPS=4               # Turbo checkpoint
+WAN_VIDEO_CFG_SCALE=1.0
+WAN_VIDEO_FLOW_SHIFT=3.0
+WAN_VIDEO_ALLOW_CPU=0           # 1 = allow Wan on a CPU-only host (very slow)
+```
+
+Container-side limits: `WAN_CLI_TIMEOUT` (1800 s GPU, 7200 s CPU), `WAN_OFFLOAD_BELOW_VRAM_MB`
+(12000 — below this the umt5 encoder is streamed from RAM), `SD_CLI_TIMEOUT` (image generation).
 
 **Service Retry Settings:**
 ```bash
@@ -133,6 +155,13 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+WHISPER_GPU=false           # Whisper on the GPU: start --profile with-whisper-gpu (with-tts-* for TTS); the model then keeps WHISPER_VRAM_MB of VRAM
+WHISPER_VRAM_MB=3000        # VRAM budget for the ASR container's CUDA context
+CPU_REASONING_TTL=60          # CPU-only hosts: idle seconds before the reasoning model releases its RAM (unused when it fits next to the chat model)
+CPU_RAM_RESERVE_MB=4096       # RAM kept free for the OS when deciding that both CPU models fit
+MEMORY_EXTRACT_QUIET_S=45    # Memory extraction is interrupted by any chat/API request and waits this long before resuming
+SLM_AUTO_EXTRACT=auto        # 'auto' extracts after each personal message where a GPU keeps the model resident; 'on' also on CPU
+SLM_MIN_RECALL_SCORE=0.5     # Non-profile facts below this recall score are not injected
 ROUTER_SLM_FACTS=2           # Long-term-memory facts added to the router context
 ```
 

@@ -58,6 +58,37 @@ EDIT_VAE = "/app/models/vae/flux2_ae.safetensors"
 EDIT_LLM = "/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 EDIT_DEFAULT_STRENGTH = 0.7
 
+# ── Video model — Wan 2.2 TI2V 5B Turbo ──
+# sd.cpp needs --diffusion-model for a diffusion-only checkpoint: passing it as
+# -m fails with "get sd version from file failed".
+WAN_DIFFUSION_MODEL = os.environ.get(
+    "WAN_VIDEO_MODEL_PATH", "/app/models/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf"
+)
+WAN_VAE = os.environ.get("WAN_VIDEO_VAE_PATH", "/app/models/vae/Wan2.2_VAE.safetensors")
+WAN_TEXT_ENCODER = os.environ.get(
+    "WAN_VIDEO_TEXT_ENCODER_PATH", "/app/models/text_encoders/umt5-xxl-encoder-Q8_0.gguf"
+)
+WAN_VIDEO_STEPS = int(os.environ.get("WAN_VIDEO_STEPS", "4"))
+WAN_VIDEO_CFG = float(os.environ.get("WAN_VIDEO_CFG_SCALE", "1.0"))
+WAN_VIDEO_FLOW_SHIFT = float(os.environ.get("WAN_VIDEO_FLOW_SHIFT", "3.0"))
+# Wan 2.2 5B compresses time by 4 frames → valid lengths are 4n+1; 121 = 5 s
+# at 24 fps, the length the model was trained on.
+WAN_MAX_FRAMES = 121
+WAN_VIDEO_TIMEOUT_S = int(os.environ.get("WAN_CLI_TIMEOUT", "1800"))
+WAN_VIDEO_CPU_TIMEOUT_S = int(os.environ.get("WAN_CLI_CPU_TIMEOUT", "7200"))
+# Below this much VRAM the umt5 encoder is streamed from RAM
+# (--offload-to-cpu): it takes ~6 GB on the GPU and would otherwise push a
+# 12 GB card into OOM before the first denoising step.
+WAN_OFFLOAD_BELOW_VRAM_MB = int(os.environ.get("WAN_OFFLOAD_BELOW_VRAM_MB", "12000"))
+DEFAULT_VIDEO_NEGATIVE = (
+    "worst quality, inconsistent motion, blurry, jittery, distorted, flickering, "
+    "watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen"
+)
+# Falling back one step at a time: each is a valid 4n+1 / 32-multiple preset.
+# Length is preserved first (a 5-second clip at a lower resolution is usually
+# more useful than a 3-second one at full size).
+WAN_VIDEO_FALLBACKS = [(832, 480, 121), (640, 384, 121), (512, 288, 121), (512, 288, 49)]
+
 SD_CLI = "/usr/local/bin/sd-cli"
 
 # Lock to serialize generation (one at a time)
@@ -110,6 +141,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_generation()
         elif path == "/v1/images/edits":
             self._handle_edit()
+        elif path == "/v1/video/generations":
+            self._handle_video()
         else:
             self.send_error(404, "Not found")
 
@@ -138,6 +171,21 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         result = edit_image(data)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
+
+    def _handle_video(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+
+        result = generate_video(data)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -400,6 +448,275 @@ def generate_image(data):
         return {"error": "Image generation failed"}
 
     return {"error": "Insufficient VRAM for image generation. Try disabling GPU or reducing image size."}
+
+
+def _vram_total_mb() -> int:
+    """Total VRAM of the first visible GPU (0 when unknown)."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return int(result.stdout.split()[0])
+    except Exception:
+        return 0
+
+
+def _snap_frames(num_frames: int) -> int:
+    """Wan needs 4n+1 frames (VAE temporal stride 4), at most 121."""
+    frames = max(5, min(int(num_frames), WAN_MAX_FRAMES))
+    return ((frames - 1) // 4) * 4 + 1
+
+
+def _snap_dim(value: int) -> int:
+    """Both sides must be multiples of 32; sd.cpp pads and crops otherwise."""
+    return max(256, (int(value) // 32) * 32)
+
+
+def _build_video_cmd(
+    prompt,
+    negative_prompt,
+    width,
+    height,
+    num_frames,
+    frame_rate,
+    steps,
+    cfg_scale,
+    flow_shift,
+    seed,
+    init_image=None,
+    use_gpu=True,
+):
+    """Build the sd-cli command for one Wan 2.2 clip."""
+    cmd = [
+        SD_CLI,
+        "-M",
+        "vid_gen",
+        "--diffusion-model",
+        WAN_DIFFUSION_MODEL,
+        "--vae",
+        WAN_VAE,
+        "--t5xxl",
+        WAN_TEXT_ENCODER,
+        "-p",
+        prompt,
+        "-n",
+        negative_prompt,
+        "-W",
+        str(width),
+        "-H",
+        str(height),
+        "--video-frames",
+        str(num_frames),
+        "--fps",
+        str(frame_rate),
+        "--steps",
+        str(steps),
+        "--cfg-scale",
+        str(cfg_scale),
+        "--sampling-method",
+        "euler",
+        "--flow-shift",
+        str(flow_shift),
+        "--seed",
+        str(seed),
+        "--vae-tiling",
+    ]
+    if use_gpu:
+        cmd.append("--diffusion-fa")
+        total_vram = _vram_total_mb()
+        if 0 < total_vram < WAN_OFFLOAD_BELOW_VRAM_MB:
+            # Keep the weights in RAM and stream them per step: slower, but the
+            # encoder alone is ~6 GB and the clip would not fit otherwise.
+            cmd.append("--offload-to-cpu")
+    if init_image:
+        cmd.extend(["-i", init_image])
+    return cmd
+
+
+def _convert_to_mp4(avi_path: str, mp4_path: str) -> None:
+    """sd-cli writes avi/webm only — the chat player needs mp4 (h264)."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            avi_path,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            mp4_path,
+        ],
+        check=True,
+        timeout=600,
+        capture_output=True,
+    )
+
+
+def _run_video_cli(cmd, timeout, log_path="/tmp/sd_video.log"):
+    """Run sd-cli in video mode and return (mp4_bytes, error_log_tail)."""
+    workdir = tempfile.mkdtemp(prefix="sd-video-")
+    avi_path = os.path.join(workdir, "clip.avi")
+    mp4_path = os.path.join(workdir, "clip.mp4")
+    try:
+        full = [*cmd, "-o", avi_path]
+        logger.info(f" Running video generation: {' '.join(full[:10])}...")
+        try:
+            completed = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None, "sd-cli timeout"
+        with open(log_path, "a") as log_file:
+            log_file.write(completed.stdout or "")
+            log_file.write(completed.stderr or "")
+        if completed.returncode != 0:
+            return None, ((completed.stdout or "") + (completed.stderr or ""))[-2000:]
+        if not os.path.exists(avi_path) or os.path.getsize(avi_path) == 0:
+            return None, "sd-cli produced empty video"
+        if not shutil.which("ffmpeg"):
+            return None, "ffmpeg is not installed in the sd.cpp image — cannot produce mp4"
+        _convert_to_mp4(avi_path, mp4_path)
+        with open(mp4_path, "rb") as f:
+            return f.read(), ""
+    except Exception as e:
+        return None, str(e)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def generate_video(data):
+    """Generate one clip with Wan 2.2 TI2V 5B (text or image + text)."""
+    with _lock:
+        return _generate_video_impl(data)
+
+
+def _generate_video_impl(data):
+    prompt = str(data.get("prompt", "")).strip()
+    if not prompt:
+        return {"error": "Video prompt is empty"}
+
+    width = _snap_dim(int(data.get("width", 832)))
+    height = _snap_dim(int(data.get("height", 480)))
+    num_frames = _snap_frames(int(data.get("num_frames", WAN_MAX_FRAMES)))
+    frame_rate = int(data.get("frame_rate", 24))
+    steps = int(data.get("steps", WAN_VIDEO_STEPS))
+    cfg_scale = float(data.get("cfg_scale", WAN_VIDEO_CFG))
+    flow_shift = float(data.get("flow_shift", WAN_VIDEO_FLOW_SHIFT))
+    seed = int(data.get("seed", -1))
+    negative_prompt = str(data.get("negative_prompt") or DEFAULT_VIDEO_NEGATIVE)
+    use_gpu = _validate_use_gpu(data.get("use_gpu", True))
+    timeout = _cli_timeout(WAN_VIDEO_TIMEOUT_S) if use_gpu else WAN_VIDEO_CPU_TIMEOUT_S
+
+    src_dir = None
+    init_image = None
+    if data.get("image_data"):
+        try:
+            src_dir = tempfile.mkdtemp(prefix="sd-video-src-")
+            init_image = os.path.join(src_dir, "source.jpg")
+            with open(init_image, "wb") as f:
+                f.write(base64.b64decode(data["image_data"]))
+        except Exception as e:
+            logger.warning(f" Could not decode source image: {e}")
+            init_image = None
+
+    # Step down the preset chain on OOM, exactly like image generation does with
+    # offload levels: a 720p request on a 12 GB card still returns a clip.
+    candidates = [(width, height, num_frames)]
+    for fallback in WAN_VIDEO_FALLBACKS:
+        if fallback not in candidates and fallback[0] <= width and fallback[2] <= num_frames:
+            candidates.append(fallback)
+
+    try:
+        return _run_video_candidates(
+            candidates,
+            prompt,
+            negative_prompt,
+            frame_rate,
+            steps,
+            cfg_scale,
+            flow_shift,
+            seed,
+            init_image,
+            use_gpu,
+            timeout,
+        )
+    finally:
+        if src_dir:
+            shutil.rmtree(src_dir, ignore_errors=True)
+
+
+def _run_video_candidates(
+    candidates,
+    prompt,
+    negative_prompt,
+    frame_rate,
+    steps,
+    cfg_scale,
+    flow_shift,
+    seed,
+    init_image,
+    use_gpu,
+    timeout,
+):
+    """Try each preset in turn; step down only on an out-of-memory error."""
+    for cand_w, cand_h, cand_frames in candidates:
+        cmd = _build_video_cmd(
+            prompt,
+            negative_prompt,
+            cand_w,
+            cand_h,
+            cand_frames,
+            frame_rate,
+            steps,
+            cfg_scale,
+            flow_shift,
+            seed,
+            init_image=init_image,
+            use_gpu=use_gpu,
+        )
+        started = time.time()
+        video_bytes, log_tail = _run_video_cli(cmd, timeout)
+        elapsed = round(time.time() - started, 1)
+        if video_bytes:
+            logger.info(
+                f" Video ready: {cand_w}×{cand_h}×{cand_frames} in {elapsed}s "
+                f"({len(video_bytes) // 1024} KB)"
+            )
+            return {
+                "created": int(time.time()),
+                "video_data": base64.b64encode(video_bytes).decode(),
+                "file_name": f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_wan.mp4",
+                "file_size": len(video_bytes),
+                "file_type": "video/mp4",
+                "generation_time": elapsed,
+                "seed": seed,
+                "metadata": {
+                    "backend": "wan",
+                    "model": os.path.basename(WAN_DIFFUSION_MODEL),
+                    "width": cand_w,
+                    "height": cand_h,
+                    "num_frames": cand_frames,
+                    "frame_rate": frame_rate,
+                    "steps": steps,
+                    "cfg_scale": cfg_scale,
+                    "flow_shift": flow_shift,
+                },
+            }
+        if log_tail and _is_oom_error(log_tail):
+            logger.warning(f" Video OOM at {cand_w}×{cand_h}×{cand_frames}, stepping down")
+            continue
+        logger.info(f" Video generation failed (non-OOM): {(log_tail or '')[:300]}")
+        return {"error": "Video generation failed"}
+
+    return {"error": "Insufficient VRAM for video generation. Try a smaller size."}
 
 
 def edit_image(data):

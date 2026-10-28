@@ -165,16 +165,129 @@ class LlamaSwapConfigGenerator:
         self.logger.warning(f"No mmproj found in {base_dir}")
         return None
 
+    def _cpu_swap_enabled(self) -> bool:
+        """Whether llama-swap must keep only one of the three models loaded.
+
+        A CPU host can hold both big models when the RAM allows it — then the
+        models stay resident and alternate without a reload, and llama-swap must
+        not evict behind the TTL policy's back. When they do not fit, the swap is
+        the only guard against loading both into RAM.
+        """
+        return self._platform_is_cpu() and not self._cpu_models_coexist()
+
+    def _platform_is_cpu(self) -> bool:
+        try:
+            from app.resource_manager import get_resource_manager
+
+            return get_resource_manager().hardware.platform == "cpu"
+        except Exception:
+            return os.getenv("FLAI_PLATFORM", "").strip().lower() == "cpu"
+
+    @staticmethod
+    def _total_ram_mb() -> int:
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith("MemTotal:"):
+                        return int(line.split()[1]) // 1024
+        except (OSError, ValueError):
+            pass
+        return 0
+
+    @staticmethod
+    def _model_file_mb(module: str) -> int:
+        """On-disk size of the module's model, from the GGUF cache."""
+        try:
+            from app.model_config import get_model_config as _get_config
+            from app.utils import get_gguf_models_cached
+
+            config = _get_config(module) or {}
+            name = str(config.get("model_name") or "").replace(".gguf", "")
+            meta = get_gguf_models_cached("/models").get(name, {})
+            return int(meta.get("file_size_mb") or 0)
+        except Exception:
+            return 0
+
+    def _gpu_models_coexist(self) -> bool:
+        """True when the card can hold all three models at once.
+
+        On 16 GB it cannot (7 648 + 11 577 + 1 209 MB + headroom), so the
+        reasoning model keeps its short TTL and yields the card. On a 24 GB card
+        it fits, and there is no reason to reload 11.6 GB after every answer —
+        the arbiter will still evict it when a video or image needs the card.
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            total_vram = int(rm.hardware.total_vram_mb or 0)
+            if total_vram <= 0:
+                return False
+            needed = sum(rm.get_vram_needed_mb(module) for module in ("multimodal", "reasoning", "embedding"))
+            headroom = int(os.getenv("VRAM_HEADROOM_MB", "1200"))
+            return bool(needed and needed + headroom <= total_vram)
+        except Exception:
+            return False
+
+    def _cpu_models_coexist(self) -> bool:
+        """True when the CPU host can hold the chat and reasoning models at once.
+
+        Measured on the live CPU tier, that is the difference between reloading
+        11 GB from disk on every reasoning answer and never reloading it. The
+        reserve covers the services that are always resident (Whisper, SLM,
+        Postgres, Qdrant, Redis) plus the OS.
+        """
+        total_ram = self._total_ram_mb()
+        multimodal_mb = self._model_file_mb("multimodal")
+        reasoning_mb = self._model_file_mb("reasoning")
+        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        return bool(total_ram and reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram)
+
+    def _cpu_ttl(self, module: str) -> int:
+        """TTL policy for a host without a GPU.
+
+        There is no VRAM to free, so unloading a model only costs the reload. The
+        chat model stays resident as before; the embedding model is small and used
+        on every search; the reasoning model stays resident only when the RAM can
+        hold it next to the chat model with room for the OS — otherwise it waits
+        ``CPU_REASONING_TTL`` seconds (10 minutes) before giving its RAM back.
+        """
+        if module in ("multimodal", "embedding"):
+            return 0
+        if module != "reasoning":
+            return DEFAULT_TTL.get(module, 300)
+
+        total_ram = self._total_ram_mb()
+        multimodal_mb = self._model_file_mb("multimodal")
+        reasoning_mb = self._model_file_mb("reasoning")
+        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        fits = self._cpu_models_coexist()
+        # Fits: the swap group stops the chat model when reasoning starts, so the
+        # cheap reload is the small chat model — keep the big one warm.
+        # Does not fit: the two never coexist anyway (the llm_fast group swaps
+        # them), so the big model must not sit on RAM the host cannot spare.
+        ttl = 0 if fits else int(os.getenv("CPU_REASONING_TTL", "60"))
+        self.logger.info(
+            f"CPU TTL policy for reasoning: multimodal {multimodal_mb}MB + reasoning {reasoning_mb}MB "
+            f"+ reserve {reserve_mb}MB vs RAM {total_ram}MB -> ttl={ttl} ({'fits' if fits else 'does not fit'})"
+        )
+        return ttl
+
     def get_ttl(self, module: str) -> int:
-        """Get TTL for model from config or use default."""
+        """Get TTL for model from config or use the platform default."""
         config = get_model_config(module)
         if not config:
-            return DEFAULT_TTL.get(module, 300)
+            return self._cpu_ttl(module) if self._platform_is_cpu() else DEFAULT_TTL.get(module, 300)
 
         ttl = config.get("ttl")
         if ttl is not None:
             return ttl  # type: ignore[no-any-return]
 
+        if self._platform_is_cpu():
+            return self._cpu_ttl(module)
+        if module == "reasoning" and self._gpu_models_coexist():
+            # Everything fits on the card: keep it warm, the arbiter owns eviction.
+            return 0
         return DEFAULT_TTL.get(module, 300)
 
     def get_ctx_size(self, module: str) -> int:
@@ -396,8 +509,15 @@ class LlamaSwapConfigGenerator:
             # per-request `reasoning_budget` field). Without it the model can burn
             # the whole context on reasoning and never emit an answer.
             if ctx_size and ctx_size > 0:
-                budget = max(1024, int(ctx_size * 0.4))
-                cmd_parts.extend(["--reasoning-budget", str(budget)])
+                from app.utils import reasoning_budget_tokens
+
+                cmd_parts.extend(["--reasoning-budget", str(reasoning_budget_tokens(ctx_size))])
+                # End the thinking block with a sentence instead of a silent stop
+                # (llama-server injects it before the end-of-thinking tag). Single
+                # quotes keep the words inside one argv entry after YAML parsing.
+                cmd_parts.extend(
+                    ["--reasoning-budget-message", "'Thinking budget reached. Stop analysing and answer now.'"]
+                )
         elif module == "multimodal":
             cmd_parts.extend(["--reasoning_format", "none"])
 
@@ -430,7 +550,11 @@ class LlamaSwapConfigGenerator:
             if gguf_cache.get(model_key, {}).get("supports_mtp") and not is_cpu:
                 cmd_parts.extend(["--spec-type", "draft-mtp"])
 
-            if ngl is not None and ngl >= 0:
+            if ngl is not None:
+                # Always explicit: llama-server's default is "auto", which decides
+                # by free VRAM at load time and silently keeps most layers in RAM
+                # when something else is resident — measured live at 1.9 GB VRAM
+                # and 5.5 GB RSS for a model that was fully offloaded before.
                 cmd_parts.extend(["--n-gpu-layers", str(ngl)])
 
             if config.get("offload_kqv") and not is_cpu:
@@ -446,6 +570,10 @@ class LlamaSwapConfigGenerator:
                 cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])
         except Exception:
             pass
+
+        # Prometheus metrics on the backend port (llama-server /metrics). The web
+        # app can scrape it inside the Docker network; it is never published.
+        cmd_parts.append("--metrics")
 
         # Enable Jinja templating for native tool calling support (Qwen3, etc.)
         cmd_parts.append("--jinja")
@@ -468,9 +596,16 @@ class LlamaSwapConfigGenerator:
             "",
         ]
 
+        # Exactly one arbiter decides what stays in memory:
+        # - GPU: `ensure_vram_for()` (measured footprints, LRU eviction), so the
+        #   group must NOT swap behind its back — otherwise a RAG search evicts
+        #   the chat model even when both fit.
+        # - CPU: there is no VRAM accounting, so llama-swap's one-at-a-time swap
+        #   is the only guard against loading two models into RAM.
         groups = {
             "llm_fast": {
-                "swap": True,
+                "swap": self._cpu_swap_enabled(),
+                "exclusive": False,
                 "models": ["embedding", "reasoning", "multimodal"],
             },
             "cpu_only": {

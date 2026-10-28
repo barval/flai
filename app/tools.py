@@ -466,7 +466,7 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
             return str(_("User not identified for document search"))
 
     try:
-        chunks, scores = rag_module.search(user_id, query, top_k=top_k)
+        chunks, _scores = rag_module.search(user_id, query, top_k=top_k)
     except Exception as e:
         logger.error(f"RAG search tool failed: {e}")
         with force_locale(lang):
@@ -480,8 +480,7 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
     for i, chunk in enumerate(chunks):
         text = chunk.get("text", "")
         filename = chunk.get("filename", "")
-        score = scores[i] if i < len(scores) else 0
-        parts.append(f"[{i + 1}. {filename} (score: {score:.2f})]\n{text}")
+        parts.append(f"[{i + 1}. {filename}]\n{text}")
 
     result = "\n\n".join(parts)
     max_rag_chars = app.config.get("RAG_MAX_RESULTS_CHARS", 5000) if app else 5000

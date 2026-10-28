@@ -1049,7 +1049,7 @@ def model_vram_estimate():
             cache_type=cache_type,
             supports_mtp=cached.get("supports_mtp", False),
             mmproj_size_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,
-            kv_per_token=_kv_per_token_for_module(module, cache_type),
+            kv_per_token=_kv_per_token_for_module(module, cache_type, model_name),
         )
         has_gpu = total_vram is not None and total_vram > 0
         vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0

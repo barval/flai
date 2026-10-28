@@ -60,13 +60,17 @@ class TestVramWaitFlag:
     def test_flag_up_during_wait_and_down_after(self, rm):
         seen = []
 
-        def record_flag(llamacpp_url=None):
+        def record_flag(llamacpp_url=None, model_id=None):
             seen.append(rm.is_gpu_busy())
             return True
 
         with (
             patch("time.sleep"),
-            patch("app.resource_manager.requests.get", side_effect=[_resp([]), _resp([])]),
+            patch(
+                "app.resource_manager.requests.get",
+                side_effect=[_resp([]), _resp([_model("multimodal")]), _resp([])],
+            ),
+            patch.object(rm, "get_vram_needed_mb", return_value=7648),
             patch.object(rm, "unload_llamacpp_model", side_effect=record_flag),
         ):
             rm.unload_video_pipeline = MagicMock()
@@ -88,8 +92,9 @@ class TestVramWaitSelfHealing:
             patch("time.sleep"),
             patch(
                 "app.resource_manager.requests.get",
-                side_effect=[_resp([]), _resp([_model("multimodal")]), _resp([])],
+                side_effect=[_resp([]), _resp([_model("multimodal")]), _resp([_model("multimodal")]), _resp([])],
             ),
+            patch.object(rm, "get_vram_needed_mb", return_value=7648),
             patch.object(rm, "unload_llamacpp_model", return_value=True) as unload,
         ):
             rm.unload_video_pipeline = MagicMock()
@@ -105,8 +110,15 @@ class TestVramWaitSelfHealing:
             patch("time.sleep"),
             patch(
                 "app.resource_manager.requests.get",
-                side_effect=[_resp([]), _resp([]), _resp([_model("multimodal")]), _resp([])],
+                side_effect=[
+                    _resp([]),
+                    _resp([_model("multimodal")]),
+                    _resp([]),
+                    _resp([_model("multimodal")]),
+                    _resp([]),
+                ],
             ),
+            patch.object(rm, "get_vram_needed_mb", return_value=7648),
             patch.object(rm, "unload_llamacpp_model", return_value=True) as unload,
         ):
             rm.unload_video_pipeline = MagicMock()
@@ -147,7 +159,11 @@ class TestVramWaitSelfHealing:
     def test_clean_shutdown_single_unload(self, rm):
         with (
             patch("time.sleep"),
-            patch("app.resource_manager.requests.get", side_effect=[_resp([]), _resp([])]),
+            patch(
+                "app.resource_manager.requests.get",
+                side_effect=[_resp([]), _resp([_model("multimodal")]), _resp([])],
+            ),
+            patch.object(rm, "get_vram_needed_mb", return_value=7648),
             patch.object(rm, "unload_llamacpp_model", return_value=True) as unload,
         ):
             rm.unload_video_pipeline = MagicMock()
@@ -156,3 +172,17 @@ class TestVramWaitSelfHealing:
 
         assert result is True
         assert unload.call_count == 1
+
+    def test_nothing_resident_and_vram_free_skips_the_unload(self, rm):
+        """Co-residency: an empty card needs no unload at all."""
+        with (
+            patch("time.sleep"),
+            patch("app.resource_manager.requests.get", side_effect=[_resp([]), _resp([])]),
+            patch.object(rm, "unload_llamacpp_model", return_value=True) as unload,
+        ):
+            rm.unload_video_pipeline = MagicMock()
+            rm._poll_vram = MagicMock()
+            result = rm.ensure_vram_for("reasoning", needed_mb=13736, timeout=5)
+
+        assert result is True
+        assert unload.call_count == 0

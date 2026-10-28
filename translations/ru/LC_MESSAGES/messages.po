@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 12.7\n"
+"Project-Id-Version: FLAI 12.8\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-22 18:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -246,6 +246,18 @@ msgstr "Не удалось распознать речь"
 #: app/queue.py:4395 app/queue.py:6968
 msgid "Task cancelled"
 msgstr "Задача отменена"
+
+#: app/queue.py
+msgid ""
+"Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+"{available} MB available."
+msgstr ""
+"Не хватает RAM для слоёв, оставленных на CPU: нужно ~{needed} МБ, доступно "
+"{available} МБ."
+
+#: app/queue.py
+msgid "Not enough RAM for {service}: {needed} MB needed, {available} MB available."
+msgstr "Не хватает RAM для {service}: нужно ~{needed} МБ, доступно {available} МБ."
 
 # GPU memory error messages
 #: app/queue.py:1792 app/queue.py:2037 app/queue.py:3074 app/queue.py:3268
@@ -3885,6 +3897,38 @@ msgid "the verifier answered in another language"
 msgstr "верификатор ответил на другом языке"
 
 #: app/templates/admin.html
+msgid "CPU load"
+msgstr "Загрузка CPU"
+
+#: app/templates/admin.html
+msgid "RAM load"
+msgstr "Загрузка RAM"
+
+#: app/templates/admin.html
+msgid "GPU load"
+msgstr "Загрузка GPU"
+
+#: app/templates/admin.html
+msgid "VRAM load"
+msgstr "Загрузка VRAM"
+
+#: app/templates/admin.html
+msgid "Host CPU utilisation of the whole server, sampled every minute."
+msgstr "Загрузка CPU всего сервера, замер раз в минуту."
+
+#: app/templates/admin.html
+msgid "Used of total system memory, including the model page cache."
+msgstr "Использовано из всей памяти системы, включая кэш страниц моделей."
+
+#: app/templates/admin.html
+msgid "GPU utilisation; empty on a host without a GPU."
+msgstr "Загрузка GPU; пусто на хосте без видеокарты."
+
+#: app/templates/admin.html
+msgid "Used of total video memory; empty on a host without a GPU."
+msgstr "Использовано из всей видеопамяти; пусто на хосте без видеокарты."
+
+#: app/templates/admin.html
 msgid "Monitoring"
 msgstr "Мониторинг"
 
@@ -4740,3 +4784,87 @@ msgstr "Сбросить"
 #: app/templates/chat.html
 msgid "Unfiled"
 msgstr "Без папки"
+
+#: modules/video.py
+msgid "Wan generates clips up to {max_seconds} seconds — shortened the video from {requested_seconds} s to {actual_seconds} s."
+msgstr "Wan генерирует клипы до {max_seconds} с — видео сокращено с {requested_seconds} с до {actual_seconds} с."
+
+#: modules/video.py
+msgid "Wan video generation requires a GPU. This host runs on CPU — switch VIDEO_BACKEND to 'ltx' or enable WAN_VIDEO_ALLOW_CPU=1 to attempt it anyway (very slow)."
+msgstr "Генерация видео Wan требует GPU. Этот хост работает на CPU — переключите VIDEO_BACKEND на 'ltx' или задайте WAN_VIDEO_ALLOW_CPU=1, чтобы всё равно попробовать (очень медленно)."
+
+#: modules/video.py
+msgid "Video service returned no video data"
+msgstr "Сервис видео не вернул данные видео"
+
+#: modules/multimodal.py
+msgid "121 (≈5 seconds at 24 fps), 81 (≈3 seconds), 49 (≈2 seconds)"
+msgstr "121 (≈5 секунд при 24 fps), 81 (≈3 секунды), 49 (≈2 секунды)"
+
+#: modules/multimodal.py
+msgid "240 (≈10 seconds at 24 fps), 120 (≈5 seconds)"
+msgstr "240 (≈10 секунд при 24 fps), 120 (≈5 секунд)"
+
+#: app/settings_registry.py
+msgid "Video backend (ltx or wan)"
+msgstr "Видеобэкенд (ltx или wan)"
+
+#: app/settings_registry.py
+msgid "LTX-Video wrapper URL"
+msgstr "URL обёртки LTX-Video"
+
+#: app/settings_registry.py
+msgid "LTX-Video generation timeout (seconds)"
+msgstr "Таймаут генерации LTX-Video (сек)"
+
+#: app/settings_registry.py
+msgid "Wan video wrapper URL (sd.cpp container)"
+msgstr "URL обёртки видео Wan (контейнер sd.cpp)"
+
+#: app/settings_registry.py
+msgid "Wan 2.2 model file"
+msgstr "Файл модели Wan 2.2"
+
+#: app/settings_registry.py
+msgid "Wan generation timeout (seconds)"
+msgstr "Таймаут генерации Wan (сек)"
+
+#: app/settings_registry.py
+msgid "Wan denoising steps (4 for Turbo)"
+msgstr "Шаги денойза Wan (4 для Turbo)"
+
+#: app/settings_registry.py
+msgid "Wan classifier-free guidance scale"
+msgstr "Масштаб classifier-free guidance Wan"
+
+#: app/settings_registry.py
+msgid "Wan flow shift"
+msgstr "Flow shift Wan"
+
+#: app/settings_registry.py
+msgid "Allow Wan video generation on a CPU-only host"
+msgstr "Разрешить генерацию видео Wan на хосте только с CPU"
+
+#: app/settings_registry.py
+msgid "Run Whisper transcription on the GPU"
+msgstr "Выполнять транскрипцию Whisper на GPU"
+
+#: app/settings_registry.py
+msgid "VRAM budget for the Whisper container (MB)"
+msgstr "Бюджет VRAM для контейнера Whisper (МБ)"
+
+#: app/settings_registry.py
+msgid "Automatic fact extraction mode (auto, on, off)"
+msgstr "Режим автоматического извлечения фактов (auto, on, off)"
+
+#: app/settings_registry.py
+msgid "Minimum recall score for non-profile facts"
+msgstr "Минимальный балл recall для фактов, кроме профиля"
+
+#: app/settings_registry.py
+msgid "Quiet window before fact extraction starts (seconds)"
+msgstr "Тихий интервал перед извлечением фактов (сек)"
+
+#: app/queue.py
+msgid "Transcribed from the voice message"
+msgstr "Расшифровка голосового сообщения"

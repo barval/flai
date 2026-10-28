@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.7 — Single-Server Deployment Script
+# FLAI v12.8 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -116,6 +116,23 @@ enable_env_key() {
 }
 
 # Disable a key: comment out its active line, keeping the value.
+set_env_key_value() {
+    # Unconditional setter: unlike enable_env_key() it overwrites an existing
+    # value, which is what a backend switch (VIDEO_BACKEND) needs.
+    local key="$1" value="$2"
+    if settings_override_exists "$key"; then
+        warn_env_override "$key"
+        return 0
+    fi
+    if grep -qE "^${key}=" .env 2>/dev/null; then
+        sed -Ei "s|^${key}=.*|${key}=${value}|" .env
+    elif grep -qE "^# ?${key}=" .env 2>/dev/null; then
+        sed -Ei "s|^#? ?${key}=.*|${key}=${value}|" .env
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
 disable_env_key() {
     local key="$1" message="$2"
     if settings_override_exists "$key"; then
@@ -153,6 +170,15 @@ enable_env_features() {
     else
         disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
         disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
+    fi
+    if [[ "$WITH_VIDEO" == "true" ]]; then
+        if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+            set_env_key_value VIDEO_BACKEND wan
+            info "Video backend: Wan 2.2 TI2V 5B (quality, 5 s clips)"
+        else
+            set_env_key_value VIDEO_BACKEND ltx
+            info "Video backend: LTX-Video 2B (fast, clips up to 10 s)"
+        fi
     fi
 }
 
@@ -449,6 +475,42 @@ download_tts_models() {
     fi
 }
 
+download_wan_video_models() {
+    info "Downloading Wan 2.2 TI2V 5B models (Apache-2.0)..."
+    local SD_DIR="services/sd_cpp/models"
+
+    # Turbo GGUF: 4 denoising steps at CFG 1.0. The non-Turbo Wan 2.2 5B needs
+    # ~20 steps and is several times slower for the same clip.
+    if [[ ! -f "$SD_DIR/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf" ]]; then
+        info "Downloading Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf (~3.4 GB)..."
+        HF_DOWNLOAD "hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF" \
+            "Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf" \
+            "$SD_DIR/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf"
+    else
+        warn "wan2.2-ti2v-5b-turbo-Q4_K_M.gguf already exists — skipping."
+    fi
+
+    if [[ ! -f "$SD_DIR/vae/Wan2.2_VAE.safetensors" ]]; then
+        info "Downloading Wan2.2_VAE.safetensors (~1.4 GB)..."
+        HF_DOWNLOAD "QuantStack/Wan2.2-TI2V-5B-GGUF" \
+            "VAE/Wan2.2_VAE.safetensors" \
+            "$SD_DIR/vae/Wan2.2_VAE.safetensors"
+    else
+        warn "Wan2.2_VAE.safetensors already exists — skipping."
+    fi
+
+    # umt5-xxl is the Wan text encoder; it lives on the GPU unless the card is
+    # below 12 GB, in which case the wrapper streams it from RAM.
+    if [[ ! -f "$SD_DIR/text_encoders/umt5-xxl-encoder-Q8_0.gguf" ]]; then
+        info "Downloading umt5-xxl-encoder-Q8_0.gguf (~6 GB)..."
+        HF_DOWNLOAD "city96/umt5-xxl-encoder-gguf" \
+            "umt5-xxl-encoder-Q8_0.gguf" \
+            "$SD_DIR/text_encoders/umt5-xxl-encoder-Q8_0.gguf"
+    else
+        warn "umt5-xxl-encoder-Q8_0.gguf already exists — skipping."
+    fi
+}
+
 download_kokoro_models() {
     local KOKORO_DIR="services/kokoro"
 
@@ -546,10 +608,10 @@ except Exception as e:
 detect_cuda() {
     CUDA_VERSION_SD=""
     UBUNTU_VERSION_SD=""
-    # Pinned llama-swap version (v255): the :cuda/:cuda13 floating tags move
+    # Pinned llama-swap version (v267): the :cuda/:cuda13 floating tags move
     # with every upstream release, and major format changes (e.g. v243 macro
     # engine) then break deployments silently. Upgrade deliberately.
-    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991"
+    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda-b11889"
     LLAMA_SWAP_DISABLE_REQUIRE=0
     LTX_DISABLE_REQUIRE=0
     SD_DISABLE_REQUIRE=0
@@ -570,7 +632,7 @@ detect_cuda() {
 
     if [[ "$cuda_major" -ge 13 ]]; then
         CUDA_VERSION_SD="13.0.1"; UBUNTU_VERSION_SD="24.04"
-        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v255-cuda13-b10991"
+        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:v267-cuda13-b11889"
         info "CUDA driver ${cuda_full}: using CUDA 13 images (standard deployment)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"
@@ -611,7 +673,13 @@ resolve_stack() {
     [[ "$VOICE_BACKEND" == "piper" ]]  && PROFILES="$PROFILES --profile with-voice-piper"
     [[ "$VOICE_BACKEND" == "kokoro" ]] && PROFILES="$PROFILES --profile with-voice-kokoro"
     [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
-    [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
+    if [[ "$WITH_VIDEO" == "true" ]]; then
+        if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+            PROFILES="$PROFILES --profile with-video-wan"
+        else
+            PROFILES="$PROFILES --profile with-video"
+        fi
+    fi
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
@@ -628,6 +696,12 @@ resolve_stack() {
         else
             info "GPU mode — using GPU compose file."
         fi
+    fi
+
+    if [[ "$COMPOSE_FILE" == *cpu.yml && "$VIDEO_BACKEND" == "wan" ]]; then
+        error "Wan 2.2 needs a GPU: a 5-second 480p clip takes ~90 minutes on CPU and exceeds the container RAM."
+        error "Use --with-video (LTX-Video) on CPU hosts, or WAN_VIDEO_ALLOW_CPU=1 in .env to attempt it anyway."
+        exit 1
     fi
 }
 
@@ -739,7 +813,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.7 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v12.8 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -755,7 +829,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v12.7 — Deployment Script
+FLAI v12.8 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -767,7 +841,9 @@ Options:
   --with-rag          Deploy Qdrant for RAG (document search)
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
                       (default: disabled, use this flag to enable)
-  --with-video        Deploy LTX-Video for video generation
+  --with-video        Deploy LTX-Video (fast backend, clips up to 10 s)
+  --with-video-wan    Deploy Wan 2.2 TI2V 5B (quality backend, 5 s clips)
+                      (mutually exclusive with --with-video; needs a GPU)
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
@@ -794,6 +870,8 @@ Model Download Sizes (approximate):
   Image editing (Flux.2 Klein 4B)    ~5 GB
   Video generation (LTX-Video 2B)    ~5.9 GB
   T5 text encoder (PixArt T5-XXL)    ~18 GB (on disk, float32)
+  Video generation (Wan 2.2 TI2V 5B) ~3.4 GB (Q4_K_M GGUF)
+  Wan VAE + umt5-xxl encoder         ~1.4 GB + ~6 GB
   TTS (Piper)                        ~0.2 GB
   TTS (Kokoro)                       ~1 GB
   SLM embedding model                ~0.5 GB (pre-downloaded during Docker build)
@@ -820,7 +898,8 @@ for arg in "$@"; do
         --with-voice-kokoro)             VOICE_KOKORO=true ;;
         --with-rag)                      WITH_RAG=true ;;
         --with-image-gen)                WITH_IMAGE_GEN=true ;;
-        --with-video)                    WITH_VIDEO=true ;;
+        --with-video)                    WITH_VIDEO=true; VIDEO_USE_LTX=true ;;
+        --with-video-wan)                WITH_VIDEO=true; VIDEO_USE_WAN=true ;;
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
@@ -836,6 +915,14 @@ if [[ "$VOICE_PIPER" == "true" && "$VOICE_KOKORO" == "true" ]]; then
     exit 1
 fi
 
+if [[ "${VIDEO_USE_WAN:-false}" == "true" && "${VIDEO_USE_LTX:-false}" == "true" ]]; then
+    error "--with-video and --with-video-wan are mutually exclusive — choose only one video backend."
+    exit 1
+fi
+
+VIDEO_BACKEND="ltx"
+[[ "${VIDEO_USE_WAN:-false}" == "true" ]] && VIDEO_BACKEND="wan"
+
 VOICE_BACKEND=""
 [[ "$VOICE_PIPER" == "true" ]] && VOICE_BACKEND="piper"
 [[ "$VOICE_KOKORO" == "true" ]] && VOICE_BACKEND="kokoro"
@@ -843,7 +930,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.7 — Deployment Script"
+    echo "  FLAI v12.8 — Deployment Script"
     echo "============================================"
     echo ""
 
@@ -861,7 +948,13 @@ main() {
         download_llamacpp_models
         download_sd_cpp_models
         download_tts_models
-        [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
+        if [[ "$WITH_VIDEO" == "true" ]]; then
+            if [[ "$VIDEO_BACKEND" == "wan" ]]; then
+                download_wan_video_models
+            else
+                download_ltx_video_models
+            fi
+        fi
         [[ "$VOICE_BACKEND" != "" ]] && download_whisper_models
     fi
 

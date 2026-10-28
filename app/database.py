@@ -211,7 +211,12 @@ def _autofit_context(
         except Exception:
             mmproj_mb = 0
 
-    kv_per_token = KV_PER_TOKEN_MB.get(module, 0.08)
+    # KV per token from the model's own shapes (q4_0), not a per-module constant:
+    # the reasoning model needs 0.022 MB/token while the multimodal one needs
+    # 0.0396, and a CPU-only host pays the same number out of RAM.
+    from app.vram_probe import kv_per_token_from_metadata
+
+    kv_per_token = kv_per_token_from_metadata(meta) or KV_PER_TOKEN_MB.get(module, 0.08)
     vram_budget = (total_vram_mb or 0) * 0.85
     ram_budget = (total_ram_mb * 0.70) - 2048
 
@@ -416,6 +421,21 @@ def _init_postgresql():
         ON storage_snapshots (user_id, taken_at)
     """)
     c.execute("""
+        CREATE TABLE IF NOT EXISTS system_samples (
+            id BIGSERIAL PRIMARY KEY,
+            taken_at TIMESTAMPTZ NOT NULL,
+            cpu_pct REAL,
+            ram_used_mb INTEGER,
+            ram_total_mb INTEGER,
+            gpu_pct REAL,
+            vram_used_mb INTEGER,
+            vram_total_mb INTEGER
+        )
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_system_samples_time ON system_samples (taken_at)
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS monitoring_archive (
             id BIGSERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -470,6 +490,15 @@ def _init_postgresql():
     """)
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
+    """)
+    # BM25 over lemmatized words replaced ts_rank_cd (which has no IDF); the
+    # column is filled by _store_chunks and by `flask rag-lemmatize-chunks`
+    # for chunks indexed before the change.
+    c.execute("""
+        ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS lemmas TEXT[]
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_rag_chunks_lemmas ON rag_chunks USING GIN (lemmas)
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (

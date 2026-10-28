@@ -38,6 +38,8 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - PYTHONDONTWRITEBYTECODE=1
       - CRAWL_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
+      # Mirrors the sd container limit: the Wan planner runs in this process.
+      - WAN_VIDEO_RAM_LIMIT_MB=12288
     networks:
       - flai_network
     restart: unless-stopped
@@ -67,7 +69,7 @@ services:
   # REDIS (Required - Request Queue)
   # ============================================================
   redis:
-    image: redis:8.4.2-alpine
+    image: redis:8.4.7-alpine
     container_name: flai-redis
     volumes:
       - redis_data:/data
@@ -99,7 +101,7 @@ services:
   # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
   llama-swap:
-    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991}
+    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:v267-cuda-b11889}
     container_name: flai-llamaswap
     volumes:
       - ./services/llamacpp/models:/models:ro
@@ -131,6 +133,9 @@ services:
 
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
+  # Also serves the Wan 2.2 5B video backend: the same container answers
+  # POST /v1/video/generations when FLAI runs with VIDEO_BACKEND=wan, so
+  # `--profile with-video-wan` starts it without image generation.
   # ============================================================
   sd_cpp:
     image: flai-sd_cpp:cuda
@@ -152,12 +157,18 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_DISABLE_REQUIRE=${SD_DISABLE_REQUIRE:-0}
+      # Below this much VRAM the umt5 encoder is streamed from RAM.
+      # 16 GB cards need 16384: the measured 480p clip takes 15.0 GB and
+      # the container's own CUDA context leaves less than that free.
+      - WAN_OFFLOAD_BELOW_VRAM_MB=${WAN_OFFLOAD_BELOW_VRAM_MB:-12000}
     runtime: nvidia
     deploy:
       resources:
         limits:
           cpus: '8.0'
-          memory: 10G
+          # 12G: on a <12 GB card the Wan wrapper streams the umt5 encoder
+          # from RAM (--offload-to-cpu), which needs the extra headroom.
+          memory: 12G
         reservations:
           cpus: '2.0'
           memory: 4G
@@ -174,6 +185,7 @@ services:
       start_period: 10s
     profiles:
       - with-image-gen
+      - with-video-wan
     logging:
       driver: "json-file"
       options:
@@ -234,7 +246,7 @@ services:
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0
     container_name: flai-whisper
     # libctranslate2 in this image is built with an executable-stack
     # (PT_GNU_STACK) flag; hardened hosts (AppArmor on Ubuntu 23.10+/24.04)
@@ -243,7 +255,7 @@ services:
     security_opt:
       - apparmor=unconfined
     environment:
-      - ASR_MODEL=medium
+      - ASR_MODEL=large-v3-turbo
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
     volumes:
@@ -256,12 +268,18 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      # The first start downloads large-v3-turbo (and the ASR image pulls its
+      # diarization models): minutes, not seconds. A short start period marks the
+      # container unhealthy while it is merely downloading.
+      start_period: 300s
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          # faster-whisper is CPU-bound: measured 11.7 s for 20 s of speech on two
+          # cores (RTF 0.55). The host has 12; the queue serialises transcriptions,
+          # so the extra cores only exist while one runs.
+          cpus: '6.0'
+          memory: 3G
         reservations:
           cpus: '0.5'
           memory: 1G
@@ -274,6 +292,56 @@ services:
       - with-voice
       - with-voice-piper
       - with-voice-kokoro
+      - with-whisper-cpu
+
+  # ============================================================
+  # WHISPER ON THE GPU (Optional, replaces the CPU container above)
+  # ============================================================
+  # Profile ``with-whisper-gpu`` instead of ``with-voice*`` for the ASR part:
+  #   docker compose -f docker-compose.gpu.yml \
+  #     --profile with-whisper-gpu --profile with-tts-piper up -d
+  # Set WHISPER_GPU=true in .env so the app routes transcriptions through the GPU
+  # queue and budgets WHISPER_VRAM_MB. The two Whisper containers have different
+  # names on purpose: profiles are additive, so both would run if both profile
+  # families were selected, and only one may answer on a port.
+  whisper-gpu:
+    # The -gpu tag is the CUDA build; the plain image has no CUDA libraries and
+    # ASR_DEVICE=cuda would fail there.
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0-gpu
+    container_name: flai-whisper-gpu
+    runtime: nvidia
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      - ASR_MODEL=large-v3-turbo
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cuda
+    volumes:
+      - ./data/hf-cache/hub:/root/.cache/whisper
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-whisper-gpu
 
   # ============================================================
   # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
@@ -315,6 +383,7 @@ services:
         max-file: "3"
     profiles:
       - with-voice-kokoro
+      - with-tts-kokoro
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis, selectable backend)
@@ -353,12 +422,13 @@ services:
     profiles:
       - with-voice
       - with-voice-piper
+      - with-tts-piper
 
   # ============================================================
   # SEARXNG (Optional - Web Search)
   # ============================================================
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng@sha256:854f239d5c181db9c4282cd0ffc1737a61232dd6ad0ea964028b96df17d7758a
     container_name: flai-searxng
     volumes:
       - ./searxng:/etc/searxng
@@ -426,7 +496,7 @@ services:
   # QDRANT (Optional - Vector DB for RAG)
   # ============================================================
   qdrant:
-    image: qdrant/qdrant:v1.19.0
+    image: qdrant/qdrant:v1.20.0
     container_name: flai-qdrant
     volumes:
       - qdrant_data:/qdrant/storage
@@ -462,7 +532,7 @@ services:
   # POSTGRESQL (Required - Application DB)
   # ============================================================
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18.6-alpine
     container_name: flai-postgres
     volumes:
       - postgres_data:/var/lib/postgresql
@@ -492,7 +562,7 @@ services:
   # CRAWLER (Optional - Crawl4AI for deep page reading)
   # ============================================================
   crawler:
-    image: unclecode/crawl4ai:0.9.4
+    image: unclecode/crawl4ai:0.9.5
     container_name: flai-crawler
     profiles: ["with-crawler"]
     networks: [flai_network]

@@ -80,48 +80,6 @@ def test_reindexing_replaces_the_mirrored_chunks(test_app):
 
 
 @pytest.mark.unit
-def test_lexical_terms_offer_every_word_for_the_rarity_gate():
-    """The date in the question carries the discriminating word, so the gate —
-    not the term chooser — must decide what is common."""
-    module = RagModule()
-
-    assert module._lexical_terms("Сколько рабочих мест было у Иванова в Твери?") == [
-        "сколько",
-        "рабочих",
-        "мест",
-        "было",
-        "иванова",
-        "твери",
-    ]
-    assert module._lexical_terms("Для чего Иванов использовал bash?") == [
-        "для",
-        "чего",
-        "иванов",
-        "использовал",
-        "bash",
-    ]
-
-
-@pytest.mark.unit
-def test_lexical_terms_fall_back_to_all_words():
-    module = RagModule()
-
-    assert module._lexical_terms("как настроить почтовый сервер") == [
-        "как",
-        "настроить",
-        "почтовый",
-        "сервер",
-    ]
-
-
-@pytest.mark.unit
-def test_tsquery_terms_cover_both_stems():
-    """Case forms of one name can stem differently; both prefixes are kept."""
-    assert RagModule._tsquery_terms(["твери"]) == ["твери:*", "твер:*"]
-    assert RagModule._tsquery_terms(["баш"]) == ["баш:*"]
-
-
-@pytest.mark.unit
 def test_rerank_scores_are_normalised_and_ordered(monkeypatch):
     """Raw logits become comparable scores with the best candidate at 1.0."""
     from app import reranker

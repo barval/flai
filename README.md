@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.7](#-whats-new-in-v127)
+- [🆕 What's New in v12.8](#-whats-new-in-v128)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,15 +73,13 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.7
+## 🆕 What's New in v12.8
 
-- **Document search that finds things** — hybrid retrieval (vectors + PostgreSQL full-text, fused with reciprocal rank fusion) is now on by default, and a **search scope** (folder + upload period) narrows the corpus before retrieval. On the 22-question set hybrid measured MRR 0.688 → 0.744 and nDCG 0.751 → 0.965 against dense-only, and the chat no longer cuts the retrieved list at fifteen fragments. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Structure-aware chunking** — the new `structured` strategy keeps one logical entry (dates, organisation, city) inside one chunk, which is what counting and listing questions need.
-- **CPU cross-encoder reranker (optional)** — `bge-reranker-v2-m3` is a regular module with a model picker; it stays off by default because it pays off only in a narrow context window and lowers ranking quality in a wide one. → [MODELS.md](docs/MODELS.md)
-- **Admin Monitoring tab** — storage, sessions, messages, tasks, tokens, files, documents and internet requests per user over 1 h to 30 d, drawn as hand-written SVG bar charts with no chart library. → [MONITORING.md](docs/MONITORING.md)
-- **Admin Settings tab** — 139 of 149 environment variables are editable in the browser (database > `.env` > built-in default, applied without a restart); secrets stay masked and every change is audited. → [CONFIGURATION.md](docs/CONFIGURATION.md)
-- **Per-user storage limits and internet-request accounting** — an editable megabyte limit enforced on every upload path, and a month-to-date count of every outbound call (search, page fetch, crawl). → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
-- **A phone-first admin panel** — Users, Settings, Cameras, Backups, Model Hub results and Downloaded models render as cards that keep every desktop column, instead of tables that turned the page sideways.
+- **Two video backends.** LTX-Video 2B stays the default (fast, clips up to 10 s, 3.1 GB of VRAM); Wan 2.2 TI2V 5B Turbo joins it as the quality option (5 s, better motion, measured 209 s and 15.0 GB on a 16 GB card). One `VIDEO_BACKEND` switch, `--with-video` / `--with-video-wan` at deploy time, and a VRAM preset chain that keeps a full clip on 8 and 12 GB cards. → [VIDEO.md](docs/VIDEO.md)
+- **Long-term memory extracts facts with the model.** The rule-based extractor produced zero facts from 30 real messages; extraction now runs on the background queue with a strict JSON schema, keeps `kind`/`confidence`, injects a consolidated profile block and is measurable with `flask memory-eval`. → [MEMORY.md](docs/MEMORY.md)
+- **VRAM is measured, not guessed.** The KV cache comes from each model's own GGUF shapes (the old constants over-counted 1.4–2 GB), measured footprints win over formulas, models that fit stay resident together, and `flask vram-probe` / `flask vram-plan` show the numbers before a save. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **Hybrid retrieval is BM25 over lemmas.** `ts_rank_cd` is gone; fused MRR rose 0.688 → 0.802 and nDCG@20 0.765 → 0.872 on two 30-question sets. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Security and dependency refresh.** Pillow 13.0.0, python-dotenv 1.2.4, urllib3 2.8.0, Werkzeug 3.1.9, PostgreSQL 18.6, Redis 8.4.7, Qdrant 1.20, gunicorn 26.2.0, a locked 88-package image, and `pip-audit` + Trivy in CI. → [UPGRADES.md](docs/UPGRADES.md)
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -90,8 +88,8 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 Four self-contained pages show the interface without installing anything — download a file
 and open it in a browser; no server and no network are needed:
 
-- [Chat, English](docs/demo/chat-en.html) · [Chat, Russian](docs/demo/chat-ru.html)
-- [Admin panel, English](docs/demo/admin-en.html) · [Admin panel, Russian](docs/demo/admin-ru.html)
+- [Chat (English)](docs/demo/chat-en.html) · [Chat (Russian)](docs/demo/chat-ru.html)
+- [Admin panel (English)](docs/demo/admin-en.html) · [Admin panel (Russian)](docs/demo/admin-ru.html)
 
 Everything is fictional except the interface and the data of the machine the demo was built
 on; every button answers with a notice instead of doing anything. → [DEMO.md](docs/DEMO.md)
@@ -108,7 +106,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ### 🎨 Media
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
-- **Video generation** — LTX-Video 2B, 8-step distilled inference, text or image+text prompts. → [VIDEO.md](docs/VIDEO.md)
+- **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
@@ -200,7 +198,7 @@ Browser / API client
                                   ▲
                           _gpu_lock (single)
                                   │
-   modules/ ── llama.cpp (multimodal, reasoning, embedding) · sd.cpp · LTX-Video
+   modules/ ── llama.cpp (multimodal, reasoning, embedding) · sd.cpp (+ Wan video) · LTX-Video
           ── Whisper · Piper/Kokoro · SearXNG/Tavily/Crawl4AI · SuperLocalMemory
 ```
 
@@ -227,7 +225,7 @@ Every message is classified by the router model into one of these categories. Th
 | `[-CRAWL-]` | **Deep site study** | Crawl4AI crawls the site → replaces the domain document → indexes it → reasons over the corpus | Crawled pages as `## <url>` sections (budget-capped) + SLM + summary + history |
 | `[-CAMERA-]` | **Camera snapshot** | Room-snapshot API grabs the current frame; the vision model analyses it | Snapshot description + SLM + history |
 | `[-REMEMBER-]` | **Remember a fact** | Rule-based SLM extraction (background, CPU-only) | — (writes to long-term memory) |
-| `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp / LTX-Video in their own GPU containers | — (no LLM context) |
+| `[-IMAGE-]` / `[-VIDEO-]` | **Media generation** | stable-diffusion.cpp (images, and Wan video) / LTX-Video in their own GPU containers | — (no LLM context) |
 | `none` | **Chat with tools** | Multimodal model + native tool calling | Tool results + SLM + history |
 
 **How it behaves in practice:**
@@ -260,13 +258,33 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-**Optional components add to this budget.** The CPU reranker (`bge-reranker-v2-m3`, off by default) costs
-~0.42 GB of disk and holds about **0.9 GB of RAM** while resident: it runs in llama-swap's `cpu_only` group,
-never touches VRAM and never takes a GPU queue slot, but on the CPU-only tier it competes with the reasoning
-model for cores (a warm query costs ~150 ms, the first one ~1.5 s). Hybrid search adds a PostgreSQL mirror of
-the chunks — a few MB per thousand chunks, no GPU memory.
+### What each optional profile costs
 
-Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis, the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its own headroom — on CPU it dominates, and the planner downgrades the format to fit both RAM and a wall-clock budget.
+Every service is a compose profile. These are measured footprints, not estimates — the numbers
+behind the planner in `resource_manager.py`. Add them to the base tier you run.
+
+| Profile | RAM | VRAM | Notes |
+|---|---|---|---|
+| **Core** (web, PostgreSQL, Redis, Qdrant, SearXNG, Crawl4AI, idle llama-swap) | ~2.5 GB | — | one llama.cpp model resident at a time |
+| **Piper TTS** (`with-voice-piper`) | **~0.5 GB** | — | measured with all four voices loaded |
+| **Kokoro TTS** (`with-voice-kokoro`) | **1.6 GB idle / ~4.5 GB warm** | — | +3.1 GB is the RU G2P worker, released after `KOKORO_G2P_IDLE_TIMEOUT` (300 s) |
+| **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; the planner budgets `WHISPER_RAM_MB` |
+| **Image generation** (`with-image-gen`) | ~1.5 GB | up to ~10 GB | sd.cpp, Z-Image Turbo Q8; SD and video never overlap |
+| **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |
+| **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card |
+| **SuperLocalMemory** (`with-slm`) | ~0.5 GB (planner budget 2 GB) | — | CPU embeddings |
+| **Reranker** (optional, off by default) | ~0.9 GB | — | `bge-reranker-v2-m3`, `cpu_only` group, never takes a GPU slot |
+
+The TTS profiles are mutually exclusive (Piper is the default, Kokoro the quality option), and so
+are the video profiles (LTX is the default, Wan the quality option). Both TTS backends run on the
+CPU on every tier — including GPU hosts — so they never compete for VRAM.
+
+Only one llama.cpp model is resident at a time, so the RAM budget covers the OS, PostgreSQL/Redis,
+the web app and the layers offloaded to CPU for reasoning on small GPUs. On CPU-only the seed stack
+is lightweight: a ~11 GB reasoning model and a ~2.5 GB multimodal model. Video generation needs its
+own headroom: on CPU it dominates (LTX planning starts at ~17.4 GB static and downgrades the format
+to fit both RAM and a wall-clock budget), and Wan is refused there entirely — a 5-second 480p clip
+measured ~98 s for a single 256×192 second and needs more than 12 GB of RAM at any useful size.
 
 ### What works at each tier
 
@@ -276,7 +294,8 @@ Only one llama.cpp model is resident at a time, so the RAM budget covers the OS,
 | Reasoning | ⚠️ partial CPU offload (~15–20 tok/s) | ✅ ~70–90 tok/s | ✅ ~107 tok/s | ✅ MXFP4 model, slow |
 | Image generation | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ resolution halved |
 | Image editing | ✅ up to 768 px | ✅ up to 1024 px | ✅ up to 1024 px | ⚠️ resolution halved |
-| Video generation | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
+| Video — LTX (up to 10 s) | ⚠️ 512×512×120 | ✅ 768×512×240 | ✅ 768×512×240 | ⚠️ adaptive downgrade |
+| Video — Wan (5 s) | ⚠️ 512×288×121, encoder offloaded | ✅ 832×480×121, encoder offloaded | ✅ 832×480×121 (209 s) | ❌ refused (needs a GPU) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | Document search (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | Long-term memory (SLM) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -296,7 +315,7 @@ Measured throughput for the default stack and every candidate model: [BENCHMARKS
 
 | CUDA version (driver branch) | Images | Notes |
 |------------------------------|--------|-------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard |
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v267-cuda13-b11889` | Standard |
 | 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard |
 | 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |
 | 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | NVIDIA image requirements disabled (`NVIDIA_DISABLE_REQUIRE=1`) |
@@ -331,8 +350,11 @@ cd flai
 # + document search (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag
 
-# + video generation (LTX-Video)
+# + video generation — pick ONE backend
+#   LTX: fast, clips up to 10 s (default)
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video
+#   Wan: slower, 5 s, better motion (GPU only)
+./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag --with-video-wan
 
 # + long-term memory, + web search, + site crawler
 ./deploy.sh --download-models --with-image-gen --with-voice-piper --with-rag \

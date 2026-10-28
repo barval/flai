@@ -8,6 +8,18 @@ import requests
 from app.mixins import TranslationMixin
 
 
+def whisper_service_url(gpu: bool) -> str:
+    """ASR endpoint for the selected profile.
+
+    The CPU and the GPU Whisper containers carry different names (two services
+    cannot share one container name, and compose profiles are additive), so the
+    endpoint follows the profile flag unless the deployment overrides
+    ``WHISPER_API_URL`` explicitly.
+    """
+    host = "flai-whisper-gpu" if gpu else "flai-whisper"
+    return f"http://{host}:9000/asr"
+
+
 class AudioModule(TranslationMixin):
     """Module for audio transcription via Whisper API"""
 
@@ -62,7 +74,9 @@ class AudioModule(TranslationMixin):
     def init_app(self, app):
         """Initialize module with Flask app"""
         self.app = app
-        self.whisper_api_url = app.config.get("WHISPER_API_URL", "http://flai-whisper:9000/asr")
+        self.whisper_api_url = app.config.get("WHISPER_API_URL") or whisper_service_url(
+            bool(app.config.get("WHISPER_GPU"))
+        )
         self.timeout = app.config.get("WHISPER_API_TIMEOUT", 120)
 
         self.logger.info(f"Initializing AudioModule with Whisper URL: {self.whisper_api_url}")
@@ -84,7 +98,9 @@ class AudioModule(TranslationMixin):
             )
         else:
             self.logger.warning(
-                f"AudioModule initialized, but Whisper API unavailable ({self.whisper_api_url}). Will retry on each request."
+                f"AudioModule initialized, but Whisper API unavailable ({self.whisper_api_url}). Will retry on each request. "
+                f"If you switched the compose profile, set WHISPER_GPU to match — the other endpoint is "
+                f"{whisper_service_url(not bool(app.config.get('WHISPER_GPU')))}."
             )
 
     def check_availability(self):

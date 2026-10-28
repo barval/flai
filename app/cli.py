@@ -774,6 +774,7 @@ def rag_eval_generate(user, count, lang, model, doc, out):
 def rag_backfill_chunks(user):
     """Mirror already-indexed chunks into PostgreSQL for hybrid search."""
     from app.database import get_db
+    from app.lemmatizer import lemmas as lemmatize
 
     rag = current_app.modules.get("rag")
     if rag is None or not rag.check_availability():
@@ -810,13 +811,328 @@ def rag_backfill_chunks(user):
             cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user, doc_id))
             for index, text, _name in rows:
                 cursor.execute(
-                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
-                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                    (user, doc_id, index, filename, text),
+                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (user, doc_id, index, filename, text, lemmatize(text)),
                 )
                 written += 1
 
     click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
+
+
+@click.command("vram-probe")
+@click.option(
+    "--module",
+    default="multimodal",
+    show_default=True,
+    type=click.Choice(["multimodal", "reasoning", "embedding"]),
+    help="Module whose model is measured",
+)
+@click.option("--peak", is_flag=True, help="Also send a long prompt and record the prefill peak")
+@click.option("--peak-chars", default=16000, show_default=True, help="Prompt size for the peak run")
+@click.option("--store", is_flag=True, help="Write the result into model_vram_estimates")
+@with_appcontext
+def vram_probe(module, peak, peak_chars, store):
+    """Measure one model's real VRAM footprint (weights, vision encoder, KV, peak).
+
+    The analytical constant is a guess per module; the fitted context window and
+    the KV quantisation decide the truth. Measured numbers are what a
+    co-residency decision has to use — loading into the last megabyte lets the
+    model spill into host memory, which costs far more than a reload.
+    """
+    import os
+
+    from app.database import upsert_vram_estimate
+    from app.model_config import get_model_config
+    from app.vram_probe import probe_module
+
+    swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+    result = probe_module(module, swap_url, peak_prompt_chars=peak_chars if peak else 0)
+
+    config = get_model_config(module) or {}
+    click.echo(f"module:    {result['module']} ({result['model']})")
+    click.echo(f"context:   {result['ctx_size']}")
+    click.echo(f"baseline:  {result['baseline_mb']} MB")
+    click.echo(f"total:     {result['total_mb']} MB")
+    click.echo(f"weights:   {result['weights_mb']} MB")
+    click.echo(f"mmproj:    {result['mmproj_mb']} MB")
+    click.echo(f"kv+bufs:   {result['kv_and_buffers_mb']} MB (residual, includes buffers)")
+    click.echo(f"kv shapes: {result['kv_expected_mb']} MB expected from the GGUF architecture")
+
+    if not result["plausible"]:
+        click.echo("measurement unusable: the total is below the model's own weights — nothing stored")
+        return
+
+    if store:
+        upsert_vram_estimate(
+            module,
+            model_name=result["model"] or "",
+            context_length=result["ctx_size"],
+            n_gpu_layers=int(config.get("n_gpu_layers") or -1),
+            measured_mb=result["total_mb"],
+        )
+        click.echo("stored in model_vram_estimates")
+
+
+@click.command("vram-plan")
+@click.option(
+    "--module",
+    default="reasoning",
+    show_default=True,
+    type=click.Choice(["multimodal", "reasoning", "embedding"]),
+    help="Module that is about to be loaded",
+)
+@with_appcontext
+def vram_plan(module):
+    """Show what would stay resident and what would be evicted — changes nothing.
+
+    The same decision `ensure_vram_for()` makes: measured footprints, the
+    prefill headroom and the least-recently-used order.
+    """
+    import os
+
+    from app.resource_manager import get_resource_manager
+
+    swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+    rm = get_resource_manager()
+    needed = rm.get_vram_needed_mb(module)
+    loaded = rm._resident_modules(swap_url)  # noqa: SLF001 - read-only diagnosis
+    plan = rm._eviction_plan(module, needed, loaded)  # noqa: SLF001
+    mode = os.getenv("VRAM_CO_RESIDENCY", "auto")
+
+    click.echo(f"mode:      {mode}")
+    click.echo(f"card:      {rm.hardware.total_vram_mb} MB total, {rm.hardware.available_vram_mb} MB free")
+    click.echo(f"requested: {module}, {needed} MB")
+    if not loaded:
+        click.echo("resident:  none")
+    for entry in loaded:
+        mark = "evict" if entry["name"] in plan else "keep "
+        click.echo(f"  {mark} {entry['name']}: {entry['mb']} MB (last used {entry['last_used']:.0f})")
+    if not plan:
+        click.echo("result:    loads next to the residents, nothing is unloaded")
+
+
+@click.command("memory-report")
+@click.option("--user", required=True, help="Login whose long-term memory is reported")
+@click.option("--query", default="", help="Show what would be injected for this query")
+@click.option("--limit", default=300, show_default=True, help="Facts to inspect")
+@with_appcontext
+def memory_report(user, query, limit):
+    """Show what long-term memory holds for a user and what it would inject."""
+    import collections
+
+    from modules.base import BaseModule
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    kinds: collections.Counter = collections.Counter()
+    for fact in facts:
+        kinds[str(fact.get("kind") or (fact.get("metadata") or {}).get("kind") or "unclassified")] += 1
+
+    click.echo(f"facts: {len(facts)} for {user}")
+    for kind, count in kinds.most_common():
+        click.echo(f"  {kind:14s} {count}")
+
+    if query:
+        raw = slm.recall(query, limit=int(current_app.config.get("SLM_RECALL_LIMIT", 7)) * 2, profile=user)
+        selected = BaseModule.select_recalled_facts(
+            raw,
+            limit=int(current_app.config.get("SLM_RECALL_LIMIT", 7)),
+            min_score=float(current_app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
+        )
+        chosen = {id(fact) for fact in selected}
+        click.echo(f"recall for {query!r}: {len(raw)} candidates, {len(selected)} injected")
+        for fact in raw:
+            mark = "+" if id(fact) in chosen else "-"
+            score = fact.get("score")
+            click.echo(f"  {mark} {str(score if score is not None else '-')[:6]:>6}  {str(fact.get('content'))[:90]}")
+
+
+@click.command("memory-purge")
+@click.option("--user", required=True, help="Login whose facts are removed")
+@click.option("--source", required=True, help="Only facts written by this source (e.g. auto_import)")
+@click.option("--yes", is_flag=True, help="Actually delete; without it only lists")
+@with_appcontext
+def memory_purge(user, source, yes):
+    """Delete facts of one source from a user's memory.
+
+    The history import stored every user message verbatim, so a profile filled
+    that way is mostly questions and task text. This removes exactly those rows
+    and leaves everything the extractor distilled.
+    """
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=1000, profile=user)
+    meta_ids = slm.fact_meta_ids(profile=user, source=source) if hasattr(slm, "fact_meta_ids") else []
+    targets = [f for f in facts if str(f.get("fact_id")) in set(meta_ids)]
+    if not meta_ids:
+        click.echo("no facts of that source recorded — nothing to do")
+        return
+
+    click.echo(f"{len(targets)} facts of source {source!r} for {user}:")
+    for fact in targets[:20]:
+        click.echo(f"  {str(fact.get('content'))[:80]}")
+    if not yes:
+        click.echo("dry run — pass --yes to delete")
+        return
+
+    removed = 0
+    for fact in targets:
+        if slm.delete_fact(str(fact.get("fact_id")), profile=user):
+            removed += 1
+    click.echo(f"deleted {removed} facts")
+
+
+@click.command("memory-profile")
+@click.option("--user", required=True, help="Login whose profile is consolidated")
+@click.option("--lang", default="ru", type=click.Choice(["ru", "en"]), show_default=True)
+@click.option("--limit", default=200, show_default=True, help="Facts to consider")
+@click.option("--apply", is_flag=True, help="Store the result as the profile block")
+@with_appcontext
+def memory_profile(user, lang, limit, apply):
+    """Rewrite the user's facts into one compact profile block.
+
+    The block is what recall always injects, so it is the only place where
+    duplicates and contradictions can be resolved once instead of on every
+    request. Individual facts stay in the store.
+    """
+    from app.utils import format_prompt
+    from modules.base import response_language_name
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    material = [
+        fact
+        for fact in facts
+        if str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
+        and (fact.get("content") or fact.get("text"))
+    ]
+    if len(material) < 3:
+        click.echo(f"only {len(material)} usable facts — nothing to consolidate yet")
+        return
+
+    lines = "\n".join(f"- {str(fact.get('content') or fact.get('text'))[:200]}" for fact in material)
+    prompt = format_prompt(
+        "memory_profile.template",
+        {"facts": lines, "response_language": response_language_name(lang)},
+        lang=lang,
+    )
+    if not prompt:
+        raise click.ClickException("profile template failed to render")
+
+    raw = current_app.modules["base"].call_llamacpp(
+        [{"role": "user", "content": prompt}],
+        model_type="multimodal",
+        lang=lang,
+        temperature=0.2,
+    )
+    block = " ".join(str(raw).split())[:1200]
+    if not block or block.startswith("⚠"):
+        raise click.ClickException(f"profile consolidation failed: {block[:200]}")
+
+    click.echo(block)
+    click.echo(f"({len(block)} chars, from {len(material)} facts)")
+    if not apply:
+        click.echo("dry run — pass --apply to store it")
+        return
+    stored = slm.remember(
+        block,
+        metadata={"kind": "profile", "confidence": 1.0, "source": "profile_consolidation"},
+        profile=user,
+    )
+    click.echo("stored" if stored else "store failed")
+
+
+@click.command("memory-eval")
+@click.option("--user", required=True, help="Login whose memory is evaluated")
+@click.option("--dataset", required=True, help="JSONL with {question, expected[]}")
+@click.option("--k", default=5, show_default=True, help="Facts considered per question")
+@click.option("--out", default="", help="Write the metrics to this JSON file")
+@click.option("--no-profile", is_flag=True, help="Score recall alone, without the always-injected profile")
+@with_appcontext
+def memory_eval(user, dataset, k, out, no_profile):
+    """Score recall against a question set: hit@k, MRR and the injection cost."""
+    import json
+    import time
+
+    from modules.base import BaseModule
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+
+    records = []
+    with open(dataset, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+
+    min_score = float(current_app.config.get("SLM_MIN_RECALL_SCORE", 0.5))
+
+    def recall(question: str, top_k: int):
+        started = time.time()
+        try:
+            raw = slm.recall(question, limit=max(top_k * 2, 6), profile=user)
+        except Exception:
+            raw = []
+        selected = BaseModule.select_recalled_facts(raw, limit=top_k, min_score=min_score)
+        if no_profile:
+            # The profile block is always injected, so scoring it together with
+            # recall saturates hit@k: every question "hits" the same block.
+            selected = [fact for fact in selected if str(fact.get("kind") or "") != "profile"]
+        return [str(fact.get("content") or fact.get("text") or "") for fact in selected], time.time() - started
+
+    from app.memory_eval import evaluate_memory
+
+    result = evaluate_memory(records, recall, k=k)
+    click.echo(f"questions: {result['questions']}")
+    click.echo(f"hit@{k}:    {result['hit']}")
+    click.echo(f"MRR:       {result['mrr']}")
+    click.echo(f"injected:  {result['avg_facts']} facts per question")
+    click.echo(f"latency:   p50 {result['p50_ms']} ms")
+
+    if out:
+        with open(out, "w", encoding="utf-8") as handle:
+            json.dump({"user": user, "k": k, **result}, handle, ensure_ascii=False, indent=2)
+        click.echo(f"written to {out}")
+
+
+@click.command("rag-lemmatize-chunks")
+@click.option("--user", required=True, help="Login whose mirrored chunks are lemmatized")
+@click.option("--batch", default=200, show_default=True, help="Rows read per round")
+@with_appcontext
+def rag_lemmatize_chunks(user, batch):
+    """Fill ``rag_chunks.lemmas`` for chunks mirrored before BM25 replaced ts_rank_cd."""
+    from app.database import get_db
+    from app.lemmatizer import lemmas as lemmatize
+
+    updated = 0
+    while True:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, text FROM rag_chunks WHERE user_id = %s AND lemmas IS NULL LIMIT %s",
+                (user, batch),
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                break
+            for row in rows:
+                cursor.execute(
+                    "UPDATE rag_chunks SET lemmas = %s WHERE id = %s",
+                    (lemmatize(row["text"] or ""), row["id"]),
+                )
+                updated += 1
+    click.echo(f"Lemmatized {updated} chunks for {user}")
 
 
 @click.command("rag-reindex")

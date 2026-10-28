@@ -26,6 +26,26 @@ ruff check .
 mypy app/ modules/               # CI runs with `|| true` — does not block
 ```
 
+## Зависимости и lock-файл
+
+Диапазоны версий, которые правит человек, лежат в `requirements.txt` и `pyproject.toml`; точный
+набор, который ставится в образ, закреплён в `requirements.lock`. Поскольку образ ставится из
+lock-файла, повышение версии разрешается из манифеста в отдельном контейнере, фиксируется в
+lock-файле и затем пересобирается, чтобы образ гарантированно ему соответствовал:
+
+```bash
+docker run --rm -v "$PWD":/src -w /src python:3.11-slim \
+  sh -c "pip install -q --no-cache-dir -r requirements.txt && pip freeze" > requirements.lock
+docker compose -f docker-compose.gpu.yml build web
+docker run --rm flai-web:latest pip freeze > /tmp/lock-check
+diff <(sort requirements.lock) <(sort /tmp/lock-check)   # должно быть пусто
+```
+
+CI проверяет `requirements.lock` через `pip-audit` и сканирует закреплённые образы через Trivy,
+поэтому версия с известной уязвимостью поднимается в манифесте, lock-файле и теге образа сразу.
+Базовые образы с плавающим тегом (`python:3.11-slim`, `searxng`) закреплены дайджестом — осознанное
+обновление заменяет значение `sha256:`, а не номер версии.
+
 ## Тесты
 
 ПЛИИ поставляет тесты для каждого ключевого компонента, а также нагрузочные тесты для веб-интерфейса.

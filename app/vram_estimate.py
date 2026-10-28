@@ -101,12 +101,33 @@ def _estimate_model_vram(
     }
 
 
-def _kv_per_token_for_module(module: str, cache_type: str = "q4_0") -> float:
-    """Return the calibrated per-token KV cache cost (MB) for a module.
+# Bytes per cached value in llama.cpp: q4_0 keeps 32 values in 18 bytes, q8_0 in
+# 34, f16 keeps a plain half per value.
+_KV_BYTES_PER_VALUE = {"q4_0": 0.5625, "q4_1": 0.5625, "q8_0": 1.0625, "f16": 2.0, "bf16": 2.0}
 
-    Uses the same per-module values as resource_manager.KV_PER_TOKEN_MB so that
-    the admin estimate and the runtime VRAM accounting agree.
+
+def _kv_per_token_for_module(module: str, cache_type: str = "q4_0", model_name: str = "") -> float:
+    """Per-token KV cache cost (MB) of the model that is actually selected.
+
+    Computed from the GGUF shapes — ``blocks × kv_heads × (key + value) × bytes``
+    — so it follows whatever the admin picks: measured on the live card, the
+    reasoning model needs 0.022 MB/token where the old module constant said 0.08
+    (+1.4 GB of phantom VRAM in the fit verdict), and the multimodal model needs
+    0.0396 where it said 0.10 (+2 GB). The module constant stays as a fallback
+    for models without metadata.
     """
+    if cache_type in _KV_BYTES_PER_VALUE and model_name:
+        try:
+            from app.utils import get_gguf_models_cached
+            from app.vram_probe import kv_per_token_from_metadata
+
+            meta = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+            value = kv_per_token_from_metadata(meta, bytes_per_value=_KV_BYTES_PER_VALUE[cache_type])
+            if value:
+                return value
+        except Exception:
+            pass
+
     from app.resource_manager import KV_PER_TOKEN_MB
 
     if module in KV_PER_TOKEN_MB:
@@ -215,6 +236,31 @@ def _get_llama_swap_running_ram_mb() -> int:
 
 
 # Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
+def _largest_fitting_ctx(
+    vram_budget_mb: float,
+    model_vram_mb: float,
+    compute_mb: float,
+    mmproj_mb: float,
+    kv_per_token: float,
+    floor: int = 2048,
+    step: int = 1024,
+) -> int | None:
+    """Largest context window at which the model still fits fully on the GPU.
+
+    KV cache grows linearly with the window and cannot be offloaded layer by
+    layer the way weights can, so an oversized window is its own failure mode:
+    the model fits, the window does not. Returns None when even ``floor`` does
+    not fit, or when the model itself already exceeds the budget.
+    """
+    if kv_per_token <= 0:
+        return None
+    room = vram_budget_mb - model_vram_mb - compute_mb - mmproj_mb
+    if room < floor * kv_per_token:
+        return None
+    largest = int(room / kv_per_token / step) * step
+    return largest if largest >= floor else None
+
+
 TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
 TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
 
@@ -225,6 +271,8 @@ def _classify_model_fit(
     file_size_mb: float | None = None,
     block_count: int | None = None,
     module: str = "multimodal",
+    kv_heads: int | None = None,
+    head_dim: int | None = None,
 ) -> dict:
     """Classify whether a model can be loaded and in what mode.
 
@@ -310,6 +358,23 @@ def _classify_model_fit(
     from app.utils import get_mmproj_size_mb
 
     mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
+    # A model that is not on disk (Model Hub) has no GGUF cache entry: the repo's
+    # config.json carries the KV shapes, so the estimate can still use them.
+    kv_per_token = None
+    if kv_heads and head_dim and block_count:
+        from app.vram_probe import kv_per_token_from_metadata
+
+        kv_per_token = kv_per_token_from_metadata(
+            {
+                "block_count": int(block_count),
+                "head_count_kv": int(kv_heads),
+                "key_length": int(head_dim),
+                "value_length": int(head_dim),
+            }
+        )
+    if not kv_per_token:
+        kv_per_token = _kv_per_token_for_module(module, "q4_0", model_name)
+
     est = _estimate_model_vram(
         file_size_mb=file_mb,
         block_count=block_count,
@@ -318,17 +383,54 @@ def _classify_model_fit(
         ctx_size=max(int(context_length), 1),
         supports_mtp=cached.get("supports_mtp", False),
         mmproj_size_mb=mmproj_mb,
-        kv_per_token=_kv_per_token_for_module(module),
+        kv_per_token=kv_per_token,
     )
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])
+
+    # A real measurement of this model at this window already contains the
+    # compute buffers the formula only approximates; it wins when it is current.
+    try:
+        from app.database import get_vram_estimate
+
+        row = get_vram_estimate(module, model_name=model_name) or {}
+        same_model = (row.get("model_name") or "").replace(".gguf", "") == str(model_name).replace(".gguf", "")
+        same_window = int(row.get("context_length") or 0) == int(context_length)
+        candidate = int(row.get("measured_vram_mb") or 0)
+        if same_model and same_window and candidate and (not total_vram or candidate <= total_vram):
+            vram_full_mb = candidate
+    except Exception:
+        pass
 
     # 2. Tier classification
     # On a GPU-less host a model can only be "CPU" (fits in free RAM) or
     # "impossible" — never "good", since there is no VRAM to fit into.
     if not has_gpu:
-        needed = int(file_mb + kv_cache_mb)
+        # The whole model lives in RAM: weights + KV cache + compute buffers.
+        needed = int(file_mb + kv_cache_mb + 400)
         ram_budget = max(0, free_ram_mb - TIER_RAM_HEADROOM_MB)
+        kv_per_token = (kv_cache_mb / context_length) if context_length else 0
+        ctx_fit = _largest_fitting_ctx(ram_budget, file_mb, 400, mmproj_mb, float(kv_per_token))
+        if ctx_fit is not None and ctx_fit < int(context_length) and needed > ram_budget:
+            return {
+                "tier": "cpu_offload",
+                "can_save": True,
+                "ngl_recommended": 0,
+                "ngl_total": ngl_total,
+                "vram_mb": vram_full_mb,
+                "file_mb": round(file_mb, 1),
+                "kv_cache_mb": kv_cache_mb,
+                "total_vram_mb": 0,
+                "system_ram_mb": total_ram,
+                "free_ram_mb": free_ram_mb,
+                "platform": "cpu",
+                "arch_max_ctx": arch_max_ctx,
+                "ctx_recommended": ctx_fit,
+                "message": _(
+                    "⚠ Fits only with a smaller context: {fit} instead of {requested} "
+                    "({kv} MB of KV cache at the requested window)."
+                ).format(fit=ctx_fit, requested=int(context_length), kv=kv_cache_mb),
+            }
         if needed <= ram_budget:
             tier = "cpu_offload"
             ngl_recommended = 0
@@ -368,6 +470,38 @@ def _classify_model_fit(
         message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=vram_full_mb, total=total_vram)
         can_save = True
     else:
+        # An oversized window is its own failure mode: KV cannot be offloaded
+        # layer by layer, so check whether a smaller window makes the model fit
+        # fully before falling back to a partial CPU offload of the weights.
+        kv_per_token = (kv_cache_mb / context_length) if context_length else 0
+        ctx_fit = _largest_fitting_ctx(
+            vram_budget, est["model_vram_mb"], 400, mmproj_mb, float(kv_per_token)
+        )
+        if ctx_fit is not None and ctx_fit < int(context_length):
+            tier = "cpu_offload"
+            ngl_recommended = ngl_total
+            can_save = True
+            message = _(
+                "⚠ Fits only with a smaller context: {fit} instead of {requested} "
+                "({kv} MB of KV cache at the requested window)."
+            ).format(fit=ctx_fit, requested=int(context_length), kv=kv_cache_mb)
+            return {
+                "tier": tier,
+                "can_save": can_save,
+                "ngl_recommended": ngl_recommended,
+                "ngl_total": ngl_total,
+                "vram_mb": vram_full_mb,
+                "file_mb": round(file_mb, 1),
+                "kv_cache_mb": kv_cache_mb,
+                "total_vram_mb": total_vram,
+                "system_ram_mb": total_ram,
+                "free_ram_mb": free_ram_mb,
+                "platform": "gpu",
+                "arch_max_ctx": arch_max_ctx,
+                "ctx_recommended": ctx_fit,
+                "message": message,
+            }
+
         # Try to find the largest ngl where both VRAM and RAM fit.
         # weights_on_gpu = file × (ngl/ngl_total)
         # weights_on_ram = file × (1 - ngl/ngl_total) = file - weights_on_gpu
@@ -424,3 +558,33 @@ def _classify_model_fit(
         "arch_max_ctx": arch_max_ctx,
         "message": message,
     }
+
+
+# ── Wan 2.2 TI2V 5B video footprint ──
+# Latent volume: VAE stride 16 spatially and 4 temporally (4n+1 frames).
+# Measured on the live 16 GB card (nvidia-smi polled every 2 s during the run):
+# 832×480×121 at 4 steps peaked at 15 340 MB of card-wide usage, i.e. ~15.0 GB
+# for the pipeline. The fixed part is the Q4 transformer (3.4 GB) + Wan VAE
+# (0.4 GB) + umt5-xxl encoder (6.0 GB, loaded to the GPU by default) + CUDA
+# context; the remainder scales with the latent volume. The same slope puts
+# 640×384×121 at ~13.0 GB and 720p (1280×704×121) at ~21 GB — both measured
+# against the same base, which is why 720p needs --offload-to-cpu on 16 GB.
+WAN_VIDEO_VRAM_BASE_MB = 9_800
+WAN_VIDEO_VRAM_MB_PER_LATENT_UNIT = 0.1075
+# The umt5-xxl text encoder is ~6 GB of that base. Below 12 GB of VRAM the
+# sd.cpp wrapper streams it from RAM instead (--offload-to-cpu), which is what
+# makes a full 480p clip possible on an 8 GB card at the cost of speed.
+WAN_VIDEO_TEXT_ENCODER_MB = 6_000
+
+
+def wan_video_vram_mb(
+    width: int, height: int, num_frames: int, encoder_out_of_vram: bool = False
+) -> int:
+    """Estimated peak VRAM (MB) for one Wan 2.2 5B clip at the given size."""
+    latents = (
+        max(1, int(width) // 16)
+        * max(1, int(height) // 16)
+        * max(1, (int(num_frames) - 1) // 4 + 1)
+    )
+    base = WAN_VIDEO_VRAM_BASE_MB - (WAN_VIDEO_TEXT_ENCODER_MB if encoder_out_of_vram else 0)
+    return int(base + latents * WAN_VIDEO_VRAM_MB_PER_LATENT_UNIT)

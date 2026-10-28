@@ -1046,7 +1046,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         # control, but sending it here doesn't hurt and may help with newer builds).
         if model_type == "reasoning":
             ctx = config.get("context_length", 4096)
-            payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
+            from app.utils import reasoning_budget_tokens
+
+            payload["reasoning_budget"] = reasoning_budget_tokens(ctx)
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
@@ -1744,6 +1746,13 @@ class LlamaCppClient:
         # This maps to the 'id' field in llama-swap config
         model = model_type
         if not model:
+            return None
+
+        # Embeddings used to rely on llama-swap's group swap to make room; with
+        # co-residency the group no longer evicts, so the embedding load goes
+        # through the same measured decision as every other model call.
+        if not self._ensure_vram(model_type):
+            self.logger.warning("get_embeddings: VRAM unavailable for the embedding model")
             return None
 
         timeout = config.get("timeout", 120)

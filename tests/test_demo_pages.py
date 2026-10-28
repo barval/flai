@@ -9,6 +9,7 @@ import pytest
 from demo.build import build_all
 
 PAGES = Path("docs/demo")
+DEMO = Path("demo")
 NAMES = ["chat-ru.html", "chat-en.html", "admin-ru.html", "admin-en.html"]
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 EN_SNAPSHOT = Path("demo/snapshot/en.json")
@@ -81,3 +82,78 @@ def test_video_is_inlined_and_playable():
     html = (PAGES / "chat-ru.html").read_text("utf-8")
     assert "data:video/mp4;base64," in html
     assert "<video" in html
+
+
+PERSONAL_DATA = re.compile(
+    r"password_hash|scrypt:|tavily_key_added_at|tvly-[A-Za-z0-9]|flai_[A-Za-z0-9]{16,}"
+)
+# The copyright line in the About dialog names the author and is part of the
+# interface; a leaked *account* shows up as a login value instead.
+REAL_ACCOUNTS = ('"login": "valery"', '"login": "andrey"', '"login": "testuser"')
+BASE64_PAYLOAD = re.compile(r"data:[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+")
+
+
+def _readable(path: Path) -> str:
+    """File text with embedded base64 removed: random runs there look like keys."""
+    return BASE64_PAYLOAD.sub("", path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_pages_carry_no_personal_data(name):
+    """A demo page is downloadable by anyone: no hashes, key ids or real accounts."""
+    html = _readable(PAGES / name)
+    assert not PERSONAL_DATA.search(html), f"{name}: personal data leaked into the demo"
+    for account in REAL_ACCOUNTS:
+        assert account not in html, f"{name}: real account {account} leaked into the demo"
+
+
+def test_snapshots_carry_no_personal_data():
+    for lang in ("ru", "en"):
+        text = _readable(DEMO / "snapshot" / f"{lang}.json")
+        assert not PERSONAL_DATA.search(text), f"{lang} snapshot: personal data"
+        for account in REAL_ACCOUNTS:
+            assert account not in text, f"{lang} snapshot: real account {account}"
+
+
+def test_user_rows_are_rebuilt_not_copied():
+    """The captured row must never be copied: it carries a real password hash."""
+    from demo.capture import rewrite_for_publication
+
+    snapshot = {
+        "routes": [
+            {
+                "path": "/admin/api/users",
+                "body": [{"password_hash": "scrypt:32768:8:1$abc", "tavily_key_added_at": "x", "login": "valery"}],
+            }
+        ]
+    }
+    row = rewrite_for_publication(snapshot, "en")["routes"][0]["body"][0]
+    assert "password_hash" not in row
+    assert "tavily_key_added_at" not in row
+    assert row["login"] == "alex"
+
+
+def test_scrubber_drops_credentials_and_keeps_the_interface_fields():
+    from demo.capture import _scrub
+
+    cleaned = _scrub(
+        {
+            "rows": [
+                {
+                    "login": "andrey",
+                    "password_hash": "scrypt:32768:8:1$abc$def",
+                    "tavily_key_added_at": "Sat, 03 Oct 2026 20:07:32 GMT",
+                    "has_tavily_key": False,
+                    "api_keys_count": 2,
+                    "note": "token ghp_abcdefghijklmnopqrstuvwxyz",
+                }
+            ]
+        }
+    )
+    row = cleaned["rows"][0]
+    assert "password_hash" not in row
+    assert "tavily_key_added_at" not in row
+    assert row["login"] == "andrey"
+    assert row["has_tavily_key"] is False
+    assert row["api_keys_count"] == 2
+    assert row["note"] == ""

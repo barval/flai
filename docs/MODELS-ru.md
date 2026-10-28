@@ -59,7 +59,12 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 > ⚠️ **Важно**: Мультимодальные модели **обязательно** должны размещаться в поддиректории с именем модели, а файл `mmproj-*.gguf` — внутри неё. Роутер llama.cpp автоматически обнаружит и загрузит проектор.
 
-### Модели генерации видео (LTX-Video 2B)
+### Модели генерации видео
+
+Доступны два бэкенда; `VIDEO_BACKEND` выбирает один, а deploy-скрипт
+(`--with-video` / `--with-video-wan`) скачивает соответствующие файлы.
+
+**LTX-Video 2B (по умолчанию, `--with-video`):**
 
 ```bash
 # Create models directory
@@ -71,6 +76,23 @@ wget -O services/ltx_video/models/ltxv-2b-0.9.8-distilled.safetensors \
 
 # T5 text encoder (run the download script)
 bash services/ltx_video/download-t5-encoder.sh
+```
+
+**Wan 2.2 TI2V 5B Turbo (вариант качества, `--with-video-wan`):** файлы лежат в каталогах
+моделей stable-diffusion.cpp, рядом с моделями изображений:
+
+```bash
+SD=services/sd_cpp/models
+mkdir -p "$SD/diffusion_models" "$SD/vae" "$SD/text_encoders"
+
+wget -O "$SD/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf" \
+  "https://huggingface.co/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF/resolve/main/Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf"
+
+wget -O "$SD/vae/Wan2.2_VAE.safetensors" \
+  "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/VAE/Wan2.2_VAE.safetensors"
+
+wget -O "$SD/text_encoders/umt5-xxl-encoder-Q8_0.gguf" \
+  "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q8_0.gguf"
 ```
 
 ## Модели, лицензии и размеры
@@ -117,6 +139,9 @@ bash services/ltx_video/download-t5-encoder.sh
 |--------|-----------|---------|--------------|
 | **`ltxv-2b-0.9.8-distilled.safetensors`** | Диффузионный трансформер LTX-Video 2B + VAE | [Лицензия LTX-Video](https://huggingface.co/Lightricks/LTX-Video) | ~5,9 ГБ |
 | **PixArt T5-XXL** (`text_encoder`) | Текстовый кодировщик T5 для LTX-Video | [Лицензия PixArt](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 ГБ (диск, float32) |
+| **wan2.2-ti2v-5b-turbo-Q4_K_M.gguf** | Диффузионный трансформер Wan 2.2 TI2V 5B Turbo | [Apache-2.0](https://huggingface.co/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF) | ~3,4 ГБ |
+| **Wan2.2_VAE.safetensors** | VAE Wan 2.2 | [Apache-2.0](https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF) | ~1,4 ГБ |
+| **umt5-xxl-encoder-Q8_0.gguf** | Текстовый кодировщик Wan | [Apache-2.0](https://huggingface.co/city96/umt5-xxl-encoder-gguf) | ~6 ГБ |
 
 ### Модели долговременной памяти
 
@@ -151,6 +176,7 @@ bash services/ltx_video/download-t5-encoder.sh
 | + Редактирование изображений | ~32 ГБ |
 | + Голос (TTS + Whisper) | ~35 ГБ |
 | + Генерация видео (LTX-Video + T5-кодировщик) | ~59 ГБ *(T5-кодировщик ~18 ГБ на диске в float32)* |
+| Генерация видео переключена на Wan 2.2 5B | ~41 ГБ *(без 18 ГБ T5-кодировщика; Wan добавляет ~11 ГБ)* |
 | + Долговременная память (модель эмбеддингов SLM) | ~59,5 ГБ *(SLM добавляет ~500 МБ)* |
 
 > **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн. Внешние скрипты и модули не загружаются во время работы.

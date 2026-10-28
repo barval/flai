@@ -3,15 +3,15 @@
   "documents": [
     {
       "source": "pdfs/en/quote-a.pdf",
-      "name": "Quote A — Northfield IT Supplies Ltd.pdf"
+      "name": "Quote 1 — Vector-Tech Ltd.pdf"
     },
     {
       "source": "pdfs/en/quote-b.pdf",
-      "name": "Quote B — Brightline Office Systems Ltd.pdf"
+      "name": "Quote 2 — Smart-Supply Ltd.pdf"
     },
     {
       "source": "pdfs/en/policy.pdf",
-      "name": "Procurement Policy.pdf"
+      "name": "School Procurement Policy.pdf"
     }
   ],
   "scenarios": [
@@ -28,83 +28,89 @@
     {
       "kind": "text",
       "title": "Quotes",
-      "prompt": "Compare the two quotes in my documents for 20 school laptops: which is better value and why?"
+      "prompt": "Compare the two quotations in my documents for supplying 20 laptops for a school: which is better value and why?"
     },
     {
       "kind": "rlm",
       "title": "Deep analysis",
-      "prompt": "Analyse both quotes and the procurement policy, build a short comparison table (at most six rows) and give a recommendation in two or three sentences.",
+      "prompt": "Analyse both quotations and the procurement policy, produce a short comparison table (no more than six rows) and give a recommendation in two or three sentences.",
       "documents": [
-        "quote-a",
-        "quote-b",
-        "policy"
+        "kp1",
+        "kp2",
+        "procurement"
       ]
     },
     {
       "kind": "image",
-      "title": "Image",
-      "prompt": "Draw a picture of a golden autumn park: yellow and orange maple leaves, a wooden bench and an umbrella. No text, no captions, no letters."
+      "title": "Picture",
+      "prompt": "Draw an image of an autumn park: maple leaves, a bench and an umbrella. No text, no labels and no letters."
     },
     {
       "kind": "video",
-      "title": "Video",
-      "prompt": "Short video: rain running down a window."
+      "title": "Video from the image",
+      "prompt": "Make a video from the image: a light breeze is blowing.",
+      "attach": "previous-image"
     },
     {
       "kind": "text",
       "title": "Photo",
-      "prompt": "What can I cook from the food in the photo? Suggest two simple dishes.",
+      "prompt": "Make a photo: a plate of apples and grapes on a wooden table by the window. No packaging, no labels. What can I cook from the food in the photo? Suggest two simple dishes.",
       "attach": "generated-image"
     },
     {
-      "kind": "task",
-      "title": "Timetable",
-      "prompt": "Draft a weekly timetable for Year 7: five school days, six lessons a day, no subject twice in one day."
-    },
-    {
       "kind": "text",
-      "title": "Rate",
-      "prompt": "Find the current GBP to EUR rate and work out what a batch of 40 laptops at 899 pounds each costs in euros. Answer in pounds with plain numbers, without formulas."
+      "title": "Exchange rate",
+      "prompt": "Find the current US dollar to rouble exchange rate online and calculate in roubles the cost of a batch of 40 laptops at $2270 each."
     },
     {
       "kind": "text",
       "title": "Voice",
-      "prompt": "Transcribe this voice message and answer the question in it.",
+      "prompt": "Transcribe the voice message and answer the question in it.",
       "attach": "tts",
       "voice": true
     },
     {
-      "kind": "task",
-      "title": "Album cover",
-      "prompt": "Draw an illustration for the school yearbook: the school yard in autumn and maple leaves. No text, no captions."
-    },
-    {
-      "kind": "task",
-      "title": "Video task",
-      "prompt": "Make a short video: raindrops on a window.",
-      "interrupt": true
-    },
-    {
-      "kind": "task",
-      "title": "Clarification",
-      "prompt": "Make something nice for the school."
-    },
-    {
       "kind": "text",
       "title": "Photo edit",
-      "prompt": "Replace only the background with a sunset sky. Keep everything else unchanged: the same plate of apples and grapes, the same wooden table, the same angle and lighting. Photorealistic, like a real photograph, not a drawing or a stylised picture.",
+      "prompt": "Make a photo: a plate of apples and grapes on a wooden table by the window. No packaging, no labels. Replace only the apples with pears. Keep everything else unchanged.",
       "attach": "generated-image"
     },
     {
       "kind": "task",
-      "title": "Fair plan",
-      "prompt": "Draft a five-step plan for the school autumn fair and carry it out in order: schedule, decorations, mailing, equipment, report."
+      "title": "Document analysis",
+      "prompt": "Analyse both quotations and the procurement policy: name the main risk and give one recommendation with justification. Answer in no more than five sentences plus a table of no more than six rows.",
+      "deep_analysis": true
     },
     {
       "kind": "task",
-      "title": "Document analysis",
-      "prompt": "Analyse both quotes and the procurement policy: name the main risk and give one justified recommendation. Keep it to five sentences and a table of at most six rows.",
-      "deep_analysis": true
+      "title": "Fair plan",
+      "prompt": "Draw up a five-step plan for preparing the school for the autumn fair and carry it out in order: timetable, decorations, mailing, equipment, report."
+    },
+    {
+      "kind": "task",
+      "title": "Yearbook cover",
+      "prompt": "Make something beautiful for the school."
+    },
+    {
+      "kind": "task",
+      "title": "Mars",
+      "prompt": "Draw a realistic photo of an astronaut walking on the surface of the Moon. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
+    },
+    {
+      "kind": "task",
+      "title": "Illustration",
+      "prompt": "Draw an illustration for the school yearbook: an autumn schoolyard and maple leaves. Without people, text or any labels."
+    },
+    {
+      "kind": "task",
+      "title": "Café",
+      "prompt": "Make a video: an empty European street café early in the morning in summer. A light breeze.",
+      "video_backend": "wan"
+    },
+    {
+      "kind": "task",
+      "title": "Timetable",
+      "prompt": "Create a weekly timetable for Year 7 in an English secondary school: 5 school days, 6 lessons per day, no subject repeated on the same day."
     }
   ]
 }

@@ -188,12 +188,13 @@ class TestRagModule:
     def test_lexical_terms_keep_the_content_words_of_a_question(self):
         """Keeping only proper nouns left one common term per question, the
         rarity gate dropped it, and the lexical half went silent for exactly
-        the person-centric questions it was built for (MRR 0.640 -> 0.744)."""
-        from modules.rag import RagModule
+        the person-centric questions it was built for. BM25 needs no gate, and
+        the words are reduced to lemmas so cases stop mattering."""
+        from app.lemmatizer import lemmas
 
-        terms = RagModule._lexical_terms("Перечисли места работы Иванова по городам")
+        terms = lemmas("Перечисли места работы Иванова по городам")
 
-        assert terms == ["перечисли", "места", "работы", "иванова", "городам"]
+        assert {"перечислить", "место", "работа", "иванов", "город"} <= set(terms)
 
     def test_rerank_reorders_without_replacing_the_cosine_scores(self, mock_app):
         """The caller filters on absolute cosine scores (0.3); the reranker

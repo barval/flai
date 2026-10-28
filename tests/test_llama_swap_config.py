@@ -9,6 +9,7 @@ from app.llama_swap_config import (
     LlamaSwapConfigGenerator,
     generate_and_write,
 )
+from app.utils import reasoning_budget_tokens
 
 
 def _mock_config(module, **overrides):
@@ -266,7 +267,7 @@ class TestBuildCmd:
         assert "-m /models/test.gguf" in cmd
         assert "--ctx-size 8192" in cmd
         assert "--flash-attn on" in cmd
-        assert "--n-gpu-layers" not in cmd
+        assert "--n-gpu-layers -1" in cmd
         assert "--kv-offload" not in cmd
 
     @patch("app.resource_manager.get_resource_manager")
@@ -373,7 +374,9 @@ class TestBuildCmd:
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("reasoning", "/models/gpt-oss-20b-mxfp4.gguf")
         assert "--reasoning_format auto" in cmd
-        assert "--reasoning-budget 3276" in cmd
+        # 8192 ctx: the prompt may take 64%, so the old ctx*0.4 (3276) left
+        # less than the 1500-token answer reserve.
+        assert f"--reasoning-budget {reasoning_budget_tokens(8192)}" in cmd
 
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")
@@ -389,7 +392,9 @@ class TestBuildCmd:
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("reasoning", "/models/test.gguf")
         assert "--reasoning_format deepseek" in cmd
-        assert "--reasoning-budget 3276" in cmd
+        # 8192 ctx: the prompt may take 64%, so the old ctx*0.4 (3276) left
+        # less than the 1500-token answer reserve.
+        assert f"--reasoning-budget {reasoning_budget_tokens(8192)}" in cmd
 
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")
@@ -617,3 +622,164 @@ class TestGetOriginalNgl:
         gen = LlamaSwapConfigGenerator()
         ngl = gen._get_original_ngl("multimodal")
         assert ngl == 36
+
+
+class TestMetricsEndpoint:
+    """llama-server publishes Prometheus metrics on its own backend port."""
+
+    @patch("app.resource_manager.get_resource_manager")
+    @patch("app.llama_swap_config.get_model_config")
+    def test_command_enables_metrics(self, mock_get_config, mock_get_rm):
+        mock_get_config.return_value = {"context_length": 8192}
+        mock_rm = MagicMock()
+        mock_rm.compute_llamacpp_config.return_value = {"flash_attn": True, "n_gpu_layers": -1}
+        mock_get_rm.return_value = mock_rm
+        gen = LlamaSwapConfigGenerator()
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
+        assert "--metrics" in cmd, "the monitoring tab needs the Prometheus endpoint"
+
+
+class TestReasoningBudgetMessage:
+    """A spent thinking budget ends with a sentence, not a silent stop."""
+
+    @patch("app.resource_manager.get_resource_manager")
+    @patch("app.llama_swap_config.get_model_config")
+    def test_budget_message_is_injected(self, mock_get_config, mock_get_rm):
+        mock_get_config.return_value = {"context_length": 8192}
+        mock_rm = MagicMock()
+        mock_rm.compute_llamacpp_config.return_value = {"flash_attn": True, "n_gpu_layers": -1}
+        mock_get_rm.return_value = mock_rm
+        gen = LlamaSwapConfigGenerator()
+        cmd = gen.build_cmd("reasoning", "/models/test.gguf")
+        assert "--reasoning-budget" in cmd
+        assert "--reasoning-budget-message" in cmd
+        assert "Thinking budget reached" in cmd
+
+
+def _ttl_generator(monkeypatch, *, cpu: bool, ram_mb: int, sizes: dict, overrides: dict | None = None):
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: cpu)
+    monkeypatch.setattr(gen, "_total_ram_mb", lambda: ram_mb)
+    monkeypatch.setattr(gen, "_model_file_mb", lambda module: sizes.get(module, 0))
+    monkeypatch.setattr(
+        mod,
+        "get_model_config",
+        lambda module: {"model_name": f"{module}.gguf", "context_length": 8192, "ttl": (overrides or {}).get(module)},
+    )
+    return gen
+
+
+def test_cpu_keeps_the_reasoning_model_resident_when_ram_allows(monkeypatch):
+    """On CPU the 10 s TTL means reloading 11 GB from disk for every reasoning answer."""
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=32768, sizes={"multimodal": 2500, "reasoning": 11300})
+
+    assert gen.get_ttl("reasoning") == 0
+
+
+def test_cpu_unloads_reasoning_when_ram_is_tight(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=16384, sizes={"multimodal": 4700, "reasoning": 11700})
+
+    assert gen.get_ttl("reasoning") == 60
+
+
+def test_cpu_keeps_the_embedding_model_resident(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=True, ram_mb=16384, sizes={"multimodal": 4700, "reasoning": 11700})
+
+    assert gen.get_ttl("embedding") == 0
+
+
+def test_gpu_ttls_are_unchanged(monkeypatch):
+    """On a GPU the reasoning model must yield VRAM to the chat model."""
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+
+    assert gen.get_ttl("reasoning") == 10
+    assert gen.get_ttl("embedding") == 1
+    assert gen.get_ttl("multimodal") == 0
+
+
+def test_an_admin_ttl_override_wins_on_any_platform(monkeypatch):
+    gen = _ttl_generator(
+        monkeypatch, cpu=True, ram_mb=32768, sizes={"multimodal": 2500, "reasoning": 11300},
+        overrides={"reasoning": 120},
+    )
+
+    assert gen.get_ttl("reasoning") == 120
+
+
+def test_gpu_group_does_not_swap_behind_the_resource_manager(monkeypatch):
+    """On a GPU `ensure_vram_for()` is the arbiter; the group must not evict."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: False)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" in block
+    assert "exclusive: false" in block
+
+
+def test_cpu_group_keeps_llama_swap_in_charge_when_models_do_not_fit(monkeypatch):
+    """Without VRAM accounting, one-model-at-a-time is the only RAM guard."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: True)
+    monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: False)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" not in block
+
+
+def test_cpu_group_does_not_swap_when_both_models_fit_in_ram(monkeypatch):
+    """With RAM to spare, a reasoning answer must not evict the chat model."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(gen, "_platform_is_cpu", lambda: True)
+    monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: True)
+    monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
+
+    yaml_str = gen.generate_yaml(include_preload=False)
+    block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
+
+    assert "swap: false" in block
+
+
+def test_gpu_reasoning_stays_resident_when_the_card_holds_everything(monkeypatch):
+    """On a 24 GB card reloading 11.6 GB after every answer is pure loss."""
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+    monkeypatch.setattr(gen, "_gpu_models_coexist", lambda: True)
+
+    assert gen.get_ttl("reasoning") == 0
+
+
+def test_gpu_reasoning_keeps_its_ttl_when_the_card_is_full(monkeypatch):
+    gen = _ttl_generator(monkeypatch, cpu=False, ram_mb=32768, sizes={})
+    monkeypatch.setattr(gen, "_gpu_models_coexist", lambda: False)
+
+    assert gen.get_ttl("reasoning") == 10
+
+
+def test_full_offload_is_explicit_never_llama_cpp_auto(monkeypatch):
+    """`auto` silently keeps layers in RAM when the card looked busy at load."""
+    from app import llama_swap_config as mod
+
+    gen = mod.LlamaSwapConfigGenerator()
+    monkeypatch.setattr(mod, "get_model_config", lambda module: {"model_name": "m.gguf", "context_length": 8192})
+    monkeypatch.setattr(gen, "get_model_path", lambda module, name: "/models/m.gguf")
+    rm = MagicMock()
+    rm.compute_llamacpp_config.return_value = {"n_gpu_layers": -1, "flash_attn": True, "offload_kqv": True}
+    monkeypatch.setattr("app.resource_manager.get_resource_manager", lambda: rm)
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {})
+
+    cmd = gen.build_cmd("multimodal", "/models/m.gguf")
+
+    assert "--n-gpu-layers -1" in cmd

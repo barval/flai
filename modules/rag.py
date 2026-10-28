@@ -1,8 +1,9 @@
 # modules/rag.py
 import logging
-import re
+import math
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable
 
 from flask import current_app
@@ -12,6 +13,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from app.db import INDEX_STATUS_INDEXED, get_document, get_session_text_history, get_user_documents
+from app.lemmatizer import lemmas as lemmatize
 from app.llamacpp_client import LlamaCppClient
 from app.model_config import get_model_config
 from app.utils import (
@@ -21,10 +23,39 @@ from app.utils import (
     chunk_text_structured,
     estimate_tokens,
     extract_text_from_file,
+    format_chunk_entry,
     format_prompt,
     get_current_time_in_timezone,
 )
 from modules.base import get_style_instruction, response_language_name
+
+BM25_K1 = 1.5
+BM25_B = 0.75
+
+
+def bm25_score(
+    chunk_lemmas: list[str],
+    terms: list[str],
+    document_frequency: dict[str, int],
+    n_chunks: int,
+    average_length: float,
+) -> float:
+    """BM25 of one chunk against the query terms (k1=1.5, b=0.75)."""
+    if not chunk_lemmas or not terms or n_chunks <= 0 or average_length <= 0:
+        return 0.0
+    counts = Counter(chunk_lemmas)
+    length = len(chunk_lemmas)
+    score = 0.0
+    for term in terms:
+        frequency = counts.get(term, 0)
+        if not frequency:
+            continue
+        df = document_frequency.get(term, 0)
+        idf = math.log((n_chunks - df + 0.5) / (df + 0.5) + 1.0)
+        score += idf * frequency * (BM25_K1 + 1) / (
+            frequency + BM25_K1 * (1 - BM25_B + BM25_B * length / average_length)
+        )
+    return score
 
 
 def rrf_fuse(
@@ -322,9 +353,9 @@ class RagModule:
                 cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
                 for index, chunk in enumerate(chunks):
                     cursor.execute(
-                        "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text) "
-                        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        (user_id, doc_id, index, filename, chunk),
+                        "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
+                        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        (user_id, doc_id, index, filename, chunk, lemmatize(chunk)),
                     )
         except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
             self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
@@ -338,78 +369,6 @@ class RagModule:
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
 
-    @staticmethod
-    def _lexical_terms(query: str) -> list[str]:
-        """Offer every content word of the query; ``_rarest_terms`` picks.
-
-        ``ts_rank_cd`` has no IDF, so a word every chunk carries (a person's
-        name in a corpus of their own documents) adds nothing — the rarity gate
-        drops it. Narrowing the list to proper nouns here discarded the other
-        half of a question ("места", "городам"), the gate then saw a single
-        common term and turned the lexical search off entirely (measured MRR
-        0.640 -> 0.744 and nDCG 0.879 -> 0.965 once every word is offered).
-        """
-        raw = re.findall(r"[\w-]+", query)
-        seen: list[str] = []
-        for token in raw:
-            lowered = re.sub(r"[^\w]", "", token.lower())
-            if len(lowered) >= 3 and lowered not in seen:
-                seen.append(lowered)
-        return seen[:10]
-
-    @staticmethod
-    def _tsquery_terms(tokens: list[str]) -> list[str]:
-        """Prefix tsquery terms that survive the stemmer's inconsistency.
-
-        The Russian stemmer can map the nominative and the prepositional case of
-        the same proper noun to different lexemes, so an exact lexeme misses half
-        the corpus. Each token contributes its own prefix and a one-letter-shorter
-        one, which covers both stems.
-        """
-        terms: list[str] = []
-        for token in tokens:
-            terms.append(f"{token}:*")
-            if len(token) > 4:
-                terms.append(f"{token[:-1]}:*")
-        return terms
-
-    def _rarest_terms(self, user_id: str, tokens: list[str]) -> list[str]:
-        """Keep the terms that actually discriminate inside this corpus.
-
-        ``ts_rank_cd`` has no IDF: a name present in half the chunks outweighs
-        the city that appears in five. One grouped query gives the document
-        frequency of each term; rare terms are kept, common ones dropped. When
-        every term is common the three rarest still survive.
-        """
-        from app.database import get_db
-
-        try:
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT term, count(*) AS df FROM unnest(%(tokens)s) AS term "
-                    "JOIN rag_chunks rc ON rc.user_id = %(user_id)s "
-                    "AND rc.tsv @@ to_tsquery('russian', term) GROUP BY term",
-                    {"tokens": tokens, "user_id": user_id},
-                )
-                frequencies = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
-                cursor.execute("SELECT count(*) AS total FROM rag_chunks WHERE user_id = %s", (user_id,))
-                total = int(cursor.fetchone()["total"] or 0)
-        except Exception as exc:  # noqa: BLE001 — fall back to the plain terms
-            self.logger.warning(f"term frequency lookup failed: {exc}")
-            return tokens
-
-        if not total:
-            return tokens
-        threshold = max(2, total // 10)
-        ranked = sorted(tokens, key=lambda token: frequencies.get(token, 0))
-        rare = [token for token in ranked if frequencies.get(token, 0) <= threshold]
-        if rare:
-            return rare[:4]
-        # Every term is common: the lexical half would only add noise, so the
-        # search stays purely semantic for this query.
-        return []
-
     def _lexical_search(
         self,
         user_id: str,
@@ -417,50 +376,62 @@ class RagModule:
         limit: int,
         doc_ids: list[str] | None = None,
     ) -> list[dict]:
-        """Full-text search over the mirrored chunks (Russian stemming).
+        """BM25 over the lemmatized chunks — the lexical half of hybrid search.
 
-        Terms are joined with OR: a question like "how many jobs in Moscow" must
-        match a chunk that contains "Moscow" even though it has none of the other
-        words. ``plainto_tsquery`` would require every term and return nothing.
+        ``ts_rank_cd`` scored term coverage without IDF and without length
+        normalisation, and the rarity gate compensated by dropping common words
+        (it also had to guess at the stemmer, hence the prefix queries). BM25
+        carries both, so the gate and the prefix tricks are gone: every lemma of
+        the query is scored against the candidates that contain at least one.
         """
         from app.database import get_db
 
-        all_terms = self._lexical_terms(query)
-        if not all_terms:
+        terms = list(dict.fromkeys(lemmatize(query)))
+        if not terms:
             return []
-        tokens = self._rarest_terms(user_id, all_terms)
-        if not tokens:
-            return []
-        # Prefix matching: the stemmer can return different lexemes for different
-        # cases of one name, so exact lexemes miss each other; "term:*" covers both.
-        tsquery = " | ".join(self._tsquery_terms(tokens))
-        all_tsquery = " | ".join(self._tsquery_terms(all_terms))
 
-        # A chunk from a document whose TITLE matches the query is more likely
-        # to be about it: the resume is named after the person, the chat export
-        # is not. Without this prior the chat's small talk outranks the resume
-        # on every "how many jobs in <city>" question.
-        sql = (
-            "SELECT doc_id, chunk_index, filename, text, "
-            "ts_rank_cd(tsv, q) "
-            "+ CASE WHEN to_tsvector('russian', coalesce(filename, '')) @@ q_all THEN 1.0 ELSE 0 END AS rank "
-            "FROM rag_chunks, to_tsquery('russian', %(tsq)s) AS q, "
-            "to_tsquery('russian', %(tsq_all)s) AS q_all "
-            "WHERE user_id = %(user_id)s AND tsv @@ q"
-        )
-        params: dict = {"tsq": tsquery, "tsq_all": all_tsquery, "user_id": user_id, "limit": limit}
-        if doc_ids:
-            sql += " AND doc_id = ANY(%(doc_ids)s)"
-            params["doc_ids"] = list(doc_ids)
-        sql += " ORDER BY rank DESC LIMIT %(limit)s"
-        try:
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute(sql, params)
-                return [dict(row) for row in cursor.fetchall()]
-        except Exception as exc:  # noqa: BLE001 — a bad query must not break search
-            self.logger.warning(f"lexical search failed: {exc}")
-            return []
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT count(*) AS n, coalesce(avg(cardinality(lemmas)), 0) AS avgdl "
+                "FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL",
+                (user_id,),
+            )
+            stats = cursor.fetchone() or {}
+            n_chunks = int(stats.get("n") or 0)
+            average_length = float(stats.get("avgdl") or 0)
+            if not n_chunks or average_length <= 0:
+                return []
+            cursor.execute(
+                "SELECT term, count(*) AS df FROM rag_chunks rc, unnest(rc.lemmas) AS term "
+                "WHERE rc.user_id = %s AND term = ANY(%s) GROUP BY term",
+                (user_id, terms),
+            )
+            document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
+
+            sql = (
+                "SELECT doc_id, chunk_index, filename, text, lemmas FROM rag_chunks "
+                "WHERE user_id = %s AND lemmas && %s"
+            )
+            params: list = [user_id, terms]
+            if doc_ids:
+                sql += " AND doc_id = ANY(%s)"
+                params.append(list(doc_ids))
+            sql += " LIMIT %s"
+            params.append(max(limit * 20, 200))
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        scored: list[tuple[float, dict]] = []
+        for row in rows:
+            score = bm25_score(
+                row["lemmas"] or [], terms, document_frequency, n_chunks, average_length
+            )
+            if score > 0:
+                scored.append((score, {**dict(row), "rank": score}))
+
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        return [row for _, row in scored[:limit]]
 
     def search(
         self,
@@ -674,12 +645,12 @@ class RagModule:
 
         # 2. Prepare context string WITH filename sources
         context_parts = []
-        for chunk_data, score in filtered:
+        for chunk_data, _score in filtered:
             # Extract filename and text from chunk metadata
             filename = chunk_data.get("filename", "unknown") if isinstance(chunk_data, dict) else "unknown"
             text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
-            # Add source indicator to each chunk (include score for debugging)
-            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+            # One header per chunk: source file, no relevance score
+            context_parts.append(format_chunk_entry(source_label, filename, text))
         context = "\n\n".join(context_parts)
 
         # Logging the structure of the RAG context WITH RELEVANCE SCORES
@@ -732,10 +703,10 @@ class RagModule:
                 with current_app.app_context(), force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for chunk_data, score in filtered:
+                for chunk_data, _score in filtered:
                     filename = chunk_data.get("filename", "unknown") if isinstance(chunk_data, dict) else "unknown"
                     text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 context = "\n\n".join(context_parts)
                 context_tokens = self._estimate_tokens(context)
             self.logger.info(

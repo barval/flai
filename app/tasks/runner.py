@@ -34,7 +34,7 @@ from typing import Any
 from flask import Flask
 
 from app.model_config import get_model_config
-from app.utils import begin_usage_account, finish_usage_account
+from app.utils import begin_usage_account, finish_usage_account, format_chunk_entry
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +85,15 @@ def recall_slm_facts(app: Flask, query: str, user_id: str, lang: str, limit: int
         return ""
     if not raw:
         return ""
-    session_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
-    general_facts = [f for f in raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
-    all_facts = (session_facts + general_facts)[:limit]
+    base = app.modules.get("base")
+    if base is not None and hasattr(base, "select_recalled_facts"):
+        all_facts = base.select_recalled_facts(
+            raw,
+            limit=limit,
+            min_score=float(app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
+        )
+    else:
+        all_facts = raw[:limit]
     if not all_facts:
         return ""
     header = (
@@ -519,14 +525,14 @@ def _run_rag_step(
         source_label = _("Source")
     parts = []
     semantic_seen = 0
-    for chunk, score in filtered:
+    for chunk, _score in filtered:
         if not chunk.get("coverage"):
             if semantic_seen >= 15:
                 continue
             semantic_seen += 1
         filename = chunk.get("filename", "?")
         text = chunk.get("text", str(chunk))
-        parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+        parts.append(format_chunk_entry(source_label, filename, text))
     return "\n\n".join(parts)
 
 

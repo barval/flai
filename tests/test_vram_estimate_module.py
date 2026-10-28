@@ -6,6 +6,8 @@ The admin module re-exports them so existing callers keep working.
 
 from unittest.mock import patch
 
+import pytest
+
 
 def test_classify_is_re_exported_by_admin():
     from app.routes.admin import _classify_model_fit as admin_classify
@@ -189,3 +191,185 @@ def test_classify_unknown_includes_platform_and_free_ram(monkeypatch):
     res = _classify(monkeypatch, vram=(0, 8192), free_ram=24576, file_mb=None, blocks=None, ctx=8192)
     assert res["tier"] == "unknown"
     assert res["platform"] in ("gpu", "cpu")
+
+
+def test_kv_estimate_follows_the_selected_model_shapes():
+    """The module constant said 0.08 MB/token for reasoning; the model needs 0.022."""
+    from app.vram_estimate import _kv_per_token_for_module
+
+    meta = {"block_count": 40, "head_count_kv": 2, "key_length": 256, "value_length": 256}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3.6-35B": meta}):
+        assert _kv_per_token_for_module("reasoning", "q4_0", "Qwen3.6-35B.gguf") == 0.022
+
+
+def test_kv_estimate_scales_with_the_cache_type():
+    """q8_0 stores two bytes per value where q4_0 stores nibbles."""
+    from app.vram_estimate import _kv_per_token_for_module
+
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3VL-8B": meta}):
+        q4 = _kv_per_token_for_module("multimodal", "q4_0", "Qwen3VL-8B")
+        q8 = _kv_per_token_for_module("multimodal", "q8_0", "Qwen3VL-8B")
+    assert q4 == 0.0396
+    assert q8 == pytest.approx(q4 * (1.0625 / 0.5625), abs=0.0002)
+
+
+def test_kv_estimate_falls_back_to_the_module_constant_without_metadata():
+    from app.vram_estimate import _kv_per_token_for_module
+
+    with patch("app.utils.get_gguf_models_cached", return_value={}):
+        assert _kv_per_token_for_module("multimodal", "q4_0", "Unknown") == 0.10
+
+
+def test_admin_estimate_matches_the_measured_reasoning_footprint():
+    """Measured on the live card: 12 104 MB at ctx 24 576 for this model."""
+    from app.vram_estimate import _estimate_model_vram, _kv_per_token_for_module
+
+    meta = {
+        "block_count": 40,
+        "head_count_kv": 2,
+        "key_length": 256,
+        "value_length": 256,
+        "expert_count": 256,
+        "file_size_mb": 11721,
+    }
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3.6-35B": meta}):
+        est = _estimate_model_vram(
+            file_size_mb=11721,
+            block_count=40,
+            ngl=40,
+            expert_count=256,
+            ctx_size=24576,
+            kv_per_token=_kv_per_token_for_module("reasoning", "q4_0", "Qwen3.6-35B"),
+        )
+    assert abs(est["total_mb"] - 12104) / 12104 < 0.03
+
+
+def test_admin_estimate_matches_the_measured_multimodal_footprint():
+    """Measured on the live card: 7 699 MB at ctx 32 768 (weights + mmproj + KV)."""
+    from app.vram_estimate import _estimate_model_vram, _kv_per_token_for_module
+
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Qwen3VL-8B": meta}):
+        est = _estimate_model_vram(
+            file_size_mb=4794,
+            block_count=36,
+            ngl=36,
+            ctx_size=32768,
+            mmproj_size_mb=1105,
+            kv_per_token=_kv_per_token_for_module("multimodal", "q4_0", "Qwen3VL-8B"),
+        )
+    assert abs(est["total_mb"] - 7699) / 7699 < 0.03
+
+
+def test_classify_huge_context_suggests_a_window_that_fits(monkeypatch):
+    """A 262k window on a 16 GB card needs more KV than the card has.
+
+    The model itself fits; the window is the blocker, so the verdict must name
+    the largest window that does fit instead of calling the model impossible.
+    """
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=4700, blocks=36, ctx=262144)
+
+    assert res["tier"] == "cpu_offload"
+    assert res["can_save"] is True
+    assert 0 < res["ctx_recommended"] < 262144
+    assert str(res["ctx_recommended"]) in res["message"]
+
+
+def test_classify_impossible_when_not_even_the_smallest_window_fits(monkeypatch):
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-15000MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 8192), free_ram=1024, file_mb=15000, blocks=36, ctx=262144)
+
+    assert res["tier"] == "impossible"
+    assert res["can_save"] is False
+
+
+def test_classify_tight_fit_is_not_reported_as_good(monkeypatch):
+    """85% of the card is the ceiling: a fit that leaves no room for the driver
+    is a partial offload, not a green verdict."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-13000MB-8192ctx": meta}):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=13000, blocks=36, ctx=8192)
+
+    assert res["tier"] != "good"
+    assert res["vram_mb"] > 16311 * 0.85
+
+
+def test_classify_cpu_huge_context_suggests_a_window_that_fits(monkeypatch):
+    """A CPU-only host pays the KV cache out of RAM — the same advice applies."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-262144ctx": meta}):
+        res = _classify(monkeypatch, vram=(None, None), free_ram=12288, file_mb=4700, blocks=36, ctx=262144)
+
+    assert res["tier"] == "cpu_offload"
+    assert 0 < res["ctx_recommended"] < 262144
+    assert str(res["ctx_recommended"]) in res["message"]
+
+
+def test_classify_prefers_a_measured_footprint(monkeypatch):
+    """A measured footprint beats the formula: it already includes the buffers."""
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with (
+        patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-32768ctx": meta}),
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={
+                "model_name": "Test-4700MB-32768ctx.gguf",
+                "context_length": 32768,
+                "measured_vram_mb": 7700,
+            },
+        ),
+    ):
+        res = _classify(monkeypatch, vram=(0, 9050), free_ram=32768, file_mb=4700, blocks=36, ctx=32768)
+
+    # 7 700 > 0.85 × 9 050, while the formula alone (7 598) would have said "good".
+    assert res["tier"] == "cpu_offload"
+    assert res["vram_mb"] == 7700
+
+
+def test_classify_ignores_a_measurement_from_another_window(monkeypatch):
+    meta = {"block_count": 36, "head_count_kv": 8, "key_length": 128, "value_length": 128}
+    with (
+        patch("app.utils.get_gguf_models_cached", return_value={"Test-4700MB-32768ctx": meta}),
+        patch(
+            "app.database.get_vram_estimate",
+            return_value={
+                "model_name": "Test-4700MB-32768ctx.gguf",
+                "context_length": 8192,
+                "measured_vram_mb": 5000,
+            },
+        ),
+    ):
+        res = _classify(monkeypatch, vram=(0, 16311), free_ram=32768, file_mb=4700, blocks=36, ctx=32768)
+
+    assert res["vram_mb"] != 5000
+
+
+def test_hub_fit_uses_the_repo_config_shapes_before_download(monkeypatch):
+    """A model that is not on disk has no GGUF cache: config.json still has the shapes."""
+    from app.vram_estimate import _classify_model_fit
+
+    monkeypatch.setattr("app.utils.get_gguf_models_cached", lambda path: {})
+    monkeypatch.setattr("app.utils.get_mmproj_size_mb", lambda name: 0)
+    monkeypatch.setattr("app.database.get_vram_estimate", lambda *a, **k: {})
+    monkeypatch.setattr("app.vram_estimate._get_actual_vram_mb", lambda: (0, 16311))
+    monkeypatch.setattr("app.vram_estimate._get_free_ram_mb", lambda: 32768)
+    monkeypatch.setattr("app.vram_estimate._get_total_ram_mb", lambda: 32768)
+    monkeypatch.setattr("app.vram_estimate._find_gguf_path", lambda name: None)
+    from app import vram_estimate
+
+    monkeypatch.setattr(vram_estimate.os.path, "exists", lambda p: False)
+
+    with_shapes = _classify_model_fit(
+        "Qwen3VL-like", 32768, file_size_mb=4700, block_count=36,
+        module="multimodal", kv_heads=8, head_dim=128,
+    )
+    without = _classify_model_fit(
+        "Qwen3VL-like", 32768, file_size_mb=4700, block_count=36, module="multimodal",
+    )
+
+    assert with_shapes["kv_cache_mb"] < without["kv_cache_mb"]
+    assert with_shapes["kv_cache_mb"] == pytest.approx(32768 * 0.0396, abs=2)

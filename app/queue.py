@@ -41,6 +41,7 @@ from .utils import (
     current_usage_account_id,
     estimate_tokens,
     finish_usage_account,
+    format_chunk_entry,
     format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
@@ -74,48 +75,6 @@ def _parse_remember_json(llm_response: str) -> list[str]:
         return []
     except Exception:
         return []
-
-
-def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: str, lang: str) -> None:
-    """Extract facts from Q&A in a background thread (CPU-only, no GPU lock).
-
-    Called by daemon threads after reasoning/chat responses. Catches all
-    exceptions to prevent silent thread crashes.
-    """
-    try:
-        slm = app.modules.get("slm")
-        if not slm or not slm.available:
-            return
-
-        from app.slm_extract import extract_facts_from_exchange
-
-        existing = slm.list_facts(limit=50, profile=user_id)
-        facts = extract_facts_from_exchange(query, response, existing, lang=lang)
-
-        for fact in facts:
-            try:
-                similarity = slm.check_similarity(fact["text"], profile=user_id)
-                if similarity >= 0.85:
-                    continue
-            except Exception:
-                pass
-
-            slm.remember(
-                fact["text"],
-                metadata={
-                    "session_id": session_id,
-                    "fact_type": fact.get("fact_type", "general"),
-                    "category": fact.get("category", "context"),
-                    "source": "extraction",
-                },
-                profile=user_id,
-            )
-
-        if facts:
-            app.logger.info(f"Background fact extraction: {len(facts)} facts for {user_id}")
-
-    except Exception as e:
-        app.logger.warning(f"Background fact extraction failed: {e}")
 
 
 def _publish_document_index_event(app, user_id: str, doc_id: str, index_status: str) -> None:
@@ -323,6 +282,8 @@ class RedisRequestQueue:
             "describe_document_pdf",
             "fact_extraction_task",
             "fact_merge_task",
+            "memory_extract_task",
+            "session_summary_task",
         }
     )
 
@@ -342,6 +303,11 @@ class RedisRequestQueue:
             return
         try:
             chat_activity_now(self.redis)
+            # Any user-facing request preempts a memory extraction: it is the
+            # lowest-priority GPU job and a half-generated extraction is worth
+            # nothing, so the task is re-queued and runs after the quiet window.
+            quiet_s = int(self.app.config.get("MEMORY_EXTRACT_QUIET_S", 45))
+            self.redis.set(self.MEMORY_EXTRACT_INTERRUPT_KEY, "1", ex=quiet_s)
             # Mid-step abort (v12.6): every running task step must die when a
             # chat request arrives. The executor publishes one pointer per
             # running task (task:running_step:<task_id> + the
@@ -350,6 +316,25 @@ class RedisRequestQueue:
             self._raise_step_cancel_flags()
         except Exception as e:
             self.logger.warning(f"chat activity signal failed: {e}")
+
+    def background_gate_open(self) -> bool:
+        """True when only idle work is waiting and no chat has been seen recently.
+
+        Memory extraction is the lowest-priority GPU job: any queued chat or API
+        request goes first, and a request in the last ``MEMORY_EXTRACT_QUIET_S``
+        seconds keeps it parked in the queue (the extractor aborts its own
+        generation mid-stream and re-queues, so nothing half-written survives).
+        """
+        try:
+            return (
+                self.redis.llen(self.background_queue_key) > 0
+                and self.redis.llen(self.queue_key) == 0
+                and self.redis.llen(self.slow_queue_key) == 0
+                and not self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY)
+            )
+        except Exception as e:
+            self.logger.debug(f"background gate check failed: {e}")
+            return False
 
     def _drop_orphan_subtask(self, task: dict[str, Any]) -> bool:
         """Drop a Tasks-subsystem media sub-task whose step is gone (v12.6).
@@ -510,6 +495,10 @@ class RedisRequestQueue:
             return "slow"  # Indexing can be slow
         if task_type == "fact_merge_task":
             return "background"  # Background task — runs only in idle, no GPU lock
+        if task_type == "memory_extract_task":
+            return "background"  # LLM extraction — idle only, takes the GPU lock itself
+        if task_type == "session_summary_task":
+            return "background"  # rolling summary refresh — idle only, GPU lock
         if task_type == "fact_extraction_task":
             return "slow"  # LLM-based extraction is slow
         # Also check type inside data (for index_document from documents.py)
@@ -715,6 +704,8 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
+        if task_type in ("memory_extract_task", "session_summary_task"):
+            return "multimodal"  # both run on the resident model
         if task_type == "camera_task":
             return "multimodal"  # snapshot analysis via the resident multimodal model
         if task_type == "vision_task":
@@ -726,9 +717,9 @@ class RedisRequestQueue:
         if req_type == "api_image_edit" or task_type == "api_image_edit":
             return "multimodal"
         if task_type == "transcribe_audio":
-            return "none"
+            return "whisper" if getattr(self.app, "config", {}).get("WHISPER_GPU") else "none"
         if req_type == "api_transcribe":
-            return "none"
+            return "whisper" if getattr(self.app, "config", {}).get("WHISPER_GPU") else "none"
 
         if action_type == "rag":
             return "reasoning"
@@ -1071,8 +1062,9 @@ class RedisRequestQueue:
                         self._process_single_task(task, self.slow_processing_key)
                     continue
 
-                # Priority 2: background queue (only when fast queue is empty)
-                if self.redis.llen(self.background_queue_key) > 0 and self.redis.llen(self.queue_key) == 0:
+                # Priority 2: background queue (idle only — any chat or API
+                # request in the quiet window keeps it parked)
+                if self.background_gate_open():
                     result = self.redis.blpop(self.background_queue_key, timeout=5)
                     if result:
                         _, task_data = result
@@ -1080,8 +1072,14 @@ class RedisRequestQueue:
                         if task is None:
                             self.logger.error("Slow worker: failed to deserialize background task")
                             continue
-                        # Background tasks (CPU merge) — no GPU lock needed
-                        self._process_single_task(task, self.background_processing_key)
+                        # Background tasks are CPU-only except the LLM fact
+                        # extraction, which needs the resident model and must
+                        # therefore wait for the GPU like any other call.
+                        if task.get("type") in ("memory_extract_task", "session_summary_task"):
+                            with self._gpu_lock:
+                                self._process_single_task(task, self.background_processing_key)
+                        else:
+                            self._process_single_task(task, self.background_processing_key)
                         continue
 
             except Exception as e:
@@ -1557,7 +1555,9 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int | None = None) -> bool:
+    def _wait_for_vram_full(
+        self, timeout: int | None = None, video_params: dict[str, Any] | None = None
+    ) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
@@ -1578,7 +1578,20 @@ class RedisRequestQueue:
 
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        min_free = rm.estimate_video_vram_needed()
+        video_module = self.app.modules.get("video")
+        # Re-read the live backend: the attribute is cached by the last request,
+        # and a stale "wan" asks for 15 GB before a 3 GB LTX clip.
+        video_backend = video_module.current_backend() if video_module is not None else None
+        min_free = (
+            rm.estimate_video_vram_needed(
+                video_params.get("width") if video_params else None,
+                video_params.get("height") if video_params else None,
+                video_params.get("num_frames") if video_params else None,
+                backend=video_backend,
+            )
+            if video_params
+            else rm.estimate_video_vram_needed(backend=video_backend)
+        )
 
         self._unload_llamacpp_models()
 
@@ -1617,6 +1630,29 @@ class RedisRequestQueue:
         self.logger.warning(f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, models={loaded_count}")
         return False
 
+    def _gpu_refusal_message(self, lang: str, fallback: str = "") -> str:
+        """Localized reason for a refused model load.
+
+        The generic "GPU memory unavailable" is wrong when the model itself would
+        fit but the layers left on the CPU exceed the RAM; the resource manager
+        records why it refused and this turns that into a user-facing sentence.
+        """
+        base = self.app.modules["base"]
+        try:
+            from app.resource_manager import get_resource_manager
+
+            refusal = getattr(get_resource_manager(), "last_refusal", None) or {}
+        except Exception:
+            refusal = {}
+        if refusal.get("code") == "ram_short":
+            message = base._(
+                "Not enough RAM for the model layers left on the CPU: {needed} MB needed, "
+                "{available} MB available.",
+                lang=lang,
+            )
+            return message.format(needed=refusal.get("needed_mb"), available=refusal.get("available_mb"))
+        return base._(fallback or "GPU memory unavailable. Try again in a moment.", lang=lang)
+
     def _unload_llamacpp_models(self):
         """Unload all llama.cpp models via llama-swap proxy.
 
@@ -1640,19 +1676,28 @@ class RedisRequestQueue:
 
         return success
 
-    def _plan_cpu_video(
+    def _apply_video_limits(
         self, task: dict[str, Any] | None, prompt_data: dict[str, Any] | None, lang: str, session_id: str
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """On CPU-only hosts, downgrade video params when RAM is insufficient.
+        """Apply backend caps and, on CPU-only hosts, downgrade to fit RAM.
 
-        Called AFTER the multimodal model was unloaded, so available RAM reflects
-        real headroom. Persists the notice via save_message() (rendered to the
-        chat through the message_new SSE event) and returns None when generation
-        is impossible even at the fallback resolution.
+        Backend caps first: Wan 2.2 5B was trained on 121 frames (5 s), so a
+        10-second request is shortened with a user-facing notice. Then the CPU
+        planner runs — it is a no-op on a GPU host. Called AFTER the multimodal
+        model was unloaded, so available RAM reflects real headroom. Notices are
+        persisted via save_message() (rendered through the message_new SSE
+        event); returns None when generation is impossible even at the fallback
+        resolution.
         """
         video_module = self.app.modules.get("video")
         if not prompt_data or not video_module:
             return prompt_data, None
+
+        notices: list[str] = []
+        limited, limit_notice = video_module.apply_backend_limits(prompt_data, lang=lang)
+        if limit_notice:
+            prompt_data = limited
+            notices.append(limit_notice)
 
         override, notice, error = video_module.plan_cpu_generation(prompt_data, lang=lang)
         if error:
@@ -1662,15 +1707,18 @@ class RedisRequestQueue:
             prompt_data = {**prompt_data, **override}
 
         if notice:
+            notices.append(notice)
+
+        for notice_text in notices:
             # Persist via save_message() only: it publishes a message_new SSE
             # event carrying the REAL DB id, so the client dedups (displayedMessageIds)
             # and a later loadMessages() skips the row. Publishing a separate
             # "notice" SSE event with a synthetic id here used to render a second
             # copy of the same notice (observed on CPU video degrade).
             try:
-                save_message(session_id, "assistant", notice, model_name="system", response_time="0")
+                save_message(session_id, "assistant", notice_text, model_name="system", response_time="0")
             except Exception:
-                self.logger.warning("Failed to persist video memory notice", exc_info=True)
+                self.logger.warning("Failed to persist video notice", exc_info=True)
 
         return prompt_data, None
 
@@ -2633,8 +2681,8 @@ class RedisRequestQueue:
             if not rm.ensure_vram_for("multimodal"):
                 return self._build_error_response(
                     session_id,
-                    self.app.modules["base"]._(
-                        "Reasoning model unavailable: GPU memory check failed. Try again.", lang
+                    self._gpu_refusal_message(
+                        lang, "Reasoning model unavailable: GPU memory check failed. Try again."
                     ),
                     0,
                     lang,
@@ -2681,7 +2729,9 @@ class RedisRequestQueue:
         if not rm.ensure_vram_for_reasoning():
             return self._build_error_response(
                 session_id,
-                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                self._gpu_refusal_message(
+                    lang, "Reasoning model unavailable: GPU memory check failed. Try again."
+                ),
                 0,
                 lang,
             )
@@ -2894,11 +2944,10 @@ class RedisRequestQueue:
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
-                        for i, chunk in enumerate(chunks):
+                        for chunk in chunks:
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
-                            score = scores[i] if i < len(scores) else 0.0
-                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                            context_parts.append(format_chunk_entry(source_label, filename, text))
                         rag_context = "\n\n".join(context_parts)
                         rag_source = "rag"
                         self.app.logger.info(
@@ -2919,8 +2968,8 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM check for reasoning failed: {e}")
 
         if not vram_ok:
-            error_msg = self.app.modules["base"]._(
-                "Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang
+            error_msg = self._gpu_refusal_message(
+                lang, "Reasoning model unavailable: GPU memory check failed. Try again."
             )
             return self._build_error_response(session_id, error_msg, 0, lang)
 
@@ -3016,20 +3065,14 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Extract facts in background thread (CPU-only, no GPU lock)
+        # Memory extraction runs on the background queue, idle only: the resident
+        # model does the reasoning, so the old regex thread is retired.
         if full_response.strip() and len(full_response) > 20:
-            threading.Thread(
-                target=_extract_facts_bg,
-                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
-                daemon=True,
-            ).start()
+            self.add_memory_extract_task(user_id, session_id, query, full_response[:3000], lang)
 
-        # The user requires the multimodal (router + chat + vision) model to be
-        # loaded back immediately after the reasoning answer, so the next router
-        # call doesn't hit a cold start. llama-swap unloads reasoning after its
-        # TTL; reload multimodal synchronously before responding.
-        self._preload_multimodal_sync()
-
+        # The multimodal model is restored by _cleanup_vram_after_task() once the
+        # task leaves the worker. Doing it here held the slow-worker slot for the
+        # whole reload (5-10 s) after the answer had already been delivered.
         return result
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -3134,13 +3177,13 @@ class RedisRequestQueue:
             # Verify VRAM is truly free for video pipeline — must check BOTH:
             # (a) no LLM models loaded via llama-swap /running
             # (b) sufficient raw VRAM (estimated peak from files/measurements)
-            if not self._wait_for_vram_full():
+            if not self._wait_for_vram_full(video_params=prompt_data):
                 error_msg = self.app.modules["base"]._(
                     "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
-            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            prompt_data, cpu_error = self._apply_video_limits(task, prompt_data, lang, session_id)
             if cpu_error:
                 return self._build_error_response(session_id, cpu_error, 0, lang)
 
@@ -3186,12 +3229,16 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-                rm.measure_video_vram_peak(video_model_name)
+                video_module = self.app.modules["video"]
+                # Wan runs as a one-shot sd-cli process: by the time the clip is
+                # back the VRAM is already released, so a post-hoc reading would
+                # store ~0 and poison the LTX measurement.
+                if video_module.backend == "ltx":
+                    rm.measure_video_vram_peak(video_module.model_type)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.modules["video"].model_type
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -3326,7 +3373,7 @@ class RedisRequestQueue:
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
             self._unload_llamacpp_models()
 
-            if not self._wait_for_vram_full():
+            if not self._wait_for_vram_full(video_params=prompt_data):
                 error_msg = self.app.modules["base"]._(
                     "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
@@ -3335,9 +3382,19 @@ class RedisRequestQueue:
             # Resize the source image up-front so the resize notice reaches the
             # user BEFORE the memory-degradation decision below.
             if image_data:
-                from modules.video import MAX_VIDEO_SOURCE_SIZE, resize_video_source_image
+                from modules.video import (
+                    MAX_VIDEO_SOURCE_SIZE,
+                    WAN_MAX_VIDEO_SOURCE_SIZE,
+                    resize_video_source_image,
+                )
 
-                resized_image, resized_meta = resize_video_source_image(image_data)
+                video_module = self.app.modules.get("video")
+                source_limit = (
+                    WAN_MAX_VIDEO_SOURCE_SIZE
+                    if video_module is not None and video_module.backend == "wan"
+                    else MAX_VIDEO_SOURCE_SIZE
+                )
+                resized_image, resized_meta = resize_video_source_image(image_data, source_limit)
                 if resized_image is not None:
                     image_data = resized_image
                 if resized_meta.get("resized"):
@@ -3352,8 +3409,8 @@ class RedisRequestQueue:
                                 lang=lang,
                             )
                             .format(
-                                max_w=MAX_VIDEO_SOURCE_SIZE,
-                                max_h=MAX_VIDEO_SOURCE_SIZE,
+                                max_w=source_limit,
+                                max_h=source_limit,
                                 orig_w=orig_w,
                                 orig_h=orig_h,
                                 new_w=new_w,
@@ -3362,7 +3419,7 @@ class RedisRequestQueue:
                         )
                     save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
 
-            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            prompt_data, cpu_error = self._apply_video_limits(task, prompt_data, lang, session_id)
             if cpu_error:
                 return self._build_error_response(session_id, cpu_error, 0, lang)
 
@@ -3409,8 +3466,12 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-                rm.measure_video_vram_peak(video_model_name)
+                video_module = self.app.modules["video"]
+                # Wan runs as a one-shot sd-cli process: by the time the clip is
+                # back the VRAM is already released, so a post-hoc reading would
+                # store ~0 and poison the LTX measurement.
+                if video_module.backend == "ltx":
+                    rm.measure_video_vram_peak(video_module.model_type)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
@@ -3437,7 +3498,7 @@ class RedisRequestQueue:
                     )
                 resize_notice = resize_text
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.modules["video"].model_type
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -4014,10 +4075,10 @@ class RedisRequestQueue:
                 # budget trims the prompt, so no extra count cap: a 15-chunk
                 # cut dropped the tail of a document's own chunks — the
                 # current employer among them.
-                for chunk, score in filtered:
+                for chunk, _score in filtered:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG _process_rag_task: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "
@@ -4642,10 +4703,10 @@ class RedisRequestQueue:
                 # budget trims the prompt, so no extra count cap: a 15-chunk
                 # cut dropped the tail of a document's own chunks — the
                 # current employer among them.
-                for chunk, score in filtered:
+                for chunk, _score in filtered:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                    context_parts.append(format_chunk_entry(source_label, filename, text))
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG _process_rag_task_stream: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "
@@ -5210,13 +5271,10 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Extract facts in background thread (CPU-only, no GPU lock)
+        # Memory extraction runs on the background queue, idle only: the resident
+        # model does the reasoning, so the old regex thread is retired.
         if full_response.strip() and len(full_response) > 20:
-            threading.Thread(
-                target=_extract_facts_bg,
-                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
-                daemon=True,
-            ).start()
+            self.add_memory_extract_task(user_id, session_id, query, full_response[:3000], lang)
 
         return result
 
@@ -5271,7 +5329,8 @@ class RedisRequestQueue:
                 fact,
                 metadata={
                     "session_id": session_id,
-                    "fact_type": "general",
+                    "kind": "profile",
+                    "confidence": 1.0,
                     "category": "instruction",
                     "source": "user_request",
                 },
@@ -5288,6 +5347,227 @@ class RedisRequestQueue:
             lang,
             response_style,
         )
+
+    def add_memory_extract_task(
+        self,
+        user_id: str,
+        session_id: str,
+        query: str,
+        response: str,
+        lang: str = "ru",
+    ) -> str | None:
+        """Queue LLM fact extraction on the background queue (idle only).
+
+        Never counted against the user's queue counters, never published as a
+        chat message: the user sees nothing, the memory simply improves.
+        """
+        if not self.app.config.get("SLM_URL"):
+            return None
+        try:
+            from app.memory_facts import auto_extract_enabled
+            from app.resource_manager import get_resource_manager
+
+            if not auto_extract_enabled(
+                self.app.config.get("SLM_AUTO_EXTRACT", "auto"),
+                get_resource_manager().hardware.platform,
+            ):
+                return None
+
+            import uuid as _uuid
+
+            task_id = str(_uuid.uuid4())
+            task = {
+                "id": task_id,
+                "user_id": user_id,
+                "session_id": session_id,
+                "type": "memory_extract_task",
+                "user_class": 3,
+                "data": {
+                    "type": "memory_extract_task",
+                    "query": (query or "")[:4000],
+                    "response": (response or "")[:2000],
+                },
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            return task_id
+        except Exception as e:
+            self.logger.debug(f"memory extract enqueue failed: {e}")
+            return None
+
+    def add_session_summary_task(self, session_id: str, cut_id: int, lang: str = "ru") -> str | None:
+        """Queue a rolling-summary refresh, one per session at a time.
+
+        Called from the request path instead of summarising there: the refresh
+        needs the multimodal model, and loading it inside a reasoning request
+        cost a second model swap on the critical path.
+        """
+        if not session_id or cut_id <= 0:
+            return None
+        try:
+            import uuid as _uuid
+
+            if not self.redis.set(f"summary:pending:{session_id}", "1", nx=True, ex=3600):
+                return None
+            task_id = str(_uuid.uuid4())
+            task = {
+                "id": task_id,
+                "user_id": "",
+                "session_id": session_id,
+                "type": "session_summary_task",
+                "user_class": 3,
+                "data": {"type": "session_summary_task", "cut_id": int(cut_id)},
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            return task_id
+        except Exception as e:
+            self.logger.debug(f"session summary enqueue failed: {e}")
+            return None
+
+    def _process_session_summary(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Fold the messages older than the cut into the stored summary."""
+        session_id = task.get("session_id") or ""
+        try:
+            from app.db import get_session_messages, get_session_summary, update_session_summary
+
+            cut_id = int((task.get("data") or {}).get("cut_id") or 0)
+            lang = task.get("lang", "ru")
+            if not session_id or cut_id <= 0:
+                return {"status": "ok"}
+
+            base = self.app.modules.get("base")
+            existing = get_session_summary(session_id) or {}
+            previous = existing.get("summary")
+            previous_upto = int(existing.get("summary_upto_id") or 0)
+            if previous_upto >= cut_id:
+                return {"status": "ok"}
+
+            fetched = get_session_messages(session_id, limit=base.summary_max_fetch)
+            new_part = [
+                message
+                for message in fetched
+                if previous_upto < int(message.get("id") or 0) < cut_id
+            ]
+            if not new_part:
+                return {"status": "ok"}
+
+            summary = base._summarize_session_history(new_part, lang, previous)
+            if summary:
+                update_session_summary(session_id, summary, cut_id)
+                self.app.logger.info(f"Session summary refreshed: {len(new_part)} messages folded in")
+            return {"status": "ok", "summarized": len(new_part)}
+        except Exception as e:
+            self.app.logger.warning(f"Session summary failed: {e}")
+            return {"status": "ok"}
+        finally:
+            try:
+                if session_id:
+                    self.redis.delete(f"summary:pending:{session_id}")
+            except Exception:
+                pass
+
+    def _process_memory_extract(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Extract durable facts about the user with the resident multimodal model.
+
+        Runs on the background queue (idle only) under ``_gpu_lock``: the model is
+        already resident, so the call costs one short generation and never forces
+        a swap. The model's answer is parsed strictly — questions, low-confidence
+        guesses and duplicates never reach the store.
+        """
+        try:
+            data = task.get("data", {})
+            query = str(data.get("query") or "").strip()
+            response = str(data.get("response") or "").strip()
+            user_id = task["user_id"]
+            session_id = task.get("session_id") or ""
+            lang = task.get("lang", "ru")
+
+            slm = self.app.modules.get("slm")
+            if not slm or not slm.available:
+                return {"status": "ok"}
+
+            from app.memory_facts import detect_language, looks_personal, parse_memory_facts
+
+            if not looks_personal(query):
+                return {"status": "ok", "skipped": "not personal"}
+            # The prompt follows the message, not the interface: an English UI
+            # answered "[]" to a Russian personal statement.
+            lang = detect_language(query, fallback=lang)
+
+            existing = slm.list_facts(limit=50, profile=user_id)
+            known = "\n".join(f"- {str(f.get('text') or f.get('content') or '')[:200]}" for f in existing[:30])
+            prompt = format_prompt(
+                "memory_extract.template",
+                {
+                    "known_facts": known or "-",
+                    "user_message": query,
+                    "assistant_message": response[:1500],
+                },
+                lang=lang,
+            )
+            if not prompt:
+                return {"status": "ok"}
+
+            # Streamed so that a chat request can cut it short: checked every
+            # 20 chunks (a Redis round-trip per token would cost more than the
+            # interruption is worth). An aborted extraction writes nothing and
+            # puts its task back at the head of the background queue.
+            chunks: list[str] = []
+            last_check = 0.0
+            for chunk in self.app.modules["base"].llamacpp.chat_stream(
+                [{"role": "user", "content": prompt}],
+                model_type="multimodal",
+                lang=lang,
+            ):
+                if isinstance(chunk, dict):
+                    break
+                chunks.append(chunk)
+                if sum(len(part) for part in chunks) > 4000:
+                    break
+                # Throttled to twice a second: a Redis round-trip per token would
+                # cost more than the interruption saves, and a short answer is
+                # over before the 20-chunk check would ever run.
+                now = time.monotonic()
+                interrupted = now - last_check > 0.5 and self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY)
+                if now - last_check > 0.5:
+                    last_check = now
+                if interrupted:
+                    self.logger.info("Memory extraction interrupted by a user request — re-queued")
+                    self.redis.lpush(self.background_queue_key, self._serialize(task))
+                    return {"status": "interrupted"}
+
+            answer = "".join(chunks)
+            facts = parse_memory_facts(answer)
+            if not facts:
+                self.app.logger.info(f"Memory extraction: no facts (answer: {answer[:160]!r})")
+
+            stored = 0
+            for fact in facts:
+                try:
+                    if slm.check_similarity(fact["fact"], profile=user_id) >= 0.85:
+                        continue
+                except Exception:
+                    pass
+                if slm.remember(
+                    fact["fact"],
+                    metadata={
+                        "session_id": session_id,
+                        "kind": fact["kind"],
+                        "confidence": fact["confidence"],
+                        "source": "llm_extract",
+                    },
+                    profile=user_id,
+                ):
+                    stored += 1
+            if stored:
+                self.app.logger.info(f"Memory extraction: {stored} facts for {user_id}")
+            return {"status": "ok", "facts_extracted": stored}
+        except Exception as e:
+            self.app.logger.warning(f"Memory extraction failed: {e}")
+            return {"status": "ok"}
 
     def _process_fact_extraction(self, task: dict[str, Any]) -> dict[str, Any]:
         """Extract facts from Q&A via rule-based patterns (CPU-only, no GPU)."""
@@ -5448,6 +5728,8 @@ class RedisRequestQueue:
             "reindex_all_embeddings",
             "fact_extraction_task",
             "fact_merge_task",
+            "memory_extract_task",
+            "session_summary_task",
             "api_embedding",
             "api_transcribe",
         ):
@@ -5487,6 +5769,10 @@ class RedisRequestQueue:
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
             return self._process_fact_merge(task)
+        if task_type == "memory_extract_task":
+            return self._process_memory_extract(task)
+        if task_type == "session_summary_task":
+            return self._process_session_summary(task)
         if task_type == "api_embedding":
             return self._process_api_embedding_task(task)
         if task_type == "api_transcribe":
@@ -6121,6 +6407,33 @@ class RedisRequestQueue:
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
+        # A CPU transcription loads ~1.7 GB of model; the GPU profile needs the
+        # card. Both go through the guards so the wait is explicit, not a swap
+        # storm or an OOM kill. A queue object without a config is a test stub.
+        config = getattr(self.app, "config", None)
+        if config is not None:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            if config.get("WHISPER_GPU"):
+                if not rm.ensure_vram_for("whisper"):
+                    error_msg = self._gpu_refusal_message(lang, "GPU memory unavailable. Try again in a moment.")
+                    save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
+                    return {"error": error_msg, "session_id": session_id, "is_error": True}
+                rm._model_last_used["whisper"] = time.time()
+            elif not rm.ensure_ram_for("whisper"):
+                refusal = rm.last_refusal or {}
+                error_msg = self.app.modules["base"]._(
+                    "Not enough RAM for {service}: {needed} MB needed, {available} MB available.",
+                    lang=lang,
+                ).format(
+                    service="Whisper",
+                    needed=refusal.get("needed_mb"),
+                    available=refusal.get("available_mb"),
+                )
+                save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
+                return {"error": error_msg, "session_id": session_id, "is_error": True}
+
         # Every audio item of the message in attachment order (the route puts a
         # voice recording first); a legacy single-audio payload — a requeued
         # task, the /v1 API — is read from the flat fields.
@@ -6170,8 +6483,14 @@ class RedisRequestQueue:
         process_time = round(process_time, 1)
 
         # The question: the typed text first, then every transcript in order.
+        # The transcript carries an explicit label: without it the model reads
+        # the typed instruction ("transcribe the voice message") literally and
+        # answers that no audio was attached (observed on the English demo).
         typed = str(request_data.get("text") or "").strip()
-        question = f"{typed}\n\n{transcribed_text}" if typed else transcribed_text
+        with force_locale(lang):
+            transcript_label = self.app.modules["base"]._("Transcribed from the voice message", lang)
+        labelled = f"{transcript_label}: {transcribed_text}"
+        question = f"{typed}\n\n{labelled}" if typed else labelled
         preview = (
             (transcribed_text[:50] + "...")
             if transcribed_text
@@ -6687,7 +7006,13 @@ class RedisRequestQueue:
 
     # Task types that run in the background and are invisible to the user.
     # They should not trigger ⚡ or ⏳ indicators in the UI.
-    _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task"})
+    _BACKGROUND_TASK_TYPES = frozenset(
+        {"fact_extraction_task", "fact_merge_task", "memory_extract_task", "session_summary_task"}
+    )
+
+    # Set by every user-facing request; the memory extraction (and the idle
+    # merge queue behind it) waits it out.
+    MEMORY_EXTRACT_INTERRUPT_KEY = "memory_extract:interrupt"
 
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
         """Get status of user's requests (processing, queued, completed).

@@ -107,6 +107,38 @@
             </div>
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
+                    <h3>{{ _('CPU load') }}</h3>
+                    <span id="monitoring-value-cpu" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-cpu" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Host CPU utilisation of the whole server, sampled every minute.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('RAM load') }}</h3>
+                    <span id="monitoring-value-ram" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-ram" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Used of total system memory, including the model page cache.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('GPU load') }}</h3>
+                    <span id="monitoring-value-gpu" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-gpu" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('GPU utilisation; empty on a host without a GPU.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
+                    <h3>{{ _('VRAM load') }}</h3>
+                    <span id="monitoring-value-vram" class="monitoring-value"></span>
+                </div>
+                <svg id="monitoring-chart-vram" class="monitoring-chart" viewBox="0 0 360 150" preserveAspectRatio="xMidYMid meet"></svg>
+                <p class="monitoring-hint">{{ _('Used of total video memory; empty on a host without a GPU.') }}</p>
+            </div>
+            <div class="monitoring-card">
+                <div class="monitoring-card-head">
                     <h3>{{ _('Sessions') }}</h3>
                     <span id="monitoring-value-sessions" class="monitoring-value"></span>
                 </div>
@@ -601,9 +633,17 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Default image height (pixels)': {{ _('Default image height (pixels)')|tojson }},
     'Default diffusion steps': {{ _('Default diffusion steps')|tojson }},
     'Default classifier-free guidance scale': {{ _('Default classifier-free guidance scale')|tojson }},
-    'Video generation wrapper URL': {{ _('Video generation wrapper URL')|tojson }},
+    'Video backend (ltx or wan)': {{ _('Video backend (ltx or wan)')|tojson }},
+    'LTX-Video wrapper URL': {{ _('LTX-Video wrapper URL')|tojson }},
     'LTX-Video model file': {{ _('LTX-Video model file')|tojson }},
-    'Video generation timeout (seconds)': {{ _('Video generation timeout (seconds)')|tojson }},
+    'LTX-Video generation timeout (seconds)': {{ _('LTX-Video generation timeout (seconds)')|tojson }},
+    'Wan video wrapper URL (sd.cpp container)': {{ _('Wan video wrapper URL (sd.cpp container)')|tojson }},
+    'Wan 2.2 model file': {{ _('Wan 2.2 model file')|tojson }},
+    'Wan generation timeout (seconds)': {{ _('Wan generation timeout (seconds)')|tojson }},
+    'Wan denoising steps (4 for Turbo)': {{ _('Wan denoising steps (4 for Turbo)')|tojson }},
+    'Wan classifier-free guidance scale': {{ _('Wan classifier-free guidance scale')|tojson }},
+    'Wan flow shift': {{ _('Wan flow shift')|tojson }},
+    'Allow Wan video generation on a CPU-only host': {{ _('Allow Wan video generation on a CPU-only host')|tojson }},
     'Largest single image side (pixels)': {{ _('Largest single image side (pixels)')|tojson }},
     'Largest image upload (MB)': {{ _('Largest image upload (MB)')|tojson }},
     'Side limit when several images are attached': {{ _('Side limit when several images are attached')|tojson }},
@@ -628,7 +668,12 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Kokoro synthesis timeout (seconds)': {{ _('Kokoro synthesis timeout (seconds)')|tojson }},
     'Whisper speech-recognition URL': {{ _('Whisper speech-recognition URL')|tojson }},
     'Transcription timeout (seconds)': {{ _('Transcription timeout (seconds)')|tojson }},
+    'Run Whisper transcription on the GPU': {{ _('Run Whisper transcription on the GPU')|tojson }},
+    'VRAM budget for the Whisper container (MB)': {{ _('VRAM budget for the Whisper container (MB)')|tojson }},
     'SuperLocalMemory service URL': {{ _('SuperLocalMemory service URL')|tojson }},
+    'Automatic fact extraction mode (auto, on, off)': {{ _('Automatic fact extraction mode (auto, on, off)')|tojson }},
+    'Minimum recall score for non-profile facts': {{ _('Minimum recall score for non-profile facts')|tojson }},
+    'Quiet window before fact extraction starts (seconds)': {{ _('Quiet window before fact extraction starts (seconds)')|tojson }},
     'Facts recalled per message': {{ _('Facts recalled per message')|tojson }},
     'Minimum similarity for a recalled fact': {{ _('Minimum similarity for a recalled fact')|tojson }},
     'Confidence below which a fact starts decaying': {{ _('Confidence below which a fact starts decaying')|tojson }},

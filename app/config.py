@@ -10,7 +10,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "12.7"
+APP_VERSION = "12.8"
 
 
 def load_config(app):
@@ -49,10 +49,28 @@ def load_config(app):
     app.config["SD_CPP_DEFAULT_CFG_SCALE"] = float(os.getenv("SD_CPP_DEFAULT_CFG_SCALE", 1.0))
     app.config["SD_CPP_DEFAULT_STEPS"] = int(os.getenv("SD_CPP_DEFAULT_STEPS", 10))
 
+    # Video backend: "ltx" — LTX-Video 2B distilled (fast, up to 10 s) or
+    # "wan" — Wan 2.2 TI2V 5B Turbo (slower, 5 s, better motion and detail).
+    # Both are separate containers; the deploy script exposes exactly one.
+    app.config["VIDEO_BACKEND"] = os.getenv("VIDEO_BACKEND", "ltx").strip().lower()
+
     # LTX-Video settings (uses ltx-wrapper HTTP API)
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
     app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
     app.config["LTX_VIDEO_TIMEOUT"] = int(os.getenv("LTX_VIDEO_TIMEOUT", 600))
+
+    # Wan 2.2 TI2V 5B settings (uses the sd-wrapper video endpoint, same
+    # container as image generation). Defaults are the Turbo preset measured
+    # on a 16 GB card: 832×480, 121 frames @ 24 fps (5 s), 4 steps.
+    app.config["WAN_VIDEO_URL"] = os.getenv("WAN_VIDEO_URL", "http://flai-sd:7861")
+    app.config["WAN_VIDEO_TIMEOUT"] = int(os.getenv("WAN_VIDEO_TIMEOUT", 1800))
+    app.config["WAN_VIDEO_MODEL"] = os.getenv("WAN_VIDEO_MODEL", "wan2.2-ti2v-5b-turbo-Q4_K_M.gguf")
+    app.config["WAN_VIDEO_STEPS"] = int(os.getenv("WAN_VIDEO_STEPS", 4))
+    app.config["WAN_VIDEO_CFG_SCALE"] = float(os.getenv("WAN_VIDEO_CFG_SCALE", 1.0))
+    app.config["WAN_VIDEO_FLOW_SHIFT"] = float(os.getenv("WAN_VIDEO_FLOW_SHIFT", 3.0))
+    # Wan on a CPU-only host is ~90 minutes for a 5-second clip and needs more
+    # RAM than the probe container had — refused by default, opt-in only.
+    app.config["WAN_VIDEO_ALLOW_CPU"] = os.getenv("WAN_VIDEO_ALLOW_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
 
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
@@ -87,7 +105,9 @@ def load_config(app):
     app.config["OCR_TIME_BUDGET_S"] = int(os.getenv("OCR_TIME_BUDGET_S", 1800))
 
     # Whisper ASR settings
-    app.config["WHISPER_API_URL"] = os.getenv("WHISPER_API_URL", "http://flai-whisper:9000/asr")
+    # Empty means "derive from WHISPER_GPU": the CPU and the GPU ASR containers
+    # have different names, because profiles are additive and both can run.
+    app.config["WHISPER_API_URL"] = os.getenv("WHISPER_API_URL", "")
 
     # Timeouts for services (not model-specific, used for HTTP requests)
     app.config["WHISPER_API_TIMEOUT"] = int(os.getenv("WHISPER_API_TIMEOUT", 120))
@@ -111,6 +131,12 @@ def load_config(app):
 
     # SLM rule-based extraction and merge settings
     app.config["SLM_SIMILARITY_THRESHOLD"] = float(os.getenv("SLM_SIMILARITY_THRESHOLD", 0.85))
+    # Whisper on the GPU: opt-in profile (see docker-compose.whisper-gpu.yml).
+    app.config["WHISPER_GPU"] = os.getenv("WHISPER_GPU", "false").lower() in ("true", "1", "yes")
+    app.config["WHISPER_VRAM_MB"] = int(os.getenv("WHISPER_VRAM_MB", "3000"))
+    app.config["MEMORY_EXTRACT_QUIET_S"] = int(os.getenv("MEMORY_EXTRACT_QUIET_S", "45"))
+    app.config["SLM_AUTO_EXTRACT"] = os.getenv("SLM_AUTO_EXTRACT", "auto")
+    app.config["SLM_MIN_RECALL_SCORE"] = float(os.getenv("SLM_MIN_RECALL_SCORE", "0.5"))
     app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))
     app.config["SLM_MIN_CONFIDENCE_FOR_DECAY"] = float(os.getenv("SLM_MIN_CONFIDENCE_FOR_DECAY", 0.5))
 

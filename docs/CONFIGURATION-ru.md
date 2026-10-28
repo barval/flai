@@ -13,7 +13,9 @@ DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL co
 ```bash
 LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
 LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
-VRAM_WAIT_TIMEOUT_S=120                     # Seconds a busy GPU is waited out (ensure_vram_for / queue / video gate) before it is reported unavailable
+VRAM_WAIT_TIMEOUT_S=120                     # Сколько секунд ждать занятую GPU (ensure_vram_for / очередь / видеогейт), прежде чем сообщить о недоступности
+VRAM_CO_RESIDENCY=auto                      # 'auto' оставляет резидентные модели, если новая помещается рядом; 'off' выгружает всё (поведение до v12.8)
+VRAM_HEADROOM_MB=1200                       # Сколько VRAM оставлять свободной под буферы префилла при решении о совместном размещении
 ```
 
 **URL сервисов:**
@@ -45,6 +47,27 @@ MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=10800         # Максимальное время генерации видео (сек)
 OCR_TIME_BUDGET_S=1800          # Scanned-PDF OCR budget per document task (0 = unlimited)
 ```
+
+**Видеобэкенд:**
+```bash
+VIDEO_BACKEND=ltx               # ltx (быстро, до 10 с) | wan (качество, 5 с, только GPU)
+# LTX-Video (flai-ltxvideo, PyTorch)
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_CPU_TIME_BUDGET_S=0   # только CPU; 0 = 85 % от LTX_VIDEO_TIMEOUT
+# Wan 2.2 TI2V 5B (flai-sd, stable-diffusion.cpp)
+WAN_VIDEO_URL=http://flai-sd:7861
+WAN_VIDEO_MODEL=wan2.2-ti2v-5b-turbo-Q4_K_M.gguf
+WAN_VIDEO_TIMEOUT=1800          # измерено 209 с на 832×480×121
+WAN_VIDEO_STEPS=4               # Turbo-чекпойнт
+WAN_VIDEO_CFG_SCALE=1.0
+WAN_VIDEO_FLOW_SHIFT=3.0
+WAN_VIDEO_ALLOW_CPU=0           # 1 = разрешить Wan на хосте только с CPU (очень медленно)
+```
+
+Лимиты на стороне контейнеров: `WAN_CLI_TIMEOUT` (1800 с на GPU, 7200 с на CPU),
+`WAN_OFFLOAD_BELOW_VRAM_MB` (12000 — ниже этого порога энкодер umt5 стримится из RAM),
+`SD_CLI_TIMEOUT` (генерация изображений).
 
 **Настройки повторных попыток подключения к сервисам:**
 ```bash
@@ -133,6 +156,13 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+WHISPER_GPU=false           # Whisper на GPU: запускайте --profile with-whisper-gpu (TTS — с --profile with-tts-*); модель занимает WHISPER_VRAM_MB видеопамяти
+WHISPER_VRAM_MB=3000        # Бюджет VRAM для CUDA-контекста ASR-контейнера
+CPU_REASONING_TTL=60          # Только CPU: секунды простоя до выгрузки модели рассуждений из RAM (не используется, если она помещается рядом с чат-моделью)
+CPU_RAM_RESERVE_MB=4096       # Сколько RAM оставлять ОС, решая, помещаются ли обе модели
+MEMORY_EXTRACT_QUIET_S=45    # Извлечение в память прерывается любым запросом чата/API и ждёт столько секунд тишины
+SLM_AUTO_EXTRACT=auto        # 'auto' — извлекать после каждого личного сообщения там, где GPU держит модель резидентной; 'on' — и на CPU
+SLM_MIN_RECALL_SCORE=0.5     # Non-profile facts below this recall score are not injected
 ROUTER_SLM_FACTS=2           # Long-term-memory facts added to the router context
 ```
 

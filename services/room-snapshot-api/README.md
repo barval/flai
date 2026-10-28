@@ -32,7 +32,7 @@ services/room-snapshot-api/
 
 ```bash
 cd flai/services/room-snapshot-api
-git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
+git clone --branch v1.3 https://github.com/barval/room-snapshot-api.git room-snapshot-api
 ```
 
 ### 2. Configure cameras
@@ -40,13 +40,13 @@ git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
 Edit `room-snapshot-api/config/cameras.conf`:
 
 ```conf
-# Format: code=ip:port:name
-spa=192.168.131.101:554/stream1:Bedroom
-gos=192.168.131.102:554/stream1:Living room
-kab=192.168.131.103:554/stream1:Office
+# Format: code=ip:port/path:name
+spa=192.168.1.101:554/stream1:Bedroom
+gos=192.168.1.102:554/stream1:Living room
+kab=192.168.1.103:554/stream1:Office
 ```
 
-Set `RTSP_AUTH` (camera login:password) in `room-snapshot-api/.env`:
+Copy the environment template and fill the shared key:
 
 ```bash
 cp room-snapshot-api/.env.example room-snapshot-api/.env
@@ -54,9 +54,25 @@ nano room-snapshot-api/.env
 ```
 
 ```env
+# Every REST and MCP request needs this key; FLAI uses the same value.
+API_KEY="generate-a-strong-key"
+# Default room-label language: en or ru
+DEFAULT_LANG="ru"
+# RTSP credentials shared by cameras without a cameras.auth record
 RTSP_AUTH="admin:password"
+# MCP server port inside the container (compose publishes 5006)
+MCP_PORT="8000"
 FLASK_DEBUG=false
 ```
+
+Credentials that differ per camera go to `room-snapshot-api/config/cameras.auth`
+(`code=user:password`), English labels to `config/rooms.i18n.json`:
+
+```json
+{ "kuh": { "ru": "Кухня", "en": "Kitchen" } }
+```
+
+Both files are optional and are ignored by git.
 
 ### 3. Deploy
 
@@ -96,23 +112,37 @@ CAMERA_API_URL=http://flai-room-snapshot-api:5000
 CAMERA_ENABLED=true
 CAMERA_API_TIMEOUT=15
 CAMERA_CHECK_INTERVAL=30
+# Must match API_KEY in the service .env
+CAMERA_API_KEY=generate-a-strong-key
+# MCP is another container of the same compose; 5006 is the host-side publish
+CAMERA_MCP_URL=http://flai-room-snapshot-api-mcp:8000/mcp
+CAMERA_SNAPSHOT_WIDTH=384
+CAMERA_PREVIEW_WORKERS=4
 ```
 
 Restart FLAI:
 
 ```bash
-docker compose -f docker-compose.gpu.yml restart web
+docker compose -p flai -f docker-compose.gpu.yml up -d --no-deps web
 ```
 
 ## Ports
 
 | Port  | Purpose                            |
 |-------|------------------------------------|
-| `5000`| Container internal port (Docker network) |
-| `5005`| External port (host mapping)       |
+| `5000`| REST container port (Docker network) |
+| `5005`| REST host mapping                  |
+| `8000`| MCP container port (Docker network)  |
+| `5006`| MCP host mapping                   |
 
-> **Important**: When connecting from the FLAI container via the Docker network use port **5000**.
-> When connecting from the host (curl, browser) — port **5005**.
+> **Important**: When connecting from the FLAI container via the Docker network use port **5000** for REST and **8000** for MCP.
+> From the host (curl, browser) — **5005** and **5006**.
+
+Every endpoint requires the shared key:
+
+```bash
+export API_KEY="$(grep '^API_KEY=' room-snapshot-api/.env | cut -d= -f2- | tr -d '\"')"
+```
 
 ## API Endpoints
 
@@ -128,16 +158,16 @@ docker compose -f docker-compose.gpu.yml restart web
 
 ```bash
 # Health check
-curl http://localhost:5005/health
+curl -H "X-API-Key: $API_KEY" http://localhost:5005/health
 
-# List of cameras
-curl http://localhost:5005/rooms
+# List of cameras (language via ?lang= or Accept-Language)
+curl -H "X-API-Key: $API_KEY" -H "Accept-Language: ru" http://localhost:5005/rooms
 
 # Save a snapshot
-curl http://localhost:5005/snapshot/gos -o gos.jpg
+curl -H "X-API-Key: $API_KEY" "http://localhost:5005/snapshot/gos?width=640" -o gos.jpg
 
 # Camera info
-curl http://localhost:5005/rooms/gos
+curl -H "X-API-Key: $API_KEY" http://localhost:5005/rooms/gos
 ```
 
 ## Monitoring
@@ -173,7 +203,7 @@ cat room-snapshot-api/.env
 1. Check camera reachability: `ping CAMERA_IP`
 2. Check the logs: `./deploy.sh logs`
 3. Verify `RTSP_AUTH` in `.env`
-4. Check the `cameras.conf` format (code=ip:port:name)
+4. Check the `cameras.conf` format (code=ip:port/path:name)
 
 ### FLAI does not see cameras
 
@@ -184,8 +214,9 @@ cat room-snapshot-api/.env
    ```
 3. Check from the FLAI container:
    ```bash
-   docker exec flai-web python3 -c "import requests; r=requests.get('http://flai-room-snapshot-api:5000/health'); print(r.json())"
+   docker exec flai-web python3 -c "import os, requests; print(requests.get('http://flai-room-snapshot-api:5000/rooms', headers={'X-API-Key': os.environ['CAMERA_API_KEY']}).json())"
    ```
+   A `401` means `CAMERA_API_KEY` in FLAI does not match `API_KEY` in the service `.env`.
 
 ### Service does not respond on port 5005
 
@@ -205,8 +236,10 @@ curl http://localhost:5005/health
 ### Production checklist
 
 - [ ] Secure `SECRET_KEY` (generated automatically by deploy.sh)
+- [ ] `API_KEY` is set, strong and matches FLAI's `CAMERA_API_KEY`
 - [ ] `FLASK_DEBUG=false`
 - [ ] Firewall: access to port 5005 only from the FLAI server
+- [ ] Firewall: MCP port 5006 is not exposed publicly
 - [ ] HTTPS via reverse proxy (nginx)
 - [ ] Up-to-date camera firmware
 - [ ] Regular security updates

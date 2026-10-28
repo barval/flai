@@ -1169,6 +1169,33 @@ window.getCorpusSummary = function() {
 // folders (plus the root when asked) uploaded inside the date range. The
 // selection is a snapshot of document ids; a document added to the folder
 // later is not included until the filter is applied again.
+window.getSelectedDocIds = function() {
+    return Array.from(rlmSelectedDocs);
+};
+
+// Replace the whole corpus with an explicit id set. The scope popover uses it
+// for live folder/date edits: the Documents checkboxes, the bulk bar and the
+// chip all follow immediately, with no «Apply» step.
+window.setCorpusSelection = function(ids) {
+    const wanted = new Set((ids || []).map(String));
+    applyingCorpusFilter = true;
+    try {
+        clearDocumentSelection();
+        // Ids come from the scope's own /api/documents payload; the Documents
+        // panel may not have rendered yet, so do not require documentsData.
+        wanted.forEach(id => setDocChecked(id, true));
+    } finally {
+        applyingCorpusFilter = false;
+    }
+    document.querySelectorAll('.doc-check[data-document-id]').forEach(box => {
+        box.checked = rlmSelectedDocs.has(box.dataset.documentId);
+    });
+    updateBulkBar();
+    updateFolderCheckboxes();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
+    return rlmSelectedDocs.size;
+};
+
 window.applyCorpusFilter = function(options) {
     const folderIds = new Set((options && options.folderIds) || []);
     const unfiled = !!(options && options.unfiled);

@@ -75,9 +75,9 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 ## 🆕 What's New in v12.8
 
-- **One document corpus for chat, deep analysis and tasks.** The Documents-panel ticks — individual files, folders (several at once) and the **Unfiled** root — are the single corpus behind RAG, Deep Analysis and tasks. The 🔍 scope is a bulk selector with a compact chip (`📁 folders (2) · 📄 documents (3)`); nothing ticked means all documents, and a task with no attachments now searches all of them instead of nothing. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **One document corpus for chat, deep analysis and tasks.** The Documents-panel ticks — individual files, folders and the **Unfiled** root — are the single corpus behind RAG, Deep Analysis and tasks. The 🔍 scope mirrors that selection live (a partly ticked folder shows the indeterminate state), dates narrow it immediately and no Apply step is needed; the compact chip keeps the document count visible. Nothing ticked means all documents, and a task with no attachments searches all of them instead of nothing. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Room cameras speak room-snapshot-api v1.3.** Every REST and MCP call carries the shared key, room labels follow the interface language, snapshots are revalidated with `ETag`/`304`, all previews arrive in one parallel request, and the admin modal shows the native frame. → [CAMERA.md](docs/CAMERA.md)
-- **Two video backends.** LTX-Video 2B stays the default (fast, clips up to 10 s, 3.1 GB of VRAM); Wan 2.2 TI2V 5B Turbo joins it as the quality option (5 s, better motion, measured 209 s and 15.0 GB on a 16 GB card). One `VIDEO_BACKEND` switch, `--with-video` / `--with-video-wan` at deploy time, and a VRAM preset chain that keeps a full clip on 8 and 12 GB cards. → [VIDEO.md](docs/VIDEO.md)
+- **Two video backends.** LTX-Video 2B stays the default (fast, clips up to 10 s, 3.1 GB of VRAM); Wan 2.2 TI2V 5B Turbo joins it as the quality option (5 s, better motion, measured 209 s and 15.0 GB on a 16 GB card; **Wan is recommended from 24 GB VRAM**, where it no longer competes for every last megabyte). One `VIDEO_BACKEND` switch, `--with-video` / `--with-video-wan` at deploy time, and a VRAM preset chain that keeps a full clip on 8 and 12 GB cards. → [VIDEO.md](docs/VIDEO.md)
 - **Long-term memory extracts facts with the model.** The rule-based extractor produced zero facts from 30 real messages; extraction now runs on the background queue with a strict JSON schema, keeps `kind`/`confidence`, injects a consolidated profile block and is measurable with `flask memory-eval`. → [MEMORY.md](docs/MEMORY.md)
 - **VRAM is measured, not guessed.** The KV cache comes from each model's own GGUF shapes (the old constants over-counted 1.4–2 GB), measured footprints win over formulas, models that fit stay resident together, and `flask vram-probe` / `flask vram-plan` show the numbers before a save. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
 - **Hybrid retrieval is BM25 over lemmas.** `ts_rank_cd` is gone; fused MRR rose 0.688 → 0.802 and nDCG@20 0.765 → 0.872 on two 30-question sets. → [DOCUMENTS.md](docs/DOCUMENTS.md)
@@ -108,12 +108,12 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ### 🎨 Media
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
-- **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
+- **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion; **recommended from 24 GB VRAM**), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
 - **Document search (RAG)** — PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on, and the 🔍 search scope mirrors them live (folder, **Unfiled** root, upload dates) with no separate Apply step. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
 
@@ -273,7 +273,7 @@ behind the planner in `resource_manager.py`. Add them to the base tier you run.
 | **Whisper ASR** (`with-voice-*`) | ~2 GB | — | `large-v3-turbo`, CPU; the planner budgets `WHISPER_RAM_MB` |
 | **Image generation** (`with-image-gen`) | ~1.5 GB | up to ~10 GB | sd.cpp, Z-Image Turbo Q8; SD and video never overlap |
 | **LTX-Video** (`with-video`) | ~1 GB resident | **3.1 GB peak** | measured pipeline peak, not the old 8 GB constant |
-| **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card |
+| **Wan video** (`with-video-wan`) | ~1 GB (GPU) / **~10 GB** when the encoder is offloaded | **15.0 GB** at 832×480×121; **9.0 GB** with `--offload-to-cpu` | measured 209 s per 5-second clip on a 16 GB card; **recommended from 24 GB VRAM** |
 | **SuperLocalMemory** (`with-slm`) | ~0.5 GB (planner budget 2 GB) | — | CPU embeddings |
 | **Reranker** (optional, off by default) | ~0.9 GB | — | `bge-reranker-v2-m3`, `cpu_only` group, never takes a GPU slot |
 

@@ -14,8 +14,9 @@ def _chat_html() -> str:
 
 def test_chat_has_the_scope_control_and_script():
     html = _chat_html()
-    for element in ("scope-toggle", "scope-popover", "scope-folders", "scope-from", "scope-to"):
+    for element in ("scope-toggle", "scope-popover", "scope-folders", "scope-from", "scope-to", "scope-clear"):
         assert f'id="{element}"' in html, element
+    assert 'id="scope-apply"' not in html, "folders/date edits are live; no Apply step"
     assert "js/chat-scope.js" in html
 
 
@@ -74,7 +75,8 @@ def test_the_corpus_is_sent_with_every_message():
     assert "getChatScope" not in js, "the popover ticks documents now; no separate filter is sent"
 
     scope = Path("app/static/js/chat-scope.js").read_text(encoding="utf-8")
-    assert "window.applyCorpusFilter" in scope
+    assert "window.setCorpusSelection" in scope, "folder/date edits write the corpus live"
+    assert "window.getSelectedDocIds" in scope, "the scope mirrors the Documents checkboxes"
     assert "window.getCorpusSummary" in scope
 
 
@@ -83,6 +85,8 @@ def test_documents_panel_has_a_root_group_and_feeds_the_corpus():
     assert "const ROOT_GROUP = '__root__';" in js
     assert "data-folder-id=\"${ROOT_GROUP}\"" in js
     assert "window.applyCorpusFilter = function" in js
+    assert "window.setCorpusSelection = function" in js
+    assert "window.getSelectedDocIds = function" in js
     assert "window.getCorpusSummary = function" in js
     # Turning deep analysis off must not empty the corpus anymore.
     assert "rlmSelectedDocs = new Set();" not in js.split("rlmToggleEl.addEventListener")[1].split("});")[0]

@@ -4900,3 +4900,7 @@ msgstr "документов ({count})"
 #: app/templates/chat.html
 msgid "No documents match the selected folders and dates."
 msgstr "По выбранным папкам и датам документы не найдены."
+
+#: app/templates/chat.html
+msgid "Select at least one folder."
+msgstr "Выберите хотя бы одну папку."

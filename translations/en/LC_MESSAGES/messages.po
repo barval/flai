@@ -4867,3 +4867,7 @@ msgstr "documents ({count})"
 #: app/templates/chat.html
 msgid "No documents match the selected folders and dates."
 msgstr "No documents match the selected folders and dates."
+
+#: app/templates/chat.html
+msgid "Select at least one folder."
+msgstr "Select at least one folder."

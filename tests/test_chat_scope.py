@@ -110,6 +110,7 @@ def test_scope_strings_are_translated():
         ("Folders", "Папки"),
         ("folders ({count})", "папок ({count})"),
         ("documents ({count})", "документов ({count})"),
+        ("Select at least one folder.", "Выберите хотя бы одну папку."),
         ("Uploaded from", "Загружено с"),
         ("Uploaded to", "Загружено по"),
     ):

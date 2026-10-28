@@ -2,6 +2,9 @@
 // Camera rooms — sync from room-snapshot-api + preview thumbnails
 
 const CAM_CACHE_PREFIX = 'cam_preview_';
+// Last native frame per camera, kept for this page session: reopening a preview
+// starts sharp instead of stretching the 384 px thumbnail again.
+const CAM_FULL_CACHE = new Map();
 
 document.addEventListener('DOMContentLoaded', function() {
     loadCameras(false);
@@ -33,6 +36,7 @@ function syncCameras() {
     setSyncing(btn, true);
 
     clearImageCache();
+    CAM_FULL_CACHE.clear();
 
     fetchWithCSRF('/admin/api/cameras/sync', { method: 'POST' })
     .then(r => r.json())
@@ -327,24 +331,61 @@ function openPreviewModal(src, code) {
     const img = document.getElementById('preview-modal-img');
     if (!modal || !img) return;
 
-    // The table thumbnail is a 384 px data URL. Showing it as-is in the modal
-    // made the "enlarged" view thumbnail-sized, so the native frame is fetched
-    // in the background and swapped in as soon as it arrives.
+    // The table thumbnail is a 384 px data URL. The native frame is fetched in
+    // the background; until it arrives the last native frame of this session is
+    // shown, and only the very first open has to stretch the thumbnail.
     const lang = (document.documentElement.lang || 'ru').slice(0, 2);
     const fullUrl = '/admin/api/cameras/' + encodeURIComponent(code) +
         '/proxy?full=1&lang=' + encodeURIComponent(lang);
+    const cachedFull = CAM_FULL_CACHE.get(code);
 
     img.alt = code;
-    img.src = src;
-    img.classList.add('loading');
+    img.src = cachedFull || src;
+    img.classList.toggle('loading', !cachedFull);
     modal.dataset.code = code;
     modal.style.display = 'flex';
 
     const full = new Image();
     full.onload = function() {
         if (modal.dataset.code !== code) return;
-        img.src = fullUrl;
+        const fullData = toDataUrl(full, full.naturalWidth, full.naturalHeight, 0.9);
+        if (fullData) {
+            CAM_FULL_CACHE.set(code, fullData);
+            img.src = fullData;
+        } else {
+            img.src = fullUrl;
+        }
         img.classList.remove('loading');
+        updateThumbnail(code, full);
     };
     full.src = fullUrl;
+}
+
+function toDataUrl(image, width, height, quality) {
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+        return canvas.toDataURL('image/jpeg', quality);
+    } catch (e) {
+        return '';
+    }
+}
+
+function updateThumbnail(code, image) {
+    // Keep the table and its localStorage cache on the same frame the modal
+    // just showed, so the next click starts from the current picture.
+    const thumb = document.querySelector('.cam-preview-cell .cam-preview[alt="' + CSS.escape(code) + '"]');
+    if (!thumb) return;
+    const width = Math.min(384, image.naturalWidth);
+    const height = Math.round(width * image.naturalHeight / image.naturalWidth);
+    const data = toDataUrl(image, width, height, 0.85);
+    if (!data) return;
+    thumb.src = data;
+    try {
+        localStorage.setItem(CAM_CACHE_PREFIX + code, JSON.stringify({ data: data, ts: Date.now() }));
+    } catch (e) {
+        clearImageCache();
+    }
 }

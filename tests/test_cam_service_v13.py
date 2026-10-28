@@ -57,6 +57,14 @@ class TestSnapshot:
         assert get.call_args.kwargs["params"]["lang"] == "ru"
         assert get.call_args.kwargs["params"]["width"] == "384"
 
+    def test_native_frame_omits_width(self):
+        """The modal asks for the full frame; without width the service sends native resolution."""
+        cam = _cam()
+        response = MagicMock(status_code=200, content=b"jpeg", headers={"content-type": "image/jpeg"})
+        with patch("modules.cam.requests.get", return_value=response) as get:
+            cam.fetch_snapshot("kuh", lang="ru", width=None)
+        assert "width" not in get.call_args.kwargs["params"]
+
     def test_snapshot_success_carries_the_etag(self):
         cam = _cam()
         response = MagicMock(status_code=200, content=b"jpeg", headers={"ETag": '"v1"', "content-type": "image/jpeg"})

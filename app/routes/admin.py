@@ -2132,7 +2132,12 @@ def proxy_camera_snapshot(code):
         return jsonify({"error": _("Camera integration is not available")}), 503
 
     lang = request.args.get("lang") or "ru"
-    width = request.args.get("width", type=int) or current_app.config.get("CAMERA_SNAPSHOT_WIDTH", 384)
+    # ``full=1`` asks for the camera's native frame: the modal must not show the
+    # 384 px thumbnail scaled up. Row previews keep CAMERA_SNAPSHOT_WIDTH.
+    if request.args.get("full") == "1":
+        width = None
+    else:
+        width = request.args.get("width", type=int) or current_app.config.get("CAMERA_SNAPSHOT_WIDTH", 384)
     etag = request.headers.get("If-None-Match", "")
     result = cam.fetch_snapshot(code, lang=lang, width=width, etag=etag)
     if result["status"] == 304:

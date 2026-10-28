@@ -71,6 +71,7 @@ referencing==0.37.0
 regex==2026.9.29
 requests==2.34.2
 rpds-py==2026.9.1
+setuptools==84.2.1
 six==1.17.0
 striprtf==0.0.35
 tld==0.13.2

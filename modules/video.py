@@ -227,6 +227,17 @@ class VideoModule(TranslationMixin):
         params = WAN_DEFAULT_PARAMS if self.backend == BACKEND_WAN else LTX_DEFAULT_PARAMS
         return dict(params)
 
+    def current_backend(self) -> str:
+        """The backend selected right now (re-reads the live config).
+
+        Callers that run before ``generate_video`` — the VRAM gate, for one —
+        must not use the attribute cached by the previous request: a demo run
+        that switches to Wan and back would leave a 15 GB estimate behind and
+        the gate would wait for memory that never frees.
+        """
+        self._refresh_backend()
+        return self.backend
+
     @property
     def vram_margin_mb(self) -> int:
         """Safety margin on top of the estimated peak (MB).

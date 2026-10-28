@@ -1579,7 +1579,9 @@ class RedisRequestQueue:
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         video_module = self.app.modules.get("video")
-        video_backend = getattr(video_module, "backend", None)
+        # Re-read the live backend: the attribute is cached by the last request,
+        # and a stale "wan" asks for 15 GB before a 3 GB LTX clip.
+        video_backend = video_module.current_backend() if video_module is not None else None
         min_free = (
             rm.estimate_video_vram_needed(
                 video_params.get("width") if video_params else None,

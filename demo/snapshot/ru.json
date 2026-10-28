@@ -17,7 +17,8 @@
   "85129b4e-6b39-4293-ab26-241b09f92e90/59c65880f0bd48fa918ce72fc4ddac64.png": "media/ru/59c65880f0bd48fa918ce72fc4ddac64.webp",
   "injected-872631033a00304d.mp4": "media/ru/injected-872631033a00304d.mp4",
   "injected-c82bd7d9a983700e.mp4": "media/ru/injected-c82bd7d9a983700e.mp4",
-  "injected-748bab8b2676d632.mp4": "media/ru/injected-748bab8b2676d632.mp4"
+  "injected-748bab8b2676d632.mp4": "media/ru/injected-748bab8b2676d632.mp4",
+  "injected-92f32c6987ed2677.mp4": "media/ru/injected-92f32c6987ed2677.mp4"
  },
  "lang": "ru",
  "routes": [
@@ -666,23 +667,16 @@
       "timestamp": "2026-10-28T05:15:51+03:00"
      },
      {
-      "content": "⚠️ Память GPU недоступна после выгрузки LLM. Попробуйте снова.",
-      "file_data": null,
-      "file_name": null,
-      "file_path": null,
-      "file_size": 0,
-      "file_type": null,
-      "gen_model": null,
-      "gen_time": null,
-      "id": 5142,
-      "mm_model": null,
-      "mm_time": null,
-      "model_name": "system",
-      "model_type": "system",
-      "response_style": "neutral",
-      "response_time": 6.8,
       "role": "assistant",
-      "timestamp": "2026-10-28T05:18:01+03:00"
+      "content": "Клип сгенерирован в веб-интерфейсе: лёгкий ветер в осеннем парке.",
+      "file_type": "video/mp4",
+      "file_name": "ru_breeze.mp4",
+      "file_path": "injected-92f32c6987ed2677.mp4",
+      "file_size": 2343201,
+      "model_name": "injected",
+      "mm_time": null,
+      "gen_time": null,
+      "response_time": null
      }
     ],
     "offset": 0

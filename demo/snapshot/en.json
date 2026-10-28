@@ -16,7 +16,8 @@
   "df818691-cac1-445f-943d-d40d23f1e80f/59a2ad3300084e3e877b68cc14f92112.mp4": "media/en/59a2ad3300084e3e877b68cc14f92112.mp4",
   "df818691-cac1-445f-943d-d40d23f1e80f/a215eed61b0d4806b0dc1df930ecaded.png": "media/en/a215eed61b0d4806b0dc1df930ecaded.webp",
   "injected-2a9a819554998e09.mp4": "media/en/injected-2a9a819554998e09.mp4",
-  "injected-81f8b6c37f07424e.mp4": "media/en/injected-81f8b6c37f07424e.mp4"
+  "injected-81f8b6c37f07424e.mp4": "media/en/injected-81f8b6c37f07424e.mp4",
+  "injected-df362a2f05bbdab2.mp4": "media/en/injected-df362a2f05bbdab2.mp4"
  },
  "lang": "en",
  "routes": [
@@ -665,23 +666,16 @@
       "timestamp": "2026-10-28T06:33:13+03:00"
      },
      {
-      "content": "⚠️ GPU memory unavailable after unloading LLM. Try again.",
-      "file_data": null,
-      "file_name": null,
-      "file_path": null,
-      "file_size": 0,
-      "file_type": null,
-      "gen_model": null,
-      "gen_time": null,
-      "id": 5200,
-      "mm_model": null,
-      "mm_time": null,
-      "model_name": "system",
-      "model_type": "system",
-      "response_style": "neutral",
-      "response_time": 6.2,
       "role": "assistant",
-      "timestamp": "2026-10-28T06:35:23+03:00"
+      "content": "Clip generated in the web UI: a light breeze in the autumn park.",
+      "file_type": "video/mp4",
+      "file_name": "en_breeze.mp4",
+      "file_path": "injected-df362a2f05bbdab2.mp4",
+      "file_size": 2740305,
+      "model_name": "injected",
+      "mm_time": null,
+      "gen_time": null,
+      "response_time": null
      }
     ],
     "offset": 0

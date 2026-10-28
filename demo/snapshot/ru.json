@@ -15,7 +15,9 @@
   "85129b4e-6b39-4293-ab26-241b09f92e90/27e2a116e5cf42988fd37f0118475533.png": "media/ru/27e2a116e5cf42988fd37f0118475533.webp",
   "85129b4e-6b39-4293-ab26-241b09f92e90/4d48cfa3b04b41a580398ffac89bf043.png": "media/ru/4d48cfa3b04b41a580398ffac89bf043.webp",
   "85129b4e-6b39-4293-ab26-241b09f92e90/59c65880f0bd48fa918ce72fc4ddac64.png": "media/ru/59c65880f0bd48fa918ce72fc4ddac64.webp",
-  "injected-872631033a00304d.mp4": "media/ru/injected-872631033a00304d.mp4"
+  "injected-872631033a00304d.mp4": "media/ru/injected-872631033a00304d.mp4",
+  "injected-c82bd7d9a983700e.mp4": "media/ru/injected-c82bd7d9a983700e.mp4",
+  "injected-748bab8b2676d632.mp4": "media/ru/injected-748bab8b2676d632.mp4"
  },
  "lang": "ru",
  "routes": [
@@ -1893,6 +1895,24 @@
        "completion_tokens": 2023,
        "prompt_tokens": 987
       }
+     },
+     {
+      "role": "assistant",
+      "content": "Видео 1: астронавт идёт по Луне.",
+      "file_type": "video/mp4",
+      "file_name": "7432038ff5a644a193dcd90d66455ebc.mp4",
+      "file_path": "injected-c82bd7d9a983700e.mp4",
+      "file_size": 1848970,
+      "model_name": "injected"
+     },
+     {
+      "role": "assistant",
+      "content": "Видео 2: астронавт идёт по Марсу.",
+      "file_type": "video/mp4",
+      "file_name": "9221dd05f89541a4938dc06b7c7665b0.mp4",
+      "file_path": "injected-748bab8b2676d632.mp4",
+      "file_size": 1353379,
+      "model_name": "injected"
      }
     ],
     "task": {

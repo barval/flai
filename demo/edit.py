@@ -92,14 +92,14 @@ def inject_media(
     if not isinstance(messages, list):
         raise ValueError(f"route {route.get('path')} has no messages to edit")
 
-    # Drop the old answer(s), keep the user turn that carries the prompt.
+    # A task route holds planner steps, not a user turn: the artifact becomes
+    # one more step result at the end. A chat route keeps its user turn and the
+    # old answer is replaced.
     user_index = next(
         (i for i, m in enumerate(messages) if m.get("role") == "user" and prompt[:40] in json.dumps(m.get("content"), ensure_ascii=False)),
         None,
     )
-    if user_index is None:
-        raise LookupError(f"no user turn for the scenario in {route.get('path')}")
-    kept = messages[: user_index + 1]
+    kept = list(messages) if user_index is None else messages[: user_index + 1]
     kept.append(
         {
             "role": "assistant",

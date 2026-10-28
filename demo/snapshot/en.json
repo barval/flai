@@ -14,7 +14,9 @@
   "804ce46d-28f6-47a5-9f54-812ee8025d2b/9bda29a8acdd4a8dadd2ef3758f4a721.png": "media/en/9bda29a8acdd4a8dadd2ef3758f4a721.webp",
   "c179132f-6838-43bc-8b8f-de9f912c6db9/43f991376c9d4892af168a1e64e27601.png": "media/en/43f991376c9d4892af168a1e64e27601.webp",
   "df818691-cac1-445f-943d-d40d23f1e80f/59a2ad3300084e3e877b68cc14f92112.mp4": "media/en/59a2ad3300084e3e877b68cc14f92112.mp4",
-  "df818691-cac1-445f-943d-d40d23f1e80f/a215eed61b0d4806b0dc1df930ecaded.png": "media/en/a215eed61b0d4806b0dc1df930ecaded.webp"
+  "df818691-cac1-445f-943d-d40d23f1e80f/a215eed61b0d4806b0dc1df930ecaded.png": "media/en/a215eed61b0d4806b0dc1df930ecaded.webp",
+  "injected-2a9a819554998e09.mp4": "media/en/injected-2a9a819554998e09.mp4",
+  "injected-81f8b6c37f07424e.mp4": "media/en/injected-81f8b6c37f07424e.mp4"
  },
  "lang": "en",
  "routes": [
@@ -2162,6 +2164,24 @@
        "completion_tokens": 1466,
        "prompt_tokens": 668
       }
+     },
+     {
+      "role": "assistant",
+      "content": "Clip 1: the astronaut walks on the Moon.",
+      "file_type": "video/mp4",
+      "file_name": "50529a7c1ff04a29b5723240a76044f6.mp4",
+      "file_path": "injected-2a9a819554998e09.mp4",
+      "file_size": 1416570,
+      "model_name": "injected"
+     },
+     {
+      "role": "assistant",
+      "content": "Clip 2: the astronaut walks on Mars.",
+      "file_type": "video/mp4",
+      "file_name": "8d32d743330e42119a3feef30cebe5fc.mp4",
+      "file_path": "injected-81f8b6c37f07424e.mp4",
+      "file_size": 2009260,
+      "model_name": "injected"
      }
     ],
     "task": {

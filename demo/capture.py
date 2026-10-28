@@ -732,6 +732,11 @@ def _attachment_files(scenario: dict, prepared: dict, lang: str) -> dict:
         return {}
     if attach == "generated-image":
         return {"file": (prepared["photo"].name, prepared["photo"].read_bytes(), "image/png")}
+    if attach == "previous-image" and prepared.get("force_attach"):
+        path = Path(prepared["force_attach"])
+        if path.is_file():
+            mime = IMAGE_MIME.get(path.suffix.lower(), "image/png")
+            return {"file": (path.name, path.read_bytes(), mime)}
     if attach == "previous-image":
         # The picture the previous scenario produced (e.g. video from the image
         # drawn one step earlier), downloaded and attached like a user would.
@@ -829,6 +834,7 @@ def capture_language(
     transport: Any = None,
     timeout_s: float = 900.0,
     only: list[str] | None = None,
+    attach_file: str = "",
 ) -> dict:
     """Drive the running instance through the demo scenarios and return the snapshot."""
     if not force:
@@ -888,6 +894,8 @@ def capture_language(
 
     media: dict[str, str] = {}
     unfinished: dict[str, dict] = {}
+    if attach_file:
+        prepared["force_attach"] = attach_file
     current_backend = "ltx"
     for scenario in scenarios["scenarios"]:
         desired_backend = scenario.get("video_backend", "ltx")
@@ -916,7 +924,11 @@ def capture_language(
                 # the pipeline dropped it, and the page would show text only.
                 print(f"[{lang}] no video produced", flush=True)
                 defects += 1
-            for image in images:
+            # A video scenario attaches a *source* picture; OCRing the user's own
+            # photo is not a defect check (it used to fail every attempt and the
+            # retry threw away the clip). Only the produced clip matters there.
+            checkable = [] if scenario.get("kind") == "video" else images
+            for image in checkable:
                 found, answer = check_image_text(chat, image, lang)
                 verdict = "TEXT" if found else "clean"
                 print(f"[{lang}]   image {Path(image).name}: {verdict} — {answer[:80]}", flush=True)
@@ -1081,6 +1093,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--password", required=True, help="password of the demo accounts")
     parser.add_argument("--force", action="store_true", help="confirm writing into the live database")
     parser.add_argument(
+        "--attach-file",
+        default="",
+        help="image to attach to a re-captured scenario that normally takes the "
+        "previous picture (partial runs have no previous scenario)",
+    )
+    parser.add_argument(
         "--only",
         default="",
         help="re-capture only these scenarios (comma-separated titles or indexes); "
@@ -1099,7 +1117,12 @@ def main(argv: list[str] | None = None) -> int:
     for lang in languages:
         only = [item for item in args.only.split(",") if item.strip()]
         snapshot = capture_language(
-            args.base_url, lang, password=args.password, force=args.force, only=only or None
+            args.base_url,
+            lang,
+            password=args.password,
+            force=args.force,
+            only=only or None,
+            attach_file=args.attach_file,
         )
         print(f"{lang}: {len(snapshot['routes'])} routes, {len(snapshot['assets'])} assets")
     return 0

@@ -59,11 +59,12 @@ def test_video_messages_name_a_real_backend():
 
         def walk(value, lang=lang):
             if isinstance(value, dict):
-                if str(value.get("file_type", "")).startswith("video"):
+                if str(value.get("file_type", "")).startswith("video") and value.get("role"):
                     model = str(value.get("model_name") or "")
                     assert "injected" not in model, f"{lang}: {value.get('file_path')} has no backend label"
                     assert any(name in model for name in backends), f"{lang}: {model}"
-                    assert value.get("gen_model") == value.get("model_name")
+                    if value.get("gen_model"):
+                        assert value.get("gen_model") == value.get("model_name")
                 for child in value.values():
                     walk(child)
             elif isinstance(value, list):

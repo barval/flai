@@ -94,7 +94,7 @@
     {
       "kind": "task",
       "title": "Mars",
-      "prompt": "Draw a realistic photo of an astronaut walking on the surface of the Moon. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
+      "prompt": "Draw a realistic photo of an astronaut walking on the surface of the Moon under a black starry sky with a small distant Earth. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
     },
     {
       "kind": "task",
@@ -104,7 +104,7 @@
     {
       "kind": "task",
       "title": "Café",
-      "prompt": "Make a video: an empty European street café early in the morning in summer. A light breeze.",
+      "prompt": "Make a realistic video: an empty European street café early in the morning in summer — photorealistic, cinematic footage, not a drawing or an animation. A light breeze.",
       "video_backend": "wan"
     },
     {

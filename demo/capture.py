@@ -624,6 +624,25 @@ def _task_image_paths(payload: Any) -> list[str]:
     return found
 
 
+def media_rejection_defects(payload: dict) -> int:
+    """Delivered media whose every verification attempt failed.
+
+    A task keeps the closest candidate after its attempts run out ("best
+    effort"); that artifact is known to be wrong and must not reach the demo.
+    """
+    defects = 0
+    for message in payload.get("messages") or []:
+        if not isinstance(message, dict):
+            continue
+        extra = message.get("extra") or {}
+        if not extra.get("media"):
+            continue
+        attempts = [a for a in (extra.get("attempts_log") or []) if isinstance(a, dict)]
+        if extra.get("best_effort") or (attempts and not any(a.get("ok") for a in attempts)):
+            defects += 1
+    return defects
+
+
 def _has_video(session: DemoSession, session_id: str, task_id: str, lang: str) -> bool:
     """True when the scenario produced a clip (chat attachment or task artifact)."""
     paths: set[str] = set()
@@ -835,6 +854,7 @@ def capture_language(
     timeout_s: float = 900.0,
     only: list[str] | None = None,
     attach_file: str = "",
+    skip_documents: bool = False,
 ) -> dict:
     """Drive the running instance through the demo scenarios and return the snapshot."""
     if not force:
@@ -866,25 +886,26 @@ def capture_language(
     _record(routes, "GET", "/api/sessions", sessions)
 
     document_ids: list[str] = []
-    for document in scenarios["documents"]:
-        print(f"[{lang}] upload: {document['name']}", flush=True)
-        source = DEMO_DIR / document["source"]
-        with source.open("rb") as handle:
-            uploaded = chat.post_form(
-                "/api/documents/upload",
-                files={"file": (document["name"], handle, "application/pdf")},
-            )
-        document_ids.append(uploaded["id"])
+    if not skip_documents:
+        for document in scenarios["documents"]:
+            print(f"[{lang}] upload: {document['name']}", flush=True)
+            source = DEMO_DIR / document["source"]
+            with source.open("rb") as handle:
+                uploaded = chat.post_form(
+                    "/api/documents/upload",
+                    files={"file": (document["name"], handle, "application/pdf")},
+                )
+            document_ids.append(uploaded["id"])
 
-    wait_for(
-        lambda: all(
-            doc.get("index_status") == "indexed"
-            for doc in chat.get_json("/api/documents")["documents"]
-            if doc["id"] in document_ids
-        ),
-        timeout_s=900.0,
-        interval_s=5.0,
-    )
+        wait_for(
+            lambda: all(
+                doc.get("index_status") == "indexed"
+                for doc in chat.get_json("/api/documents")["documents"]
+                if doc["id"] in document_ids
+            ),
+            timeout_s=900.0,
+            interval_s=5.0,
+        )
     _record(routes, "GET", "/api/documents", chat.get_json("/api/documents"))
     _record(routes, "GET", "/api/tasks", chat.get_json("/api/tasks"))
 
@@ -914,6 +935,11 @@ def capture_language(
             task_id = result.get("task_id", "")
             images = scenario_images(chat, session_id, task_id)
             defects = 0
+            if task_id:
+                rejected = media_rejection_defects(chat.get_json(f"/api/tasks/{task_id}/messages"))
+                if rejected:
+                    print(f"[{lang}] {rejected} artifact(s) rejected by the verifier", flush=True)
+                defects += rejected
             if not images and scenario.get("kind") == "image":
                 # The router occasionally answers an image request with text;
                 # without a picture the scenario has nothing to show.
@@ -941,7 +967,7 @@ def capture_language(
                 if result.get("interrupted"):
                     unfinished[task_id] = scenario
                 break
-            print(f"[{lang}] retry {scenario['title']}: text on {defects} of {len(images)} image(s)", flush=True)
+            print(f"[{lang}] retry {scenario['title']}: {defects} defect(s) in {len(images)} image(s)", flush=True)
             if attempt == 3:
                 # Keep the last attempt: the demo must still show something, and the
                 # log has already reported that none of the pictures came out clean.
@@ -978,7 +1004,7 @@ def capture_language(
                 defects += 1 if found else 0
             if not defects:
                 break
-            print(f"[{lang}] retry {scenario['title']}: text on {defects} of {len(images)} image(s)", flush=True)
+            print(f"[{lang}] retry {scenario['title']}: {defects} defect(s) in {len(images)} image(s)", flush=True)
             if _attempt == 3:
                 print(f"[{lang}] keeping the last attempt of {scenario['title']}", flush=True)
                 break
@@ -1104,6 +1130,11 @@ def main(argv: list[str] | None = None) -> int:
         help="re-capture only these scenarios (comma-separated titles or indexes); "
         "the rest of the snapshot is kept",
     )
+    parser.add_argument(
+        "--skip-documents",
+        action="store_true",
+        help="do not upload or index the scenario documents (a targeted media re-run)",
+    )
     parser.add_argument("--cleanup", default="", help="finish the removal of an interrupted capture")
     parser.add_argument("--database-url", default="", help="delete the orphan background tasks")
     args = parser.parse_args(argv)
@@ -1123,6 +1154,7 @@ def main(argv: list[str] | None = None) -> int:
             force=args.force,
             only=only or None,
             attach_file=args.attach_file,
+            skip_documents=args.skip_documents,
         )
         print(f"{lang}: {len(snapshot['routes'])} routes, {len(snapshot['assets'])} assets")
     return 0

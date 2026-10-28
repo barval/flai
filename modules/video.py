@@ -245,12 +245,12 @@ class VideoModule(TranslationMixin):
         Wan's figure is a measured peak — 15 003 MB of pipeline against 15 511 MB
         free on the reference 16 GB card — so a 1 GB margin would reject a clip
         that demonstrably runs. The estimate itself already sits ~130 MB above
-        that measured peak, so a 200 MB margin keeps ~330 MB of real headroom
+        that measured peak, so a 100 MB margin keeps ~230 MB of real headroom
         while leaving room for a container's residual CUDA context. LTX keeps
         1 GB because its estimate comes from the pipeline's measured total, not
         from the exact requested resolution.
         """
-        return 200 if self.backend == BACKEND_WAN else 1000
+        return 100 if self.backend == BACKEND_WAN else 1000
 
     @property
     def max_frames(self) -> int:
@@ -687,6 +687,10 @@ class VideoModule(TranslationMixin):
             # CPU platform: no GPU memory to manage — the wrapper runs on device=cpu.
             self.logger.info("Video generation on CPU platform — skipping the VRAM gate")
         else:
+            # Mark the GPU busy for the whole wait: the crash-loop watchdog skips
+            # its tick while is_gpu_busy() is set; otherwise it respawns the
+            # multimodal model (TTL=0) in the middle of the wait and starves it.
+            rm.mark_video_busy()
             # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
             # A VRAM-only check with threshold ~10GB can pass while multimodal
             # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
@@ -724,6 +728,7 @@ class VideoModule(TranslationMixin):
                     lang,
                 ).format(free=free, need=video_needed)
                 self.logger.warning(f"VRAM wait timeout ({timeout}s) — free={free}MB, models={loaded}")
+                rm.mark_video_idle()
                 return {"success": False, "error": err_msg}
 
             use_gpu = self._resolve_use_gpu(rm, prompt_data)
@@ -737,6 +742,7 @@ class VideoModule(TranslationMixin):
                     need=int(self.estimate_vram_mb(prompt_data) + self.vram_margin_mb),
                 )
                 self.logger.warning(f"Video generation skipped: {err_msg}")
+                rm.mark_video_idle()
                 return {"success": False, "error": err_msg}
             self.logger.info(
                 f"VRAM: {rm.hardware.available_vram_mb}MB available, "
@@ -751,7 +757,6 @@ class VideoModule(TranslationMixin):
         image_data, resized_info = resize_video_source_image(image_data, source_limit)
 
         try:
-            rm.mark_video_busy()
             payload = self._build_payload(prompt_data, image_data, user_id, session_id, task_id)
 
             self.logger.info(

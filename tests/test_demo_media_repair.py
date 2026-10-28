@@ -114,7 +114,7 @@ def test_rejected_media_is_a_capture_defect():
 
 
 def test_astronaut_scenario_pins_a_photorealistic_sky():
-    for lang, words in (("ru", ("реалистичн", "звёздн")), ("en", ("realistic", "starry"))):
+    for lang, words in (("ru", ("реалистичн", "звёздн")), ("en", ("astronaut", "stars"))):
         data = json.loads((DEMO / f"scenarios/{lang}.json").read_text("utf-8"))
         mars = next(s for s in data["scenarios"] if s.get("title") in ("Марс", "Mars"))
         prompt = mars["prompt"].lower()

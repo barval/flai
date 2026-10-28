@@ -379,6 +379,42 @@ def _scrub(value: Any, key: str = "") -> Any:
     return value
 
 
+def _prune_orphans(snapshot: dict) -> dict:
+    """Drop task/session detail routes and assets nothing in the lists points at.
+
+    A partial re-run leaves the routes of tasks the capture deleted; the builder
+    inlines every asset, so an orphan route bloats the published page (and its
+    16 MB budget) without ever being opened.
+    """
+    routes = snapshot.get("routes", [])
+    task_ids: set[str] = set()
+    session_ids: set[str] = set()
+    for route in routes:
+        path = route.get("path", "")
+        if path == "/api/tasks":
+            body = route.get("body")
+            items = body.get("tasks") if isinstance(body, dict) else body
+            task_ids |= {str(item.get("id")) for item in items or [] if isinstance(item, dict)}
+        elif path == "/api/sessions":
+            items = route.get("body")
+            session_ids |= {str(item.get("id")) for item in items or [] if isinstance(item, dict)}
+    kept = []
+    for route in routes:
+        path = route.get("path", "")
+        task_match = re.match(r"^/api/tasks/([^/]+)/messages$", path)
+        if task_match and task_match.group(1) not in task_ids:
+            continue
+        session_match = re.match(r"^/api/sessions/([^/]+)/messages$", path)
+        if session_match and session_match.group(1) not in session_ids:
+            continue
+        kept.append(route)
+    blob = json.dumps(kept, ensure_ascii=False)
+    assets = snapshot.get("assets") or {}
+    snapshot["routes"] = kept
+    snapshot["assets"] = {key: value for key, value in assets.items() if key in blob or value in blob}
+    return snapshot
+
+
 def _merge_partial(fresh: dict, lang: str, prompts: list[str]) -> dict:
     """Fold a partial run into the committed snapshot.
 
@@ -1065,6 +1101,7 @@ def capture_language(
     snapshot = rewrite_for_publication(snapshot, lang)
     if only:
         snapshot = _merge_partial(snapshot, lang, [sc["prompt"] for sc in scenarios["scenarios"]])
+    snapshot = _prune_orphans(snapshot)
     save_snapshot(DEMO_DIR / "snapshot" / f"{lang}.json", snapshot)
 
     manifest_path = _manifest_path(lang)

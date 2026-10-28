@@ -1,11 +1,15 @@
-# Room Snapshot API - Local Deployment
+# Room Snapshot API v1.3 - Local Deployment
 # Use this docker-compose for deploying on the SAME server as FLAI application
-# Services communicate via internal Docker network (lower latency)
+# Services communicate via internal Docker network (lower latency).
+#
+# Installation data (API_KEY, RTSP_AUTH, cameras.conf, ...) lives in
+# ./room-snapshot-api/.env and ./room-snapshot-api/config - mounted, never baked
+# into the image and never committed.
 
 services:
   room-snapshot-api:
     build:
-      context: .
+      context: ./room-snapshot-api
       dockerfile: Dockerfile
     container_name: flai-room-snapshot-api
     ports:
@@ -15,12 +19,48 @@ services:
       - ./room-snapshot-api/.env:/app/.env:ro
     env_file:
       - ./room-snapshot-api/.env
-    environment:
-      - FLASK_DEBUG=${FLASK_DEBUG:-false}
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H \"X-API-Key: $$API_KEY\" http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  room-snapshot-api-mcp:
+    build:
+      context: ./room-snapshot-api
+      dockerfile: Dockerfile
+    container_name: flai-room-snapshot-api-mcp
+    command: ["python", "-m", "app.mcp_server"]
+    ports:
+      - "5006:8000"
+    volumes:
+      - ./room-snapshot-api/config:/app/config:ro
+      - ./room-snapshot-api/.env:/app/.env:ro
+    env_file:
+      - ./room-snapshot-api/.env
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   flai_network:

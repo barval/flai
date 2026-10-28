@@ -94,7 +94,7 @@
     {
       "kind": "task",
       "title": "Mars",
-      "prompt": "Draw a realistic photo of an astronaut walking on the surface of the Moon under a black starry sky with a small distant Earth. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
+      "prompt": "Draw an astronaut on the surface of the moon. Above them is space, filled with stars. Then edit the resulting image so that the astronaut walks on the surface of Mars. Finally, create two short videos of the astronaut walking: one based on the first image and one based on the second."
     },
     {
       "kind": "task",

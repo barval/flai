@@ -312,7 +312,38 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             # A freshly created account owns one empty conversation; it is not a
             # demo scenario and would sit in the list as «New session».
             route["body"] = [item for item in route["body"] if item.get("message_count")]
-    return _scrub(result)
+    result = _scrub(result)
+    _drop_missing_assets(result)
+    return result
+
+
+def _drop_missing_assets(snapshot: dict) -> None:
+    """Clear attachment references whose bytes were never captured.
+
+    A task step can produce a picture that is deleted when the step is retried;
+    the message keeps its path, the asset list does not, and the static page
+    would render a broken image. Dropping the path leaves a text-only message.
+    """
+    # Asset keys are either "<session>/<file>" or "/api/documents/…"; message
+    # paths are the bare relative form, so compare with the leading slash removed.
+    known = {str(asset).lstrip("/") for asset in snapshot.get("assets", {})}
+
+    def key(path: str) -> str:
+        return path.lstrip("/")
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            path = value.get("file_path")
+            if isinstance(path, str) and path and key(path) not in known:
+                value["file_path"] = None
+                value["file_name"] = None
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(snapshot.get("routes"))
 
 
 # Any field whose name says "secret" is dropped, whatever route it comes from:
@@ -417,6 +448,15 @@ def _media_paths(payload: Any, collected: set[str]) -> None:
                 and not value.startswith(ACCOUNT_PREFIX)
             ):
                 collected.add(value)
+            elif isinstance(value, str) and '"file_path"' in value:
+                # Task steps and message parts keep their attachments inside a
+                # JSON string; the walker used to miss every task artifact.
+                try:
+                    _media_paths(json.loads(value), collected)
+                except ValueError:
+                    for match in FILE_PATH_RE.findall(value):
+                        if match and not match.lower().endswith(".pdf"):
+                            collected.add(match)
             else:
                 _media_paths(value, collected)
     elif isinstance(payload, list):
@@ -435,6 +475,8 @@ VOICE_TEXT = {
 }
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_SUFFIXES = {".mp4", ".webm", ".avi"}
+FILE_PATH_RE = re.compile(r'"file_path"\s*:\s*"([^"]+)"')
 
 IMAGE_MIME = {
     ".png": "image/png",
@@ -537,6 +579,16 @@ def _task_image_paths(payload: Any) -> list[str]:
             if isinstance(path, str) and Path(path).suffix.lower() in IMAGE_SUFFIXES and path not in found:
                 found.append(path)
     return found
+
+
+def _has_video(session: DemoSession, session_id: str, task_id: str, lang: str) -> bool:
+    """True when the scenario produced a clip (chat attachment or task artifact)."""
+    paths: set[str] = set()
+    if session_id:
+        _media_paths(session.get_json(f"/api/sessions/{session_id}/messages?limit=100&offset=0"), paths)
+    if task_id:
+        _media_paths(session.get_json(f"/api/tasks/{task_id}/messages"), paths)
+    return any(str(path).lower().endswith(tuple(VIDEO_SUFFIXES)) for path in paths)
 
 
 def scenario_images(session: DemoSession, session_id: str, task_id: str) -> list[str]:
@@ -803,6 +855,11 @@ def capture_language(
                 # The router occasionally answers an image request with text;
                 # without a picture the scenario has nothing to show.
                 print(f"[{lang}] no picture produced", flush=True)
+                defects += 1
+            if scenario.get("kind") == "video" and not _has_video(chat, session_id, task_id, lang):
+                # Same for video: an answer without a clip means the router or
+                # the pipeline dropped it, and the page would show text only.
+                print(f"[{lang}] no video produced", flush=True)
                 defects += 1
             for image in images:
                 found, answer = check_image_text(chat, image, lang)

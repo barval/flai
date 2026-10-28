@@ -201,6 +201,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Remove any leftover debug prints, commented-out blocks, or obsolete TODOs.
   - All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN.
   - **Docker dev workflow:** `./app`, `./modules`, and `./prompts` are bind-mounted as directories in `docker-compose.gpu.yml`. All changes to Python/JS/CSS/prompt files take effect immediately on container restart (no rebuild). `PYTHONDONTWRITEBYTECODE=1` is set to prevent `__pycache__` on host.
+  - **Demo artefacts:** `python -m demo.build` refreshes the interface only. Re-capturing content (`python -m demo.capture` — requests, answers, images and videos) happens **only on an explicit user request**; a UI change never re-captures.
   - Always write clean, self-documenting code; add comments only when necessary.
 
 # Localization (i18n)

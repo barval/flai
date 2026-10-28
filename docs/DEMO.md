@@ -57,6 +57,11 @@ python -m demo.build
 pytest tests/test_demo_pages.py -q
 ```
 
+**Interface-only changes rebuild the pages, not the content.** `python -m demo.build` re-embeds the
+current templates, CSS and JS into the four pages and keeps every captured request, answer, image
+and video. Run `demo.capture` again **only when the user explicitly asks for fresh demo content**
+(or the product behaviour itself changed); a UI change never re-captures.
+
 The capture drives the running instance over HTTP with two throwaway accounts per
 language (`demo_<lang>_chat` and `demo_<lang>_admin`, created beforehand), records the
 responses, downloads the generated media and then removes the accounts. A scenario may pin

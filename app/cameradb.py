@@ -27,15 +27,20 @@ def get_all_camera_rooms(enabled_only: bool = True) -> list[dict]:
         return [dict(row) for row in c.fetchall()]
 
 
-def populate_from_camera_api(camera_api_url: str, timeout: int = 15) -> list[str]:
+def populate_from_camera_api(
+    camera_api_url: str, timeout: int = 15, headers: dict[str, str] | None = None
+) -> list[str]:
     """Import camera rooms from room-snapshot-api /rooms endpoint.
 
     GET /rooms returns {"code": "Name", ...} — codes and display names.
     Uses INSERT ... ON CONFLICT to preserve existing enabled status.
     Returns list of imported camera codes. Empty list if API unavailable.
+
+    ``headers`` carries the shared key and the language: v1.3 fails closed
+    without ``X-API-Key`` and labels rooms in English unless asked otherwise.
     """
     try:
-        resp = requests.get(f"{camera_api_url.rstrip('/')}/rooms", timeout=timeout)
+        resp = requests.get(f"{camera_api_url.rstrip('/')}/rooms", timeout=timeout, headers=headers or {})
         if resp.status_code != 200:
             logger.warning(f"Camera API /rooms returned {resp.status_code}")
             return []

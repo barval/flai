@@ -20,6 +20,45 @@ CAMERA_API_TIMEOUT=15
 CAMERA_CHECK_INTERVAL=30
 ```
 
+## room-snapshot-api v1.3
+
+The service authenticates every endpoint with a shared key and exposes the same
+camera set over REST and MCP. FLAI sends the key on every call, asks for its own
+language and reuses the service's snapshot cache.
+
+| Setting | Meaning |
+|---|---|
+| `CAMERA_API_KEY` | Shared key for REST and MCP (`X-API-Key`). Empty means the service runs without auth — only acceptable behind a private network. |
+| `CAMERA_MCP_URL` | Streamable-HTTP MCP endpoint (`http://host:5006/mcp`) — the seam for agent mode. |
+| `CAMERA_SNAPSHOT_WIDTH` | Width requested for previews (default 384 px); the service resizes before capture. |
+| `CAMERA_PREVIEW_WORKERS` | Cameras captured in parallel per refresh (default 4). |
+
+**Language.** The service defaults to English room labels, so FLAI sends
+`Accept-Language` (and `?lang=`) with the interface language. A Russian
+installation keeps Russian names without a per-installation translation file.
+
+**Preview refresh.** `GET /admin/api/cameras/previews` captures every enabled
+camera in one request: the module fans out with a bounded thread pool, the
+service captures concurrently, and the response carries each thumbnail as a
+data URL. One round trip instead of one request per row — the old table
+serialised them through the browser's per-host connection limit while ffmpeg ran
+sequentially on the other side.
+
+**Caching.** Snapshots carry `ETag`/`Cache-Control`. The proxy endpoint
+`/admin/api/cameras/<code>/proxy` forwards `If-None-Match` and answers `304 Not
+Modified` without touching the camera, so reopening the tab does not re-capture.
+
+**Health.** `/health` answers HTTP 200 in every state and reports
+`healthy`/`degraded`/`unhealthy` with per-camera reachability. The Cameras tab
+shows the online count next to the sync button.
+
+**MCP (agent mode).** `GET /admin/api/cameras/mcp` connects to the MCP server
+(JSON-RPC over streamable HTTP, SSE or JSON responses), lists its tools
+(`list_rooms`, `get_snapshot`, `room_info`, `health`) and reports availability.
+Nothing in the chat path uses it yet: the module behind `modules/cam_mcp.py` is
+the tool surface the agent layer will call instead of talking RTSP or proxying
+snapshots itself.
+
 ## Camera Permissions
 In Admin Panel → Users tab, assign camera codes:
 `tam` (tambour/entry), `pri` (hallway), `kor` (corridor), `spa` (bedroom),

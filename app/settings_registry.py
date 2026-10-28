@@ -33,6 +33,7 @@ ENV_TO_CONFIG = {"TIMEZONE": "TIMEZONE_STR"}
 
 # Never returned to the browser; only a mask and a "replace" action.
 SECRET_KEYS = {
+    "CAMERA_API_KEY",
     "QDRANT_API_KEY",
     "HUGGINGFACE_TOKEN",
     "CRAWL_API_TOKEN",
@@ -235,8 +236,12 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
         [
             "CAMERA_ENABLED",
             "CAMERA_API_URL",
+            "CAMERA_API_KEY",
+            "CAMERA_MCP_URL",
             "CAMERA_API_TIMEOUT",
             "CAMERA_CHECK_INTERVAL",
+            "CAMERA_SNAPSHOT_WIDTH",
+            "CAMERA_PREVIEW_WORKERS",
         ],
     ),
     "service": (
@@ -502,6 +507,10 @@ DESCRIPTIONS: dict[str, str] = {
     "CAMERA_API_URL": "Room snapshot service URL",
     "CAMERA_API_TIMEOUT": "Camera service timeout (seconds)",
     "CAMERA_CHECK_INTERVAL": "Camera availability check interval (seconds)",
+    "CAMERA_API_KEY": "Shared API key of the room snapshot service",
+    "CAMERA_MCP_URL": "Camera MCP server URL (agent mode)",
+    "CAMERA_SNAPSHOT_WIDTH": "Preview width requested from the camera service (pixels)",
+    "CAMERA_PREVIEW_WORKERS": "Parallel camera captures per preview refresh",
     "TIMEZONE": "IANA timezone used for dates and monitoring",
     "HUGGINGFACE_TOKEN": "Token for gated Hugging Face repositories",
     "MODEL_HUB_MAX_FILE_GB": "Largest model file the Hub may download (GB)",

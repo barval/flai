@@ -4835,3 +4835,19 @@ msgstr "Quiet window before fact extraction starts (seconds)"
 #: app/queue.py
 msgid "Transcribed from the voice message"
 msgstr "Transcribed from the voice message"
+
+#: app/settings_registry.py
+msgid "Shared API key of the room snapshot service"
+msgstr "Shared API key of the room snapshot service"
+
+#: app/settings_registry.py
+msgid "Camera MCP server URL (agent mode)"
+msgstr "Camera MCP server URL (agent mode)"
+
+#: app/settings_registry.py
+msgid "Preview width requested from the camera service (pixels)"
+msgstr "Preview width requested from the camera service (pixels)"
+
+#: app/settings_registry.py
+msgid "Parallel camera captures per preview refresh"
+msgstr "Parallel camera captures per preview refresh"

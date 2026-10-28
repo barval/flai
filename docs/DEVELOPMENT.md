@@ -38,13 +38,19 @@ docker run --rm -v "$PWD":/src -w /src python:3.11-slim \
   sh -c "pip install -q --no-cache-dir -r requirements.txt && pip freeze" > requirements.lock
 docker compose -f docker-compose.gpu.yml build web
 docker run --rm flai-web:latest pip freeze > /tmp/lock-check
-diff <(sort requirements.lock) <(sort /tmp/lock-check)   # must be empty
+diff <(grep -v '^setuptools==' requirements.lock | sort) <(sort /tmp/lock-check)   # must be empty
 ```
+
+`setuptools` is the one deliberate exception to "the lock is a frozen environment": the base image
+ships its own copy, but pip leaves `pip`, `setuptools` and `wheel` out of `pip freeze`, so the lock
+pins the patched release by hand and the image install upgrades it. That is why the check above skips
+the line.
 
 CI audits `requirements.lock` with `pip-audit` and scans the pinned images with Trivy, so a version
 that carries a known vulnerability is bumped in the manifest, the lock and the image tag together.
 Base images that publish a floating tag (`python:3.11-slim`, `searxng`) are pinned by digest, which is
-why a deliberate bump replaces a `sha256:` value rather than a version number.
+why a deliberate bump replaces a `sha256:` value rather than a version number. The scanning action is
+pinned by commit for the same reason: the March 2026 Trivy compromise force-pushed its version tags.
 
 ## Tests
 

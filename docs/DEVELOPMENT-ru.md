@@ -38,13 +38,19 @@ docker run --rm -v "$PWD":/src -w /src python:3.11-slim \
   sh -c "pip install -q --no-cache-dir -r requirements.txt && pip freeze" > requirements.lock
 docker compose -f docker-compose.gpu.yml build web
 docker run --rm flai-web:latest pip freeze > /tmp/lock-check
-diff <(sort requirements.lock) <(sort /tmp/lock-check)   # должно быть пусто
+diff <(grep -v '^setuptools==' requirements.lock | sort) <(sort /tmp/lock-check)   # должно быть пусто
 ```
+
+`setuptools` — единственное осознанное исключение из правила «lock-файл = замороженное окружение»:
+базовый образ приносит свою копию, но pip не показывает `pip`, `setuptools` и `wheel` в `pip freeze`,
+поэтому исправленный выпуск закреплён в lock-файле вручную, а установка образа его поднимает. Именно
+поэтому проверка выше пропускает эту строку.
 
 CI проверяет `requirements.lock` через `pip-audit` и сканирует закреплённые образы через Trivy,
 поэтому версия с известной уязвимостью поднимается в манифесте, lock-файле и теге образа сразу.
 Базовые образы с плавающим тегом (`python:3.11-slim`, `searxng`) закреплены дайджестом — осознанное
-обновление заменяет значение `sha256:`, а не номер версии.
+обновление заменяет значение `sha256:`, а не номер версии. Действие сканирования закреплено коммитом
+по той же причине: в марте 2026 года компрометация Trivy переписала его версионные теги.
 
 ## Тесты
 

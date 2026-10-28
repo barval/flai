@@ -25,6 +25,10 @@ pendulum>=3.0.0
 trafilatura>=2.0.0
 flasgger==0.9.7.1
 
+# Build tooling the image ships. The base image's pip leaves setuptools out of
+# `pip freeze`, so requirements.lock carries the pin explicitly.
+setuptools>=84.1.0
+
 # Load testing - install locally if needed: pip install locust
 # locust==2.20.1
 

@@ -268,6 +268,22 @@ Gate on the new build:
   check. `deploy.sh`, `deploy-ru.sh` and both READMEs now pin v267 instead of v255, so a fresh
   deployment installs the same build the compose files use.
 
+### CI repair (v12.8)
+
+- **The image scans run again** — `aquasecurity/trivy-action@0.28.0` never resolved: the repository
+  tags carry a `v` prefix, so `0.28.0` does not exist and all three scans failed in their setup step.
+  The jobs now pin `v0.36.0` by commit (`ed142fd0`, published 2026-04-22) — also the safer reference
+  after the March 2026 compromise force-pushed 75 of the action's 76 tags. The action pins the Trivy
+  binary itself (`v0.70.0`), so one commit covers both.
+- **setuptools 79.0.1 → 84.2.1** — `pip-audit` found PYSEC-2026-3447 (a `MANIFEST.in` exclusion bypass
+  on a normalisation-preserving macOS filesystem) and GHSA-xmj3-9gf7-h52w (a Windows wheel creating
+  `__init__.py` outside the install directory) in the copy `python:3.11-slim` ships. The base image's
+  pip leaves setuptools out of `pip freeze`, so the lock pins it explicitly and the image install
+  upgrades it. `pkg_resources` no longer ships with setuptools 84 — nothing in FLAI imports it, and
+  flasgger reaches for it only when Flask has no `__version__`, which 3.1.3 still has. Verified: the
+  lock installs into the base image, `pip-audit --strict` reports no vulnerabilities, and flasgger and
+  the app package import with the upgraded setuptools.
+
 ## Proposed update sequence
 
 The phases are grouped into three releases: **v12.8** takes Phase 0 and Phase 1, **v12.9**

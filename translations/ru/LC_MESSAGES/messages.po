@@ -4872,3 +4872,15 @@ msgstr "Расшифровка голосового сообщения"
 #: app/settings_registry.py
 msgid "Shared API key of the room snapshot service"
 msgstr "Общий API-ключ сервиса снимков комнат"
+
+#: app/settings_registry.py
+msgid "Camera MCP server URL (agent mode)"
+msgstr "URL MCP-сервера камер (агентный режим)"
+
+#: app/settings_registry.py
+msgid "Preview width requested from the camera service (pixels)"
+msgstr "Ширина превью, запрашиваемая у сервиса камер (пиксели)"
+
+#: app/settings_registry.py
+msgid "Parallel camera captures per preview refresh"
+msgstr "Параллельных захватов камер за обновление превью"

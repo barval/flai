@@ -2090,11 +2090,16 @@ def sync_cameras():
     """
     try:
         from app.cameradb import delete_cameras_not_in, populate_from_camera_api
+        from app.mixins import _ambient_lang
 
         camera_api_url = current_app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
         timeout = current_app.config.get("CAMERA_API_TIMEOUT", 15)
+        cam = current_app.modules.get("cam") if hasattr(current_app, "modules") else None
+        # v1.3 rejects an unauthenticated /rooms with 401, so the key and the
+        # language must ride along — otherwise Sync imports nothing.
+        headers = cam.api_headers(lang=_ambient_lang()) if cam is not None else {}
 
-        codes = populate_from_camera_api(camera_api_url, timeout)
+        codes = populate_from_camera_api(camera_api_url, timeout, headers=headers)
         if codes:
             delete_cameras_not_in(codes)
         _reload_camera_rooms()

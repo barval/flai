@@ -174,3 +174,40 @@ class TestMCPClient:
             status = client.status()
         assert status["configured"] is True
         assert status["available"] is False
+
+
+@pytest.mark.unit
+class TestRoomSync:
+    def test_rooms_request_carries_key_and_language(self):
+        """v1.3 answers 401 without the key and English labels without the language."""
+        import app.cameradb as camerdb
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"kuh": "Кухня"}
+        conn = MagicMock()
+        with (
+            patch("app.cameradb.requests.get", return_value=response) as get,
+            patch("app.cameradb.get_db") as db,
+            patch("app.cameradb.generate_room_name_forms", return_value=["кухня"]),
+        ):
+            db.return_value.__enter__.return_value = conn
+            codes = camerdb.populate_from_camera_api(
+                "http://cam:5000", 5, headers={"X-API-Key": "k", "Accept-Language": "ru"}
+            )
+
+        assert codes == ["kuh"]
+        assert get.call_args.kwargs["headers"] == {"X-API-Key": "k", "Accept-Language": "ru"}
+
+    def test_no_headers_means_an_anonymous_request(self):
+        import app.cameradb as camerdb
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"gos": "Living room"}
+        with (
+            patch("app.cameradb.requests.get", return_value=response) as get,
+            patch("app.cameradb.get_db"),
+            patch("app.cameradb.generate_room_name_forms", return_value=["living room"]),
+        ):
+            camerdb.populate_from_camera_api("http://cam:5000")
+
+        assert get.call_args.kwargs["headers"] == {}

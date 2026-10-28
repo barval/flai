@@ -188,12 +188,17 @@ class CamModule(TranslationMixin):
         """
         try:
             from app.cameradb import get_all_camera_rooms, populate_from_camera_api
+            from app.mixins import _ambient_lang
 
             rooms = get_all_camera_rooms(enabled_only=True)
 
             # Auto-populate from camera API on first run (empty table + API available)
             if not rooms and self.available:
-                count = populate_from_camera_api(self.camera_api_url, self.timeout)
+                count = populate_from_camera_api(
+                    self.camera_api_url,
+                    self.timeout,
+                    headers=self.api_headers(lang=_ambient_lang()),
+                )
                 if count:
                     self.logger.info(f"Auto-imported {count} cameras from room-snapshot-api")
                     rooms = get_all_camera_rooms(enabled_only=True)

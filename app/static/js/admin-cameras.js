@@ -336,6 +336,7 @@ function openPreviewModal(src, code) {
 
     img.alt = code;
     img.src = src;
+    img.classList.add('loading');
     modal.dataset.code = code;
     modal.style.display = 'flex';
 
@@ -343,6 +344,7 @@ function openPreviewModal(src, code) {
     full.onload = function() {
         if (modal.dataset.code !== code) return;
         img.src = fullUrl;
+        img.classList.remove('loading');
     };
     full.src = fullUrl;
 }

@@ -384,6 +384,14 @@ body.dark-theme .cam-spinner {
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
+/* Until the native frame arrives the thumbnail fills the same box, so the
+   overlay is full-size from the first click instead of thumbnail-sized. */
+.preview-modal img.loading {
+    width: 90vw;
+    height: 90vh;
+    object-fit: contain;
+}
+
 .preview-modal-close {
     position: absolute;
     top: 20px;

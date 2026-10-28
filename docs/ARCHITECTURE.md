@@ -128,7 +128,7 @@ strictly one at a time under the same GPU lock; see `docs/VIDEO.md`.
 
 3. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — runs on the fast worker (RAG search only). TTL=1s → unloaded 1 second after use.
 
-4. **SD / LTX-Video / Wan** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~6 GiB VRAM (multimodal + mmproj). The LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free its CUDA context (~3 GB). Wan needs no restart: it runs as a one-shot `sd-cli` process in the sd.cpp container, so `unload_video_pipeline()` returns immediately for that backend and the driver reclaims the VRAM. Multimodal is then reloaded via `_preload_multimodal_sync()`.
+4. **SD / LTX-Video / Wan** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~6 GiB VRAM (multimodal + mmproj). The LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free its CUDA context (~3 GB). Wan runs as a one-shot `sd-cli` process in the sd.cpp container (the driver reclaims its VRAM when it exits), but `unload_video_pipeline()` still releases a resident LTX pipeline before the Wan gate — a back-to-back LTX→Wan run would otherwise leave it loaded and starve the Wan fit. Multimodal is then reloaded via `_preload_multimodal_sync()`.
 
 ### Example: Video Generation Request
 router (multimodal, resident) → [-VIDEO-] → multimodal generates video params (still resident)

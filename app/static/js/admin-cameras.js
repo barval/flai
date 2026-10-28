@@ -325,9 +325,24 @@ function setupPreviewModal() {
 function openPreviewModal(src, code) {
     const modal = document.getElementById('preview-modal');
     const img = document.getElementById('preview-modal-img');
-    if (modal && img) {
-        img.src = src;
-        img.alt = code;
-        modal.style.display = 'flex';
-    }
+    if (!modal || !img) return;
+
+    // The table thumbnail is a 384 px data URL. Showing it as-is in the modal
+    // made the "enlarged" view thumbnail-sized, so the native frame is fetched
+    // in the background and swapped in as soon as it arrives.
+    const lang = (document.documentElement.lang || 'ru').slice(0, 2);
+    const fullUrl = '/admin/api/cameras/' + encodeURIComponent(code) +
+        '/proxy?full=1&lang=' + encodeURIComponent(lang);
+
+    img.alt = code;
+    img.src = src;
+    modal.dataset.code = code;
+    modal.style.display = 'flex';
+
+    const full = new Image();
+    full.onload = function() {
+        if (modal.dataset.code !== code) return;
+        img.src = fullUrl;
+    };
+    full.src = fullUrl;
 }

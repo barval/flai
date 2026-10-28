@@ -46,11 +46,13 @@ ships its own copy, but pip leaves `pip`, `setuptools` and `wheel` out of `pip f
 pins the patched release by hand and the image install upgrades it. That is why the check above skips
 the line.
 
-CI audits `requirements.lock` with `pip-audit` and scans the pinned images with Trivy, so a version
-that carries a known vulnerability is bumped in the manifest, the lock and the image tag together.
-Base images that publish a floating tag (`python:3.11-slim`, `searxng`) are pinned by digest, which is
-why a deliberate bump replaces a `sha256:` value rather than a version number. The scanning action is
-pinned by commit for the same reason: the March 2026 Trivy compromise force-pushed its version tags.
+CI audits `requirements.lock` with `pip-audit`, so a version that carries a known vulnerability is
+bumped in the manifest, the lock and the image tag together. The pinned images are scanned with
+Trivy as a report: they are published by third parties and a finding in them is fixed by a rebuild
+upstream, not here. Base images that publish a floating tag (`python:3.11-slim`, `searxng`) are pinned
+by digest, which is why a deliberate bump replaces a `sha256:` value rather than a version number. The
+scanning action is pinned by commit for the same reason: the March 2026 Trivy compromise force-pushed
+its version tags.
 
 ## Tests
 

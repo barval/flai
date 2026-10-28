@@ -6367,6 +6367,8 @@ class RedisRequestQueue:
                 else self.app.modules["base"]._("Voice request", lang),
                 "response_style": response_style,
             }
+            if request_data.get("doc_ids"):
+                text_request_data["doc_ids"] = [str(value) for value in request_data["doc_ids"] if value]
             new_request_id, _ = self.add_request(user_id, session_id, text_request_data, user_class, lang=lang)
 
             return {
@@ -6633,7 +6635,9 @@ class RedisRequestQueue:
         requeue_data: dict[str, Any] = {
             "type": "text",
             "text": message_text,
-            "doc_ids": [doc_id],
+            "doc_ids": [doc_id] + [
+                str(value) for value in (data.get("doc_ids") or []) if value and str(value) != doc_id
+            ],
             "current_message_id": data.get("current_message_id"),
             "preview": data.get("preview"),
             "response_style": data.get("response_style", "neutral"),

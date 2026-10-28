@@ -151,6 +151,30 @@ function clearAllAttachments() {
     renderAttachmentChips();
 }
 
+// The corpus is the Documents-panel selection. Sending it as doc_ids makes the
+// chat RAG use the same snapshot as deep analysis and tasks.
+function corpusDocIds() {
+    const select = document.getElementById('rlm-docs');
+    return select ? Array.from(select.selectedOptions).map(o => o.value) : [];
+}
+
+// Attached documents join the corpus: save them as full user documents first
+// (Documents parity, same as tasks), then pass their ids to the RLM request.
+async function uploadCorpusDocuments(files) {
+    const ids = [];
+    for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.status !== 'ok' || !payload.id) {
+            throw new Error(payload.error || t('document_upload_failed'));
+        }
+        ids.push(payload.id);
+    }
+    return ids;
+}
+
 // RLM deep-analysis submit: branches off the normal send flow when the
 // "Deep analysis" toggle is checked. Question text comes from the shared
 // message input; documents are picked from the #rlm-docs multi-select
@@ -244,9 +268,14 @@ async function sendRlmAnalysis(questionOverride) {
             if (typeof updateSessionTitle === 'function') updateSessionTitle(currentSessionId, newTitle);
         }
 
+        const rlmDocs = [...attachedFiles.filter(isDocumentFile)];
+        if (attachedFile && isDocumentFile(attachedFile)) rlmDocs.unshift(attachedFile);
+        const uploadedIds = rlmDocs.length ? await uploadCorpusDocuments(rlmDocs) : [];
+        const corpusIds = [...new Set([...docIds, ...uploadedIds])];
+
         const formData = new FormData();
         formData.append('session_id', currentSessionId);
-        formData.append('doc_ids', JSON.stringify(docIds));
+        formData.append('doc_ids', JSON.stringify(corpusIds));
         formData.append('text', question);
         for (const p of imagePayloads) {
             formData.append('files', new Blob(
@@ -307,6 +336,7 @@ async function sendRlmAnalysis(questionOverride) {
         if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
 
         clearPreparedMessage();
+        if (uploadedIds.length && typeof loadDocuments === 'function') loadDocuments();
     } catch (err) {
         console.error('RLM analysis error:', err);
         if (!window.IS_RELOADING) originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + err.message, null, null, null, null,
@@ -522,8 +552,7 @@ async function sendMessage() {
                     if (tempAttachedFile) formData.append('file', tempAttachedFile);
                     for (const f of tempFiles) formData.append('file', f);
                     formData.append('session_id', currentSessionId);
-                    const scopeParams = (typeof window.getChatScope === 'function') ? window.getChatScope() : {};
-                    Object.keys(scopeParams).forEach((key) => formData.append(key, scopeParams[key]));
+                    formData.append('doc_ids', JSON.stringify(corpusDocIds()));
 
                     if (isVoiceRecorded && attachedVoiceBlob) {
                         // Image + voice: send both files
@@ -541,10 +570,11 @@ async function sendMessage() {
                     response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(Object.assign(
-                            { message: tempText, session_id: currentSessionId },
-                            (typeof window.getChatScope === 'function') ? window.getChatScope() : {}
-                        ))
+                        body: JSON.stringify({
+                            message: tempText,
+                            session_id: currentSessionId,
+                            doc_ids: corpusDocIds(),
+                        })
                     });
                 }
                 

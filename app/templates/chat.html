@@ -115,9 +115,10 @@
             <div class="scope-control" id="scope-control">
                 <button type="button" id="scope-toggle" title="{{ _('Search scope') }}" aria-label="{{ _('Search scope') }}">🔍<span id="scope-icon">📁</span><span id="scope-label">{{ _('All documents') }}</span></button>
                 <div class="scope-popover" id="scope-popover" hidden>
-                    <label class="scope-row">{{ _('Folder') }}
-                        <select id="scope-folder"><option value="">{{ _('All documents') }}</option></select>
-                    </label>
+                    <div class="scope-row scope-row-folders">
+                        <span class="scope-row-label">{{ _('Folders') }}</span>
+                        <div id="scope-folders" class="scope-folders"></div>
+                    </div>
                     <label class="scope-row">{{ _('Uploaded from') }}
                         <input type="date" id="scope-from">
                     </label>
@@ -161,6 +162,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Search scope': {{ _('Search scope')|tojson }},
     'All documents': {{ _('All documents')|tojson }},
     'Folder': {{ _('Folder')|tojson }},
+    'Folders': {{ _('Folders')|tojson }},
+    'folders ({count})': {{ _('folders ({count})')|tojson }},
+    'documents ({count})': {{ _('documents ({count})')|tojson }},
+    'No documents match the selected folders and dates.': {{ _('No documents match the selected folders and dates.')|tojson }},
     'Uploaded from': {{ _('Uploaded from')|tojson }},
     'Uploaded to': {{ _('Uploaded to')|tojson }},
     'Apply': {{ _('Apply')|tojson }},

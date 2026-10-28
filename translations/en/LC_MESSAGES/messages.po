@@ -4851,3 +4851,19 @@ msgstr "Preview width requested from the camera service (pixels)"
 #: app/settings_registry.py
 msgid "Parallel camera captures per preview refresh"
 msgstr "Parallel camera captures per preview refresh"
+
+#: app/templates/chat.html
+msgid "Folders"
+msgstr "Folders"
+
+#: app/templates/chat.html
+msgid "folders ({count})"
+msgstr "folders ({count})"
+
+#: app/templates/chat.html
+msgid "documents ({count})"
+msgstr "documents ({count})"
+
+#: app/templates/chat.html
+msgid "No documents match the selected folders and dates."
+msgstr "No documents match the selected folders and dates."

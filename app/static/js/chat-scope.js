@@ -1,14 +1,18 @@
 // app/static/js/chat-scope.js
-// Search scope for the RAG step: a folder and an upload-date range. The choice
-// travels with every message (window.getChatScope) and is remembered per tab.
+// The search scope is a bulk selector for the chat corpus. The corpus itself is
+// the set of documents ticked in the Documents panel; this popover only ticks
+// documents by folder (several at once, including "Unfiled") and upload dates.
+// Nothing is sent as a separate filter: the selection becomes doc_ids, so chat,
+// deep analysis and tasks all search exactly the same snapshot.
 (function () {
     'use strict';
 
     const STORAGE_KEY = 'chat_scope';
+    const ROOT_GROUP = '__root__';
     const toggle = document.getElementById('scope-toggle');
     const popover = document.getElementById('scope-popover');
     const label = document.getElementById('scope-label');
-    const folderSelect = document.getElementById('scope-folder');
+    const folderList = document.getElementById('scope-folders');
     const fromInput = document.getElementById('scope-from');
     const toInput = document.getElementById('scope-to');
     const applyButton = document.getElementById('scope-apply');
@@ -16,35 +20,77 @@
     if (!toggle || !popover) return;
 
     const t = (key) => (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
-    let scope = {};
+    const fill = (template, count) => template.replace('{count}', count);
+    let filter = { folders: [], unfiled: false, from: '', to: '' };
     let foldersLoaded = false;
 
     try {
-        scope = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}') || {};
+        const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}') || {};
+        filter = {
+            folders: Array.isArray(saved.folders) ? saved.folders : [],
+            unfiled: !!saved.unfiled,
+            from: saved.from || '',
+            to: saved.to || '',
+        };
     } catch (err) {
-        scope = {};
+        filter = { folders: [], unfiled: false, from: '', to: '' };
     }
 
-    function folderName(folderId) {
-        const option = Array.from(folderSelect.options).find((item) => item.value === folderId);
-        return option ? option.textContent : '';
-    }
-
-    function renderLabel() {
-        const parts = [];
-        if (scope.filter_folder !== undefined) {
-            parts.push('📁 ' + (folderName(scope.filter_folder) || t('Unfiled')));
+    // The chip describes the corpus, not the filter: count and, when the whole
+    // selection came from complete folders, how many groups it spans.
+    function renderChip() {
+        const summary = (typeof window.getCorpusSummary === 'function')
+            ? window.getCorpusSummary()
+            : { count: 0, groups: [] };
+        const count = Number(summary.count) || 0;
+        const groups = Array.isArray(summary.groups) ? summary.groups : [];
+        const documents = fill(t('documents ({count})'), count);
+        let text;
+        if (count === 0) {
+            text = '📄 ' + t('All documents');
+        } else if (groups.length === 1) {
+            text = '📁 ' + groups[0] + ' · 📄 ' + documents;
+        } else if (groups.length > 1) {
+            text = '📁 ' + fill(t('folders ({count})'), groups.length) + ' · 📄 ' + documents;
+        } else {
+            text = '📄 ' + documents;
         }
-        if (scope.filter_from || scope.filter_to) {
-            parts.push('📅 ' + (scope.filter_from || '…') + ' – ' + (scope.filter_to || '…'));
-        }
-        label.textContent = parts.length ? parts.join(' · ') : t('All documents');
-        toggle.classList.toggle('is-active', parts.length > 0);
+        label.textContent = text;
+        toggle.title = groups.length ? groups.join(', ') + ' · ' + documents : t('Search scope');
+        toggle.classList.toggle('is-active', count > 0);
+    }
+    window.renderCorpusChip = renderChip;
+
+    function persistFilter() {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filter));
     }
 
-    function persist() {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(scope));
-        renderLabel();
+    function renderFolders(payload) {
+        if (!folderList) return;
+        folderList.innerHTML = '';
+        const documents = payload.documents || [];
+        const folders = (payload.folders || []).filter((folder) => (folder.count || 0) > 0);
+        const hasRoot = documents.some((doc) => !doc.folder_id);
+        const options = hasRoot ? [{ id: ROOT_GROUP, name: t('Unfiled') }] : [];
+        folders.forEach((folder) => options.push({ id: folder.id, name: folder.name }));
+        if (!options.length) {
+            const empty = document.createElement('span');
+            empty.className = 'scope-folders-empty';
+            empty.textContent = t('All documents');
+            folderList.appendChild(empty);
+            return;
+        }
+        options.forEach((option) => {
+            const row = document.createElement('label');
+            row.className = 'scope-folder-option';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.value = option.id;
+            box.checked = option.id === ROOT_GROUP ? filter.unfiled : filter.folders.includes(option.id);
+            row.appendChild(box);
+            row.appendChild(document.createTextNode(' ' + option.name));
+            folderList.appendChild(row);
+        });
     }
 
     function loadFolders() {
@@ -53,14 +99,8 @@
         fetch('/api/documents', { credentials: 'same-origin' })
             .then((response) => response.json())
             .then((payload) => {
-                (payload.folders || []).forEach((folder) => {
-                    if (Array.from(folderSelect.options).some((item) => item.value === folder.id)) return;
-                    const option = document.createElement('option');
-                    option.value = folder.id;
-                    option.textContent = folder.name;
-                    folderSelect.appendChild(option);
-                });
-                renderLabel();
+                renderFolders(payload);
+                renderChip();
             })
             .catch(() => {});
     }
@@ -100,9 +140,8 @@
         event.stopPropagation();
         if (popover.hidden) {
             loadFolders();
-            folderSelect.value = scope.filter_folder === undefined ? '' : scope.filter_folder;
-            fromInput.value = scope.filter_from || '';
-            toInput.value = scope.filter_to || '';
+            fromInput.value = filter.from || '';
+            toInput.value = filter.to || '';
             popover.hidden = false;
             positionPopover();
         } else {
@@ -132,27 +171,47 @@
     }, true);
 
     applyButton.addEventListener('click', () => {
-        scope = {};
-        if (folderSelect.value !== '') scope.filter_folder = folderSelect.value;
-        if (fromInput.value) scope.filter_from = fromInput.value;
-        if (toInput.value) scope.filter_to = toInput.value;
-        persist();
+        const checked = folderList
+            ? Array.from(folderList.querySelectorAll('input:checked')).map((box) => box.value)
+            : [];
+        const folders = checked.filter((value) => value !== ROOT_GROUP);
+        const unfiled = checked.includes(ROOT_GROUP);
+        if (!folders.length && !unfiled) {
+            alert(t('All documents'));
+            return;
+        }
+        const count = (typeof window.applyCorpusFilter === 'function')
+            ? window.applyCorpusFilter({
+                folderIds: folders,
+                unfiled: unfiled,
+                from: fromInput.value,
+                to: toInput.value,
+            })
+            : 0;
+        if (!count) {
+            alert(t('No documents match the selected folders and dates.'));
+            return;
+        }
+        filter = { folders: folders, unfiled: unfiled, from: fromInput.value, to: toInput.value };
+        persistFilter();
+        renderChip();
         closePopover();
     });
 
     clearButton.addEventListener('click', () => {
-        scope = {};
-        folderSelect.value = '';
+        filter = { folders: [], unfiled: false, from: '', to: '' };
+        persistFilter();
         fromInput.value = '';
         toInput.value = '';
-        persist();
+        if (folderList) {
+            folderList.querySelectorAll('input').forEach((box) => { box.checked = false; });
+        }
+        if (typeof window.clearCorpusFilter === 'function') window.clearCorpusFilter();
+        renderChip();
         closePopover();
     });
 
-    // The send flow appends whatever this returns to the request.
-    window.getChatScope = () => Object.assign({}, scope);
-
-    // Keep the label honest when a folder was removed in another tab.
-    renderLabel();
+    // Keep the chip honest when a document is added or deleted in another tab.
+    renderChip();
     loadFolders();
 })();

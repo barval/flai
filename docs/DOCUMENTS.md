@@ -97,25 +97,35 @@ Changing the strategy re-chunks on the next index. Re-index existing documents w
 `flask rag-reindex --user <login>` (or `--doc <id>`); the old points are deleted
 first, so no orphan chunks survive.
 
-## Search scope
+## Search scope and the document corpus
 
-The chat asks *which documents* a question may be answered from. The scope lives next to the input
-(🔍): a folder and an upload-date range (both ends inclusive), combined with AND. With nothing set the
-search is global, exactly as before.
+A question can be answered from a chosen set of documents. That set — the **corpus** — is chosen in
+the **Documents** panel: tick individual documents, a folder (its checkbox ticks every document inside)
+or the **Unfiled** group for documents in the root. The same corpus scopes ordinary chat RAG, 🔬 Deep
+Analysis and background tasks.
 
-- **Resolution.** The scope is turned into a list of document ids in PostgreSQL before the question is
-  queued, so a re-queued task keeps its scope, moving a document between folders takes effect
-  immediately, and no payload change or re-index is needed.
-- **Isolation.** Retrieval never sees a document outside the scope. An **empty** match is a real
-  answer — the search returns nothing and the model says there is no data in the selected documents
-  instead of silently answering from the rest of the corpus.
-- **Attachments.** A document attached to the message is always part of the context; the scope narrows
-  only the rest of the search.
-- **Coverage.** The file-coverage pass (the guarantee that every indexed document gets a slot) is
-  limited to the same scope.
-- **Period** is the upload date, not a date found inside the document.
-- **API.** `POST /api/send_message` accepts `filter_folder`, `filter_from`, `filter_to` (multipart or
-  JSON). The public `/v1` API does not expose the scope yet.
+The 🔍 button next to the input is a **bulk selector for that corpus**, not a second filter:
+
+- pick one or more folders, **Unfiled**, and an upload-date range (both ends inclusive) and press
+  **Apply**; the matching documents get ticked. The chip then reads `📄 documents (7)`,
+  `📁 Kitchen · 📄 documents (7)` or `📁 folders (2) · 📄 documents (3)`.
+- **Snapshot.** The ticks are a snapshot of document ids taken when you press Apply (or send a task).
+  A document uploaded into a folder afterwards is not included until you apply again. A reload clears
+  the ticks; the last filter is remembered per tab, press Apply again.
+- **Nothing ticked** means all indexed documents. An Apply that matches no documents says so and
+  leaves the corpus unchanged instead of silently searching everything.
+- **Attachments** are added to the corpus for that request: a document attached to a chat message is
+  saved and indexed like a Documents upload (also in 🔬 mode), and an attachment of a task joins its
+  `doc_ids`. The rest of the search stays inside the corpus.
+- **Isolation and coverage.** Retrieval never sees a document outside the corpus, and the file-coverage
+  pass (every indexed document gets a slot) is limited to it.
+- **Period** is the upload date, not a date inside the document.
+- **API.** `POST /api/send_message` accepts `doc_ids` (a JSON list in multipart or a list in JSON);
+  only the user's own ids are kept. The legacy `filter_folder`, `filter_from`, `filter_to` fields are
+  still parsed for compatibility, but the UI now sends the resolved `doc_ids`. The public `/v1` API
+  does not expose the corpus yet.
+- **Deep analysis** changes the tool (RLM reads the full texts, RAG searches the index), not the
+  corpus; switching it off keeps the ticked documents.
 
 ## Hybrid retrieval
 

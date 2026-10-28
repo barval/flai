@@ -4,6 +4,18 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Room cameras on room-snapshot-api v1.3** — every REST and MCP call carries the shared `API_KEY`, room labels follow `Accept-Language`, snapshots are revalidated with `ETag`/`304`, one parallel request captures all previews, and the admin Cameras tab reports the MCP tool list. The room import sends the key and the language too, so Sync no longer silently returns zero cameras on a v1.3 service. Docs: `docs/CAMERA.md` (+ ru); Compose: `services/room-snapshot-api/docker-compose-local.yml` (REST 5005, MCP 5006).
+- **A single document corpus for chat, deep analysis and tasks** — the Documents-panel ticks (individual files, folder checkboxes, and the **Unfiled** root group) are the corpus for ordinary chat RAG, 🔬 Deep Analysis and task `doc_ids`. The 🔍 scope is now a bulk selector: several folders + Unfiled + upload dates, applied as a snapshot of document ids, with a compact chip (`📁 folders (2) · 📄 documents (3)`). Nothing ticked means all documents; a task with no attachments searches all of them instead of an empty scope; a document attached to a 🔬 message is saved and joins the corpus. Turning the toggle off no longer clears the selection. Docs: `docs/DOCUMENTS.md`, `docs/DEEP_ANALYSIS.md` (+ ru).
+
+### Fixed
+
+- **The camera modal shows the native frame and refreshes the thumbnail** — the batch previews are 384 px, so reusing one in the overlay looked thumbnail-sized; the modal now requests `?full=1` (native 1920×1080), fills the overlay immediately, and writes the loaded frame back to the table and its cache, so the next open starts sharp.
+- **The demo pages name their video backends and log in as admin** — the injected café clip is labelled Wan 2.2 and the Mars/image-to-video clips LTX instead of `injected`; the GPU-memory errors and the “videos not created” summary are gone from the Mars task; the admin demo login shows `admin` (the chat demo keeps `user`). Guards in `tests/test_demo_content.py` and `tests/test_demo_pages.py`.
+
 ## [v12.8] — 2026-10-27
 
 ### Changed

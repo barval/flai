@@ -2,6 +2,11 @@
 // Document management functions with index status, processing time display,
 // periodic updates, and blinking animation for indexing documents.
 
+// The virtual group for documents that live in the root of the Documents tab.
+// It behaves like a folder: the group checkbox selects all root documents and
+// the search scope can pick it together with any folders.
+const ROOT_GROUP = '__root__';
+
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
 let foldersData = {}; // folder_id → folder (from GET /api/documents)
@@ -17,6 +22,11 @@ let previewDocName = '';
 // document in the sidebar list toggles it; the choice is mirrored into
 // the hidden #rlm-docs multi-select (source of truth for sendRlmAnalysis).
 let rlmSelectedDocs = new Set();
+// The folder groups the current corpus came from (the scope's "Apply"). Kept
+// separately from the ticks so the chip can say "folders (2)" even after a new
+// document is uploaded into one of those folders: the corpus is a snapshot.
+let corpusGroupNames = [];
+let applyingCorpusFilter = false;
 
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
@@ -364,7 +374,21 @@ function updateDocumentsList(documents, folders = []) {
     `;
     html += folderDocs;
     if (rootDocs.length > 0) {
-        html += `<div class="document-folder-docs folder-root">${renderDocItems(rootDocs)}</div>`;
+        // The root is a real selection group, not a leftover: the scope can pick
+        // "Unfiled" (root) together with any folders, so it needs the same
+        // group checkbox the folders have.
+        html += `
+        <div class="document-folder" data-folder-id="${ROOT_GROUP}">
+            <div class="document-folder-header" data-folder-id="${ROOT_GROUP}">
+                <label class="document-checkbox" title="${t('documents_select_folder')}">
+                    <input type="checkbox" class="folder-check" data-folder-id="${ROOT_GROUP}">
+                </label>
+                <span class="folder-chevron">📂</span>
+                <span class="folder-name">${t('Unfiled')}</span>
+                <span class="folder-meta">${rootDocs.length}</span>
+            </div>
+            <div class="document-folder-docs">${renderDocItems(rootDocs)}</div>
+        </div>`;
     }
 
     documentsList.innerHTML = html;
@@ -396,6 +420,7 @@ function updateDocumentsList(documents, folders = []) {
     updateRlmToggleCount();
     updateBulkBar();
     updateFolderCheckboxes();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
 }
 
 // Sync the hidden #rlm-docs multi-select (used by sendRlmAnalysis) with the
@@ -518,7 +543,7 @@ function attachDocumentEventHandlers() {
 
 function folderDocIds(folderId) {
     return Object.values(documentsData)
-        .filter(doc => (doc.folder_id || '') === folderId)
+        .filter(doc => (doc.folder_id || ROOT_GROUP) === folderId)
         .map(doc => doc.id);
 }
 
@@ -557,6 +582,7 @@ function clearDocumentSelection() {
     // The analysis set mirrors the checkboxes in every mode, so it is cleared
     // unconditionally here; the marker pass hides any leftover tint.
     rlmSelectedDocs = new Set();
+    corpusGroupNames = [];
     applyRlmMarkers();
     updateRlmToggleCount();
     syncRlmDocsSelect();
@@ -568,6 +594,7 @@ function clearDocumentSelection() {
         cb.indeterminate = false;
     });
     updateBulkBar();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
 }
 
 function toggleFolderCollapse(folderId) {
@@ -1102,10 +1129,98 @@ function setDocChecked(docId, checked) {
         selectedDocIds.delete(docId);
         rlmSelectedDocs.delete(docId);
     }
+    if (!applyingCorpusFilter) corpusGroupNames = [];
     applyRlmMarkers();
     updateRlmToggleCount();
     syncRlmDocsSelect();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
 }
+
+// The corpus chip: how many documents are ticked and, when the ticked set is
+// exactly whole folders (one or more), which groups those are.
+window.getCorpusSummary = function() {
+    const count = rlmSelectedDocs.size;
+    if (corpusGroupNames.length) {
+        return { count: count, groups: corpusGroupNames.slice() };
+    }
+    const groups = [];
+    if (count > 0) {
+        const byGroup = {};
+        Object.values(documentsData).forEach(doc => {
+            const key = doc.folder_id || ROOT_GROUP;
+            (byGroup[key] = byGroup[key] || []).push(doc.id);
+        });
+        Object.keys(byGroup).forEach(key => {
+            const ids = byGroup[key];
+            if (ids.length && ids.every(id => rlmSelectedDocs.has(id))) {
+                const name = key === ROOT_GROUP ? t('Unfiled') : (foldersData[key] ? foldersData[key].name : key);
+                groups.push({ key: key, name: name, size: ids.length });
+            }
+        });
+    }
+    const grouped = groups.reduce((total, group) => total + group.size, 0);
+    return {
+        count: count,
+        groups: grouped === count ? groups.map(group => group.name) : [],
+    };
+};
+
+// Bulk selection used by the scope popover: tick every document of the chosen
+// folders (plus the root when asked) uploaded inside the date range. The
+// selection is a snapshot of document ids; a document added to the folder
+// later is not included until the filter is applied again.
+window.applyCorpusFilter = function(options) {
+    const folderIds = new Set((options && options.folderIds) || []);
+    const unfiled = !!(options && options.unfiled);
+    const from = options && options.from ? new Date(options.from + 'T00:00:00').getTime() : null;
+    const to = options && options.to ? new Date(options.to + 'T23:59:59.999').getTime() : null;
+    const matches = Object.values(documentsData).filter(doc => {
+        const root = !doc.folder_id;
+        if (root ? !unfiled : !folderIds.has(doc.folder_id)) return false;
+        const stamp = Date.parse(doc.uploaded_at || '');
+        if (from !== null && !(stamp >= from)) return false;
+        if (to !== null && !(stamp <= to)) return false;
+        return true;
+    });
+    if (!matches.length) return 0;
+    const matched = new Set(matches.map(doc => doc.id));
+    const byGroup = {};
+    Object.values(documentsData).forEach(doc => {
+        const key = doc.folder_id || ROOT_GROUP;
+        (byGroup[key] = byGroup[key] || []).push(doc.id);
+    });
+    const groupNames = [];
+    folderIds.forEach(id => {
+        const ids = byGroup[id] || [];
+        if (ids.length && ids.every(docId => matched.has(docId))) {
+            groupNames.push(foldersData[id] ? foldersData[id].name : id);
+        }
+    });
+    if (unfiled) {
+        const ids = byGroup[ROOT_GROUP] || [];
+        if (ids.length && ids.every(docId => matched.has(docId))) groupNames.push(t('Unfiled'));
+    }
+    applyingCorpusFilter = true;
+    try {
+        clearDocumentSelection();
+        matches.forEach(doc => setDocChecked(doc.id, true));
+    } finally {
+        applyingCorpusFilter = false;
+    }
+    corpusGroupNames = groupNames;
+    document.querySelectorAll('.doc-check[data-document-id]').forEach(box => {
+        box.checked = rlmSelectedDocs.has(box.dataset.documentId);
+    });
+    updateBulkBar();
+    updateFolderCheckboxes();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
+    return matches.length;
+};
+
+window.clearCorpusFilter = function() {
+    clearDocumentSelection();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
+};
 
 // When the toggle is switched on, the current checkbox selection becomes the
 // deep-analysis corpus (previously-selected RLM docs are not dropped).
@@ -1275,12 +1390,13 @@ function initDocumentsView() {
             if (rlmToggleEl.checked) {
                 syncRlmFromSelection();
             } else {
-                rlmSelectedDocs = new Set();
+                // The tool changes, the corpus does not: the ticked documents
+                // keep scoping chat RAG and tasks when deep analysis is off.
                 applyRlmMarkers();
                 updateRlmToggleCount();
-                syncRlmDocsSelect();
                 updateBulkBar();
             }
+            if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
         });
     }
 

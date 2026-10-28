@@ -379,6 +379,49 @@ def _scrub(value: Any, key: str = "") -> Any:
     return value
 
 
+def _merge_partial(fresh: dict, lang: str, prompts: list[str]) -> dict:
+    """Fold a partial run into the committed snapshot.
+
+    Re-running one scenario must not erase the other sixteen. The fresh run owns
+    the routes of the scenarios it captured plus the two global lists; every
+    other route and asset comes from the previous snapshot, and the old copy of
+    a re-run scenario is dropped by its prompt.
+    """
+    path = DEMO_DIR / "snapshot" / f"{lang}.json"
+    if not path.is_file():
+        return fresh
+    old = json.loads(path.read_text(encoding="utf-8"))
+    needles = [prompt[:60] for prompt in prompts]
+    kept = [
+        route
+        for route in old.get("routes", [])
+        if not any(needle in json.dumps(route.get("body"), ensure_ascii=False) for needle in needles)
+    ]
+    # The global lists are re-recorded by every run; an empty account (the demo
+    # logins are wiped between releases) must not blank the captured lists.
+    def _has_content(route: dict) -> bool:
+        body = route.get("body")
+        if route.get("path") == "/api/tasks":
+            return bool(isinstance(body, dict) and body.get("tasks"))
+        return bool(body)
+
+    fresh_lists = [
+        route
+        for route in fresh.get("routes", [])
+        if route.get("path") in ("/api/sessions", "/api/tasks") and _has_content(route)
+    ]
+    fresh_others = [
+        route for route in fresh.get("routes", []) if route.get("path") not in ("/api/sessions", "/api/tasks")
+    ]
+    replaced_lists = {route["path"] for route in fresh_lists}
+    kept = [route for route in kept if route.get("path") not in replaced_lists]
+    merged = {**old}
+    merged["routes"] = kept + fresh_others + fresh_lists
+    merged["assets"] = {**old.get("assets", {}), **fresh.get("assets", {})}
+    print(f"[{lang}] partial merge: {len(kept)} kept + {len(fresh.get('routes', []))} fresh routes", flush=True)
+    return merged
+
+
 def wait_for_completion(session: DemoSession, request_id: str, timeout_s: float = 900.0) -> dict:
     """Follow a queued task through its requeues until it completes."""
     deadline = time.monotonic() + timeout_s
@@ -785,6 +828,7 @@ def capture_language(
     force: bool = False,
     transport: Any = None,
     timeout_s: float = 900.0,
+    only: list[str] | None = None,
 ) -> dict:
     """Drive the running instance through the demo scenarios and return the snapshot."""
     if not force:
@@ -794,6 +838,17 @@ def capture_language(
     if not scenarios_path.is_file():
         raise CaptureError(f"Scenario file is missing: {scenarios_path}")
     scenarios = json.loads(scenarios_path.read_text(encoding="utf-8"))
+    if only:
+        wanted = {w.strip().lower() for w in only}
+        kept = []
+        for index, item in enumerate(scenarios["scenarios"], 1):
+            title = str(item.get("title", "")).strip().lower()
+            if str(index) in wanted or any(w and w in title for w in wanted):
+                kept.append(item)
+        if not kept:
+            raise CaptureError(f"no scenario matches: {', '.join(only)}")
+        print(f"[{lang}] partial capture: {len(kept)} of {len(scenarios['scenarios'])} scenarios", flush=True)
+        scenarios = {**scenarios, "scenarios": kept}
 
     chat = DemoSession(base_url, transport=transport)
     chat.login(f"{ACCOUNT_PREFIX}{lang}_chat", password)
@@ -970,6 +1025,8 @@ def capture_language(
     }
     snapshot["routes"].extend(capture_admin(admin)["routes"])
     snapshot = rewrite_for_publication(snapshot, lang)
+    if only:
+        snapshot = _merge_partial(snapshot, lang, [sc["prompt"] for sc in scenarios["scenarios"]])
     save_snapshot(DEMO_DIR / "snapshot" / f"{lang}.json", snapshot)
 
     manifest_path = _manifest_path(lang)
@@ -1023,6 +1080,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", choices=("ru", "en", "all"), default="all")
     parser.add_argument("--password", required=True, help="password of the demo accounts")
     parser.add_argument("--force", action="store_true", help="confirm writing into the live database")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="re-capture only these scenarios (comma-separated titles or indexes); "
+        "the rest of the snapshot is kept",
+    )
     parser.add_argument("--cleanup", default="", help="finish the removal of an interrupted capture")
     parser.add_argument("--database-url", default="", help="delete the orphan background tasks")
     args = parser.parse_args(argv)
@@ -1034,7 +1097,10 @@ def main(argv: list[str] | None = None) -> int:
 
     languages = ("ru", "en") if args.lang == "all" else (args.lang,)
     for lang in languages:
-        snapshot = capture_language(args.base_url, lang, password=args.password, force=args.force)
+        only = [item for item in args.only.split(",") if item.strip()]
+        snapshot = capture_language(
+            args.base_url, lang, password=args.password, force=args.force, only=only or None
+        )
         print(f"{lang}: {len(snapshot['routes'])} routes, {len(snapshot['assets'])} assets")
     return 0
 

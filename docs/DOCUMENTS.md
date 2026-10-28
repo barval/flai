@@ -104,16 +104,22 @@ the **Documents** panel: tick individual documents, a folder (its checkbox ticks
 or the **Unfiled** group for documents in the root. The same corpus scopes ordinary chat RAG, 🔬 Deep
 Analysis and background tasks.
 
-The 🔍 button next to the input is a **bulk selector for that corpus**, not a second filter:
+The 🔍 button next to the input is a **live bulk editor of that corpus**, not a second filter:
 
-- pick one or more folders, **Unfiled**, and an upload-date range (both ends inclusive) and press
-  **Apply**; the matching documents get ticked. The chip then reads `📄 documents (7)`,
-  `📁 Kitchen · 📄 documents (7)` or `📁 folders (2) · 📄 documents (3)`.
-- **Snapshot.** The ticks are a snapshot of document ids taken when you press Apply (or send a task).
-  A document uploaded into a folder afterwards is not included until you apply again. A reload clears
-  the ticks; the last filter is remembered per tab, press Apply again.
-- **Nothing ticked** means all indexed documents. An Apply that matches no documents says so and
-  leaves the corpus unchanged instead of silently searching everything.
+- Its folder list mirrors the Documents checkboxes: a folder is ticked when every document inside is
+  ticked, shows the **indeterminate** state when only a part of it is, and is empty otherwise. Clicking
+  a folder ticks every document in it (inside the active date range); clicking it again clears the
+  group. The **Unfiled** row does the same for documents in the root.
+- The **upload-date range** applies immediately: it narrows the selection inside the groups that
+  already hold ticked documents. Both ends are inclusive.
+- There is **no Apply step**. The Documents ticks, the bulk bar and the chip update on every click;
+  **Clear** empties the selection and the date range.
+- The chip reads `📄 documents (7)` for a partial selection, `📁 Kitchen · 📄 documents (7)` when a whole
+  folder is ticked, and `📁 folders (2) · 📄 documents (3)` for several complete folders. A long folder
+  name is shortened in the chip; the document count never is.
+- **Snapshot.** The ticks are a set of document ids; a document uploaded into a folder afterwards is
+  not included until its folder (or the document itself) is ticked again.
+- **Nothing ticked** means all indexed documents.
 - **Attachments** are added to the corpus for that request: a document attached to a chat message is
   saved and indexed like a Documents upload (also in 🔬 mode), and an attachment of a task joins its
   `doc_ids`. The rest of the search stays inside the corpus.

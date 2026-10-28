@@ -11,6 +11,7 @@ FLAI ships **two interchangeable video backends**, selected by `VIDEO_BACKEND`:
 | Denoising steps | 8 | 4 (Turbo), CFG 1.0, Euler, flow-shift 3.0 |
 | Measured VRAM peak | **~3.1 GB** | **15.0 GB** at 832×480×121 (9.0 GB with the encoder offloaded) |
 | Measured time (16 GB card) | tens of seconds | **209 s** for a 5-second 480p clip |
+| Recommended card | 8 GB+ | **24 GB+** (16 GB runs the default clip only after every other model is unloaded, with ~200 MB of headroom) |
 | Container | `flai-ltxvideo` (PyTorch, port 7872) | `flai-sd` (stable-diffusion.cpp, port 7861) |
 | Compose profile | `with-video` | `with-video-wan` |
 | Deploy flag | `--with-video` | `--with-video-wan` |
@@ -67,6 +68,9 @@ to 5 seconds — shortened the video from 10 s to 5 s»).
 
 ## Wan 2.2 TI2V 5B
 
+- **Recommended card: 24 GB or more.** The pipeline peaks near 15 GB at 832×480×121, so a 16 GB
+  card fits only after every other model is unloaded and leaves ~200 MB of headroom; 24 GB removes
+  that squeeze. The preset chain still keeps smaller cards running at reduced sizes.
 - Turbo GGUF (Apache-2.0), 4 steps, CFG 1.0, Euler sampler, flow-shift 3.0.
 - It runs inside the **sd.cpp container** — the same one that generates images — through
   `POST /v1/video/generations`; no second Python/Torch stack is needed.

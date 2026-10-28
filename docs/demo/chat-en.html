@@ -10125,6 +10125,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'folders ({count})': "folders ({count})",
     'documents ({count})': "documents ({count})",
     'No documents match the selected folders and dates.': "No documents match the selected folders and dates.",
+    'Select at least one folder.': "Select at least one folder.",
     'Uploaded from': "Uploaded from",
     'Uploaded to': "Uploaded to",
     'Apply': "Apply",
@@ -19099,7 +19100,7 @@ window.relocateChatControls = relocateChatControls;
         const folders = checked.filter((value) => value !== ROOT_GROUP);
         const unfiled = checked.includes(ROOT_GROUP);
         if (!folders.length && !unfiled) {
-            alert(t('All documents'));
+            alert('⚠️ ' + t('Select at least one folder.'));
             return;
         }
         const count = (typeof window.applyCorpusFilter === 'function')
@@ -19111,7 +19112,7 @@ window.relocateChatControls = relocateChatControls;
             })
             : 0;
         if (!count) {
-            alert(t('No documents match the selected folders and dates.'));
+            alert('⚠️ ' + t('No documents match the selected folders and dates.'));
             return;
         }
         filter = { folders: folders, unfiled: unfiled, from: fromInput.value, to: toInput.value };

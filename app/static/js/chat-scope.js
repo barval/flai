@@ -177,7 +177,7 @@
         const folders = checked.filter((value) => value !== ROOT_GROUP);
         const unfiled = checked.includes(ROOT_GROUP);
         if (!folders.length && !unfiled) {
-            alert(t('All documents'));
+            alert('⚠️ ' + t('Select at least one folder.'));
             return;
         }
         const count = (typeof window.applyCorpusFilter === 'function')
@@ -189,7 +189,7 @@
             })
             : 0;
         if (!count) {
-            alert(t('No documents match the selected folders and dates.'));
+            alert('⚠️ ' + t('No documents match the selected folders and dates.'));
             return;
         }
         filter = { folders: folders, unfiled: unfiled, from: fromInput.value, to: toInput.value };

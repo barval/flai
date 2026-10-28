@@ -891,9 +891,19 @@ function renderTaskMessage(m, task) {
 
     // Service lines ("Plan of N steps:", "Step N of M:") render as their own
     // italic muted line with an emoji, separate from the message body.
-    const mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
+    let mediaList = (m.extra && Array.isArray(m.extra.media_all) && m.extra.media_all.length
         ? m.extra.media_all
         : (m.extra && m.extra.media ? [m.extra.media] : []));
+    // An artifact can arrive as a top-level file_path (injected demo clips and
+    // older rows): fall back to it, or the picture/video never renders here.
+    if (!mediaList.length && m.file_path && m.file_type) {
+        mediaList = [{
+            file_path: m.file_path,
+            file_name: m.file_name,
+            file_type: m.file_type,
+            file_size: m.file_size
+        }];
+    }
     // Strip artifact file-name lines from body before rendering — the server
     // appends them (executor.py _end_step) so the verifier sees them, but
     // they must not appear as text above the media.

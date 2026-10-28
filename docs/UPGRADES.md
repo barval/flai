@@ -275,6 +275,13 @@ Gate on the new build:
   The jobs now pin `v0.36.0` by commit (`ed142fd0`, published 2026-04-22) — also the safer reference
   after the March 2026 compromise force-pushed 75 of the action's 76 tags. The action pins the Trivy
   binary itself (`v0.70.0`), so one commit covers both.
+- **The image scans are report-only** — Trivy now runs for real (see the action pin above) and found
+  3 CRITICAL / 26 HIGH in `postgres:18.6-alpine` (gosu's Go stdlib, `libcurl`, `brotli-libs`) and
+  49 CRITICAL / 324 HIGH in `unclecode/crawl4ai:0.9.5` (its Python environment and Debian base).
+  Both tags are the newest published ones, and neither image is built here, so nothing in this
+  repository can close those findings: the job keeps the table in the log and stops failing the
+  build (`exit-code: 0`). Redis 8.4.7 scans clean. A finding inside an image FLAI builds itself
+  still belongs behind a blocking gate.
 - **setuptools 79.0.1 → 84.2.1** — `pip-audit` found PYSEC-2026-3447 (a `MANIFEST.in` exclusion bypass
   on a normalisation-preserving macOS filesystem) and GHSA-xmj3-9gf7-h52w (a Windows wheel creating
   `__init__.py` outside the install directory) in the copy `python:3.11-slim` ships. The base image's

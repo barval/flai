@@ -377,6 +377,16 @@ class TestRuntimeBackendSwitch:
         assert module.wrapper_url == "http://test-ltx:7872"
         assert module.steps == module.CPU_STEPS_DEFAULT
 
+    def test_current_backend_reads_the_live_config(self):
+        """The VRAM gate runs before generate_video: a stale attribute asked 15 GB for a 3 GB clip."""
+        app = _make_app()
+        with patch("modules.video.requests.get", return_value=MagicMock(status_code=200)):
+            module = VideoModule(app)
+        app.config["VIDEO_BACKEND"] = "ltx"
+        assert module.current_backend() == "ltx"
+        app.config["VIDEO_BACKEND"] = "wan"
+        assert module.current_backend() == "wan"
+
     def test_margin_follows_the_backend(self):
         assert _module().vram_margin_mb == 300
         assert _module(VIDEO_BACKEND="ltx").vram_margin_mb == 1000

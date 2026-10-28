@@ -157,6 +157,10 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_DISABLE_REQUIRE=${SD_DISABLE_REQUIRE:-0}
+      # Below this much VRAM the umt5 encoder is streamed from RAM.
+      # 16 GB cards need 16384: the measured 480p clip takes 15.0 GB and
+      # the container's own CUDA context leaves less than that free.
+      - WAN_OFFLOAD_BELOW_VRAM_MB=${WAN_OFFLOAD_BELOW_VRAM_MB:-12000}
     runtime: nvidia
     deploy:
       resources:

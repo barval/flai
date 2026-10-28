@@ -1579,7 +1579,9 @@ class RedisRequestQueue:
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         video_module = self.app.modules.get("video")
-        video_backend = getattr(video_module, "backend", None)
+        # Re-read the live backend: the attribute is cached by the last request,
+        # and a stale "wan" asks for 15 GB before a 3 GB LTX clip.
+        video_backend = video_module.current_backend() if video_module is not None else None
         min_free = (
             rm.estimate_video_vram_needed(
                 video_params.get("width") if video_params else None,
@@ -6481,8 +6483,14 @@ class RedisRequestQueue:
         process_time = round(process_time, 1)
 
         # The question: the typed text first, then every transcript in order.
+        # The transcript carries an explicit label: without it the model reads
+        # the typed instruction ("transcribe the voice message") literally and
+        # answers that no audio was attached (observed on the English demo).
         typed = str(request_data.get("text") or "").strip()
-        question = f"{typed}\n\n{transcribed_text}" if typed else transcribed_text
+        with force_locale(lang):
+            transcript_label = self.app.modules["base"]._("Transcribed from the voice message", lang)
+        labelled = f"{transcript_label}: {transcribed_text}"
+        question = f"{typed}\n\n{labelled}" if typed else labelled
         preview = (
             (transcribed_text[:50] + "...")
             if transcribed_text

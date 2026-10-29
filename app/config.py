@@ -10,7 +10,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "12.8"
+APP_VERSION = "12.9"
 
 
 def load_config(app):

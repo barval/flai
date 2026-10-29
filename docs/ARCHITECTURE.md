@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.8
+# Architecture — FLAI v12.9
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 

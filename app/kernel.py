@@ -155,3 +155,40 @@ def parse_kernel_decision(text: str | None) -> KernelDecision | None:
         tools=_coerce_tools(data.get("tools")),
         confidence=_coerce_confidence(data.get("confidence")),
     )
+
+
+def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = None) -> dict[str, Any]:
+    """Convert a decision into the dict shape every downstream caller expects.
+
+    The quirks are inherited from ``BaseModule._parse_router_response`` and are
+    pinned by ``tests/test_kernel_route.py``: an image or video request keeps
+    the user's original words (models echo history after the marker), a camera
+    request resolves to a room code, and a downstream query longer than 1.5x the
+    original is replaced by the original.
+    """
+    action = INTENT_ACTIONS[decision.intent]
+    processed = decision.query.strip()
+
+    if action in ("image", "video"):
+        processed = original_query
+    elif action == "camera":
+        if not processed:
+            processed = original_query
+        if cam is not None and hasattr(cam, "room_names") and processed not in cam.room_names:
+            extracted = cam.get_room_code(processed)
+            if extracted:
+                processed = extracted
+    elif original_query and (not processed or len(processed) > len(original_query) * 1.5):
+        processed = original_query
+
+    if action == "none":
+        processed = original_query
+
+    return {
+        "action": action,
+        "query": processed,
+        "needs_reasoning": action in ("reasoning", "reasoning_web"),
+        # An empty tuple means "no opinion"; the chat path then advertises every
+        # tool, exactly as it did before the kernel existed.
+        "tools": decision.tools or None,
+    }

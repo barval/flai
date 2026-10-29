@@ -1165,3 +1165,48 @@ def rag_reindex(user, doc):
             failed += 1
             click.echo(f"  FAIL {row.get('filename')} — {message}")
     click.echo(f"\nRe-indexed {done} documents, {failed} failed")
+
+
+@click.command("kernel-eval")
+@click.option("--dataset", required=True, help="JSONL with {message, lang, expected_intent, expected_tools}")
+@click.option("--mode", type=click.Choice(["router", "kernel", "both"]), default="both", show_default=True)
+@click.option("--out", default="", help="Write the metrics to this JSON file")
+@with_appcontext
+def kernel_eval(dataset, mode, out):
+    """Score the request kernel against the marker router on the same cases.
+
+    Both modes call ``BaseModule.process_message``, so the comparison is between
+    two decisions of the same function rather than two reimplementations. The
+    acceptance gate is: the kernel is not worse on intent, reports at most two
+    falsely selected tools on the seed set, and is not more than ten points
+    worse on Russian than on English (the kernel prompt is English only).
+    """
+    import json
+
+    from app.kernel_eval import load_dataset, run_evaluation, score, serialise
+
+    cases = load_dataset(dataset)
+    if not cases:
+        raise click.ClickException(f"dataset {dataset} is empty")
+
+    modes = ["router", "kernel"] if mode == "both" else [mode]
+    payload = {}
+    for name in modes:
+        report = score(run_evaluation(current_app._get_current_object(), cases, name), cases)
+        payload[name] = serialise(report)
+        click.echo(f"\n=== {name} ===")
+        click.echo(f"cases            {report['cases']}")
+        click.echo(f"intent accuracy  {report['intent_accuracy']:.3f}")
+        click.echo(f"tool exact       {report['tool_exact']:.3f}")
+        click.echo(f"false tools      {report['false_tools']}")
+        for lang, bucket in sorted(report["by_lang"].items()):
+            click.echo(f"  {lang}: intent {bucket['intent_accuracy']:.3f} on {bucket['cases']} cases")
+        if report["confusions"]:
+            click.echo("  confusions (expected -> got):")
+            for (expected, got), count in sorted(report["confusions"].items(), key=lambda item: -item[1]):
+                click.echo(f"    {expected} -> {got}: {count}")
+
+    if out:
+        with open(out, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        click.echo(f"\nwritten to {out}")

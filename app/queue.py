@@ -33,7 +33,7 @@ from .db import (
 from .events import get_events_publisher
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
-from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
+from .tools import MAX_TOOL_ITERATIONS, execute_tool, select_tool_definitions
 from .utils import (
     N_,
     begin_usage_account,
@@ -4959,6 +4959,7 @@ class RedisRequestQueue:
                     lang,
                     response_style,
                     expose_tools=True,
+                    tool_selection=router_result.get("tools"),
                 )
             # Unknown action — safe fallback that still avoids a second router call
             return self._save_and_respond(
@@ -4985,6 +4986,7 @@ class RedisRequestQueue:
             stream=False,
             include_tools=False,
             expose_tools=True,
+            tool_selection=router_result.get("tools"),
         )
 
     def _sanitize_tool_service_text(self, text: str) -> str:
@@ -5079,6 +5081,7 @@ class RedisRequestQueue:
         stream: bool = True,
         include_tools: bool = True,
         expose_tools: bool | None = None,
+        tool_selection: tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
@@ -5134,7 +5137,11 @@ class RedisRequestQueue:
             {"role": "system", "content": system_content},
             {"role": "user", "content": query},
         ]
-        tools = get_tool_definitions(lang) if (expose_tools if expose_tools is not None else include_tools) else None
+        tools = (
+            select_tool_definitions(tool_selection, lang)
+            if (expose_tools if expose_tools is not None else include_tools)
+            else None
+        )
 
         full_response = ""
         last_tool_result = ""

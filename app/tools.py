@@ -820,6 +820,26 @@ _EXECUTOR_MAP: dict[str, Any] = {
 }
 
 
+def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") -> list[dict[str, Any]]:
+    """Advertise only the tools the request kernel chose.
+
+    ``None`` and an empty tuple both mean "the kernel had no opinion" and return
+    every tool: silence must never silently disable a capability. A selection
+    that matches nothing is treated the same way — the alternative is a chat
+    that cannot use a single tool for a whole conversation because the model
+    invented a name.
+
+    Full tool schemas are the largest fixed cost of a chat request (about 2 000
+    tokens for eight tools), so a request that needs none of them pays for none.
+    """
+    definitions = get_tool_definitions(lang)
+    if not selected:
+        return definitions
+    wanted = set(selected)
+    chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
+    return chosen or definitions
+
+
 def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, Any]) -> str:
     """Execute a tool by name with given arguments.
 

@@ -114,6 +114,13 @@ Notes:
   answers, images, videos) runs only on an explicit user request. A rebuild
   that also picks up a UI change made since the last one is expected — it
   belongs to the opening commit.
+- A rebuild touches **presentation only**. The demo content lives in
+  `demo/snapshot` and `demo/media` and must come out of the build untouched:
+  after `python -m demo.build` run `git status --short demo/` — anything listed
+  there is a content change, not an opening step. Review the `docs/demo` diff
+  as well: the changed lines are version strings, markup and JS, never a
+  message, an answer or a media reference. If one of them did change, stop and
+  ask before committing.
 - `deploy*.sh` hardcode the version (they do not read `APP_VERSION`), which is
   why there are four occurrences per file.
 

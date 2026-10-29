@@ -20,7 +20,7 @@ The answer always matches your language, and the actor must actually work throug
 5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
 
 ## Notes
-- Without selected documents **and** without attachments (images or a chat-attached document), or if there is no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
+- Without selected documents **and** without attachments (images or a chat-attached document), the send is refused with a localized notice and the toggle stays on — deep analysis never silently turns into an ordinary chat. An image without a question is rejected by the route as well.
 - The analysis works on the corpus only: the ticked documents, or — for a task with 🔬 on and no attachments — every indexed document of the user (no full-text search over unrelated uploads when a corpus is ticked).
 - The sandbox provides `re` and `math` already — the actor never writes `import` and never uses `lambda` (plain functions/loops instead). A failing python call must be fixed in the next step; repeating the same failing code wastes the step budget.
 - On the final step only the `final` tool is reachable, and tool calls printed as plain text (instead of the structured call format) are parsed back and executed instead of being shown to the user — including the unclosed `<tool_call><function=final> answer="…"` shape; when the model repeats an answer it already printed as a leaked `final`, the complete printed copy wins and the markup tail is stripped. The analysis never answers with the model's internal dialogue.

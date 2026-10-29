@@ -1340,8 +1340,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
         // deep analysis twice.
         if (window.rlmAwaitingVoice) {
             const rlmToggle = document.getElementById('rlm-toggle');
-            const docsSelect = document.getElementById('rlm-docs');
-            const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+            const docIds = (typeof window.getSelectedDocIds === 'function') ? window.getSelectedDocIds() : [];
             if (rlmToggle && rlmToggle.checked && (docIds.length > 0 || window.rlmAwaitingVoiceImage)) {
                 // The re-queued plain task (whose request_id travels in the
                 // transcription SSE) must not render: the deep-analysis trace
@@ -1358,13 +1357,19 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
                 window.rlmAwaitingVoiceImage = null;
                 return;
             }
-            // No docs/image remain selected at transcription time: clear the
-            // flag and un-check the toggle (documented behavior), then proceed
-            // with the normal flow.
+            // No documents/image remain selected at transcription time: the
+            // voice is already queued, so its answer arrives as an ordinary
+            // reply. Say why deep analysis did not start instead of only
+            // un-checking the toggle.
             window.rlmAwaitingVoice = false;
             window.rlmAwaitingVoiceImage = null;
             if (rlmToggle) rlmToggle.checked = false;
             if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
+            if (resultSessionId === currentSessionId
+                && !(typeof isTaskViewActive === 'function' && isTaskViewActive())) {
+                window.displayMessage('assistant', '⚠️ ' + t('rlm_needs_documents'), null, null, null, null,
+                    new Date().toISOString(), null, 'system', null, null, null, null, null, null, null, null, 'system');
+            }
         }
 
         if (result.request_id) {

@@ -131,7 +131,6 @@
                 </div>
             </div>
             <label id="rlm-toggle-label" title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 <span class="rlm-label-text">{{ _('Deep analysis') }}</span><span id="rlm-count"></span></label>
-            <select id="rlm-docs" multiple hidden></select>
         </div>
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
@@ -262,6 +261,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'click_to_enlarge': {{ _("click_to_enlarge")|tojson }},
     'image': {{ _("image")|tojson }},
     'enter_message_or_file': {{ _("enter_message_or_file")|tojson }},
+    'rlm_needs_documents': {{ _("rlm_needs_documents")|tojson }},
     'max_images_reached': {{ _("max_images_reached")|tojson }},
     'max_audio_reached': {{ _("max_audio_reached")|tojson }},
     'remove_file': {{ _("remove_file")|tojson }},

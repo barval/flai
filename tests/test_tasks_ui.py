@@ -423,10 +423,10 @@ class TestReviewGuards:
 
     def test_documents_ride_with_task_send(self):
         """The shared Documents-panel selection is snapshotted into the task
-        request/answer (the same #rlm-docs multi-select the chat reads)."""
+        request/answer (the corpus accessor the chat reads too)."""
         helper = self._function_block(CHAT_TASKS, "function taskDocIds(")
-        assert "'rlm-docs'" in helper
-        assert "selectedOptions" in helper
+        assert "getSelectedDocIds" in helper
+        assert "selectedOptions" not in helper, "the hidden select is gone"
         # The multipart builder is used by BOTH submits (/request and /answer):
         # it must read the doc selection and the 🔬 toggle together.
         builder = self._arrow_block(CHAT_TASKS, "const formDataFor = ")

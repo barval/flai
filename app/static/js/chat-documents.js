@@ -18,15 +18,10 @@ let draggedDocId = null;
 let previewDocId = null; // document open in the main-window preview
 let previewDocName = '';
 
-// Documents selected for the RLM "Deep analysis" toggle. Clicking a
-// document in the sidebar list toggles it; the choice is mirrored into
-// the hidden #rlm-docs multi-select (source of truth for sendRlmAnalysis).
+// Documents selected for the RLM "Deep analysis" toggle and for the chat/task
+// corpus. Clicking a document in the sidebar list toggles it; the set is the
+// single source of truth every submit reads through window.getSelectedDocIds().
 let rlmSelectedDocs = new Set();
-// The folder groups the current corpus came from (the scope's "Apply"). Kept
-// separately from the ticks so the chip can say "folders (2)" even after a new
-// document is uploaded into one of those folders: the corpus is a snapshot.
-let corpusGroupNames = [];
-let applyingCorpusFilter = false;
 
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
@@ -402,35 +397,11 @@ function updateDocumentsList(documents, folders = []) {
         documentsCount.textContent = documents.length;
     }
 
-    // Mirror the document list into the RLM deep-analysis picker (if present)
-    const rlmDocs = document.getElementById('rlm-docs');
-    if (rlmDocs) {
-        rlmDocs.innerHTML = '';
-        documents.forEach(doc => {
-            const opt = document.createElement('option');
-            opt.value = doc.id;
-            opt.textContent = doc.filename;
-            rlmDocs.appendChild(opt);
-        });
-        // Restore selection after the rebuild
-        syncRlmDocsSelect();
-    }
-
     attachDocumentEventHandlers();
     updateRlmToggleCount();
     updateBulkBar();
     updateFolderCheckboxes();
     if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
-}
-
-// Sync the hidden #rlm-docs multi-select (used by sendRlmAnalysis) with the
-// documents currently marked for deep analysis.
-function syncRlmDocsSelect() {
-    const rlmDocs = document.getElementById('rlm-docs');
-    if (!rlmDocs) return;
-    for (const opt of rlmDocs.options) {
-        opt.selected = rlmSelectedDocs.has(opt.value);
-    }
 }
 
 // Show the count of documents selected for the RLM toggle, e.g. "Deep analysis (2)".
@@ -582,10 +553,8 @@ function clearDocumentSelection() {
     // The analysis set mirrors the checkboxes in every mode, so it is cleared
     // unconditionally here; the marker pass hides any leftover tint.
     rlmSelectedDocs = new Set();
-    corpusGroupNames = [];
     applyRlmMarkers();
     updateRlmToggleCount();
-    syncRlmDocsSelect();
     document.querySelectorAll('.doc-check').forEach(cb => {
         cb.checked = false;
     });
@@ -1129,10 +1098,8 @@ function setDocChecked(docId, checked) {
         selectedDocIds.delete(docId);
         rlmSelectedDocs.delete(docId);
     }
-    if (!applyingCorpusFilter) corpusGroupNames = [];
     applyRlmMarkers();
     updateRlmToggleCount();
-    syncRlmDocsSelect();
     if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
 }
 
@@ -1140,9 +1107,6 @@ function setDocChecked(docId, checked) {
 // exactly whole folders (one or more), which groups those are.
 window.getCorpusSummary = function() {
     const count = rlmSelectedDocs.size;
-    if (corpusGroupNames.length) {
-        return { count: count, groups: corpusGroupNames.slice() };
-    }
     const groups = [];
     if (count > 0) {
         const byGroup = {};
@@ -1178,15 +1142,10 @@ window.getSelectedDocIds = function() {
 // chip all follow immediately, with no «Apply» step.
 window.setCorpusSelection = function(ids) {
     const wanted = new Set((ids || []).map(String));
-    applyingCorpusFilter = true;
-    try {
-        clearDocumentSelection();
-        // Ids come from the scope's own /api/documents payload; the Documents
-        // panel may not have rendered yet, so do not require documentsData.
-        wanted.forEach(id => setDocChecked(id, true));
-    } finally {
-        applyingCorpusFilter = false;
-    }
+    clearDocumentSelection();
+    // Ids come from the scope's own /api/documents payload; the Documents
+    // panel may not have rendered yet, so do not require documentsData.
+    wanted.forEach(id => setDocChecked(id, true));
     document.querySelectorAll('.doc-check[data-document-id]').forEach(box => {
         box.checked = rlmSelectedDocs.has(box.dataset.documentId);
     });
@@ -1194,54 +1153,6 @@ window.setCorpusSelection = function(ids) {
     updateFolderCheckboxes();
     if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
     return rlmSelectedDocs.size;
-};
-
-window.applyCorpusFilter = function(options) {
-    const folderIds = new Set((options && options.folderIds) || []);
-    const unfiled = !!(options && options.unfiled);
-    const from = options && options.from ? new Date(options.from + 'T00:00:00').getTime() : null;
-    const to = options && options.to ? new Date(options.to + 'T23:59:59.999').getTime() : null;
-    const matches = Object.values(documentsData).filter(doc => {
-        const root = !doc.folder_id;
-        if (root ? !unfiled : !folderIds.has(doc.folder_id)) return false;
-        const stamp = Date.parse(doc.uploaded_at || '');
-        if (from !== null && !(stamp >= from)) return false;
-        if (to !== null && !(stamp <= to)) return false;
-        return true;
-    });
-    if (!matches.length) return 0;
-    const matched = new Set(matches.map(doc => doc.id));
-    const byGroup = {};
-    Object.values(documentsData).forEach(doc => {
-        const key = doc.folder_id || ROOT_GROUP;
-        (byGroup[key] = byGroup[key] || []).push(doc.id);
-    });
-    const groupNames = [];
-    folderIds.forEach(id => {
-        const ids = byGroup[id] || [];
-        if (ids.length && ids.every(docId => matched.has(docId))) {
-            groupNames.push(foldersData[id] ? foldersData[id].name : id);
-        }
-    });
-    if (unfiled) {
-        const ids = byGroup[ROOT_GROUP] || [];
-        if (ids.length && ids.every(docId => matched.has(docId))) groupNames.push(t('Unfiled'));
-    }
-    applyingCorpusFilter = true;
-    try {
-        clearDocumentSelection();
-        matches.forEach(doc => setDocChecked(doc.id, true));
-    } finally {
-        applyingCorpusFilter = false;
-    }
-    corpusGroupNames = groupNames;
-    document.querySelectorAll('.doc-check[data-document-id]').forEach(box => {
-        box.checked = rlmSelectedDocs.has(box.dataset.documentId);
-    });
-    updateBulkBar();
-    updateFolderCheckboxes();
-    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
-    return matches.length;
 };
 
 window.clearCorpusFilter = function() {
@@ -1255,7 +1166,7 @@ function syncRlmFromSelection() {
     rlmSelectedDocs = new Set(selectedDocIds);
     applyRlmMarkers();
     updateRlmToggleCount();
-    syncRlmDocsSelect();
+    if (typeof window.renderCorpusChip === 'function') window.renderCorpusChip();
 }
 
 // Delete every selected document. Confirms with the count and total size,

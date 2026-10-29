@@ -151,11 +151,12 @@ function clearAllAttachments() {
     renderAttachmentChips();
 }
 
-// The corpus is the Documents-panel selection. Sending it as doc_ids makes the
-// chat RAG use the same snapshot as deep analysis and tasks.
+// The corpus is the Documents-panel selection. It lives in the chat-documents
+// state, so a folder picked from the scope popover counts even when the
+// Documents panel has never been opened. Sending it as doc_ids makes the chat
+// RAG use the same snapshot as deep analysis and tasks.
 function corpusDocIds() {
-    const select = document.getElementById('rlm-docs');
-    return select ? Array.from(select.selectedOptions).map(o => o.value) : [];
+    return (typeof window.getSelectedDocIds === 'function') ? window.getSelectedDocIds() : [];
 }
 
 // Attached documents join the corpus: save them as full user documents first
@@ -177,10 +178,10 @@ async function uploadCorpusDocuments(files) {
 
 // RLM deep-analysis submit: branches off the normal send flow when the
 // "Deep analysis" toggle is checked. Question text comes from the shared
-// message input; documents are picked from the #rlm-docs multi-select
-// (populated by chat-documents.js). An attached image is sent along and the
-// backend describes it with the multimodal model, then treats the description
-// as one of the corpus documents.
+// message input; documents are the shared corpus picked in the Documents panel
+// or the scope popover (chat-documents.js). An attached image is sent along and
+// the backend describes it with the multimodal model, then treats the
+// description as one of the corpus documents.
 async function sendRlmAnalysis(questionOverride) {
     const sendButton = document.getElementById('send-button');
     const input = document.getElementById('message-input');
@@ -189,8 +190,7 @@ async function sendRlmAnalysis(questionOverride) {
     const question = (questionOverride !== undefined && questionOverride !== null)
         ? String(questionOverride).trim()
         : input.value.trim();
-    const docsSelect = document.getElementById('rlm-docs');
-    const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+    const docIds = corpusDocIds();
     // Multi-image deep analysis: every attached image goes into the corpus.
     // The legacy single slot (voice+image combo) is included too.
     const rlmImages = [...attachedFiles.filter(isImageFile)];
@@ -363,8 +363,7 @@ async function sendMessage() {
     }
     const rlmToggle = document.getElementById('rlm-toggle');
     if (rlmToggle && rlmToggle.checked) {
-        const docsSelect = document.getElementById('rlm-docs');
-        const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+        const docIds = corpusDocIds();
         const messageInput = document.getElementById('message-input');
         // A pending voice query counts as a question: the transcribed text
         // arrives asynchronously after STT. Without this check, a voice request
@@ -377,7 +376,16 @@ async function sendMessage() {
         const hasImage = attachedFiles.some(isImageFile)
             || !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
         const hasDocs = attachedFiles.some(isDocumentFile);
-        if ((docIds.length > 0 || hasImage || hasDocs) && hasQuestion) {
+        const hasCorpus = docIds.length > 0 || hasImage || hasDocs;
+        if (!hasCorpus) {
+            // Deep analysis needs a corpus. Refuse the send instead of silently
+            // un-checking the toggle and turning the request into an ordinary
+            // chat: the user then gets a plain answer without knowing that the
+            // analysis never ran.
+            alert(t('rlm_needs_documents'));
+            return;
+        }
+        if (hasQuestion) {
             if (hasText) {
                 sendRlmAnalysis();
                 return;
@@ -394,13 +402,6 @@ async function sendMessage() {
             const legacyImage = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'))
                 ? attachedFile : null;
             window.rlmAwaitingVoiceImage = legacyImage || firstMultiImage;
-        } else if (!hasVoice) {
-            // Deep analysis cannot start here: no documents & no image, and no
-            // voice query either (no question will ever arrive). Un-check the
-            // toggle and fall through to the normal send flow. A voice query
-            // without docs/image keeps the toggle checked (ledger ruling).
-            rlmToggle.checked = false;
-            if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
         }
     }
 

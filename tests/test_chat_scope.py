@@ -80,14 +80,76 @@ def test_the_corpus_is_sent_with_every_message():
     assert "window.getCorpusSummary" in scope
 
 
+def test_every_submit_reads_the_corpus_state_not_a_hidden_select():
+    """A corpus picked from the scope popover must reach the submit even when the
+    Documents panel was never opened.
+
+    The selection used to travel through the hidden ``#rlm-docs`` select, whose
+    options are created only by the Documents panel. Choosing folders from the
+    chat page left the select empty, so the request went out with an empty
+    corpus: the chat silently un-checked the analysis toggle and a task was
+    queued with ``doc_ids = []`` (searched every document instead of the
+    selected ones).
+    """
+    for path in (
+        "app/static/js/chat-init.js",
+        "app/static/js/chat-tasks.js",
+        "app/static/js/events.js",
+    ):
+        js = Path(path).read_text(encoding="utf-8")
+        assert "getSelectedDocIds" in js, path
+        assert "rlm-docs" not in js, f"{path} still reads the hidden select"
+
+    assert 'id="rlm-docs"' not in _chat_html()
+    docs = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
+    assert "window.getSelectedDocIds = function" in docs, "the corpus has one accessor"
+    assert "syncRlmDocsSelect" not in docs, "the select mirror died with the select"
+
+
+def test_deep_analysis_refuses_an_empty_corpus():
+    """Toggle on without a corpus: refuse the send and say why.
+
+    The old flow un-checked the toggle silently and sent an ordinary chat, so a
+    user who thought the folders were selected got a plain answer and never
+    learned that the analysis had not run.
+    """
+    js = Path("app/static/js/chat-init.js").read_text(encoding="utf-8")
+    block = js[js.index("const rlmToggle = document.getElementById('rlm-toggle');"):]
+    block = block[: block.index("isSending = true;")]
+
+    assert "const hasCorpus = docIds.length > 0 || hasImage || hasDocs;" in block
+    assert block.index("if (!hasCorpus)") < block.index("if (hasQuestion)")
+    refusal = block[block.index("if (!hasCorpus)"):block.index("if (hasQuestion)")]
+    assert "alert(t('rlm_needs_documents'))" in refusal
+    assert "return;" in refusal
+    assert "rlmToggle.checked = false" not in block, "the toggle must stay on"
+
+    html = _chat_html()
+    assert "'rlm_needs_documents':" in html
+    for catalog, msgstr in (
+        ("translations/en/LC_MESSAGES/messages.po", "Deep analysis needs at least one document or an image"),
+        (
+            "translations/ru/LC_MESSAGES/messages.po",
+            "Для глубокого анализа выберите хотя бы один документ или приложите изображение",
+        ),
+    ):
+        text = Path(catalog).read_text(encoding="utf-8")
+        assert f'msgid "rlm_needs_documents"\nmsgstr "{msgstr}"' in text, catalog
+
+    # A voice message whose corpus emptied before the transcription lands says
+    # the same instead of only un-checking the toggle.
+    events = Path("app/static/js/events.js").read_text(encoding="utf-8")
+    assert "t('rlm_needs_documents')" in events
+
+
 def test_documents_panel_has_a_root_group_and_feeds_the_corpus():
     js = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
     assert "const ROOT_GROUP = '__root__';" in js
     assert "data-folder-id=\"${ROOT_GROUP}\"" in js
-    assert "window.applyCorpusFilter = function" in js
     assert "window.setCorpusSelection = function" in js
     assert "window.getSelectedDocIds = function" in js
     assert "window.getCorpusSummary = function" in js
+    assert "window.applyCorpusFilter = function" not in js, "the old Apply step is gone"
     # Turning deep analysis off must not empty the corpus anymore.
     assert "rlmSelectedDocs = new Set();" not in js.split("rlmToggleEl.addEventListener")[1].split("});")[0]
 

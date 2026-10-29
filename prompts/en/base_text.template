@@ -7,7 +7,8 @@ Classify the user's query into one category below. Output ONLY the result, no ex
 First decide what is asked about: an action that ALREADY happened, or an action to perform now/in the future.
 - If the query is about a PAST action (verbs in the past tense: "viewed", "showed", "discussed", "sent", "saw", "was") or about what happened earlier — this is HISTORY SEARCH (category 7, [-HISTORY-]), regardless of mentions of cameras, rooms, documents, images, videos, or internet topics.
 - If the query asks to perform an action NOW (show a live snapshot, fetch fresh data, create a file) or in the future — this is the corresponding action category.
-Categories 2-6 and 10 do NOT override questions about the past.
+- DOCUMENT EXCEPTION: a request to find, list or extract facts that live in the user's uploaded documents ("list all the work on…", "show every entry about…", "which IPs were added", "find it in the reports") is category 5, even when it describes events in the past: the source is the documents, not the conversation. Category 7 is only about the conversation itself ("what did we discuss", "what did I say").
+Categories 2-4, 6 and 10 do NOT override questions about the past; category 5 does when the facts live in the documents.
 
 ## MAIN RULE: QUESTION vs STATEMENT
 If text contains "?" or is a question — it is a QUESTION.
@@ -45,6 +46,8 @@ Decide BY THE RESULT: does the user want the actual video file, or something els
 
 ## 5. DOCUMENT SEARCH — [-RAG-] and query
 Specific person (first + last name), biography, resume, facts from uploaded documents.
+Also category 5: a request to extract facts from the documents — "list all the work on…", "show/collect every entry about…", "find all IP addresses/dates/contracts/invoices", "what was done about…", "when was … added". If those records live in the uploaded files, this is documents, not reasoning and not chat history.
+The query after the marker is a short search phrase: keep the keywords, IP addresses and dates.
 FORBIDDEN: file/code creation → category 8. URLs/websites → category 6.
 
 ## 6. WEB SEARCH — [-SEARCH-] and query

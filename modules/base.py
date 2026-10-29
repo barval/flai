@@ -135,6 +135,9 @@ class BaseModule(TranslationMixin):
         self.ROUTER_CONTEXT_MESSAGES = 6
         self.ROUTER_CONTEXT_MSG_CHARS = 240
         self.ROUTER_SLM_FACTS = 2
+        # How many document names the router sees; a constant on purpose —
+        # the hint is a classification cue, not a tunable budget.
+        self.ROUTER_DOC_NAMES = 5
         if app:
             self.init_app(app)
 
@@ -569,19 +572,20 @@ class BaseModule(TranslationMixin):
         Lets the classifier tell retrospective questions ("did we view camera
         snapshots?") from live ones ("show the room now") by seeing the recent
         exchanges instead of relying on hardcoded query rules. The digest is
-        deliberately tiny (last N short messages + a few SLM facts) so the
-        router call stays fast.
+        deliberately tiny (last N short messages, a documents line and a few
+        SLM facts) so the router call stays fast.
         """
-        if not session_id:
-            return ""
-        try:
-            from app.db import _extract_text_content, get_session_recent_history
+        if session_id:
+            try:
+                from app.db import _extract_text_content, get_session_recent_history
 
-            messages = get_session_recent_history(
-                session_id, limit=self.ROUTER_CONTEXT_MESSAGES, exclude_message_id=exclude_message_id
-            )
-        except Exception as e:
-            self.logger.warning(f"Router context history load failed: {e}")
+                messages = get_session_recent_history(
+                    session_id, limit=self.ROUTER_CONTEXT_MESSAGES, exclude_message_id=exclude_message_id
+                )
+            except Exception as e:
+                self.logger.warning(f"Router context history load failed: {e}")
+                messages = []
+        else:
             messages = []
         lines = []
         for msg in messages:
@@ -594,6 +598,28 @@ class BaseModule(TranslationMixin):
                 continue
             role = "User" if msg.get("role") == "user" else "Assistant"
             lines.append(f"{role}: {text}")
+        if user_id:
+            try:
+                from app.db import get_user_document_names
+
+                total, names = get_user_document_names(user_id, limit=self.ROUTER_DOC_NAMES)
+            except Exception as e:
+                self.logger.warning(f"Router context documents load failed: {e}")
+                total, names = 0, []
+            if total:
+                listed = ", ".join(names)
+                if lang == "en":
+                    lines.append(
+                        f"User's document library: {total} files (newest: {listed}). "
+                        "A request to find, list or extract facts from these files "
+                        "is document search [-RAG-], not chat history."
+                    )
+                else:
+                    lines.append(
+                        f"Документы пользователя: {total} файлов (последние: {listed}). "
+                        "Просьба найти, перечислить или вывести сведения из этих файлов — "
+                        "поиск в документах [-RAG-], а не история переписки."
+                    )
         if self.ROUTER_SLM_FACTS > 0:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
             if slm:

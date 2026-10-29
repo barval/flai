@@ -573,6 +573,7 @@ class AbstractLlamaBackend:
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
     ) -> str | dict[str, Any]:
         raise NotImplementedError
 
@@ -630,6 +631,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
     ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -649,6 +651,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if response_format:
+            payload["response_format"] = response_format
 
         if not self.circuit_breaker.can_execute():
             return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -1021,6 +1025,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
     ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1040,6 +1045,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if response_format:
+            payload["response_format"] = response_format
 
         # Cap thinking tokens for reasoning model (llama-server build 10603 ignores
         # per-request reasoning_budget; the CLI --reasoning-budget is the primary
@@ -1625,6 +1632,7 @@ class LlamaCppClient:
         validate: bool = True,
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
     ) -> str | dict[str, Any]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1644,7 +1652,15 @@ class LlamaCppClient:
 
         timeout = config.get("timeout", 300)
         return self.backend.chat(
-            messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
+            messages,
+            model,
+            config,
+            timeout,
+            lang,
+            model_type=model_type,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
         )
 
     def chat_stream(
@@ -1770,13 +1786,20 @@ class LlamaCppClient:
         validate: bool = True,
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
     ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
             return self.chat_stream(
                 messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
             )
         return self.chat(
-            messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
+            messages,
+            model_type=model_type,
+            lang=lang,
+            validate=validate,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
         )
 
     def unload_all_models(self) -> bool:

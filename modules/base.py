@@ -173,9 +173,18 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
-        return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
+        return self.llamacpp.call(  # type: ignore[no-any-return]
+            messages,
+            model_type,
+            False,
+            lang,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
+        )
 
     # --- Context handling methods ---
     def get_search_context_limit(self) -> int:

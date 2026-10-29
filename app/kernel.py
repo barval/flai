@@ -192,3 +192,71 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
         # tool, exactly as it did before the kernel existed.
         "tools": decision.tools or None,
     }
+
+
+# The schema used for constrained decoding. It is deliberately a small subset of
+# JSON Schema (objects, arrays, enums, primitives) because llama.cpp converts the
+# schema to a grammar and only supports that subset.
+KERNEL_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "intent": {"type": "string", "enum": list(KERNEL_INTENTS)},
+        "query": {"type": "string"},
+        "sources": {
+            "type": "object",
+            "properties": {key: {"type": "boolean"} for key in SOURCE_KEYS},
+        },
+        "tools": {"type": "array", "items": {"type": "string"}, "maxItems": MAX_KERNEL_TOOLS},
+        "confidence": {"type": "number"},
+    },
+    "required": ["intent", "query"],
+}
+
+CATALOG_DESCRIPTION_CHARS = 60
+
+
+def build_kernel_catalog(tool_definitions: list[dict[str, Any]]) -> str:
+    """One line per tool: its name and the first line of its description.
+
+    Full JSON Schemas are the largest fixed cost in a request (~2 000 tokens for
+    eight tools); the catalog is ~15 tokens per tool and is enough to *choose*.
+    The chosen tools get their schemas later, on the path that actually calls
+    them.
+    """
+    lines: list[str] = []
+    for item in tool_definitions:
+        function = item.get("function") or {}
+        name = function.get("name")
+        if not name:
+            continue
+        description = (function.get("description") or "").strip().split("\n")[0]
+        if len(description) > CATALOG_DESCRIPTION_CHARS:
+            description = description[: CATALOG_DESCRIPTION_CHARS - 1].rstrip() + "…"
+        lines.append(f"- {name}: {description}".rstrip())
+    return "\n".join(lines)
+
+
+def build_kernel_prompt(message: str, catalog: str, current_time: str, router_context: str) -> str:
+    """Render the kernel prompt.
+
+    The order matters for the llama.cpp prefix cache: the instructions and the
+    catalog are static, the time, the recent context and the message come last,
+    so the model re-prefills only the tail of the prompt on every request.
+
+    The template is English regardless of the user's language: the kernel
+    returns a machine value (an enum, a phrase to search with), not user-facing
+    prose, and the English twin is measurably smaller (spec section 7).
+    """
+    from app.utils import format_prompt
+
+    prompt = format_prompt(
+        "kernel.template",
+        {
+            "catalog": catalog,
+            "current_time": current_time,
+            "router_context": router_context or "",
+            "user_query": message,
+        },
+        lang="en",
+    )
+    return prompt or ""

@@ -1,0 +1,157 @@
+"""The request kernel.
+
+One call to the multimodal model decides what a message needs: which subsystem
+answers it, which context sources to load, and which tools to advertise. The
+decision is a single JSON object, validated against a closed vocabulary so that
+a hallucinated value degrades to the old router instead of reaching the queue.
+
+The kernel is the first stage of the engine described in
+``docs/superpowers/specs/2026-10-30-agentic-engine-design.md``. Everything in
+this module is pure: no app context, no model call, no IO.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+# The closed vocabulary. It mirrors the router's marker actions on purpose: the
+# adapter maps a decision onto the dict shape that every downstream caller
+# already understands, so nothing past ``process_message`` had to change.
+KERNEL_INTENTS: tuple[str, ...] = (
+    "none",
+    "image",
+    "video",
+    "camera",
+    "rag",
+    "search",
+    "history",
+    "reasoning",
+    "reasoning_web",
+    "remember",
+    "crawl",
+)
+
+INTENT_ACTIONS: dict[str, str] = {intent: intent for intent in KERNEL_INTENTS}
+
+# A small model degrades quickly as the tool list grows; five to eight is the
+# measured cliff, and an empty list is a legitimate answer meaning "no tool".
+MAX_KERNEL_TOOLS = 6
+
+SOURCE_KEYS: tuple[str, ...] = ("documents", "history", "memory", "web")
+
+
+@dataclass(frozen=True)
+class SourceFlags:
+    """Which context sources the answer stage should load."""
+
+    documents: bool = False
+    history: bool = False
+    memory: bool = False
+    web: bool = False
+
+
+@dataclass(frozen=True)
+class KernelDecision:
+    """One validated kernel answer."""
+
+    intent: str
+    query: str
+    sources: SourceFlags
+    tools: tuple[str, ...]
+    confidence: float
+
+
+def _first_json_object(text: str) -> str | None:
+    """The first balanced JSON object in ``text`` (string-aware), or None.
+
+    Copied from ``app.tasks.executor`` on purpose: importing the executor from
+    the router path would pull the queue and the whole task subsystem into a
+    hot code path for thirty lines of brace scanning.
+    """
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        in_str = False
+        escaped = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        start = text.find("{", start + 1)
+    return None
+
+
+def _coerce_tools(raw: Any) -> tuple[str, ...]:
+    """De-duplicate, drop non-strings and cap the list, preserving order."""
+    if not isinstance(raw, list):
+        return ()
+    seen: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item and item not in seen:
+            seen.append(item)
+        if len(seen) >= MAX_KERNEL_TOOLS:
+            break
+    return tuple(seen)
+
+
+def _coerce_sources(raw: Any) -> SourceFlags:
+    if not isinstance(raw, dict):
+        return SourceFlags()
+    return SourceFlags(**{key: bool(raw.get(key, False)) for key in SOURCE_KEYS})
+
+
+def _coerce_confidence(raw: Any) -> float:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, value))
+
+
+def parse_kernel_decision(text: str | None) -> KernelDecision | None:
+    """Parse a kernel reply, or return None when it cannot be trusted.
+
+    None is the signal to fall back to the marker router. It is returned for
+    every malformed shape rather than raising, because a small model's failure
+    mode is a truncated or fenced object, not an exception.
+    """
+    if not text:
+        return None
+    payload = _first_json_object(text)
+    if payload is None:
+        return None
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    intent = data.get("intent")
+    if not isinstance(intent, str) or intent not in INTENT_ACTIONS:
+        return None
+
+    query = data.get("query")
+    return KernelDecision(
+        intent=intent,
+        query=query if isinstance(query, str) else "",
+        sources=_coerce_sources(data.get("sources")),
+        tools=_coerce_tools(data.get("tools")),
+        confidence=_coerce_confidence(data.get("confidence")),
+    )

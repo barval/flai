@@ -1140,12 +1140,11 @@ function setTaskMode(active, task) {
 // Actions
 // ---------------------------------------------------------------------------
 
-// Documents attached to a task = the shared Documents-panel selection at
-// submit time (the same #rlm-docs multi-select the chat uses). An empty list
-// means "search all of the user's documents".
+// Documents attached to a task = the shared corpus at submit time (the same
+// selection the chat reads). An empty list means "search all of the user's
+// documents".
 function taskDocIds() {
-    const docsSelect = document.getElementById('rlm-docs');
-    return docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+    return (typeof window.getSelectedDocIds === 'function') ? window.getSelectedDocIds() : [];
 }
 
 // The 🔬 Deep Analysis toggle rides the submit: the planner is told to

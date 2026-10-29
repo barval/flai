@@ -3277,6 +3277,10 @@ msgstr "image"
 msgid "enter_message_or_file"
 msgstr "Enter a message or attach a file"
 
+#: app/templates/chat.html
+msgid "rlm_needs_documents"
+msgstr "Deep analysis needs at least one document or an image"
+
 #: app/templates/chat.html:235
 msgid "remove_file"
 msgstr "Remove attachment"

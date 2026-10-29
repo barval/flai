@@ -758,6 +758,32 @@ def save_folder(user_id, folder_id, name):
         )
 
 
+def get_user_document_names(user_id, limit=5):
+    """Count the user's documents and return the newest few file names.
+
+    Feeds the router's library hint: a cheap two-column read (no processing
+    metadata), so the classifier knows a document search is possible before it
+    decides between reasoning and documents.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) AS total FROM documents WHERE user_id = %s", (user_id,))
+        total = int(c.fetchone()["total"] or 0)
+        if not total or limit <= 0:
+            return total, []
+        c.execute(
+            """
+        SELECT filename
+        FROM documents
+        WHERE user_id = %s
+        ORDER BY uploaded_at DESC
+        LIMIT %s
+        """,
+            (user_id, limit),
+        )
+        return total, [row["filename"] for row in c.fetchall()]
+
+
 def get_user_folders(user_id):
     """List the user's folders (oldest first)."""
     with get_db() as conn:

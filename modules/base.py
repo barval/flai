@@ -138,6 +138,10 @@ class BaseModule(TranslationMixin):
         # How many document names the router sees; a constant on purpose —
         # the hint is a classification cue, not a tunable budget.
         self.ROUTER_DOC_NAMES = 5
+        # Request kernel (see app/kernel.py). Off by default: the marker router
+        # stays the reference until the kernel is measured against it.
+        self.KERNEL_ENABLED = False
+        self.KERNEL_CONSTRAINED = True
         if app:
             self.init_app(app)
 
@@ -155,6 +159,8 @@ class BaseModule(TranslationMixin):
         self.ROUTER_CONTEXT_MESSAGES = app.config.get("ROUTER_CONTEXT_MESSAGES", 6)
         self.ROUTER_CONTEXT_MSG_CHARS = app.config.get("ROUTER_CONTEXT_MSG_CHARS", 240)
         self.ROUTER_SLM_FACTS = app.config.get("ROUTER_SLM_FACTS", 2)
+        self.KERNEL_ENABLED = bool(app.config.get("KERNEL_ENABLED", False))
+        self.KERNEL_CONSTRAINED = bool(app.config.get("KERNEL_CONSTRAINED", True))
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
@@ -695,6 +701,11 @@ class BaseModule(TranslationMixin):
         Router only classifies the query; conversation context is handled
         by the downstream chat/reasoning model.
         """
+        if self.KERNEL_ENABLED:
+            route = self._route_with_kernel(message_text, current_time_str, lang, recent_context)
+            if route is not None:
+                return route
+
         prompt = self._build_router_prompt(message_text, current_time_str, lang, response_style, recent_context)
 
         if not prompt:
@@ -731,6 +742,67 @@ class BaseModule(TranslationMixin):
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
         return result
 
+    def _route_with_kernel(
+        self,
+        message_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        recent_context: str = "",
+    ) -> dict[str, Any] | None:
+        """Ask the request kernel and return the router's dict shape.
+
+        ``None`` means "no usable decision" and sends the caller back to the
+        marker router: the flag can be switched on for one instance without
+        making a malformed reply change behaviour.
+
+        One model call, no retry on bad JSON. A retry would double the latency of
+        the hottest call in the system to rescue a case the fallback already
+        handles.
+        """
+        from app.kernel import (
+            KERNEL_RESPONSE_SCHEMA,
+            build_kernel_catalog,
+            build_kernel_prompt,
+            decision_to_route,
+            parse_kernel_decision,
+        )
+        from app.tools import get_tool_definitions
+
+        prompt = build_kernel_prompt(
+            message_text,
+            build_kernel_catalog(get_tool_definitions()),
+            current_time_str,
+            recent_context,
+        )
+        if not prompt:
+            self.logger.error("Request kernel: prompt template is missing")
+            return None
+
+        error = self._validate_final_prompt(prompt, "multimodal", lang)
+        if error:
+            self.logger.warning(f"Request kernel: prompt rejected ({error}), using the marker router")
+            return None
+
+        reply = self.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0,
+            response_format=KERNEL_RESPONSE_SCHEMA if self.KERNEL_CONSTRAINED else None,
+        )
+        decision = parse_kernel_decision(reply if isinstance(reply, str) else None)
+        if decision is None:
+            self.logger.info("Request kernel: no usable decision, using the marker router")
+            return None
+
+        cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+        route = decision_to_route(decision, message_text, cam)
+        self.logger.info(
+            f"Request kernel: intent={decision.intent} confidence={decision.confidence:.2f} "
+            f"tools={len(decision.tools)} query={decision.query[:80]!r}"
+        )
+        return route
+
     def _parse_router_response(
         self, response: str, original_query: str, current_time_str: str, lang: str = "ru"
     ) -> dict[str, Any]:
@@ -741,6 +813,7 @@ class BaseModule(TranslationMixin):
                 "action": "none",
                 "query": "",
                 "needs_reasoning": False,
+                "tools": None,
                 "error": self._("Model returned empty response", lang),
             }
 
@@ -788,9 +861,10 @@ class BaseModule(TranslationMixin):
                     "action": action,
                     "query": processed,
                     "needs_reasoning": action in ("reasoning", "reasoning_web"),
+                    "tools": None,
                 }
 
-        return {"action": "none", "query": original_query, "needs_reasoning": False}
+        return {"action": "none", "query": original_query, "needs_reasoning": False, "tools": None}
 
     def build_reasoning_messages(
         self,

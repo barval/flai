@@ -245,6 +245,14 @@ def load_config(app):
     app.config["ROUTER_CONTEXT_MSG_CHARS"] = int(os.getenv("ROUTER_CONTEXT_MSG_CHARS", 240))
     app.config["ROUTER_SLM_FACTS"] = int(os.getenv("ROUTER_SLM_FACTS", 2))
 
+    # Request kernel: one JSON decision (intent, search phrase, sources, tools)
+    # instead of marker classification. Off by default so the marker router stays
+    # the reference implementation until the kernel is measured against it.
+    app.config["KERNEL_ENABLED"] = os.getenv("KERNEL_ENABLED", "0") == "1"
+    # Schema-constrained decoding removes a whole class of malformed replies on
+    # small models; it is off only for a backend that rejects the field.
+    app.config["KERNEL_CONSTRAINED"] = os.getenv("KERNEL_CONSTRAINED", "1") == "1"
+
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"
 

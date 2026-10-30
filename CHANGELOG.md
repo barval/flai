@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Changed
+
+- **Deep analysis draws its tools from the same manifest as everything else.** The four sandbox tools were a literal list inside `modules/rlm.py`; they are now `ToolSpec` entries in `app/tool_registry.py` (`exec="sandbox"`, each with its JSON Schema) and `RLM_TOOL_DEFINITIONS` is rendered from them. They remain a separate tuple from the task capabilities on purpose — a planner must never be able to name `python`, and the two inventories are read by different loops.
+
 ### Added
 
 - **MCP servers are configured in the admin panel and the depth axis has a home.** Every parameter this work introduced is a registry key with the usual precedence (`database > .env > built-in default`), not an `.env`-only switch. The new **MCP** tab owns its three settings: a server table with inline fields, add/remove, a per-row Test that enumerates the server's tools, and one Save that goes through the ordinary settings endpoint. A stored token is never rendered, and the server list is validated by the same loader that reads it, so a broken entry is refused when it is saved rather than silently skipped when it is loaded. `DEPTH_LEVEL` and `DEPTH_VERIFY` joined the Tasks group, enum-validated; `norm` reproduces the historical budgets exactly.

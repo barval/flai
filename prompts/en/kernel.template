@@ -37,12 +37,23 @@ List a tool whenever the message needs a fact the model cannot know by itself:
 An empty list means the runtime will not offer ANY tool: use it only when a tool is certainly unnecessary (a greeting, small talk, a question the model can answer from its own knowledge).
 {catalog}
 
+# SKILLS
+Installed skills are listed below. A skill is a set of instructions for the assistant, not a tool.
+If the user's message clearly matches one of them, name it in "skills" (at most 2); the runtime loads
+its instructions before the answer starts, and a request with a skill is answered by the tool loop.
+Name a skill only when it matches — an unrelated one only adds noise.
+{skills}
+
 # OUTPUT
-Return one object with these fields:
+Return ONE object with ALL SIX fields — an empty array is a value, an omitted field is a mistake.
+Start from this shape and fill it in:
+{{"intent": "search", "query": "ecb key rate today", "sources": {{"memory": false}}, "tools": ["web_search"], "skills": [], "confidence": 0.9}}
+
 - "intent": one value from the list above
 - "query": the phrase the next stage should search or act on, in the user's language. For rag and search keep keywords, numbers, addresses and dates. For camera return the room code from the message if one is present, otherwise the user's phrase.
 - "sources": an object with one flag, "memory" — true when the answer should consider what the assistant remembers about this user (their profile, preferences, personal facts), false for a request that needs none of that
 - "tools": an array of tool names, at most 6, possibly empty
+- "skills": the names of the skills (from the # SKILLS list) whose subject matches the message, at most 2 — often the empty array; "" (an empty list) is always a valid and common answer
 - "confidence": a number from 0 to 1
 
 # INPUT

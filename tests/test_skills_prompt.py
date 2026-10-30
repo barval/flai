@@ -32,6 +32,10 @@ def test_the_catalog_is_in_the_prompt_and_the_body_is_not(app):
     assert "web-research" in prompt
     assert "Gather sources before answering." in prompt
     assert "BODY-SENTINEL" not in prompt
+    # The catalog is a rule the model must be able to act on: the condition and
+    # the order (activate before any other tool, then follow it).
+    assert "call `activate_skill`" in prompt
+    assert "BEFORE" in prompt
 
 
 @pytest.mark.unit
@@ -39,4 +43,4 @@ def test_the_placeholder_renders_without_skills(app):
     with app.app_context(), patch("app.skills.discover", return_value=[]):
         prompt = format_prompt("chat.template", dict(_VARIABLES), lang="en")
     assert "{skill_catalog}" not in prompt
-    assert "Available skills" not in prompt
+    assert "Matching skills" not in prompt

@@ -4920,8 +4920,8 @@ msgid "Unknown skill: {name}"
 msgstr "Неизвестный навык: {name}"
 
 #: app/utils.py
-msgid "Available skills (load one with `activate_skill`):"
-msgstr "Доступные навыки (загрузите нужный через `activate_skill`):"
+msgid "Matching skills — if the request matches one of these, call `activate_skill` BEFORE using any other tool and follow the instructions it returns:"
+msgstr "Подходящие навыки — если запрос совпадает с одним из них, вызовите `activate_skill` ДО любого другого инструмента и следуйте полученным инструкциям:"
 
 #: app/tasks/research.py
 msgid "The tool call was rejected: its arguments did not match the tool."

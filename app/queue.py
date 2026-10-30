@@ -4978,6 +4978,7 @@ class RedisRequestQueue:
                     expose_tools=True,
                     tool_selection=router_result.get("tools"),
                     use_memory=router_result.get("memory"),
+                    skills=tuple(router_result.get("skills") or ()),
                 )
             # Unknown action — safe fallback that still avoids a second router call
             return self._save_and_respond(
@@ -5006,6 +5007,7 @@ class RedisRequestQueue:
             expose_tools=True,
             tool_selection=router_result.get("tools"),
             use_memory=router_result.get("memory"),
+            skills=tuple(router_result.get("skills") or ()),
         )
 
     def _sanitize_tool_service_text(self, text: str) -> str:
@@ -5024,6 +5026,36 @@ class RedisRequestQueue:
         ]
         cleaned_text = "\n".join(cleaned).strip()
         return cleaned_text if cleaned_text else text
+
+    def _preload_skills(self, messages: list[dict[str, Any]], skills: tuple[str, ...], lang: str) -> None:
+        """Load the kernel's skills as instructions for this request.
+
+        The body goes into the system prompt, not into a synthetic tool exchange.
+        Measured: as a finished assistant/tool pair the model reads the turn as
+        "a tool has already run" and answers from memory — the research skill
+        loaded that way produced a confidently wrong rate with no search at all.
+        As instructions ahead of the question the model still reaches for the
+        tools the skill names.
+        """
+        if not skills:
+            return
+        from app.skills import activate
+
+        bodies: list[str] = []
+        for name in skills:
+            body = activate(name, lang)
+            if not body:
+                self.logger.warning(f"skill {name!r} was selected but is not installed")
+                continue
+            bodies.append(body)
+            self.logger.info(f"skill {name!r} loaded for this request ({len(body)} chars)")
+        if not bodies:
+            return
+        block = "\n\n".join(bodies)
+        if messages and messages[0].get("role") == "system":
+            messages[0]["content"] = f"{messages[0]['content']}\n\n{block}"
+        else:
+            messages.insert(0, {"role": "system", "content": block})
 
     def _run_tool_calls(
         self,
@@ -5116,6 +5148,7 @@ class RedisRequestQueue:
         expose_tools: bool | None = None,
         tool_selection: tuple[str, ...] | None = None,
         use_memory: bool | None = None,
+        skills: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
@@ -5181,6 +5214,12 @@ class RedisRequestQueue:
             if (expose_tools if expose_tools is not None else include_tools)
             else None
         )
+        # A skill the request kernel selected is loaded before the first round:
+        # the body arrives as a tool result, exactly as if the model had called
+        # `activate_skill` itself, so the instructions are in the transcript and
+        # the transport cannot fail. Measured: asked to call the tool on its own,
+        # the small model answers with a plain search instead.
+        self._preload_skills(messages, skills, lang)
 
         session = ChatSession(
             messages=messages,

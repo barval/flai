@@ -44,6 +44,13 @@ MAX_KERNEL_TOOLS = 6
 # every field the model is asked for is a field it can get wrong.
 SOURCE_KEYS: tuple[str, ...] = ("memory",)
 
+# A skill is a set of instructions, not a tool: the model names at most two and
+# the runtime loads their bodies before the answer starts. Measured on
+# Qwen3VL-8B: asked to call `activate_skill` itself, the model answered with a
+# plain web search instead; naming the skill in the same decision where it
+# already picks the intent is what makes it fire.
+MAX_KERNEL_SKILLS = 2
+
 
 @dataclass(frozen=True)
 class SourceFlags:
@@ -79,6 +86,7 @@ class KernelDecision:
     sources: SourceFlags
     tools: tuple[str, ...] | None
     confidence: float
+    skills: tuple[str, ...] = ()
 
 
 def _first_json_object(text: str) -> str | None:
@@ -149,7 +157,29 @@ def _coerce_confidence(raw: Any) -> float:
     return max(0.0, min(1.0, value))
 
 
-def parse_kernel_decision(text: str | None) -> KernelDecision | None:
+def _coerce_skills(raw: Any, known: set[str]) -> tuple[str, ...]:
+    """Skill names the installation actually has, capped and de-duplicated.
+
+    A name outside the catalog is dropped rather than loaded: the model cannot
+    reach instructions that were never installed, and a typo must not cost the
+    answer.
+    """
+    if isinstance(raw, str):
+        # A model that answers with one name instead of a list still named a
+        # skill; refusing it would only cost the instructions.
+        raw = [raw]
+    if not isinstance(raw, list):
+        return ()
+    chosen: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item in known and item not in chosen:
+            chosen.append(item)
+        if len(chosen) >= MAX_KERNEL_SKILLS:
+            break
+    return tuple(chosen)
+
+
+def parse_kernel_decision(text: str | None, known_skills: set[str] | None = None) -> KernelDecision | None:
     """Parse a kernel reply, or return None when it cannot be trusted.
 
     None is the signal to fall back to the marker router. It is returned for
@@ -179,6 +209,7 @@ def parse_kernel_decision(text: str | None) -> KernelDecision | None:
         sources=_coerce_sources(data.get("sources")),
         tools=_coerce_tools(data.get("tools")),
         confidence=_coerce_confidence(data.get("confidence")),
+        skills=_coerce_skills(data.get("skills"), known_skills or set()),
     )
 
 
@@ -209,6 +240,14 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
     if action == "none":
         processed = original_query
 
+    if decision.skills:
+        # A skill is a procedure for the chat loop, where the tools it names are
+        # available: a request that matches one is answered by that loop even if
+        # the intent was search or rag. The skill bodies are loaded before the
+        # first round, so the model reads them as the instructions they are.
+        action = "none"
+        processed = original_query
+
     return {
         "action": action,
         "query": processed,
@@ -217,6 +256,7 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
         # needed" (advertise none). The two must not collapse into one value.
         "tools": decision.tools,
         "memory": decision.sources.memory,
+        "skills": decision.skills,
     }
 
 
@@ -240,6 +280,7 @@ KERNEL_RESPONSE_SCHEMA: dict[str, Any] = {
             "properties": {key: {"type": "boolean"} for key in SOURCE_KEYS},
         },
         "tools": {"type": "array", "items": {"type": "string"}, "maxItems": MAX_KERNEL_TOOLS},
+        "skills": {"type": "array", "items": {"type": "string"}, "maxItems": MAX_KERNEL_SKILLS},
         "confidence": {"type": "number"},
     },
     "required": ["intent", "query"],
@@ -270,7 +311,7 @@ def build_kernel_catalog(tool_definitions: list[dict[str, Any]]) -> str:
 
 
 def build_kernel_prompt(
-    message: str, catalog: str, current_time: str, router_context: str, rooms: str = ""
+    message: str, catalog: str, current_time: str, router_context: str, rooms: str = "", skills: str = ""
 ) -> str:
     """Render the kernel prompt.
 
@@ -288,6 +329,7 @@ def build_kernel_prompt(
         "kernel.template",
         {
             "catalog": catalog,
+            "skills": skills,
             "current_time": current_time,
             "rooms": rooms,
             "router_context": router_context or "",

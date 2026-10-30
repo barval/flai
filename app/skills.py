@@ -178,8 +178,9 @@ def skill_tool_definition(root: Path | str | None = None) -> dict | None:
         "function": {
             "name": "activate_skill",
             "description": (
-                "Load the full instructions of a skill listed in the system prompt. "
-                "Call this before doing work the skill covers; the instructions arrive as the tool result."
+                "Load the instructions of a skill listed in the system prompt. Call this BEFORE answering "
+                "or using any other tool when the request matches one of those skills; the instructions "
+                "arrive as the tool result and take precedence over your usual approach."
             ),
             "parameters": {
                 "type": "object",

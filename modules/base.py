@@ -118,6 +118,25 @@ def wait_for_service(
     return False
 
 
+def _kernel_skills() -> set[str]:
+    """The names the kernel may return, or an empty set when none is installed."""
+    try:
+        from app.skills import discover
+
+        return {skill.name for skill in discover()}
+    except Exception:  # noqa: BLE001 - a broken skills folder must not fail routing
+        return set()
+
+
+def _kernel_skill_catalog(names: set[str]) -> str:
+    """The skill lines the kernel chooses from (name and description, no body)."""
+    if not names:
+        return ""
+    from app.skills import catalog
+
+    return catalog("en")
+
+
 def _kernel_rooms(cam: Any) -> str:
     """A compact room list for the kernel prompt: ``code (name form), ...``.
 
@@ -799,12 +818,14 @@ class BaseModule(TranslationMixin):
         from app.tools import get_tool_definitions
 
         cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+        skill_names = _kernel_skills()
         prompt = build_kernel_prompt(
             message_text,
             build_kernel_catalog(get_tool_definitions()),
             current_time_str,
             recent_context,
             _kernel_rooms(cam),
+            skills=_kernel_skill_catalog(skill_names),
         )
         if not prompt:
             self.logger.error("Request kernel: prompt template is missing")
@@ -822,13 +843,15 @@ class BaseModule(TranslationMixin):
             temperature=0,
             response_format=KERNEL_RESPONSE_FORMAT if self.KERNEL_CONSTRAINED else None,
         )
-        decision = parse_kernel_decision(reply if isinstance(reply, str) else None)
+        decision = parse_kernel_decision(reply if isinstance(reply, str) else None, skill_names)
         if decision is None:
             self.logger.info("Request kernel: no usable decision, using the marker router")
             return None
 
         route = decision_to_route(decision, message_text, cam)
         tool_count = "no-opinion" if decision.tools is None else len(decision.tools)
+        if decision.skills:
+            self.logger.info(f"Request kernel: skills={list(decision.skills)} -> chat loop")
         prompt_tokens = estimate_tokens(prompt, "multimodal", lang)
         self.logger.info(
             f"Request kernel: intent={decision.intent} confidence={decision.confidence:.2f} "

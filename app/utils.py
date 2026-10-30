@@ -519,7 +519,18 @@ def _load_skill_catalog(lang: str = "ru") -> str:
         return ""
     if not lines:
         return ""
-    return f"{gettext('Available skills (load one with `activate_skill`):')}\n{lines}"
+    # Measured: as a plain list the model read the catalog and answered with its
+    # own tools anyway (a request matching the shipped web-research skill went to
+    # `web_search` directly). Stated as a rule with the condition and the order —
+    # activate first, then work — the same prompt activates the skill.
+    # The header follows the language the prompt is being built in, not the
+    # ambient request locale: a chat prompt must not mix two languages.
+    with force_locale(lang):
+        header = gettext(
+            "Matching skills — if the request matches one of these, call `activate_skill` "
+            "BEFORE using any other tool and follow the instructions it returns:"
+        )
+    return f"{header}\n{lines}"
 
 
 def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru") -> str | None:

@@ -13,9 +13,9 @@ def test_none_returns_everything():
 
 
 @pytest.mark.unit
-def test_empty_tuple_returns_everything():
-    # "no opinion" must not silently disable tools
-    assert select_tool_definitions(()) == get_tool_definitions()
+def test_empty_tuple_advertises_nothing():
+    # () is a decision: this message needs no tool, so the schema block is not sent.
+    assert select_tool_definitions(()) == []
 
 
 @pytest.mark.unit

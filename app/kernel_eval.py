@@ -72,6 +72,7 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
             "tool_cases": 0,
             "tool_exact": 0.0,
             "false_tools": 0,
+            "tools_outside_chat": 0,
             "confusions": {},
             "by_lang": {},
         }
@@ -80,10 +81,13 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
     tool_cases = 0
     tool_hits = 0
     false_tools = 0
+    tools_outside_chat = 0
     confusions: dict[tuple[str, str], int] = {}
     by_lang: dict[str, dict[str, Any]] = {}
 
-    for (intent, tools), case in zip(predictions, cases, strict=False):
+    if len(predictions) != total:
+        raise ValueError(f"expected {total} predictions, got {len(predictions)}")
+    for (intent, tools), case in zip(predictions, cases, strict=True):
         expected = set(case.expected_tools)
         if intent == case.expected_intent:
             intent_hits += 1
@@ -95,6 +99,10 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
             if set(tools) == expected:
                 tool_hits += 1
             false_tools += len(set(tools) - expected)
+        else:
+            # Not an error, but a signal: the subsystem that answers this intent
+            # has its own tools, so a selection here is a misclassification hint.
+            tools_outside_chat += len(tools)
 
         bucket = by_lang.setdefault(case.lang, {"cases": 0, "intent_hits": 0, "tool_hits": 0, "tool_cases": 0})
         bucket["cases"] += 1
@@ -109,6 +117,7 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
         "tool_cases": tool_cases,
         "tool_exact": round(tool_hits / tool_cases, 4) if tool_cases else 0.0,
         "false_tools": false_tools,
+        "tools_outside_chat": tools_outside_chat,
         "confusions": confusions,
         "by_lang": {
             lang: {

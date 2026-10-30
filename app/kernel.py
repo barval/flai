@@ -54,12 +54,21 @@ class SourceFlags:
 
 @dataclass(frozen=True)
 class KernelDecision:
-    """One validated kernel answer."""
+    """One validated kernel answer.
+
+    ``tools`` carries three states on purpose: ``None`` means the model gave no
+    tool list at all (no opinion — advertise everything), ``()`` means it gave an
+    empty list (this message needs no tool — advertise nothing), and a non-empty
+    tuple is the selection.
+
+    ``sources`` is recorded but not consumed yet; the answer stages still load
+    their context the way they always did. Wiring it is part of the engine work.
+    """
 
     intent: str
     query: str
     sources: SourceFlags
-    tools: tuple[str, ...]
+    tools: tuple[str, ...] | None
     confidence: float
 
 
@@ -97,10 +106,14 @@ def _first_json_object(text: str) -> str | None:
     return None
 
 
-def _coerce_tools(raw: Any) -> tuple[str, ...]:
-    """De-duplicate, drop non-strings and cap the list, preserving order."""
+def _coerce_tools(raw: Any) -> tuple[str, ...] | None:
+    """De-duplicate, drop non-strings and cap the list, preserving order.
+
+    A missing or non-list field returns ``None`` — "no opinion" — which is a
+    different statement from an empty list.
+    """
     if not isinstance(raw, list):
-        return ()
+        return None
     seen: list[str] = []
     for item in raw:
         if isinstance(item, str) and item and item not in seen:
@@ -113,7 +126,9 @@ def _coerce_tools(raw: Any) -> tuple[str, ...]:
 def _coerce_sources(raw: Any) -> SourceFlags:
     if not isinstance(raw, dict):
         return SourceFlags()
-    return SourceFlags(**{key: bool(raw.get(key, False)) for key in SOURCE_KEYS})
+    # ``is True`` rather than ``bool(...)``: a JSON-mode model that emits
+    # "false" as a string must not turn the flag on.
+    return SourceFlags(**{key: raw.get(key) is True for key in SOURCE_KEYS})
 
 
 def _coerce_confidence(raw: Any) -> float:
@@ -188,9 +203,9 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
         "action": action,
         "query": processed,
         "needs_reasoning": action in ("reasoning", "reasoning_web"),
-        # An empty tuple means "no opinion"; the chat path then advertises every
-        # tool, exactly as it did before the kernel existed.
-        "tools": decision.tools or None,
+        # None means "no opinion" (advertise every tool); () means "no tool
+        # needed" (advertise none). The two must not collapse into one value.
+        "tools": decision.tools,
     }
 
 
@@ -201,9 +216,9 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
 # shape and as the contract the parser enforces.
 KERNEL_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
 
-# The schema used for constrained decoding. It is deliberately a small subset of
-# JSON Schema (objects, arrays, enums, primitives) because llama.cpp converts the
-# schema to a grammar and only supports that subset.
+# Documentation of the reply shape, NOT something sent to the server: llama-server
+# rejects a schema outright (see KERNEL_RESPONSE_FORMAT above). Tests assert on it
+# so the documented contract and the parser cannot drift apart.
 KERNEL_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -243,7 +258,9 @@ def build_kernel_catalog(tool_definitions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def build_kernel_prompt(message: str, catalog: str, current_time: str, router_context: str) -> str:
+def build_kernel_prompt(
+    message: str, catalog: str, current_time: str, router_context: str, rooms: str = ""
+) -> str:
     """Render the kernel prompt.
 
     The order matters for the llama.cpp prefix cache: the instructions and the
@@ -261,6 +278,7 @@ def build_kernel_prompt(message: str, catalog: str, current_time: str, router_co
         {
             "catalog": catalog,
             "current_time": current_time,
+            "rooms": rooms,
             "router_context": router_context or "",
             "user_query": message,
         },

@@ -1,0 +1,35 @@
+{"message": "выведи все работы по добавлению IP адресов в исключения", "lang": "ru", "expected_intent": "rag", "note": "records live in the documents (regression from v12.8)"}
+{"message": "найди в договоре пункт про неустойку", "lang": "ru", "expected_intent": "rag"}
+{"message": "list every entry about added IP addresses", "lang": "en", "expected_intent": "rag"}
+{"message": "find the penalty clause in the contract", "lang": "en", "expected_intent": "rag"}
+{"message": "покажи гостиную", "lang": "ru", "expected_intent": "camera"}
+{"message": "что происходит в кабинете?", "lang": "ru", "expected_intent": "camera"}
+{"message": "show the living room", "lang": "en", "expected_intent": "camera"}
+{"message": "is anyone in the hallway?", "lang": "en", "expected_intent": "camera"}
+{"message": "мы смотрели снимки гостиной вчера?", "lang": "ru", "expected_intent": "history", "note": "past tense about the conversation"}
+{"message": "did we look at the living room snapshots yesterday?", "lang": "en", "expected_intent": "history"}
+{"message": "о чём мы говорили про ламинат", "lang": "ru", "expected_intent": "history"}
+{"message": "what did I say about the laminate", "lang": "en", "expected_intent": "history"}
+{"message": "какая погода в Москве", "lang": "ru", "expected_intent": "search"}
+{"message": "сколько стоит биткоин сейчас", "lang": "ru", "expected_intent": "search"}
+{"message": "what is the weather in London", "lang": "en", "expected_intent": "search"}
+{"message": "how many dollars is 300 pounds at today's rate", "lang": "en", "expected_intent": "search", "note": "conversion at a live rate"}
+{"message": "переведи 300 фунтов в доллары по курсу", "lang": "ru", "expected_intent": "search"}
+{"message": "нарисуй кота в шляпе", "lang": "ru", "expected_intent": "image"}
+{"message": "draw a cat in a hat", "lang": "en", "expected_intent": "image"}
+{"message": "сделай видео с дождём в городе", "lang": "ru", "expected_intent": "video"}
+{"message": "make a video of rain in the city", "lang": "en", "expected_intent": "video"}
+{"message": "напиши на python функцию сортировки", "lang": "ru", "expected_intent": "reasoning"}
+{"message": "write a python function that sorts a list", "lang": "en", "expected_intent": "reasoning"}
+{"message": "привет, как дела?", "lang": "ru", "expected_intent": "none"}
+{"message": "hello, how are you?", "lang": "en", "expected_intent": "none"}
+{"message": "что это за проект https://github.com/ggml-org/llama.cpp ?", "lang": "ru", "expected_intent": "none", "expected_tools": ["read_page"], "note": "one link: the page is opened by a tool, not web-searched"}
+{"message": "what is this project https://github.com/ggml-org/llama.cpp ?", "lang": "en", "expected_intent": "none", "expected_tools": ["read_page"]}
+{"message": "изучи документацию на docs.example.com и собери всё про API", "lang": "ru", "expected_intent": "crawl"}
+{"message": "go through all of docs.example.com about the API and summarize", "lang": "en", "expected_intent": "crawl"}
+{"message": "запомни, что я не ем грибы", "lang": "ru", "expected_intent": "remember"}
+{"message": "remember that I do not eat mushrooms", "lang": "en", "expected_intent": "remember"}
+{"message": "который сейчас час?", "lang": "ru", "expected_intent": "none", "expected_tools": ["get_current_time"]}
+{"message": "what time is it now?", "lang": "en", "expected_intent": "none", "expected_tools": ["get_current_time"]}
+{"message": "сколько будет 2 + 2 * 2?", "lang": "ru", "expected_intent": "none", "expected_tools": ["calculator"]}
+{"message": "what is 2 + 2 * 2?", "lang": "en", "expected_intent": "none", "expected_tools": ["calculator"]}

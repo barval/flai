@@ -52,3 +52,21 @@ def test_absent_response_format_is_not_sent(monkeypatch):
         lang="en",
     )
     assert "response_format" not in captured
+
+
+@pytest.mark.unit
+def test_the_swap_backend_also_sends_it(monkeypatch):
+    # llama-swap is the default deployment backend; the two payload builders are
+    # separate code, so one test cannot stand in for the other.
+    from app.llamacpp_client import LlamaSwapBackend
+
+    captured = _capture(monkeypatch)
+    LlamaSwapBackend().chat(
+        [{"role": "user", "content": "hi"}],
+        model="m",
+        config={"context_length": 4096},
+        timeout=5,
+        lang="en",
+        response_format={"type": "json_object"},
+    )
+    assert captured["response_format"] == {"type": "json_object"}

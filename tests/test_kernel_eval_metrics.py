@@ -64,3 +64,21 @@ def test_the_seed_dataset_loads_and_is_well_formed(tmp_path):
     assert len(cases) >= 24
     assert {case.lang for case in cases} == {"ru", "en"}
     assert all(case.message for case in cases)
+
+
+@pytest.mark.unit
+def test_selections_outside_the_chat_branch_are_reported_separately():
+    # A rag request goes to the rag subsystem, but a tool attached to it still
+    # signals a misclassification, so the count is reported without being called
+    # a chat error.
+    cases = [EvalCase("q", "ru", "rag", (), "")]
+    report = score([("rag", ("rag_search",))], cases)
+    assert report["false_tools"] == 0
+    assert report["tools_outside_chat"] == 1
+
+
+@pytest.mark.unit
+def test_a_truncated_run_raises_instead_of_reporting_a_wrong_score():
+    cases = [EvalCase("a", "ru", "rag", (), ""), EvalCase("b", "ru", "rag", (), "")]
+    with pytest.raises(ValueError):
+        score([("rag", ())], cases)

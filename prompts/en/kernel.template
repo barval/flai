@@ -41,6 +41,7 @@ Return one object with these fields:
 - "confidence": a number from 0 to 1
 
 # INPUT
+Rooms known to this installation (empty when no camera is configured): {rooms}
 Current time: {current_time}
 Recent conversation (may be empty):
 {router_context}

@@ -60,3 +60,16 @@ def test_schema_enumerates_the_intents():
 def test_schema_requires_an_intent_and_caps_the_tools():
     assert "intent" in KERNEL_RESPONSE_SCHEMA["required"]
     assert KERNEL_RESPONSE_SCHEMA["properties"]["tools"]["maxItems"] == 6
+
+
+@pytest.mark.unit
+def test_prompt_carries_the_room_list_after_the_catalog():
+    prompt = build_kernel_prompt("q", "- x: y", "2026-10-30", "", rooms="gos (living room), kab (study)")
+    assert "gos (living room)" in prompt
+    assert prompt.index("x: y") < prompt.index("gos (living room)")
+
+
+@pytest.mark.unit
+def test_prompt_without_rooms_still_renders():
+    prompt = build_kernel_prompt("q", "- x: y", "2026-10-30", "")
+    assert "Rooms known to this installation" in prompt

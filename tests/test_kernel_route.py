@@ -12,7 +12,7 @@ import pytest
 from app.kernel import KernelDecision, SourceFlags, decision_to_route
 
 
-def _decision(intent: str, query: str = "", tools: tuple[str, ...] = ()) -> KernelDecision:
+def _decision(intent: str, query: str = "", tools: tuple[str, ...] | None = None) -> KernelDecision:
     return KernelDecision(intent=intent, query=query, sources=SourceFlags(), tools=tools, confidence=1.0)
 
 
@@ -86,8 +86,12 @@ def test_none_returns_the_original_query():
 
 @pytest.mark.unit
 def test_the_decision_carries_its_tools_alongside_the_route():
-    # An empty tuple means "the kernel had no opinion"; the chat path must then
-    # advertise every tool, which is why the value is None rather than ().
     route = decision_to_route(_decision("rag", "contract", ("rag_search",)), "q", cam=None)
     assert route["tools"] == ("rag_search",)
-    assert decision_to_route(_decision("rag", "contract"), "q", cam=None)["tools"] is None
+
+
+def test_absence_and_emptiness_survive_the_conversion():
+    # None (no opinion) must reach the chat path as None so it advertises every
+    # tool; () (no tool needed) must reach it as () so it advertises none.
+    assert decision_to_route(_decision("none", "hi"), "hi", cam=None)["tools"] is None
+    assert decision_to_route(_decision("none", "hi", ()), "hi", cam=None)["tools"] == ()

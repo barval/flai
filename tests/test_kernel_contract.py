@@ -52,6 +52,22 @@ def test_empty_reply_is_rejected():
 
 
 @pytest.mark.unit
+def test_an_absent_tool_list_is_none_and_an_empty_one_is_a_tuple():
+    # None means "the kernel had no opinion" (advertise everything);
+    # () means "this message needs no tool" (advertise nothing).
+    absent = parse_kernel_decision('{"intent": "none"}')
+    empty = parse_kernel_decision('{"intent": "none", "tools": []}')
+    assert absent is not None and absent.tools is None
+    assert empty is not None and empty.tools == ()
+
+
+@pytest.mark.unit
+def test_a_non_list_tool_field_is_treated_as_absent():
+    decision = parse_kernel_decision('{"intent": "none", "tools": "rag_search"}')
+    assert decision is not None and decision.tools is None
+
+
+@pytest.mark.unit
 def test_tools_are_capped_and_deduplicated():
     decision = parse_kernel_decision('{"intent": "rag", "tools": ["a", "a", "b", "c", "d", "e", "f", "g"]}')
     assert decision is not None

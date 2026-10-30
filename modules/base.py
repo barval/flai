@@ -118,6 +118,26 @@ def wait_for_service(
     return False
 
 
+def _kernel_rooms(cam: Any) -> str:
+    """A compact room list for the kernel prompt: ``code (name form), ...``.
+
+    The marker prompt injects a whole section per room; the kernel only needs the
+    vocabulary, and it belongs after the cacheable head so an empty list costs
+    one line.
+    """
+    if cam is None or not getattr(cam, "available", False):
+        return ""
+    try:
+        rooms = cam.get_all_rooms_with_forms() or []
+    except Exception:  # noqa: BLE001 - a camera problem must not fail routing
+        return ""
+    parts = []
+    for code, forms in rooms:
+        primary = forms[0] if forms else code
+        parts.append(f"{code} ({primary})")
+    return ", ".join(parts)
+
+
 class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
 
@@ -702,7 +722,11 @@ class BaseModule(TranslationMixin):
         by the downstream chat/reasoning model.
         """
         if self.KERNEL_ENABLED:
-            route = self._route_with_kernel(message_text, current_time_str, lang, recent_context)
+            try:
+                route = self._route_with_kernel(message_text, current_time_str, lang, recent_context)
+            except Exception as exc:  # noqa: BLE001 - the fallback below is the contract
+                self.logger.warning(f"Request kernel failed ({exc}), using the marker router", exc_info=True)
+                route = None
             if route is not None:
                 return route
 
@@ -768,11 +792,13 @@ class BaseModule(TranslationMixin):
         )
         from app.tools import get_tool_definitions
 
+        cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
         prompt = build_kernel_prompt(
             message_text,
             build_kernel_catalog(get_tool_definitions()),
             current_time_str,
             recent_context,
+            _kernel_rooms(cam),
         )
         if not prompt:
             self.logger.error("Request kernel: prompt template is missing")
@@ -795,11 +821,12 @@ class BaseModule(TranslationMixin):
             self.logger.info("Request kernel: no usable decision, using the marker router")
             return None
 
-        cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
         route = decision_to_route(decision, message_text, cam)
+        tool_count = "no-opinion" if decision.tools is None else len(decision.tools)
+        prompt_tokens = estimate_tokens(prompt, "multimodal", lang)
         self.logger.info(
             f"Request kernel: intent={decision.intent} confidence={decision.confidence:.2f} "
-            f"tools={len(decision.tools)} query={decision.query[:80]!r}"
+            f"tools={tool_count} prompt_tokens={prompt_tokens} query={decision.query[:80]!r}"
         )
         return route
 

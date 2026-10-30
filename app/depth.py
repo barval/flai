@@ -52,8 +52,10 @@ DEPTH_PRESETS: dict[str, DepthBudget] = {
 # the axis is incomplete and the next refactor will forget it.
 DEPTH_SOURCES: dict[str, str] = {
     "TASK_STEP_MAX_ATTEMPTS": "attempts",
+    # A repair is an edit inside a generation, not a full retry, but it is still
+    # an effort knob on the same step rather than on the remaining plan.
     "TASK_STEP_MAX_REPAIRS": "attempts",
-    "TASK_STEP_REDO_MAX": "revisions",
+    "TASK_STEP_REDO_MAX": "attempts",
     "TASK_MAX_REVISIONS": "revisions",
     "TASK_MAX_STEPS": "turns",
     "RLM_MAX_STEPS": "turns",

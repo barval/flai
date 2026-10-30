@@ -26,6 +26,8 @@ MAX_TOOL_ITERATIONS = 5
 # is character-based, not line-based, because a minified page is a single line.
 TOOL_OUTPUT_MAX_CHARS = 4000
 TOOL_OUTPUT_HEAD_SHARE = 0.6
+# Room for the truncation marker, whose only variable part is the digit count.
+TOOL_OUTPUT_MARKER_RESERVE = 50
 MAX_EXPRESSION_LENGTH = 200
 
 # ── Safe eval for calculator ─────────────────────────────────────────
@@ -958,12 +960,35 @@ class ToolCallLoopGuard:
         self.repeats = repeats
         self._seen: dict[tuple[str, str], int] = {}
 
-    def check(self, name: str, arguments: dict[str, Any]) -> bool:
-        """Record the call and report whether it may run."""
+    def check(self, name: str, arguments: dict[str, Any], schema: dict[str, Any] | None = None) -> bool:
+        """Record the call and report whether it may run.
+
+        When a schema is given only its required fields are compared: a model
+        alternating an optional field would otherwise repeat the same call
+        forever without ever tripping the limit.
+        """
+        required = (schema or {}).get("required") or ()
+        if required:
+            arguments = {key: arguments[key] for key in required if key in arguments}
         key = (name, json.dumps(arguments, sort_keys=True, default=str))
         count = self._seen.get(key, 0) + 1
         self._seen[key] = count
         return count < self.repeats
+
+
+def cap_reached_message(lang: str = "ru") -> str:
+    """What the stream reports when a tool call arrives after the last round."""
+    with force_locale(lang):
+        return str(_("The tool call was ignored: the last round of the loop has been reached."))
+
+
+def tool_choice_for_iteration(iteration: int, max_iterations: int) -> str | None:
+    """Withdraw the tools on the last round so the model must answer.
+
+    Without it the loop runs out of iterations and shows the last raw tool
+    result as the answer.
+    """
+    return "none" if iteration >= max_iterations - 1 else None
 
 
 def repeated_call_message(lang: str = "ru") -> str:
@@ -989,11 +1014,11 @@ def bound_tool_output(text: str, limit: int = TOOL_OUTPUT_MAX_CHARS) -> str:
         return ""
     if len(text) <= limit:
         return text
-    marker_len = 40  # the marker plus its newlines, an upper bound
-    if len(text) <= limit + marker_len:
-        # Truncating by a handful of characters would make the result longer.
-        return text
-    budget = limit
+    # The marker is charged against the limit, so the limit is a hard ceiling
+    # rather than a target the marker then overshoots.
+    budget = limit - TOOL_OUTPUT_MARKER_RESERVE
+    if budget <= 0:
+        return text[:limit]
     head = int(budget * TOOL_OUTPUT_HEAD_SHARE)
     tail = budget - head
     dropped = len(text) - budget

@@ -36,12 +36,14 @@ from .model_config import get_model_config
 from .tools import (
     MAX_TOOL_ITERATIONS,
     ToolCallLoopGuard,
+    cap_reached_message,
     execute_tool,
     get_tool_definitions,
     invalid_arguments_message,
     parse_tool_arguments,
     repeated_call_message,
     select_tool_definitions,
+    tool_choice_for_iteration,
 )
 from .utils import (
     N_,
@@ -5054,14 +5056,14 @@ class RedisRequestQueue:
                     {"role": "tool", "tool_call_id": tc_id, "content": invalid_arguments_message(lang)}
                 )
                 self._publish_stream_event(
-                    task, "tool_result", {"tool_name": tool_name, "result_preview": "invalid arguments"}
+                    task, "tool_result", {"tool_name": tool_name, "result_preview": invalid_arguments_message(lang)}
                 )
                 continue
-            if loop_guard is not None and not loop_guard.check(tool_name, arguments):
+            if loop_guard is not None and not loop_guard.check(tool_name, arguments, schemas.get(tool_name)):
                 self.logger.warning(f"{log_label}: {tool_name} repeated with the same arguments, refusing the call")
                 messages.append({"role": "tool", "tool_call_id": tc_id, "content": repeated_call_message(lang)})
                 self._publish_stream_event(
-                    task, "tool_result", {"tool_name": tool_name, "result_preview": "repeated call refused"}
+                    task, "tool_result", {"tool_name": tool_name, "result_preview": repeated_call_message(lang)}
                 )
                 continue
 
@@ -5202,7 +5204,8 @@ class RedisRequestQueue:
             # On the last round tools are withdrawn: the model must answer with
             # what it already has instead of asking for one more lookup, and a
             # raw tool result must never be shown as the answer.
-            is_final_round = iteration == MAX_TOOL_ITERATIONS - 1
+            round_tool_choice = tool_choice_for_iteration(iteration, MAX_TOOL_ITERATIONS)
+            is_final_round = round_tool_choice == "none"
 
             if stream:
                 # Real streaming: tokens are published to the client as they
@@ -5215,7 +5218,7 @@ class RedisRequestQueue:
                     model_type="multimodal",
                     lang=lang,
                     tools=tools,
-                    tool_choice="none" if is_final_round else None,
+                    tool_choice=round_tool_choice,
                 ):
                     if isinstance(chunk, dict):
                         if chunk.get("type") == "tool_calls":
@@ -5247,7 +5250,7 @@ class RedisRequestQueue:
                     # end by showing the tool output as the answer.
                     last_tool_result = ""
                     self._publish_stream_event(
-                        task, "tool_result", {"tool_name": "", "result_preview": "ignored after the cap"}
+                        task, "tool_result", {"tool_name": "", "result_preview": cap_reached_message(lang)}
                     )
                 elif stream_tool_calls:
                     last_tool_result = self._run_tool_calls(
@@ -5274,7 +5277,7 @@ class RedisRequestQueue:
                 model_type="multimodal",
                 lang=lang,
                 tools=tools,
-                tool_choice="none" if is_final_round else None,
+                tool_choice=round_tool_choice,
             )
 
             # If response is an error string
@@ -5341,6 +5344,9 @@ class RedisRequestQueue:
             full_response = response if isinstance(response, str) else str(response)
             break
 
+        # A turn cancelled mid-stream still saves its partial answer: that text is
+        # already on the user's screen, and dropping it would make the message
+        # vanish on the next reload.
         if not full_response.strip():
             if last_tool_result.strip():
                 full_response = last_tool_result.strip()

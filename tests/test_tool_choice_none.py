@@ -108,3 +108,13 @@ def test_the_swap_backend_streaming_path_sends_it(monkeypatch):
         )
     )
     assert imported["tool_choice"] == "none"
+
+
+@pytest.mark.unit
+def test_only_the_last_loop_round_withdraws_tools():
+    from app.tools import tool_choice_for_iteration
+
+    assert tool_choice_for_iteration(0, 5) is None
+    assert tool_choice_for_iteration(3, 5) is None
+    assert tool_choice_for_iteration(4, 5) == "none"
+    assert tool_choice_for_iteration(0, 1) == "none"

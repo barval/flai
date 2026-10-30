@@ -4910,3 +4910,7 @@ msgstr "Вызов инструмента отклонён: аргументы �
 #: app/tools.py
 msgid "The tool call was refused: it repeats a call made with the same arguments, whose result is above."
 msgstr "Вызов отклонён: он повторяет вызов с теми же аргументами, результат которого уже приведён выше."
+
+#: app/tools.py
+msgid "The tool call was ignored: the last round of the loop has been reached."
+msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."

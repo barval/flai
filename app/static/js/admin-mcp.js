@@ -181,7 +181,7 @@
             .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
             .then(({ ok, payload }) => {
                 if (!ok) {
-                    setStatus(payload.error || t('Invalid settings'), true);
+                    setStatus(payload.error || t('settings_invalid'), true);
                     if (saveButton) saveButton.disabled = false;
                     return;
                 }

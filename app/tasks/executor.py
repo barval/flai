@@ -70,6 +70,7 @@ from app.tasks.runner import (
     wait_for_documents_indexed,
 )
 from app.tasks.store import add_step, get_step, get_task, update_step, update_task
+from app.tool_registry import media_tools, subtask_tools, subtask_types
 from app.utils import N_, get_current_time_in_timezone
 
 logger = logging.getLogger(__name__)
@@ -93,21 +94,15 @@ DEFERRED_SUBTASKS_KEY = "task:deferred_subtasks"
 CANCEL_FLAG_TTL_S = 3600
 
 # Direct tools run in-process (runner); everything else goes through the queue.
-_SUBTASK_TOOLS = {"rlm", "image_gen", "image_edit", "video_gen", "camera", "crawl", "vision"}
+# All three tables are derived from the capability manifest, so a capability
+# cannot appear in one and be missing from another.
+_SUBTASK_TOOLS = subtask_tools()
 # Subtask tools that are supposed to leave a file behind. A step of any OTHER
 # type has no candidate list by design, so "nothing was produced" must never be
 # reported to it as a failed image.
-_MEDIA_TOOLS = {"image_gen", "image_edit", "video_gen"}
+_MEDIA_TOOLS = media_tools()
 # Queue task_type per subtask tool (Task 8 refines the exact payloads).
-_SUBTASK_TYPE = {
-    "image_gen": "image_gen",
-    "image_edit": "api_image_edit",
-    "video_gen": "video",
-    "rlm": "rlm_analysis",
-    "camera": "camera_task",
-    "crawl": "crawl_task",
-    "vision": "vision_task",
-}
+_SUBTASK_TYPE = subtask_types()
 
 # Localized user-facing fallbacks (⚠️ prefix per the project error rule).
 _MSG_PLAN_TEMPLATE_UNAVAILABLE = "Task could not be planned: the plan template is unavailable."

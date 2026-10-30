@@ -690,9 +690,13 @@ class TestReviewGuards:
         """A tool-produced step names its tool (localized, with an emoji) on its
         own italic line — the server sends it as ``badge`` and the client
         renders it with the same class as the step header."""
+        # The badge literals live in the capability manifest; app/tasks/tools.py
+        # only re-exports the derived view.
+        manifest_src = (ROOT / "app/tool_registry.py").read_text(encoding="utf-8")
+        assert "badge=(" in manifest_src and "🧮" in manifest_src
+        assert "Calculator" in manifest_src and "Web search" in manifest_src
         tools_src = (ROOT / "app/tasks/tools.py").read_text(encoding="utf-8")
-        assert "TOOL_BADGES" in tools_src and "🧮" in tools_src
-        assert "Calculator" in tools_src and "Web search" in tools_src
+        assert "TOOL_BADGES" in tools_src
         assert "_tool_badge" in ROUTES_TASKS and "TOOL_BADGES" in ROUTES_TASKS
         assert '_tool_badge(row.get("tool"))' in ROUTES_TASKS
         assert '"badge": badge' in ROUTES_TASKS

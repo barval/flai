@@ -363,7 +363,19 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         definitions = [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
     else:
         definitions = list(TOOL_DEFINITIONS)
-    return definitions + mcp_tool_definitions()
+    return definitions + skill_tool_definitions() + mcp_tool_definitions()
+
+
+def skill_tool_definitions() -> list[dict[str, Any]]:
+    """The activation tool, or nothing when no skill is installed."""
+    try:
+        from app.skills import skill_tool_definition
+
+        definition = skill_tool_definition()
+    except Exception:  # noqa: BLE001 - a broken skills folder must not fail the request
+        logger.warning("Skill discovery failed; the activation tool is not offered", exc_info=True)
+        return []
+    return [definition] if definition else []
 
 
 def mcp_tool_definitions() -> list[dict[str, Any]]:
@@ -853,7 +865,22 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "history_search": lambda ctx, **kw: _exec_history_search(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
+    "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
 }
+
+
+SKILL_LOADER_TOOL = "activate_skill"
+
+
+def _exec_activate_skill(name: str, lang: str) -> str:
+    """Return a skill's body, or say which name is not in the catalog."""
+    from app.skills import activate
+
+    body = activate(name, lang)
+    if body is None:
+        with force_locale(lang):
+            return str(_("Unknown skill: {name}").format(name=name))
+    return body
 
 
 def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") -> list[dict[str, Any]]:
@@ -875,7 +902,13 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
         return definitions
     wanted = set(selected)
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
-    return chosen or definitions
+    if not chosen:
+        return definitions
+    if not any(item["function"]["name"] == SKILL_LOADER_TOOL for item in chosen):
+        # The loader survives narrowing: a turn that picked any other tool would
+        # otherwise lose the only way to load a skill for the rest of the turn.
+        chosen += [item for item in definitions if item["function"]["name"] == SKILL_LOADER_TOOL]
+    return chosen
 
 
 def _coerce_value(value: Any, wanted: str) -> Any:

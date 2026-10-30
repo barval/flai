@@ -8,6 +8,7 @@ You are a personal assistant 'Fully Local AI (FLAI)'.
 
 # SKILLS
 {skills_section}
+{skill_catalog}
 
 # CONVERSATION HISTORY
 {context_str}

@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Added
+
+- **Skills in the portable `SKILL.md` format** — a skill is a folder under `skills/` with a `name` / `description` / `allowed-tools` frontmatter, the same shape Claude Code, opencode and pi use, so a skill written for FLAI works in those harnesses and one written there works here. The system prompt receives only the catalog (one line per skill, injected through `{skill_catalog}` in `chat.template`); a body — which can be thousands of tokens — arrives as the result of the `activate_skill` tool, advertised only when at least one skill is installed. Discovery is cached for a minute, a file with broken frontmatter is skipped with a warning rather than disabling its neighbours, and a folder whose name differs from the skill's `name` is rejected, which is what makes a duplicate name impossible. `SKILL.<lang>.md` beside the file carries a localized description and body. `skills/web-research/` ships as the example.
+
 ### Changed
 
 - **The chat tool loop is a shared engine component** — the round loop (generate → run the asked-for tools → repeat, with `tool_choice: "none"` on the last round) lived inside `RedisRequestQueue._process_chat_with_tools`, tangled with streaming, cancellation and Flask. It is now `app/engine/loop.py:run_tool_loop`, a pure function taking the model call, the tool executor, the cancellation check and two event callbacks as arguments, and `app/engine/session.py` provides the `Session` interface plus `ChatSession` — the in-memory adapter that owns the turn's transcript and routes stage, token and tool events back to the queue. Behaviour is unchanged and no model call was added: the four hygiene rules shipped earlier (argument repair, the 4 000-character output bound, the repeat guard, withdrawing tools on the last round) stay in the helpers the loop calls. The point is the shape — a background task can use the same loop with a `TaskSession` instead of reimplementing it.

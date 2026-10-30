@@ -248,14 +248,15 @@ class TestToolDefinitions:
     def test_get_tool_definitions_returns_data(self, app):
         # The test app has no available crawler, so read_page is filtered out
         # (7 of 8 definitions); with the crawler present the full list is kept.
-        # The result is always a fresh list because operator-configured MCP tools
-        # are appended to it.
-        defs = get_tool_definitions()
-        assert len(defs) == 7
-        assert "read_page" not in {d["function"]["name"] for d in defs}
-        assert defs is not TOOL_DEFINITIONS
-        with patch("app.tools.get_crawler_module", return_value=object()):
+        # The result is always a fresh list because the skill loader and the
+        # operator-configured MCP tools are appended to it.
+        with patch("app.skills.discover", return_value=[]):
             defs = get_tool_definitions()
+            assert len(defs) == 7
+            assert "read_page" not in {d["function"]["name"] for d in defs}
+            assert defs is not TOOL_DEFINITIONS
+            with patch("app.tools.get_crawler_module", return_value=object()):
+                defs = get_tool_definitions()
         assert len(defs) == 8
         assert [d["function"]["name"] for d in defs] == [d["function"]["name"] for d in TOOL_DEFINITIONS]
 

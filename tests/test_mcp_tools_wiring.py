@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.tools import get_tool_definitions, select_tool_definitions
+from app.tools import SKILL_LOADER_TOOL, get_tool_definitions, select_tool_definitions
 
 _FAKE = {
     "type": "function",
@@ -46,7 +46,9 @@ def test_the_kernel_selection_can_name_an_mcp_tool(app):
     app.config["MCP_ENABLED"] = True
     with app.app_context(), patch("app.mcp_registry.tool_definitions", return_value=[_FAKE]):
         selected = select_tool_definitions(("mcp__rooms__ping",), "en")
-    assert [item["function"]["name"] for item in selected] == ["mcp__rooms__ping"]
+    # The installed skills' loader rides along; see test_skills_wiring.py.
+    names = [item["function"]["name"] for item in selected if item["function"]["name"] != SKILL_LOADER_TOOL]
+    assert names == ["mcp__rooms__ping"]
 
 
 @pytest.mark.unit

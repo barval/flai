@@ -4881,3 +4881,11 @@ msgstr "The tool call was refused: it repeats a call made with the same argument
 #: app/tools.py
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "The tool call was ignored: the last round of the loop has been reached."
+
+#: app/tools.py
+msgid "Unknown skill: {name}"
+msgstr "Unknown skill: {name}"
+
+#: app/utils.py
+msgid "Available skills (load one with `activate_skill`):"
+msgstr "Available skills (load one with `activate_skill`):"

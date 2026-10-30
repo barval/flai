@@ -504,11 +504,30 @@ def _load_skills_section(lang: str = "ru") -> str:
         return ""
 
 
+def _load_skill_catalog(lang: str = "ru") -> str:
+    """The installed skills as names and one-line descriptions.
+
+    Only the catalog enters the prompt: a body can be thousands of tokens and is
+    loaded as a tool result when the model activates the skill.
+    """
+    try:
+        from app.skills import catalog
+
+        lines = catalog(lang)
+    except Exception:
+        current_app.logger.warning("Skill catalog could not be loaded", exc_info=True)
+        return ""
+    if not lines:
+        return ""
+    return f"{gettext('Available skills (load one with `activate_skill`):')}\n{lines}"
+
+
 def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru") -> str | None:
     """Load template and substitute variables.
 
     If the template contains ``{skills_section}`` and the caller did not
     provide it, it is automatically loaded from ``prompts/{lang}/skills.txt``.
+    ``{skill_catalog}`` is filled the same way from the installed skills.
     """
     template = load_prompt_template(template_name, lang)
     if not template:
@@ -516,6 +535,8 @@ def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru
     # Auto-inject skills if the template uses {skills_section}
     if "{skills_section}" in template and "skills_section" not in variables:
         variables["skills_section"] = _load_skills_section(lang)
+    if "{skill_catalog}" in template and "skill_catalog" not in variables:
+        variables["skill_catalog"] = _load_skill_catalog(lang)
     try:
         return template.format(**variables)
     except KeyError as e:

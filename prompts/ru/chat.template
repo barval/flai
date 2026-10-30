@@ -8,6 +8,7 @@
 
 # НАВЫКИ
 {skills_section}
+{skill_catalog}
 
 # ИСТОРИЯ ДИАЛОГА
 {context_str}

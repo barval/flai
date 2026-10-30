@@ -4914,3 +4914,11 @@ msgstr "Вызов отклонён: он повторяет вызов с те�
 #: app/tools.py
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."
+
+#: app/tools.py
+msgid "Unknown skill: {name}"
+msgstr "Неизвестный навык: {name}"
+
+#: app/utils.py
+msgid "Available skills (load one with `activate_skill`):"
+msgstr "Доступные навыки (загрузите нужный через `activate_skill`):"

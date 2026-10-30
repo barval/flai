@@ -163,13 +163,13 @@ class TestMCPClient:
                 },
             ),
         ]
-        with patch("modules.cam_mcp.requests.post", side_effect=responses):
+        with patch("app.mcp_client.requests.post", side_effect=responses):
             status = client.status()
         assert status["available"] is True
         assert status["tools"] == ["list_rooms", "get_snapshot", "room_info"]
 
     def test_sse_response_is_parsed(self):
-        from modules.cam_mcp import _parse_sse
+        from app.mcp_client import _parse_sse
 
         body = 'event: message\ndata: {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}\n\n'
         assert _parse_sse(body)["result"] == {"tools": []}
@@ -178,7 +178,7 @@ class TestMCPClient:
         from modules.cam_mcp import CamMCPClient
 
         client = CamMCPClient("http://cam:5006/mcp", api_key="k")
-        with patch("modules.cam_mcp.requests.post", side_effect=RuntimeError("down")):
+        with patch("app.mcp_client.requests.post", side_effect=RuntimeError("down")):
             status = client.status()
         assert status["configured"] is True
         assert status["available"] is False

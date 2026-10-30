@@ -29,14 +29,19 @@ Choose exactly one:
 - A request to see a room NOW is camera; "what did we see earlier" is history.
 
 # TOOLS
-The runtime tools currently available are listed below. Put at most 6 names in "tools"; use the exact names. Put an empty list when the answer needs no tool.
+The runtime tools currently available are listed below. Put at most 6 names in "tools"; use the exact names.
+List a tool whenever the message needs a fact the model cannot know by itself:
+- the current time or date -> get_current_time (never answer from memory)
+- arithmetic, or a calculation over dates -> calculator or time_calc
+- the content of one specific URL -> read_page
+An empty list means the runtime will not offer ANY tool: use it only when a tool is certainly unnecessary (a greeting, small talk, a question the model can answer from its own knowledge).
 {catalog}
 
 # OUTPUT
 Return one object with these fields:
 - "intent": one value from the list above
 - "query": the phrase the next stage should search or act on, in the user's language. For rag and search keep keywords, numbers, addresses and dates. For camera return the room code from the message if one is present, otherwise the user's phrase.
-- "sources": an object with the flags "documents", "history", "memory", "web" — true only for the sources this message needs
+- "sources": an object with one flag, "memory" — true when the answer should consider what the assistant remembers about this user (their profile, preferences, personal facts), false for a request that needs none of that
 - "tools": an array of tool names, at most 6, possibly empty
 - "confidence": a number from 0 to 1
 

@@ -4826,7 +4826,12 @@ class RedisRequestQueue:
             self._publish_stream_event(task, "task_progress", {"stage": "routing"})
         current_message_id = (task or {}).get("data", {}).get("current_message_id")
         recent_context = self.app.modules["base"].build_router_context(
-            session_id, user_id, message_text, lang, exclude_message_id=current_message_id
+            session_id,
+            user_id,
+            message_text,
+            lang,
+            exclude_message_id=current_message_id,
+            marker_hints=not self.app.modules["base"].KERNEL_ENABLED,
         )
         router_result = self.app.modules["base"].process_message(
             message_text,
@@ -4960,6 +4965,7 @@ class RedisRequestQueue:
                     response_style,
                     expose_tools=True,
                     tool_selection=router_result.get("tools"),
+                    use_memory=router_result.get("memory"),
                 )
             # Unknown action — safe fallback that still avoids a second router call
             return self._save_and_respond(
@@ -4987,6 +4993,7 @@ class RedisRequestQueue:
             include_tools=False,
             expose_tools=True,
             tool_selection=router_result.get("tools"),
+            use_memory=router_result.get("memory"),
         )
 
     def _sanitize_tool_service_text(self, text: str) -> str:
@@ -5082,6 +5089,7 @@ class RedisRequestQueue:
         include_tools: bool = True,
         expose_tools: bool | None = None,
         tool_selection: tuple[str, ...] | None = None,
+        use_memory: bool | None = None,
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
@@ -5102,13 +5110,18 @@ class RedisRequestQueue:
 
         # Build system + user messages for tool calling
         response_language = response_language_name(lang)
+        # The kernel may have decided this message needs no long-term memory at
+        # all ("what time is it"); skipping the recall saves a daemon round trip
+        # and the facts it would have injected. None keeps the old behaviour.
+        from .kernel import memory_is_skipped
+
         context_str = base._get_context_for_model(  # noqa: SLF001
             session_id,
             "multimodal",
             query,
             lang,
             user_id=user_id,
-            skip_slm=False,
+            skip_slm=memory_is_skipped(use_memory),
         )
         style_instruction = get_style_instruction(lang, response_style)
 

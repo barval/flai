@@ -601,6 +601,7 @@ class BaseModule(TranslationMixin):
         current_query: str,
         lang: str = "ru",
         exclude_message_id: int | None = None,
+        marker_hints: bool = True,
     ) -> str:
         """Build a compact recent-conversation digest for the router.
 
@@ -609,6 +610,11 @@ class BaseModule(TranslationMixin):
         exchanges instead of relying on hardcoded query rules. The digest is
         deliberately tiny (last N short messages, a documents line and a few
         SLM facts) so the router call stays fast.
+
+        ``marker_hints`` names the marker (``[-RAG-]``) in the documents line,
+        which the marker router matches on. The request kernel never sees a
+        marker and its prompt does not define one, so it gets the same rule
+        without the dialect.
         """
         if session_id:
             try:
@@ -647,13 +653,13 @@ class BaseModule(TranslationMixin):
                     lines.append(
                         f"User's document library: {total} files (newest: {listed}). "
                         "A request to find, list or extract facts from these files "
-                        "is document search [-RAG-], not chat history."
+                        f"is document search{' [-RAG-]' if marker_hints else ''}, not chat history."
                     )
                 else:
                     lines.append(
                         f"Документы пользователя: {total} файлов (последние: {listed}). "
                         "Просьба найти, перечислить или вывести сведения из этих файлов — "
-                        "поиск в документах [-RAG-], а не история переписки."
+                        f"поиск в документах{' [-RAG-]' if marker_hints else ''}, а не история переписки."
                     )
         if self.ROUTER_SLM_FACTS > 0:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
@@ -841,6 +847,7 @@ class BaseModule(TranslationMixin):
                 "query": "",
                 "needs_reasoning": False,
                 "tools": None,
+                "memory": None,
                 "error": self._("Model returned empty response", lang),
             }
 
@@ -889,9 +896,10 @@ class BaseModule(TranslationMixin):
                     "query": processed,
                     "needs_reasoning": action in ("reasoning", "reasoning_web"),
                     "tools": None,
+                    "memory": None,
                 }
 
-        return {"action": "none", "query": original_query, "needs_reasoning": False, "tools": None}
+        return {"action": "none", "query": original_query, "needs_reasoning": False, "tools": None, "memory": None}
 
     def build_reasoning_messages(
         self,

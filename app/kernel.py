@@ -39,17 +39,26 @@ INTENT_ACTIONS: dict[str, str] = {intent: intent for intent in KERNEL_INTENTS}
 # measured cliff, and an empty list is a legitimate answer meaning "no tool".
 MAX_KERNEL_TOOLS = 6
 
-SOURCE_KEYS: tuple[str, ...] = ("documents", "history", "memory", "web")
+# Only the memory flag is asked for: documents, history and web are already
+# encoded by the intent, so a second opinion about them would be redundant — and
+# every field the model is asked for is a field it can get wrong.
+SOURCE_KEYS: tuple[str, ...] = ("memory",)
 
 
 @dataclass(frozen=True)
 class SourceFlags:
-    """Which context sources the answer stage should load."""
+    """Which context sources the answer stage should load.
 
-    documents: bool = False
-    history: bool = False
-    memory: bool = False
-    web: bool = False
+    Grows one member per source that has a *consumer*. ``memory`` is the first:
+    it drives ``skip_slm`` on the chat branch, so a request that needs nothing
+    personal does not pay for a long-term-memory recall.
+
+    Tri-state on purpose. ``None`` (the field was not answered) keeps the
+    previous behaviour — silence must never remove context the user has come to
+    expect — and only an explicit ``False`` skips the recall.
+    """
+
+    memory: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -126,9 +135,10 @@ def _coerce_tools(raw: Any) -> tuple[str, ...] | None:
 def _coerce_sources(raw: Any) -> SourceFlags:
     if not isinstance(raw, dict):
         return SourceFlags()
-    # ``is True`` rather than ``bool(...)``: a JSON-mode model that emits
-    # "false" as a string must not turn the flag on.
-    return SourceFlags(**{key: raw.get(key) is True for key in SOURCE_KEYS})
+    # ``isinstance(..., bool)`` rather than ``bool(...)``: a JSON-mode model that
+    # emits "false" as a string must not read as true, and an absent field must
+    # stay absent rather than become "no".
+    return SourceFlags(**{key: value if isinstance(value := raw.get(key), bool) else None for key in SOURCE_KEYS})
 
 
 def _coerce_confidence(raw: Any) -> float:
@@ -206,6 +216,7 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
         # None means "no opinion" (advertise every tool); () means "no tool
         # needed" (advertise none). The two must not collapse into one value.
         "tools": decision.tools,
+        "memory": decision.sources.memory,
     }
 
 
@@ -285,3 +296,13 @@ def build_kernel_prompt(
         lang="en",
     )
     return prompt or ""
+
+
+def memory_is_skipped(use_memory: bool | None) -> bool:
+    """Whether the long-term-memory recall may be skipped for this request.
+
+    Only an explicit ``False`` from the kernel skips it. ``None`` — the marker
+    path, or a kernel reply without the field — keeps the previous behaviour,
+    because silence must never remove context the user has come to expect.
+    """
+    return use_memory is False

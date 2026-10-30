@@ -823,20 +823,20 @@ _EXECUTOR_MAP: dict[str, Any] = {
 def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") -> list[dict[str, Any]]:
     """Advertise only the tools the request kernel chose.
 
-    ``None`` means "the kernel had no opinion" and returns every tool; an empty
-    tuple means "this message needs no tool" and returns nothing, which is where
-    the saving lives. A non-empty selection that matches nothing is treated as
-    "no opinion" rather than "nothing" — a model-invented name must not leave a
-    conversation without a single tool.
+    ``None`` and an empty tuple both mean "the kernel had no opinion" and return
+    every tool. Measured on Qwen3VL-8B: asked which tools a message needs, the
+    model answers ``[]`` for "what time is it?" even when the prompt names
+    ``get_current_time`` explicitly. An empty list is therefore the one answer
+    that is confidently wrong, and it is also the one that removes every
+    capability at once, so the runtime may narrow the list but never empty it. A
+    non-empty selection that matches nothing is treated the same way.
 
     Full tool schemas are the largest fixed cost of a chat request (about 2 000
     tokens for eight tools), so a request that needs none of them pays for none.
     """
     definitions = get_tool_definitions(lang)
-    if selected is None:
-        return definitions
     if not selected:
-        return []
+        return definitions
     wanted = set(selected)
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     return chosen or definitions

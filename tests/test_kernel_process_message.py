@@ -53,7 +53,16 @@ def test_kernel_disabled_keeps_the_marker_path(app):
     module = _base(app)
     module.KERNEL_ENABLED = False
     module.call_llamacpp = lambda *args, **kwargs: "[-RAG-] contract"
-    assert module.process_message("contract", "2026-10-30")["action"] == "rag"
+    result = module.process_message("contract", "2026-10-30")
+    assert result["action"] == "rag"
+    assert result["memory"] is None
+
+
+@pytest.mark.unit
+def test_the_memory_flag_reaches_the_route(app):
+    module = _base(app)
+    module.call_llamacpp = lambda *args, **kwargs: '{"intent": "none", "query": "hi", "sources": {"memory": false}}'
+    assert module.process_message("hi", "2026-10-30", lang="en")["memory"] is False
 
 
 @pytest.mark.unit

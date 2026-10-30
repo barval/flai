@@ -95,3 +95,24 @@ def test_absence_and_emptiness_survive_the_conversion():
     # tool; () (no tool needed) must reach it as () so it advertises none.
     assert decision_to_route(_decision("none", "hi"), "hi", cam=None)["tools"] is None
     assert decision_to_route(_decision("none", "hi", ()), "hi", cam=None)["tools"] == ()
+
+
+@pytest.mark.unit
+def test_the_memory_flag_rides_along_to_the_chat_branch():
+    from app.kernel import memory_is_skipped
+
+    decision = KernelDecision(
+        intent="none", query="hi", sources=SourceFlags(memory=False), tools=(), confidence=1.0
+    )
+    route = decision_to_route(decision, "hi", cam=None)
+    assert route["memory"] is False
+    assert memory_is_skipped(route["memory"]) is True
+
+
+@pytest.mark.unit
+def test_the_marker_path_expresses_no_opinion_about_memory(app):
+    # _parse_router_response, not decision_to_route, is what the marker path returns.
+    module = app.modules["base"]
+    module.KERNEL_ENABLED = False
+    module.call_llamacpp = lambda *args, **kwargs: "[-RAG-] contract"
+    assert module.process_message("contract", "2026-10-30")["memory"] is None

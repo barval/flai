@@ -10,14 +10,13 @@ from app.kernel import KERNEL_INTENTS, SourceFlags, parse_kernel_decision
 @pytest.mark.unit
 def test_parses_bare_json():
     decision = parse_kernel_decision(
-        '{"intent": "rag", "query": "IP addresses", "sources": {"documents": true}, '
+        '{"intent": "rag", "query": "IP addresses", "sources": {"memory": true}, '
         '"tools": ["rag_search"], "confidence": 0.9}'
     )
     assert decision is not None
     assert decision.intent == "rag"
     assert decision.query == "IP addresses"
-    assert decision.sources.documents is True
-    assert decision.sources.web is False
+    assert decision.sources.memory is True
     assert decision.tools == ("rag_search",)
     assert decision.confidence == 0.9
 
@@ -83,10 +82,29 @@ def test_confidence_is_clamped():
 
 
 @pytest.mark.unit
-def test_unknown_source_keys_are_ignored():
-    decision = parse_kernel_decision('{"intent": "none", "sources": {"documents": true, "telepathy": true}}')
+def test_only_the_memory_source_is_read():
+    # documents / history / web duplicate what the intent already says, so the
+    # kernel is not asked for them; memory is the one orthogonal flag.
+    decision = parse_kernel_decision('{"intent": "none", "sources": {"memory": true, "documents": true}}')
     assert decision is not None
-    assert decision.sources == SourceFlags(documents=True)
+    assert decision.sources == SourceFlags(memory=True)
+
+
+@pytest.mark.unit
+def test_a_missing_or_non_boolean_memory_flag_is_none():
+    # Tri-state on purpose: an absent field means "no opinion", and only an
+    # explicit false may skip the recall.
+    assert parse_kernel_decision('{"intent": "none"}').sources.memory is None
+    assert parse_kernel_decision('{"intent": "none", "sources": {"memory": "false"}}').sources.memory is None
+
+
+@pytest.mark.unit
+def test_memory_is_skipped_only_on_an_explicit_negative():
+    from app.kernel import memory_is_skipped
+
+    assert memory_is_skipped(False) is True
+    assert memory_is_skipped(True) is False
+    assert memory_is_skipped(None) is False
 
 
 @pytest.mark.unit

@@ -76,7 +76,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 ## 🆕 What's New in v12.9
 
 - **The engine was rebuilt around one decision and one loop.** A single JSON call (the request kernel) now classifies a message and picks its tools, and the same tool loop drives both chat and background tasks. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Skills.** Drop a folder with a `SKILL.md` into `skills/` and the assistant loads its instructions **by itself** when a request matches the skill's description — the format is portable (Claude Code, opencode, pi). → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Skills.** Drop a folder with a `SKILL.md` into `skills/` and the assistant loads its instructions **by itself** when a request matches the skill's description (with the request kernel enabled — `KERNEL_ENABLED=1`) — the format is portable (Claude Code, opencode, pi). → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **MCP servers.** External Model Context Protocol servers can supply chat tools; they are configured in their own admin tab, namespaced per server, and a server that is down costs nothing. → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
 - **Deeper agent tasks.** A request is planned as steps and executed with checkpoints; the planner records its plan as a `write_plan` tool call, and a `research` step can search, open pages and refine its own query before answering. → [TASKS.md](docs/TASKS.md)
 - **A depth profile.** `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend, and every new parameter is editable in the admin panel. → [CONFIGURATION.md](docs/CONFIGURATION.md)

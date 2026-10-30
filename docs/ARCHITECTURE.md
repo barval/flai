@@ -277,9 +277,13 @@ and the executor's routing tables.
 
 `skills/<name>/SKILL.md` — `name` / `description` / `allowed-tools` frontmatter,
 the format Claude Code, opencode and pi use. Only the catalog (one line per skill)
-enters the system prompt through `{skill_catalog}`; the body arrives as the result
-of the `activate_skill` tool, which is advertised only when a skill exists and
-survives the kernel narrowing the list. `SKILL.<lang>.md` carries a localized
+enters the system prompt through `{skill_catalog}`. Activation is the request
+kernel's job: it names the matching skill in the same JSON decision where it picks
+the intent (`skills`, ≤2, validated against the catalog), and the chat loop appends
+the body to the system prompt before the first round. The `activate_skill` tool
+still exists for a model that asks for a skill itself, and is advertised only when a
+skill is installed. With the marker router (`KERNEL_ENABLED=0`) nothing names a
+skill automatically. `SKILL.<lang>.md` carries a localized
 description and body.
 
 ### Plan as a tool, and the research step

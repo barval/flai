@@ -5243,6 +5243,9 @@ class RedisRequestQueue:
                     # still send one. Running it would only burn a call the loop
                     # has no room for, so fall through to the fallback below.
                     self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+                    # Dropping the raw result matters: without this the turn would
+                    # end by showing the tool output as the answer.
+                    last_tool_result = ""
                     self._publish_stream_event(
                         task, "tool_result", {"tool_name": "", "result_preview": "ignored after the cap"}
                     )
@@ -5311,6 +5314,7 @@ class RedisRequestQueue:
             # If response is a dict with tool_calls
             if isinstance(response, dict) and response.get("tool_calls") and is_final_round:
                 self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+                last_tool_result = ""
                 full_response = response.get("content") or ""
                 break
 

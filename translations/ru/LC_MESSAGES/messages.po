@@ -664,11 +664,6 @@ msgstr "Сервис поиска в документах недоступен"
 msgid "User not identified for document search"
 msgstr "Пользователь не идентифицирован для поиска в документах"
 
-#: app/tools.py:471
-#, python-brace-format
-msgid "Document search error: {error}"
-msgstr "Ошибка поиска в документах: {error}"
-
 #: app/tasks/runner.py:517 app/tools.py:475
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
@@ -677,11 +672,6 @@ msgstr "Релевантные документы не найдены для з�
 #: app/tools.py:498
 msgid "User not identified for conversation search"
 msgstr "Пользователь не идентифицирован для поиска по истории диалогов"
-
-#: app/tools.py:514
-#, python-brace-format
-msgid "Conversation search error: {error}"
-msgstr "Ошибка поиска по истории диалогов: {error}"
 
 #: app/tools.py:518
 #, python-brace-format

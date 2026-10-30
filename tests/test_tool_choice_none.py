@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from app.llamacpp_client import DirectLlamaBackend, LlamaSwapBackend
@@ -92,3 +91,20 @@ def test_the_swap_backend_sends_it(monkeypatch):
         tool_choice="none",
     )
     assert captured["tool_choice"] == "none"
+
+
+@pytest.mark.unit
+def test_the_swap_backend_streaming_path_sends_it(monkeypatch):
+    imported = _capture(monkeypatch, _StreamResponse())
+    backend = LlamaSwapBackend()
+    list(
+        backend.chat_stream(
+            [{"role": "user", "content": "hi"}],
+            model="m",
+            config={"context_length": 4096},
+            timeout=5,
+            lang="en",
+            tool_choice="none",
+        )
+    )
+    assert imported["tool_choice"] == "none"

@@ -399,14 +399,18 @@ def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
             return str(_("Division by zero"))
-    except ValueError as e:
+    except (ValueError, SyntaxError) as e:
+        # A parse message is about the user's own expression and carries nothing
+        # from the environment, so it is more useful to the model than a generic
+        # sentence. Unexpected exceptions take the path below instead.
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
             return str(_("Calculation error: {error}").format(error=str(e)))
-    except Exception as e:
+    except Exception:
+        logger.exception("calculator failed")
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Calculation error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
 
 def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
@@ -472,10 +476,10 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
 
     try:
         chunks, _scores = rag_module.search(user_id, query, top_k=top_k)
-    except Exception as e:
-        logger.error(f"RAG search tool failed: {e}")
+    except Exception:
+        logger.exception("RAG search tool failed")
         with force_locale(lang):
-            return str(_("Document search error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
     if not chunks:
         with force_locale(lang):
@@ -514,10 +518,10 @@ def _exec_history_search(ctx: dict[str, Any], query: str, limit: int = 5) -> str
             exclude_session_id=ctx.get("current_session_id"),
             max_message_chars=app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000) if app else 20000,
         )
-    except Exception as e:
-        logger.error(f"History search tool failed: {e}")
+    except Exception:
+        logger.exception("History search tool failed")
         with force_locale(lang):
-            return str(_("Conversation search error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
     if not fragments:
         with force_locale(lang):
@@ -805,10 +809,10 @@ def _exec_time_calc(
     except ValueError as e:
         with force_locale(lang):
             return str(_("Date calculation error: {error}").format(error=str(e)))
-    except Exception as e:
-        logger.error(f"time_calc failed: {e}")
+    except Exception:
+        logger.exception("time_calc failed")
         with force_locale(lang):
-            return str(_("Date calculation error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
 
 # ── Tool dispatch ────────────────────────────────────────────────────
@@ -845,14 +849,6 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     wanted = set(selected)
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     return chosen or definitions
-
-
-_COERCIBLE_TYPES = {
-    "integer": int,
-    "number": float,
-    "boolean": "boolean",
-    "string": str,
-}
 
 
 def _coerce_value(value: Any, wanted: str) -> Any:
@@ -925,7 +921,11 @@ def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[
     the tool with empty arguments, which is how a search runs with an empty
     query and the model learns nothing from the failure.
     """
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
+    if raw is None:
+        # A null blob is the same shape as an unparsable one when the tool needs
+        # fields: running it with nothing repeats the empty-query failure.
+        return ({}, False) if (schema or {}).get("required") else ({}, True)
+    if isinstance(raw, str) and not raw.strip():
         return {}, True
     if isinstance(raw, dict):
         return repair_tool_arguments(raw, schema), True
@@ -985,11 +985,18 @@ def bound_tool_output(text: str, limit: int = TOOL_OUTPUT_MAX_CHARS) -> str:
     last lines carry the conclusion. The marker is load-bearing — without it the
     model reads a clipped result as an empty one and calls the tool again.
     """
+    if limit <= 0:
+        return ""
     if len(text) <= limit:
         return text
-    dropped = len(text) - limit
-    head = int(limit * TOOL_OUTPUT_HEAD_SHARE)
-    tail = limit - head
+    marker_len = 40  # the marker plus its newlines, an upper bound
+    if len(text) <= limit + marker_len:
+        # Truncating by a handful of characters would make the result longer.
+        return text
+    budget = limit
+    head = int(budget * TOOL_OUTPUT_HEAD_SHARE)
+    tail = budget - head
+    dropped = len(text) - budget
     return f"{text[:head]}\n…[truncated {dropped} characters]…\n{text[-tail:]}"
 
 

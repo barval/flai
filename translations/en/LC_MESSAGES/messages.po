@@ -658,11 +658,6 @@ msgstr "Document search service unavailable"
 msgid "User not identified for document search"
 msgstr "User not identified for document search"
 
-#: app/tools.py:471
-#, python-brace-format
-msgid "Document search error: {error}"
-msgstr "Document search error: {error}"
-
 #: app/tasks/runner.py:517 app/tools.py:475
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
@@ -671,11 +666,6 @@ msgstr "No relevant documents found for query: {query}"
 #: app/tools.py:498
 msgid "User not identified for conversation search"
 msgstr "User not identified for conversation search"
-
-#: app/tools.py:514
-#, python-brace-format
-msgid "Conversation search error: {error}"
-msgstr "Conversation search error: {error}"
 
 #: app/tools.py:518
 #, python-brace-format

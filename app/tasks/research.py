@@ -14,6 +14,7 @@ queue that serialises everything.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from app.engine.loop import Turn, run_tool_loop
@@ -33,6 +34,8 @@ RESEARCH_TOOLS: tuple[str, ...] = (
 )
 
 RESEARCH_MAX_ROUNDS = 4
+
+logger = logging.getLogger(__name__)
 
 
 def run_research(context: DirectStepContext) -> str:
@@ -75,8 +78,10 @@ def run_research(context: DirectStepContext) -> str:
     )
     schemas = {item["function"]["name"]: item["function"].get("parameters") for item in tools}
     usage_total: dict[str, int] = {}
+    rounds = {"n": 0}
 
     def generate(tool_choice: str | None) -> Turn:
+        rounds["n"] += 1
         text, usage = runner._call_reasoning(
             app,
             "",
@@ -90,6 +95,13 @@ def run_research(context: DirectStepContext) -> str:
             if isinstance(value, (int, float)):
                 usage_total[key] = usage_total.get(key, 0) + int(value)
         calls = runner.last_tool_calls()
+        # The step is one line in the plan, so its rounds are invisible in the UI
+        # and in the step result; the log is the only place a surprising answer
+        # can be traced back to the queries that produced it.
+        logger.info(
+            f"research round {rounds['n']}: "
+            f"tool_calls={[str(call.get('function', {}).get('name', '?')) for call in calls]}"
+        )
         if runner._is_error_text(text or ""):
             return Turn(error=text)
         return Turn(text=text or "", tool_calls=calls)
@@ -108,6 +120,7 @@ def run_research(context: DirectStepContext) -> str:
                 session.append_tool(call_id, _refusal(lang))
                 continue
             result = execute_tool(name, arguments, {"app": app, "user_id": context.user_id, "lang": lang})
+            logger.info(f"research tool {name} -> {len(result)} chars")
             last_result = result
             session.append_tool(call_id, result)
         return last_result
@@ -120,6 +133,7 @@ def run_research(context: DirectStepContext) -> str:
         on_final_round=lambda: None,
     )
     runner._last_call_usage.value = usage_total
+    logger.info(f"research step finished after {rounds['n']} round(s)")
     if result.cancelled:
         raise runner.StepAborted("step cancelled during research")
     if result.error:

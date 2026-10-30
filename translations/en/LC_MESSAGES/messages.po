@@ -4883,3 +4883,7 @@ msgstr "The tool could not complete the request."
 #: app/tools.py
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "The tool call was rejected: its arguments were not valid JSON."
+
+#: app/tools.py
+msgid "The tool call was refused: it repeats a call made with the same arguments, whose result is above."
+msgstr "The tool call was refused: it repeats a call made with the same arguments, whose result is above."

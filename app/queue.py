@@ -35,10 +35,12 @@ from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, str
 from .model_config import get_model_config
 from .tools import (
     MAX_TOOL_ITERATIONS,
+    ToolCallLoopGuard,
     execute_tool,
     get_tool_definitions,
     invalid_arguments_message,
     parse_tool_arguments,
+    repeated_call_message,
     select_tool_definitions,
 )
 from .utils import (
@@ -5029,6 +5031,7 @@ class RedisRequestQueue:
         lang: str,
         assistant_content: str = "",
         log_label: str = "Tool call",
+        loop_guard: ToolCallLoopGuard | None = None,
     ) -> str:
         """Execute tool calls and append assistant/tool messages to history.
 
@@ -5052,6 +5055,13 @@ class RedisRequestQueue:
                 )
                 self._publish_stream_event(
                     task, "tool_result", {"tool_name": tool_name, "result_preview": "invalid arguments"}
+                )
+                continue
+            if loop_guard is not None and not loop_guard.check(tool_name, arguments):
+                self.logger.warning(f"{log_label}: {tool_name} repeated with the same arguments, refusing the call")
+                messages.append({"role": "tool", "tool_call_id": tc_id, "content": repeated_call_message(lang)})
+                self._publish_stream_event(
+                    task, "tool_result", {"tool_name": tool_name, "result_preview": "repeated call refused"}
                 )
                 continue
 
@@ -5181,6 +5191,10 @@ class RedisRequestQueue:
         if stream and task:
             self._publish_stream_event(task, "task_progress", {"stage": "reasoning_thinking"})
 
+        # One guard per turn: a legitimate repeat in a later turn must not be
+        # blocked by a count collected in an earlier one.
+        tool_guard = ToolCallLoopGuard()
+
         for iteration in range(MAX_TOOL_ITERATIONS):
             if self._is_task_cancelled(task["id"]):
                 break
@@ -5214,7 +5228,9 @@ class RedisRequestQueue:
                     )
 
                 if stream_tool_calls:
-                    last_tool_result = self._run_tool_calls(task, messages, stream_tool_calls, user_id, lang)
+                    last_tool_result = self._run_tool_calls(
+                        task, messages, stream_tool_calls, user_id, lang, loop_guard=tool_guard
+                    )
                     self.logger.info(
                         f"Tool calling iteration {iteration + 1}: "
                         f"executed {len(stream_tool_calls)} tools: "
@@ -5253,6 +5269,7 @@ class RedisRequestQueue:
                         user_id,
                         lang,
                         log_label="Tool call (text-parsed)",
+                        loop_guard=tool_guard,
                     )
                     continue
 
@@ -5271,7 +5288,13 @@ class RedisRequestQueue:
                 tool_calls = response["tool_calls"]
                 content = response.get("content", "")
                 last_tool_result = self._run_tool_calls(
-                    task, messages, tool_calls, user_id, lang, assistant_content=content
+                    task,
+                    messages,
+                    tool_calls,
+                    user_id,
+                    lang,
+                    assistant_content=content,
+                    loop_guard=tool_guard,
                 )
                 self.logger.info(
                     f"Tool calling iteration {iteration + 1}: "

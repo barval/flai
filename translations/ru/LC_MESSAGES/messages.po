@@ -4916,3 +4916,7 @@ msgstr "Инструмент не смог выполнить запрос."
 #: app/tools.py
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."
+
+#: app/tools.py
+msgid "The tool call was refused: it repeats a call made with the same arguments, whose result is above."
+msgstr "Вызов отклонён: он повторяет вызов с теми же аргументами, результат которого уже приведён выше."

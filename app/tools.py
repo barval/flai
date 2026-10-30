@@ -940,6 +940,38 @@ def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[
     return repair_tool_arguments(parsed, schema), True
 
 
+# Identical calls a model may make before the guard stops it. FLAI's own stream
+# loop detector catches repeated *text*; this one catches a repeated *call*,
+# which is the shape the failure takes once tools are involved.
+TOOL_CALL_REPEAT_LIMIT = 3
+
+
+class ToolCallLoopGuard:
+    """Refuse a tool call that has already been made with the same arguments.
+
+    One guard lives one conversation turn: a legitimate repeat in a later turn
+    (a camera checked again after a question) must not be blocked by a count
+    collected in an earlier one.
+    """
+
+    def __init__(self, repeats: int = TOOL_CALL_REPEAT_LIMIT):
+        self.repeats = repeats
+        self._seen: dict[tuple[str, str], int] = {}
+
+    def check(self, name: str, arguments: dict[str, Any]) -> bool:
+        """Record the call and report whether it may run."""
+        key = (name, json.dumps(arguments, sort_keys=True, default=str))
+        count = self._seen.get(key, 0) + 1
+        self._seen[key] = count
+        return count < self.repeats
+
+
+def repeated_call_message(lang: str = "ru") -> str:
+    """What the model is told when it repeats a call it has already made."""
+    with force_locale(lang):
+        return str(_("The tool call was refused: it repeats a call made with the same arguments, whose result is above."))
+
+
 def invalid_arguments_message(lang: str = "ru") -> str:
     """What the model is told when its tool call could not be parsed."""
     with force_locale(lang):

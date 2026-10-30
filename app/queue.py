@@ -30,6 +30,8 @@ from .db import (
     save_message,
     update_document_index_status,
 )
+from .engine.loop import Turn, run_tool_loop
+from .engine.session import ChatSession
 from .events import get_events_publisher
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
@@ -43,7 +45,6 @@ from .tools import (
     parse_tool_arguments,
     repeated_call_message,
     select_tool_definitions,
-    tool_choice_for_iteration,
 )
 from .utils import (
     N_,
@@ -5034,13 +5035,21 @@ class RedisRequestQueue:
         assistant_content: str = "",
         log_label: str = "Tool call",
         loop_guard: ToolCallLoopGuard | None = None,
+        session: ChatSession | None = None,
     ) -> str:
         """Execute tool calls and append assistant/tool messages to history.
 
         Publishes tool_call/tool_result stream events. Returns the last raw
         tool result so the caller can use it as a fallback answer.
         """
-        messages.append({"role": "assistant", "content": assistant_content, "tool_calls": tool_calls})
+        if session is None:
+            session = ChatSession(
+                messages=messages,
+                is_cancelled=lambda: False,
+                publish=lambda event, payload: self._publish_stream_event(task, event, payload),
+                report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
+            )
+        session.append_assistant(assistant_content, tool_calls)
         last_tool_result = ""
         schemas = {item["function"]["name"]: item["function"].get("parameters") for item in get_tool_definitions(lang)}
         for tc in tool_calls:
@@ -5052,22 +5061,16 @@ class RedisRequestQueue:
                 # An unparsable call used to run with {} — a search with an empty
                 # query, which teaches the model nothing about what went wrong.
                 self.logger.warning(f"{log_label}: {tool_name} arguments are not valid JSON, rejecting the call")
-                messages.append(
-                    {"role": "tool", "tool_call_id": tc_id, "content": invalid_arguments_message(lang)}
-                )
-                self._publish_stream_event(
-                    task, "tool_result", {"tool_name": tool_name, "result_preview": invalid_arguments_message(lang)}
-                )
+                session.append_tool(tc_id, invalid_arguments_message(lang))
+                session.report_tool_result(tool_name, invalid_arguments_message(lang))
                 continue
             if loop_guard is not None and not loop_guard.check(tool_name, arguments, schemas.get(tool_name)):
                 self.logger.warning(f"{log_label}: {tool_name} repeated with the same arguments, refusing the call")
-                messages.append({"role": "tool", "tool_call_id": tc_id, "content": repeated_call_message(lang)})
-                self._publish_stream_event(
-                    task, "tool_result", {"tool_name": tool_name, "result_preview": repeated_call_message(lang)}
-                )
+                session.append_tool(tc_id, repeated_call_message(lang))
+                session.report_tool_result(tool_name, repeated_call_message(lang))
                 continue
 
-            self._publish_stream_event(task, "tool_call", {"tool_name": tool_name, "arguments": arguments})
+            session.report_tool_call(tool_name, arguments)
             self.logger.info(f"{log_label}: {tool_name}({arguments})")
 
             stage = {
@@ -5080,7 +5083,7 @@ class RedisRequestQueue:
                 "camera_snapshot": "capturing_snapshot",
             }.get(tool_name)
             if stage:
-                self._publish_stream_event(task, "task_progress", {"stage": stage})
+                session.report_stage(stage)
 
             tool_context = {
                 "app": self.app,
@@ -5093,15 +5096,10 @@ class RedisRequestQueue:
             last_tool_result = tool_result
 
             self.logger.info(f"Tool result: {tool_result[:200]}")
-            self._publish_stream_event(
-                task,
-                "tool_result",
-                {
-                    "tool_name": tool_name,
-                    "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
-                },
+            session.report_tool_result(
+                tool_name, tool_result[:200] + "..." if len(tool_result) > 200 else tool_result
             )
-            messages.append({"role": "tool", "tool_call_id": tc_id, "content": tool_result})
+            session.append_tool(tc_id, tool_result)
         return last_tool_result
 
     def _process_chat_with_tools(
@@ -5184,165 +5182,123 @@ class RedisRequestQueue:
             else None
         )
 
-        full_response = ""
-        last_tool_result = ""
+        session = ChatSession(
+            messages=messages,
+            is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            publish=lambda event, payload: self._publish_stream_event(task, event, payload),
+            report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
+            on_token=lambda text: self._publish_stream_token(task, text),
+        )
 
         # The multimodal model answers directly here: show "Thinking..." until
         # the first stream_token (auto-removed) so slow CPU generations are not
         # silent. Non-streaming paths have no token to clear the stage — skip.
         if stream and task:
-            self._publish_stream_event(task, "task_progress", {"stage": "reasoning_thinking"})
+            session.report_stage("reasoning_thinking")
 
         # One guard per turn: a legitimate repeat in a later turn must not be
         # blocked by a count collected in an earlier one.
         tool_guard = ToolCallLoopGuard()
+        # The label only changes for a call the model printed as text; the loop
+        # hands the caller one kind of turn either way.
+        current_label = {"value": "Tool call"}
 
-        for iteration in range(MAX_TOOL_ITERATIONS):
-            if self._is_task_cancelled(task["id"]):
-                break
-
-            # On the last round tools are withdrawn: the model must answer with
-            # what it already has instead of asking for one more lookup, and a
-            # raw tool result must never be shown as the answer.
-            round_tool_choice = tool_choice_for_iteration(iteration, MAX_TOOL_ITERATIONS)
-            is_final_round = round_tool_choice == "none"
-
-            if stream:
-                # Real streaming: tokens are published to the client as they
-                # arrive; native tool calls come as a terminal dict chunk.
-                iteration_text = ""
-                error_detected = False
-                stream_tool_calls: list[dict[str, Any]] | None = None
-                for chunk in llamacpp.chat_stream(
+        def generate(round_tool_choice: str | None) -> Turn:
+            if not stream:
+                response = llamacpp.chat(
                     messages,
                     model_type="multimodal",
                     lang=lang,
                     tools=tools,
                     tool_choice=round_tool_choice,
-                ):
-                    if isinstance(chunk, dict):
-                        if chunk.get("type") == "tool_calls":
-                            stream_tool_calls = chunk["tool_calls"]
-                        break
-                    iteration_text += chunk
-                    if not error_detected:
-                        if self._is_llm_error_string(iteration_text):
-                            error_detected = True
-                        else:
-                            self._publish_stream_token(task, chunk)
-                    if self._is_task_cancelled(task["id"]):
-                        break
+                )
+                if isinstance(response, str):
+                    if self._is_llm_error_string(response):
+                        return Turn(error=response)
+                    parsed_tool_call = self._try_parse_text_tool_call(response)
+                    if parsed_tool_call:
+                        # The assistant message carries no prose: the JSON it
+                        # printed is the call, not an answer.
+                        current_label["value"] = "Tool call (text-parsed)"
+                        return Turn(tool_calls=[parsed_tool_call])
+                    return Turn(text=response)
+                if isinstance(response, dict) and response.get("tool_calls"):
+                    return Turn(text=response.get("content") or "", tool_calls=response["tool_calls"])
+                return Turn(text=response if isinstance(response, str) else str(response))
 
-                if error_detected:
-                    return self._build_error_response(
-                        session_id,
-                        iteration_text,
-                        round(time.time() - stream_start, 1),
-                        lang,
-                    )
-
-                if stream_tool_calls and is_final_round:
-                    # Tools were withdrawn; a server that ignores tool_choice can
-                    # still send one. Running it would only burn a call the loop
-                    # has no room for, so fall through to the fallback below.
-                    self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
-                    # Dropping the raw result matters: without this the turn would
-                    # end by showing the tool output as the answer.
-                    last_tool_result = ""
-                    self._publish_stream_event(
-                        task, "tool_result", {"tool_name": "", "result_preview": cap_reached_message(lang)}
-                    )
-                elif stream_tool_calls:
-                    last_tool_result = self._run_tool_calls(
-                        task, messages, stream_tool_calls, user_id, lang, loop_guard=tool_guard
-                    )
-                    self.logger.info(
-                        f"Tool calling iteration {iteration + 1}: "
-                        f"executed {len(stream_tool_calls)} tools: "
-                        f"{[tc.get('function', {}).get('name', '?') for tc in stream_tool_calls]}"
-                    )
-                    continue
-
-                full_response = iteration_text
-                # If reasoning stripping left nothing (model produced only plan/analysis),
-                # let the empty-response handler at the end deal with it.
-                if not full_response.strip():
-                    self.logger.warning("Chat model returned empty response after reasoning strip")
-                elif self._is_task_cancelled(task["id"]):
-                    self._publish_stream_event(task, "stream_cancelled")
-                break
-
-            response = llamacpp.chat(
+            iteration_text = ""
+            error_detected = False
+            stream_tool_calls: list[dict[str, Any]] | None = None
+            for chunk in llamacpp.chat_stream(
                 messages,
                 model_type="multimodal",
                 lang=lang,
                 tools=tools,
                 tool_choice=round_tool_choice,
-            )
-
-            # If response is an error string
-            if isinstance(response, str):
-                if self._is_llm_error_string(response):
-                    return self._build_error_response(
-                        session_id,
-                        response,
-                        round(time.time() - stream_start, 1),
-                        lang,
-                    )
-
-                # Detect raw JSON tool call in text (small models sometimes output tool calls as text)
-                parsed_tool_call = self._try_parse_text_tool_call(response)
-                if parsed_tool_call:
-                    last_tool_result = self._run_tool_calls(
-                        task,
-                        messages,
-                        [parsed_tool_call],
-                        user_id,
-                        lang,
-                        log_label="Tool call (text-parsed)",
-                        loop_guard=tool_guard,
-                    )
-                    continue
-
-                full_response = response
-                # If strip_generic_reasoning returned empty (model produced only plan/analysis),
-                # fall back to empty and let the empty-response handler at the end deal with it.
-                if not full_response.strip():
-                    self.logger.warning("Chat model returned empty response after reasoning strip")
-                # Check cancel after blocking chat() call — flag may have been set during generation
+            ):
+                if isinstance(chunk, dict):
+                    if chunk.get("type") == "tool_calls":
+                        stream_tool_calls = chunk["tool_calls"]
+                    break
+                iteration_text += chunk
+                if not error_detected:
+                    if self._is_llm_error_string(iteration_text):
+                        error_detected = True
+                    else:
+                        session.on_token(chunk)
                 if self._is_task_cancelled(task["id"]):
-                    self._publish_stream_event(task, "stream_cancelled")
-                break
+                    break
+            if error_detected:
+                return Turn(error=iteration_text)
+            return Turn(text=iteration_text, tool_calls=stream_tool_calls or [])
 
-            # If response is a dict with tool_calls
-            if isinstance(response, dict) and response.get("tool_calls") and is_final_round:
-                self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
-                last_tool_result = ""
-                full_response = response.get("content") or ""
-                break
+        def execute(tool_calls: list[dict[str, Any]], assistant_content: str) -> str:
+            label = current_label["value"]
+            current_label["value"] = "Tool call"
+            result = self._run_tool_calls(
+                task,
+                messages,
+                tool_calls,
+                user_id,
+                lang,
+                assistant_content=assistant_content,
+                log_label=label,
+                loop_guard=tool_guard,
+                session=session,
+            )
+            self.logger.info(
+                f"Tool calling round: executed {len(tool_calls)} tools: "
+                f"{[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
+            )
+            return result
 
-            # If response is a dict with tool_calls
-            if isinstance(response, dict) and response.get("tool_calls"):
-                tool_calls = response["tool_calls"]
-                content = response.get("content", "")
-                last_tool_result = self._run_tool_calls(
-                    task,
-                    messages,
-                    tool_calls,
-                    user_id,
-                    lang,
-                    assistant_content=content,
-                    loop_guard=tool_guard,
-                )
-                self.logger.info(
-                    f"Tool calling iteration {iteration + 1}: "
-                    f"executed {len(tool_calls)} tools: {[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
-                )
-                continue
+        def refuse_tool_calls() -> None:
+            # Tools were withdrawn; a server that ignores tool_choice can still
+            # send one. Running it would only burn a call the loop has no room
+            # for. Dropping the raw result matters: without this the turn would
+            # end by showing the tool output as the answer.
+            self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+            session.report_tool_result("", cap_reached_message(lang))
 
-            # No tool_calls — final content response
-            full_response = response if isinstance(response, str) else str(response)
-            break
+        loop_result = run_tool_loop(
+            max_iterations=MAX_TOOL_ITERATIONS,
+            generate=generate,
+            execute=execute,
+            is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            on_final_round=refuse_tool_calls,
+            on_cancelled=lambda: session.publish("stream_cancelled", {}),
+        )
+        if loop_result.error:
+            return self._build_error_response(
+                session_id,
+                loop_result.error,
+                round(time.time() - stream_start, 1),
+                lang,
+            )
+        full_response = loop_result.text
+        last_tool_result = loop_result.last_tool_result
+        if not full_response.strip() and not last_tool_result.strip():
+            self.logger.warning("Chat model returned empty response after reasoning strip")
 
         # A turn cancelled mid-stream still saves its partial answer: that text is
         # already on the user's screen, and dropping it would make the message

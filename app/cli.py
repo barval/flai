@@ -6,6 +6,7 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from app.config import setting
 from app.userdb import create_user, get_user_by_login, update_password
 
 logger = logging.getLogger(__name__)
@@ -898,7 +899,7 @@ def vram_plan(module):
     needed = rm.get_vram_needed_mb(module)
     loaded = rm._resident_modules(swap_url)  # noqa: SLF001 - read-only diagnosis
     plan = rm._eviction_plan(module, needed, loaded)  # noqa: SLF001
-    mode = os.getenv("VRAM_CO_RESIDENCY", "auto")
+    mode = setting("VRAM_CO_RESIDENCY", "auto")
 
     click.echo(f"mode:      {mode}")
     click.echo(f"card:      {rm.hardware.total_vram_mb} MB total, {rm.hardware.available_vram_mb} MB free")

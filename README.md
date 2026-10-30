@@ -91,8 +91,10 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ## ✨ Features
 
 ### 💬 Chat & reasoning
-- **Intelligent chat** — the router sends simple questions to a fast model and complex ones to a dedicated reasoning model.
-- **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress.
+- **Intelligent chat** — the request kernel (or the marker router as its fallback) sends simple questions to a fast model and complex ones to a dedicated reasoning model, in one JSON decision.
+- **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress; every tool result is bounded and a repeated call is refused.
+- **Skills** — drop a folder with a `SKILL.md` into `skills/`: its one-line description enters the prompt and its instructions load only when the model asks for them. The format is the portable one (Claude Code, opencode, pi).
+- **MCP servers** — connect external Model Context Protocol servers in the admin panel and their tools become callable, namespaced per server; a server that is down costs nothing.
 - **Deep analysis (RLM)** — a reasoning model works through your selected documents and an attached image step by step, with a sandboxed Python executor, sub-model calls, live lookups and a collapsible trace. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
 - **Response styles** — neutral, academic, professional, friendly or funny, switchable in the chat header.
 - **Sessions and export** — multiple auto-titled conversations, exportable as HTML with embedded media.
@@ -101,6 +103,10 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
 - **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion; **recommended from 24 GB VRAM**), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
+
+### 🧩 Background tasks
+- **Agentic tasks** — a request is planned as steps and executed with checkpoints: web search, document and history search, camera snapshots, image analysis, site study, deep analysis, image/video generation. The planner records its plan as a `write_plan` tool call, a `research` step can search, open pages and refine its own query before answering, and chat always preempts a task. → [TASKS.md](docs/TASKS.md)
+- **Depth profile** — `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend; `norm` is the historical behaviour. Editable in the admin panel.
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)

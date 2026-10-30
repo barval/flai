@@ -53,6 +53,11 @@ def refresh_derived(app) -> None:
             app.config["TIMEZONE"] = pytz.timezone(str(raw))
         except Exception:  # noqa: BLE001 — an unknown zone keeps the previous one
             logger.warning(f"Unknown timezone in settings: {raw}")
+    # Flask reads the byte count, the panel edits megabytes.
+    try:
+        app.config["MAX_CONTENT_LENGTH"] = int(app.config.get("MAX_CONTENT_LENGTH_MB", 75)) * 1024 * 1024
+    except (TypeError, ValueError):
+        logger.warning("MAX_CONTENT_LENGTH_MB is not a number; the previous limit stays")
 
 
 def apply_overrides(app) -> int:

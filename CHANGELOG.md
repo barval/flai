@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Fixed
+
+- **A parameter saved in the admin panel now always reaches the code that reads it.** Several readers took their value straight from the environment with `os.getenv` — the VRAM/RAM policy knobs (`VRAM_CO_RESIDENCY`, `VRAM_HEADROOM_MB`, `RAM_RESERVE_MB`, `CPU_RAM_RESERVE_MB`, `CPU_REASONING_TTL`, `LTX_VIDEO_VRAM_MB`), the CPU video time budgets and `VRAM_WAIT_TIMEOUT_S` — so a value stored in the panel was silently ignored for them. They all read `app.config` now (through `app/config.py:setting()`, which falls back to the environment when there is no app context), and the keys that genuinely cannot move were declared bootstrap: mounted-volume paths, the llama-swap config dir/file/port, `LOG_LEVEL`/`LOG_FORMAT`, the container memory caps and `WAN_OFFLOAD_BELOW_VRAM_MB` (read by the sd container). The sweep also found a real defect: **`MAX_CONTENT_LENGTH_MB` was a panel key with no `app.config` entry**, so saving it changed nothing at all — the app now keeps the megabytes in config and derives Flask's byte limit whenever settings are applied. `tests/test_settings_coverage.py` enforces both rules from here on.
+
 ### Changed
 
 - **Deep analysis draws its tools from the same manifest as everything else.** The four sandbox tools were a literal list inside `modules/rlm.py`; they are now `ToolSpec` entries in `app/tool_registry.py` (`exec="sandbox"`, each with its JSON Schema) and `RLM_TOOL_DEFINITIONS` is rendered from them. They remain a separate tuple from the task capabilities on purpose — a planner must never be able to name `python`, and the two inventories are read by different loops.

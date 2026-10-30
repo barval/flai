@@ -26,6 +26,20 @@ BOOTSTRAP_KEYS = {
     "FLAI_PLATFORM",
     "DEBUG_JS",
     "DEBUG_TRANSLATIONS",
+    # Paths of mounted volumes, the port the llama-swap config is generated for,
+    # and process logging: all fixed before the panel could reach them.
+    "MODELS_DIR",
+    "LTX_MODELS_DIR",
+    "LLAMA_SWAP_CONFIG_DIR",
+    "LLAMA_SWAP_CONFIG_FILE",
+    "LLAMA_SWAP_START_PORT",
+    "LOG_LEVEL",
+    "LOG_FORMAT",
+    "LTX_VIDEO_RAM_LIMIT_MB",
+    "WAN_VIDEO_RAM_LIMIT_MB",
+    # Read by the sd container's wrapper, not by this app: compose passes it as
+    # the container's environment, so changing it needs a container recreate.
+    "WAN_OFFLOAD_BELOW_VRAM_MB",
 }
 
 # Environment name → app.config key, when they differ.
@@ -144,6 +158,12 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "SERVICE_RETRY_ATTEMPTS",
             "SERVICE_RETRY_DELAY",
             "VRAM_WAIT_TIMEOUT_S",
+            "VRAM_CO_RESIDENCY",
+            "VRAM_HEADROOM_MB",
+            "RAM_RESERVE_MB",
+            "CPU_RAM_RESERVE_MB",
+            "CPU_REASONING_TTL",
+            "LTX_VIDEO_VRAM_MB",
         ],
     ),
     "media": (
@@ -168,6 +188,8 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "WAN_VIDEO_CFG_SCALE",
             "WAN_VIDEO_FLOW_SHIFT",
             "WAN_VIDEO_ALLOW_CPU",
+            "LTX_VIDEO_CPU_TIME_BUDGET_S",
+            "WAN_VIDEO_CPU_TIME_BUDGET_S",
             "MAX_IMAGE_SIZE",
             "MAX_IMAGE_SIZE_MB",
             "MAX_IMAGE_SIZE_MULTI",
@@ -384,6 +406,7 @@ def coerce(key: str, raw: Any, current_kind: str) -> tuple[Any, str | None]:
 _ENUMS: dict[str, tuple[str, ...]] = {
     "DEPTH_LEVEL": ("min", "norm", "max"),
     "DEPTH_VERIFY": ("off", "final", "each"),
+    "VRAM_CO_RESIDENCY": ("auto", "off"),
 }
 
 
@@ -571,6 +594,14 @@ DESCRIPTIONS: dict[str, str] = {
     "MCP_TIMEOUT_S": "Timeout for one MCP request (seconds)",
     "MCP_SERVERS": "Configured MCP servers: a JSON array of {name, url, token, allow} (applies immediately)",
     "DEPTH_LEVEL": "How much work one task request may spend: min, norm or max (applies after a restart)",
+    "VRAM_CO_RESIDENCY": "Keep residents that fit next to a new model (auto) or unload everything (off)",
+    "VRAM_HEADROOM_MB": "VRAM kept free for prefill buffers when deciding what to unload",
+    "RAM_RESERVE_MB": "RAM kept free for the OS before an idle model is unloaded for a service",
+    "CPU_RAM_RESERVE_MB": "RAM kept free on a CPU-only host when deciding whether both big models fit",
+    "CPU_REASONING_TTL": "CPU-only hosts: idle seconds before the reasoning model releases its RAM",
+    "LTX_VIDEO_VRAM_MB": "VRAM budget assumed for the LTX video pipeline when it is not measured",
+    "LTX_VIDEO_CPU_TIME_BUDGET_S": "CPU-only LTX generation budget in seconds (0 = 85% of the timeout)",
+    "WAN_VIDEO_CPU_TIME_BUDGET_S": "CPU-only Wan generation budget in seconds (0 = 85% of the timeout)",
     "DEPTH_VERIFY": "When a step is checked: each, final or off (applies after a restart)",
     "CAMERA_SNAPSHOT_WIDTH": "Preview width requested from the camera service (pixels)",
     "CAMERA_PREVIEW_WORKERS": "Parallel camera captures per preview refresh",

@@ -3,6 +3,7 @@
 import os
 import time
 from datetime import timedelta
+from typing import Any
 
 import pytz
 from dotenv import load_dotenv
@@ -13,6 +14,27 @@ load_dotenv()
 APP_VERSION = "12.9"
 
 
+def setting(name: str, default: Any = None) -> Any:
+    """Read a setting the admin panel may override.
+
+    Order: the running app's config (which already carries the database
+    override), then the environment, then ``default``. Callers that run both
+    inside a request/worker context and outside one — ResourceManager, the
+    llama-swap generator, the CLI — use this instead of ``os.getenv`` so a value
+    saved in the panel actually reaches them.
+    """
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context():
+            value = current_app.config.get(name)
+            if value is not None:
+                return value
+    except Exception:  # noqa: BLE001 — no Flask at all: fall through to the environment
+        pass
+    return os.getenv(name, default)
+
+
 def load_config(app):
     app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""
@@ -20,7 +42,10 @@ def load_config(app):
     if not app.config["SECRET_KEY"]:
         raise ValueError("SECRET_KEY must be set in .env file")
     app.config["JSON_AS_ASCII"] = False
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "75")) * 1024 * 1024
+    # Kept in MB (what the panel shows) AND in bytes (what Flask reads), so a
+    # value saved in the panel reaches Flask through refresh_derived().
+    app.config["MAX_CONTENT_LENGTH_MB"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "75"))
+    app.config["MAX_CONTENT_LENGTH"] = app.config["MAX_CONTENT_LENGTH_MB"] * 1024 * 1024
     app.config["TIMEZONE_STR"] = os.getenv("TIMEZONE")
     app.config["REDIS_URL"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     app.config["DEBUG_API_ENABLED"] = os.getenv("DEBUG_API_ENABLED", "false").lower() == "true"
@@ -58,6 +83,10 @@ def load_config(app):
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
     app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
     app.config["LTX_VIDEO_TIMEOUT"] = int(os.getenv("LTX_VIDEO_TIMEOUT", 600))
+    # CPU-only hosts: the wall-clock budget a generation may spend, 0 = 85 % of
+    # the timeout. Read by modules/video.py through the app config so the panel
+    # can change it.
+    app.config["LTX_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("LTX_VIDEO_CPU_TIME_BUDGET_S", "0"))
 
     # Wan 2.2 TI2V 5B settings (uses the sd-wrapper video endpoint, same
     # container as image generation). Defaults are the Turbo preset measured
@@ -71,6 +100,17 @@ def load_config(app):
     # Wan on a CPU-only host is ~90 minutes for a 5-second clip and needs more
     # RAM than the probe container had — refused by default, opt-in only.
     app.config["WAN_VIDEO_ALLOW_CPU"] = os.getenv("WAN_VIDEO_ALLOW_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+    app.config["WAN_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("WAN_VIDEO_CPU_TIME_BUDGET_S", "0"))
+
+    # VRAM and RAM policy. These used to be read with ``os.getenv`` from deep
+    # inside ResourceManager and the llama-swap generator, which meant the admin
+    # panel could not reach them; every reader now goes through ``setting()``.
+    app.config["VRAM_CO_RESIDENCY"] = os.getenv("VRAM_CO_RESIDENCY", "auto").strip().lower()
+    app.config["VRAM_HEADROOM_MB"] = int(os.getenv("VRAM_HEADROOM_MB", "1200"))
+    app.config["RAM_RESERVE_MB"] = int(os.getenv("RAM_RESERVE_MB", "1024"))
+    app.config["CPU_RAM_RESERVE_MB"] = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+    app.config["CPU_REASONING_TTL"] = int(os.getenv("CPU_REASONING_TTL", "60"))
+    app.config["LTX_VIDEO_VRAM_MB"] = int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
 
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))

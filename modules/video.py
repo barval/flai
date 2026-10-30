@@ -25,6 +25,7 @@ from typing import Any
 import requests
 from PIL import Image
 
+from app.config import setting
 from app.mixins import TranslationMixin
 from app.vram_estimate import wan_video_vram_mb
 from modules.base import wait_for_service
@@ -426,10 +427,10 @@ class VideoModule(TranslationMixin):
         limit_env = "WAN_VIDEO_RAM_LIMIT_MB" if self.backend == BACKEND_WAN else "LTX_VIDEO_RAM_LIMIT_MB"
         container_limit_mb = int(os.environ.get(limit_env, str(host_available_mb)))
         available_mb = min(host_available_mb, container_limit_mb)
-        budget_env = (
-            "WAN_VIDEO_CPU_TIME_BUDGET_S" if self.backend == BACKEND_WAN else "LTX_VIDEO_CPU_TIME_BUDGET_S"
-        )
-        time_budget_s = int(os.environ.get(budget_env, "0")) or max(1, int(self.timeout * 0.85))
+        # Admin → Settings, Video. The environment is the fallback when there is
+        # no app context, which is how the planning tests drive this.
+        budget_key = "WAN_VIDEO_CPU_TIME_BUDGET_S" if self.backend == BACKEND_WAN else "LTX_VIDEO_CPU_TIME_BUDGET_S"
+        time_budget_s = int(setting(budget_key, 0) or 0) or max(1, int(self.timeout * 0.85))
 
         defaults = self.default_params
         req_width = int(prompt_data.get("width", defaults["width"]))

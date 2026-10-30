@@ -154,6 +154,16 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 
 **Роутер:**
 ```bash
+# Профиль глубины: сколько вызовов модели может потратить одна задача (min | norm | max).
+# norm повторяет исторические бюджеты. Любой ключ TASK_* ниже всё равно важнее профиля.
+DEPTH_LEVEL=norm
+DEPTH_VERIFY=each            # каждый шаг | final (только последний) | off
+
+# Внешние MCP-серверы (см. вкладку MCP в админ-панели).
+MCP_ENABLED=0                # 1 = предлагать модели инструменты настроенных серверов
+MCP_SERVERS=                 # JSON-массив: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+MCP_TIMEOUT_S=10             # Таймаут одного запроса к MCP
+
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
 KERNEL_ENABLED=0             # 1 — одно JSON-решение (намерение, фраза, источники, инструменты) вместо классификации по маркерам
@@ -206,13 +216,29 @@ HUGGINGFACE_TOKEN=                    # Optional: for private/gated repos
 - Параметры сгруппированы (Поиск и обход, Документы и RAG, Задачи, Модели и контекст, Генерация медиа,
   Глубокий анализ, Голос, Память и история, API, Камеры, Служебное, Отладка), поиск фильтрует по
   названию и env-ключу.
+- **У MCP своя вкладка**, а не группа в общем списке: там переключатель, таймаут запроса и таблица
+  серверов (имя, URL, токен, разрешённые инструменты) с кнопкой **Проверить** на каждой строке, которая
+  перечисляет инструменты сервера. Сохранённый токен в страницу не возвращается — пустое поле означает
+  «оставить как есть». Три ключа сохраняются через тот же endpoint настроек, поэтому приоритет у них
+  такой же (`база > .env > по умолчанию`), а изменения MCP применяются сразу.
+- Параметры политики VRAM/RAM тоже в панели (`VRAM_CO_RESIDENCY`, `VRAM_HEADROOM_MB`, `RAM_RESERVE_MB`,
+  `CPU_RAM_RESERVE_MB`, `CPU_REASONING_TTL`, `LTX_VIDEO_VRAM_MB`) — как и бюджеты CPU-видео
+  (`LTX_VIDEO_CPU_TIME_BUDGET_S`, `WAN_VIDEO_CPU_TIME_BUDGET_S`). Их читают через `app.config`, поэтому
+  сохранённое значение доходит до кода, который им пользуется.
+- Профиль глубины (`DEPTH_LEVEL`, `DEPTH_VERIFY`) — в группе «Задачи»; он читается при старте, поэтому
+  в панели так и написано: «применяется после перезапуска».
 - Секреты (`QDRANT_API_KEY`, `HUGGINGFACE_TOKEN`, `CRAWL_API_TOKEN`) никогда не возвращаются в браузер:
   показывается только маска, а пустое поле означает «не менять».
 - Каждое изменение пишется в `settings_audit` (кто, когда, было → стало; секреты скрыты) и чистится
   через 45 дней. Обе таблицы входят в полную резервную копию.
 - `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, пути к папкам, `HTTPS_ENABLED`, `FLAI_PLATFORM` и
   отладочные `DEBUG_JS` / `DEBUG_TRANSLATIONS` остаются только в `.env`: они нужны до подключения к базе
-  или определяют поведение процесса.
+  или определяют поведение процесса. Это же относится к `MODELS_DIR`, `LTX_MODELS_DIR`,
+  `LLAMA_SWAP_CONFIG_DIR`, `LLAMA_SWAP_CONFIG_FILE`, `LLAMA_SWAP_START_PORT`, `LOG_LEVEL`, `LOG_FORMAT`,
+  лимитам памяти контейнеров (`LTX_VIDEO_RAM_LIMIT_MB`, `WAN_VIDEO_RAM_LIMIT_MB`) и
+  `WAN_OFFLOAD_BELOW_VRAM_MB` (его читает контейнер sd, а не веб-приложение).
+  `tests/test_settings_coverage.py` падает, если параметр читается из окружения, но не указан ни в
+  панели, ни в этом bootstrap-наборе.
 
 ## Скрипт развёртывания и сохранённые переопределения
 

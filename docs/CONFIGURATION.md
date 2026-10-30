@@ -153,6 +153,16 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 
 **Router:**
 ```bash
+# Depth profile: how many model calls one task request may spend (min | norm | max).
+# norm reproduces the historical budgets. Each TASK_* key below still wins over it.
+DEPTH_LEVEL=norm
+DEPTH_VERIFY=each            # each step | final (last step only) | off
+
+# External MCP servers (see the MCP tab in the admin panel).
+MCP_ENABLED=0                # 1 = offer the configured servers' tools to the chat model
+MCP_SERVERS=                 # JSON array: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+MCP_TIMEOUT_S=10             # Timeout for one MCP request
+
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
 KERNEL_ENABLED=0             # 1 = one JSON decision (intent, phrase, sources, tools) instead of marker classification
@@ -205,13 +215,29 @@ the environment, and the ↺ button next to a field drops the override so the `.
 - Values are grouped (Search and crawl, Documents and RAG, Tasks, Models and context, Media generation,
   Deep analysis, Voice, Memory and history, API, Cameras, Service, Debug) and the search box filters by
   name or environment key.
+- **MCP has its own tab**, not a group in the settings list: it holds the enable switch, the request
+  timeout and a server table (name, URL, token, allowed tools) with a per-row **Test** that enumerates
+  the server's tools. A stored token is never rendered back — an empty field keeps it. Because the three
+  keys are saved through the same settings endpoint, their precedence is the same
+  (`database > .env > default`), and MCP changes apply immediately.
+- The VRAM/RAM policy knobs are in the panel too (`VRAM_CO_RESIDENCY`, `VRAM_HEADROOM_MB`,
+  `RAM_RESERVE_MB`, `CPU_RAM_RESERVE_MB`, `CPU_REASONING_TTL`, `LTX_VIDEO_VRAM_MB`) and so are the CPU
+  video budgets (`LTX_VIDEO_CPU_TIME_BUDGET_S`, `WAN_VIDEO_CPU_TIME_BUDGET_S`). They are read through
+  `app.config`, so a saved value reaches the code that uses it.
+- The depth profile (`DEPTH_LEVEL`, `DEPTH_VERIFY`) is in the Tasks group and is read at startup, so the
+  panel says "applies after a restart".
 - Secret values (`QDRANT_API_KEY`, `HUGGINGFACE_TOKEN`, `CRAWL_API_TOKEN`) are never sent back to the
   browser: only a mask is shown, and an empty field means "leave unchanged".
 - Every change is written to `settings_audit` (who, when, old → new; secrets are redacted) and pruned
   after 45 days. Both tables are included in full backups.
 - `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, the folder paths, `HTTPS_ENABLED`, `FLAI_PLATFORM` and the
   developer `DEBUG_JS` / `DEBUG_TRANSLATIONS` flags stay in `.env` only — they are needed before the
-  database is reachable or define process behaviour.
+  database is reachable or define process behaviour. The same is true of `MODELS_DIR`, `LTX_MODELS_DIR`,
+  `LLAMA_SWAP_CONFIG_DIR`, `LLAMA_SWAP_CONFIG_FILE`, `LLAMA_SWAP_START_PORT`, `LOG_LEVEL`, `LOG_FORMAT`,
+  the container memory caps (`LTX_VIDEO_RAM_LIMIT_MB`, `WAN_VIDEO_RAM_LIMIT_MB`) and
+  `WAN_OFFLOAD_BELOW_VRAM_MB` (read by the sd container, not by the web app).
+  `tests/test_settings_coverage.py` fails when a parameter is read from the environment without being
+  listed either in the panel or in this bootstrap set.
 
 ## Deployment Script and Stored Overrides
 

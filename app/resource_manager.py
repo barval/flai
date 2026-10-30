@@ -19,6 +19,8 @@ from typing import Any
 
 import requests
 
+from app.config import setting
+
 logger = logging.getLogger(__name__)
 
 # Per-module KV cache cost (MB per token, q4_0 quantization) — calibrated
@@ -300,7 +302,7 @@ class ResourceManager:
         and a recorded reason instead of a silent swap storm.
         """
         needed = int(needed_mb or self.ram_need_for(service))
-        reserve = int(os.getenv("RAM_RESERVE_MB", "1024"))
+        reserve = int(setting("RAM_RESERVE_MB", 1024))
         self.last_refusal = None
         self._refresh_ram()
         if self.hardware.available_ram_mb >= needed + reserve:
@@ -375,13 +377,13 @@ class ResourceManager:
         model plus the headroom a long prompt needs; the least recently used ones
         go first, one at a time.
         """
-        mode = os.getenv("VRAM_CO_RESIDENCY", "auto").strip().lower()
+        mode = str(setting("VRAM_CO_RESIDENCY", "auto")).strip().lower()
         if mode in ("off", "0", "false", "no") or not self.hardware.total_vram_mb:
             return [entry["name"] for entry in loaded]
 
         from app.vram_probe import DEFAULT_HEADROOM_MB, plan_unloads
 
-        headroom = int(os.getenv("VRAM_HEADROOM_MB", str(DEFAULT_HEADROOM_MB)))
+        headroom = int(setting("VRAM_HEADROOM_MB", DEFAULT_HEADROOM_MB))
         return plan_unloads(
             loaded,
             needed_mb=needed_mb,
@@ -731,7 +733,7 @@ class ResourceManager:
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
         if timeout is None:
-            timeout = int(os.getenv("VRAM_WAIT_TIMEOUT_S", "120"))
+            timeout = int(setting("VRAM_WAIT_TIMEOUT_S", 120))
 
         # CPU platform has no GPU memory to manage — nothing to wait for.
         if self.hardware.platform == "cpu":
@@ -1178,7 +1180,7 @@ class ResourceManager:
         upscaler_bytes = upscaler_path.stat().st_size if upscaler_path.exists() else 0
 
         if transformer_bytes == 0:
-            return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
+            return int(setting("LTX_VIDEO_VRAM_MB", 8500))
 
         persistent_bytes = transformer_bytes + upscaler_bytes
         peak_mb = int(persistent_bytes * 1.15 // (1024 * 1024))

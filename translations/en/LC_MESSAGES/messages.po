@@ -4889,3 +4889,7 @@ msgstr "Unknown skill: {name}"
 #: app/utils.py
 msgid "Available skills (load one with `activate_skill`):"
 msgstr "Available skills (load one with `activate_skill`):"
+
+#: app/tasks/research.py
+msgid "The tool call was rejected: its arguments did not match the tool."
+msgstr "The tool call was rejected: its arguments did not match the tool."

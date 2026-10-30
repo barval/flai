@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Added
+
+- **A task step can research, not just look something up.** `search` answers one query and `llm` writes one answer, so neither can correct itself when the first result is thin. The new `research` capability runs the shared engine loop inside one step — search, open what looks relevant, refine the query — with the read-only half of the chat catalogue (`web_search`, `read_page`, `rag_search`, `history_search`, `get_current_time`) and four rounds, the last of which withdraws the tools. It is still one plan entry and one checkpoint, and chat preemption aborts it between rounds through the step's own cancel flag.
+
 ### Changed
 
 - **The task planner can record its plan as a tool call.** The plan used to be JSON inside prose, so a small model that decorated the answer, wrote it in the wrong language or dropped a brace lost the whole plan. `write_plan` is a native tool whose schema lists the capabilities as an `enum` — the planner cannot name one that does not exist, which the text parser could only reject afterwards. The arguments are the same dict the parser already accepted, so nothing downstream changed, and a model that ignores the tool still plans from text. A model whose template has no tool calling gets one retry without tools, exactly the previous behaviour. The replan keeps prose: its answer is a plan tail, and a partial-plan schema would be larger than the text.

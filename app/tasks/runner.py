@@ -113,6 +113,7 @@ def _reasoning_chat(
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
 ) -> Generator[str | dict[str, Any], None, None]:
     """Yield reasoning-model chunks via the same client the workers use.
 
@@ -126,7 +127,9 @@ def _reasoning_chat(
     base = app.modules.get("base")
     if base is None or not hasattr(base, "llamacpp"):
         raise RuntimeError("base module (llamacpp client) is unavailable")
-    extra = {"tools": tools} if tools else {}
+    extra: dict[str, Any] = {"tools": tools} if tools else {}
+    if tool_choice:
+        extra["tool_choice"] = tool_choice
     yield from base.llamacpp.chat_stream(
         messages,
         model_type="reasoning",
@@ -145,6 +148,8 @@ def _call_reasoning(
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
     tools: list[dict[str, Any]] | None = None,
+    messages: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
 ) -> tuple[str, dict[str, int]]:
     """Stream one reasoning-model call for a step; abort mid-stream on cancel.
 
@@ -157,7 +162,8 @@ def _call_reasoning(
     THIS call; returns ``(text, usage)``. The executor stores usage into the
     step's extra for the chat-style header (🔢 tokens).
     """
-    messages = [{"role": "user", "content": prompt}]
+    if messages is None:
+        messages = [{"role": "user", "content": prompt}]
     transient_attempt = 0
     busy_attempt = 0
     busy_deadline = time.monotonic() + _gpu_wait_budget(app)
@@ -173,6 +179,7 @@ def _call_reasoning(
             temperature=temperature,
             status_callback=status_callback,
             tools=tools,
+            tool_choice=tool_choice,
         ):
             if cancel_check():
                 finish_usage_account(account_id)
@@ -283,6 +290,39 @@ def _run_llm_step(
     user_id: str = "",
 ) -> str:
     """Build the step prompt from the task_step template and stream the model."""
+    prompt = build_step_prompt(
+        app,
+        step,
+        context_digest,
+        lang,
+        response_style,
+        task_request,
+        plan_text,
+        user_answers,
+        user_id,
+    )
+    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
+    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
+    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
+    return text
+
+
+def build_step_prompt(
+    app: Flask,
+    step: dict[str, Any],
+    context_digest: str,
+    lang: str,
+    response_style: str,
+    task_request: str,
+    plan_text: str,
+    user_answers: str,
+    user_id: str,
+) -> str:
+    """The task_step prompt for one step.
+
+    Shared by the single-call runner and the research loop so a step reads the
+    same whether it is answered once or after tool rounds.
+    """
     from app.utils import format_prompt, get_current_time_in_timezone
     from modules.base import get_style_instruction, response_language_name
 
@@ -302,10 +342,7 @@ def _run_llm_step(
     prompt = format_prompt("task_step.template", params, lang=lang)
     if not prompt:
         raise RuntimeError("task_step prompt template unavailable")
-    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
-    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
-    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
-    return text
+    return prompt
 
 
 def _run_continuity_step(
@@ -738,6 +775,12 @@ def _run_calculate(context: DirectStepContext) -> Any:
     return _run_calculate_step(context.step)
 
 
+def _run_research(context: DirectStepContext) -> Any:
+    from app.tasks.research import run_research
+
+    return run_research(context)
+
+
 def _run_continuity(context: DirectStepContext) -> Any:
     return _run_continuity_step(
         context.app,
@@ -760,11 +803,12 @@ DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
     "history": _run_history,
     "calculate": _run_calculate,
     "continuity": _run_continuity,
+    "research": _run_research,
 }
 
 # Tools that stream the reasoning model themselves, so the step header reports
 # THEIR model and token usage rather than the checkpoint verifier's.
-OWN_METADATA_TOOLS = frozenset({"llm", "continuity"})
+OWN_METADATA_TOOLS = frozenset({"llm", "continuity", "research"})
 # Tools whose failure reason is worth showing verbatim (an unknown variable, an
 # unparseable sheet) instead of a bare "tool error".
 ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity"})

@@ -58,6 +58,18 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         checkpoint_hint=N_("Name the fact or data the search must confirm."),
     ),
     ToolSpec(
+        id="research",
+        exec="direct",
+        badge=("🔬", N_("Research")),
+        label=N_("Research"),
+        description=N_(
+            "Research a question across the web and the user's documents in several rounds: "
+            "search, open what looks relevant, refine the query. Use it when one search is "
+            "not enough and the answer must be cross-checked against more than one source."
+        ),
+        checkpoint_hint=N_("Name the facts the research must establish and agree on."),
+    ),
+    ToolSpec(
         id="rag",
         exec="direct",
         badge=("📄", N_("Document search")),

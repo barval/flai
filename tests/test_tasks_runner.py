@@ -108,7 +108,7 @@ def test_aborted_mid_stream(test_app):
         calls["n"] += 1
         return calls["n"] > 1  # pre-check False, first in-stream check True
 
-    def chunks(app, messages, lang, temperature=None, status_callback=None, tools=None):
+    def chunks(app, messages, lang, temperature=None, status_callback=None, tools=None, tool_choice=None):
         yield "partial "
         yield "text"
 

@@ -33,7 +33,14 @@ from .db import (
 from .events import get_events_publisher
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
-from .tools import MAX_TOOL_ITERATIONS, execute_tool, select_tool_definitions
+from .tools import (
+    MAX_TOOL_ITERATIONS,
+    execute_tool,
+    get_tool_definitions,
+    invalid_arguments_message,
+    parse_tool_arguments,
+    select_tool_definitions,
+)
 from .utils import (
     N_,
     begin_usage_account,
@@ -5030,14 +5037,23 @@ class RedisRequestQueue:
         """
         messages.append({"role": "assistant", "content": assistant_content, "tool_calls": tool_calls})
         last_tool_result = ""
+        schemas = {item["function"]["name"]: item["function"].get("parameters") for item in get_tool_definitions(lang)}
         for tc in tool_calls:
             tc_id = tc.get("id", "")
             func = tc.get("function", {})
             tool_name = func.get("name", "")
-            try:
-                arguments = json.loads(func.get("arguments", "{}"))
-            except json.JSONDecodeError:
-                arguments = {}
+            arguments, usable = parse_tool_arguments(func.get("arguments", "{}"), schemas.get(tool_name))
+            if not usable:
+                # An unparsable call used to run with {} — a search with an empty
+                # query, which teaches the model nothing about what went wrong.
+                self.logger.warning(f"{log_label}: {tool_name} arguments are not valid JSON, rejecting the call")
+                messages.append(
+                    {"role": "tool", "tool_call_id": tc_id, "content": invalid_arguments_message(lang)}
+                )
+                self._publish_stream_event(
+                    task, "tool_result", {"tool_name": tool_name, "result_preview": "invalid arguments"}
+                )
+                continue
 
             self._publish_stream_event(task, "tool_call", {"tool_name": tool_name, "arguments": arguments})
             self.logger.info(f"{log_label}: {tool_name}({arguments})")

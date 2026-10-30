@@ -847,6 +847,105 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     return chosen or definitions
 
 
+_COERCIBLE_TYPES = {
+    "integer": int,
+    "number": float,
+    "boolean": "boolean",
+    "string": str,
+}
+
+
+def _coerce_value(value: Any, wanted: str) -> Any:
+    """Coerce one value toward the schema's type, or return it unchanged.
+
+    Anything ambiguous is left alone: a wrong coercion is worse than a failed
+    call, because it makes the tool answer a question nobody asked.
+    """
+    if wanted == "boolean":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            return value.strip().lower() == "true"
+        return value
+    if wanted in ("integer", "number"):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value.strip()) if wanted == "integer" else float(value.strip())
+            except ValueError:
+                return value
+        return value
+    if wanted == "object" and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return parsed if isinstance(parsed, dict) else value
+    if wanted == "array" and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return parsed if isinstance(parsed, list) else value
+    return value
+
+
+def repair_tool_arguments(arguments: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Bring arguments closer to the shape the tool's schema declares.
+
+    A small model sends ``"20"`` for an integer, ``"false"`` for a boolean, a
+    stringified object for an object, and ``null`` placeholders for fields it
+    left empty. All three are silent failures otherwise: the executor raises on
+    a string comparison or the tool answers a different question.
+    """
+    if not schema:
+        return arguments
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or ())
+    repaired: dict[str, Any] = {}
+    for key, value in arguments.items():
+        declared = properties.get(key) or {}
+        wanted = declared.get("type")
+        if value is None and key not in required:
+            continue
+        if isinstance(wanted, str):
+            value = _coerce_value(value, wanted)
+        repaired[key] = value
+    return repaired
+
+
+def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[str, Any], bool]:
+    """Parse the argument string of a tool call.
+
+    Returns ``(arguments, usable)``. ``usable`` is False when the string is not
+    valid JSON at all: the caller must then reject the call instead of running
+    the tool with empty arguments, which is how a search runs with an empty
+    query and the model learns nothing from the failure.
+    """
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return {}, True
+    if isinstance(raw, dict):
+        return repair_tool_arguments(raw, schema), True
+    if not isinstance(raw, str):
+        return {}, False
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {}, False
+    if not isinstance(parsed, dict):
+        return {}, False
+    return repair_tool_arguments(parsed, schema), True
+
+
+def invalid_arguments_message(lang: str = "ru") -> str:
+    """What the model is told when its tool call could not be parsed."""
+    with force_locale(lang):
+        return str(_("The tool call was rejected: its arguments were not valid JSON."))
+
+
 def bound_tool_output(text: str, limit: int = TOOL_OUTPUT_MAX_CHARS) -> str:
     """Cap a tool result, keeping both ends and saying what was dropped.
 

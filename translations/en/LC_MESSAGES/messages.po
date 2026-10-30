@@ -4879,3 +4879,7 @@ msgstr "Select at least one folder."
 #: app/tools.py
 msgid "The tool could not complete the request."
 msgstr "The tool could not complete the request."
+
+#: app/tools.py
+msgid "The tool call was rejected: its arguments were not valid JSON."
+msgstr "The tool call was rejected: its arguments were not valid JSON."

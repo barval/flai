@@ -4912,3 +4912,7 @@ msgstr "Выберите хотя бы одну папку."
 #: app/tools.py
 msgid "The tool could not complete the request."
 msgstr "Инструмент не смог выполнить запрос."
+
+#: app/tools.py
+msgid "The tool call was rejected: its arguments were not valid JSON."
+msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."

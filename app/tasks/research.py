@@ -19,19 +19,15 @@ from typing import TYPE_CHECKING, Any
 
 from app.engine.loop import Turn, run_tool_loop
 from app.engine.session import ChatSession
+from app.tools import ROLE_TOOLS
 
 if TYPE_CHECKING:
     from app.tasks.runner import DirectStepContext
 
-# Everything here only reads. A task step must not be able to place an image,
-# restart a container or talk to a camera through a loop it did not plan for.
-RESEARCH_TOOLS: tuple[str, ...] = (
-    "web_search",
-    "read_page",
-    "rag_search",
-    "history_search",
-    "get_current_time",
-)
+# Everything here only reads. The set lives in the catalogue (``app.tools``), so
+# adding a tool to the chat profile never quietly widens a task step: the step
+# asks for its role and receives what that role was granted.
+RESEARCH_TOOLS: tuple[str, ...] = tuple(sorted(ROLE_TOOLS["research"]))
 
 RESEARCH_MAX_ROUNDS = 4
 
@@ -45,7 +41,7 @@ def run_research(context: DirectStepContext) -> str:
     existing preemption path handles it exactly as it handles a single call.
     """
     from app.tasks import runner
-    from app.tools import execute_tool, get_tool_definitions, parse_tool_arguments
+    from app.tools import definitions_for_role, execute_tool, parse_tool_arguments
 
     app = context.app
     step = context.step
@@ -63,7 +59,7 @@ def run_research(context: DirectStepContext) -> str:
         context.user_answers,
         context.user_id,
     )
-    tools = [item for item in get_tool_definitions(lang) if item["function"]["name"] in RESEARCH_TOOLS]
+    tools = definitions_for_role("research", lang)
     if not tools:
         raise RuntimeError("no research tool is available on this installation")
 

@@ -366,6 +366,38 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
     return definitions + skill_tool_definitions() + mcp_tool_definitions()
 
 
+# A restricted profile's catalogue, named here rather than in the module that
+# runs it: "which tools may a research step reach" is a property of the tool
+# catalogue, and a tuple living in the runner was the same drift the capability
+# manifest put an end to. A role absent from this map is unrestricted (chat).
+ROLE_TOOLS: dict[str, frozenset[str]] = {
+    "research": frozenset(
+        {
+            "web_search",
+            "read_page",
+            "rag_search",
+            "history_search",
+            "get_current_time",
+        }
+    ),
+}
+
+
+def definitions_for_role(role: str, lang: str = "ru") -> list[dict[str, Any]]:
+    """The catalogue one profile may see.
+
+    Pruning is physical: a tool outside the role's set is absent from the list
+    the model is given, so it cannot call what it was never shown. An unknown
+    role means the full catalogue — the restricted roles are the exception, and
+    a typo in a role name must not silently empty a profile's tool list.
+    """
+    definitions = get_tool_definitions(lang)
+    allowed = ROLE_TOOLS.get(role)
+    if allowed is None:
+        return definitions
+    return [item for item in definitions if item["function"]["name"] in allowed]
+
+
 def skill_tool_definitions() -> list[dict[str, Any]]:
     """The activation tool, or nothing when no skill is installed."""
     try:

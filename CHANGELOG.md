@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Changed
+
+- **A profile's tools are pruned by role, not by prose.** `ROLE_TOOLS` in `app/tools.py` lists what a restricted profile may see — today only the research step, with the read-only half of the catalogue — and `definitions_for_role()` filters the definitions themselves, so a tool outside the set is absent rather than discouraged. Chat stays the unrestricted default, and the research step's tool tuple is now derived from the map instead of repeated in its runner.
+
 ### Added
 
 - **A task step can research, not just look something up.** `search` answers one query and `llm` writes one answer, so neither can correct itself when the first result is thin. The new `research` capability runs the shared engine loop inside one step — search, open what looks relevant, refine the query — with the read-only half of the chat catalogue (`web_search`, `read_page`, `rag_search`, `history_search`, `get_current_time`) and four rounds, the last of which withdraws the tools. It is still one plan entry and one checkpoint, and chat preemption aborts it between rounds through the step's own cancel flag.

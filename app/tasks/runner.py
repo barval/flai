@@ -29,6 +29,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Generator
+from dataclasses import dataclass
 from typing import Any
 
 from flask import Flask
@@ -659,6 +660,86 @@ def _extract_math_expression(text: str) -> str:
     return best.replace(",", ".").strip()
 
 
+@dataclass(frozen=True)
+class DirectStepContext:
+    """Everything a direct runner may need, assembled once per step."""
+
+    app: Flask
+    step: dict[str, Any]
+    context_digest: str
+    cancel_check: Callable[[], bool]
+    lang: str
+    response_style: str
+    task_request: str
+    plan_text: str
+    user_answers: str
+    user_id: str
+    doc_ids: list[str] | None
+
+
+def _run_llm(context: DirectStepContext) -> Any:
+    return _run_llm_step(
+        context.app,
+        context.step,
+        context.context_digest,
+        context.cancel_check,
+        context.lang,
+        context.response_style,
+        context.task_request,
+        context.plan_text,
+        context.user_answers,
+        context.user_id,
+    )
+
+
+def _run_search(context: DirectStepContext) -> Any:
+    return _run_search_step(context.app, context.step, context.user_id, context.lang)
+
+
+def _run_rag(context: DirectStepContext) -> Any:
+    return _run_rag_step(context.app, context.step, context.user_id, context.lang, context.doc_ids, context.cancel_check)
+
+
+def _run_history(context: DirectStepContext) -> Any:
+    return _run_history_step(context.app, context.step, context.user_id, context.lang)
+
+
+def _run_calculate(context: DirectStepContext) -> Any:
+    return _run_calculate_step(context.step)
+
+
+def _run_continuity(context: DirectStepContext) -> Any:
+    return _run_continuity_step(
+        context.app,
+        context.step,
+        context.context_digest,
+        context.cancel_check,
+        context.lang,
+        context.task_request,
+        context.plan_text,
+    )
+
+
+# The dispatch table. Keyed by the capability ids the manifest marks as
+# ``direct``; tests/test_direct_runner_table.py asserts the two agree, so a
+# capability cannot be declared and silently un-runnable.
+DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
+    "llm": _run_llm,
+    "search": _run_search,
+    "rag": _run_rag,
+    "history": _run_history,
+    "calculate": _run_calculate,
+    "continuity": _run_continuity,
+}
+
+# Tools that stream the reasoning model themselves, so the step header reports
+# THEIR model and token usage rather than the checkpoint verifier's.
+OWN_METADATA_TOOLS = frozenset({"llm", "continuity"})
+# Tools whose failure reason is worth showing verbatim (an unknown variable, an
+# unparseable sheet) instead of a bare "tool error".
+ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity"})
+
+
 def run_direct_step(
     app: Flask,
     step: dict[str, Any],
@@ -690,38 +771,31 @@ def run_direct_step(
         tool = str(step.get("tool", "llm"))
         start = time.monotonic()
         try:
-            if tool == "llm":
-                raw = _run_llm_step(
-                    app,
-                    step,
-                    context_digest,
-                    cancel_check,
-                    lang,
-                    response_style,
-                    task_request,
-                    plan_text,
-                    user_answers,
-                    user_id,
-                )
-            elif tool == "search":
-                raw = _run_search_step(app, step, user_id, lang)
-            elif tool == "rag":
-                raw = _run_rag_step(app, step, user_id, lang, doc_ids, cancel_check)
-            elif tool == "history":
-                raw = _run_history_step(app, step, user_id, lang)
-            elif tool == "calculate":
-                raw = _run_calculate_step(step)
-            elif tool == "continuity":
-                raw = _run_continuity_step(app, step, context_digest, cancel_check, lang, task_request, plan_text)
-            else:
+            runner = DIRECT_RUNNERS.get(tool)
+            if runner is None:
                 raise RuntimeError(f"unknown direct step tool: {tool}")
+            raw = runner(
+                DirectStepContext(
+                    app=app,
+                    step=step,
+                    context_digest=context_digest,
+                    cancel_check=cancel_check,
+                    lang=lang,
+                    response_style=response_style,
+                    task_request=task_request,
+                    plan_text=plan_text,
+                    user_answers=user_answers,
+                    user_id=user_id,
+                    doc_ids=doc_ids,
+                )
+            )
         except StepAborted:
             raise
         except Exception as e:
             err_text = str(e) or "tool error"
             # calculate/continuity surface the failure reason (an unknown
             # variable, an unparseable sheet) instead of a bare "tool error".
-            message = err_text if tool in ("calculate", "continuity") else ""
+            message = err_text if tool in ERROR_TEXT_TOOLS else ""
             logger.error(f"direct step {step.get('id', '?')} tool={tool} failed: {e}")
             return {
                 "result": message,
@@ -744,7 +818,7 @@ def run_direct_step(
             "status": "passed" if checkpoint.get("verdict") else "failed",
             "checkpoint": checkpoint,
         }
-        if tool in ("llm", "continuity"):
+        if tool in OWN_METADATA_TOOLS:
             # Chat-style header data (model + 🔢 tokens) for the conversation
             # view: both tools stream the reasoning model themselves.
             config = get_model_config("reasoning") or {}

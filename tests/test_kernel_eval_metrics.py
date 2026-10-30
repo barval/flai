@@ -9,8 +9,8 @@ from app.kernel_eval import EvalCase, load_dataset, score
 
 @pytest.mark.unit
 def test_identical_predictions_score_one():
-    cases = [EvalCase("q", "ru", "rag", (), ""), EvalCase("q2", "en", "search", ("web_search",), "")]
-    report = score([("rag", ()), ("search", ("web_search",))], cases)
+    cases = [EvalCase("q", "ru", "none", (), ""), EvalCase("q2", "en", "none", ("web_search",), "")]
+    report = score([("none", ()), ("none", ("web_search",))], cases)
     assert report["intent_accuracy"] == 1.0
     assert report["tool_exact"] == 1.0
     assert report["false_tools"] == 0
@@ -18,8 +18,8 @@ def test_identical_predictions_score_one():
 
 @pytest.mark.unit
 def test_a_wrong_tool_is_counted_even_when_the_intent_matches():
-    cases = [EvalCase("q", "ru", "rag", (), "")]
-    report = score([("rag", ("image_generate",))], cases)
+    cases = [EvalCase("q", "ru", "none", (), "")]
+    report = score([("none", ("image_generate",))], cases)
     assert report["intent_accuracy"] == 1.0
     assert report["false_tools"] == 1
 
@@ -37,6 +37,16 @@ def test_the_report_splits_by_language():
     report = score([("rag", ()), ("rag", ())], cases)
     assert report["by_lang"]["ru"]["intent_accuracy"] == 1.0
     assert report["by_lang"]["en"]["intent_accuracy"] == 0.0
+
+
+@pytest.mark.unit
+def test_tools_are_only_scored_for_the_chat_branch():
+    # A rag request is handed to the rag subsystem, which has its own tools, so a
+    # selection there is not an error.
+    cases = [EvalCase("q", "ru", "rag", (), "")]
+    report = score([("rag", ("rag_search",))], cases)
+    assert report["tool_cases"] == 0
+    assert report["false_tools"] == 0
 
 
 @pytest.mark.unit

@@ -194,6 +194,13 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
     }
 
 
+# What the backend is actually asked for. llama-server (build b11889 as shipped in
+# llama-swap v267) accepts only "text" or "json_object" and rejects a full schema
+# with HTTP 400, so JSON mode plus the enum check in this module is the strongest
+# guarantee the runtime gives us. The schema below stays as documentation of the
+# shape and as the contract the parser enforces.
+KERNEL_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
+
 # The schema used for constrained decoding. It is deliberately a small subset of
 # JSON Schema (objects, arrays, enums, primitives) because llama.cpp converts the
 # schema to a grammar and only supports that subset.

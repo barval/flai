@@ -760,7 +760,7 @@ class BaseModule(TranslationMixin):
         handles.
         """
         from app.kernel import (
-            KERNEL_RESPONSE_SCHEMA,
+            KERNEL_RESPONSE_FORMAT,
             build_kernel_catalog,
             build_kernel_prompt,
             decision_to_route,
@@ -788,7 +788,7 @@ class BaseModule(TranslationMixin):
             model_type="multimodal",
             lang=lang,
             temperature=0,
-            response_format=KERNEL_RESPONSE_SCHEMA if self.KERNEL_CONSTRAINED else None,
+            response_format=KERNEL_RESPONSE_FORMAT if self.KERNEL_CONSTRAINED else None,
         )
         decision = parse_kernel_decision(reply if isinstance(reply, str) else None)
         if decision is None:

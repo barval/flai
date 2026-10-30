@@ -19,8 +19,12 @@ Choose exactly one:
 # KEY RULES
 - Past tense about the conversation itself is history, not the action it mentions.
 - A request to extract facts that live in the user's documents is rag, even when it describes past events.
+- A question about the current time or date is none, never search.
+- Simple arithmetic is none: the calculator tool is enough, and it is never reasoning.
 - Converting an amount at a current rate or price is search.
-- One link plus a question about that page's content is none: the page is opened by a tool, not by a web search.
+- One link plus a question about that page's content is none, never search. The page itself is the source:
+  "what is this project <URL>?", "what does this page say?" -> none, the read_page tool opens it.
+  A web search would answer from strangers' pages instead of the one the user gave.
 - A request to write code that draws or animates something is reasoning, not image or video.
 - A request to see a room NOW is camera; "what did we see earlier" is history.
 

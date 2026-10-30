@@ -156,6 +156,8 @@ TASK_VRAM_WAIT_S=600            # How long one direct step waits for a busy GPU 
 ```bash
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification
 ROUTER_CONTEXT_MSG_CHARS=240 # Max chars of one message in the router's session-context digest
+KERNEL_ENABLED=0             # 1 — одно JSON-решение (намерение, фраза, источники, инструменты) вместо классификации по маркерам
+KERNEL_CONSTRAINED=1         # Просить у сервера ответ в виде JSON-объекта; 0 — только для бэкенда, отвергающего response_format
 WHISPER_GPU=false           # Whisper на GPU: запускайте --profile with-whisper-gpu (TTS — с --profile with-tts-*); модель занимает WHISPER_VRAM_MB видеопамяти
 WHISPER_VRAM_MB=3000        # Бюджет VRAM для CUDA-контекста ASR-контейнера
 CPU_REASONING_TTL=60          # Только CPU: секунды простоя до выгрузки модели рассуждений из RAM (не используется, если она помещается рядом с чат-моделью)

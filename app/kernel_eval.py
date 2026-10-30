@@ -19,6 +19,11 @@ from typing import Any
 
 DEFAULT_TIME = "2026-01-01 12:00"
 
+# Only the chat branch consumes a tool selection: every other intent hands the
+# request to a subsystem with its own tools. Scoring tool choice for those cases
+# would count a harmless field as an error.
+TOOL_SCORING_INTENTS: tuple[str, ...] = ("none",)
+
 
 @dataclass(frozen=True)
 class EvalCase:
@@ -64,6 +69,7 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
         return {
             "cases": 0,
             "intent_accuracy": 0.0,
+            "tool_cases": 0,
             "tool_exact": 0.0,
             "false_tools": 0,
             "confusions": {},
@@ -71,6 +77,7 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
         }
 
     intent_hits = 0
+    tool_cases = 0
     tool_hits = 0
     false_tools = 0
     confusions: dict[tuple[str, str], int] = {}
@@ -83,26 +90,33 @@ def score(predictions: list[tuple[str, tuple[str, ...]]], cases: list[EvalCase])
         else:
             key = (case.expected_intent, intent)
             confusions[key] = confusions.get(key, 0) + 1
-        if set(tools) == expected:
-            tool_hits += 1
-        false_tools += len(set(tools) - expected)
+        if case.expected_intent in TOOL_SCORING_INTENTS:
+            tool_cases += 1
+            if set(tools) == expected:
+                tool_hits += 1
+            false_tools += len(set(tools) - expected)
 
-        bucket = by_lang.setdefault(case.lang, {"cases": 0, "intent_hits": 0, "tool_hits": 0})
+        bucket = by_lang.setdefault(case.lang, {"cases": 0, "intent_hits": 0, "tool_hits": 0, "tool_cases": 0})
         bucket["cases"] += 1
         bucket["intent_hits"] += int(intent == case.expected_intent)
-        bucket["tool_hits"] += int(set(tools) == expected)
+        if case.expected_intent in TOOL_SCORING_INTENTS:
+            bucket["tool_cases"] += 1
+            bucket["tool_hits"] += int(set(tools) == expected)
 
     return {
         "cases": total,
         "intent_accuracy": round(intent_hits / total, 4),
-        "tool_exact": round(tool_hits / total, 4),
+        "tool_cases": tool_cases,
+        "tool_exact": round(tool_hits / tool_cases, 4) if tool_cases else 0.0,
         "false_tools": false_tools,
         "confusions": confusions,
         "by_lang": {
             lang: {
                 "cases": bucket["cases"],
                 "intent_accuracy": round(bucket["intent_hits"] / bucket["cases"], 4),
-                "tool_exact": round(bucket["tool_hits"] / bucket["cases"], 4),
+                "tool_exact": round(bucket["tool_hits"] / bucket["tool_cases"], 4)
+                if bucket["tool_cases"]
+                else 0.0,
             }
             for lang, bucket in by_lang.items()
         },

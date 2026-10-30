@@ -71,4 +71,4 @@ def test_kernel_is_asked_once_with_the_schema_when_constrained(app):
     assert len(seen) == 1
     assert seen[0]["model_type"] == "multimodal"
     assert seen[0]["temperature"] == 0
-    assert seen[0]["response_format"]["properties"]["intent"]["enum"]
+    assert seen[0]["response_format"] == {"type": "json_object"}

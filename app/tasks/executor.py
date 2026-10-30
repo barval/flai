@@ -1325,6 +1325,61 @@ def _results_match(final_text: str, step_result: str) -> bool:
     return ratio >= 0.9
 
 
+def write_plan_tool() -> dict[str, Any]:
+    """The plan as a native tool call.
+
+    The planner used to emit the plan as JSON inside prose, and a small model
+    that decorates it (or writes it in the answer language, or forgets a brace)
+    loses the whole plan. As a tool call the shape is enforced by the schema and
+    the capability list is an enum — the planner physically cannot name a tool
+    that does not exist, which the text parser can only reject afterwards.
+
+    The argument object is the same dict the text parser accepts, so the caller
+    serializes it back to JSON and every downstream stage is unchanged.
+    """
+    from app.tasks.tools import get_capabilities
+
+    known = sorted({str(item.get("id") or "") for item in get_capabilities()} - {"", "continuity"})
+    return {
+        "type": "function",
+        "function": {
+            "name": "write_plan",
+            "description": "Record the execution plan. Call this exactly once, with every step of the plan.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short title of the plan"},
+                    "steps": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "goal": {"type": "string", "description": "What this step must produce"},
+                                "tool": {"type": "string", "enum": known, "description": "Capability to run"},
+                                "checkpoint_criteria": {
+                                    "type": "string",
+                                    "description": "How the result is judged complete",
+                                },
+                                "user_input_expected": {
+                                    "type": "boolean",
+                                    "description": "The step asks the user a question",
+                                },
+                                "source_step": {
+                                    "type": "integer",
+                                    "description": "Earlier step whose result this step edits (1-based)",
+                                },
+                            },
+                            "required": ["goal", "tool", "checkpoint_criteria"],
+                        },
+                    },
+                },
+                "required": ["steps"],
+            },
+        },
+    }
+
+
 def _run_planner(app: Flask, prompt: str, cancel_check, lang: str, status_callback=None) -> str:
     """One reasoning-model call for the plan phase (text only).
 
@@ -1343,8 +1398,34 @@ def _run_planner(app: Flask, prompt: str, cancel_check, lang: str, status_callba
     capabilities block, not by sampling luck.
     """
     global _LAST_PLANNER_USAGE
-    text, usage = _run_planner_full(app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback)
+    from app.tasks import runner
+    from app.tools import parse_tool_arguments
+
+    text, usage = _run_planner_full(
+        app,
+        prompt,
+        cancel_check,
+        lang,
+        temperature=0,
+        status_callback=status_callback,
+        tools=[write_plan_tool()],
+    )
+    if runner._is_error_text(text or ""):
+        # A model whose template has no tool calling answers the tools payload
+        # with an error. The plan is the task's critical path, so the call is
+        # repeated without tools and the text parser takes over — exactly the
+        # behaviour that shipped before.
+        app.logger.warning(f"planner: tool calling failed, retrying as text: {(text or '')[:200]}")
+        text, usage = _run_planner_full(
+            app, prompt, cancel_check, lang, temperature=0, status_callback=status_callback
+        )
     _LAST_PLANNER_USAGE = usage or {}
+    calls = runner.last_tool_calls()
+    if calls:
+        arguments, usable = parse_tool_arguments(calls[0].get("function", {}).get("arguments"), None)
+        if usable:
+            # The same dict the text parser would have read out of prose.
+            return json.dumps(arguments, ensure_ascii=False)
     return text
 
 
@@ -1372,13 +1453,25 @@ def _run_replan(app: Flask, prompt: str, cancel_check, lang: str, status_callbac
 
 
 def _run_planner_full(
-    app: Flask, prompt: str, cancel_check, lang: str, temperature: float | None = None, status_callback=None
+    app: Flask,
+    prompt: str,
+    cancel_check,
+    lang: str,
+    temperature: float | None = None,
+    status_callback=None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, int]]:
     """Same call, also returning the real token usage (final-summary header)."""
     from app.tasks import runner
 
     return runner._call_reasoning(
-        app, prompt, cancel_check, lang=lang, temperature=temperature, status_callback=status_callback
+        app,
+        prompt,
+        cancel_check,
+        lang=lang,
+        temperature=temperature,
+        status_callback=status_callback,
+        tools=tools,
     )
 
 

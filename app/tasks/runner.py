@@ -112,6 +112,7 @@ def _reasoning_chat(
     lang: str = "ru",
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> Generator[str | dict[str, Any], None, None]:
     """Yield reasoning-model chunks via the same client the workers use.
 
@@ -125,8 +126,14 @@ def _reasoning_chat(
     base = app.modules.get("base")
     if base is None or not hasattr(base, "llamacpp"):
         raise RuntimeError("base module (llamacpp client) is unavailable")
+    extra = {"tools": tools} if tools else {}
     yield from base.llamacpp.chat_stream(
-        messages, model_type="reasoning", lang=lang, temperature=temperature, status_callback=status_callback
+        messages,
+        model_type="reasoning",
+        lang=lang,
+        temperature=temperature,
+        status_callback=status_callback,
+        **extra,
     )
 
 
@@ -137,6 +144,7 @@ def _call_reasoning(
     lang: str = "ru",
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, int]]:
     """Stream one reasoning-model call for a step; abort mid-stream on cancel.
 
@@ -157,13 +165,24 @@ def _call_reasoning(
         account_id = f"task-call:{uuid.uuid4()}"
         begin_usage_account(account_id)
         text = ""
-        for chunk in _reasoning_chat(app, messages, lang, temperature=temperature, status_callback=status_callback):
+        tool_calls: list[dict[str, Any]] = []
+        for chunk in _reasoning_chat(
+            app,
+            messages,
+            lang,
+            temperature=temperature,
+            status_callback=status_callback,
+            tools=tools,
+        ):
             if cancel_check():
                 finish_usage_account(account_id)
                 raise StepAborted("step cancelled during reasoning generation")
             if isinstance(chunk, dict):
+                if chunk.get("type") == "tool_calls":
+                    tool_calls = list(chunk.get("tool_calls") or [])
                 continue
             text += chunk
+        _LAST_TOOL_CALLS[:] = tool_calls
         if cancel_check():
             finish_usage_account(account_id)
             raise StepAborted("step cancelled at end of reasoning generation")
@@ -197,6 +216,17 @@ def _call_reasoning(
             app.logger.warning(f"call_reasoning transient error on attempt 1, retrying: {text[:200]}")
             continue
         return text, totals
+
+
+# The tool calls of the LAST reasoning call (empty for every caller that does
+# not offer tools). A module-level list, like ``_LAST_PLANNER_USAGE``: the
+# executor thread is the only planner caller, so nothing races.
+_LAST_TOOL_CALLS: list[dict[str, Any]] = []
+
+
+def last_tool_calls() -> list[dict[str, Any]]:
+    """The tool calls of the last reasoning call, if it was offered any."""
+    return list(_LAST_TOOL_CALLS)
 
 
 _GPU_BUSY_PREFIXES = ("GPU memory ", "Память GPU ", "Проверка памяти GPU")

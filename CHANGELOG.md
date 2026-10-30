@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Changed
+
+- **The task planner can record its plan as a tool call.** The plan used to be JSON inside prose, so a small model that decorated the answer, wrote it in the wrong language or dropped a brace lost the whole plan. `write_plan` is a native tool whose schema lists the capabilities as an `enum` — the planner cannot name one that does not exist, which the text parser could only reject afterwards. The arguments are the same dict the parser already accepted, so nothing downstream changed, and a model that ignores the tool still plans from text. A model whose template has no tool calling gets one retry without tools, exactly the previous behaviour. The replan keeps prose: its answer is a plan tail, and a partial-plan schema would be larger than the text.
+
 ### Added
 
 - **Skills in the portable `SKILL.md` format** — a skill is a folder under `skills/` with a `name` / `description` / `allowed-tools` frontmatter, the same shape Claude Code, opencode and pi use, so a skill written for FLAI works in those harnesses and one written there works here. The system prompt receives only the catalog (one line per skill, injected through `{skill_catalog}` in `chat.template`); a body — which can be thousands of tokens — arrives as the result of the `activate_skill` tool, advertised only when at least one skill is installed. Discovery is cached for a minute, a file with broken frontmatter is skipped with a warning rather than disabling its neighbours, and a folder whose name differs from the skill's `name` is rejected, which is what makes a duplicate name impossible. `SKILL.<lang>.md` beside the file carries a localized description and body. `skills/web-research/` ships as the example.

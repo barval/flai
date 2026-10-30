@@ -9,10 +9,12 @@ deliberate:
 * the mechanisms already exist in the codebase as seven scattered constants,
   which this module names and groups.
 
-Nothing reads these presets yet — the executor still uses its own config keys.
-Fixing the current values as ``norm`` is what makes the later profile work safe:
-a refactor that moves them silently now fails a test instead of changing
-behaviour in production.
+The presets are the **defaults** of the config keys that already exist:
+``DEPTH_LEVEL`` (default ``norm``) fills ``TASK_MAX_STEPS``, ``TASK_STEP_MAX_ATTEMPTS``
+and ``TASK_MAX_REVISIONS`` and sets ``DEPTH_VERIFY``. An explicit key in the
+environment still wins, so an operator can tune one number without adopting a
+whole profile, and ``norm`` reproduces the historical values exactly — the wiring
+changes nothing until someone chooses a different level.
 """
 
 from __future__ import annotations
@@ -59,8 +61,10 @@ DEPTH_SOURCES: dict[str, str] = {
     "TASK_MAX_REVISIONS": "revisions",
     "TASK_MAX_STEPS": "turns",
     "RLM_MAX_STEPS": "turns",
-    "MAX_TOOL_ITERATIONS": "turns",
 }
+# ``MAX_TOOL_ITERATIONS`` is deliberately absent: chat is bounded by the user's
+# patience, not by a background budget. Spending forty rounds on one message is a
+# defect, not depth, so the chat loop keeps its own constant.
 
 
 def depth_for(level: str) -> DepthBudget:
@@ -70,3 +74,18 @@ def depth_for(level: str) -> DepthBudget:
     otherwise turn into an unbounded loop.
     """
     return DEPTH_PRESETS.get(level, DEPTH_PRESETS["norm"])
+
+
+def depth_defaults(level: str) -> dict[str, int | str]:
+    """The config values a depth level implies.
+
+    Used as the *default* of each config key: an explicit environment value still
+    wins, so one number can be tuned without adopting a profile.
+    """
+    budget = depth_for(level)
+    return {
+        "TASK_MAX_STEPS": budget.turns,
+        "TASK_STEP_MAX_ATTEMPTS": budget.attempts,
+        "TASK_MAX_REVISIONS": budget.revisions,
+        "DEPTH_VERIFY": budget.verify,
+    }

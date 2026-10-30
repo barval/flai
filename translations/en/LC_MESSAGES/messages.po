@@ -4893,3 +4893,79 @@ msgstr "Available skills (load one with `activate_skill`):"
 #: app/tasks/research.py
 msgid "The tool call was rejected: its arguments did not match the tool."
 msgstr "The tool call was rejected: its arguments did not match the tool."
+
+#: app/templates/admin.html
+msgid "MCP"
+msgstr "MCP"
+
+#: app/templates/admin.html
+msgid "Offer tools from MCP servers to the model"
+msgstr "Offer tools from MCP servers to the model"
+
+#: app/templates/admin.html
+msgid "Request timeout (s)"
+msgstr "Request timeout (s)"
+
+#: app/templates/admin.html
+msgid "Token"
+msgstr "Token"
+
+#: app/templates/admin.html
+msgid "Allowed tools"
+msgstr "Allowed tools"
+
+#: app/templates/admin.html
+msgid "Tools"
+msgstr "Tools"
+
+#: app/templates/admin.html
+msgid "No MCP servers configured"
+msgstr "No MCP servers configured"
+
+#: app/templates/admin.html
+msgid "Token (optional)"
+msgstr "Token (optional)"
+
+#: app/templates/admin.html
+msgid "Allowed tools, comma separated"
+msgstr "Allowed tools, comma separated"
+
+#: app/templates/admin.html
+msgid "Add server"
+msgstr "Add server"
+
+#: app/templates/admin.html
+msgid "Test connection"
+msgstr "Test connection"
+
+#: app/templates/admin.html
+msgid "Remove server"
+msgstr "Remove server"
+
+#: app/templates/admin.html
+msgid "Tools found"
+msgstr "Tools found"
+
+#: app/templates/admin.html
+msgid "Saving..."
+msgstr "Saving..."
+
+#: app/templates/admin.html
+msgid "mcp_token_keep"
+msgstr "stored — type to replace"
+
+#: app/templates/admin.html
+msgid "empty means all"
+msgstr "empty means all"
+
+#: app/templates/admin.html
+msgid "A server needs a name and a URL"
+msgstr "A server needs a name and a URL"
+
+#: app/templates/admin.html
+msgid "The server did not answer"
+msgstr "The server did not answer"
+
+#: app/templates/admin.html
+msgid "MCP servers are not valid JSON"
+msgstr "MCP servers are not valid JSON"

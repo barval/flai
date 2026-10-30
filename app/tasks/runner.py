@@ -826,8 +826,14 @@ def run_direct_step(
     plan_text: str = "",
     user_answers: str = "",
     doc_ids: list[str] | None = None,
+    verify: str = "each",
 ) -> dict[str, Any]:
     """Run ONE direct step (tool: llm | search | rag | history | calculate | continuity) and its checkpoint.
+
+    ``verify`` comes from the depth profile (``app/depth.py``): ``each`` checks
+    the step (the historical behaviour), ``off`` accepts it unverified. The
+    executor resolves ``final`` to one of the two, because only it knows whether
+    the step is the last of the plan.
 
     Returns ``{"result": str, "exec_seconds": float,
     "status": "passed"|"failed"|"aborted"|"error",
@@ -885,7 +891,13 @@ def run_direct_step(
             # Race-cancel on a fast tool: the work is done, the result is kept
             # but reported aborted so the executor does not advance the plan.
             return {"result": result, "exec_seconds": exec_seconds, "status": "aborted", "checkpoint": None}
-        checkpoint = run_checkpoint(app, step, result, lang=lang)
+        if verify == "off":
+            # A cheap profile trades the per-step check — and the corrective retry
+            # it drives — for speed. The verdict has to look like a real one so
+            # every consumer keeps working.
+            checkpoint: dict[str, Any] = {"verdict": True, "explanation": "", "exec_seconds": 0.0}
+        else:
+            checkpoint = run_checkpoint(app, step, result, lang=lang)
         payload = {
             "result": result,
             "exec_seconds": exec_seconds,

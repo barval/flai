@@ -3058,6 +3058,23 @@ class TaskExecutor:
 
     # ── Direct steps ──────────────────────────────────────────────────
 
+    def _verify_mode(self, task: dict, idx: int) -> str:
+        """How this step is checked, from the depth profile (``app/depth.py``).
+
+        ``each`` checks every step (the historical behaviour), ``off`` checks
+        none, ``final`` checks only the last step of the plan. A cheap profile
+        trades the per-step corrective retry for speed — and with it the ability
+        of an intermediate step to ask the user a question, because the question
+        arrives as a verifier verdict.
+        """
+        mode = str(self._cfg("DEPTH_VERIFY", "each")).strip().lower()
+        if mode == "off":
+            return "off"
+        if mode == "final":
+            steps = (task.get("step_plan") or {}).get("steps") or []
+            return "each" if idx >= len(steps) - 1 else "off"
+        return "each"
+
     def _step_row_for(self, task_id: str, idx: int, step: dict) -> dict:
         """The step row for plan position ``idx`` (created defensively if absent)."""
         want_seq = idx + 1
@@ -3143,6 +3160,7 @@ class TaskExecutor:
                     # passing ``[]`` here made a task without attachments find
                     # nothing at all.
                     doc_ids=[str(d) for d in (task.get("doc_ids") or []) if d] or None,
+                    verify=self._verify_mode(task, idx),
                 )
             except StepAborted:
                 elapsed = round(time.monotonic() - start, 2)

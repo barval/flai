@@ -188,13 +188,20 @@ def load_config(app):
     app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
     app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
-    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
+    # The depth axis (app/depth.py) supplies the defaults; an explicit key in the
+    # environment still wins, so one number can be tuned without a profile.
+    from app.depth import depth_defaults
+
+    depth = depth_defaults(os.getenv("DEPTH_LEVEL", "norm"))
+    app.config["DEPTH_LEVEL"] = os.getenv("DEPTH_LEVEL", "norm")
+    app.config["DEPTH_VERIFY"] = os.getenv("DEPTH_VERIFY", str(depth["DEPTH_VERIFY"]))
+    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", str(depth["TASK_STEP_MAX_ATTEMPTS"])))
     # Plan-correction guardrails: a review may not rewrite the plan forever,
     # the plan may not grow without bound, and a passing step only triggers a
     # review every N steps (a failed/skipped step and a fresh user answer always
     # trigger one). The 24 h budget stays the final ceiling.
-    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", "8"))
-    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", "40"))
+    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", str(depth["TASK_MAX_REVISIONS"])))
+    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", str(depth["TASK_MAX_STEPS"])))
     app.config["TASK_REPLAN_EVERY_N"] = int(os.getenv("TASK_REPLAN_EVERY_N", "3"))
     # Media repair: one image edit after every generation attempt (3 + 3 by
     # default) before the best-effort pick of the closest candidate.

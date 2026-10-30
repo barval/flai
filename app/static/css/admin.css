@@ -2377,3 +2377,82 @@ body.dark-theme .settings-reset {
         color: #999;
     }
 }
+
+/* ── MCP tab: the servers whose tools the chat model may call ───────────── */
+.mcp-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.mcp-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.mcp-inline input[type="number"] {
+    width: 4.5rem;
+    padding: 0.2rem 0.35rem;
+}
+
+#mcp-servers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#mcp-servers-table th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.4rem;
+    opacity: 0.75;
+}
+
+#mcp-servers-table td {
+    padding: 0.25rem 0.4rem;
+    vertical-align: middle;
+}
+
+.mcp-input {
+    width: 100%;
+    min-width: 6rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.85rem;
+}
+
+.mcp-tools {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.mcp-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+.mcp-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.mcp-add input {
+    flex: 1 1 10rem;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .mcp-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .mcp-add input {
+        flex: 1 1 100%;
+    }
+}

@@ -4926,3 +4926,79 @@ msgstr "Доступные навыки (загрузите нужный чер�
 #: app/tasks/research.py
 msgid "The tool call was rejected: its arguments did not match the tool."
 msgstr "Вызов инструмента отклонён: аргументы не соответствуют инструменту."
+
+#: app/templates/admin.html
+msgid "MCP"
+msgstr "MCP"
+
+#: app/templates/admin.html
+msgid "Offer tools from MCP servers to the model"
+msgstr "Передавать модели инструменты MCP-серверов"
+
+#: app/templates/admin.html
+msgid "Request timeout (s)"
+msgstr "Таймаут запроса (с)"
+
+#: app/templates/admin.html
+msgid "Token"
+msgstr "Токен"
+
+#: app/templates/admin.html
+msgid "Allowed tools"
+msgstr "Разрешённые инструменты"
+
+#: app/templates/admin.html
+msgid "Tools"
+msgstr "Инструменты"
+
+#: app/templates/admin.html
+msgid "No MCP servers configured"
+msgstr "MCP-серверы не настроены"
+
+#: app/templates/admin.html
+msgid "Token (optional)"
+msgstr "Токен (необязательно)"
+
+#: app/templates/admin.html
+msgid "Allowed tools, comma separated"
+msgstr "Разрешённые инструменты через запятую"
+
+#: app/templates/admin.html
+msgid "Add server"
+msgstr "Добавить сервер"
+
+#: app/templates/admin.html
+msgid "Test connection"
+msgstr "Проверить соединение"
+
+#: app/templates/admin.html
+msgid "Remove server"
+msgstr "Удалить сервер"
+
+#: app/templates/admin.html
+msgid "Tools found"
+msgstr "Найдено инструментов"
+
+#: app/templates/admin.html
+msgid "Saving..."
+msgstr "Сохранение…"
+
+#: app/templates/admin.html
+msgid "mcp_token_keep"
+msgstr "сохранён — введите новый"
+
+#: app/templates/admin.html
+msgid "empty means all"
+msgstr "пусто — все"
+
+#: app/templates/admin.html
+msgid "A server needs a name and a URL"
+msgstr "Серверу нужны имя и адрес"
+
+#: app/templates/admin.html
+msgid "The server did not answer"
+msgstr "Сервер не ответил"
+
+#: app/templates/admin.html
+msgid "MCP servers are not valid JSON"
+msgstr "Список MCP-серверов — некорректный JSON"

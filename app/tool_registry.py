@@ -12,7 +12,8 @@ a plugin system.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from app.utils import N_
 
@@ -39,6 +40,9 @@ class ToolSpec:
     label: str | None = None
     description: str | None = None
     checkpoint_hint: str | None = None
+    # The JSON Schema a model calls the tool with. Only sandbox tools carry one
+    # today: a task capability is named in a plan, not called by the model.
+    schema: dict[str, Any] | None = field(default=None)
 
 
 TOOL_SPECS: tuple[ToolSpec, ...] = (
@@ -215,6 +219,59 @@ def spec_for(tool_id: str) -> ToolSpec | None:
         if spec.id == tool_id:
             return spec
     return None
+
+
+# The tools a sandboxed actor loop (deep analysis) may call. They are not task
+# capabilities: a planner cannot name them, and they never reach ``CAPABILITIES``.
+RLM_TOOL_SPECS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        id="python",
+        exec="sandbox",
+        description="Execute Python over the corpus. Use context[filename] to access text.",
+        schema={
+            "type": "object",
+            "properties": {"code": {"type": "string", "description": "Python code to execute."}},
+            "required": ["code"],
+        },
+    ),
+    ToolSpec(
+        id="llm",
+        exec="sandbox",
+        description="Ask a sub-model a question about a specific text fragment.",
+        schema={
+            "type": "object",
+            "properties": {"prompt": {"type": "string"}, "text": {"type": "string"}},
+            "required": ["prompt"],
+        },
+    ),
+    ToolSpec(
+        id="web_fetch",
+        exec="sandbox",
+        description="Search the web and fetch readable page content.",
+        schema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    ),
+    ToolSpec(
+        id="final",
+        exec="sandbox",
+        description="Finish the analysis and return the final answer.",
+        schema={"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]},
+    ),
+)
+
+
+def sandbox_tool_definitions() -> list[dict[str, Any]]:
+    """The sandbox tools in OpenAI shape, for the deep-analysis actor loop."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": spec.id,
+                "description": spec.description or spec.id,
+                "parameters": spec.schema or {"type": "object", "properties": {}},
+            },
+        }
+        for spec in RLM_TOOL_SPECS
+    ]
 
 
 def capabilities() -> list[dict[str, str]]:

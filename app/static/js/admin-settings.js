@@ -110,7 +110,7 @@
 
     function render() {
         groupsBox.innerHTML = '';
-        schema.forEach((group) => {
+        schema.filter((group) => !group.dedicated).forEach((group) => {
             const details = document.createElement('details');
             details.className = 'settings-group';
             details.open = false;

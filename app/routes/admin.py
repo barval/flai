@@ -463,6 +463,39 @@ def save_settings():
     return jsonify({"status": "ok", "saved": saved, "errors": errors})
 
 
+@bp.route("/api/mcp/test", methods=["POST"])
+@admin_required
+def test_mcp_server():
+    """Probe one MCP server and list its tools (the MCP tab's Test button).
+
+    The panel tests a candidate before saving it: a server that is down or
+    answers the wrong protocol is easier to diagnose here than as a chat turn
+    that silently had no tools. The error text stays generic on purpose — a
+    transport exception would otherwise carry a host and a port into the page.
+    """
+    from app.mcp_client import McpClient
+
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("name") or "").strip()
+    url = str(body.get("url") or "").strip()
+    token = str(body.get("token") or "")
+    if not name or not url:
+        return jsonify({"error": "⚠️ " + _("A server needs a name and a URL")}), 400
+    timeout = int(current_app.config.get("MCP_TIMEOUT_S", 10) or 10)
+    try:
+        client = McpClient(url, token=token, timeout=min(max(timeout, 1), 30))
+        tools = client.list_tools()
+    except Exception:
+        current_app.logger.warning(f"MCP test failed for {name}", exc_info=True)
+        return jsonify({"error": "⚠️ " + _("The server did not answer")}), 502
+    return jsonify(
+        {
+            "status": "ok",
+            "tools": [str(tool.get("name", "")) for tool in tools if isinstance(tool, dict)],
+        }
+    )
+
+
 @bp.route("/api/settings/reset", methods=["POST"])
 @admin_required
 def reset_settings():

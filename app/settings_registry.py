@@ -112,6 +112,16 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "TASK_CONTINUITY_ENABLED",
             "TASK_CONTINUITY_MAX_CHARS",
             "TASK_VRAM_WAIT_S",
+            "DEPTH_LEVEL",
+            "DEPTH_VERIFY",
+        ],
+    ),
+    "mcp": (
+        "MCP",
+        [
+            "MCP_ENABLED",
+            "MCP_TIMEOUT_S",
+            "MCP_SERVERS",
         ],
     ),
     "models": (
@@ -291,6 +301,11 @@ def _kind_of(value: Any) -> str:
     return "str"
 
 
+# Groups that carry a real editor in their own tab: the generic settings list
+# would show a JSON string where the panel has a server table.
+DEDICATED_GROUPS = {"mcp"}
+
+
 def build_schema(app) -> list[dict]:
     """Grouped schema for the panel: label, key, type, current value, default."""
     groups: list[dict] = []
@@ -311,7 +326,7 @@ def build_schema(app) -> list[dict]:
                     "default": None if key in SECRET_KEYS else _default_of(key, app),
                 }
             )
-        groups.append({"id": group_id, "label": label, "fields": fields})
+        groups.append({"id": group_id, "label": label, "fields": fields, "dedicated": group_id in DEDICATED_GROUPS})
     return groups
 
 
@@ -356,7 +371,46 @@ def coerce(key: str, raw: Any, current_kind: str) -> tuple[Any, str | None]:
             return float(str(raw).strip().replace(",", ".")), None
         except (TypeError, ValueError):
             return None, "Expected a number"
+    if key == "MCP_SERVERS":
+        return _validate_servers(raw)
+    if key in _ENUMS:
+        text = str(raw).strip().lower()
+        if text not in _ENUMS[key]:
+            return None, "Expected one of: " + ", ".join(_ENUMS[key])
+        return text, None
     return str(raw), None
+
+
+_ENUMS: dict[str, tuple[str, ...]] = {
+    "DEPTH_LEVEL": ("min", "norm", "max"),
+    "DEPTH_VERIFY": ("off", "final", "each"),
+}
+
+
+def _validate_servers(raw: Any) -> tuple[Any, str | None]:
+    """A JSON array of MCP servers, validated by the loader that will read it.
+
+    The panel writes the same value the environment holds, so the loader's own
+    rules (a name, a url, no name that collides with the namespace separator)
+    are the validation — a second parser here would drift.
+    """
+    import json
+
+    from app.mcp_registry import load_servers
+
+    text = str(raw).strip()
+    if not text:
+        return "", None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None, "Expected a JSON array of servers"
+    if not isinstance(parsed, list):
+        return None, "Expected a JSON array of servers"
+    servers = load_servers(text)
+    if len(servers) != len(parsed):
+        return None, "Every server needs a name and a url; a name may not contain __"
+    return json.dumps(parsed, ensure_ascii=False), None
 
 
 DESCRIPTIONS: dict[str, str] = {
@@ -513,6 +567,11 @@ DESCRIPTIONS: dict[str, str] = {
     "CAMERA_CHECK_INTERVAL": "Camera availability check interval (seconds)",
     "CAMERA_API_KEY": "Shared API key of the room snapshot service",
     "CAMERA_MCP_URL": "Camera MCP server URL (agent mode)",
+    "MCP_ENABLED": "Offer tools from the configured MCP servers to the chat model (applies immediately)",
+    "MCP_TIMEOUT_S": "Timeout for one MCP request (seconds)",
+    "MCP_SERVERS": "Configured MCP servers: a JSON array of {name, url, token, allow} (applies immediately)",
+    "DEPTH_LEVEL": "How much work one task request may spend: min, norm or max (applies after a restart)",
+    "DEPTH_VERIFY": "When a step is checked: each, final or off (applies after a restart)",
     "CAMERA_SNAPSHOT_WIDTH": "Preview width requested from the camera service (pixels)",
     "CAMERA_PREVIEW_WORKERS": "Parallel camera captures per preview refresh",
     "TIMEZONE": "IANA timezone used for dates and monitoring",

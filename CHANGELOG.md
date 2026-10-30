@@ -1,5 +1,13 @@
 ## [v12.9] — Unreleased
 
+### Added
+
+- **MCP servers are configured in the admin panel and the depth axis has a home.** Every parameter this work introduced is a registry key with the usual precedence (`database > .env > built-in default`), not an `.env`-only switch. The new **MCP** tab owns its three settings: a server table with inline fields, add/remove, a per-row Test that enumerates the server's tools, and one Save that goes through the ordinary settings endpoint. A stored token is never rendered, and the server list is validated by the same loader that reads it, so a broken entry is refused when it is saved rather than silently skipped when it is loaded. `DEPTH_LEVEL` and `DEPTH_VERIFY` joined the Tasks group, enum-validated; `norm` reproduces the historical budgets exactly.
+
+### Changed
+
+- **The depth axis supplies the task budgets.** `app/depth.py` presets are now the defaults of `TASK_MAX_STEPS`, `TASK_STEP_MAX_ATTEMPTS`, `TASK_MAX_REVISIONS`, and `DEPTH_VERIFY` decides whether a step is checked at all (`off`), only as the last step (`final`) or every step (`each`, the historical behaviour). An explicit environment value still wins. The chat loop is deliberately outside the budget: forty rounds on one message is a defect, not depth.
+
 ### Changed
 
 - **A profile's tools are pruned by role, not by prose.** `ROLE_TOOLS` in `app/tools.py` lists what a restricted profile may see — today only the research step, with the read-only half of the catalogue — and `definitions_for_role()` filters the definitions themselves, so a tool outside the set is absent rather than discouraged. Chat stays the unrestricted default, and the research step's tool tuple is now derived from the map instead of repeated in its runner.

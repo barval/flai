@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Documentation
+
+- **ADMINISTRATION.md** (and its Russian twin) documents the MCP tab; the READMEs' "What's New in v12.9" carries the release's five headline changes with links to their owner documents, and the two Russian quotes that had leaked into `AGENTS.md` and `CHANGELOG.md` were replaced with English descriptions.
+
 ### Changed
 
 - **Skills activate themselves.** Asked to call `activate_skill` on its own, the small model answered matching requests with a plain web search instead — the skill was never loaded. The request kernel now names the matching skill in the same JSON decision where it already picks the intent and the tools (`skills`, at most two, validated against the installed catalog), and a request with a skill is answered by the chat loop, where the tools the skill names live. The body is appended to the system prompt for that turn: as a synthetic assistant/tool exchange the model read the skill as work already done and answered from memory — measured, the research skill loaded that way produced a confidently wrong rate with **no search at all**. After the change a matching question loads the skill and the loop runs the search the skill prescribes, while time, arithmetic and document questions activate nothing.

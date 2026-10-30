@@ -253,6 +253,12 @@ def load_config(app):
     # small models; it is off only for a backend that rejects the field.
     app.config["KERNEL_CONSTRAINED"] = os.getenv("KERNEL_CONSTRAINED", "1") == "1"
 
+    # External MCP servers (see app/mcp_registry.py). Off by default: with no
+    # server configured the assistant exposes no tool it did not have before.
+    app.config["MCP_ENABLED"] = os.getenv("MCP_ENABLED", "0") == "1"
+    # A JSON array: [{"name": "...", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+    app.config["MCP_SERVERS"] = os.getenv("MCP_SERVERS", "")
+    app.config["MCP_TIMEOUT_S"] = int(os.getenv("MCP_TIMEOUT_S", 10))
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"
 

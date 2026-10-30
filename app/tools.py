@@ -18,6 +18,8 @@ import pendulum
 from flask_babel import force_locale
 from flask_babel import gettext as _
 
+from app.mcp_client import NAMESPACE_PREFIX
+
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
@@ -353,10 +355,33 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
 
     ``read_page`` is only offered to the model when the crawler module is
     registered and available; otherwise the returned list excludes it.
+
+    Operator-configured MCP tools are appended. A registry failure contributes
+    nothing: losing an external tool must not cost the user their answer.
     """
     if get_crawler_module() is None:
-        return [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
-    return TOOL_DEFINITIONS
+        definitions = [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
+    else:
+        definitions = list(TOOL_DEFINITIONS)
+    return definitions + mcp_tool_definitions()
+
+
+def mcp_tool_definitions() -> list[dict[str, Any]]:
+    """The advertised MCP tools, or nothing when the feature is off or broken."""
+    try:
+        from flask import current_app
+
+        if not current_app.config.get("MCP_ENABLED", False):
+            return []
+    except Exception:  # noqa: BLE001 - no app context means not configured
+        return []
+    try:
+        from app.mcp_registry import tool_definitions
+
+        return tool_definitions()
+    except Exception:  # noqa: BLE001 - a down registry must not fail the request
+        logger.warning("MCP tool enumeration failed; the MCP tools are not offered", exc_info=True)
+        return []
 
 
 # ── Tool executors ───────────────────────────────────────────────────
@@ -1036,6 +1061,20 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
     Returns:
         Tool result as a string (or JSON-serializable dict for camera).
     """
+    if tool_name.startswith(NAMESPACE_PREFIX):
+        # A namespaced name belongs to an MCP server the operator configured; the
+        # registry refuses anything that was not advertised, so an invented name
+        # cannot reach a server the model was not offered.
+        try:
+            from app.mcp_registry import call as mcp_call
+
+            return bound_tool_output(str(mcp_call(tool_name, arguments)))
+        except Exception:  # noqa: BLE001 - a failed external tool is a message, not a crash
+            logger.exception(f"MCP tool '{tool_name}' failed")
+            lang = context.get("lang", "ru")
+            with force_locale(lang):
+                return str(_("The tool could not complete the request."))
+
     executor = _EXECUTOR_MAP.get(tool_name)
     if not executor:
         lang = context.get("lang", "ru")

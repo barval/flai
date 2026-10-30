@@ -1,0 +1,13 @@
+# Build context for the LTX video wrapper.
+#
+# Only ltx_wrapper.py is copied into the image; the 25 GB of weights under
+# models/ are bind-mounted at run time. Without this file every build shipped
+# them to BuildKit, which was most of the build time and a large part of the
+# disk it consumed.
+models/
+__pycache__/
+*.pyc
+*.gguf
+*.safetensors
+*.onnx
+*.log

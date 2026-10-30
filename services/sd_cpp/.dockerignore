@@ -1,0 +1,15 @@
+# Build context for sd-cli only.
+#
+# The Dockerfile compiles stable-diffusion.cpp from a pinned git clone and copies
+# nothing from this directory — every build sent the whole models/ tree (31 GB)
+# to BuildKit for nothing, which was most of a 700-second build. Models are
+# bind-mounted at run time (see docker-compose.gpu.yml) and never belong in the
+# context.
+models/
+outputs/
+__pycache__/
+*.pyc
+*.gguf
+*.safetensors
+*.onnx
+*.log

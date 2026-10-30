@@ -1,0 +1,6 @@
+# The image copies the small assets it needs (espeak-data, configs, voices);
+# the 937 MB model cache is downloaded or mounted at run time.
+models/
+__pycache__/
+*.pyc
+*.log

@@ -4875,3 +4875,7 @@ msgstr "No documents match the selected folders and dates."
 #: app/templates/chat.html
 msgid "Select at least one folder."
 msgstr "Select at least one folder."
+
+#: app/tools.py
+msgid "The tool could not complete the request."
+msgstr "The tool could not complete the request."

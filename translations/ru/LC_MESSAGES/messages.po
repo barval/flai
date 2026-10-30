@@ -4908,3 +4908,7 @@ msgstr "По выбранным папкам и датам документы н
 #: app/templates/chat.html
 msgid "Select at least one folder."
 msgstr "Выберите хотя бы одну папку."
+
+#: app/tools.py
+msgid "The tool could not complete the request."
+msgstr "Инструмент не смог выполнить запрос."

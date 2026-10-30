@@ -21,6 +21,11 @@ from flask_babel import gettext as _
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
+
+# One tool result larger than the window destroys an 8k conversation. The bound
+# is character-based, not line-based, because a minified page is a single line.
+TOOL_OUTPUT_MAX_CHARS = 4000
+TOOL_OUTPUT_HEAD_SHARE = 0.6
 MAX_EXPRESSION_LENGTH = 200
 
 # ── Safe eval for calculator ─────────────────────────────────────────
@@ -842,6 +847,21 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     return chosen or definitions
 
 
+def bound_tool_output(text: str, limit: int = TOOL_OUTPUT_MAX_CHARS) -> str:
+    """Cap a tool result, keeping both ends and saying what was dropped.
+
+    Both ends matter: a search result's first lines carry the sources and its
+    last lines carry the conclusion. The marker is load-bearing — without it the
+    model reads a clipped result as an empty one and calls the tool again.
+    """
+    if len(text) <= limit:
+        return text
+    dropped = len(text) - limit
+    head = int(limit * TOOL_OUTPUT_HEAD_SHARE)
+    tail = limit - head
+    return f"{text[:head]}\n…[truncated {dropped} characters]…\n{text[-tail:]}"
+
+
 def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, Any]) -> str:
     """Execute a tool by name with given arguments.
 
@@ -862,10 +882,12 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
     try:
         result = executor(context, **arguments)
         if isinstance(result, dict):
-            return json.dumps(result, ensure_ascii=False)
-        return str(result)
-    except Exception as e:
-        logger.error(f"Tool '{tool_name}' execution failed: {e}")
+            result = json.dumps(result, ensure_ascii=False)
+        return bound_tool_output(str(result))
+    except Exception:
+        # The detail stays in the log: a host name or a port echoed into a tool
+        # result can travel straight into an answer.
+        logger.exception(f"Tool '{tool_name}' execution failed")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Tool execution error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))

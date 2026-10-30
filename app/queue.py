@@ -5199,13 +5199,24 @@ class RedisRequestQueue:
             if self._is_task_cancelled(task["id"]):
                 break
 
+            # On the last round tools are withdrawn: the model must answer with
+            # what it already has instead of asking for one more lookup, and a
+            # raw tool result must never be shown as the answer.
+            is_final_round = iteration == MAX_TOOL_ITERATIONS - 1
+
             if stream:
                 # Real streaming: tokens are published to the client as they
                 # arrive; native tool calls come as a terminal dict chunk.
                 iteration_text = ""
                 error_detected = False
                 stream_tool_calls: list[dict[str, Any]] | None = None
-                for chunk in llamacpp.chat_stream(messages, model_type="multimodal", lang=lang, tools=tools):
+                for chunk in llamacpp.chat_stream(
+                    messages,
+                    model_type="multimodal",
+                    lang=lang,
+                    tools=tools,
+                    tool_choice="none" if is_final_round else None,
+                ):
                     if isinstance(chunk, dict):
                         if chunk.get("type") == "tool_calls":
                             stream_tool_calls = chunk["tool_calls"]
@@ -5227,7 +5238,15 @@ class RedisRequestQueue:
                         lang,
                     )
 
-                if stream_tool_calls:
+                if stream_tool_calls and is_final_round:
+                    # Tools were withdrawn; a server that ignores tool_choice can
+                    # still send one. Running it would only burn a call the loop
+                    # has no room for, so fall through to the fallback below.
+                    self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+                    self._publish_stream_event(
+                        task, "tool_result", {"tool_name": "", "result_preview": "ignored after the cap"}
+                    )
+                elif stream_tool_calls:
                     last_tool_result = self._run_tool_calls(
                         task, messages, stream_tool_calls, user_id, lang, loop_guard=tool_guard
                     )
@@ -5247,7 +5266,13 @@ class RedisRequestQueue:
                     self._publish_stream_event(task, "stream_cancelled")
                 break
 
-            response = llamacpp.chat(messages, model_type="multimodal", lang=lang, tools=tools)
+            response = llamacpp.chat(
+                messages,
+                model_type="multimodal",
+                lang=lang,
+                tools=tools,
+                tool_choice="none" if is_final_round else None,
+            )
 
             # If response is an error string
             if isinstance(response, str):
@@ -5281,6 +5306,12 @@ class RedisRequestQueue:
                 # Check cancel after blocking chat() call — flag may have been set during generation
                 if self._is_task_cancelled(task["id"]):
                     self._publish_stream_event(task, "stream_cancelled")
+                break
+
+            # If response is a dict with tool_calls
+            if isinstance(response, dict) and response.get("tool_calls") and is_final_round:
+                self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+                full_response = response.get("content") or ""
                 break
 
             # If response is a dict with tool_calls

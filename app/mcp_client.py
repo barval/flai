@@ -91,11 +91,18 @@ class McpClient:
         session_id = response.headers.get("Mcp-Session-Id")
         if session_id:
             self._session_id = session_id
+        # JSON is UTF-8 by definition, but a server that omits the charset in its
+        # content-type makes requests decode the body as latin-1: a Cyrillic
+        # payload then contains characters like U+0085, which str.splitlines()
+        # treats as a line break — it cut the JSON in half and the call failed
+        # with "no JSON-RPC result". The bytes are decoded here instead.
+        body = response.content.decode("utf-8", errors="replace")
         if response.status_code >= 400:
-            raise RuntimeError(f"MCP HTTP {response.status_code}: {response.text[:200]}")
+            raise RuntimeError(f"MCP HTTP {response.status_code}: {body[:200]}")
         if "text/event-stream" in response.headers.get("content-type", ""):
-            return _parse_sse(response.text)
-        return response.json()
+            return _parse_sse(body)
+        parsed = json.loads(body)
+        return parsed if isinstance(parsed, dict) else {}
 
     def initialize(self) -> dict[str, Any]:
         """Handshake once per client instance."""
@@ -148,10 +155,13 @@ class McpClient:
 
 def _parse_sse(body: str) -> dict[str, Any]:
     """Return the JSON-RPC message carried by an SSE response."""
-    for line in body.splitlines():
+    # Split on real line breaks only: str.splitlines() also breaks on U+0085,
+    # U+2028 and the C1 controls, which can legitimately appear inside a JSON
+    # string and would cut the payload in half.
+    for line in body.split("\n"):
         if not line.startswith("data:"):
             continue
-        chunk = line[5:].strip()
+        chunk = line[5:].strip("\r").strip()
         if not chunk or chunk == "[DONE]":
             continue
         try:

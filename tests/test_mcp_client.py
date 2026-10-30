@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.mcp_client import McpClient, namespace, split_namespaced
@@ -11,7 +13,9 @@ class _Response:
     def __init__(self, payload, status=200, content_type="application/json"):
         self._payload = payload
         self.status_code = status
-        self.text = payload if isinstance(payload, str) else ""
+        self.text = payload if isinstance(payload, str) else json.dumps(payload)
+        # A real requests.Response always carries the raw bytes.
+        self.content = self.text.encode("utf-8")
         self.headers = {"content-type": content_type}
 
     def json(self):
@@ -122,3 +126,39 @@ def test_namespacing_round_trips():
 def test_a_plain_name_is_not_namespaced():
     assert split_namespaced("calculator") is None
     assert split_namespaced("mcp__only") is None
+
+class _Utf8SseResponse:
+    """What `requests` gives back when the server omits the charset."""
+
+    def __init__(self, payload):
+        raw = ("event: message\r\ndata: " + json.dumps(payload, ensure_ascii=False) + "\r\n\r\n").encode("utf-8")
+        self.content = raw
+        self.text = raw.decode("latin-1")
+        self.status_code = 200
+        self.headers = {"content-type": "text/event-stream"}
+
+
+@pytest.mark.unit
+def test_a_cyrillic_sse_payload_survives_a_missing_charset(monkeypatch):
+    # Measured against the shipped camera MCP server: without a charset in the
+    # content-type, requests decodes the body as latin-1, the Cyrillic bytes turn
+    # into characters such as U+0085, and str.splitlines() splits the JSON in the
+    # middle. The tool call then failed with "no JSON-RPC result".
+    payload = {"jsonrpc": "2.0", "id": 3, "result": {"content": [{"type": "text", "text": "Спальня"}]}}
+
+    def handler(_payload):
+        if _payload["method"] == "tools/call":
+            return _Utf8SseResponse(payload)
+        return _Utf8SseResponse({"jsonrpc": "2.0", "id": _payload["id"], "result": {}})
+
+    client, _ = _client(monkeypatch, handler)
+    assert client.call_tool("list_rooms", {}) == "Спальня"
+
+
+@pytest.mark.unit
+def test_sse_parsing_does_not_split_on_unicode_line_boundaries():
+    from app.mcp_client import _parse_sse
+
+    # U+0085 is a line boundary to str.splitlines() but not to an SSE frame.
+    body = 'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"a\u0085b"}]}}\n\n'
+    assert _parse_sse(body)["result"]["tools"][0]["name"] == "a\u0085b"

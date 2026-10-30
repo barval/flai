@@ -1,6 +1,7 @@
 # tests/test_cam_service_v13.py
 """Tests for the room-snapshot-api v1.3 integration (key, lang, ETag, fan-out, MCP)."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -140,6 +141,16 @@ class TestHealth:
 
 
 @pytest.mark.unit
+def _json_response(payload, status=200, headers=None):
+    """A stand-in for requests.Response carrying both the body and its bytes."""
+    return MagicMock(
+        status_code=status,
+        headers=headers or {},
+        content=json.dumps(payload).encode("utf-8"),
+        json=lambda: payload,
+    )
+
+
 class TestMCPClient:
     def test_unconfigured(self):
         from modules.cam_mcp import CamMCPClient
@@ -151,16 +162,10 @@ class TestMCPClient:
 
         client = CamMCPClient("http://cam:5006/mcp", api_key="k")
         responses = [
-            MagicMock(status_code=200, headers={}, json=lambda: {"result": {"protocolVersion": "2025-06-18"}}),
-            MagicMock(status_code=200, headers={}, json=lambda: {}),
-            MagicMock(
-                status_code=200,
-                headers={},
-                json=lambda: {
-                    "result": {
-                        "tools": [{"name": "list_rooms"}, {"name": "get_snapshot"}, {"name": "room_info"}]
-                    }
-                },
+            _json_response({"result": {"protocolVersion": "2025-06-18"}}),
+            _json_response({}),
+            _json_response(
+                {"result": {"tools": [{"name": "list_rooms"}, {"name": "get_snapshot"}, {"name": "room_info"}]}}
             ),
         ]
         with patch("app.mcp_client.requests.post", side_effect=responses):

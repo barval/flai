@@ -139,6 +139,13 @@ def create_app():
     logging.root.setLevel(log_level)
     logging.root.handlers = [console_handler]
 
+    # A truncated .mo (an interrupted pybabel compile writes in place) used to make
+    # every English page answer 500; the guard moves it aside so the interface
+    # falls back to English text instead of failing.
+    from app.translation_guard import check_catalogs
+
+    check_catalogs(translations_path)
+
     # Initialize Babel with the app
     register_babel(app)
     app.jinja_env.add_extension("jinja2.ext.i18n")  # for _() in templates

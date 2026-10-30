@@ -804,9 +804,13 @@ build_and_launch() {
     # this only fails if the clone is corrupt or .po changed without
     # recompilation.
     for LOC in en ru; do
-        if [[ ! -f "translations/$LOC/LC_MESSAGES/messages.mo" ]]; then
-            warn "Missing translations/$LOC/LC_MESSAGES/messages.mo — UI will fall back to English."
-            warn "Run: pybabel compile -d translations"
+        local mo="translations/$LOC/LC_MESSAGES/messages.mo"
+        local magic=""
+        [[ -f "$mo" ]] && magic=$(head -c 4 "$mo" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [[ "$magic" != "de120495" ]]; then
+            # An interrupted pybabel compile leaves a zero-length .mo, and then
+            # every page in that language answers 500 (gettext cannot parse it).
+            error "translations/$LOC/LC_MESSAGES/messages.mo is broken or missing — that language will answer 500. Run: pybabel compile -d translations"
         fi
     done
 

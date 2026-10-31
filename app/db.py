@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -610,7 +610,7 @@ def get_user_documents(user_id):
         )
         documents = [dict(row) for row in c.fetchall()]
         tz = current_app.config.get("TIMEZONE")
-        now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.utcnow()
+        now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.now(UTC).replace(tzinfo=None)
         for doc in documents:
             indexed_dt = None
             indexing_started_dt = None

@@ -65,6 +65,38 @@ compare by number, free text by normalized containment, and an expected `0` also
 Latency matters as much as quality: hybrid search and a reranker buy accuracy with time, and the
 numbers above are what decides whether the trade is worth it.
 
+## Policy sweep (v12.9)
+
+`flask rag-eval` takes the three policy constants as run options, so a sweep does
+not need a code edit: `--answer-share`, `--depth-over-coverage`, `--breadth-share`,
+plus `--budget` to let the allocator choose `top_k` instead of `--top-k`.
+
+Measured on 11 fact questions over a 29-document work-log corpus (one answer per
+question, scored end to end), on the 16 GB reference host:
+
+| Run | answer accuracy |
+|---|---|
+| answer-share 0.05 / 0.10 / 0.15 | 1.000 / 1.000 / 1.000* |
+| depth-over-coverage 1.0 / 1.5 / 2.0 | 1.000 / 1.000 / 1.000 |
+| breadth-share 0.15 / 0.25 / 0.50 | 1.000 / 1.000 / 1.000 |
+| the same grid with the documents' share capped at 10 % | 1.000 everywhere |
+
+\* one run scored 0.909 because the model wrote «асiyat» (Cyrillic «а») where the
+expected answer was `asiyat` — a transliteration artifact of the scorer, not a
+retrieval miss.
+
+**Finding:** the constants do not move answer quality on a corpus that fits the
+window — the allocator already sizes the evidence from the corpus, so all three
+settings cover every document. They bite only when the evidence *cannot* cover the
+corpus (a much larger corpus or a much smaller window), which is the case the
+sweep above does not reach. The defaults stay, and the constant that matters in
+practice is the allocator, not these three.
+
+**A separate limit:** questions that need aggregation across whole documents
+("total hours across all files", "how many files") fail under chunk-based RAG with
+one chunk per file (2 of 9 in the first, aggregation-oriented run) — that is Deep
+Analysis territory, not a retrieval-policy question.
+
 ## Baseline
 
 Two datasets matter, and they disagree — that disagreement is the finding.

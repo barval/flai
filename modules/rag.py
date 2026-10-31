@@ -82,12 +82,44 @@ def rrf_fuse(
     return [(payload[ident], score) for ident, score in ordered]
 
 
+# How much deeper than the coverage allowance the query pool is fetched.
+COVERAGE_POOL_FACTOR = 4
+
+
+def apply_coverage(
+    relevance: list[tuple[dict, float]],
+    extras: list[tuple[dict, float]],
+    coverage_max_files: int,
+) -> tuple[list[tuple[dict, float]], int]:
+    """Append one chunk per document the relevance half did not represent.
+
+    ``relevance`` is the top-k as ``(chunk, score)`` pairs; ``extras`` is the
+    allowance fetched with the same query. A document already represented is
+    skipped, the first chunk of each of the others is appended (marked
+    ``coverage``) until the allowance is spent. Returns the new list and how many
+    documents were added.
+    """
+    covered = {str(chunk.get("doc_id")) for chunk, _score in relevance if chunk.get("doc_id")}
+    kept = list(relevance)
+    added = 0
+    for chunk, score in extras:
+        if added >= coverage_max_files:
+            break
+        doc_id = str(chunk.get("doc_id") or "")
+        if not doc_id or doc_id in covered:
+            continue
+        kept.append(({**chunk, "coverage": True}, score))
+        covered.add(doc_id)
+        added += 1
+    return kept, added
+
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and llama.cpp embeddings."""
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
+        self.last_coverage: dict = {}
         self.llamacpp = LlamaCppClient(app)
         self.available = False
         self.collection_name_prefix = "user_"
@@ -439,8 +471,9 @@ class RagModule:
         query: str,
         top_k: int | None = None,
         file_coverage: bool = False,
-        coverage_max_files: int = 6,
+        coverage_max_files: int | None = None,
         doc_ids: list[str] | None = None,
+        lang: str = "ru",
     ) -> tuple[list[dict], list[float]]:
         """
         Search for relevant chunks based on query.
@@ -452,16 +485,32 @@ class RagModule:
         documents only (the caller attached them to the request) and the
         file-coverage pass is limited to the same scope.
 
-        When ``file_coverage`` is True and at least one indexed document of the
-        user is missing from the semantic top-k, the best chunk of each missing
-        document is appended (limited to ``coverage_max_files``) so the context
-        is not blind to documents that scored low on the query. Coverage chunks
-        are marked with ``payload['coverage'] = True`` and must survive
-        relevance-threshold filtering in the caller.
+        When ``file_coverage`` is True, the query fetches ``top_k`` relevance
+        hits plus a coverage allowance, and the first chunk of every document not
+        yet represented is appended from that extra allowance (marked with
+        ``payload['coverage'] = True``, to survive threshold filtering). Both
+        numbers come from :mod:`app.rag_budget` when the caller does not pin
+        them: the allowance is what the answering model's window holds beyond the
+        relevance half, so breadth follows the hardware instead of a constant.
         """
         if not self.check_availability():
             return [], []
-        top_k = top_k or self.top_k
+        from flask import has_app_context
+
+        from app.rag_budget import retrieval_budget
+
+        budget = retrieval_budget(current_app if has_app_context() else None, lang)
+        if top_k is None:
+            top_k = budget.top_k
+        if coverage_max_files is None:
+            coverage_max_files = budget.coverage_files
+        # The allowance is fetched with the same query: one Qdrant round trip
+        # instead of a per-document query for every uncovered file. The pool is
+        # deeper than the allowance because a single large document can occupy
+        # many consecutive hits — measured, a 2.6 MB PDF took 7 of 20 slots and
+        # starved the coverage pass of material to pick from.
+        fetch_limit = top_k + (coverage_max_files * COVERAGE_POOL_FACTOR if file_coverage else 0)
+        self.last_coverage = {"covered": 0, "unrepresented": 0, "budget": budget}
         # ``None`` means "no scope"; an explicit empty list means "the scope
         # matched nothing", which must stay empty instead of searching everything.
         if doc_ids is not None and not [d for d in doc_ids if d]:
@@ -485,7 +534,7 @@ class RagModule:
                 collection_name=collection_name,
                 query=query_emb,
                 query_filter=models.Filter(must=must),
-                limit=top_k,
+                limit=fetch_limit,
             )
             search_result = result.points
         except Exception as e:
@@ -501,7 +550,7 @@ class RagModule:
                 [chunks, lexical],
                 key=lambda item: (str(item.get("doc_id") or ""), int(item.get("chunk_index") or 0)),
                 k=self.rrf_k,
-            )[:top_k]
+            )[:fetch_limit]
             if fused:
                 best = fused[0][1]
                 # Relative score in [0.5, 1]: the fused order is what matters,
@@ -535,58 +584,37 @@ class RagModule:
                 scores = [dense[index] for index in order] + scores[len(pool) :]
                 self.logger.info(f"search: reranked {len(pool)} candidates")
 
-        self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+        self.logger.info(
+            f"search: found {len(chunks)} chunks for query '{query[:50]}...' "
+            f"(top_k={top_k}, coverage allowance={coverage_max_files if file_coverage else 0}, "
+            f"window budget={budget.fragments} fragments / {budget.tokens} tokens)"
+        )
 
         if file_coverage and chunks:
+            pairs, added = apply_coverage(
+                list(zip(chunks[:top_k], scores[:top_k], strict=False)),
+                list(zip(chunks[top_k:], scores[top_k:], strict=False)),
+                coverage_max_files,
+            )
+            chunks = [chunk for chunk, _score in pairs]
+            scores = [score for _chunk, score in pairs]
+            unrepresented = 0
+            covered = {str(c.get("doc_id")) for c in chunks if c.get("doc_id")}
+            # A document that the extended fetch did not reach either stays out;
+            # saying so is the point, the old code refused coverage entirely when
+            # the count exceeded its cap and looked like a complete answer.
             try:
-                covered = {c.get("doc_id") for c in chunks if c.get("doc_id")}
                 docs = get_user_documents(user_id) or []
                 if scope:
                     docs = [d for d in docs if str(d.get("id")) in set(scope)]
-                missing = [
-                    d["id"]
-                    for d in docs
-                    if d.get("index_status") == INDEX_STATUS_INDEXED and d.get("id") and d["id"] not in covered
-                ]
-                if len(missing) > coverage_max_files:
-                    self.logger.info(
-                        f"search: file-coverage skipped — {len(missing)} docs unreached (> {coverage_max_files})"
-                    )
-                else:
-                    added = 0
-                    for doc_id in missing:
-                        try:
-                            cov_res = self.qdrant_client.query_points(
-                                collection_name=collection_name,
-                                query=query_emb,
-                                query_filter=models.Filter(
-                                    must=[
-                                        models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id)),
-                                        models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id)),
-                                    ]
-                                ),
-                                limit=1,
-                            )
-                        except Exception as e:
-                            self.logger.warning(f"search: file-coverage query failed for {doc_id}: {e}")
-                            continue
-                        if not cov_res.points:
-                            continue
-                        hit = cov_res.points[0]
-                        payload = dict(hit.payload or {})
-                        payload["coverage"] = True
-                        chunks.append(payload)
-                        scores.append(hit.score)
-                        added += 1
-                    if added:
-                        self.logger.info(f"search: file-coverage appended best chunk of {added} missing document(s)")
-            except Exception as e:
-                self.logger.warning(f"search: file-coverage pass failed: {e}")
-
-        for i, chunk in enumerate(chunks):
-            text_preview = chunk.get("text", "")[:100].replace("\n", " ")
+                indexed = {str(d.get("id")) for d in docs if d.get("index_status") == INDEX_STATUS_INDEXED}
+                unrepresented = max(0, len(indexed - covered))
+            except Exception as exc:  # noqa: BLE001 — a count is not worth a failed answer
+                self.logger.debug(f"search: could not count unrepresented documents: {exc}")
+            self.last_coverage = {"covered": added, "unrepresented": unrepresented, "budget": budget}
             self.logger.info(
-                f"  chunk[{i}]: doc_id={chunk.get('doc_id', '?')}, score={scores[i]:.4f}, text='{text_preview}...'"
+                f"search: coverage added {added} document(s); {unrepresented} indexed document(s) "
+                f"stay out of this context"
             )
 
         return chunks, scores

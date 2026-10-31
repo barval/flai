@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Fixed
+
+- **Document search stops dropping most of the corpus.** Measured on a real question about 26 work logs: 20 fragments arrived, 8 of them from two unrelated PDFs, and the coverage pass refused outright because 17 documents were missing against a hardcoded cap of 6 — the answer looked complete and covered 10 files out of 26. Retrieval breadth is derived now (`app/rag_budget.py`): the fragment budget comes from the answering model's context window (already auto-fitted to the card), the `RAG_CONTEXT_PERCENT` share and the measured token cost of a fragment, with 70 % of the room for relevance and the rest for coverage. `RAG_TOP_K` became a ceiling for the relevance half instead of the literal count, coverage takes its chunks from the same query (fetched deeper, because one large document can occupy many slots) instead of one query per missing file, and it degrades instead of refusing: the search reports how many indexed documents stay out of the context. On the same question the new budget gathers 28 fragments from 22 documents rather than 20 from 12.
+
 ### Documentation
 
 - **ADMINISTRATION.md** (and its Russian twin) documents the MCP tab; the READMEs' "What's New in v12.9" carries the release's five headline changes with links to their owner documents, and the two Russian quotes that had leaked into `AGENTS.md` and `CHANGELOG.md` were replaced with English descriptions.

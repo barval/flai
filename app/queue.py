@@ -2942,9 +2942,9 @@ class RedisRequestQueue:
                     chunks, scores = rag.search(
                         user_id,
                         query,
-                        top_k=20,
                         file_coverage=True,
                         doc_ids=self._rag_scope(request_data),
+                        lang=lang,
                     )
                     if task and chunks:
                         self._publish_stream_event(
@@ -4068,9 +4068,9 @@ class RedisRequestQueue:
             chunks, scores = rag.search(
                 user_id,
                 query,
-                top_k=20,
                 file_coverage=True,
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
+                lang=lang,
             )
             if task and chunks:
                 self._publish_stream_event(
@@ -4696,9 +4696,9 @@ class RedisRequestQueue:
             chunks, scores = rag.search(
                 user_id,
                 query,
-                top_k=20,
                 file_coverage=True,
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
+                lang=lang,
             )
             if task and chunks:
                 self._publish_stream_event(

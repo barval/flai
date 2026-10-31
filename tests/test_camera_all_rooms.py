@@ -39,6 +39,9 @@ def _queue(config: dict | None = None) -> Mock:
     queue._process_camera_all_rooms = lambda *args, **kwargs: RedisRequestQueue._process_camera_all_rooms(
         queue, *args, **kwargs
     )
+    queue._camera_room_question = lambda *args, **kwargs: RedisRequestQueue._camera_room_question(queue, *args, **kwargs)
+    queue._camera_summary = lambda *args, **kwargs: RedisRequestQueue._camera_summary(queue, *args, **kwargs)
+    queue._is_llm_error_string = lambda text: False
     return queue
 
 
@@ -58,13 +61,19 @@ def _modules(rooms: dict[str, str], fail: set[str] | None = None) -> dict:
     base._ = Mock(side_effect=lambda text, lang=None, **kwargs: text)
     multimodal = Mock()
     multimodal.available = True
-    # One call per room: the answer is asked for that room only.
+    # Text calls: the per-room rewrite first, then the summary over observations.
+    multimodal.llamacpp = Mock()
+    multimodal.llamacpp.chat.side_effect = [
+        "Есть ли кошки в этой комнате?",
+        "Кошки есть на балконе; в остальных комнатах их нет.",
+    ]
+    # One vision call per room, each answered about that room.
     multimodal.process_image_with_text.side_effect = [
-        ("да", None),
-        ("нет", None),
-        ("нет", None),
-        ("нет", None),
-        ("нет", None),
+        ("кошка есть", None),
+        ("кошек нет", None),
+        ("кошек нет", None),
+        ("кошек нет", None),
+        ("кошек нет", None),
     ]
     return {"cam": cam, "base": base, "multimodal": multimodal}
 
@@ -118,20 +127,38 @@ def test_the_asterisk_saves_one_message_per_room_and_one_answer():
     # Three snapshots plus the composed answer.
     assert len(result["messages"]) == 4
     assert queue._save_and_respond.call_count == 4
-    # One vision call per room — measured, a batch makes the small model place a
-    # cat in rooms where a single-image call correctly says "нет".
     multimodal = queue.app.modules["multimodal"]
+    # One vision call per room — measured, a batch lets the model carry a subject
+    # from one image into another.
     assert multimodal.process_image_with_text.call_count == 3
     prompt = multimodal.process_image_with_text.call_args.args[1]
-    # The per-room question is derived, never the user's wording: repeating
-    # "check every room" on a single image made the model answer "no cats here"
-    # for a kitchen it otherwise describes as having a cat.
+    # The per-room question is DERIVED by the model, never hardcoded and never
+    # the user's aggregate wording.
+    assert prompt == "Есть ли кошки в этой комнате?"
     assert "где кошки?" not in prompt
-    assert "cat" in prompt.lower()
+    # The answer is the summary over the observations.
     answer = queue._save_and_respond.call_args.args[1]
-    # The answer is grouped, not a per-room description dump.
-    assert "Гостиная" in answer.split("\n")[0]
-    assert "Кухня" in answer and "Спальня" in answer
+    assert answer == "Кошки есть на балконе; в остальных комнатах их нет."
+    summary_prompt = multimodal.llamacpp.chat.call_args.args[0][0]["content"]
+    assert "Гостиная" in summary_prompt and "Кухня" in summary_prompt
+
+
+@pytest.mark.unit
+def test_a_failed_rewrite_and_summary_keep_the_request_and_the_observations():
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня"})
+    queue.app.modules["multimodal"].llamacpp.chat.side_effect = RuntimeError("model down")
+    with patch("app.queue.save_uploaded_file", return_value="probe/1.jpg"):
+        result = RedisRequestQueue._process_camera_all_rooms(
+            queue, "s1", "user", "где кошки?", "2026-10-31 16:00", "ru"
+        )
+    # A rewrite failure must not lose the request.
+    prompt = queue.app.modules["multimodal"].process_image_with_text.call_args.args[1]
+    assert "где кошки?" in prompt
+    # A summary failure must not lose the observations: the list is the answer.
+    saved = [call.args[1] for call in queue._save_and_respond.call_args_list]
+    assert any("Кухня" in text for text in saved)
+    assert len(result["messages"]) == 2
 
 
 @pytest.mark.unit

@@ -66,18 +66,29 @@ message each, then composes the answer over all of them in one multimodal call.
 The number of captures is capped by `CAMERA_ALL_ROOMS_MAX` (default 12) and a
 room with no signal is skipped and logged.
 
-**Why the answer is composed per room, not from one batch (measured).** The first
-version sent all snapshots in one multimodal call with the room order spelled
-out; the model then placed cats in rooms where a single-image call correctly
-said "none" — it contaminates images inside a batch and cannot reliably bind
-"image 3" to "3) study". Two more findings from the same measurement: the
-snapshots were 384×216 (the preview width), where a cat on the floor is a few
-dozen pixels, and repeating the user's "check every room" wording on a single
-image made the model answer "no cats here" for a kitchen it otherwise describes
-as having one. The path now asks **one binary question per room** ("is there a
-cat in this room? one word: yes or no") on a **1024 px** snapshot
-(`CAMERA_ANALYSIS_WIDTH`) and groups the answers into "cats are in / no cats in /
-not determined"; the user's wording is never passed to the per-room call.
+**How the answer is composed (measured, and general).** Nothing in this path is
+specific to one question: the per-room question is **derived from the user's own
+request by the model** ("check every room - where are the cats?" becomes "is there
+a cat in this room?"), each room is asked that question on its own 1024-px
+snapshot, and a final text call answers the user's request from those
+observations (summing when the request asks for a total). Three measured reasons
+for exactly this shape:
+
+* **One image per call.** Sent as a batch, the model carries a subject from one
+  image into another — cats appeared in rooms a single-image call correctly
+  called empty.
+* **1024 px, not the 384-px preview** (`CAMERA_ANALYSIS_WIDTH`): at preview size a
+  cat on the floor is a few dozen pixels and the model guesses.
+* **A neutral question.** The rewrite is explicitly told not to presuppose the
+  answer: a location request becomes "is there X here?", never "where is X?" —
+  with the presupposing form the same frames gave the kitchen in one run and the
+  study in another.
+
+Measured after these three: three consecutive runs over the same frames gave the
+identical result (corridor + kitchen), and the corridor frame was confirmed by
+eye to contain a cat. The same flow was checked with other subjects — people,
+chairs (counted per room and totalled), flowers — each producing its own derived
+per-room question.
 
 **Tools (v12.9).** The tool loop got its camera surface: `list_rooms` returns the
 codes and localized names the user may look at (offered only when the camera module

@@ -150,26 +150,6 @@ def _run_document_indexing(
     return True, message, embedding_model, False
 
 
-def _binary_verdict(answer: str, lang: str = "ru") -> bool | None:
-    """Read a yes/no from a vision answer, or None when it is neither.
-
-    The prompt asks for one word, and the model still answers "кошка есть" or
-    "кошек не видно" often enough that matching a prefix loses the verdict.
-    Negation is checked first: "не видно" must not read as "видно".
-    """
-    text = (answer or "").strip().lower().replace("ё", "е")
-    negatives = ("нет", "no ", "no.", "not visible", "no cat", "не видно", "не обнаруж", "отсутству")
-    positives = ("да", "yes", "есть", "видна", "видно", "обнаруж", "there is", "cat is", "present")
-    if not text:
-        return None
-    if any(marker in text for marker in negatives):
-        return False
-    if any(marker in text for marker in positives):
-        return True
-    return None
-
-
-
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -3661,6 +3641,64 @@ class RedisRequestQueue:
         """Snapshot width the vision model reads: 384 px previews miss small animals."""
         return max(384, int(self.app.config.get("CAMERA_ANALYSIS_WIDTH", 1024)))
 
+    def _camera_room_question(self, message_text: str, lang: str) -> str:
+        """Turn the user's request into a question about ONE room.
+
+        The aggregate wording ("check every room") answers badly against a single
+        image — measured, it made the model answer "no cats here" for a kitchen it
+        otherwise describes as having one. The rewrite is done by the model, not by
+        a template: the subject of the question is whatever the user asked about.
+        """
+        base = self.app.modules["base"]
+        prompt = str(
+            base._(
+                "Rewrite the user's request as ONE short question about a single room, answerable by looking "
+                "at one camera snapshot. Keep the subject of the question. Do NOT assume the answer: a request "
+                "for a location becomes a yes/no question (\"is there X in this room?\"), never \"where is X?\". "
+                "Return only the question, in the user's language. Request: {request}",
+                lang=lang,
+            )
+        ).replace("{request}", message_text)
+        multimodal = self.app.modules.get("multimodal")
+        if multimodal is not None and getattr(multimodal, "available", False):
+            try:
+                reply = multimodal.llamacpp.chat(
+                    [{"role": "user", "content": prompt}], model_type="multimodal", lang=lang
+                )
+                text = str(reply or "").strip().split("\n")[0].strip().strip('"«»')
+                if text and not self._is_llm_error_string(text):
+                    return text
+            except Exception as exc:  # noqa: BLE001 — a failed rewrite falls back to the request
+                self.logger.warning(f"camera: per-room question rewrite failed: {exc}")
+        return message_text
+
+    def _camera_summary(self, message_text: str, observations: list[str], lang: str) -> str:
+        """Answer the user's request from the per-room observations, or '' on failure."""
+        base = self.app.modules["base"]
+        multimodal = self.app.modules.get("multimodal")
+        if multimodal is None or not getattr(multimodal, "available", False) or not observations:
+            return ""
+        prompt = str(
+            base._(
+                "A snapshot was taken of every room. Here is what each room shows: {rooms}. "
+                "Answer the user's request using ONLY these observations. Name the rooms explicitly and do "
+                "not invent what is not listed; if the request asks for a total or a comparison, compute it from "
+                "these numbers. Request: {request}",
+                lang=lang,
+            )
+        ).replace("{rooms}", "\n".join(observations)).replace("{request}", message_text)
+        try:
+            reply = multimodal.llamacpp.chat(
+                [{"role": "user", "content": prompt}], model_type="multimodal", lang=lang
+            )
+            text = str(reply or "").strip()
+        except Exception as exc:  # noqa: BLE001 — the observation list is still a valid answer
+            self.logger.warning(f"camera: summary failed: {exc}")
+            return ""
+        if not text or self._is_llm_error_string(text):
+            return ""
+        return text
+
     def _capture_all_rooms(self, user_id: str, lang: str, task: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Snapshot every room the user may see, bounded by CAMERA_ALL_ROOMS_MAX.
 
@@ -3768,63 +3806,40 @@ class RedisRequestQueue:
         multimodal = self.app.modules.get("multimodal")
         if message_text and multimodal is not None and multimodal.available:
             # ONE call per room, deliberately. Measured on the shipped
-            # Qwen3VL-8B: asked about a single image it answers "кошка есть" for
-            # the kitchen and "нет" for the living room — correctly; given all
-            # seven images in one call it put a cat in the living room too. A
-            # small vision model contaminates images inside a batch and cannot
-            # reliably bind "image 3" to "3) study", so the per-room call is the
-            # only shape whose answer can be trusted. It is also the shape the
-            # Tasks planner uses (one camera step per room).
+            # Qwen3VL-8B: a single image is answered correctly, while the same
+            # images in one batch pick up a subject from each other (a cat in the
+            # kitchen put a cat in the living room). It is also the shape the
+            # Tasks planner uses — one camera step per room.
+            #
+            # Nothing here is specific to what the user asked: the per-room
+            # question is DERIVED from their request by the model, and the answer
+            # is composed from the per-room answers. Hardcoding "is there a cat"
+            # would answer every request with a cat question.
             base = self.app.modules["base"]
-            # A BINARY question per room, and nothing else. Measured on the
-            # shipped Qwen3VL-8B: asked "is there a cat on this image? one word:
-            # yes or no" it is right on both a kitchen with a cat and a living
-            # room without one; asked to "describe and answer", or handed the
-            # user's "check every room" wording, it puts a cat on the radiator.
-            # The user's question is answered by the assembled lists, not by the
-            # per-room call.
-            question = str(base._("Is there a cat in this room? Answer with one word: yes or no.", lang=lang))
+            room_question = self._camera_room_question(message_text, lang)
             mm_start = time.time()
-            yes_rooms: list[str] = []
-            no_rooms: list[str] = []
-            unclear: list[str] = []
+            observations: list[str] = []
             for capture in captures:
                 room_answer, room_error = multimodal.process_image_with_text(
                     capture.get("image_data", ""),
-                    question,
+                    room_question,
                     current_time_str,
                     lang=lang,
                     session_id=None,
                     response_style=response_style,
                 )
-                verdict = _binary_verdict(str(room_answer or ""), lang)
-                if verdict is True:
-                    yes_rooms.append(capture["room_name"])
-                elif verdict is False:
-                    no_rooms.append(capture["room_name"])
-                else:
-                    detail = room_error or str(room_answer or "").strip() or "?"
-                    unclear.append(f"{capture['room_name']}: {detail}")
+                text = str(room_answer or "").strip()
+                if room_error or not text:
+                    text = str(base._("No description received", lang=lang))
+                observations.append(f"- {capture['room_name']}: {text}")
             mm_time = round(time.time() - mm_start, 1)
-            lines = []
-            if yes_rooms:
-                lines.append(str(base._("Cats are in: {rooms}", lang=lang)).replace("{rooms}", ", ".join(yes_rooms)))
-            if no_rooms:
-                lines.append(str(base._("No cats in: {rooms}", lang=lang)).replace("{rooms}", ", ".join(no_rooms)))
-            if unclear:
-                lines.append(str(base._("Not determined: {rooms}", lang=lang)).replace("{rooms}", "; ".join(unclear)))
-            if not yes_rooms and not no_rooms and not unclear:
-                lines.append(str(base._("No cameras are available", lang=lang)))
-            bot_reply = "\n".join(lines)
-            error = None
-            error = None
-            mm_time = round(time.time() - mm_start, 1)
+            bot_reply = self._camera_summary(message_text, observations, lang) or "\n".join(observations)
             second = self._save_and_respond(
                 session_id,
                 bot_reply,
                 self._get_model_name("multimodal") or "unknown",
                 mm_time,
-                is_error=bool(error),
+                is_error=False,
                 extra={"model_type": "multimodal"},
                 response_style=response_style,
             )

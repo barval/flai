@@ -13,7 +13,7 @@
   - **Site name** – in Russian and English (both required, max 40 chars each); shown in the header, in the browser tab title and in exported chats, with automatic font shrink on narrow screens.
   - **Chat export** – reuses the live site's footer: a short brand label that opens the same About dialog (full name, version, GitHub link, copyright), and the custom logo is embedded in both the header and that dialog.
   - **Backups** – a saved branding set is included in full backups.
-- 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM and RAM (available of total), and CPU cores
+- 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM and RAM (available of total), the CUDA version on NVIDIA nodes, and CPU cores
 - 🔌 **MCP servers** – its own tab: enable or disable MCP tools, set the request timeout, and keep a list of servers (name, URL, token, allowed tools) with a **Test** button that enumerates what a server offers. A stored token is never shown back; the list is validated when it is saved, so a server entry that would be ignored at load time is refused then.
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands

@@ -11,6 +11,40 @@ from app.platform_detect import (
 )
 
 
+class TestCudaVersion:
+    """The CUDA version comes from the nvidia-smi header, because --query-gpu has no such field."""
+
+    HEADER = "| NVIDIA-SMI 595.71.05   Driver Version: 595.71.05   CUDA Version: 13.2 |\n"
+    QUERY = "NVIDIA GeForce RTX 4090, 24564, 2048, 22516\n"
+
+    def test_reads_the_header_and_caches_it(self):
+        query = MagicMock(returncode=0, stdout=self.QUERY)
+        header = MagicMock(returncode=0, stdout=self.HEADER)
+        with (
+            patch("app.platform_detect._cuda_version_cache", ""),
+            patch("app.platform_detect.subprocess.run", side_effect=[query, header, query]) as run,
+        ):
+            first = get_platform_info("nvidia")
+            second = get_platform_info("nvidia")
+        assert first.cuda_version == "13.2"
+        assert second.cuda_version == "13.2"
+        assert run.call_count == 3, "the header probe runs once, then the answer is cached"
+
+    def test_empty_when_the_header_carries_no_version(self):
+        query = MagicMock(returncode=0, stdout=self.QUERY)
+        header = MagicMock(returncode=1, stdout="", stderr="no driver")
+        with (
+            patch("app.platform_detect._cuda_version_cache", ""),
+            patch("app.platform_detect.subprocess.run", side_effect=[query, header]),
+        ):
+            info = get_platform_info("nvidia")
+        assert info.cuda_version == ""
+
+    def test_non_nvidia_platforms_have_no_cuda_version(self):
+        assert GpuInfo(platform="cpu").cuda_version == ""
+        assert GpuInfo(platform="amd", gpu_name="Radeon").cuda_version == ""
+
+
 class TestProbeNvidia:
     def test_success(self):
         with patch(

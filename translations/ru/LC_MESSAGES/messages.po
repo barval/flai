@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.9\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 01:20+0300\n"
+"POT-Creation-Date: 2026-11-01 01:29+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -33,8 +33,8 @@ msgstr "Требуется авторизация."
 
 #: app/__init__.py:594 app/routes/admin.py:392 app/routes/admin.py:642
 #: app/routes/admin.py:683 app/routes/admin.py:699 app/routes/admin.py:711
-#: app/routes/admin.py:735 app/routes/admin.py:781 app/routes/admin.py:2097
-#: app/routes/admin.py:2114 app/routes/admin.py:2149
+#: app/routes/admin.py:735 app/routes/admin.py:783 app/routes/admin.py:2099
+#: app/routes/admin.py:2116 app/routes/admin.py:2151
 #: app/templates/admin.html:539 modules/video.py:816
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
@@ -168,7 +168,7 @@ msgstr ""
 "Сервер моделей перезагружается из-за изменения конфигурации. Подождите "
 "несколько секунд и повторите запрос."
 
-#: app/llamacpp_client.py:160 app/routes/admin.py:1193 modules/sd_cpp.py:338
+#: app/llamacpp_client.py:160 app/routes/admin.py:1195 modules/sd_cpp.py:338
 #: modules/sd_cpp.py:537
 #, python-brace-format
 msgid "HTTP error {status}"
@@ -204,8 +204,8 @@ msgstr "Не удалось подключиться к llama-server"
 
 #: app/llamacpp_client.py:720 app/llamacpp_client.py:908
 #: app/llamacpp_client.py:1164 app/llamacpp_client.py:1444
-#: app/routes/admin.py:613 app/routes/admin.py:1288 app/routes/admin.py:1715
-#: app/routes/admin.py:1788 app/routes/admin.py:1943
+#: app/routes/admin.py:613 app/routes/admin.py:1290 app/routes/admin.py:1717
+#: app/routes/admin.py:1790 app/routes/admin.py:1945
 #: app/templates/admin.html:538 app/templates/chat.html:248 modules/cam.py:506
 #: modules/sd_cpp.py:348 modules/sd_cpp.py:549 modules/video.py:828
 msgid "Error"
@@ -226,7 +226,7 @@ msgstr "Внутренняя ошибка: модель не ответила"
 msgid "GPU memory unavailable. Please try again."
 msgstr "Память GPU недоступна. Попробуйте снова."
 
-#: app/queue.py:131 app/queue.py:7217 app/routes/admin.py:1975
+#: app/queue.py:131 app/queue.py:7217 app/routes/admin.py:1977
 msgid "RAG module unavailable"
 msgstr "RAG модуль недоступен"
 
@@ -707,7 +707,10 @@ msgid ""
 "rounds: search, open what looks relevant, refine the query. Use it when "
 "one search is not enough and the answer must be cross-checked against "
 "more than one source."
-msgstr "Исследуй вопрос по интернету и документам пользователя в несколько раундов: ищи, открывай подходящее, уточняй запрос. Используй, когда одного поиска мало и ответ нужно сверить с несколькими источниками."
+msgstr ""
+"Исследуй вопрос по интернету и документам пользователя в несколько "
+"раундов: ищи, открывай подходящее, уточняй запрос. Используй, когда "
+"одного поиска мало и ответ нужно сверить с несколькими источниками."
 
 #: app/tool_registry.py:74
 msgid "Name the facts the research must establish and agree on."
@@ -977,7 +980,9 @@ msgstr "Сервис видеонаблюдения недоступен"
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
-msgstr "Что сейчас видно в этой комнате? Назови людей, животных, предметы и происходящее действие."
+msgstr ""
+"Что сейчас видно в этой комнате? Назови людей, животных, предметы и "
+"происходящее действие."
 
 #: app/tools.py:666
 msgid "Snapshot captured; no description is available."
@@ -1085,7 +1090,9 @@ msgstr "Метаданные модели не найдены. Сначала н
 msgid ""
 "⚠ Fits only with a smaller context: {fit} instead of {requested} ({kv} MB"
 " of KV cache at the requested window)."
-msgstr "⚠ Помещается только с меньшим контекстом: {fit} вместо {requested} ({kv} МБ KV-кэша при запрошенном окне)."
+msgstr ""
+"⚠ Помещается только с меньшим контекстом: {fit} вместо {requested} ({kv} "
+"МБ KV-кэша при запрошенном окне)."
 
 #: app/vram_estimate.py:438
 #, python-brace-format
@@ -1101,7 +1108,7 @@ msgstr ""
 "✗ Модель не может быть запущена. Требуется {needed} МБ (файл + KV-кэш), "
 "свободно {free} МБ ОЗУ."
 
-#: app/routes/admin.py:921 app/vram_estimate.py:470
+#: app/routes/admin.py:923 app/vram_estimate.py:470
 #, python-brace-format
 msgid "✓ Fits in VRAM: {vram} MB / {total} MB"
 msgstr "✓ Помещается в VRAM: {vram} МБ / {total} МБ"
@@ -1172,7 +1179,7 @@ msgstr "Неверный лимит хранилища"
 msgid "New password not specified"
 msgstr "Новый пароль не указан"
 
-#: app/routes/admin.py:867
+#: app/routes/admin.py:869
 msgid ""
 "Selected model looks like a plain chat model (no vision encoder/mmproj "
 "found next to it). The multimodal module needs a vision model such as "
@@ -1182,83 +1189,83 @@ msgstr ""
 "vision-энкодера/mmproj). Мультимодальному модулю нужна Vision-модель, "
 "например Qwen3VL, Qwen2-VL, LLaVA, MiniCPM-V и т.п."
 
-#: app/routes/admin.py:888
+#: app/routes/admin.py:890
 msgid "Missing \"model\" parameter"
 msgstr "Отсутствует параметр \"model\""
 
-#: app/routes/admin.py:923
+#: app/routes/admin.py:925
 msgid "⚠ Partial CPU offload needed"
 msgstr "⚠ Частичная загрузка на CPU"
 
-#: app/routes/admin.py:1187
+#: app/routes/admin.py:1189
 msgid "Missing url"
 msgstr "Отсутствует url"
 
-#: app/routes/admin.py:1257 app/routes/admin.py:1569
+#: app/routes/admin.py:1259 app/routes/admin.py:1571
 msgid "Missing \"url\" parameter"
 msgstr "Отсутствует параметр \"url\""
 
-#: app/routes/admin.py:1285 app/routes/admin.py:1712
+#: app/routes/admin.py:1287 app/routes/admin.py:1714
 #, python-brace-format
 msgid "llama-server returned {status}"
 msgstr "llama-server вернул {status}"
 
-#: app/routes/admin.py:1936
+#: app/routes/admin.py:1938
 msgid "Request queue not available"
 msgstr "Очередь запросов недоступна"
 
-#: app/routes/admin.py:1940
+#: app/routes/admin.py:1942
 msgid "Reindex started"
 msgstr "Переиндексация запущена"
 
-#: app/routes/admin.py:2165 app/routes/admin.py:2205
+#: app/routes/admin.py:2167 app/routes/admin.py:2207
 msgid "Camera integration is not available"
 msgstr "Интеграция с камерой недоступна"
 
-#: app/routes/admin.py:2183 app/templates/admin.html:899
+#: app/routes/admin.py:2185 app/templates/admin.html:899
 msgid "Camera unavailable"
 msgstr "Камера недоступна"
 
-#: app/routes/admin.py:2296 app/routes/admin.py:2300
+#: app/routes/admin.py:2298 app/routes/admin.py:2302
 msgid "No custom logo uploaded"
 msgstr "Свой логотип не загружен"
 
-#: app/routes/admin.py:2326 app/routes/admin.py:2329
+#: app/routes/admin.py:2328 app/routes/admin.py:2331
 msgid "No logo file uploaded"
 msgstr "Файл логотипа не передан"
 
-#: app/routes/admin.py:2333 app/routes/api_v1.py:718 app/routes/api_v1.py:1170
+#: app/routes/admin.py:2335 app/routes/api_v1.py:718 app/routes/api_v1.py:1170
 msgid "Uploaded file is empty"
 msgstr "Загруженный файл пуст"
 
-#: app/routes/admin.py:2335 app/templates/admin.html:969
+#: app/routes/admin.py:2337 app/templates/admin.html:970
 msgid "Logo is too large (max 2 MB)"
 msgstr "Логотип слишком большой (макс. 2 МБ)"
 
-#: app/routes/admin.py:2339 app/routes/admin.py:2342
+#: app/routes/admin.py:2341 app/routes/admin.py:2344
 msgid "Unsupported logo format (PNG, JPEG or WebP)"
 msgstr "Неподдерживаемый формат логотипа (PNG, JPEG или WebP)"
 
-#: app/routes/admin.py:2352
+#: app/routes/admin.py:2354
 msgid "Logo is too small (minimum 16x16)"
 msgstr "Логотип слишком маленький (минимум 16x16)"
 
-#: app/routes/admin.py:2368
+#: app/routes/admin.py:2370
 msgid "Invalid image file"
 msgstr "Некорректный файл изображения"
 
-#: app/routes/admin.py:2409 app/routes/api_v1.py:627 app/routes/api_v1.py:789
+#: app/routes/admin.py:2411 app/routes/api_v1.py:627 app/routes/api_v1.py:789
 #: app/routes/api_v1.py:909 app/routes/api_v1.py:938 app/routes/api_v1.py:1017
 #: app/routes/api_v1.py:1075 app/routes/api_v1.py:1451
 #: app/routes/api_v1.py:1608
 msgid "Request body must be a JSON object"
 msgstr "Тело запроса должно быть JSON-объектом"
 
-#: app/routes/admin.py:2417 app/templates/admin.html:972
+#: app/routes/admin.py:2419 app/templates/admin.html:973
 msgid "Site name is too long (max 40 characters per language)"
 msgstr "Название слишком длинное (макс. 40 символов на язык)"
 
-#: app/routes/admin.py:2419 app/templates/admin.html:971
+#: app/routes/admin.py:2421 app/templates/admin.html:972
 msgid "Both language variants are required"
 msgstr "Требуются оба языковых варианта"
 
@@ -2027,7 +2034,7 @@ msgstr "Мониторинг"
 msgid "Settings"
 msgstr "Настройки"
 
-#: app/templates/admin.html:13 app/templates/admin.html:939
+#: app/templates/admin.html:13 app/templates/admin.html:940
 msgid "Model Hub"
 msgstr "Хаб Моделей"
 
@@ -2084,103 +2091,103 @@ msgstr "База документов"
 
 #: app/templates/admin.html:55 app/templates/admin.html:361
 #: app/templates/admin.html:550 app/templates/admin.html:895
-#: app/templates/admin.html:920
+#: app/templates/admin.html:921
 msgid "Status"
 msgstr "Статус"
 
 #: app/templates/admin.html:56 app/templates/admin.html:462
-#: app/templates/admin.html:551 app/templates/admin.html:921
+#: app/templates/admin.html:551 app/templates/admin.html:922
 #: app/templates/login.html:14
 msgid "Login"
 msgstr "Логин"
 
 #: app/templates/admin.html:57 app/templates/admin.html:466
-#: app/templates/admin.html:552 app/templates/admin.html:922
+#: app/templates/admin.html:552 app/templates/admin.html:923
 #: app/templates/login.html:18
 msgid "Password"
 msgstr "Пароль"
 
 #: app/templates/admin.html:58 app/templates/admin.html:329
 #: app/templates/admin.html:342 app/templates/admin.html:470
-#: app/templates/admin.html:553 app/templates/admin.html:923
+#: app/templates/admin.html:553 app/templates/admin.html:924
 msgid "Name"
 msgstr "Имя"
 
 #: app/templates/admin.html:59 app/templates/admin.html:474
-#: app/templates/admin.html:554 app/templates/admin.html:924
+#: app/templates/admin.html:554 app/templates/admin.html:925
 msgid "Class"
 msgstr "Класс"
 
 #: app/templates/admin.html:60 app/templates/admin.html:102
-#: app/templates/admin.html:925
+#: app/templates/admin.html:926
 msgid "Storage"
 msgstr "Хранилище"
 
 #: app/templates/admin.html:61 app/templates/admin.html:143
-#: app/templates/admin.html:555 app/templates/admin.html:926
+#: app/templates/admin.html:555 app/templates/admin.html:927
 #: app/templates/chat.html:20 app/templates/chat.html:197
 msgid "Sessions"
 msgstr "Сеансы"
 
 # Tasks subsystem (v12.6): панель «Задачи» UI (chat.html, chat-tasks.js)
 #: app/templates/admin.html:62 app/templates/admin.html:159
-#: app/templates/admin.html:594 app/templates/admin.html:927
+#: app/templates/admin.html:594 app/templates/admin.html:928
 #: app/templates/chat.html:15 app/templates/chat.html:199
 msgid "Tasks"
 msgstr "Задачи"
 
 #: app/templates/admin.html:63 app/templates/admin.html:175
-#: app/templates/admin.html:928
+#: app/templates/admin.html:929
 msgid "Outgoing tokens"
 msgstr "Исходящие токены"
 
 #: app/templates/admin.html:64 app/templates/admin.html:183
-#: app/templates/admin.html:929
+#: app/templates/admin.html:930
 msgid "Incoming tokens"
 msgstr "Входящие токены"
 
 #: app/templates/admin.html:65 app/templates/admin.html:151
-#: app/templates/admin.html:556 app/templates/admin.html:930
+#: app/templates/admin.html:556 app/templates/admin.html:931
 #: app/templates/chat.html:69 app/templates/chat.html:246
 msgid "Messages"
 msgstr "Сообщения"
 
 #: app/templates/admin.html:66 app/templates/admin.html:191
-#: app/templates/admin.html:557 app/templates/admin.html:931
+#: app/templates/admin.html:557 app/templates/admin.html:932
 msgid "Files"
 msgstr "Файлы"
 
 #: app/templates/admin.html:67 app/templates/admin.html:199
-#: app/templates/admin.html:558 app/templates/admin.html:932
+#: app/templates/admin.html:558 app/templates/admin.html:933
 #: app/templates/chat.html:9 app/templates/chat.html:198
 msgid "Documents"
 msgstr "Документы"
 
-#: app/templates/admin.html:68 app/templates/admin.html:933
+#: app/templates/admin.html:68 app/templates/admin.html:934
 msgid "SLM Facts"
 msgstr "SLM факты"
 
 #: app/templates/admin.html:69 app/templates/admin.html:167
-#: app/templates/admin.html:934
+#: app/templates/admin.html:935
 msgid "Internet requests"
 msgstr "Запросы в интернет"
 
-#: app/templates/admin.html:70 app/templates/admin.html:935
+#: app/templates/admin.html:70 app/templates/admin.html:936
 msgid "Tavily API"
 msgstr "Tavily API"
 
-#: app/templates/admin.html:71 app/templates/admin.html:936
+#: app/templates/admin.html:71 app/templates/admin.html:937
 msgid "FLAI API"
 msgstr "ПЛИИ API"
 
 #: app/templates/admin.html:73 app/templates/admin.html:488
-#: app/templates/admin.html:559 app/templates/admin.html:937
+#: app/templates/admin.html:559 app/templates/admin.html:938
 msgid "Camera access"
 msgstr "Доступ к камерам"
 
 #: app/templates/admin.html:75 app/templates/admin.html:401
 #: app/templates/admin.html:560 app/templates/admin.html:887
-#: app/templates/admin.html:938
+#: app/templates/admin.html:939
 msgid "Actions"
 msgstr "Действия"
 
@@ -2382,7 +2389,7 @@ msgstr "Имя модели"
 msgid "Search models on Hugging Face…"
 msgstr "Поиск моделей на Hugging Face…"
 
-#: app/templates/admin.html:293 app/templates/admin.html:913
+#: app/templates/admin.html:293 app/templates/admin.html:914
 msgid "Search"
 msgstr "Поиск"
 
@@ -2619,7 +2626,7 @@ msgstr "Удалить пользователя {login}?"
 msgid "OK"
 msgstr "ОК"
 
-#: app/templates/admin.html:545 app/templates/admin.html:948
+#: app/templates/admin.html:545 app/templates/admin.html:949
 #: app/templates/chat.html:311
 msgid "Cancel"
 msgstr "Отмена"
@@ -3702,11 +3709,11 @@ msgstr "llama-server недоступен"
 msgid "Restore"
 msgstr "Восстановить"
 
-#: app/templates/admin.html:867 app/templates/admin.html:961
+#: app/templates/admin.html:867 app/templates/admin.html:962
 msgid "Delete"
 msgstr "Удалить"
 
-#: app/templates/admin.html:868 app/templates/admin.html:958
+#: app/templates/admin.html:868 app/templates/admin.html:959
 msgid "Download"
 msgstr "Скачать"
 
@@ -3783,11 +3790,11 @@ msgstr "Ошибка синхронизации камер"
 msgid "Platform"
 msgstr "Платформа"
 
-#: app/templates/admin.html:905 app/templates/admin.html:952
+#: app/templates/admin.html:905 app/templates/admin.html:953
 msgid "GPU"
 msgstr "GPU"
 
-#: app/templates/admin.html:906 app/templates/admin.html:954
+#: app/templates/admin.html:906 app/templates/admin.html:955
 msgid "CPU"
 msgstr "CPU"
 
@@ -3800,120 +3807,124 @@ msgid "VRAM"
 msgstr "VRAM"
 
 #: app/templates/admin.html:909
+msgid "CUDA"
+msgstr "CUDA"
+
+#: app/templates/admin.html:910
 msgid "RAM"
 msgstr "RAM"
 
-#: app/templates/admin.html:910
+#: app/templates/admin.html:911
 msgid "GB"
 msgstr "ГБ"
 
-#: app/templates/admin.html:911
+#: app/templates/admin.html:912
 msgid "of"
 msgstr "из"
 
-#: app/templates/admin.html:914
+#: app/templates/admin.html:915
 msgid "Searching…"
 msgstr "Поиск…"
 
-#: app/templates/admin.html:915
+#: app/templates/admin.html:916
 msgid "Enter a search query…"
 msgstr "Введите поисковый запрос…"
 
-#: app/templates/admin.html:916
+#: app/templates/admin.html:917
 msgid "No models found"
 msgstr "Моделей не найдено"
 
-#: app/templates/admin.html:917
+#: app/templates/admin.html:918
 msgid "Reranker"
 msgstr "Реранкер"
 
-#: app/templates/admin.html:918
+#: app/templates/admin.html:919
 msgid "Cross-encoder reranking"
 msgstr "Реранкинг кросс-энкодером"
 
-#: app/templates/admin.html:919
+#: app/templates/admin.html:920
 msgid "Candidates to rerank"
 msgstr "Кандидатов на реранк"
 
-#: app/templates/admin.html:940
+#: app/templates/admin.html:941
 msgid "Model Hub request failed"
 msgstr "Не удалось выполнить запрос к Model Hub"
 
-#: app/templates/admin.html:941
+#: app/templates/admin.html:942
 msgid "Access required"
 msgstr "Требуется доступ"
 
-#: app/templates/admin.html:942
+#: app/templates/admin.html:943
 msgid "Non-commercial"
 msgstr "Некоммерческая"
 
-#: app/templates/admin.html:943
+#: app/templates/admin.html:944
 #, python-brace-format
 msgid "Downloading {pct}% — {total} MB"
 msgstr "Скачивание {pct}% — {total} МБ"
 
-#: app/templates/admin.html:944
+#: app/templates/admin.html:945
 msgid "Verifying checksum…"
 msgstr "Проверка контрольной суммы…"
 
-#: app/templates/admin.html:945
+#: app/templates/admin.html:946
 msgid "Downloaded — refresh the Models tab"
 msgstr "Скачано — обновите вкладку «Модели»"
 
-#: app/templates/admin.html:946
+#: app/templates/admin.html:947
 msgid "Download failed"
 msgstr "Ошибка скачивания"
 
-#: app/templates/admin.html:947
+#: app/templates/admin.html:948
 msgid "Download cancelled"
 msgstr "Скачивание отменено"
 
-#: app/templates/admin.html:949
+#: app/templates/admin.html:950
 msgid "Searching for suitable models…"
 msgstr "Ищу подходящие модели..."
 
-#: app/templates/admin.html:950
+#: app/templates/admin.html:951
 msgid "Recalculating fit…"
 msgstr "Делаю перерасчёт оценки..."
 
-#: app/templates/admin.html:951
+#: app/templates/admin.html:952
 msgid "Computing fit…"
 msgstr "Делаю расчёт оценки..."
 
-#: app/templates/admin.html:953
+#: app/templates/admin.html:954
 msgid "GPU+CPU"
 msgstr "GPU+CPU"
 
-#: app/templates/admin.html:955
+#: app/templates/admin.html:956
 msgid "Impossible"
 msgstr "Невозможно"
 
-#: app/templates/admin.html:956
+#: app/templates/admin.html:957
 msgid "sec"
 msgstr " с"
 
-#: app/templates/admin.html:957
+#: app/templates/admin.html:958
 msgid "Max context"
 msgstr "Макс. контекст"
 
-#: app/templates/admin.html:959
+#: app/templates/admin.html:960
 msgid "Downloaded"
 msgstr "Загружена"
 
-#: app/templates/admin.html:960
+#: app/templates/admin.html:961
 msgid "Installed via Model Hub"
 msgstr "Загружена через Хаб Моделей"
 
-#: app/templates/admin.html:962
+#: app/templates/admin.html:963
 #, python-brace-format
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Удалить модель {filename} и её служебные файлы с диска?"
 
-#: app/templates/admin.html:963
+#: app/templates/admin.html:964
 msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
 msgstr "Нет доступа к Hugging Face — загрузка моделей из Хаба недоступна"
 
-#: app/templates/admin.html:964
+#: app/templates/admin.html:965
 msgid ""
 "Manually put .gguf files into the models directory (/models), then press "
 "Update model list in the Models tab"
@@ -3921,28 +3932,28 @@ msgstr ""
 "Добавьте файлы .gguf в каталог моделей (/models) вручную и нажмите "
 "«Обновить список моделей» во вкладке «Модели»"
 
-#: app/templates/admin.html:965
+#: app/templates/admin.html:966
 #, python-brace-format
 msgid "Service files totalling {n} MB will be downloaded with the model"
 msgstr "С моделью будут скачаны служебные файлы объёмом {n} МБ"
 
-#: app/templates/admin.html:966
+#: app/templates/admin.html:967
 msgid "Failed to load branding settings"
 msgstr "Не удалось загрузить настройки персонализации"
 
-#: app/templates/admin.html:967
+#: app/templates/admin.html:968
 msgid "Logo uploaded"
 msgstr "Логотип загружен"
 
-#: app/templates/admin.html:968
+#: app/templates/admin.html:969
 msgid "Custom logo deleted — the built-in logo is shown"
 msgstr "Свой логотип удалён — отображается встроенный логотип"
 
-#: app/templates/admin.html:970
+#: app/templates/admin.html:971
 msgid "Site names saved"
 msgstr "Названия сохранены"
 
-#: app/templates/admin.html:973
+#: app/templates/admin.html:974
 msgid "Logo upload failed"
 msgstr "Не удалось загрузить логотип"
 

@@ -13109,6 +13109,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'CPU': "CPU",
     'CPU cores': "\u042f\u0434\u0435\u0440 CPU",
     'VRAM': "VRAM",
+    'CUDA': "CUDA",
     'RAM': "RAM",
     'GB': "\u0413\u0411",
     'of': "\u0438\u0437",
@@ -15341,6 +15342,10 @@ function loadHardware() {
             [t('GPU'), noGpu ? '—' : data.gpu_name],
             [t('VRAM'), noGpu ? '—' : formatMemMb(data.available_vram_mb) + ' ' + t('GB') + ' ' + t('of') + ' ' + formatMemMb(data.total_vram_mb) + ' ' + t('GB')]
         ];
+        // CUDA ships with the NVIDIA driver; AMD and Intel nodes have no such version.
+        if (!noGpu && platform === 'nvidia') {
+            rows.push([t('CUDA'), data.cuda_version || '—']);
+        }
         if (!data.cpu_count) {
             data.cpu_count = 0;
         }

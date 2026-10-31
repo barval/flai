@@ -24,6 +24,7 @@ detected and exposed so the UI and deploy tooling can act on it.
 import json
 import logging
 import os
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -43,9 +44,35 @@ class GpuInfo:
     used_vram_mb: int = 0
     available_vram_mb: int = 0
     cuda_detected: bool = False
+    cuda_version: str = ""
 
 
 # ── Vendor probes ──────────────────────────────────────────────────────
+
+_cuda_version_cache: str = ""
+_CUDA_VERSION_RE = re.compile(r"CUDA Version:\s*([0-9][0-9.]*)")
+
+
+def _nvidia_cuda_version() -> str:
+    """Return the CUDA version reported by nvidia-smi, or an empty string.
+
+    ``--query-gpu`` has no ``cuda_version`` field, so the value comes from the
+    plain header line ("| NVIDIA-SMI 595.71.05 ... CUDA Version: 13.2 |"). The
+    driver cannot change under a running container, so a non-empty answer is
+    cached for the process lifetime.
+    """
+    global _cuda_version_cache
+    if _cuda_version_cache:
+        return _cuda_version_cache
+    try:
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        logger.debug(f"nvidia-smi CUDA version probe failed: {e}")
+        return ""
+    match = _CUDA_VERSION_RE.search(result.stdout or "")
+    if match:
+        _cuda_version_cache = match.group(1)
+    return _cuda_version_cache
 
 
 def _probe_nvidia() -> GpuInfo | None:
@@ -81,6 +108,7 @@ def _probe_nvidia() -> GpuInfo | None:
         used_vram_mb=int(parts[2]),
         available_vram_mb=int(parts[3]),
         cuda_detected=True,
+        cuda_version=_nvidia_cuda_version(),
     )
 
 

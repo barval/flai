@@ -495,6 +495,10 @@ function loadHardware() {
             [t('GPU'), noGpu ? '—' : data.gpu_name],
             [t('VRAM'), noGpu ? '—' : formatMemMb(data.available_vram_mb) + ' ' + t('GB') + ' ' + t('of') + ' ' + formatMemMb(data.total_vram_mb) + ' ' + t('GB')]
         ];
+        // CUDA ships with the NVIDIA driver; AMD and Intel nodes have no such version.
+        if (!noGpu && platform === 'nvidia') {
+            rows.push([t('CUDA'), data.cuda_version || '—']);
+        }
         if (!data.cpu_count) {
             data.cpu_count = 0;
         }

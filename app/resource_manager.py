@@ -52,6 +52,7 @@ class HardwareInfo:
         self.cpu_name: str = ""
         self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
+        self.cuda_version: str = ""
         self.platform: str = "cpu"
 
 
@@ -116,6 +117,7 @@ class ResourceManager:
             hw.used_vram_mb = info.used_vram_mb
             hw.available_vram_mb = info.available_vram_mb
             hw.cuda_detected = info.cuda_detected
+            hw.cuda_version = info.cuda_version
             if hw.cuda_detected:
                 logger.info(
                     f"GPU detected: {hw.gpu_name} ({hw.platform}), "
@@ -1324,6 +1326,7 @@ class ResourceManager:
         status = {
             "gpu_name": self.hardware.gpu_name,
             "cuda_detected": self.hardware.cuda_detected,
+            "cuda_version": self.hardware.cuda_version,
             "platform": self.hardware.platform,
             "total_vram_mb": self.hardware.total_vram_mb,
             "available_vram_mb": self.hardware.available_vram_mb,

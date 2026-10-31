@@ -745,6 +745,7 @@ def get_hardware():
         hw = {
             "gpu_name": None,
             "cuda_detected": False,
+            "cuda_version": "",
             "total_vram_mb": 0,
             "available_vram_mb": 0,
             "total_ram_mb": 0,
@@ -767,6 +768,7 @@ def get_hardware():
         hw["platform"] = rm_hw.get("platform", "cpu")
         hw["gpu_name"] = rm_hw.get("gpu_name")
         hw["cuda_detected"] = rm_hw.get("cuda_detected", False)
+        hw["cuda_version"] = rm_hw.get("cuda_version", "")
         hw["total_vram_mb"] = rm_hw.get("total_vram_mb", 0)
         hw["available_vram_mb"] = rm_hw.get("available_vram_mb", 0)
         if hw["gpu_name"]:

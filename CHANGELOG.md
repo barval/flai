@@ -1,5 +1,9 @@
 ## [v12.9] — Unreleased
 
+### Added
+
+- **A guard against committing user data.** The RAG evaluation reports under `data/rag_eval/` are built from the installation's own documents (real questions, answers and matched fragment counts), and `data/` is ignored — but an ignore rule holds only until the next `git add -f`. `tests/test_user_data_not_committed.py` fails when anything under `data/` is tracked, when the eval reports stop being ignored, or when `data/` leaves the Docker build-context exclusion.
+
 ### Changed
 
 - **Camera service upgraded to room-snapshot-api v1.4.** The bundled clone moved from v1.3 to v1.4: per-client rate limiting (`RATE_LIMIT_PER_MINUTE`, off by default — behind a reverse proxy every client shares one bucket, so the proxy is the better place), a ceiling on concurrent ffmpeg captures (`MAX_CONCURRENT_CAPTURES`, default 4), IPv6 camera addresses, installation files resolved through `CONFIG_DIR` with per-file overrides, and a lazy Flask app import so the MCP module no longer needs `API_KEY` to be importable. The service no longer requires `SECRET_KEY`. Verified live: both containers healthy, `/health` reports per-camera reachability, FLAI's MCP registry enumerates four tools and `list_rooms` returns the localized names.

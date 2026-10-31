@@ -161,7 +161,7 @@ DEPTH_VERIFY=each            # каждый шаг | final (только пос�
 
 # Внешние MCP-серверы (см. вкладку MCP в админ-панели).
 MCP_ENABLED=0                # 1 = предлагать модели инструменты настроенных серверов
-MCP_SERVERS=                 # JSON-массив: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+MCP_SERVERS=                 # JSON-массив: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"], "user_scoped": false}]
 MCP_TIMEOUT_S=10             # Таймаут одного запроса к MCP
 
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification

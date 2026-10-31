@@ -169,3 +169,44 @@ def test_call_uses_the_resolved_tool(monkeypatch):
 def test_call_refuses_a_name_that_is_not_advertised():
     with pytest.raises(ValueError):
         call("mcp__nope__ping", {})
+
+
+@pytest.mark.unit
+def test_load_servers_reads_the_user_scoped_flag():
+    raw = json.dumps(
+        [
+            {"name": "rooms", "url": "http://rooms/mcp", "user_scoped": True},
+            {"name": "docs", "url": "http://docs/mcp"},
+        ]
+    )
+    flags = {server.name: server.user_scoped for server in load_servers(raw)}
+    assert flags == {"rooms": True, "docs": False}
+
+
+@pytest.mark.unit
+def test_a_user_scoped_server_is_not_offered_to_chat():
+    """MCP carries no user identity, so a server that answers per user cannot be exposed.
+
+    The camera server is the case that matters: its ``get_snapshot`` returns a
+    frame for any room, and FLAI's per-user camera permission lives in FLAI, not
+    in the MCP request. Offering it would hand every account the cameras of
+    every other account.
+    """
+    server = McpServer(name="rooms", url="http://rooms/mcp", user_scoped=True)
+    factory, client = _factory([{"name": "get_snapshot", "description": "one", "inputSchema": {"type": "object"}}])
+
+    assert tool_definitions(servers=[server], client_factory=factory) == []
+    assert client.called == []
+    assert resolve("mcp__rooms__get_snapshot") is None
+    with pytest.raises(ValueError):
+        call("mcp__rooms__get_snapshot", {"room": "kor"})
+
+
+@pytest.mark.unit
+def test_a_user_scoped_server_does_not_hide_the_others():
+    scoped = McpServer(name="rooms", url="http://rooms/mcp", user_scoped=True)
+    plain = McpServer(name="docs", url="http://docs/mcp")
+    factory, _ = _factory([{"name": "ping", "description": "p", "inputSchema": {"type": "object"}}])
+
+    names = [item["function"]["name"] for item in tool_definitions(servers=[scoped, plain], client_factory=factory)]
+    assert names == ["mcp__docs__ping"]

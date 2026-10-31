@@ -92,6 +92,14 @@
 
 - **The Hardware tab shows the CUDA version.** On an NVIDIA node the admin Hardware table prints the CUDA version under the VRAM row. The value comes from the `nvidia-smi` header — `--query-gpu` has no `cuda_version` field — and is cached for the process lifetime. AMD and Intel nodes show no CUDA row: the runtime is NVIDIA-only.
 
+### Fixed
+
+- **Camera permissions are enforced on every path, including the ones that only enumerated rooms.** `get_available_rooms` treated `camera_permissions IS NULL` as "every camera" while `check_camera_permission` treats it as a denial, so an account created outside the panel (the demo accounts, the panel-only `admin`) saw the full room list and the all-rooms fan-out tried each camera only to be refused. An unknown room returned `404` with the list of every real room code in `available_rooms`, which any logged-in user could ask for through `/api/cam/snapshot/<anything>`. Both are gone: NULL means no cameras, and the error no longer carries the list.
+
+### Security
+
+- **An MCP server cannot carry a per-user answer.** MCP requests have no user identity, so a server whose reply depends on who is asking bypassed FLAI's own permission checks — with the camera MCP server enabled, any account could call `list_rooms`, `room_info` (which returned the camera's internal IP and RTSP URL) and `get_snapshot`. A server marked `user_scoped` now contributes no tools to the chat catalogue and its names cannot be resolved for a call; the camera server is configured that way, and the admin MCP tab has a **Chat** checkbox that writes the flag.
+
 ## [v12.8] — 2026-10-30
 
 ### Changed

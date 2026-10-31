@@ -85,6 +85,20 @@
             allowCell.appendChild(allowInput);
             row.appendChild(allowCell);
 
+            // MCP carries no user identity: a server whose answers depend on who
+            // is asking cannot be offered to chat without bypassing the panel's
+            // own permissions. Unchecking writes user_scoped into the entry.
+            const chatCell = document.createElement('td');
+            const chatBox = document.createElement('input');
+            chatBox.type = 'checkbox';
+            chatBox.checked = !server.userScoped;
+            chatBox.addEventListener('change', () => {
+                server.userScoped = !chatBox.checked;
+                markDirty();
+            });
+            chatCell.appendChild(chatBox);
+            row.appendChild(chatCell);
+
             const toolsCell = document.createElement('td');
             toolsCell.className = 'mcp-tools';
             toolsCell.textContent = server.tools === null || server.tools === undefined
@@ -161,6 +175,7 @@
             const entry = { name: server.name, url: server.url, allow: server.allow || [] };
             const token = server.newToken ? server.newToken : server.token;
             if (token) entry.token = token;
+            if (server.userScoped) entry.user_scoped = true;
             return entry;
         });
         return {
@@ -207,6 +222,7 @@
                     token: String(item.token || ''),
                     newToken: '',
                     allow: Array.isArray(item.allow) ? item.allow.map(String) : [],
+                    userScoped: Boolean(item.user_scoped),
                     tools: null,
                     error: ''
                 }));

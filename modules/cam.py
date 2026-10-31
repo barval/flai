@@ -237,20 +237,32 @@ class CamModule(TranslationMixin):
         return check_camera_permission(user_login, room_code)
 
     def get_available_rooms(self, user_login):
-        """Return dictionary of cameras accessible to user (code -> name)."""
+        """Return dictionary of cameras accessible to user (code -> name).
+
+        ``camera_permissions IS NULL`` means "never configured" and is a denial,
+        exactly as in :func:`check_camera_permission`: the admin panel always
+        writes a list (``[]`` when nothing is ticked), so NULL only reaches this
+        method through an account created outside the panel. Treating it as
+        "every camera" used to enumerate rooms the user cannot open — the names
+        reached the room list and the all-rooms fan-out attempted each one only
+        to be refused.
+        """
         all_rooms = self.get_all_rooms()
-        if user_login is None:
-            return all_rooms
+        if not user_login:
+            return {}
         from app.userdb import get_user_by_login
 
         user = get_user_by_login(user_login)
-        if user and user["camera_permissions"] is not None:
-            try:
-                allowed_codes = json.loads(user["camera_permissions"])
-                return {code: name for code, name in all_rooms.items() if code in allowed_codes}
-            except Exception:
-                return {}
-        return all_rooms
+        if not user or not user.get("is_active"):
+            return {}
+        permissions = user.get("camera_permissions")
+        if permissions is None:
+            return {}
+        try:
+            allowed_codes = json.loads(permissions) if isinstance(permissions, str) else permissions
+        except Exception:
+            return {}
+        return {code: name for code, name in all_rooms.items() if code in allowed_codes}
 
     def check_availability(self, force=False):
         current_time = time.time()
@@ -398,11 +410,13 @@ class CamModule(TranslationMixin):
                 room_code = code
             else:
                 template = self._("Unknown room: {room}", lang)
+                # The room list is not part of the error: it used to hand every
+                # logged-in user the full set of camera codes, including the ones
+                # they may not open.
                 return {
                     "success": False,
                     "error": template.format(room=room_code),
                     "status_code": 404,
-                    "available_rooms": list(self.room_names.keys()),
                 }
 
         if not self.check_permission(user_login, room_code):

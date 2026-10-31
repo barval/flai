@@ -196,3 +196,28 @@ def test_the_route_keeps_the_asterisk():
     route = decision_to_route(decision, "проверь все комнаты")
     assert route["action"] == "camera"
     assert route["query"] == "*"
+
+
+def test_a_user_without_camera_permissions_captures_nothing():
+    """The fan-out must not even ask for rooms the account may not open.
+
+    ``get_available_rooms`` answers with what the user may see, and the capture
+    loop still calls ``get_snapshot`` per room, which enforces the permission
+    again. With no permitted room the loop makes no capture at all - enumerating
+    every camera and collecting a refusal each time is the leak this guards.
+    """
+    queue = _queue()
+    modules = _modules({})
+    queue.app.modules = modules
+    captures = queue._capture_all_rooms("restricted", "ru")
+    assert captures == []
+    modules["cam"].get_snapshot.assert_not_called()
+
+
+def test_a_denied_room_is_skipped_while_permitted_rooms_are_captured():
+    """A permission refusal looks like any other failure: the room is dropped."""
+    queue = _queue()
+    modules = _modules({"kor": "Коридор", "kuh": "Кухня"}, fail={"kuh"})
+    queue.app.modules = modules
+    captures = RedisRequestQueue._capture_all_rooms(queue, "zoya", "ru")
+    assert [item["room_name"] for item in captures] == ["Коридор"]

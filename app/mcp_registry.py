@@ -29,12 +29,20 @@ _EMPTY_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
 
 @dataclass(frozen=True)
 class McpServer:
-    """One configured server. ``allow`` empty means every tool it lists."""
+    """One configured server. ``allow`` empty means every tool it lists.
+
+    ``user_scoped`` marks a server whose answers depend on *who* is asking.
+    MCP carries no user identity, so such a server cannot be offered to chat:
+    FLAI's own permission checks would be bypassed. The flag keeps the entry in
+    the configuration (the endpoint stays documented) while contributing no
+    tools to the model.
+    """
 
     name: str
     url: str
     token: str = ""
     allow: tuple[str, ...] = field(default_factory=tuple)
+    user_scoped: bool = False
 
 
 def load_servers(raw: str) -> list[McpServer]:
@@ -73,6 +81,7 @@ def load_servers(raw: str) -> list[McpServer]:
                 url=url,
                 token=str(entry.get("token") or ""),
                 allow=tuple(str(item) for item in allow) if isinstance(allow, list) else (),
+                user_scoped=bool(entry.get("user_scoped")),
             )
         )
     return servers
@@ -128,6 +137,10 @@ def tool_definitions(
     definitions: list[dict[str, Any]] = []
     resolved: dict[str, tuple[McpServer, str]] = {}
     for server in servers:
+        if server.user_scoped:
+            # Its answers depend on the caller, and MCP has no caller identity.
+            logger.info(f"MCP server {server.name!r} is user_scoped: its tools are not offered to chat")
+            continue
         try:
             tools = factory(server).list_tools()
         except Exception as exc:  # noqa: BLE001 - a down server is not an error

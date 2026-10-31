@@ -14,7 +14,7 @@
   - **Chat export** – reuses the live site's footer: a short brand label that opens the same About dialog (full name, version, GitHub link, copyright), and the custom logo is embedded in both the header and that dialog.
   - **Backups** – a saved branding set is included in full backups.
 - 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM and RAM (available of total), the CUDA version on NVIDIA nodes, and CPU cores
-- 🔌 **MCP servers** – its own tab: enable or disable MCP tools, set the request timeout, and keep a list of servers (name, URL, token, allowed tools) with a **Test** button that enumerates what a server offers. A stored token is never shown back; the list is validated when it is saved, so a server entry that would be ignored at load time is refused then.
+- 🔌 **MCP servers** – its own tab: enable or disable MCP tools, set the request timeout, and keep a list of servers (name, URL, token, allowed tools, plus a **Chat** checkbox) with a **Test** button that enumerates what a server offers. A stored token is never shown back; the list is validated when it is saved, so a server entry that would be ignored at load time is refused then. Unchecking **Chat** marks the server `user_scoped`: its answers depend on who is asking, and MCP carries no user identity, so its tools are never offered to chat — the camera server is configured that way, because FLAI's per-user camera permissions cannot be enforced inside an MCP call.
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – admin password, upload cleanup, message format migration, SLM history import/cleanup/checkpoint reset via Flask CLI commands
 

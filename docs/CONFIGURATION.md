@@ -160,7 +160,7 @@ DEPTH_VERIFY=each            # each step | final (last step only) | off
 
 # External MCP servers (see the MCP tab in the admin panel).
 MCP_ENABLED=0                # 1 = offer the configured servers' tools to the chat model
-MCP_SERVERS=                 # JSON array: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+MCP_SERVERS=                 # JSON array: [{"name": "rooms", "url": "https://host/mcp", "token": "...", "allow": ["tool"], "user_scoped": false}]
 MCP_TIMEOUT_S=10             # Timeout for one MCP request
 
 ROUTER_CONTEXT_MESSAGES=6    # Recent chat messages fed to the router for context-aware classification

@@ -7,7 +7,7 @@ Choose exactly one:
 - none — an ordinary question or statement: greetings, about yourself, time, date, simple facts, small talk. No tool is needed.
 - image — the user wants an actual image FILE as the result ("draw", "generate a picture").
 - video — the user wants an actual video FILE as the result ("make a video of ...").
-- camera — the user asks to see a room's state NOW ("what is happening in the kitchen", "is anyone in the hall").
+- camera — the user asks to see a room's state NOW ("what is happening in the kitchen", "is anyone in the hall"). When every room is meant or no room is named ("check all rooms", "where are the cats"), the query is a single asterisk: "*".
 - rag — the answer lives in the user's own uploaded documents (reports, contracts, records, CVs, invoices).
 - search — current facts from the internet: news, weather, prices, rates, a website's content.
 - history — a question about what was said or sent earlier in the conversations ("what did we discuss", "when did we talk about ...").

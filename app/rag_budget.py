@@ -22,9 +22,9 @@ relevance half missed) and the operator's optional ``RAG_CONTEXT_PERCENT`` cap.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
+from app.config import setting
 from app.context_budget import cap_share, context_budget
 from app.utils import estimate_tokens
 
@@ -64,7 +64,7 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
     elif app is not None:
         size = int(app.config.get("RAG_CHUNK_SIZE", 500))
     else:
-        size = int(os.getenv("RAG_CHUNK_SIZE", "500"))
+        size = int(setting("RAG_CHUNK_SIZE", 500))
     sample = (_SAMPLE * (size // len(_SAMPLE) + 1))[: max(80, size)]
     text = ("Источник: документ.txt\n" if lang == "ru" else "Source: document.txt\n") + sample
     return max(1, estimate_tokens(text, "reasoning", lang))
@@ -73,7 +73,7 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
 def _config_value(app, key: str, default: int) -> int:
     if app is not None:
         return int(app.config.get(key, default) or default)
-    return int(os.getenv(key, str(default)) or default)
+    return int(setting(key, default) or default)
 
 
 def retrieval_budget(
@@ -98,7 +98,7 @@ def retrieval_budget(
         fixed = int(app.config.get("TEMPLATE_OVERHEAD_TOKENS", DEFAULT_FIXED_TOKENS) or DEFAULT_FIXED_TOKENS)
     else:
         window = DEFAULT_CONTEXT_TOKENS
-        fixed = int(os.getenv("TEMPLATE_OVERHEAD_TOKENS", str(DEFAULT_FIXED_TOKENS)))
+        fixed = int(setting("TEMPLATE_OVERHEAD_TOKENS", DEFAULT_FIXED_TOKENS))
     per_fragment = tokens_per_fragment(app, lang, chunk_chars)
     budget = context_budget(window, fixed)
 

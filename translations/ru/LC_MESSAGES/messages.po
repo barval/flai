@@ -5002,3 +5002,11 @@ msgstr "Сервер не ответил"
 #: app/templates/admin.html
 msgid "MCP servers are not valid JSON"
 msgstr "Список MCP-серверов — некорректный JSON"
+
+#: app/queue.py
+msgid "Images in order: {rooms}"
+msgstr "Изображения по порядку: {rooms}"
+
+#: app/queue.py
+msgid "No cameras are available"
+msgstr "Нет доступных камер"

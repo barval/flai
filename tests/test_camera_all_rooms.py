@@ -1,0 +1,154 @@
+"""`[-CAMERA-] *` means every room, not one guessed room."""
+
+from __future__ import annotations
+
+from unittest.mock import Mock, patch
+
+import pytest
+
+from app.queue import RedisRequestQueue
+
+
+def _capture(code: str, name: str) -> dict:
+    return {
+        "success": True,
+        "room_name": name,
+        "image_data": "AAAA",
+        "image_type": "image/jpeg",
+        "file_name": f"snap_{code}.jpg",
+        "file_size": 3,
+    }
+
+
+def _queue(config: dict | None = None) -> Mock:
+    queue = Mock()
+    queue.app = Mock()
+    queue.app.config = {"UPLOAD_FOLDER": "/tmp/uploads", "CAMERA_ALL_ROOMS_MAX": 12, **(config or {})}
+    queue.logger = Mock()
+    queue._publish_stream_event = Mock()
+    queue._is_task_cancelled = Mock(return_value=False)
+    queue._get_model_name = Mock(return_value="test-model")
+    queue._build_error_response = Mock(return_value={"error": "built"})
+    queue._save_and_respond = Mock(side_effect=[{"message_id": index} for index in range(20)])
+    # Bind the methods under test to the real implementations; a bare Mock would
+    # return a Mock to its own helper calls.
+    queue._capture_all_rooms = lambda user_id, lang, task=None: RedisRequestQueue._capture_all_rooms(
+        queue, user_id, lang, task
+    )
+    queue._save_camera_message = lambda *args, **kwargs: RedisRequestQueue._save_camera_message(queue, *args, **kwargs)
+    queue._process_camera_all_rooms = lambda *args, **kwargs: RedisRequestQueue._process_camera_all_rooms(
+        queue, *args, **kwargs
+    )
+    return queue
+
+
+def _modules(rooms: dict[str, str], fail: set[str] | None = None) -> dict:
+    fail = fail or set()
+    cam = Mock()
+    cam.available = True
+    cam.get_available_rooms.return_value = dict(rooms)
+
+    def snapshot(user_id, code, lang="ru"):
+        if code in fail:
+            return {"success": False, "error": f"no signal for {code}"}
+        return _capture(code, rooms[code])
+
+    cam.get_snapshot.side_effect = snapshot
+    base = Mock()
+    base._ = Mock(side_effect=lambda text, lang=None, **kwargs: text)
+    multimodal = Mock()
+    multimodal.available = True
+    multimodal.process_images_with_text.return_value = ("кошка на кухне", None)
+    return {"cam": cam, "base": base, "multimodal": multimodal}
+
+
+@pytest.mark.unit
+def test_every_room_is_captured_in_a_stable_order():
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня", "gos": "Гостиная", "spa": "Спальня"})
+    captures = RedisRequestQueue._capture_all_rooms(queue, "user", "ru", task=None)
+    assert [capture["room_name"] for capture in captures] == ["Гостиная", "Кухня", "Спальня"]
+    assert queue.app.modules["cam"].get_snapshot.call_count == 3
+
+
+@pytest.mark.unit
+def test_a_dead_camera_is_skipped_not_fatal():
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня", "gos": "Гостиная"}, fail={"gos"})
+    captures = RedisRequestQueue._capture_all_rooms(queue, "user", "ru", task=None)
+    assert [capture["room_name"] for capture in captures] == ["Кухня"]
+
+
+@pytest.mark.unit
+def test_the_ceiling_bounds_the_captures():
+    queue = _queue({"CAMERA_ALL_ROOMS_MAX": 2})
+    queue.app.modules = _modules({f"r{index}": f"Room {index}" for index in range(10)})
+    captures = RedisRequestQueue._capture_all_rooms(queue, "user", "ru", task=None)
+    assert len(captures) == 2
+    assert queue.app.modules["cam"].get_snapshot.call_count == 2
+
+
+@pytest.mark.unit
+def test_progress_reports_how_many_rooms_are_left():
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня", "gos": "Гостиная"})
+    RedisRequestQueue._capture_all_rooms(queue, "user", "ru", task={"id": "t1"})
+    stages = [call.args[2] for call in queue._publish_stream_event.call_args_list]
+    assert stages == [
+        {"stage": "capturing_snapshot", "count": 1, "total": 2},
+        {"stage": "capturing_snapshot", "count": 2, "total": 2},
+    ]
+
+
+@pytest.mark.unit
+def test_the_asterisk_saves_one_message_per_room_and_one_answer():
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня", "gos": "Гостиная", "spa": "Спальня"})
+    with patch("app.queue.save_uploaded_file", return_value="u/1.jpg"):
+        result = RedisRequestQueue._process_camera_all_rooms(
+            queue, "s1", "user", "где кошки?", "2026-10-31 15:00", "ru"
+        )
+    # Three snapshots plus the composed answer.
+    assert len(result["messages"]) == 4
+    assert queue._save_and_respond.call_count == 4
+    prompt = queue.app.modules["multimodal"].process_images_with_text.call_args.args[1]
+    # The model cannot tell which picture is which room: the order is spelled out.
+    assert "1) Гостиная" in prompt and "2) Кухня" in prompt and "3) Спальня" in prompt
+    assert "где кошки?" in prompt
+
+
+@pytest.mark.unit
+def test_no_room_at_all_is_a_localized_error():
+    queue = _queue()
+    queue.app.modules = _modules({})
+    result = RedisRequestQueue._process_camera_all_rooms(queue, "s1", "user", "где кошки?", "12:00", "ru")
+    assert result == {"error": "built"}
+    queue._build_error_response.assert_called_once()
+
+
+@pytest.mark.unit
+def test_the_router_prompt_explains_the_asterisk(app):
+    from modules.base import BaseModule
+
+    fake_cam = Mock()
+    fake_cam.available = True
+    fake_cam.get_all_rooms_with_forms.return_value = [("kuh", ["кухня", "Кухня"])]
+    with app.app_context():
+        app.modules["cam"] = fake_cam
+        try:
+            prompt_ru = BaseModule._build_camera_prompt_section(app.modules["base"], "ru")
+            prompt_en = BaseModule._build_camera_prompt_section(app.modules["base"], "en")
+        finally:
+            app.modules.pop("cam", None)
+    assert "[-CAMERA-] *" in prompt_ru
+    assert "[-CAMERA-] *" in prompt_en
+
+
+@pytest.mark.unit
+def test_the_route_keeps_the_asterisk():
+    from app.kernel import decision_to_route, parse_kernel_decision
+
+    decision = parse_kernel_decision('{"intent": "camera", "query": "*"}')
+    route = decision_to_route(decision, "проверь все комнаты")
+    assert route["action"] == "camera"
+    assert route["query"] == "*"

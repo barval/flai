@@ -228,7 +228,9 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
     if action in ("image", "video"):
         processed = original_query
     elif action == "camera":
-        if not processed:
+        if processed.strip() == "*":
+            pass  # every room: the camera branch fans out
+        elif not processed:
             processed = original_query
         if cam is not None and hasattr(cam, "room_names") and processed not in cam.room_names:
             extracted = cam.get_room_code(processed)

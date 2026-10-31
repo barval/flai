@@ -3590,6 +3590,11 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
             )
 
+        if query.strip() == "*":
+            return self._process_camera_all_rooms(
+                session_id, user_id, message_text, current_time_str, lang, response_style
+            )
+
         camera_start = time.time()
         camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
         camera_time = round(time.time() - camera_start, 1)
@@ -3597,40 +3602,7 @@ class RedisRequestQueue:
         if not camera_result["success"]:
             return self._build_error_response(session_id, camera_result["error"], camera_time, lang)
 
-        template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
-        prefix = template.replace("{room_name}", "")
-        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
-        file_path = None
-        if camera_result.get("image_data"):
-            file_path = save_uploaded_file(
-                file_data=camera_result["image_data"],
-                filename=camera_result["file_name"],
-                session_id=session_id,
-                upload_folder=self.app.config["UPLOAD_FOLDER"],
-                user_id=user_id,
-            )
-
-        first_message = self._save_and_respond(
-            session_id,
-            translated_text,
-            "camera",
-            camera_time,
-            file_data=None,
-            file_type=camera_result["image_type"],
-            file_name=camera_result["file_name"],
-            file_path=file_path,
-            extra={
-                "file_path": file_path,
-                "file_name": camera_result["file_name"],
-                "file_size": camera_result["file_size"],
-                "file_type": camera_result["image_type"],
-                "response_time": camera_time,
-                "model_type": "camera",
-            },
-            response_style=response_style,
-            # The description message below consumes the shared usage account.
-            consume_usage=False,
-        )
+        first_message = self._save_camera_message(session_id, user_id, lang, camera_result, camera_time, response_style)
 
         messages = [first_message]
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
@@ -3661,6 +3633,144 @@ class RedisRequestQueue:
             second["response_time"] = mm_time
             messages.append(second)
 
+        return {"messages": messages, "session_id": session_id}
+
+    def _capture_all_rooms(self, user_id: str, lang: str, task: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Snapshot every room the user may see, bounded by CAMERA_ALL_ROOMS_MAX.
+
+        The chat camera action used to answer "check every room" with ONE snapshot:
+        the router contract had a single room code and the pipeline captured
+        exactly that code, so a question about all rooms was answered from the
+        kitchen and the model itself said "check the other cameras". A camera
+        request may now carry ``*``; this is what the asterisk means.
+        """
+        cam = self.app.modules.get("cam")
+        if cam is None or not getattr(cam, "available", False):
+            return []
+        rooms = cam.get_available_rooms(user_id) or {}
+        limit = max(1, int(self.app.config.get("CAMERA_ALL_ROOMS_MAX", 12)))
+        planned = min(len(rooms), limit)
+        captured: list[dict[str, Any]] = []
+        for code in sorted(rooms):
+            if len(captured) >= limit:
+                break
+            if task is not None:
+                self._publish_stream_event(
+                    task,
+                    "task_progress",
+                    {"stage": "capturing_snapshot", "count": len(captured) + 1, "total": planned},
+                )
+            result = cam.get_snapshot(user_id, code, lang=lang)
+            if result.get("success"):
+                captured.append(result)
+            else:
+                self.logger.info(f"camera all-rooms: room {code} skipped: {str(result.get('error'))[:120]}")
+        return captured
+
+    def _save_camera_message(
+        self,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        camera_result: dict[str, Any],
+        elapsed: float,
+        response_style: str,
+    ) -> dict[str, Any]:
+        """The camera message shape for one snapshot (shared by both camera paths)."""
+        template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
+        prefix = template.replace("{room_name}", "")
+        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
+        file_path = None
+        if camera_result.get("image_data"):
+            file_path = save_uploaded_file(
+                file_data=camera_result["image_data"],
+                filename=camera_result["file_name"],
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+        return self._save_and_respond(
+            session_id,
+            translated_text,
+            "camera",
+            elapsed,
+            file_data=None,
+            file_type=camera_result["image_type"],
+            file_name=camera_result["file_name"],
+            file_path=file_path,
+            extra={
+                "file_path": file_path,
+                "file_name": camera_result["file_name"],
+                "file_size": camera_result["file_size"],
+                "file_type": camera_result["image_type"],
+                "response_time": elapsed,
+                "model_type": "camera",
+            },
+            response_style=response_style,
+            # The description message consumes the shared usage account.
+            consume_usage=False,
+        )
+
+    def _process_camera_all_rooms(
+        self,
+        session_id: str,
+        user_id: str,
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One request, every room: N snapshot messages, then one answer over all of them."""
+        camera_start = time.time()
+        captures = self._capture_all_rooms(user_id, lang, task=task)
+        camera_time = round(time.time() - camera_start, 1)
+
+        if not captures:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No cameras are available", lang=lang),
+                camera_time,
+                lang,
+            )
+
+        messages = [
+            self._save_camera_message(session_id, user_id, lang, capture, camera_time, response_style)
+            for capture in captures
+        ]
+
+        multimodal = self.app.modules.get("multimodal")
+        if message_text and multimodal is not None and multimodal.available:
+            # The model cannot tell which picture is which room, so the order is
+            # spelled out: the captures are saved in the same order they are sent.
+            ordered = ", ".join(
+                f"{index + 1}) {capture['room_name']}" for index, capture in enumerate(captures)
+            )
+            base = self.app.modules["base"]
+            question = f"{base._('Images in order: {rooms}', lang=lang).replace('{rooms}', ordered)}\n\n{message_text}"
+            mm_start = time.time()
+            bot_reply, error = multimodal.process_images_with_text(
+                [capture["image_data"] for capture in captures if capture.get("image_data")],
+                question,
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style=response_style,
+            )
+            mm_time = round(time.time() - mm_start, 1)
+            if error:
+                bot_reply = f"⚠️ {error}"
+            second = self._save_and_respond(
+                session_id,
+                bot_reply,
+                self._get_model_name("multimodal") or "unknown",
+                mm_time,
+                is_error=bool(error),
+                extra={"model_type": "multimodal"},
+                response_style=response_style,
+            )
+            second["response_time"] = mm_time
+            messages.append(second)
         return {"messages": messages, "session_id": session_id}
 
     def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -3926,6 +4036,15 @@ class RedisRequestQueue:
             )
 
         self._publish_stream_event(task, "task_progress", {"stage": "capturing_snapshot"})
+
+        if query.strip() == "*":
+            # Every room: the snapshots arrive as their own messages and the
+            # answer is composed over all of them in one call, so it cannot ride
+            # the single-image stream below. The client still gets the same
+            # camera messages and one answer.
+            return self._process_camera_all_rooms(
+                session_id, user_id, message_text, current_time_str, lang, response_style, task=task
+            )
 
         camera_start = time.time()
         camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)

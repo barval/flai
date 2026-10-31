@@ -1,5 +1,13 @@
 ## [v12.9] — Unreleased
 
+### Fixed
+
+- **"Check every room" now checks every room.** In chat the camera action carried a single room code, so a question about all rooms was answered from whichever room the router picked — measured, "Проверь все комнаты - где кошки?" captured the kitchen only and the model itself replied "check the other cameras". A camera request may now carry `*` (the router emits `[-CAMERA-] *` when no room is named or every room is meant): the chat snapshots every room the user may see (bounded by `CAMERA_ALL_ROOMS_MAX`, default 12), emits one camera message per room and composes the answer over all of them in one multimodal call with the room order stated, since the model cannot tell which picture is which room. A camera without signal is skipped and logged.
+
+### Changed
+
+- **The tool loop got its camera surface.** `list_rooms` returns the rooms the user may look at (offered only when the camera module is available), and `camera_snapshot` returns a **description** of the snapshot instead of the image: a tool result is text, and a base64 payload would consume the window without telling the model anything.
+
 ### Added
 
 - **A guard against committing user data.** The RAG evaluation reports under `data/rag_eval/` are built from the installation's own documents (real questions, answers and matched fragment counts), and `data/` is ignored — but an ignore rule holds only until the next `git add -f`. `tests/test_user_data_not_committed.py` fails when anything under `data/` is tracked, when the eval reports stop being ignored, or when `data/` leaves the Docker build-context exclusion.

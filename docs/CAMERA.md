@@ -56,6 +56,24 @@ installation files are read from `CONFIG_DIR` (default `/app/config`), with
 `CAMERAS_CONF`, `CAMERAS_AUTH` and `ROOMS_I18N` as individual overrides — FLAI
 mounts `services/room-snapshot-api/room-snapshot-api/config` there.
 
+**Every room in one request (v12.9).** The camera action used to answer "check
+every room" with one snapshot: the router contract carried a single room code, so
+a question about all rooms was answered from whichever room the model picked (and
+the answer itself said "check the other cameras"). A camera request may now carry
+`*` — the router emits `[-CAMERA-] *` when no room is named or every room is meant
+— and the chat captures one snapshot per room the user may see, emits one camera
+message each, then composes the answer over all of them in one multimodal call.
+The room order is spelled out in that call (the model cannot tell which picture is
+which room) and the number of captures is capped by `CAMERA_ALL_ROOMS_MAX`
+(default 12). A room with no signal is skipped and named in the log.
+
+**Tools (v12.9).** The tool loop got its camera surface: `list_rooms` returns the
+codes and localized names the user may look at (offered only when the camera module
+is available), and `camera_snapshot` returns a **description** of the snapshot
+rather than the image — a base64 payload would consume the window and tell the
+model nothing. The image itself still arrives as a chat message through the camera
+action above.
+
 **Health.** `/health` answers HTTP 200 in every state and reports
 `healthy`/`degraded`/`unhealthy` with per-camera reachability. The Cameras tab
 shows the online count next to the sync button.

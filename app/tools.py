@@ -252,7 +252,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "camera_snapshot",
-            "description": "Get a current snapshot from a surveillance camera. Use when the user asks to see, check, or look at a room/camera.",
+            "description": (
+                "Take a fresh snapshot of ONE room and return a DESCRIPTION of what is visible in it "
+                "(people, animals, objects, activity). Use it to answer a question about a room's current "
+                "state; call it once per room when the question needs several rooms compared."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -263,6 +267,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "required": ["room"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_rooms",
+            "description": (
+                "List the camera rooms this user may look at, with their codes and names. "
+                "Call it before checking several rooms so every camera_snapshot call names a real room."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -350,6 +365,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def _camera_available() -> bool:
+    """Is the camera module registered and reachable? Unknown counts as no."""
+    try:
+        from flask import current_app
+
+        cam = current_app.modules.get("cam")
+    except Exception:  # noqa: BLE001 — no app context means not configured
+        return False
+    return bool(cam is not None and getattr(cam, "available", False))
+
+
 def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
     """Return tool definitions in OpenAI format for llama.cpp.
 
@@ -363,6 +389,10 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         definitions = [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
     else:
         definitions = list(TOOL_DEFINITIONS)
+    if not _camera_available():
+        # A tool that can only answer "the service is unavailable" is noise in
+        # the catalogue; the camera module is optional.
+        definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
     return definitions + skill_tool_definitions() + mcp_tool_definitions()
 
 
@@ -613,7 +643,44 @@ def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
             return {"success": False, "error": _("CCTV service unavailable")}
 
     result = cam_module.get_snapshot(user_id, room, lang=lang)
-    return result  # type: ignore[no-any-return]
+    if not result.get("success"):
+        return result  # type: ignore[no-any-return]
+
+    # A tool result reaches the model as TEXT: the base64 image would burn the
+    # window and tell it nothing. The snapshot is described by the multimodal
+    # model instead, which is the answer the tool loop needs ("is a cat there?").
+    image_data = result.get("image_data") or ""
+    multimodal = app.modules.get("multimodal") if app else None
+    if image_data and multimodal is not None and getattr(multimodal, "available", False):
+        with force_locale(lang):
+            question = str(_("What is visible in this room right now? Name people, animals, objects and activity."))
+        description, error = multimodal.process_image_with_text(
+            image_data, question, "", lang=lang, session_id=None, response_style="neutral"
+        )
+        if error or not description:
+            return {"success": False, "error": str(error or "description failed")}
+        return {"success": True, "room": result.get("room_name", room), "description": description}
+    return {
+        "success": True,
+        "room": result.get("room_name", room),
+        "description": str(_("Snapshot captured; no description is available.")),
+    }
+
+
+def _exec_list_rooms(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The rooms this user may look at, code and localized name."""
+    app = ctx.get("app")
+    user_id = ctx.get("user_id")
+    lang = ctx.get("lang", "ru")
+    cam_module = app.modules.get("cam") if app else None
+    if not cam_module or not cam_module.available:
+        with force_locale(lang):
+            return {"success": False, "error": _("CCTV service unavailable")}
+    rooms = cam_module.get_available_rooms(user_id) or {}
+    return {
+        "success": True,
+        "rooms": [{"code": code, "name": cam_module.get_room_name(code, lang=lang)} for code in sorted(rooms)],
+    }
 
 
 # ── Time calculation helpers ────────────────────────────────────────
@@ -896,6 +963,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
     "history_search": lambda ctx, **kw: _exec_history_search(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),
+    "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
 }

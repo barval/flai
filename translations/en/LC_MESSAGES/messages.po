@@ -4969,3 +4969,11 @@ msgstr "The server did not answer"
 #: app/templates/admin.html
 msgid "MCP servers are not valid JSON"
 msgstr "MCP servers are not valid JSON"
+
+#: app/queue.py
+msgid "Images in order: {rooms}"
+msgstr "Images in order: {rooms}"
+
+#: app/queue.py
+msgid "No cameras are available"
+msgstr "No cameras are available"

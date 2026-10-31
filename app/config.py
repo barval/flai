@@ -165,6 +165,8 @@ def load_config(app):
     app.config["CAMERA_SNAPSHOT_WIDTH"] = int(os.getenv("CAMERA_SNAPSHOT_WIDTH", 384))
     # Parallel preview fetches per request (the service captures concurrently).
     app.config["CAMERA_PREVIEW_WORKERS"] = int(os.getenv("CAMERA_PREVIEW_WORKERS", 4))
+    # "Check every room" in chat: how many snapshots one request may take.
+    app.config["CAMERA_ALL_ROOMS_MAX"] = int(os.getenv("CAMERA_ALL_ROOMS_MAX", 12))
 
     # SuperLocalMemory (long-term memory) settings
     app.config["SLM_URL"] = os.getenv("SLM_URL")

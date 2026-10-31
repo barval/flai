@@ -277,6 +277,7 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "CAMERA_SNAPSHOT_WIDTH",
             "CAMERA_PREVIEW_WORKERS",
             "CAMERA_ALL_ROOMS_MAX",
+            "CAMERA_ANALYSIS_WIDTH",
         ],
     ),
     "service": (
@@ -607,6 +608,7 @@ DESCRIPTIONS: dict[str, str] = {
     "CAMERA_SNAPSHOT_WIDTH": "Preview width requested from the camera service (pixels)",
     "CAMERA_PREVIEW_WORKERS": "Parallel camera captures per preview refresh",
     "CAMERA_ALL_ROOMS_MAX": "Snapshots one \"check every room\" request may take",
+    "CAMERA_ANALYSIS_WIDTH": "Snapshot width the vision model reads in chat (384 px previews are too small)",
     "TIMEZONE": "IANA timezone used for dates and monitoring",
     "HUGGINGFACE_TOKEN": "Token for gated Hugging Face repositories",
     "MODEL_HUB_MAX_FILE_GB": "Largest model file the Hub may download (GB)",

@@ -63,9 +63,21 @@ the answer itself said "check the other cameras"). A camera request may now carr
 `*` — the router emits `[-CAMERA-] *` when no room is named or every room is meant
 — and the chat captures one snapshot per room the user may see, emits one camera
 message each, then composes the answer over all of them in one multimodal call.
-The room order is spelled out in that call (the model cannot tell which picture is
-which room) and the number of captures is capped by `CAMERA_ALL_ROOMS_MAX`
-(default 12). A room with no signal is skipped and named in the log.
+The number of captures is capped by `CAMERA_ALL_ROOMS_MAX` (default 12) and a
+room with no signal is skipped and logged.
+
+**Why the answer is composed per room, not from one batch (measured).** The first
+version sent all snapshots in one multimodal call with the room order spelled
+out; the model then placed cats in rooms where a single-image call correctly
+said "none" — it contaminates images inside a batch and cannot reliably bind
+"image 3" to "3) study". Two more findings from the same measurement: the
+snapshots were 384×216 (the preview width), where a cat on the floor is a few
+dozen pixels, and repeating the user's "check every room" wording on a single
+image made the model answer "no cats here" for a kitchen it otherwise describes
+as having one. The path now asks **one binary question per room** ("is there a
+cat in this room? one word: yes or no") on a **1024 px** snapshot
+(`CAMERA_ANALYSIS_WIDTH`) and groups the answers into "cats are in / no cats in /
+not determined"; the user's wording is never passed to the per-room call.
 
 **Tools (v12.9).** The tool loop got its camera surface: `list_rooms` returns the
 codes and localized names the user may look at (offered only when the camera module

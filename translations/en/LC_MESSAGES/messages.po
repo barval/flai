@@ -4977,3 +4977,31 @@ msgstr "Images in order: {rooms}"
 #: app/queue.py
 msgid "No cameras are available"
 msgstr "No cameras are available"
+
+#: app/queue.py
+msgid "Answer for this room only: {question}"
+msgstr "Answer for this room only: {question}"
+
+#: app/queue.py
+msgid "No description received"
+msgstr "No description received"
+
+#: app/queue.py
+msgid "The image shows ONE room. Briefly say what is visible and answer: is there a cat in this room? If yes, where exactly. If no, write that there are no cats."
+msgstr "The image shows ONE room. Briefly say what is visible and answer: is there a cat in this room? If yes, where exactly. If no, write that there are no cats."
+
+#: app/queue.py
+msgid "Is there a cat in this room? Answer with one word: yes or no."
+msgstr "Is there a cat in this room? Answer with one word: yes or no."
+
+#: app/queue.py
+msgid "Cats are in: {rooms}"
+msgstr "Cats are in: {rooms}"
+
+#: app/queue.py
+msgid "No cats in: {rooms}"
+msgstr "No cats in: {rooms}"
+
+#: app/queue.py
+msgid "Not determined: {rooms}"
+msgstr "Not determined: {rooms}"

@@ -386,7 +386,7 @@ class CamModule(TranslationMixin):
         """
         return [(code, self.room_name_forms.get(code, [])) for code in sorted(self.room_names.keys())]
 
-    def get_snapshot(self, user_login, room_code, lang="ru"):
+    def get_snapshot(self, user_login, room_code, lang="ru", width: int | None = None):
         self.check_availability()
         if not self.available:
             return {"success": False, "error": self._("CCTV service unavailable", lang), "status_code": 503}
@@ -425,7 +425,10 @@ class CamModule(TranslationMixin):
                         endpoint,
                         timeout=self.timeout,
                         headers=self.api_headers(lang=lang, accept="image/jpeg,image/png,*/*"),
-                        params={"lang": lang, "width": str(self.snapshot_width)},
+                        # 384 px is a preview: a cat on the floor is a few dozen
+                        # pixels there, and the vision model guesses. The camera
+                        # path asks for its own width (CAMERA_ANALYSIS_WIDTH).
+                        params={"lang": lang, "width": str(width or self.snapshot_width)},
                     )
 
                     if response.status_code == 200:

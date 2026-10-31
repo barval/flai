@@ -48,7 +48,7 @@ def _modules(rooms: dict[str, str], fail: set[str] | None = None) -> dict:
     cam.available = True
     cam.get_available_rooms.return_value = dict(rooms)
 
-    def snapshot(user_id, code, lang="ru"):
+    def snapshot(user_id, code, lang="ru", width=None):
         if code in fail:
             return {"success": False, "error": f"no signal for {code}"}
         return _capture(code, rooms[code])
@@ -58,7 +58,14 @@ def _modules(rooms: dict[str, str], fail: set[str] | None = None) -> dict:
     base._ = Mock(side_effect=lambda text, lang=None, **kwargs: text)
     multimodal = Mock()
     multimodal.available = True
-    multimodal.process_images_with_text.return_value = ("кошка на кухне", None)
+    # One call per room: the answer is asked for that room only.
+    multimodal.process_image_with_text.side_effect = [
+        ("да", None),
+        ("нет", None),
+        ("нет", None),
+        ("нет", None),
+        ("нет", None),
+    ]
     return {"cam": cam, "base": base, "multimodal": multimodal}
 
 
@@ -111,10 +118,20 @@ def test_the_asterisk_saves_one_message_per_room_and_one_answer():
     # Three snapshots plus the composed answer.
     assert len(result["messages"]) == 4
     assert queue._save_and_respond.call_count == 4
-    prompt = queue.app.modules["multimodal"].process_images_with_text.call_args.args[1]
-    # The model cannot tell which picture is which room: the order is spelled out.
-    assert "1) Гостиная" in prompt and "2) Кухня" in prompt and "3) Спальня" in prompt
-    assert "где кошки?" in prompt
+    # One vision call per room — measured, a batch makes the small model place a
+    # cat in rooms where a single-image call correctly says "нет".
+    multimodal = queue.app.modules["multimodal"]
+    assert multimodal.process_image_with_text.call_count == 3
+    prompt = multimodal.process_image_with_text.call_args.args[1]
+    # The per-room question is derived, never the user's wording: repeating
+    # "check every room" on a single image made the model answer "no cats here"
+    # for a kitchen it otherwise describes as having a cat.
+    assert "где кошки?" not in prompt
+    assert "cat" in prompt.lower()
+    answer = queue._save_and_respond.call_args.args[1]
+    # The answer is grouped, not a per-room description dump.
+    assert "Гостиная" in answer.split("\n")[0]
+    assert "Кухня" in answer and "Спальня" in answer
 
 
 @pytest.mark.unit

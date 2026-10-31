@@ -167,6 +167,9 @@ def load_config(app):
     app.config["CAMERA_PREVIEW_WORKERS"] = int(os.getenv("CAMERA_PREVIEW_WORKERS", 4))
     # "Check every room" in chat: how many snapshots one request may take.
     app.config["CAMERA_ALL_ROOMS_MAX"] = int(os.getenv("CAMERA_ALL_ROOMS_MAX", 12))
+    # Images the vision model reads in the chat camera path: 384 px is a
+    # preview, and a cat on the floor is a few pixels at that size.
+    app.config["CAMERA_ANALYSIS_WIDTH"] = int(os.getenv("CAMERA_ANALYSIS_WIDTH", 1024))
 
     # SuperLocalMemory (long-term memory) settings
     app.config["SLM_URL"] = os.getenv("SLM_URL")

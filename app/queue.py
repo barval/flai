@@ -150,6 +150,26 @@ def _run_document_indexing(
     return True, message, embedding_model, False
 
 
+def _binary_verdict(answer: str, lang: str = "ru") -> bool | None:
+    """Read a yes/no from a vision answer, or None when it is neither.
+
+    The prompt asks for one word, and the model still answers "кошка есть" or
+    "кошек не видно" often enough that matching a prefix loses the verdict.
+    Negation is checked first: "не видно" must not read as "видно".
+    """
+    text = (answer or "").strip().lower().replace("ё", "е")
+    negatives = ("нет", "no ", "no.", "not visible", "no cat", "не видно", "не обнаруж", "отсутству")
+    positives = ("да", "yes", "есть", "видна", "видно", "обнаруж", "there is", "cat is", "present")
+    if not text:
+        return None
+    if any(marker in text for marker in negatives):
+        return False
+    if any(marker in text for marker in positives):
+        return True
+    return None
+
+
+
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -3596,7 +3616,9 @@ class RedisRequestQueue:
             )
 
         camera_start = time.time()
-        camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
+        camera_result = self.app.modules["cam"].get_snapshot(
+            user_id, query, lang=lang, width=self._camera_analysis_width()
+        )
         camera_time = round(time.time() - camera_start, 1)
 
         if not camera_result["success"]:
@@ -3635,6 +3657,10 @@ class RedisRequestQueue:
 
         return {"messages": messages, "session_id": session_id}
 
+    def _camera_analysis_width(self) -> int:
+        """Snapshot width the vision model reads: 384 px previews miss small animals."""
+        return max(384, int(self.app.config.get("CAMERA_ANALYSIS_WIDTH", 1024)))
+
     def _capture_all_rooms(self, user_id: str, lang: str, task: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Snapshot every room the user may see, bounded by CAMERA_ALL_ROOMS_MAX.
 
@@ -3660,7 +3686,7 @@ class RedisRequestQueue:
                     "task_progress",
                     {"stage": "capturing_snapshot", "count": len(captured) + 1, "total": planned},
                 )
-            result = cam.get_snapshot(user_id, code, lang=lang)
+            result = cam.get_snapshot(user_id, code, lang=lang, width=self._camera_analysis_width())
             if result.get("success"):
                 captured.append(result)
             else:
@@ -3741,25 +3767,58 @@ class RedisRequestQueue:
 
         multimodal = self.app.modules.get("multimodal")
         if message_text and multimodal is not None and multimodal.available:
-            # The model cannot tell which picture is which room, so the order is
-            # spelled out: the captures are saved in the same order they are sent.
-            ordered = ", ".join(
-                f"{index + 1}) {capture['room_name']}" for index, capture in enumerate(captures)
-            )
+            # ONE call per room, deliberately. Measured on the shipped
+            # Qwen3VL-8B: asked about a single image it answers "кошка есть" for
+            # the kitchen and "нет" for the living room — correctly; given all
+            # seven images in one call it put a cat in the living room too. A
+            # small vision model contaminates images inside a batch and cannot
+            # reliably bind "image 3" to "3) study", so the per-room call is the
+            # only shape whose answer can be trusted. It is also the shape the
+            # Tasks planner uses (one camera step per room).
             base = self.app.modules["base"]
-            question = f"{base._('Images in order: {rooms}', lang=lang).replace('{rooms}', ordered)}\n\n{message_text}"
+            # A BINARY question per room, and nothing else. Measured on the
+            # shipped Qwen3VL-8B: asked "is there a cat on this image? one word:
+            # yes or no" it is right on both a kitchen with a cat and a living
+            # room without one; asked to "describe and answer", or handed the
+            # user's "check every room" wording, it puts a cat on the radiator.
+            # The user's question is answered by the assembled lists, not by the
+            # per-room call.
+            question = str(base._("Is there a cat in this room? Answer with one word: yes or no.", lang=lang))
             mm_start = time.time()
-            bot_reply, error = multimodal.process_images_with_text(
-                [capture["image_data"] for capture in captures if capture.get("image_data")],
-                question,
-                current_time_str,
-                lang=lang,
-                session_id=None,
-                response_style=response_style,
-            )
+            yes_rooms: list[str] = []
+            no_rooms: list[str] = []
+            unclear: list[str] = []
+            for capture in captures:
+                room_answer, room_error = multimodal.process_image_with_text(
+                    capture.get("image_data", ""),
+                    question,
+                    current_time_str,
+                    lang=lang,
+                    session_id=None,
+                    response_style=response_style,
+                )
+                verdict = _binary_verdict(str(room_answer or ""), lang)
+                if verdict is True:
+                    yes_rooms.append(capture["room_name"])
+                elif verdict is False:
+                    no_rooms.append(capture["room_name"])
+                else:
+                    detail = room_error or str(room_answer or "").strip() or "?"
+                    unclear.append(f"{capture['room_name']}: {detail}")
             mm_time = round(time.time() - mm_start, 1)
-            if error:
-                bot_reply = f"⚠️ {error}"
+            lines = []
+            if yes_rooms:
+                lines.append(str(base._("Cats are in: {rooms}", lang=lang)).replace("{rooms}", ", ".join(yes_rooms)))
+            if no_rooms:
+                lines.append(str(base._("No cats in: {rooms}", lang=lang)).replace("{rooms}", ", ".join(no_rooms)))
+            if unclear:
+                lines.append(str(base._("Not determined: {rooms}", lang=lang)).replace("{rooms}", "; ".join(unclear)))
+            if not yes_rooms and not no_rooms and not unclear:
+                lines.append(str(base._("No cameras are available", lang=lang)))
+            bot_reply = "\n".join(lines)
+            error = None
+            error = None
+            mm_time = round(time.time() - mm_start, 1)
             second = self._save_and_respond(
                 session_id,
                 bot_reply,
@@ -4047,7 +4106,9 @@ class RedisRequestQueue:
             )
 
         camera_start = time.time()
-        camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
+        camera_result = self.app.modules["cam"].get_snapshot(
+            user_id, query, lang=lang, width=self._camera_analysis_width()
+        )
         camera_time = round(time.time() - camera_start, 1)
 
         if not camera_result["success"]:

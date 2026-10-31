@@ -9771,6 +9771,7 @@ video {
         <button class="admin-tab" data-tab="settings">Настройки</button>
         <button class="admin-tab" data-tab="hub">Хаб Моделей</button>
         <button class="admin-tab" data-tab="models">Модели</button>
+        <button class="admin-tab" data-tab="mcp">MCP</button>
         
         <button class="admin-tab" data-tab="cameras">Камеры</button>
         
@@ -10061,6 +10062,45 @@ video {
                 </div>
                 <div id="hub-results" class="hub-results"></div>
             </div>
+        </div>
+    </div>
+
+    <\!-- MCP tab content: the servers whose tools the chat model may call -->
+    <div id="mcp-tab" class="admin-tab-content">
+        <div class="mcp-toolbar">
+            <label class="mcp-inline">
+                <input type="checkbox" id="mcp-enabled">
+                <span>Передавать модели инструменты MCP-серверов</span>
+            </label>
+            <label class="mcp-inline">
+                <span>Таймаут запроса (с)</span>
+                <input type="number" id="mcp-timeout" min="1" max="60" step="1">
+            </label>
+            <button id="mcp-save" class="add-user-button" disabled>Сохранить изменения</button>
+            <span id="mcp-status" class="settings-status"></span>
+        </div>
+        <div class="mcp-table-wrapper">
+            <table id="mcp-servers-table">
+                <thead>
+                    <tr>
+                        <th>Имя</th>
+                        <th>URL</th>
+                        <th>Токен</th>
+                        <th>Разрешённые инструменты</th>
+                        <th>Инструменты</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="mcp-servers-body"></tbody>
+            </table>
+            <div id="mcp-empty" class="no-backups">MCP-серверы не настроены</div>
+        </div>
+        <div class="mcp-add">
+            <input id="mcp-new-name" type="text" placeholder="Имя" autocomplete="off">
+            <input id="mcp-new-url" type="text" placeholder="https://host/mcp" autocomplete="off">
+            <input id="mcp-new-token" type="password" placeholder="Токен (необязательно)" autocomplete="new-password">
+            <input id="mcp-new-allow" type="text" placeholder="Разрешённые инструменты через запятую" autocomplete="off">
+            <button id="mcp-add-server" class="add-user-button">Добавить сервер</button>
         </div>
     </div>
 
@@ -12603,6 +12643,85 @@ body.dark-theme .settings-reset {
         color: #999;
     }
 }
+
+/* ── MCP tab: the servers whose tools the chat model may call ───────────── */
+.mcp-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.mcp-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.mcp-inline input[type="number"] {
+    width: 4.5rem;
+    padding: 0.2rem 0.35rem;
+}
+
+#mcp-servers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#mcp-servers-table th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.4rem;
+    opacity: 0.75;
+}
+
+#mcp-servers-table td {
+    padding: 0.25rem 0.4rem;
+    vertical-align: middle;
+}
+
+.mcp-input {
+    width: 100%;
+    min-width: 6rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.85rem;
+}
+
+.mcp-tools {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.mcp-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+.mcp-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.mcp-add input {
+    flex: 1 1 10rem;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .mcp-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .mcp-add input {
+        flex: 1 1 100%;
+    }
+}
 </style>
 <script>
 window.ROOMS = [];
@@ -12652,6 +12771,16 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'lowest': "\u043d\u0438\u0437\u0448\u0438\u0439",
     'leave_unchecked': "\u041e\u0441\u0442\u0430\u0432\u044c\u0442\u0435 \u0432\u0441\u0435 \u043d\u0435\u043e\u0442\u043c\u0435\u0447\u0435\u043d\u043d\u044b\u043c\u0438 \u2014 \u0434\u043e\u0441\u0442\u0443\u043f \u0431\u0443\u0434\u0435\u0442 \u0437\u0430\u043a\u0440\u044b\u0442 \u043a\u043e \u0432\u0441\u0435\u043c \u043a\u0430\u043c\u0435\u0440\u0430\u043c.",
     'unknown_error': "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043e\u0448\u0438\u0431\u043a\u0430",
+    'Test connection': "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0435",
+    'Remove server': "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440",
+    'Tools found': "\u041d\u0430\u0439\u0434\u0435\u043d\u043e \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u043e\u0432",
+    'Saving...': "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u2026",
+    'mcp_token_keep': "\u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d \u2014 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u043e\u0432\u044b\u0439",
+    'Token (optional)': "\u0422\u043e\u043a\u0435\u043d (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)",
+    'empty means all': "\u043f\u0443\u0441\u0442\u043e \u2014 \u0432\u0441\u0435",
+    'A server needs a name and a URL': "\u0421\u0435\u0440\u0432\u0435\u0440\u0443 \u043d\u0443\u0436\u043d\u044b \u0438\u043c\u044f \u0438 \u0430\u0434\u0440\u0435\u0441",
+    'The server did not answer': "\u0421\u0435\u0440\u0432\u0435\u0440 \u043d\u0435 \u043e\u0442\u0432\u0435\u0442\u0438\u043b",
+    'MCP servers are not valid JSON': "\u0421\u043f\u0438\u0441\u043e\u043a MCP-\u0441\u0435\u0440\u0432\u0435\u0440\u043e\u0432 \u2014 \u043d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 JSON",
     'Variable': "\u041f\u0435\u0440\u0435\u043c\u0435\u043d\u043d\u0430\u044f",
     'Value': "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435",
     'Default value': "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u043f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e",
@@ -17507,7 +17636,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function render() {
         groupsBox.innerHTML = '';
-        schema.forEach((group) => {
+        schema.filter((group) => !group.dedicated).forEach((group) => {
             const details = document.createElement('details');
             details.className = 'settings-group';
             details.open = false;
@@ -17618,6 +17747,282 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     window.AdminSettings = { load: load };
+})();
+<\/script>
+<script>// app/static/js/admin-mcp.js
+// MCP tab: the servers whose tools the chat model may call.
+//
+// The values live in the same settings store as every other admin parameter, so
+// this tab reads the schema once and saves through the settings endpoint — one
+// precedence rule (database > .env > default) for the whole panel. A token is
+// never rendered: an empty token field means "keep the stored one".
+(function () {
+    'use strict';
+
+    const enabledBox = document.getElementById('mcp-enabled');
+    const timeoutInput = document.getElementById('mcp-timeout');
+    const saveButton = document.getElementById('mcp-save');
+    const statusBox = document.getElementById('mcp-status');
+    const body = document.getElementById('mcp-servers-body');
+    const emptyBox = document.getElementById('mcp-empty');
+    if (!enabledBox || !body) return;
+
+    const t = (key) => (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
+
+    let servers = [];
+    let dirty = false;
+
+    function setStatus(text, isError) {
+        if (!statusBox) return;
+        statusBox.textContent = text || '';
+        statusBox.classList.toggle('is-error', !!isError);
+    }
+
+    function markDirty() {
+        dirty = true;
+        if (saveButton) saveButton.disabled = false;
+    }
+
+    function field(className, value, placeholder, type) {
+        const input = document.createElement('input');
+        input.className = className;
+        input.type = type || 'text';
+        input.value = value === undefined || value === null ? '' : String(value);
+        if (placeholder) input.placeholder = placeholder;
+        if (type !== 'password') input.autocomplete = 'off';
+        return input;
+    }
+
+    function render() {
+        body.innerHTML = '';
+        if (emptyBox) emptyBox.style.display = servers.length ? 'none' : '';
+        servers.forEach((server, index) => {
+            const row = document.createElement('tr');
+            row.className = 'mcp-server-row';
+
+            const nameCell = document.createElement('td');
+            const nameInput = field('mcp-input', server.name, t('Name'));
+            nameInput.addEventListener('input', () => {
+                server.name = nameInput.value.trim();
+                markDirty();
+            });
+            nameCell.appendChild(nameInput);
+            row.appendChild(nameCell);
+
+            const urlCell = document.createElement('td');
+            const urlInput = field('mcp-input', server.url, 'https://host/mcp');
+            urlInput.addEventListener('input', () => {
+                server.url = urlInput.value.trim();
+                markDirty();
+            });
+            urlCell.appendChild(urlInput);
+            row.appendChild(urlCell);
+
+            const tokenCell = document.createElement('td');
+            const tokenInput = field('mcp-input', '', server.token ? t('mcp_token_keep') : t('Token (optional)'), 'password');
+            tokenInput.addEventListener('input', () => {
+                server.newToken = tokenInput.value;
+                markDirty();
+            });
+            tokenCell.appendChild(tokenInput);
+            row.appendChild(tokenCell);
+
+            const allowCell = document.createElement('td');
+            const allowInput = field('mcp-input', (server.allow || []).join(', '), t('empty means all'));
+            allowInput.addEventListener('input', () => {
+                server.allow = allowInput.value.split(',').map((item) => item.trim()).filter(Boolean);
+                markDirty();
+            });
+            allowCell.appendChild(allowInput);
+            row.appendChild(allowCell);
+
+            const toolsCell = document.createElement('td');
+            toolsCell.className = 'mcp-tools';
+            toolsCell.textContent = server.tools === null || server.tools === undefined
+                ? '—'
+                : String(server.tools.length);
+            toolsCell.title = (server.tools || []).join(', ');
+            if (server.error) {
+                toolsCell.textContent = '⚠️';
+                toolsCell.title = server.error;
+            }
+            row.appendChild(toolsCell);
+
+            const actionsCell = document.createElement('td');
+            actionsCell.className = 'mcp-actions';
+            const testButton = document.createElement('button');
+            testButton.type = 'button';
+            testButton.className = 'settings-reset';
+            testButton.textContent = '▶';
+            testButton.title = t('Test connection');
+            testButton.addEventListener('click', () => testServer(server, testButton));
+            actionsCell.appendChild(testButton);
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'settings-reset';
+            removeButton.textContent = '✕';
+            removeButton.title = t('Remove server');
+            removeButton.addEventListener('click', () => {
+                servers.splice(index, 1);
+                markDirty();
+                render();
+            });
+            actionsCell.appendChild(removeButton);
+            row.appendChild(actionsCell);
+
+            body.appendChild(row);
+        });
+    }
+
+    function testServer(server, button) {
+        if (!server.name || !server.url) {
+            setStatus(t('A server needs a name and a URL'), true);
+            return;
+        }
+        button.disabled = true;
+        fetchWithCSRF('/admin/api/mcp/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: server.name, url: server.url, token: server.newToken || server.token || '' })
+        })
+            .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
+            .then(({ ok, payload }) => {
+                button.disabled = false;
+                if (!ok) {
+                    server.error = payload.error || t('unknown_error');
+                    server.tools = [];
+                    setStatus(server.error, true);
+                } else {
+                    server.error = '';
+                    server.tools = payload.tools || [];
+                    setStatus(t('Tools found') + ': ' + server.tools.length, false);
+                }
+                render();
+            })
+            .catch(() => {
+                button.disabled = false;
+                server.error = t('unknown_error');
+                setStatus(server.error, true);
+                render();
+            });
+    }
+
+    function currentValues() {
+        const payload = servers.map((server) => {
+            const entry = { name: server.name, url: server.url, allow: server.allow || [] };
+            const token = server.newToken ? server.newToken : server.token;
+            if (token) entry.token = token;
+            return entry;
+        });
+        return {
+            MCP_ENABLED: !!enabledBox.checked,
+            MCP_TIMEOUT_S: String(timeoutInput ? timeoutInput.value : '10'),
+            MCP_SERVERS: JSON.stringify(payload)
+        };
+    }
+
+    function save() {
+        if (saveButton) saveButton.disabled = true;
+        setStatus(t('Saving...'), false);
+        fetchWithCSRF('/admin/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values: currentValues() })
+        })
+            .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
+            .then(({ ok, payload }) => {
+                if (!ok) {
+                    setStatus(payload.error || t('settings_invalid'), true);
+                    if (saveButton) saveButton.disabled = false;
+                    return;
+                }
+                dirty = false;
+                setStatus(t('Saved'), false);
+                load();
+            })
+            .catch(() => {
+                setStatus(t('unknown_error'), true);
+                if (saveButton) saveButton.disabled = false;
+            });
+    }
+
+    function parseServers(raw) {
+        try {
+            const parsed = JSON.parse(raw || '[]');
+            if (!Array.isArray(parsed)) return [];
+            return parsed
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => ({
+                    name: String(item.name || ''),
+                    url: String(item.url || ''),
+                    token: String(item.token || ''),
+                    newToken: '',
+                    allow: Array.isArray(item.allow) ? item.allow.map(String) : [],
+                    tools: null,
+                    error: ''
+                }));
+        } catch (error) {
+            setStatus(t('MCP servers are not valid JSON'), true);
+            return [];
+        }
+    }
+
+    function load() {
+        fetch('/admin/api/settings')
+            .then((response) => response.json())
+            .then((payload) => {
+                const group = (payload.groups || []).find((item) => item.id === 'mcp');
+                if (!group) return;
+                const values = {};
+                group.fields.forEach((item) => {
+                    values[item.key] = item.value;
+                });
+                enabledBox.checked = values.MCP_ENABLED === true;
+                if (timeoutInput) timeoutInput.value = values.MCP_TIMEOUT_S === null ? 10 : values.MCP_TIMEOUT_S;
+                servers = parseServers(values.MCP_SERVERS);
+                dirty = false;
+                if (saveButton) saveButton.disabled = true;
+                render();
+            })
+            .catch(() => setStatus(t('unknown_error'), true));
+    }
+
+    function addServer() {
+        const name = document.getElementById('mcp-new-name');
+        const url = document.getElementById('mcp-new-url');
+        const token = document.getElementById('mcp-new-token');
+        const allow = document.getElementById('mcp-new-allow');
+        const server = {
+            name: name ? name.value.trim() : '',
+            url: url ? url.value.trim() : '',
+            token: '',
+            newToken: token ? token.value : '',
+            allow: allow && allow.value
+                ? allow.value.split(',').map((item) => item.trim()).filter(Boolean)
+                : [],
+            tools: null,
+            error: ''
+        };
+        if (!server.name || !server.url) {
+            setStatus(t('A server needs a name and a URL'), true);
+            return;
+        }
+        servers.push(server);
+        [name, url, token, allow].forEach((input) => {
+            if (input) input.value = '';
+        });
+        markDirty();
+        render();
+    }
+
+    if (saveButton) saveButton.addEventListener('click', save);
+    const addButton = document.getElementById('mcp-add-server');
+    if (addButton) addButton.addEventListener('click', addServer);
+    if (enabledBox) enabledBox.addEventListener('change', markDirty);
+    if (timeoutInput) timeoutInput.addEventListener('input', markDirty);
+
+    document.addEventListener('DOMContentLoaded', load);
+    if (document.readyState !== 'loading') load();
 })();
 <\/script>
 

@@ -563,6 +563,11 @@ MIME-типом и безопасным именем файла.
 и через псевдонимы ПЛИИ под `/v1/flai/documents`. Оба семейства вызывают одни и те
 же обработчики, поэтому поведение владения, квот и валидации одинаково.
 
+Псевдонимы: `GET /v1/flai/documents` (список), `POST /v1/flai/documents`
+(загрузка), `GET`/`DELETE` на `/v1/flai/documents/{file_id}` (метаданные,
+удаление) и `GET /v1/flai/documents/{file_id}/content` (скачивание). Каждый из них
+ведёт себя точно так же, как его пара из `/v1/files`, описанная ниже.
+
 ```bash
 # List your documents
 curl http://localhost:5000/v1/files -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"

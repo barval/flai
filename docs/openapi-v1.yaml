@@ -699,6 +699,7 @@ paths:
         or another user's id is `404 task_not_found`, so there is no ownership
         oracle.
       operationId: cancelTask
+      x-no-body: true
       parameters:
         - {$ref: '#/components/parameters/TaskId'}
       responses:

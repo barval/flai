@@ -24,12 +24,13 @@ Run these from the repository root. They are read-only and exit non-zero when th
 python3 .opencode/skills/preparing-flai-release/scripts/check_release_branches.py --release vX.Y --previous vX.(Y-1)
 python3 .opencode/skills/preparing-flai-release/scripts/check_translations.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_catalog_drift.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_api_docs.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 ```
 
-The branch, translation, catalog-drift, TOC and secrets scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+The branch, translation, catalog-drift, API, TOC and secrets scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -239,14 +240,29 @@ pytest tests/test_app_version.py tests/test_api_docs.py \
 
 `tests/test_api_inventory.py` is the method-level contract guard: it enumerates every in-scope `/v1` endpoint with its exact method set, so a removed route, a rename or a dropped method fails the build. Its `EXPECTED_ENDPOINTS` table mirrors the endpoint table in `docs/API.md`; add a new endpoint there and in the test in the same commit.
 
-Neither test covers parameters, payloads or response schemas. Review these by hand for every changed endpoint:
+Neither test covers parameters, payloads or response schemas, and neither looks at the prose. Run the third guard:
 
-- HTTP methods and path parameters in `docs/openapi-v1.yaml`;
+```bash
+python3 .opencode/skills/preparing-flai-release/scripts/check_api_docs.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_api_docs.py --live http://localhost:5000
+```
+
+It checks what the tests do not:
+
+- `info.version` equals `APP_VERSION` plus `.0` (a spec stamped with the previous release is a release blocker);
+- every operation carries `responses`, `operationId`, a summary or description, and declares each `{path}` parameter (references to `#/components/...` are resolved);
+- a body-bearing method (`POST`/`PUT`/`PATCH`) either has `requestBody` or is marked `x-no-body: true`, so "no body" is a decision rather than an omission;
+- every spec path is described in `docs/API.md` **and** `docs/API-ru.md`, and every templated `/v1` path those documents mention exists in the spec;
+- `docs/openapi.yaml` still carries its staleness disclaimer;
+- with `--live`, the served `/v1/openapi.json` matches the file and `/v1/docs` answers `200`.
+
+What still needs a human eye is the content of a changed endpoint:
+
 - request body and query parameters, their types and required flags;
 - response schema and status codes, including the localized `⚠️ ` error bodies;
 - the endpoint table, authentication notes and examples in `docs/API.md` and `docs/API-ru.md`.
 
-The internal web/admin API (`/api/...`) has no drift guard. `docs/openapi.yaml` is an older standalone document and no test compares it with the code. Check the endpoints the release touched against it by hand, and report the internal API as `NOT VERIFIED` when you did not.
+The internal web/admin API (`/api/...`) has **no** spec and no drift guard: `docs/openapi.yaml` is a v8.2 snapshot whose header says it is not maintained, not served and not checked against the code, and the code in `app/routes/` is the reference. Do not update that file to look current — keep the disclaimer intact, confirm nothing links to it as the current reference, and report the internal API as `NOT VERIFIED` unless the release changed a `/api/...` route and you reviewed it by hand.
 
 ## Phase 3 — Documentation and version
 
@@ -381,6 +397,7 @@ Check and record evidence:
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |
 | API docs (paths) | `tests/test_api_docs.py` | PASS / FAIL |
 | API contract (methods) | `tests/test_api_inventory.py` | PASS / FAIL |
+| API prose, spec structure, served spec | `check_api_docs.py` (with `--live` when the instance runs) | PASS / FAIL |
 | Tree clean | `git status --short`, `git diff --check` | PASS / FAIL |
 
 Final report:
@@ -411,6 +428,8 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "`.mo` will be built at deploy." | `.mo` is tracked; compile and commit it. |
 | "The docs are close enough." | Heading parity and `.env` key parity are mechanical checks. |
 | "A Russian quote in an English document is fine." | It is a defect. Describe the meaning in English. |
+| "The `/v1` tests passed, so the API docs are current." | They compare paths and method sets. The prose, the spec structure and the served Swagger page are separate — run `check_api_docs.py`. |
+| "`docs/openapi.yaml` is out of date, I will regenerate it." | It is a v8.2 snapshot with a disclaimer that says so; the internal API has no spec and the code is the reference. Leave the disclaimer alone. |
 | "Full pytest is the only proof." | Narrow runs are the default; the full suite needs explicit approval and a RAM budget. |
 | "I'll merge master into the release branch." | No. Promote the release branch to master after approval. |
 | "I'll delete old dead code while I'm here." | Report it; delete only with approval, including old code. |

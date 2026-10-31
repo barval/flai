@@ -105,8 +105,7 @@ RAG_CHUNK_SIZE=500             # Characters per chunk
 RAG_CHUNK_OVERLAP=50           # Overlap between consecutive chunks
 RAG_CHUNK_STRATEGY=fixed       # fixed | recursive | structured
 RAG_TOP_K=80                   # Ceiling for the relevance half; the real count is derived from the window
-RAG_CONTEXT_PERCENT=30         # Share of the answering model's window given to documents (drives the count)
-RAG_CONTEXT_PERCENT=30         # Share of the context window given to retrieved chunks
+RAG_CONTEXT_PERCENT=0          # 0 = automatic: the documents' share is derived from the corpus and the window
 RAG_HYBRID_ENABLED=true        # Merge dense and full-text retrieval with RRF (default on)
 RAG_HYBRID_CANDIDATES=30       # Candidates per retriever before fusion
 RAG_RRF_K=60                   # RRF constant

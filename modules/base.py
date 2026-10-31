@@ -190,7 +190,9 @@ class BaseModule(TranslationMixin):
         self.llamacpp.init_app(app)
         self.available = self.llamacpp.available
         self.token_chars = app.config.get("TOKEN_CHARS", 3)
-        self.context_history_percent = app.config.get("CONTEXT_HISTORY_PERCENT", 75)
+        # 0 means "automatic": the history gets what the session holds and what the
+        # window has left (app/context_budget.py); a positive value caps it.
+        self.context_history_percent = app.config.get("CONTEXT_HISTORY_PERCENT", 0)
         self.safety_margin = app.config.get("CONTEXT_SAFETY_MARGIN", SAFETY_MARGIN)
         self.max_messages_limit = app.config.get("MAX_HISTORY_MESSAGES", 30)
         self.summary_min_messages = app.config.get("SESSION_SUMMARY_MIN_MESSAGES", 6)
@@ -242,9 +244,14 @@ class BaseModule(TranslationMixin):
         config = self._get_model_config("reasoning")
         if not config:
             return 10000
-        ctx = config.get("context_length", 16384)
-        budget = int(ctx * (self.context_history_percent / 100.0) * self.safety_margin)
-        return int(budget * 0.30 * 3.5)
+        from app.rag_budget import retrieval_budget
+
+        # One allocator for every consumer of the window: the search may use the
+        # whole evidence share when there is no session yet, and the character
+        # count comes from the measured cost of a fragment rather than "3.5".
+        budget = retrieval_budget(self.app if getattr(self, "app", None) else None, "ru")
+        chars_per_token = max(1.0, (self.app.config.get("RAG_CHUNK_SIZE", 500)) / max(1, budget.tokens_per_fragment))
+        return int(budget.tokens * self.safety_margin * chars_per_token)
 
     def _estimate_tokens(self, text: str, model_type: str = "multimodal", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""
@@ -397,9 +404,24 @@ class BaseModule(TranslationMixin):
         max_context_tokens = model_config.get("context_length", 32768)
         slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
 
-        # Apply safety margin to available tokens
-        available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
+        # The reply reserve and the fixed prompt are subtracted from the window;
+        # what remains is what history and evidence may share. A percentage of the
+        # window (the old 75 % x 85 %) gave the same room to a three-message
+        # session as to a fifty-message one and shrank on small hosts for no
+        # reason. ``CONTEXT_HISTORY_PERCENT`` > 0 still caps it for operators.
+        from app.context_budget import cap_share, context_budget
+
+        template_overhead = (
+            self.app.config.get("TEMPLATE_OVERHEAD_TOKENS", TEMPLATE_OVERHEAD)
+            if hasattr(self, "app") and self.app
+            else TEMPLATE_OVERHEAD
+        )
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
+        budget = context_budget(max_context_tokens, template_overhead + query_tokens)
+        available_tokens = cap_share(budget.available, budget.available, self.context_history_percent)
+        # The estimator can be a few percent off; the margin stays as a guard
+        # against that, not as an allocation policy.
+        available_tokens = int(available_tokens * self.safety_margin)
 
         # Step 1: Measure search context tokens (RAG docs / web search / history)
         search_tokens = 0
@@ -460,13 +482,8 @@ class BaseModule(TranslationMixin):
                 heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
             search_section = "\n" + heading + "\n" + rag_context
 
-        # Step 5: Calculate history budget — subtract query, template, RAG, and SLM
-        template_overhead = (
-            self.app.config.get("TEMPLATE_OVERHEAD_TOKENS", TEMPLATE_OVERHEAD)
-            if hasattr(self, "app") and self.app
-            else TEMPLATE_OVERHEAD
-        )
-        remaining_for_history = available_tokens - query_tokens - template_overhead - search_tokens - slm_tokens
+        # Step 5: Calculate history budget — subtract what is already granted
+        remaining_for_history = available_tokens - search_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(

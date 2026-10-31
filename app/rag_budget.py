@@ -1,23 +1,23 @@
-"""How many document fragments a retrieval may put in the prompt, from the window.
+"""How many document fragments a retrieval may put in the prompt.
 
-The two numbers that decide retrieval breadth — how many fragments to fetch and
-how many uncovered documents to add — used to be constants (`top_k=20` at the call
-sites, `coverage_max_files=6` in the search). Measured consequence on a real
-question over 26 work logs: 20 fragments arrived, 8 of them came from two
-unrelated PDFs, the other 16 logs were never seen, and the coverage pass refused
-outright because 17 missing documents exceeded its cap of 6 — so the answer
-looked complete and covered 10 files out of 26.
+Two constants used to decide this: `top_k=20` at every reasoning call site and
+`coverage_max_files=6` inside the search. Measured consequence on a real question
+over 26 work logs: 20 fragments arrived, 8 of them from two unrelated PDFs, the
+other 16 logs were never seen, and the coverage pass refused outright because 17
+missing documents exceeded its cap of 6 — the answer looked complete and covered
+10 files out of 26.
 
-The budget is derived from the answering model's context window, which the
-deployment already auto-fits to the card (24 576 on a 16 GB GPU, 8 192 on CPU):
+The budget is now derived from the same window split the rest of the request uses
+(:mod:`app.context_budget`): the reply reserve and the measured fixed prompt are
+subtracted from the window, and the rest is divided between the conversation and
+the documents **by measured need** — the corpus size and the session length. A
+CPU host with an 8 192-token window therefore gives a single question almost all
+of the room instead of the 30 % a fixed share would hand it, and a long
+conversation only takes what it actually holds.
 
-    fragments = window x RAG_CONTEXT_PERCENT / tokens_per_fragment
-
-``tokens_per_fragment`` is measured with the project's own token estimator, so a
-Russian fragment costs what it really costs (~260 tokens for a 500-character
-chunk) and an English one less. Relevance keeps the larger share of the budget
-and coverage gets the rest, ranked by the same search, so the breadth grows with
-the hardware instead of staying a magic number.
+Two things remain policy rather than resources, and are named as such:
+``BREADTH_SHARE`` (how much of the fragment budget goes to covering documents the
+relevance half missed) and the operator's optional ``RAG_CONTEXT_PERCENT`` cap.
 """
 
 from __future__ import annotations
@@ -25,19 +25,23 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from app.context_budget import cap_share, context_budget
 from app.utils import estimate_tokens
 
-# The query itself is what the user asked about: relevance gets most of the room.
-RELEVANCE_SHARE = 0.7
-# Below this a search is not a search any more; the prompt still has room because
-# the caller trims by the same budget later.
-MIN_TOP_K = 5
-# No installation needs more than this many fragments no matter how big the card.
-MAX_COVERAGE_FILES = 40
+# Policy: how much wider than "one chunk per document" the evidence may be — half
+# again, so a small corpus is covered and the best-matching chunks get depth.
+DEPTH_OVER_COVERAGE = 0.5
+# Policy: with a corpus larger than the room, a quarter of the fragments goes to
+# covering documents the relevance half missed; relevance keeps the rest.
+BREADTH_SHARE = 0.25
+# A search needs at least one relevance hit; a corpus smaller than the budget is
+# covered entirely.
+MIN_TOP_K = 1
 # Used only when the reasoning model has no configured window (a fresh install).
 DEFAULT_CONTEXT_TOKENS = 8192
-# A fragment carries its source label in front of the text.
-SOURCE_LABEL_CHARS = 24
+# The fixed prompt is measured for the request itself; this is the estimate used
+# where the prompt does not exist yet (the search cap, the fast worker).
+DEFAULT_FIXED_TOKENS = 800
 _SAMPLE = "работа с клиентами, выполнение планов продаж, заключение договоров, поддержка серверов "
 
 
@@ -50,6 +54,7 @@ class RetrievalBudget:
     fragments: int
     tokens: int
     tokens_per_fragment: int
+    history_tokens: int = 0
 
 
 def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = None) -> int:
@@ -65,36 +70,65 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
     return max(1, estimate_tokens(text, "reasoning", lang))
 
 
-def retrieval_budget(app=None, lang: str = "ru", chunk_chars: int | None = None) -> RetrievalBudget:
-    """The fragment budget for this installation, derived from its window.
+def _config_value(app, key: str, default: int) -> int:
+    if app is not None:
+        return int(app.config.get(key, default) or default)
+    return int(os.getenv(key, str(default)) or default)
 
-    ``app`` may be None (a call outside a request context, e.g. a CLI path or a
-    test): the numbers then come from the environment, which is where the app
-    would have read them anyway.
+
+def retrieval_budget(
+    app=None,
+    lang: str = "ru",
+    chunk_chars: int | None = None,
+    history_need: int = 0,
+    corpus_documents: int | None = None,
+) -> RetrievalBudget:
+    """The fragment budget for one request.
+
+    ``app`` may be None (a call outside a request context): the numbers then come
+    from the environment, which is where the app reads them anyway.
+    ``corpus_documents`` is how many indexed documents the request can search;
+    when it is unknown the documents may use all of the room.
     """
     if app is not None:
         from app.model_config import get_model_config
 
         config = get_model_config("reasoning") or {}
         window = int(config.get("context_length") or DEFAULT_CONTEXT_TOKENS)
-        share = int(app.config.get("RAG_CONTEXT_PERCENT", 30))
-        configured = int(app.config.get("RAG_TOP_K", 80) or 80)
-        chunk = int(chunk_chars or app.config.get("RAG_CHUNK_SIZE", 500))
+        fixed = int(app.config.get("TEMPLATE_OVERHEAD_TOKENS", DEFAULT_FIXED_TOKENS) or DEFAULT_FIXED_TOKENS)
     else:
         window = DEFAULT_CONTEXT_TOKENS
-        share = int(os.getenv("RAG_CONTEXT_PERCENT", "30"))
-        configured = int(os.getenv("RAG_TOP_K", "80") or 80)
-        chunk = int(chunk_chars or os.getenv("RAG_CHUNK_SIZE", "500"))
-    share = max(10, min(90, share))
-    tokens = int(window * share / 100)
-    per_fragment = tokens_per_fragment(app, lang, chunk)
-    fragments = max(MIN_TOP_K, tokens // per_fragment)
-    top_k = min(configured, max(MIN_TOP_K, int(fragments * RELEVANCE_SHARE)))
-    coverage = min(MAX_COVERAGE_FILES, max(0, fragments - top_k))
+        fixed = int(os.getenv("TEMPLATE_OVERHEAD_TOKENS", str(DEFAULT_FIXED_TOKENS)))
+    per_fragment = tokens_per_fragment(app, lang, chunk_chars)
+    budget = context_budget(window, fixed)
+
+    documents_need = (
+        int(int(corpus_documents) * per_fragment * (1 + DEPTH_OVER_COVERAGE))
+        if corpus_documents
+        else budget.available
+    )
+    documents_tokens, history_tokens = budget.split(history_need=history_need, document_need=documents_need)
+    documents_tokens = cap_share(documents_tokens, budget.available, _config_value(app, "RAG_CONTEXT_PERCENT", 0))
+
+    fragments = max(MIN_TOP_K, documents_tokens // per_fragment)
+    corpus = max(0, int(corpus_documents or 0))
+    if corpus and corpus <= fragments:
+        # Everything fits: represent every document and spend the rest on depth.
+        coverage = corpus
+        top_k = max(MIN_TOP_K, fragments - corpus)
+    else:
+        coverage = min(corpus, max(1, int(fragments * BREADTH_SHARE))) if corpus else 0
+        top_k = max(MIN_TOP_K, fragments - coverage)
+    # An explicit RAG_TOP_K narrows the relevance half; it cannot widen it past
+    # what the window holds.
+    configured = _config_value(app, "RAG_TOP_K", 0)
+    if configured > 0:
+        top_k = min(top_k, configured)
     return RetrievalBudget(
         top_k=top_k,
         coverage_files=coverage,
         fragments=fragments,
-        tokens=tokens,
+        tokens=documents_tokens,
         tokens_per_fragment=per_fragment,
+        history_tokens=history_tokens,
     )

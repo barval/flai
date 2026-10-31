@@ -499,7 +499,26 @@ class RagModule:
 
         from app.rag_budget import retrieval_budget
 
-        budget = retrieval_budget(current_app if has_app_context() else None, lang)
+        # How many documents the request can search decides the split between
+        # relevance depth and breadth; the same list is reused for the count later.
+        scope_ids = [str(d) for d in (doc_ids or []) if d]
+        # The corpus size only matters when coverage is on: it decides how much of
+        # the fragment room goes to breadth. Without it the search must not touch
+        # the documents table at all.
+        corpus_documents: int | None = None
+        if file_coverage:
+            try:
+                documents = get_user_documents(user_id) or []
+                if scope_ids:
+                    documents = [d for d in documents if str(d.get("id")) in set(scope_ids)]
+                corpus_documents = len([d for d in documents if d.get("index_status") == INDEX_STATUS_INDEXED])
+            except Exception as exc:  # noqa: BLE001 — a count is not worth a failed search
+                self.logger.debug(f"search: could not count the corpus: {exc}")
+        budget = retrieval_budget(
+            current_app if has_app_context() else None,
+            lang,
+            corpus_documents=corpus_documents,
+        )
         if top_k is None:
             top_k = budget.top_k
         if coverage_max_files is None:
@@ -513,9 +532,9 @@ class RagModule:
         self.last_coverage = {"covered": 0, "unrepresented": 0, "budget": budget}
         # ``None`` means "no scope"; an explicit empty list means "the scope
         # matched nothing", which must stay empty instead of searching everything.
-        if doc_ids is not None and not [d for d in doc_ids if d]:
+        if doc_ids is not None and not scope_ids:
             return [], []
-        scope = [str(d) for d in (doc_ids or []) if d]
+        scope = scope_ids
 
         # Get embedding directly from query
         query_emb = self._get_embedding(query)
@@ -709,18 +728,28 @@ class RagModule:
         max_context_tokens = reasoning_config.get("context_length", 40960)
         self.logger.info(f"RAG: reasoning context_length from config: {max_context_tokens}")
 
-        # Dynamic context limit: percentage of model's context window
-        rag_context_percent = current_app.config.get("RAG_CONTEXT_PERCENT", 50)
-        max_context_tokens_limit = int(max_context_tokens * rag_context_percent / 100.0)
-
-        # Measure actual template overhead (already filled with variables)
-        # We know: total_prompt = template + context + query + history
-        # So: template_tokens = total_tokens_of_filled_template - context - query
-        # But we don't have the filled template yet. Instead, estimate from loaded template.
+        # The document share and the history share are split by measured need
+        # (app/context_budget.py), not by two percentages multiplied together: a
+        # CPU host with an 8 192-token window used to grant documents 30 % of it
+        # regardless of how small the corpus was.
+        from app.context_budget import cap_share, context_budget
         from app.utils import load_prompt_template
 
         template_text = load_prompt_template("rag.template", lang) or ""
         template_overhead = self._estimate_tokens(template_text)
+        history_need = 0
+        if session_id:
+            history_need = sum(
+                self._estimate_tokens(str(message.get("content") or ""))
+                for message in (get_session_text_history(session_id, 10_000) or [])
+            )
+        budget = context_budget(max_context_tokens, template_overhead + query_tokens)
+        documents_tokens, history_tokens = budget.split(history_need=history_need, document_need=context_tokens)
+        max_context_tokens_limit = cap_share(
+            documents_tokens,
+            budget.available,
+            int(current_app.config.get("RAG_CONTEXT_PERCENT") or 0),
+        )
 
         if context_tokens > max_context_tokens_limit:
             # Trim chunks from the end (lowest relevance) until under limit
@@ -740,18 +769,10 @@ class RagModule:
             self.logger.info(
                 f"RAG: trimmed context from {original_count} to {len(filtered)} chunks "
                 f"({context_tokens}/{max_context_tokens_limit} tokens, "
-                f"{rag_context_percent}% of {max_context_tokens}) to fit within model context"
+                f"window {max_context_tokens}, history granted {history_tokens})"
             )
 
-        # Calculate actual template overhead from the raw template file
-        # (placeholders like {context}, {user_query} contribute 0 tokens,
-        #  so we measure the template as-is)
-        template_overhead = self._estimate_tokens(template_text)
-
-        # Calculate available space for history
-        history_percent = int(current_app.config.get("CONTEXT_HISTORY_PERCENT", 75))
-        available_tokens = int(max_context_tokens * (history_percent / 100.0))
-        remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
+        remaining_for_history = history_tokens
         history_str = ""
         if remaining_for_history > 0 and session_id:
             history_msgs = get_session_text_history(session_id, remaining_for_history)

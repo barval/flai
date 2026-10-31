@@ -270,7 +270,8 @@ def load_config(app):
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
-    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))
+    # 0 = automatic (history gets what it holds, capped by what is left).
+    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 0))
 
     # NEW: Context safety margin (use only 85% of calculated capacity)
     app.config["CONTEXT_SAFETY_MARGIN"] = float(os.getenv("CONTEXT_SAFETY_MARGIN", 0.85))
@@ -326,7 +327,9 @@ def load_config(app):
     app.config["RAG_RERANK_ENABLED"] = os.getenv("RAG_RERANK_ENABLED", "false").lower() in ("true", "1", "yes")
     app.config["RAG_RERANK_CANDIDATES"] = int(os.getenv("RAG_RERANK_CANDIDATES", 10))
     app.config["RAG_RERANK_TIMEOUT"] = int(os.getenv("RAG_RERANK_TIMEOUT", 10))
-    app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 30))
+    # 0 = automatic: the share is derived from the window and the measured need
+    # (app/context_budget.py). A positive value pins the documents' share.
+    app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 0))
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3

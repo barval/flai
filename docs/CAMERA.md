@@ -20,7 +20,7 @@ CAMERA_API_TIMEOUT=15
 CAMERA_CHECK_INTERVAL=30
 ```
 
-## room-snapshot-api v1.3
+## room-snapshot-api v1.4
 
 The service authenticates every endpoint with a shared key and exposes the same
 camera set over REST and MCP. FLAI sends the key on every call, asks for its own
@@ -32,6 +32,8 @@ language and reuses the service's snapshot cache.
 | `CAMERA_MCP_URL` | Streamable-HTTP MCP endpoint (`http://host:5006/mcp`) — the seam for agent mode. |
 | `CAMERA_SNAPSHOT_WIDTH` | Width requested for previews (default 384 px); the service resizes before capture. |
 | `CAMERA_PREVIEW_WORKERS` | Cameras captured in parallel per refresh (default 4). |
+| `MAX_CONCURRENT_CAPTURES` | ffmpeg processes the service may run at once (v1.4, default 4) — one client cannot spawn an unbounded number. |
+| `RATE_LIMIT_PER_MINUTE` | Per-client request limit in the service (v1.4, default 0 = off). Behind a reverse proxy every client shares one bucket — limit in the proxy instead, or trust proxy headers knowingly. |
 
 **Language.** The service defaults to English room labels, so FLAI sends
 `Accept-Language` (and `?lang=`) with the interface language. A Russian
@@ -47,6 +49,12 @@ sequentially on the other side.
 **Caching.** Snapshots carry `ETag`/`Cache-Control`. The proxy endpoint
 `/admin/api/cameras/<code>/proxy` forwards `If-None-Match` and answers `304 Not
 Modified` without touching the camera, so reopening the tab does not re-capture.
+
+**Addressing (v1.4).** A camera address may be IPv6: the service brackets it
+(`rtsp://[2001:db8::1]:554/stream1`) and keeps the credentials URL-encoded. The
+installation files are read from `CONFIG_DIR` (default `/app/config`), with
+`CAMERAS_CONF`, `CAMERAS_AUTH` and `ROOMS_I18N` as individual overrides — FLAI
+mounts `services/room-snapshot-api/room-snapshot-api/config` there.
 
 **Health.** `/health` answers HTTP 200 in every state and reports
 `healthy`/`degraded`/`unhealthy` with per-camera reachability. The Cameras tab

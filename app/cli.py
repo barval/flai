@@ -612,8 +612,27 @@ def backfill_attachment_paths(dry_run):
 @click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
 @click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
 @click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
+@click.option("--budget", is_flag=True, help="Let the derived budget choose top_k instead of --top-k")
+@click.option("--answer-share", type=float, default=None, help="Override ANSWER_SHARE for this run (sweep)")
+@click.option("--depth-over-coverage", type=float, default=None, help="Override DEPTH_OVER_COVERAGE (sweep)")
+@click.option("--breadth-share", type=float, default=None, help="Override BREADTH_SHARE (sweep)")
 @with_appcontext
-def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope_docs, label, out):
+def rag_eval(
+    user,
+    dataset,
+    top_k,
+    coverage,
+    answers,
+    model,
+    scope_folder,
+    scope_docs,
+    label,
+    out,
+    budget,
+    answer_share,
+    depth_over_coverage,
+    breadth_share,
+):
     """Measure retrieval quality (or end-to-end answer quality) on a fixed question set."""
     from datetime import datetime
 
@@ -640,9 +659,30 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope
         scope_ids = resolve_scope(user, scope)
         click.echo(f"Scope: {len(scope_ids or [])} document(s)")
 
+    # The policy constants are module-level; a sweep overrides them for the run
+    # only, and the report records what was actually used.
+    import app.context_budget as context_policy
+    import app.rag_budget as retrieval_policy
+
+    overrides = {}
+    if answer_share is not None:
+        context_policy.ANSWER_SHARE = answer_share
+        overrides["ANSWER_SHARE"] = answer_share
+    if depth_over_coverage is not None:
+        retrieval_policy.DEPTH_OVER_COVERAGE = depth_over_coverage
+        overrides["DEPTH_OVER_COVERAGE"] = depth_over_coverage
+    if breadth_share is not None:
+        retrieval_policy.BREADTH_SHARE = breadth_share
+        overrides["BREADTH_SHARE"] = breadth_share
+
     def search(query: str, limit: int) -> list[dict]:
         chunks, _scores = rag.search(
-            user, query, top_k=limit, file_coverage=coverage, doc_ids=scope_ids
+            user,
+            query,
+            # --budget lets the allocator decide; otherwise the fixed k is used.
+            top_k=None if budget else limit,
+            file_coverage=coverage,
+            doc_ids=scope_ids,
         )
         return chunks
 
@@ -651,6 +691,8 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope
         for key in ("RAG_TOP_K", "RAG_CHUNK_SIZE", "RAG_CHUNK_OVERLAP", "RAG_CHUNK_STRATEGY", "RAG_CONTEXT_PERCENT")
     }
     config["coverage"] = coverage
+    config["budget"] = budget
+    config.update({f"override_{key}": value for key, value in overrides.items()})
     run_label = label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}"
 
     if answers:

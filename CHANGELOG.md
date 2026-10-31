@@ -2,6 +2,10 @@
 
 ### Changed
 
+- **Camera service upgraded to room-snapshot-api v1.4.** The bundled clone moved from v1.3 to v1.4: per-client rate limiting (`RATE_LIMIT_PER_MINUTE`, off by default — behind a reverse proxy every client shares one bucket, so the proxy is the better place), a ceiling on concurrent ffmpeg captures (`MAX_CONCURRENT_CAPTURES`, default 4), IPv6 camera addresses, installation files resolved through `CONFIG_DIR` with per-file overrides, and a lazy Flask app import so the MCP module no longer needs `API_KEY` to be importable. The service no longer requires `SECRET_KEY`. Verified live: both containers healthy, `/health` reports per-camera reachability, FLAI's MCP registry enumerates four tools and `list_rooms` returns the localized names.
+
+### Changed
+
 - **The context window is split by measured need, not by fixed shares.** Documents used to take 30 % of the window and history 80 %, multiplied by a safety margin — and the search cap multiplied a third percentage on top (75 % × 85 % × 30 %), leaving ~19 % for search content by accident rather than by decision. `app/context_budget.py` now subtracts a reply reserve proportional to the window and the fixed prompt, measures what the conversation actually holds and what the corpus needs, and grants both their need; documents and history each keep a floor so neither can silence the other. `RAG_CONTEXT_PERCENT` and `CONTEXT_HISTORY_PERCENT` became manual caps with `0` meaning automatic, and the same allocator now feeds the chat history budget and the search-context cap. On the live 16 GB instance a 29-document corpus is represented **entirely** (43 fragments, ~11.4k of 21.3k available tokens) where the fixed 30 % produced 20 fragments from 12 documents.
 
 ### Fixed

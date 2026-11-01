@@ -115,16 +115,16 @@
             actionsCell.className = 'mcp-actions';
             const testButton = document.createElement('button');
             testButton.type = 'button';
-            testButton.className = 'settings-reset';
-            testButton.textContent = '▶';
-            testButton.title = t('Test connection');
+            // Same blue as every other action in the panel, with a word: two bare
+            // icons side by side were one slip away from deleting a server.
+            testButton.className = 'add-user-button mcp-action-button';
+            testButton.textContent = t('Test connection');
             testButton.addEventListener('click', () => testServer(server, testButton));
             actionsCell.appendChild(testButton);
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
-            removeButton.className = 'settings-reset';
-            removeButton.textContent = '✕';
-            removeButton.title = t('Remove server');
+            removeButton.className = 'btn-danger mcp-action-button';
+            removeButton.textContent = t('Remove server');
             removeButton.addEventListener('click', () => {
                 servers.splice(index, 1);
                 markDirty();

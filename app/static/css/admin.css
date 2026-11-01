@@ -2434,6 +2434,23 @@ body.dark-theme .settings-reset {
     text-align: right;
 }
 
+/* Row actions carry a word, not a glyph: a bare cross beside a bare arrow was
+   one misclick away from deleting a server. */
+.mcp-action-button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.mcp-actions button + button {
+    margin-left: 0.4rem;
+}
+
+.mcp-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .mcp-add {
     display: flex;
     flex-wrap: wrap;

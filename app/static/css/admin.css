@@ -2518,16 +2518,6 @@ body.dark-theme .settings-reset {
         line-height: 1.2;
     }
 
-    /* The server name is the card title: no heading above its own input. */
-    #mcp-servers-table tbody td:first-child::before {
-        content: none;
-    }
-
-    #mcp-servers-table tbody td:first-child .mcp-input {
-        font-size: 14px;
-        font-weight: 600;
-    }
-
     #mcp-servers-table tbody td .mcp-input {
         flex: 1 1 8rem;
         min-width: 0;

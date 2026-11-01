@@ -137,7 +137,7 @@ def test_mcp_servers_become_cards_with_their_own_headings():
     assert "#mcp-servers-table thead {\n        display: none;" in block
     assert "#mcp-servers-table tbody tr {\n        display: block;" in block
     assert "content: attr(data-label);" in block
-    assert "#mcp-servers-table tbody td:first-child::before {\n        content: none;" in block, "the name is the title"
+    assert "td:first-child::before {\n        content: none;" not in block, "every field keeps its heading"
     assert "#mcp-servers-table tbody td.mcp-actions::before {\n        content: none;" in block
 
     js = Path("app/static/js/admin-mcp.js").read_text(encoding="utf-8")

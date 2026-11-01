@@ -2169,18 +2169,19 @@ class TaskExecutor:
         if not candidates:
             lang = task.get("lang") or "ru"
             # A text step never has a candidate, so the image wording would
-            # describe something that was never attempted.
-            message = (
-                "no media file was produced by any attempt"
-                if str(row.get("tool") or "") in _MEDIA_TOOLS
-                else "the step did not pass verification"
-            )
+            # describe something that was never attempted. The msgid is written
+            # at the call site on purpose: pybabel extracts literals only, so a
+            # message chosen into a variable ships in English.
+            if str(row.get("tool") or "") in _MEDIA_TOOLS:
+                message = _tr("no media file was produced by any attempt", lang=lang)
+            else:
+                message = _tr("the step did not pass verification", lang=lang)
             self._end_step(
                 task_id,
                 row["id"],
                 status="failed",
                 exec_seconds=elapsed,
-                last_error=f"⚠️ {_tr(message, lang=lang)}",
+                last_error=f"⚠️ {message}",
                 checkpoint_result=str((checkpoint or {}).get("explanation") or ""),
                 checkpoint_verdict=False if checkpoint else None,
             )
@@ -4440,30 +4441,27 @@ class TaskExecutor:
     def _extract_facts_text(self, task: dict, text: str) -> None:
         """Feed the user's long-term memory from a task answer (Tasks ↔ SLM, v12.6).
 
-        Mirrors the chat's post-answer background extraction (CPU-only,
-        rule-based, no LLM, no GPU lock): a daemon thread calls the queue's
-        ``_extract_facts_bg`` so the single executor thread never blocks on SLM.
-        Error fallbacks (the localized ⚠️ notice) and short texts are not
-        memories. Errors are logged, never fatal.
+        Mirrors the chat's post-answer extraction: the queue schedules a
+        ``memory_extract_task`` on the background queue, which only runs while the
+        user queues are empty, so the executor never blocks on the model and the
+        model is never loaded mid-conversation. Error fallbacks (the localized
+        ⚠️ notice) and short texts are not memories.
         """
         text = str(text or "")
         if not text.strip() or len(text) <= 20 or text.strip().startswith("⚠️"):
             return
+        queue = getattr(self.app, "request_queue", None)
+        schedule = getattr(queue, "add_memory_extract_task", None)
+        if not callable(schedule):
+            return
         try:
-            from app.queue import _extract_facts_bg
-
-            threading.Thread(
-                target=_extract_facts_bg,
-                args=(
-                    self.app,
-                    task.get("title") or "",
-                    text[:3000],
-                    f"task:{task['id']}",
-                    task.get("user_id") or "",
-                    task.get("lang") or "ru",
-                ),
-                daemon=True,
-            ).start()
+            schedule(
+                task.get("user_id") or "",
+                f"task:{task['id']}",
+                task.get("title") or "",
+                text[:3000],
+                task.get("lang") or "ru",
+            )
         except Exception as e:
             logger.warning(f"task {task['id']}: fact extraction thread failed to start: {e}")
 

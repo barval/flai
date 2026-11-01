@@ -20,9 +20,17 @@ def test_catalog_names_every_tool_without_its_schema():
 
 @pytest.mark.unit
 def test_catalog_is_small():
+    """One line per tool, far below the full schema block it replaces.
+
+    The ceiling is a guard against a catalogue that grows into a prompt (the
+    schemas cost ~2 600 tokens), not a fixed budget: it moved from 200 to 240
+    when the camera tools — `list_rooms` and a longer `camera_snapshot`
+    description — joined the chat catalogue.
+    """
     from app.tools import TOOL_DEFINITIONS
 
-    assert estimate_tokens(build_kernel_catalog(TOOL_DEFINITIONS), "multimodal", "en") < 200
+    tokens = estimate_tokens(build_kernel_catalog(TOOL_DEFINITIONS), "multimodal", "en")
+    assert tokens < 240, tokens
 
 
 @pytest.mark.unit

@@ -2115,18 +2115,16 @@ def test_plan_phase_prompt_carries_current_time(db_env, test_app, gate_open, mon
     assert "15 October 2026" in captured["prompt"], "the current date reaches the planner prompt"
 
 
-def test_extract_facts_thread_started_on_passed_llm_step(db_env, test_app, gate_open, monkeypatch):
-    """A passed llm step triggers the chat-style background fact extraction."""
+def test_extract_facts_queued_on_passed_llm_step(db_env, test_app, gate_open, monkeypatch):
+    """A passed llm step queues the chat-style background fact extraction."""
     store = db_env
     task_id = _mk_task(store, step_plan=_seed_plan(), status="active", next_step_index=0)
     started = []
 
-    def fake_bg(app, query, response, session_id, user_id, lang):
+    def fake_enqueue(user_id, session_id, query, response, lang):
         started.append((query, response, session_id, user_id, lang))
 
-    import app.queue as q
-
-    monkeypatch.setattr(q, "_extract_facts_bg", fake_bg)
+    monkeypatch.setattr(test_app.request_queue, "add_memory_extract_task", fake_enqueue)
     plan = _seed_plan()
     store.update_task(task_id, step_plan=plan)
     executor = ex.TaskExecutor(app=test_app)
@@ -2139,19 +2137,18 @@ def test_extract_facts_thread_started_on_passed_llm_step(db_env, test_app, gate_
     assert user_id == "tester" and lang == "ru"
 
 
-def test_extract_facts_skips_tool_steps_and_errors(db_env, test_app, gate_open):
+def test_extract_facts_skips_tool_steps_and_errors(db_env, test_app, gate_open, monkeypatch):
     """Search/rag results and ⚠️ errors are data, not user memories."""
     store = db_env
     task_id = _mk_task(store)
+    started = []
+    monkeypatch.setattr(test_app.request_queue, "add_memory_extract_task", lambda *a: started.append(a))
     task = store.get_task(task_id)
     executor = ex.TaskExecutor(app=test_app)
     executor._maybe_extract_facts(task, {"tool": "search"}, "Длинный результат поиска, точно больше двадцати")
     executor._maybe_extract_facts(task, {"tool": "llm"}, "⚠️ GPU memory unavailable")
     executor._extract_facts_text(task, "короткий")
-
-    import app.queue as q
-
-    assert q._extract_facts_bg is not None  # sanity: nothing raised; patch-based check below
+    assert started == []
 
 
 def test_extract_facts_skips_via_patch(db_env, test_app, gate_open, monkeypatch):
@@ -2160,9 +2157,7 @@ def test_extract_facts_skips_via_patch(db_env, test_app, gate_open, monkeypatch)
     task_id = _mk_task(store)
     started = []
 
-    import app.queue as q
-
-    monkeypatch.setattr(q, "_extract_facts_bg", lambda *a: started.append(a))
+    monkeypatch.setattr(test_app.request_queue, "add_memory_extract_task", lambda *a: started.append(a))
     task = store.get_task(task_id)
     executor = ex.TaskExecutor(app=test_app)
     executor._maybe_extract_facts(task, {"tool": "search"}, "Длинный результат поиска, точно больше двадцати")

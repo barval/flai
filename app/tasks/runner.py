@@ -978,11 +978,16 @@ def _parse_verdict(reply: str) -> dict[str, Any]:
     return parsed
 
 
-_CHECKPOINT_SENTINELS = {
-    "unparseable checkpoint reply": "the verifier returned an unreadable verdict",
-    "checkpoint verification failed": "the verification could not be started",
-    "verifier answered in another language": "the verifier answered in another language",
-}
+# Markers _parse_verdict reports so the executor can recognise them. They are
+# not msgids: the localized wording lives at the call sites in
+# localize_checkpoint_explanation(), because pybabel extracts literals only.
+_CHECKPOINT_SENTINELS = frozenset(
+    {
+        "unparseable checkpoint reply",
+        "checkpoint verification failed",
+        "verifier answered in another language",
+    }
+)
 
 
 _FOREIGN_WORD_RES = {"ru": re.compile(r"[A-Za-z]{2,}"), "en": re.compile(r"[\u0400-\u04FF]{2,}")}
@@ -1067,8 +1072,14 @@ def localize_checkpoint_explanation(explanation: str, lang: str = "ru") -> str:
     """
     from app.llamacpp_client import _tr
 
-    msgid = _CHECKPOINT_SENTINELS.get(str(explanation or "").strip())
-    return _tr(msgid, lang=lang) if msgid else explanation
+    marker = str(explanation or "").strip()
+    if marker == "unparseable checkpoint reply":
+        return _tr("the verifier returned an unreadable verdict", lang=lang)
+    if marker == "checkpoint verification failed":
+        return _tr("the verification could not be started", lang=lang)
+    if marker == "verifier answered in another language":
+        return _tr("the verifier answered in another language", lang=lang)
+    return explanation
 
 
 def run_checkpoint(app: Flask, step: dict[str, Any], result: str, lang: str = "ru") -> dict[str, Any]:

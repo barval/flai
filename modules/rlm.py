@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
+from app.tool_registry import sandbox_tool_definitions
 from app.utils import format_prompt
 from modules.base import response_language_name
 
@@ -144,59 +145,7 @@ def strip_leaked_tool_text(text: str) -> str:
     return cleaned or _leaked_final_answer(calls)
 
 
-RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "python",
-            "description": "Execute Python over the corpus. Use context[filename] to access text.",
-            "parameters": {
-                "type": "object",
-                "properties": {"code": {"type": "string", "description": "Python code to execute."}},
-                "required": ["code"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "llm",
-            "description": "Ask a sub-model a question about a specific text fragment.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"},
-                    "text": {"type": "string"},
-                },
-                "required": ["prompt"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_fetch",
-            "description": "Search the web and fetch readable page content.",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "final",
-            "description": "Finish the analysis and return the final answer.",
-            "parameters": {
-                "type": "object",
-                "properties": {"answer": {"type": "string"}},
-                "required": ["answer"],
-            },
-        },
-    },
-]
+RLM_TOOL_DEFINITIONS: list[dict[str, Any]] = sandbox_tool_definitions()
 
 
 def _chat_turn(llamacpp: Any, messages: list[dict], *, lang: str, tools: list[dict] | None = None) -> Any:

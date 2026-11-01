@@ -26,6 +26,20 @@ BOOTSTRAP_KEYS = {
     "FLAI_PLATFORM",
     "DEBUG_JS",
     "DEBUG_TRANSLATIONS",
+    # Paths of mounted volumes, the port the llama-swap config is generated for,
+    # and process logging: all fixed before the panel could reach them.
+    "MODELS_DIR",
+    "LTX_MODELS_DIR",
+    "LLAMA_SWAP_CONFIG_DIR",
+    "LLAMA_SWAP_CONFIG_FILE",
+    "LLAMA_SWAP_START_PORT",
+    "LOG_LEVEL",
+    "LOG_FORMAT",
+    "LTX_VIDEO_RAM_LIMIT_MB",
+    "WAN_VIDEO_RAM_LIMIT_MB",
+    # Read by the sd container's wrapper, not by this app: compose passes it as
+    # the container's environment, so changing it needs a container recreate.
+    "WAN_OFFLOAD_BELOW_VRAM_MB",
 }
 
 # Environment name → app.config key, when they differ.
@@ -112,6 +126,16 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "TASK_CONTINUITY_ENABLED",
             "TASK_CONTINUITY_MAX_CHARS",
             "TASK_VRAM_WAIT_S",
+            "DEPTH_LEVEL",
+            "DEPTH_VERIFY",
+        ],
+    ),
+    "mcp": (
+        "MCP",
+        [
+            "MCP_ENABLED",
+            "MCP_TIMEOUT_S",
+            "MCP_SERVERS",
         ],
     ),
     "models": (
@@ -129,9 +153,17 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "ROUTER_CONTEXT_MESSAGES",
             "ROUTER_CONTEXT_MSG_CHARS",
             "ROUTER_SLM_FACTS",
+            "KERNEL_ENABLED",
+            "KERNEL_CONSTRAINED",
             "SERVICE_RETRY_ATTEMPTS",
             "SERVICE_RETRY_DELAY",
             "VRAM_WAIT_TIMEOUT_S",
+            "VRAM_CO_RESIDENCY",
+            "VRAM_HEADROOM_MB",
+            "RAM_RESERVE_MB",
+            "CPU_RAM_RESERVE_MB",
+            "CPU_REASONING_TTL",
+            "LTX_VIDEO_VRAM_MB",
         ],
     ),
     "media": (
@@ -156,6 +188,8 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "WAN_VIDEO_CFG_SCALE",
             "WAN_VIDEO_FLOW_SHIFT",
             "WAN_VIDEO_ALLOW_CPU",
+            "LTX_VIDEO_CPU_TIME_BUDGET_S",
+            "WAN_VIDEO_CPU_TIME_BUDGET_S",
             "MAX_IMAGE_SIZE",
             "MAX_IMAGE_SIZE_MB",
             "MAX_IMAGE_SIZE_MULTI",
@@ -242,6 +276,8 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "CAMERA_CHECK_INTERVAL",
             "CAMERA_SNAPSHOT_WIDTH",
             "CAMERA_PREVIEW_WORKERS",
+            "CAMERA_ALL_ROOMS_MAX",
+            "CAMERA_ANALYSIS_WIDTH",
         ],
     ),
     "service": (
@@ -289,6 +325,11 @@ def _kind_of(value: Any) -> str:
     return "str"
 
 
+# Groups that carry a real editor in their own tab: the generic settings list
+# would show a JSON string where the panel has a server table.
+DEDICATED_GROUPS = {"mcp"}
+
+
 def build_schema(app) -> list[dict]:
     """Grouped schema for the panel: label, key, type, current value, default."""
     groups: list[dict] = []
@@ -309,7 +350,7 @@ def build_schema(app) -> list[dict]:
                     "default": None if key in SECRET_KEYS else _default_of(key, app),
                 }
             )
-        groups.append({"id": group_id, "label": label, "fields": fields})
+        groups.append({"id": group_id, "label": label, "fields": fields, "dedicated": group_id in DEDICATED_GROUPS})
     return groups
 
 
@@ -354,7 +395,47 @@ def coerce(key: str, raw: Any, current_kind: str) -> tuple[Any, str | None]:
             return float(str(raw).strip().replace(",", ".")), None
         except (TypeError, ValueError):
             return None, "Expected a number"
+    if key == "MCP_SERVERS":
+        return _validate_servers(raw)
+    if key in _ENUMS:
+        text = str(raw).strip().lower()
+        if text not in _ENUMS[key]:
+            return None, "Expected one of: " + ", ".join(_ENUMS[key])
+        return text, None
     return str(raw), None
+
+
+_ENUMS: dict[str, tuple[str, ...]] = {
+    "DEPTH_LEVEL": ("min", "norm", "max"),
+    "DEPTH_VERIFY": ("off", "final", "each"),
+    "VRAM_CO_RESIDENCY": ("auto", "off"),
+}
+
+
+def _validate_servers(raw: Any) -> tuple[Any, str | None]:
+    """A JSON array of MCP servers, validated by the loader that will read it.
+
+    The panel writes the same value the environment holds, so the loader's own
+    rules (a name, a url, no name that collides with the namespace separator)
+    are the validation — a second parser here would drift.
+    """
+    import json
+
+    from app.mcp_registry import load_servers
+
+    text = str(raw).strip()
+    if not text:
+        return "", None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None, "Expected a JSON array of servers"
+    if not isinstance(parsed, list):
+        return None, "Expected a JSON array of servers"
+    servers = load_servers(text)
+    if len(servers) != len(parsed):
+        return None, "Every server needs a name and a url; a name may not contain __"
+    return json.dumps(parsed, ensure_ascii=False), None
 
 
 DESCRIPTIONS: dict[str, str] = {
@@ -393,7 +474,7 @@ DESCRIPTIONS: dict[str, str] = {
     "RAG_RERANK_CANDIDATES": "How many top candidates the reranker reorders",
     "RAG_RERANK_TIMEOUT": "Reranker request timeout (seconds)",
     "RAG_TOP_K": "Chunks retrieved per document query",
-    "RAG_CONTEXT_PERCENT": "Share of the context window given to documents",
+    "RAG_CONTEXT_PERCENT": "Manual cap on the documents' share of the window (0 = derived from the window and the corpus)",
     "OCR_TIME_BUDGET_S": "Time budget for scanned-PDF OCR (seconds, 0 = unlimited)",
     "MAX_DOCUMENT_SIZE_MB": "Largest document a user may upload (MB)",
     "MAX_DOCUMENTS_PER_USER": "Documents per user, also the folder limit",
@@ -419,7 +500,7 @@ DESCRIPTIONS: dict[str, str] = {
     "LLAMACP_BACKEND": "LLM backend: llama-swap or direct llama.cpp",
     "LLAMA_SWAP_URL": "llama-swap API URL",
     "LLAMACPP_URL": "Direct llama.cpp API URL",
-    "CONTEXT_HISTORY_PERCENT": "Share of the context window given to history",
+    "CONTEXT_HISTORY_PERCENT": "Manual cap on the conversation share of the window (0 = derived from what the session holds)",
     "CONTEXT_SAFETY_MARGIN": "Tokens reserved below the context limit",
     "TEMPLATE_OVERHEAD_TOKENS": "Tokens reserved for the prompt template",
     "TOKEN_CHARS": "Characters per token used for estimates",
@@ -428,6 +509,8 @@ DESCRIPTIONS: dict[str, str] = {
     "ROUTER_CONTEXT_MESSAGES": "Recent messages passed to the router",
     "ROUTER_CONTEXT_MSG_CHARS": "Characters per message passed to the router",
     "ROUTER_SLM_FACTS": "Long-term facts passed to the router",
+    "KERNEL_ENABLED": "Route through the request kernel (one JSON decision) instead of the marker router",
+    "KERNEL_CONSTRAINED": "Ask the server for a JSON-object reply from the request kernel",
     "SERVICE_RETRY_ATTEMPTS": "Startup health-check attempts per service",
     "SERVICE_RETRY_DELAY": "Delay between startup health checks (seconds)",
     "VRAM_WAIT_TIMEOUT_S": "How long to wait for VRAM to free (seconds)",
@@ -509,8 +592,23 @@ DESCRIPTIONS: dict[str, str] = {
     "CAMERA_CHECK_INTERVAL": "Camera availability check interval (seconds)",
     "CAMERA_API_KEY": "Shared API key of the room snapshot service",
     "CAMERA_MCP_URL": "Camera MCP server URL (agent mode)",
+    "MCP_ENABLED": "Offer tools from the configured MCP servers to the chat model (applies immediately)",
+    "MCP_TIMEOUT_S": "Timeout for one MCP request (seconds)",
+    "MCP_SERVERS": "Configured MCP servers: a JSON array of {name, url, token, allow} (applies immediately)",
+    "DEPTH_LEVEL": "How much work one task request may spend: min, norm or max (applies after a restart)",
+    "VRAM_CO_RESIDENCY": "Keep residents that fit next to a new model (auto) or unload everything (off)",
+    "VRAM_HEADROOM_MB": "VRAM kept free for prefill buffers when deciding what to unload",
+    "RAM_RESERVE_MB": "RAM kept free for the OS before an idle model is unloaded for a service",
+    "CPU_RAM_RESERVE_MB": "RAM kept free on a CPU-only host when deciding whether both big models fit",
+    "CPU_REASONING_TTL": "CPU-only hosts: idle seconds before the reasoning model releases its RAM",
+    "LTX_VIDEO_VRAM_MB": "VRAM budget assumed for the LTX video pipeline when it is not measured",
+    "LTX_VIDEO_CPU_TIME_BUDGET_S": "CPU-only LTX generation budget in seconds (0 = 85% of the timeout)",
+    "WAN_VIDEO_CPU_TIME_BUDGET_S": "CPU-only Wan generation budget in seconds (0 = 85% of the timeout)",
+    "DEPTH_VERIFY": "When a step is checked: each, final or off (applies after a restart)",
     "CAMERA_SNAPSHOT_WIDTH": "Preview width requested from the camera service (pixels)",
     "CAMERA_PREVIEW_WORKERS": "Parallel camera captures per preview refresh",
+    "CAMERA_ALL_ROOMS_MAX": "Snapshots one \"check every room\" request may take",
+    "CAMERA_ANALYSIS_WIDTH": "Snapshot width the vision model reads in chat (384 px previews are too small)",
     "TIMEZONE": "IANA timezone used for dates and monitoring",
     "HUGGINGFACE_TOKEN": "Token for gated Hugging Face repositories",
     "MODEL_HUB_MAX_FILE_GB": "Largest model file the Hub may download (GB)",

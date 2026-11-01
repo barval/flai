@@ -1,4 +1,4 @@
-# Room Snapshot API v1.3 - Local Deployment
+# Room Snapshot API v1.4 - Local Deployment
 # Use this docker-compose for deploying on the SAME server as FLAI application
 # Services communicate via internal Docker network (lower latency).
 #

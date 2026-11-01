@@ -92,6 +92,7 @@ that surface.
 | Deploy scripts | `deploy.sh`, `deploy-ru.sh` | 4 lines each: header, success message, two usage strings |
 | README heading | `README.md`, `README-ru.md` | `## 🆕 What's New in v12.7` / `## 🆕 Что нового в v12.7` |
 | README TOC | same files | label **and** anchor: `- […](#-whats-new-in-v127)` / `(#-что-нового-в-v127)` |
+| Demo artefacts (4 pages) | `docs/demo/{admin,chat}-{en,ru}.html` | `window.FLAI_VERSION = "12.7"` plus the footer and About dialog — produced by `python -m demo.build` |
 | Translations | `translations/{en,ru}/LC_MESSAGES/messages.po` | `"Project-Id-Version: FLAI 12.7\n"` |
 | Branch pair | `AGENTS.md` rule 4 | `(e.g. v12.6, v12.7)` |
 | Branch pair in the guide | `CONTRIBUTING.md`, `CONTRIBUTING-ru.md` | `(\`v12.6\`, \`v12.7\`, …)` — keep both |
@@ -107,6 +108,19 @@ Notes:
   `Project-Id-Version` header run `pybabel compile -d translations` and stage
   both files. `msgid` comments that mention old versions are extraction
   history — leave them.
+- Demo artefacts are **rebuilt, never re-captured**: `python -m demo.build`
+  stamps the new version into all four pages from `APP_VERSION` (footer, About
+  dialog and `window.FLAI_VERSION`). `python -m demo.capture` (requests,
+  answers, images, videos) runs only on an explicit user request. A rebuild
+  that also picks up a UI change made since the last one is expected — it
+  belongs to the opening commit.
+- A rebuild touches **presentation only**. The demo content lives in
+  `demo/snapshot` and `demo/media` and must come out of the build untouched:
+  after `python -m demo.build` run `git status --short demo/` — anything listed
+  there is a content change, not an opening step. Review the `docs/demo` diff
+  as well: the changed lines are version strings, markup and JS, never a
+  message, an answer or a media reference. If one of them did change, stop and
+  ask before committing.
 - `deploy*.sh` hardcode the version (they do not read `APP_VERSION`), which is
   why there are four occurrences per file.
 
@@ -164,6 +178,7 @@ Version:       12.7 / 12.7.0
 Markers:       N/N correct
 CHANGELOG:     v12.6 dated <date>, v12.7 Unreleased
 What's New:    empty in both READMEs
+Demo:          4 pages print 12.7
 Review rows:   <count> (classified: historical / CUDA / needs fix)
 Not verified:  <what was not run and why>
 ```

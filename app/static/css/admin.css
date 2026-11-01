@@ -2377,3 +2377,180 @@ body.dark-theme .settings-reset {
         color: #999;
     }
 }
+
+/* ── MCP tab: the servers whose tools the chat model may call ───────────── */
+.mcp-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.mcp-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.mcp-inline input[type="number"] {
+    width: 4.5rem;
+    padding: 0.2rem 0.35rem;
+}
+
+#mcp-servers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#mcp-servers-table th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.4rem;
+    opacity: 0.75;
+}
+
+#mcp-servers-table td {
+    padding: 0.25rem 0.4rem;
+    vertical-align: middle;
+}
+
+.mcp-input {
+    width: 100%;
+    min-width: 6rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.85rem;
+}
+
+.mcp-tools {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.mcp-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Row actions carry a word, not a glyph: a bare cross beside a bare arrow was
+   one misclick away from deleting a server. */
+.mcp-action-button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.mcp-actions button + button {
+    margin-left: 0.4rem;
+}
+
+.mcp-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mcp-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.mcp-add input {
+    flex: 1 1 10rem;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    /* The table used to scroll sideways here. One card per server keeps every
+       field reachable without a horizontal pan, like the Cameras and Users
+       tabs. */
+    .mcp-table-wrapper {
+        width: 100%;
+        overflow-x: visible;
+    }
+
+    #mcp-servers-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    #mcp-servers-table thead {
+        display: none;
+    }
+
+    #mcp-servers-table tbody {
+        display: block;
+    }
+
+    #mcp-servers-table tbody tr {
+        display: block;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px solid #d8dde3;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    #mcp-servers-table tbody td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        border: none;
+        border-bottom: 1px dashed #eee;
+    }
+
+    #mcp-servers-table tbody td:last-child {
+        border-bottom: none;
+    }
+
+    #mcp-servers-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 7rem;
+        color: #7f8c8d;
+        font-size: 11.5px;
+        line-height: 1.2;
+    }
+
+    #mcp-servers-table tbody td .mcp-input {
+        flex: 1 1 8rem;
+        min-width: 0;
+    }
+
+    #mcp-servers-table tbody td.mcp-tools {
+        white-space: normal;
+    }
+
+    #mcp-servers-table tbody td.mcp-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 8px;
+    }
+
+    #mcp-servers-table tbody td.mcp-actions::before {
+        content: none;
+    }
+
+    body.dark-theme #mcp-servers-table tbody tr {
+        background: #1e1e1e;
+        border-color: #444;
+    }
+
+    body.dark-theme #mcp-servers-table tbody td {
+        border-bottom-color: #333;
+    }
+
+    body.dark-theme #mcp-servers-table tbody td::before {
+        color: #999;
+    }
+
+    .mcp-add input {
+        flex: 1 1 100%;
+    }
+}

@@ -564,6 +564,11 @@ User documents are exposed both through the OpenAI Files-shaped `/v1/files`
 routes and FLAI aliases under `/v1/flai/documents`. Both families call the same
 handlers, so ownership, quota and validation behavior is identical.
 
+The aliases are `GET /v1/flai/documents` (list), `POST /v1/flai/documents`
+(upload), `GET`/`DELETE` on `/v1/flai/documents/{file_id}` (metadata, delete)
+and `GET /v1/flai/documents/{file_id}/content` (download). Every one of them
+behaves exactly like its `/v1/files` twin described below.
+
 ```bash
 # List your documents
 curl http://localhost:5000/v1/files -H "Authorization: Bearer flai_xxxxxxxxxxxxxxxxxxxx"

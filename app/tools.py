@@ -18,9 +18,18 @@ import pendulum
 from flask_babel import force_locale
 from flask_babel import gettext as _
 
+from app.mcp_client import NAMESPACE_PREFIX
+
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
+
+# One tool result larger than the window destroys an 8k conversation. The bound
+# is character-based, not line-based, because a minified page is a single line.
+TOOL_OUTPUT_MAX_CHARS = 4000
+TOOL_OUTPUT_HEAD_SHARE = 0.6
+# Room for the truncation marker, whose only variable part is the digit count.
+TOOL_OUTPUT_MARKER_RESERVE = 50
 MAX_EXPRESSION_LENGTH = 200
 
 # ── Safe eval for calculator ─────────────────────────────────────────
@@ -243,7 +252,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "camera_snapshot",
-            "description": "Get a current snapshot from a surveillance camera. Use when the user asks to see, check, or look at a room/camera.",
+            "description": (
+                "Take a fresh snapshot of ONE room and return a DESCRIPTION of what is visible in it "
+                "(people, animals, objects, activity). Use it to answer a question about a room's current "
+                "state; call it once per room when the question needs several rooms compared."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -254,6 +267,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "required": ["room"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_rooms",
+            "description": (
+                "List the camera rooms this user may look at, with their codes and names. "
+                "Call it before checking several rooms so every camera_snapshot call names a real room."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -341,15 +365,97 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def _camera_available() -> bool:
+    """Is the camera module registered and reachable? Unknown counts as no."""
+    try:
+        from flask import current_app
+
+        cam = current_app.modules.get("cam")
+    except Exception:  # noqa: BLE001 — no app context means not configured
+        return False
+    return bool(cam is not None and getattr(cam, "available", False))
+
+
 def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
     """Return tool definitions in OpenAI format for llama.cpp.
 
     ``read_page`` is only offered to the model when the crawler module is
     registered and available; otherwise the returned list excludes it.
+
+    Operator-configured MCP tools are appended. A registry failure contributes
+    nothing: losing an external tool must not cost the user their answer.
     """
     if get_crawler_module() is None:
-        return [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
-    return TOOL_DEFINITIONS
+        definitions = [d for d in TOOL_DEFINITIONS if d["function"]["name"] != "read_page"]
+    else:
+        definitions = list(TOOL_DEFINITIONS)
+    if not _camera_available():
+        # A tool that can only answer "the service is unavailable" is noise in
+        # the catalogue; the camera module is optional.
+        definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
+    return definitions + skill_tool_definitions() + mcp_tool_definitions()
+
+
+# A restricted profile's catalogue, named here rather than in the module that
+# runs it: "which tools may a research step reach" is a property of the tool
+# catalogue, and a tuple living in the runner was the same drift the capability
+# manifest put an end to. A role absent from this map is unrestricted (chat).
+ROLE_TOOLS: dict[str, frozenset[str]] = {
+    "research": frozenset(
+        {
+            "web_search",
+            "read_page",
+            "rag_search",
+            "history_search",
+            "get_current_time",
+        }
+    ),
+}
+
+
+def definitions_for_role(role: str, lang: str = "ru") -> list[dict[str, Any]]:
+    """The catalogue one profile may see.
+
+    Pruning is physical: a tool outside the role's set is absent from the list
+    the model is given, so it cannot call what it was never shown. An unknown
+    role means the full catalogue — the restricted roles are the exception, and
+    a typo in a role name must not silently empty a profile's tool list.
+    """
+    definitions = get_tool_definitions(lang)
+    allowed = ROLE_TOOLS.get(role)
+    if allowed is None:
+        return definitions
+    return [item for item in definitions if item["function"]["name"] in allowed]
+
+
+def skill_tool_definitions() -> list[dict[str, Any]]:
+    """The activation tool, or nothing when no skill is installed."""
+    try:
+        from app.skills import skill_tool_definition
+
+        definition = skill_tool_definition()
+    except Exception:  # noqa: BLE001 - a broken skills folder must not fail the request
+        logger.warning("Skill discovery failed; the activation tool is not offered", exc_info=True)
+        return []
+    return [definition] if definition else []
+
+
+def mcp_tool_definitions() -> list[dict[str, Any]]:
+    """The advertised MCP tools, or nothing when the feature is off or broken."""
+    try:
+        from flask import current_app
+
+        if not current_app.config.get("MCP_ENABLED", False):
+            return []
+    except Exception:  # noqa: BLE001 - no app context means not configured
+        return []
+    try:
+        from app.mcp_registry import tool_definitions
+
+        return tool_definitions()
+    except Exception:  # noqa: BLE001 - a down registry must not fail the request
+        logger.warning("MCP tool enumeration failed; the MCP tools are not offered", exc_info=True)
+        return []
 
 
 # ── Tool executors ───────────────────────────────────────────────────
@@ -394,14 +500,18 @@ def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
             return str(_("Division by zero"))
-    except ValueError as e:
+    except (ValueError, SyntaxError) as e:
+        # A parse message is about the user's own expression and carries nothing
+        # from the environment, so it is more useful to the model than a generic
+        # sentence. Unexpected exceptions take the path below instead.
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
             return str(_("Calculation error: {error}").format(error=str(e)))
-    except Exception as e:
+    except Exception:
+        logger.exception("calculator failed")
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Calculation error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
 
 def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
@@ -467,10 +577,10 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
 
     try:
         chunks, _scores = rag_module.search(user_id, query, top_k=top_k)
-    except Exception as e:
-        logger.error(f"RAG search tool failed: {e}")
+    except Exception:
+        logger.exception("RAG search tool failed")
         with force_locale(lang):
-            return str(_("Document search error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
     if not chunks:
         with force_locale(lang):
@@ -509,10 +619,10 @@ def _exec_history_search(ctx: dict[str, Any], query: str, limit: int = 5) -> str
             exclude_session_id=ctx.get("current_session_id"),
             max_message_chars=app.config.get("HISTORY_MAX_MESSAGE_CHARS", 20000) if app else 20000,
         )
-    except Exception as e:
-        logger.error(f"History search tool failed: {e}")
+    except Exception:
+        logger.exception("History search tool failed")
         with force_locale(lang):
-            return str(_("Conversation search error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
     if not fragments:
         with force_locale(lang):
@@ -533,7 +643,44 @@ def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
             return {"success": False, "error": _("CCTV service unavailable")}
 
     result = cam_module.get_snapshot(user_id, room, lang=lang)
-    return result  # type: ignore[no-any-return]
+    if not result.get("success"):
+        return result  # type: ignore[no-any-return]
+
+    # A tool result reaches the model as TEXT: the base64 image would burn the
+    # window and tell it nothing. The snapshot is described by the multimodal
+    # model instead, which is the answer the tool loop needs ("is a cat there?").
+    image_data = result.get("image_data") or ""
+    multimodal = app.modules.get("multimodal") if app else None
+    if image_data and multimodal is not None and getattr(multimodal, "available", False):
+        with force_locale(lang):
+            question = str(_("What is visible in this room right now? Name people, animals, objects and activity."))
+        description, error = multimodal.process_image_with_text(
+            image_data, question, "", lang=lang, session_id=None, response_style="neutral"
+        )
+        if error or not description:
+            return {"success": False, "error": str(error or "description failed")}
+        return {"success": True, "room": result.get("room_name", room), "description": description}
+    return {
+        "success": True,
+        "room": result.get("room_name", room),
+        "description": str(_("Snapshot captured; no description is available.")),
+    }
+
+
+def _exec_list_rooms(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The rooms this user may look at, code and localized name."""
+    app = ctx.get("app")
+    user_id = ctx.get("user_id")
+    lang = ctx.get("lang", "ru")
+    cam_module = app.modules.get("cam") if app else None
+    if not cam_module or not cam_module.available:
+        with force_locale(lang):
+            return {"success": False, "error": _("CCTV service unavailable")}
+    rooms = cam_module.get_available_rooms(user_id) or {}
+    return {
+        "success": True,
+        "rooms": [{"code": code, "name": cam_module.get_room_name(code, lang=lang)} for code in sorted(rooms)],
+    }
 
 
 # ── Time calculation helpers ────────────────────────────────────────
@@ -800,10 +947,10 @@ def _exec_time_calc(
     except ValueError as e:
         with force_locale(lang):
             return str(_("Date calculation error: {error}").format(error=str(e)))
-    except Exception as e:
-        logger.error(f"time_calc failed: {e}")
+    except Exception:
+        logger.exception("time_calc failed")
         with force_locale(lang):
-            return str(_("Date calculation error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))
 
 
 # ── Tool dispatch ────────────────────────────────────────────────────
@@ -816,8 +963,224 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "rag_search": lambda ctx, **kw: _exec_rag_search(ctx, kw.get("query", ""), kw.get("top_k", 5)),
     "history_search": lambda ctx, **kw: _exec_history_search(ctx, kw.get("query", ""), kw.get("limit", 5)),
     "camera_snapshot": lambda ctx, **kw: _exec_camera_snapshot(ctx, kw.get("room", "")),
+    "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
+    "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
 }
+
+
+SKILL_LOADER_TOOL = "activate_skill"
+
+
+def _exec_activate_skill(name: str, lang: str) -> str:
+    """Return a skill's body, or say which name is not in the catalog."""
+    from app.skills import activate
+
+    body = activate(name, lang)
+    if body is None:
+        with force_locale(lang):
+            return str(_("Unknown skill: {name}").format(name=name))
+    return body
+
+
+def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") -> list[dict[str, Any]]:
+    """Advertise only the tools the request kernel chose.
+
+    ``None`` and an empty tuple both mean "the kernel had no opinion" and return
+    every tool. Measured on Qwen3VL-8B: asked which tools a message needs, the
+    model answers ``[]`` for "what time is it?" even when the prompt names
+    ``get_current_time`` explicitly. An empty list is therefore the one answer
+    that is confidently wrong, and it is also the one that removes every
+    capability at once, so the runtime may narrow the list but never empty it. A
+    non-empty selection that matches nothing is treated the same way.
+
+    Full tool schemas are the largest fixed cost of a chat request (about 2 000
+    tokens for eight tools), so a request that needs none of them pays for none.
+    """
+    definitions = get_tool_definitions(lang)
+    if not selected:
+        return definitions
+    wanted = set(selected)
+    chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
+    if not chosen:
+        return definitions
+    if not any(item["function"]["name"] == SKILL_LOADER_TOOL for item in chosen):
+        # The loader survives narrowing: a turn that picked any other tool would
+        # otherwise lose the only way to load a skill for the rest of the turn.
+        chosen += [item for item in definitions if item["function"]["name"] == SKILL_LOADER_TOOL]
+    return chosen
+
+
+def _coerce_value(value: Any, wanted: str) -> Any:
+    """Coerce one value toward the schema's type, or return it unchanged.
+
+    Anything ambiguous is left alone: a wrong coercion is worse than a failed
+    call, because it makes the tool answer a question nobody asked.
+    """
+    if wanted == "boolean":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            return value.strip().lower() == "true"
+        return value
+    if wanted in ("integer", "number"):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value.strip()) if wanted == "integer" else float(value.strip())
+            except ValueError:
+                return value
+        return value
+    if wanted == "object" and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return parsed if isinstance(parsed, dict) else value
+    if wanted == "array" and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return parsed if isinstance(parsed, list) else value
+    return value
+
+
+def repair_tool_arguments(arguments: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Bring arguments closer to the shape the tool's schema declares.
+
+    A small model sends ``"20"`` for an integer, ``"false"`` for a boolean, a
+    stringified object for an object, and ``null`` placeholders for fields it
+    left empty. All three are silent failures otherwise: the executor raises on
+    a string comparison or the tool answers a different question.
+    """
+    if not schema:
+        return arguments
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or ())
+    repaired: dict[str, Any] = {}
+    for key, value in arguments.items():
+        declared = properties.get(key) or {}
+        wanted = declared.get("type")
+        if value is None and key not in required:
+            continue
+        if isinstance(wanted, str):
+            value = _coerce_value(value, wanted)
+        repaired[key] = value
+    return repaired
+
+
+def parse_tool_arguments(raw: Any, schema: dict[str, Any] | None) -> tuple[dict[str, Any], bool]:
+    """Parse the argument string of a tool call.
+
+    Returns ``(arguments, usable)``. ``usable`` is False when the string is not
+    valid JSON at all: the caller must then reject the call instead of running
+    the tool with empty arguments, which is how a search runs with an empty
+    query and the model learns nothing from the failure.
+    """
+    if raw is None:
+        # A null blob is the same shape as an unparsable one when the tool needs
+        # fields: running it with nothing repeats the empty-query failure.
+        return ({}, False) if (schema or {}).get("required") else ({}, True)
+    if isinstance(raw, str) and not raw.strip():
+        return {}, True
+    if isinstance(raw, dict):
+        return repair_tool_arguments(raw, schema), True
+    if not isinstance(raw, str):
+        return {}, False
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {}, False
+    if not isinstance(parsed, dict):
+        return {}, False
+    return repair_tool_arguments(parsed, schema), True
+
+
+# Identical calls a model may make before the guard stops it. FLAI's own stream
+# loop detector catches repeated *text*; this one catches a repeated *call*,
+# which is the shape the failure takes once tools are involved.
+TOOL_CALL_REPEAT_LIMIT = 3
+
+
+class ToolCallLoopGuard:
+    """Refuse a tool call that has already been made with the same arguments.
+
+    One guard lives one conversation turn: a legitimate repeat in a later turn
+    (a camera checked again after a question) must not be blocked by a count
+    collected in an earlier one.
+    """
+
+    def __init__(self, repeats: int = TOOL_CALL_REPEAT_LIMIT):
+        self.repeats = repeats
+        self._seen: dict[tuple[str, str], int] = {}
+
+    def check(self, name: str, arguments: dict[str, Any], schema: dict[str, Any] | None = None) -> bool:
+        """Record the call and report whether it may run.
+
+        When a schema is given only its required fields are compared: a model
+        alternating an optional field would otherwise repeat the same call
+        forever without ever tripping the limit.
+        """
+        required = (schema or {}).get("required") or ()
+        if required:
+            arguments = {key: arguments[key] for key in required if key in arguments}
+        key = (name, json.dumps(arguments, sort_keys=True, default=str))
+        count = self._seen.get(key, 0) + 1
+        self._seen[key] = count
+        return count < self.repeats
+
+
+def cap_reached_message(lang: str = "ru") -> str:
+    """What the stream reports when a tool call arrives after the last round."""
+    with force_locale(lang):
+        return str(_("The tool call was ignored: the last round of the loop has been reached."))
+
+
+def tool_choice_for_iteration(iteration: int, max_iterations: int) -> str | None:
+    """Withdraw the tools on the last round so the model must answer.
+
+    Without it the loop runs out of iterations and shows the last raw tool
+    result as the answer.
+    """
+    return "none" if iteration >= max_iterations - 1 else None
+
+
+def repeated_call_message(lang: str = "ru") -> str:
+    """What the model is told when it repeats a call it has already made."""
+    with force_locale(lang):
+        return str(_("The tool call was refused: it repeats a call made with the same arguments, whose result is above."))
+
+
+def invalid_arguments_message(lang: str = "ru") -> str:
+    """What the model is told when its tool call could not be parsed."""
+    with force_locale(lang):
+        return str(_("The tool call was rejected: its arguments were not valid JSON."))
+
+
+def bound_tool_output(text: str, limit: int = TOOL_OUTPUT_MAX_CHARS) -> str:
+    """Cap a tool result, keeping both ends and saying what was dropped.
+
+    Both ends matter: a search result's first lines carry the sources and its
+    last lines carry the conclusion. The marker is load-bearing — without it the
+    model reads a clipped result as an empty one and calls the tool again.
+    """
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    # The marker is charged against the limit, so the limit is a hard ceiling
+    # rather than a target the marker then overshoots.
+    budget = limit - TOOL_OUTPUT_MARKER_RESERVE
+    if budget <= 0:
+        return text[:limit]
+    head = int(budget * TOOL_OUTPUT_HEAD_SHARE)
+    tail = budget - head
+    dropped = len(text) - budget
+    return f"{text[:head]}\n…[truncated {dropped} characters]…\n{text[-tail:]}"
 
 
 def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, Any]) -> str:
@@ -831,6 +1194,20 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
     Returns:
         Tool result as a string (or JSON-serializable dict for camera).
     """
+    if tool_name.startswith(NAMESPACE_PREFIX):
+        # A namespaced name belongs to an MCP server the operator configured; the
+        # registry refuses anything that was not advertised, so an invented name
+        # cannot reach a server the model was not offered.
+        try:
+            from app.mcp_registry import call as mcp_call
+
+            return bound_tool_output(str(mcp_call(tool_name, arguments)))
+        except Exception:  # noqa: BLE001 - a failed external tool is a message, not a crash
+            logger.exception(f"MCP tool '{tool_name}' failed")
+            lang = context.get("lang", "ru")
+            with force_locale(lang):
+                return str(_("The tool could not complete the request."))
+
     executor = _EXECUTOR_MAP.get(tool_name)
     if not executor:
         lang = context.get("lang", "ru")
@@ -840,10 +1217,12 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
     try:
         result = executor(context, **arguments)
         if isinstance(result, dict):
-            return json.dumps(result, ensure_ascii=False)
-        return str(result)
-    except Exception as e:
-        logger.error(f"Tool '{tool_name}' execution failed: {e}")
+            result = json.dumps(result, ensure_ascii=False)
+        return bound_tool_output(str(result))
+    except Exception:
+        # The detail stays in the log: a host name or a port echoed into a tool
+        # result can travel straight into an answer.
+        logger.exception(f"Tool '{tool_name}' execution failed")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Tool execution error: {error}").format(error=str(e)))
+            return str(_("The tool could not complete the request."))

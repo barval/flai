@@ -153,20 +153,21 @@ class TestRagModule:
         assert chunks[0].get("coverage") is None
 
     def test_search_file_coverage_appends_missing_docs(self, mock_app):
-        """A document absent from the semantic top-k gets its best chunk
-        appended, marked with coverage=True, when file_coverage is enabled."""
+        """A document absent from the relevance half gets one chunk from the
+        allowance fetched with the same query — one round trip, not one query per
+        missing document."""
         module = self._make_search_module(mock_app)
         fake_client = MagicMock()
-        fake_client.query_points.side_effect = [
-            MagicMock(
-                points=[
-                    self._hit("doc1", "f1", "text a", 0.9),
-                    self._hit("doc1", "f1", "text b", 0.8),
-                    self._hit("doc2", "f2", "text c", 0.7),
-                ]
-            ),
-            MagicMock(points=[self._hit("doc3", "f3", "text d", 0.4)]),
-        ]
+        # One query returns the relevance half and the allowance together.
+        fake_client.query_points.return_value = MagicMock(
+            points=[
+                self._hit("doc1", "f1", "text a", 0.9),
+                self._hit("doc1", "f1", "text b", 0.8),
+                self._hit("doc2", "f2", "text c", 0.7),
+                self._hit("doc3", "f3", "text d", 0.4),
+                self._hit("doc2", "f2", "text e", 0.3),
+            ]
+        )
         module.qdrant_client = fake_client
 
         with patch(
@@ -177,12 +178,14 @@ class TestRagModule:
                 {"id": "doc3", "index_status": "indexed"},
             ],
         ):
-            chunks, scores = module.search("user", "query", top_k=4, file_coverage=True)
+            chunks, scores = module.search("user", "query", top_k=3, file_coverage=True, coverage_max_files=2)
 
+        # doc1 and doc2 are the relevance half; doc3 is added once, marked.
         assert [c["doc_id"] for c in chunks] == ["doc1", "doc1", "doc2", "doc3"]
         assert chunks[-1]["coverage"] is True
         assert scores == [0.9, 0.8, 0.7, 0.4]
-        assert fake_client.query_points.call_count == 2
+        assert fake_client.query_points.call_count == 1
+        assert module.last_coverage["covered"] == 1
 
     @pytest.mark.unit
     def test_lexical_terms_keep_the_content_words_of_a_question(self):
@@ -228,17 +231,29 @@ class TestRagModule:
         assert [chunk["text"] for chunk in chunks] == ["two", "three", "one"], "the reranker decides the order"
         assert scores == pytest.approx([0.34, 0.40, 0.32]), "each chunk keeps its own cosine score"
 
-    def test_search_file_coverage_skipped_when_too_many_missing(self, mock_app):
-        """Coverage is bounded: when more than coverage_max_files documents are
-        missing from the top-k, no extra per-document queries are issued."""
+    def test_the_allowance_bounds_coverage_instead_of_cancelling_it(self, mock_app):
+        """The old pass gave up entirely when more documents were missing than its
+        cap — measured live, 17 missing documents against a cap of 6 meant the
+        answer never saw 16 work logs. Now the allowance is a ceiling: the first
+        documents of the extended result are added until it is spent."""
         module = self._make_search_module(mock_app)
         fake_client = MagicMock()
-        fake_client.query_points.return_value = MagicMock(points=[self._hit("doc1", "f1", "text", 0.9)])
+        fake_client.query_points.return_value = MagicMock(
+            points=[
+                self._hit("doc1", "f1", "text", 0.9),
+                self._hit("doc2", "f2", "text", 0.8),
+                self._hit("doc3", "f3", "text", 0.7),
+                self._hit("doc4", "f4", "text", 0.6),
+                self._hit("doc5", "f5", "text", 0.5),
+            ]
+        )
         module.qdrant_client = fake_client
 
-        docs = [{"id": f"doc{i}", "index_status": "indexed"} for i in range(1, 9)]
+        docs = [{"id": f"doc{index}", "index_status": "indexed"} for index in range(1, 9)]
         with patch("modules.rag.get_user_documents", return_value=docs):
-            chunks, scores = module.search("user", "query", top_k=4, file_coverage=True)
+            chunks, scores = module.search("user", "query", top_k=1, file_coverage=True, coverage_max_files=2)
 
-        assert len(chunks) == 1
+        assert [chunk["doc_id"] for chunk in chunks] == ["doc1", "doc2", "doc3"]
+        assert [chunk.get("coverage") for chunk in chunks] == [None, True, True]
+        assert module.last_coverage["unrepresented"] == 5
         assert fake_client.query_points.call_count == 1

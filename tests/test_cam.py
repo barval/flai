@@ -131,14 +131,13 @@ class TestCameraPermissions:
             mock_perm.assert_called_once_with("testuser", "tam")
 
     def test_get_available_rooms_no_user(self, cam_module):
-        """Should return all rooms if no user."""
-        rooms = cam_module.get_available_rooms(None)
-        assert "tam" in rooms
+        """No user means no rooms: an unknown caller may not enumerate cameras."""
+        assert cam_module.get_available_rooms(None) == {}
 
     def test_get_available_rooms_with_user_permissions(self, cam_module):
         """Should filter by user permissions."""
         with patch("app.userdb.get_user_by_login") as mock_get_user:
-            mock_user = {"login": "testuser", "camera_permissions": json.dumps(["tam", "pri"])}
+            mock_user = {"login": "testuser", "is_active": True, "camera_permissions": json.dumps(["tam", "pri"])}
             mock_get_user.return_value = mock_user
 
             rooms = cam_module.get_available_rooms("testuser")
@@ -147,22 +146,58 @@ class TestCameraPermissions:
             assert "kab" not in rooms
 
     def test_get_available_rooms_with_null_permissions(self, cam_module):
-        """Should return all rooms if permissions is None."""
+        """NULL means "never configured" and is a denial, exactly as check_camera_permission says."""
         with patch("app.userdb.get_user_by_login") as mock_get_user:
-            mock_user = {"login": "testuser", "camera_permissions": None}
+            mock_user = {"login": "testuser", "is_active": True, "camera_permissions": None}
             mock_get_user.return_value = mock_user
 
-            rooms = cam_module.get_available_rooms("testuser")
-            assert "tam" in rooms
+            assert cam_module.get_available_rooms("testuser") == {}
+
+    def test_get_available_rooms_for_an_inactive_user(self, cam_module):
+        """A disabled account keeps no camera, whatever its permission list says."""
+        with patch("app.userdb.get_user_by_login") as mock_get_user:
+            mock_user = {"login": "testuser", "is_active": False, "camera_permissions": json.dumps(["tam"])}
+            mock_get_user.return_value = mock_user
+
+            assert cam_module.get_available_rooms("testuser") == {}
 
     def test_get_available_rooms_invalid_json(self, cam_module):
         """Should return empty if permissions invalid JSON."""
         with patch("app.userdb.get_user_by_login") as mock_get_user:
-            mock_user = {"login": "testuser", "camera_permissions": "invalid{json}"}
+            mock_user = {"login": "testuser", "is_active": True, "camera_permissions": "invalid{json}"}
             mock_get_user.return_value = mock_user
 
             rooms = cam_module.get_available_rooms("testuser")
             assert len(rooms) == 0
+
+
+class TestUnknownRoom:
+    """An unknown room must not hand out the list of real ones."""
+
+    @pytest.fixture
+    def cam_module(self):
+        # The patch must outlive the fixture: get_snapshot re-checks availability,
+        # and an unstubbed probe would overwrite the stubbed answer. last_check is
+        # stamped so the module uses the cached verdict instead of probing again.
+        with (
+            patch("modules.cam.CamModule.check_availability", return_value=True),
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
+            app = MagicMock()
+            app.config = {
+                "CAMERA_API_URL": "http://test:5000",
+                "CAMERA_API_TIMEOUT": 10,
+            }
+            module = CamModule(app)
+            module.available = True
+            module.last_check = time.time()
+            yield module
+
+    def test_an_unknown_room_does_not_reveal_the_room_list(self, cam_module):
+        result = cam_module.get_snapshot("testuser", "no-such-room")
+        assert result["success"] is False
+        assert result["status_code"] == 404
+        assert "available_rooms" not in result
 
 
 class TestCheckAvailability:

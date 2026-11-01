@@ -5,9 +5,9 @@
 | What | Limit | Variable |
 |------|-------|----------|
 | One document | 25 MB | `MAX_DOCUMENT_SIZE_MB` |
-| Documents per user | 250 | `MAX_DOCUMENTS_PER_USER` |
-| Documents storage per user | 250 MB | `MAX_DOCUMENTS_STORAGE_MB` |
-| Folders per user | 250 (same as the documents limit) | `MAX_DOCUMENTS_PER_USER` |
+| Documents per user | 500 | `MAX_DOCUMENTS_PER_USER` |
+| Documents storage per user | 500 MB | `MAX_DOCUMENTS_STORAGE_MB` |
+| Folders per user | 500 (same as the documents limit) | `MAX_DOCUMENTS_PER_USER` |
 | Scanned-PDF OCR budget | 30 min per document | `OCR_TIME_BUDGET_S` (0 = unlimited) |
 
 When the OCR budget expires, the pages recognized so far are indexed and the user is notified how far the recognition went.
@@ -35,7 +35,7 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ## 3. Upload Documents
 1. Log in to web interface
 2. Click **Documents** tab in sidebar
-3. Click ➕ to upload PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, or EPUB files
+3. Click ➕ to upload PDF, DOCX, ODT, RTF, EPUB, TXT, MD, HTML, CSV, JSON, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML, and images. The picker takes several files at once — they are uploaded one after another and the list reloads when the batch finishes
 4. Wait for indexing to complete (status: ✅ Indexed)
 
 ## 4. Search Your Documents in Chat
@@ -162,7 +162,7 @@ Admin Panel → Settings. Measure the effect with `docs/RAG_EVAL.md` before enab
 
 ## 5. Documents attached in chat
 
-A document can be attached directly to a chat message (the same 📎 button, PDF/DOC/DOCX/TXT/ODT/RTF/CSV/JSON/EPUB up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.
+A document can be attached directly to a chat message (the same 📎 button, any document format above up to `MAX_DOCUMENT_SIZE_MB`). It is saved as a full user document, indexed through the normal pipeline (text extraction; scanned PDFs go through page OCR within `OCR_TIME_BUDGET_S`, and a partial notice is saved if the budget expires), and the question is answered over it through RAG — no manual Documents-panel step needed. The indexed document appears in the Documents panel and counts toward the per-user quota; images may accompany it in the same message and provide the visual context.
 
 Chat attachments (images, and the attached document) are stored on disk under the session's upload folder; their paths live in the message record, so every image stays visible after a page reload. Deleting a session unlinks all files referenced by its messages — including every attached image, not just the first one — and subtracts their sizes from the user's storage quota. The `flask cleanup-uploads` command collects references from the same two sources, so it never deletes files of live sessions, and after deleting orphans it rebuilds every user's `user_storage` counter from the files that remain (a counter that was never decreased outside session deletion could keep an empty account over quota).
 
@@ -184,8 +184,8 @@ API: `GET /api/documents` now returns `{folders, documents}`, where each folder 
 Click a document card in the Documents tab to open it in the main window (the chat/task window switches to a read-only preview). The header shows «Preview: <file name>» (truncated with an ellipsis when long) in the same style as the chat/task headers; the «Messages» counter is hidden and the only action is 💾 **Save**, which downloads the original file with its current name. Switching to another tab (or pressing Escape) restores the chat/task window.
 
 - **PDF and images** are served inline (`/api/documents/<id>/preview/file`) and rendered by the browser (`<iframe>` / `<img>`). On phones (≤ 768 px) the PDF iframe is replaced by **server-rendered page images** (`pdftoppm` → JPEG, `/api/documents/<id>/preview/pdf-page/<n>`, the first `PREVIEW_PDF_MAX_PAGES` = 30 pages, with a «Showing the first N pages» note) plus an «Open PDF» link — Chrome for Android cannot display a PDF inside an iframe and shows «This content is blocked» instead.
-- **Plain text** (`.txt`, `.md`, `.csv`, `.json`) is shown as-is.
-- **DOCX, ODT, RTF, EPUB** are converted to text (`extract_text_from_file`) and labelled **«Extracted text»** — the original formatting is not reproduced.
+- **Plain text** (`.txt`, `.md`, `.markdown`, `.csv`, `.json`, `.log`, `.ini`, `.cfg`, `.yaml`, `.yml`, `.toml`, `.xml`) is shown as-is.
+- **DOCX, ODT, RTF, EPUB, HTML, XLSX, XLS, PPTX, FB2, EML** are converted to text (`extract_text_from_file`) and labelled **«Extracted text»** — the original formatting is not reproduced.
 - A format without a preview gets a localized «Preview is not available for this format» note. Text previews are capped at 200 000 characters with a «Preview is truncated» note.
 
 All preview endpoints are owner-scoped and use the same `realpath` containment check as the download route; only PDF/images are served inline (never HTML).

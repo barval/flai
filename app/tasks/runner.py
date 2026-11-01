@@ -29,6 +29,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Generator
+from dataclasses import dataclass
 from typing import Any
 
 from flask import Flask
@@ -111,6 +112,8 @@ def _reasoning_chat(
     lang: str = "ru",
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
 ) -> Generator[str | dict[str, Any], None, None]:
     """Yield reasoning-model chunks via the same client the workers use.
 
@@ -124,8 +127,16 @@ def _reasoning_chat(
     base = app.modules.get("base")
     if base is None or not hasattr(base, "llamacpp"):
         raise RuntimeError("base module (llamacpp client) is unavailable")
+    extra: dict[str, Any] = {"tools": tools} if tools else {}
+    if tool_choice:
+        extra["tool_choice"] = tool_choice
     yield from base.llamacpp.chat_stream(
-        messages, model_type="reasoning", lang=lang, temperature=temperature, status_callback=status_callback
+        messages,
+        model_type="reasoning",
+        lang=lang,
+        temperature=temperature,
+        status_callback=status_callback,
+        **extra,
     )
 
 
@@ -136,6 +147,9 @@ def _call_reasoning(
     lang: str = "ru",
     temperature: float | None = None,
     status_callback: Callable[[str], None] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    messages: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
 ) -> tuple[str, dict[str, int]]:
     """Stream one reasoning-model call for a step; abort mid-stream on cancel.
 
@@ -148,7 +162,8 @@ def _call_reasoning(
     THIS call; returns ``(text, usage)``. The executor stores usage into the
     step's extra for the chat-style header (🔢 tokens).
     """
-    messages = [{"role": "user", "content": prompt}]
+    if messages is None:
+        messages = [{"role": "user", "content": prompt}]
     transient_attempt = 0
     busy_attempt = 0
     busy_deadline = time.monotonic() + _gpu_wait_budget(app)
@@ -156,13 +171,25 @@ def _call_reasoning(
         account_id = f"task-call:{uuid.uuid4()}"
         begin_usage_account(account_id)
         text = ""
-        for chunk in _reasoning_chat(app, messages, lang, temperature=temperature, status_callback=status_callback):
+        tool_calls: list[dict[str, Any]] = []
+        for chunk in _reasoning_chat(
+            app,
+            messages,
+            lang,
+            temperature=temperature,
+            status_callback=status_callback,
+            tools=tools,
+            tool_choice=tool_choice,
+        ):
             if cancel_check():
                 finish_usage_account(account_id)
                 raise StepAborted("step cancelled during reasoning generation")
             if isinstance(chunk, dict):
+                if chunk.get("type") == "tool_calls":
+                    tool_calls = list(chunk.get("tool_calls") or [])
                 continue
             text += chunk
+        _LAST_TOOL_CALLS[:] = tool_calls
         if cancel_check():
             finish_usage_account(account_id)
             raise StepAborted("step cancelled at end of reasoning generation")
@@ -196,6 +223,17 @@ def _call_reasoning(
             app.logger.warning(f"call_reasoning transient error on attempt 1, retrying: {text[:200]}")
             continue
         return text, totals
+
+
+# The tool calls of the LAST reasoning call (empty for every caller that does
+# not offer tools). A module-level list, like ``_LAST_PLANNER_USAGE``: the
+# executor thread is the only planner caller, so nothing races.
+_LAST_TOOL_CALLS: list[dict[str, Any]] = []
+
+
+def last_tool_calls() -> list[dict[str, Any]]:
+    """The tool calls of the last reasoning call, if it was offered any."""
+    return list(_LAST_TOOL_CALLS)
 
 
 _GPU_BUSY_PREFIXES = ("GPU memory ", "Память GPU ", "Проверка памяти GPU")
@@ -252,6 +290,39 @@ def _run_llm_step(
     user_id: str = "",
 ) -> str:
     """Build the step prompt from the task_step template and stream the model."""
+    prompt = build_step_prompt(
+        app,
+        step,
+        context_digest,
+        lang,
+        response_style,
+        task_request,
+        plan_text,
+        user_answers,
+        user_id,
+    )
+    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
+    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
+    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
+    return text
+
+
+def build_step_prompt(
+    app: Flask,
+    step: dict[str, Any],
+    context_digest: str,
+    lang: str,
+    response_style: str,
+    task_request: str,
+    plan_text: str,
+    user_answers: str,
+    user_id: str,
+) -> str:
+    """The task_step prompt for one step.
+
+    Shared by the single-call runner and the research loop so a step reads the
+    same whether it is answered once or after tool rounds.
+    """
     from app.utils import format_prompt, get_current_time_in_timezone
     from modules.base import get_style_instruction, response_language_name
 
@@ -271,10 +342,7 @@ def _run_llm_step(
     prompt = format_prompt("task_step.template", params, lang=lang)
     if not prompt:
         raise RuntimeError("task_step prompt template unavailable")
-    call_out = _call_reasoning(app, prompt, cancel_check, lang=lang)
-    text, usage = call_out if isinstance(call_out, tuple) else (call_out, {})
-    _last_call_usage.value = usage  # thread-local stash, read by run_direct_step
-    return text
+    return prompt
 
 
 def _run_continuity_step(
@@ -659,6 +727,93 @@ def _extract_math_expression(text: str) -> str:
     return best.replace(",", ".").strip()
 
 
+@dataclass(frozen=True)
+class DirectStepContext:
+    """Everything a direct runner may need, assembled once per step."""
+
+    app: Flask
+    step: dict[str, Any]
+    context_digest: str
+    cancel_check: Callable[[], bool]
+    lang: str
+    response_style: str
+    task_request: str
+    plan_text: str
+    user_answers: str
+    user_id: str
+    doc_ids: list[str] | None
+
+
+def _run_llm(context: DirectStepContext) -> Any:
+    return _run_llm_step(
+        context.app,
+        context.step,
+        context.context_digest,
+        context.cancel_check,
+        context.lang,
+        context.response_style,
+        context.task_request,
+        context.plan_text,
+        context.user_answers,
+        context.user_id,
+    )
+
+
+def _run_search(context: DirectStepContext) -> Any:
+    return _run_search_step(context.app, context.step, context.user_id, context.lang)
+
+
+def _run_rag(context: DirectStepContext) -> Any:
+    return _run_rag_step(context.app, context.step, context.user_id, context.lang, context.doc_ids, context.cancel_check)
+
+
+def _run_history(context: DirectStepContext) -> Any:
+    return _run_history_step(context.app, context.step, context.user_id, context.lang)
+
+
+def _run_calculate(context: DirectStepContext) -> Any:
+    return _run_calculate_step(context.step)
+
+
+def _run_research(context: DirectStepContext) -> Any:
+    from app.tasks.research import run_research
+
+    return run_research(context)
+
+
+def _run_continuity(context: DirectStepContext) -> Any:
+    return _run_continuity_step(
+        context.app,
+        context.step,
+        context.context_digest,
+        context.cancel_check,
+        context.lang,
+        context.task_request,
+        context.plan_text,
+    )
+
+
+# The dispatch table. Keyed by the capability ids the manifest marks as
+# ``direct``; tests/test_direct_runner_table.py asserts the two agree, so a
+# capability cannot be declared and silently un-runnable.
+DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
+    "llm": _run_llm,
+    "search": _run_search,
+    "rag": _run_rag,
+    "history": _run_history,
+    "calculate": _run_calculate,
+    "continuity": _run_continuity,
+    "research": _run_research,
+}
+
+# Tools that stream the reasoning model themselves, so the step header reports
+# THEIR model and token usage rather than the checkpoint verifier's.
+OWN_METADATA_TOOLS = frozenset({"llm", "continuity", "research"})
+# Tools whose failure reason is worth showing verbatim (an unknown variable, an
+# unparseable sheet) instead of a bare "tool error".
+ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity"})
+
+
 def run_direct_step(
     app: Flask,
     step: dict[str, Any],
@@ -671,8 +826,14 @@ def run_direct_step(
     plan_text: str = "",
     user_answers: str = "",
     doc_ids: list[str] | None = None,
+    verify: str = "each",
 ) -> dict[str, Any]:
     """Run ONE direct step (tool: llm | search | rag | history | calculate | continuity) and its checkpoint.
+
+    ``verify`` comes from the depth profile (``app/depth.py``): ``each`` checks
+    the step (the historical behaviour), ``off`` accepts it unverified. The
+    executor resolves ``final`` to one of the two, because only it knows whether
+    the step is the last of the plan.
 
     Returns ``{"result": str, "exec_seconds": float,
     "status": "passed"|"failed"|"aborted"|"error",
@@ -690,38 +851,31 @@ def run_direct_step(
         tool = str(step.get("tool", "llm"))
         start = time.monotonic()
         try:
-            if tool == "llm":
-                raw = _run_llm_step(
-                    app,
-                    step,
-                    context_digest,
-                    cancel_check,
-                    lang,
-                    response_style,
-                    task_request,
-                    plan_text,
-                    user_answers,
-                    user_id,
-                )
-            elif tool == "search":
-                raw = _run_search_step(app, step, user_id, lang)
-            elif tool == "rag":
-                raw = _run_rag_step(app, step, user_id, lang, doc_ids, cancel_check)
-            elif tool == "history":
-                raw = _run_history_step(app, step, user_id, lang)
-            elif tool == "calculate":
-                raw = _run_calculate_step(step)
-            elif tool == "continuity":
-                raw = _run_continuity_step(app, step, context_digest, cancel_check, lang, task_request, plan_text)
-            else:
+            runner = DIRECT_RUNNERS.get(tool)
+            if runner is None:
                 raise RuntimeError(f"unknown direct step tool: {tool}")
+            raw = runner(
+                DirectStepContext(
+                    app=app,
+                    step=step,
+                    context_digest=context_digest,
+                    cancel_check=cancel_check,
+                    lang=lang,
+                    response_style=response_style,
+                    task_request=task_request,
+                    plan_text=plan_text,
+                    user_answers=user_answers,
+                    user_id=user_id,
+                    doc_ids=doc_ids,
+                )
+            )
         except StepAborted:
             raise
         except Exception as e:
             err_text = str(e) or "tool error"
             # calculate/continuity surface the failure reason (an unknown
             # variable, an unparseable sheet) instead of a bare "tool error".
-            message = err_text if tool in ("calculate", "continuity") else ""
+            message = err_text if tool in ERROR_TEXT_TOOLS else ""
             logger.error(f"direct step {step.get('id', '?')} tool={tool} failed: {e}")
             return {
                 "result": message,
@@ -737,14 +891,20 @@ def run_direct_step(
             # Race-cancel on a fast tool: the work is done, the result is kept
             # but reported aborted so the executor does not advance the plan.
             return {"result": result, "exec_seconds": exec_seconds, "status": "aborted", "checkpoint": None}
-        checkpoint = run_checkpoint(app, step, result, lang=lang)
+        if verify == "off":
+            # A cheap profile trades the per-step check — and the corrective retry
+            # it drives — for speed. The verdict has to look like a real one so
+            # every consumer keeps working.
+            checkpoint: dict[str, Any] = {"verdict": True, "explanation": "", "exec_seconds": 0.0}
+        else:
+            checkpoint = run_checkpoint(app, step, result, lang=lang)
         payload = {
             "result": result,
             "exec_seconds": exec_seconds,
             "status": "passed" if checkpoint.get("verdict") else "failed",
             "checkpoint": checkpoint,
         }
-        if tool in ("llm", "continuity"):
+        if tool in OWN_METADATA_TOOLS:
             # Chat-style header data (model + 🔢 tokens) for the conversation
             # view: both tools stream the reasoning model themselves.
             config = get_model_config("reasoning") or {}

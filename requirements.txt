@@ -18,6 +18,10 @@ python-magic==0.4.27
 odfpy>=1.4.0
 striprtf>=0.0.26
 ebooklib>=0.17
+# Spreadsheets and slides (openpyxl MIT, xlrd BSD, python-pptx MIT).
+openpyxl>=3.1.5
+xlrd>=2.0.2
+python-pptx>=1.0.2
 gguf>=0.10.0
 psycopg2-binary>=2.9.9
 pymorphy3>=2.0.6

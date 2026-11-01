@@ -3,6 +3,7 @@
 import os
 import time
 from datetime import timedelta
+from typing import Any
 
 import pytz
 from dotenv import load_dotenv
@@ -10,7 +11,28 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "12.8"
+APP_VERSION = "12.9"
+
+
+def setting(name: str, default: Any = None) -> Any:
+    """Read a setting the admin panel may override.
+
+    Order: the running app's config (which already carries the database
+    override), then the environment, then ``default``. Callers that run both
+    inside a request/worker context and outside one — ResourceManager, the
+    llama-swap generator, the CLI — use this instead of ``os.getenv`` so a value
+    saved in the panel actually reaches them.
+    """
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context():
+            value = current_app.config.get(name)
+            if value is not None:
+                return value
+    except Exception:  # noqa: BLE001 — no Flask at all: fall through to the environment
+        pass
+    return os.getenv(name, default)
 
 
 def load_config(app):
@@ -20,7 +42,10 @@ def load_config(app):
     if not app.config["SECRET_KEY"]:
         raise ValueError("SECRET_KEY must be set in .env file")
     app.config["JSON_AS_ASCII"] = False
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "75")) * 1024 * 1024
+    # Kept in MB (what the panel shows) AND in bytes (what Flask reads), so a
+    # value saved in the panel reaches Flask through refresh_derived().
+    app.config["MAX_CONTENT_LENGTH_MB"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "75"))
+    app.config["MAX_CONTENT_LENGTH"] = app.config["MAX_CONTENT_LENGTH_MB"] * 1024 * 1024
     app.config["TIMEZONE_STR"] = os.getenv("TIMEZONE")
     app.config["REDIS_URL"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     app.config["DEBUG_API_ENABLED"] = os.getenv("DEBUG_API_ENABLED", "false").lower() == "true"
@@ -58,6 +83,10 @@ def load_config(app):
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
     app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
     app.config["LTX_VIDEO_TIMEOUT"] = int(os.getenv("LTX_VIDEO_TIMEOUT", 600))
+    # CPU-only hosts: the wall-clock budget a generation may spend, 0 = 85 % of
+    # the timeout. Read by modules/video.py through the app config so the panel
+    # can change it.
+    app.config["LTX_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("LTX_VIDEO_CPU_TIME_BUDGET_S", "0"))
 
     # Wan 2.2 TI2V 5B settings (uses the sd-wrapper video endpoint, same
     # container as image generation). Defaults are the Turbo preset measured
@@ -71,11 +100,22 @@ def load_config(app):
     # Wan on a CPU-only host is ~90 minutes for a 5-second clip and needs more
     # RAM than the probe container had — refused by default, opt-in only.
     app.config["WAN_VIDEO_ALLOW_CPU"] = os.getenv("WAN_VIDEO_ALLOW_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
+    app.config["WAN_VIDEO_CPU_TIME_BUDGET_S"] = int(os.getenv("WAN_VIDEO_CPU_TIME_BUDGET_S", "0"))
+
+    # VRAM and RAM policy. These used to be read with ``os.getenv`` from deep
+    # inside ResourceManager and the llama-swap generator, which meant the admin
+    # panel could not reach them; every reader now goes through ``setting()``.
+    app.config["VRAM_CO_RESIDENCY"] = os.getenv("VRAM_CO_RESIDENCY", "auto").strip().lower()
+    app.config["VRAM_HEADROOM_MB"] = int(os.getenv("VRAM_HEADROOM_MB", "1200"))
+    app.config["RAM_RESERVE_MB"] = int(os.getenv("RAM_RESERVE_MB", "1024"))
+    app.config["CPU_RAM_RESERVE_MB"] = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+    app.config["CPU_REASONING_TTL"] = int(os.getenv("CPU_REASONING_TTL", "60"))
+    app.config["LTX_VIDEO_VRAM_MB"] = int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
 
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
-    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 250))
-    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 250))
+    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 500))
+    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 500))
 
     # Admin Monitoring tab: how long a computed payload stays cached in Redis
     app.config["MONITORING_CACHE_TTL"] = 60
@@ -125,6 +165,11 @@ def load_config(app):
     app.config["CAMERA_SNAPSHOT_WIDTH"] = int(os.getenv("CAMERA_SNAPSHOT_WIDTH", 384))
     # Parallel preview fetches per request (the service captures concurrently).
     app.config["CAMERA_PREVIEW_WORKERS"] = int(os.getenv("CAMERA_PREVIEW_WORKERS", 4))
+    # "Check every room" in chat: how many snapshots one request may take.
+    app.config["CAMERA_ALL_ROOMS_MAX"] = int(os.getenv("CAMERA_ALL_ROOMS_MAX", 12))
+    # Images the vision model reads in the chat camera path: 384 px is a
+    # preview, and a cat on the floor is a few pixels at that size.
+    app.config["CAMERA_ANALYSIS_WIDTH"] = int(os.getenv("CAMERA_ANALYSIS_WIDTH", 1024))
 
     # SuperLocalMemory (long-term memory) settings
     app.config["SLM_URL"] = os.getenv("SLM_URL")
@@ -188,13 +233,20 @@ def load_config(app):
     app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
     app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
-    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", "3"))
+    # The depth axis (app/depth.py) supplies the defaults; an explicit key in the
+    # environment still wins, so one number can be tuned without a profile.
+    from app.depth import depth_defaults
+
+    depth = depth_defaults(os.getenv("DEPTH_LEVEL", "norm"))
+    app.config["DEPTH_LEVEL"] = os.getenv("DEPTH_LEVEL", "norm")
+    app.config["DEPTH_VERIFY"] = os.getenv("DEPTH_VERIFY", str(depth["DEPTH_VERIFY"]))
+    app.config["TASK_STEP_MAX_ATTEMPTS"] = int(os.getenv("TASK_STEP_MAX_ATTEMPTS", str(depth["TASK_STEP_MAX_ATTEMPTS"])))
     # Plan-correction guardrails: a review may not rewrite the plan forever,
     # the plan may not grow without bound, and a passing step only triggers a
     # review every N steps (a failed/skipped step and a fresh user answer always
     # trigger one). The 24 h budget stays the final ceiling.
-    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", "8"))
-    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", "40"))
+    app.config["TASK_MAX_REVISIONS"] = int(os.getenv("TASK_MAX_REVISIONS", str(depth["TASK_MAX_REVISIONS"])))
+    app.config["TASK_MAX_STEPS"] = int(os.getenv("TASK_MAX_STEPS", str(depth["TASK_MAX_STEPS"])))
     app.config["TASK_REPLAN_EVERY_N"] = int(os.getenv("TASK_REPLAN_EVERY_N", "3"))
     # Media repair: one image edit after every generation attempt (3 + 3 by
     # default) before the best-effort pick of the closest candidate.
@@ -223,7 +275,8 @@ def load_config(app):
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
-    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))
+    # 0 = automatic (history gets what it holds, capped by what is left).
+    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 0))
 
     # NEW: Context safety margin (use only 85% of calculated capacity)
     app.config["CONTEXT_SAFETY_MARGIN"] = float(os.getenv("CONTEXT_SAFETY_MARGIN", 0.85))
@@ -245,6 +298,20 @@ def load_config(app):
     app.config["ROUTER_CONTEXT_MSG_CHARS"] = int(os.getenv("ROUTER_CONTEXT_MSG_CHARS", 240))
     app.config["ROUTER_SLM_FACTS"] = int(os.getenv("ROUTER_SLM_FACTS", 2))
 
+    # Request kernel: one JSON decision (intent, search phrase, sources, tools)
+    # instead of marker classification. Off by default so the marker router stays
+    # the reference implementation until the kernel is measured against it.
+    app.config["KERNEL_ENABLED"] = os.getenv("KERNEL_ENABLED", "0") == "1"
+    # Schema-constrained decoding removes a whole class of malformed replies on
+    # small models; it is off only for a backend that rejects the field.
+    app.config["KERNEL_CONSTRAINED"] = os.getenv("KERNEL_CONSTRAINED", "1") == "1"
+
+    # External MCP servers (see app/mcp_registry.py). Off by default: with no
+    # server configured the assistant exposes no tool it did not have before.
+    app.config["MCP_ENABLED"] = os.getenv("MCP_ENABLED", "0") == "1"
+    # A JSON array: [{"name": "...", "url": "https://host/mcp", "token": "...", "allow": ["tool"]}]
+    app.config["MCP_SERVERS"] = os.getenv("MCP_SERVERS", "")
+    app.config["MCP_TIMEOUT_S"] = int(os.getenv("MCP_TIMEOUT_S", 10))
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"
 
@@ -265,7 +332,9 @@ def load_config(app):
     app.config["RAG_RERANK_ENABLED"] = os.getenv("RAG_RERANK_ENABLED", "false").lower() in ("true", "1", "yes")
     app.config["RAG_RERANK_CANDIDATES"] = int(os.getenv("RAG_RERANK_CANDIDATES", 10))
     app.config["RAG_RERANK_TIMEOUT"] = int(os.getenv("RAG_RERANK_TIMEOUT", 10))
-    app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 30))
+    # 0 = automatic: the share is derived from the window and the measured need
+    # (app/context_budget.py). A positive value pins the documents' share.
+    app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 0))
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3

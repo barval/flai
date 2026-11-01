@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.8](#-whats-new-in-v128)
+- [🆕 What's New in v12.9](#-whats-new-in-v129)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,15 +73,13 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.8
+## 🆕 What's New in v12.9
 
-- **One document corpus for chat, deep analysis and tasks.** The Documents-panel ticks — individual files, folders and the **Unfiled** root — are the single corpus behind RAG, Deep Analysis and tasks. The 🔍 scope mirrors that selection live (a partly ticked folder shows the indeterminate state), dates narrow it immediately and no Apply step is needed; the compact chip keeps the document count visible. Nothing ticked means all documents, and a task with no attachments searches all of them instead of nothing. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Room cameras speak room-snapshot-api v1.3.** Every REST and MCP call carries the shared key, room labels follow the interface language, snapshots are revalidated with `ETag`/`304`, all previews arrive in one parallel request, and the admin modal shows the native frame. → [CAMERA.md](docs/CAMERA.md)
-- **Two video backends.** LTX-Video 2B stays the default (fast, clips up to 10 s, 3.1 GB of VRAM); Wan 2.2 TI2V 5B Turbo joins it as the quality option (5 s, better motion, measured 209 s and 15.0 GB on a 16 GB card; **Wan is recommended from 24 GB VRAM**, where it no longer competes for every last megabyte). One `VIDEO_BACKEND` switch, `--with-video` / `--with-video-wan` at deploy time, and a VRAM preset chain that keeps a full clip on 8 and 12 GB cards. → [VIDEO.md](docs/VIDEO.md)
-- **Long-term memory extracts facts with the model.** The rule-based extractor produced zero facts from 30 real messages; extraction now runs on the background queue with a strict JSON schema, keeps `kind`/`confidence`, injects a consolidated profile block and is measurable with `flask memory-eval`. → [MEMORY.md](docs/MEMORY.md)
-- **VRAM is measured, not guessed.** The KV cache comes from each model's own GGUF shapes (the old constants over-counted 1.4–2 GB), measured footprints win over formulas, models that fit stay resident together, and `flask vram-probe` / `flask vram-plan` show the numbers before a save. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
-- **Hybrid retrieval is BM25 over lemmas.** `ts_rank_cd` is gone; fused MRR rose 0.688 → 0.802 and nDCG@20 0.765 → 0.872 on two 30-question sets. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-- **Security and dependency refresh.** Pillow 13.0.0, python-dotenv 1.2.4, urllib3 2.8.0, Werkzeug 3.1.9, PostgreSQL 18.6, Redis 8.4.7, Qdrant 1.20, gunicorn 26.2.0, a locked 88-package image, and `pip-audit` + Trivy in CI. → [UPGRADES.md](docs/UPGRADES.md)
+- **The engine was rebuilt around one decision and one loop.** A single JSON call (the request kernel) now classifies a message and picks its tools, and the same tool loop drives both chat and background tasks. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Skills.** Drop a folder with a `SKILL.md` into `skills/` and the assistant loads its instructions **by itself** when a request matches the skill's description (with the request kernel enabled — `KERNEL_ENABLED=1`) — the format is portable (Claude Code, opencode, pi). → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **MCP servers.** External Model Context Protocol servers can supply chat tools; they are configured in their own admin tab, namespaced per server, and a server that is down costs nothing. → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
+- **Deeper agent tasks.** A request is planned as steps and executed with checkpoints; the planner records its plan as a `write_plan` tool call, and a `research` step can search, open pages and refine its own query before answering. → [TASKS.md](docs/TASKS.md)
+- **A depth profile.** `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend, and every new parameter is editable in the admin panel. → [CONFIGURATION.md](docs/CONFIGURATION.md)
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -99,8 +97,10 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 ## ✨ Features
 
 ### 💬 Chat & reasoning
-- **Intelligent chat** — the router sends simple questions to a fast model and complex ones to a dedicated reasoning model.
-- **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress.
+- **Intelligent chat** — the request kernel (or the marker router as its fallback) sends simple questions to a fast model and complex ones to a dedicated reasoning model, in one JSON decision.
+- **Native tool calling** — calculator, current time, date arithmetic, web search, document search, history search, page reading and camera snapshots, with live progress; every tool result is bounded and a repeated call is refused.
+- **Skills** — drop a folder with a `SKILL.md` into `skills/`: its one-line description enters the prompt and its instructions load only when the model asks for them. The format is the portable one (Claude Code, opencode, pi).
+- **MCP servers** — connect external Model Context Protocol servers in the admin panel and their tools become callable, namespaced per server; a server that is down costs nothing.
 - **Deep analysis (RLM)** — a reasoning model works through your selected documents and an attached image step by step, with a sandboxed Python executor, sub-model calls, live lookups and a collapsible trace. → [DEEP_ANALYSIS.md](docs/DEEP_ANALYSIS.md)
 - **Response styles** — neutral, academic, professional, friendly or funny, switchable in the chat header.
 - **Sessions and export** — multiple auto-titled conversations, exportable as HTML with embedded media.
@@ -109,6 +109,10 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Image generation** — stable-diffusion.cpp with automatic prompt optimization. → [IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)
 - **Image editing** — upload an image and ask for changes: colors, removed objects, new styles.
 - **Video generation — two backends.** LTX-Video 2B (fast, up to 10 s) or Wan 2.2 TI2V 5B (slower, 5 s, better motion; **recommended from 24 GB VRAM**), both from a text or image+text prompt. → [VIDEO.md](docs/VIDEO.md)
+
+### 🧩 Background tasks
+- **Agentic tasks** — a request is planned as steps and executed with checkpoints: web search, document and history search, camera snapshots, image analysis, site study, deep analysis, image/video generation. The planner records its plan as a `write_plan` tool call, a `research` step can search, open pages and refine its own query before answering, and chat always preempts a task. → [TASKS.md](docs/TASKS.md)
+- **Depth profile** — `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend; `norm` is the historical behaviour. Editable in the admin panel.
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)

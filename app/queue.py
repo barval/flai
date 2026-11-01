@@ -30,10 +30,22 @@ from .db import (
     save_message,
     update_document_index_status,
 )
+from .engine.loop import Turn, run_tool_loop
+from .engine.session import ChatSession
 from .events import get_events_publisher
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
-from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
+from .tools import (
+    MAX_TOOL_ITERATIONS,
+    ToolCallLoopGuard,
+    cap_reached_message,
+    execute_tool,
+    get_tool_definitions,
+    invalid_arguments_message,
+    parse_tool_arguments,
+    repeated_call_message,
+    select_tool_definitions,
+)
 from .utils import (
     N_,
     begin_usage_account,
@@ -2930,9 +2942,9 @@ class RedisRequestQueue:
                     chunks, scores = rag.search(
                         user_id,
                         query,
-                        top_k=20,
                         file_coverage=True,
                         doc_ids=self._rag_scope(request_data),
+                        lang=lang,
                     )
                     if task and chunks:
                         self._publish_stream_event(
@@ -3578,47 +3590,21 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
             )
 
+        if query.strip() == "*":
+            return self._process_camera_all_rooms(
+                session_id, user_id, message_text, current_time_str, lang, response_style
+            )
+
         camera_start = time.time()
-        camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
+        camera_result = self.app.modules["cam"].get_snapshot(
+            user_id, query, lang=lang, width=self._camera_analysis_width()
+        )
         camera_time = round(time.time() - camera_start, 1)
 
         if not camera_result["success"]:
             return self._build_error_response(session_id, camera_result["error"], camera_time, lang)
 
-        template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
-        prefix = template.replace("{room_name}", "")
-        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
-        file_path = None
-        if camera_result.get("image_data"):
-            file_path = save_uploaded_file(
-                file_data=camera_result["image_data"],
-                filename=camera_result["file_name"],
-                session_id=session_id,
-                upload_folder=self.app.config["UPLOAD_FOLDER"],
-                user_id=user_id,
-            )
-
-        first_message = self._save_and_respond(
-            session_id,
-            translated_text,
-            "camera",
-            camera_time,
-            file_data=None,
-            file_type=camera_result["image_type"],
-            file_name=camera_result["file_name"],
-            file_path=file_path,
-            extra={
-                "file_path": file_path,
-                "file_name": camera_result["file_name"],
-                "file_size": camera_result["file_size"],
-                "file_type": camera_result["image_type"],
-                "response_time": camera_time,
-                "model_type": "camera",
-            },
-            response_style=response_style,
-            # The description message below consumes the shared usage account.
-            consume_usage=False,
-        )
+        first_message = self._save_camera_message(session_id, user_id, lang, camera_result, camera_time, response_style)
 
         messages = [first_message]
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
@@ -3649,6 +3635,216 @@ class RedisRequestQueue:
             second["response_time"] = mm_time
             messages.append(second)
 
+        return {"messages": messages, "session_id": session_id}
+
+    def _camera_analysis_width(self) -> int:
+        """Snapshot width the vision model reads: 384 px previews miss small animals."""
+        return max(384, int(self.app.config.get("CAMERA_ANALYSIS_WIDTH", 1024)))
+
+    def _camera_room_question(self, message_text: str, lang: str) -> str:
+        """Turn the user's request into a question about ONE room.
+
+        The aggregate wording ("check every room") answers badly against a single
+        image — measured, it made the model answer "no cats here" for a kitchen it
+        otherwise describes as having one. The rewrite is done by the model, not by
+        a template: the subject of the question is whatever the user asked about.
+        """
+        base = self.app.modules["base"]
+        prompt = str(
+            base._(
+                "Rewrite the user's request as ONE short question about a single room, answerable by looking "
+                "at one camera snapshot. Keep the subject of the question. Do NOT assume the answer: a request "
+                "for a location becomes a yes/no question (\"is there X in this room?\"), never \"where is X?\". "
+                "Return only the question, in the user's language. Request: {request}",
+                lang=lang,
+            )
+        ).replace("{request}", message_text)
+        multimodal = self.app.modules.get("multimodal")
+        if multimodal is not None and getattr(multimodal, "available", False):
+            try:
+                reply = multimodal.llamacpp.chat(
+                    [{"role": "user", "content": prompt}], model_type="multimodal", lang=lang
+                )
+                text = str(reply or "").strip().split("\n")[0].strip().strip('"«»')
+                if text and not self._is_llm_error_string(text):
+                    return text
+            except Exception as exc:  # noqa: BLE001 — a failed rewrite falls back to the request
+                self.logger.warning(f"camera: per-room question rewrite failed: {exc}")
+        return message_text
+
+    def _camera_summary(self, message_text: str, observations: list[str], lang: str) -> str:
+        """Answer the user's request from the per-room observations, or '' on failure."""
+        base = self.app.modules["base"]
+        multimodal = self.app.modules.get("multimodal")
+        if multimodal is None or not getattr(multimodal, "available", False) or not observations:
+            return ""
+        prompt = str(
+            base._(
+                "A snapshot was taken of every room. Here is what each room shows: {rooms}. "
+                "Answer the user's request using ONLY these observations. Name the rooms explicitly and do "
+                "not invent what is not listed; if the request asks for a total or a comparison, compute it from "
+                "these numbers. Request: {request}",
+                lang=lang,
+            )
+        ).replace("{rooms}", "\n".join(observations)).replace("{request}", message_text)
+        try:
+            reply = multimodal.llamacpp.chat(
+                [{"role": "user", "content": prompt}], model_type="multimodal", lang=lang
+            )
+            text = str(reply or "").strip()
+        except Exception as exc:  # noqa: BLE001 — the observation list is still a valid answer
+            self.logger.warning(f"camera: summary failed: {exc}")
+            return ""
+        if not text or self._is_llm_error_string(text):
+            return ""
+        return text
+
+    def _capture_all_rooms(self, user_id: str, lang: str, task: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Snapshot every room the user may see, bounded by CAMERA_ALL_ROOMS_MAX.
+
+        The chat camera action used to answer "check every room" with ONE snapshot:
+        the router contract had a single room code and the pipeline captured
+        exactly that code, so a question about all rooms was answered from the
+        kitchen and the model itself said "check the other cameras". A camera
+        request may now carry ``*``; this is what the asterisk means.
+        """
+        cam = self.app.modules.get("cam")
+        if cam is None or not getattr(cam, "available", False):
+            return []
+        rooms = cam.get_available_rooms(user_id) or {}
+        limit = max(1, int(self.app.config.get("CAMERA_ALL_ROOMS_MAX", 12)))
+        planned = min(len(rooms), limit)
+        captured: list[dict[str, Any]] = []
+        for code in sorted(rooms):
+            if len(captured) >= limit:
+                break
+            if task is not None:
+                self._publish_stream_event(
+                    task,
+                    "task_progress",
+                    {"stage": "capturing_snapshot", "count": len(captured) + 1, "total": planned},
+                )
+            result = cam.get_snapshot(user_id, code, lang=lang, width=self._camera_analysis_width())
+            if result.get("success"):
+                captured.append(result)
+            else:
+                self.logger.info(f"camera all-rooms: room {code} skipped: {str(result.get('error'))[:120]}")
+        return captured
+
+    def _save_camera_message(
+        self,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        camera_result: dict[str, Any],
+        elapsed: float,
+        response_style: str,
+    ) -> dict[str, Any]:
+        """The camera message shape for one snapshot (shared by both camera paths)."""
+        template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
+        prefix = template.replace("{room_name}", "")
+        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
+        file_path = None
+        if camera_result.get("image_data"):
+            file_path = save_uploaded_file(
+                file_data=camera_result["image_data"],
+                filename=camera_result["file_name"],
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+        return self._save_and_respond(
+            session_id,
+            translated_text,
+            "camera",
+            elapsed,
+            file_data=None,
+            file_type=camera_result["image_type"],
+            file_name=camera_result["file_name"],
+            file_path=file_path,
+            extra={
+                "file_path": file_path,
+                "file_name": camera_result["file_name"],
+                "file_size": camera_result["file_size"],
+                "file_type": camera_result["image_type"],
+                "response_time": elapsed,
+                "model_type": "camera",
+            },
+            response_style=response_style,
+            # The description message consumes the shared usage account.
+            consume_usage=False,
+        )
+
+    def _process_camera_all_rooms(
+        self,
+        session_id: str,
+        user_id: str,
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One request, every room: N snapshot messages, then one answer over all of them."""
+        camera_start = time.time()
+        captures = self._capture_all_rooms(user_id, lang, task=task)
+        camera_time = round(time.time() - camera_start, 1)
+
+        if not captures:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No cameras are available", lang=lang),
+                camera_time,
+                lang,
+            )
+
+        messages = [
+            self._save_camera_message(session_id, user_id, lang, capture, camera_time, response_style)
+            for capture in captures
+        ]
+
+        multimodal = self.app.modules.get("multimodal")
+        if message_text and multimodal is not None and multimodal.available:
+            # ONE call per room, deliberately. Measured on the shipped
+            # Qwen3VL-8B: a single image is answered correctly, while the same
+            # images in one batch pick up a subject from each other (a cat in the
+            # kitchen put a cat in the living room). It is also the shape the
+            # Tasks planner uses — one camera step per room.
+            #
+            # Nothing here is specific to what the user asked: the per-room
+            # question is DERIVED from their request by the model, and the answer
+            # is composed from the per-room answers. Hardcoding "is there a cat"
+            # would answer every request with a cat question.
+            base = self.app.modules["base"]
+            room_question = self._camera_room_question(message_text, lang)
+            mm_start = time.time()
+            observations: list[str] = []
+            for capture in captures:
+                room_answer, room_error = multimodal.process_image_with_text(
+                    capture.get("image_data", ""),
+                    room_question,
+                    current_time_str,
+                    lang=lang,
+                    session_id=None,
+                    response_style=response_style,
+                )
+                text = str(room_answer or "").strip()
+                if room_error or not text:
+                    text = str(base._("No description received", lang=lang))
+                observations.append(f"- {capture['room_name']}: {text}")
+            mm_time = round(time.time() - mm_start, 1)
+            bot_reply = self._camera_summary(message_text, observations, lang) or "\n".join(observations)
+            second = self._save_and_respond(
+                session_id,
+                bot_reply,
+                self._get_model_name("multimodal") or "unknown",
+                mm_time,
+                is_error=False,
+                extra={"model_type": "multimodal"},
+                response_style=response_style,
+            )
+            second["response_time"] = mm_time
+            messages.append(second)
         return {"messages": messages, "session_id": session_id}
 
     def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -3915,8 +4111,19 @@ class RedisRequestQueue:
 
         self._publish_stream_event(task, "task_progress", {"stage": "capturing_snapshot"})
 
+        if query.strip() == "*":
+            # Every room: the snapshots arrive as their own messages and the
+            # answer is composed over all of them in one call, so it cannot ride
+            # the single-image stream below. The client still gets the same
+            # camera messages and one answer.
+            return self._process_camera_all_rooms(
+                session_id, user_id, message_text, current_time_str, lang, response_style, task=task
+            )
+
         camera_start = time.time()
-        camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
+        camera_result = self.app.modules["cam"].get_snapshot(
+            user_id, query, lang=lang, width=self._camera_analysis_width()
+        )
         camera_time = round(time.time() - camera_start, 1)
 
         if not camera_result["success"]:
@@ -4056,9 +4263,9 @@ class RedisRequestQueue:
             chunks, scores = rag.search(
                 user_id,
                 query,
-                top_k=20,
                 file_coverage=True,
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
+                lang=lang,
             )
             if task and chunks:
                 self._publish_stream_event(
@@ -4684,9 +4891,9 @@ class RedisRequestQueue:
             chunks, scores = rag.search(
                 user_id,
                 query,
-                top_k=20,
                 file_coverage=True,
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
+                lang=lang,
             )
             if task and chunks:
                 self._publish_stream_event(
@@ -4826,7 +5033,12 @@ class RedisRequestQueue:
             self._publish_stream_event(task, "task_progress", {"stage": "routing"})
         current_message_id = (task or {}).get("data", {}).get("current_message_id")
         recent_context = self.app.modules["base"].build_router_context(
-            session_id, user_id, message_text, lang, exclude_message_id=current_message_id
+            session_id,
+            user_id,
+            message_text,
+            lang,
+            exclude_message_id=current_message_id,
+            marker_hints=not self.app.modules["base"].KERNEL_ENABLED,
         )
         router_result = self.app.modules["base"].process_message(
             message_text,
@@ -4959,6 +5171,9 @@ class RedisRequestQueue:
                     lang,
                     response_style,
                     expose_tools=True,
+                    tool_selection=router_result.get("tools"),
+                    use_memory=router_result.get("memory"),
+                    skills=tuple(router_result.get("skills") or ()),
                 )
             # Unknown action — safe fallback that still avoids a second router call
             return self._save_and_respond(
@@ -4985,6 +5200,9 @@ class RedisRequestQueue:
             stream=False,
             include_tools=False,
             expose_tools=True,
+            tool_selection=router_result.get("tools"),
+            use_memory=router_result.get("memory"),
+            skills=tuple(router_result.get("skills") or ()),
         )
 
     def _sanitize_tool_service_text(self, text: str) -> str:
@@ -5004,6 +5222,36 @@ class RedisRequestQueue:
         cleaned_text = "\n".join(cleaned).strip()
         return cleaned_text if cleaned_text else text
 
+    def _preload_skills(self, messages: list[dict[str, Any]], skills: tuple[str, ...], lang: str) -> None:
+        """Load the kernel's skills as instructions for this request.
+
+        The body goes into the system prompt, not into a synthetic tool exchange.
+        Measured: as a finished assistant/tool pair the model reads the turn as
+        "a tool has already run" and answers from memory — the research skill
+        loaded that way produced a confidently wrong rate with no search at all.
+        As instructions ahead of the question the model still reaches for the
+        tools the skill names.
+        """
+        if not skills:
+            return
+        from app.skills import activate
+
+        bodies: list[str] = []
+        for name in skills:
+            body = activate(name, lang)
+            if not body:
+                self.logger.warning(f"skill {name!r} was selected but is not installed")
+                continue
+            bodies.append(body)
+            self.logger.info(f"skill {name!r} loaded for this request ({len(body)} chars)")
+        if not bodies:
+            return
+        block = "\n\n".join(bodies)
+        if messages and messages[0].get("role") == "system":
+            messages[0]["content"] = f"{messages[0]['content']}\n\n{block}"
+        else:
+            messages.insert(0, {"role": "system", "content": block})
+
     def _run_tool_calls(
         self,
         task: dict[str, Any],
@@ -5013,24 +5261,43 @@ class RedisRequestQueue:
         lang: str,
         assistant_content: str = "",
         log_label: str = "Tool call",
+        loop_guard: ToolCallLoopGuard | None = None,
+        session: ChatSession | None = None,
     ) -> str:
         """Execute tool calls and append assistant/tool messages to history.
 
         Publishes tool_call/tool_result stream events. Returns the last raw
         tool result so the caller can use it as a fallback answer.
         """
-        messages.append({"role": "assistant", "content": assistant_content, "tool_calls": tool_calls})
+        if session is None:
+            session = ChatSession(
+                messages=messages,
+                is_cancelled=lambda: False,
+                publish=lambda event, payload: self._publish_stream_event(task, event, payload),
+                report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
+            )
+        session.append_assistant(assistant_content, tool_calls)
         last_tool_result = ""
+        schemas = {item["function"]["name"]: item["function"].get("parameters") for item in get_tool_definitions(lang)}
         for tc in tool_calls:
             tc_id = tc.get("id", "")
             func = tc.get("function", {})
             tool_name = func.get("name", "")
-            try:
-                arguments = json.loads(func.get("arguments", "{}"))
-            except json.JSONDecodeError:
-                arguments = {}
+            arguments, usable = parse_tool_arguments(func.get("arguments", "{}"), schemas.get(tool_name))
+            if not usable:
+                # An unparsable call used to run with {} — a search with an empty
+                # query, which teaches the model nothing about what went wrong.
+                self.logger.warning(f"{log_label}: {tool_name} arguments are not valid JSON, rejecting the call")
+                session.append_tool(tc_id, invalid_arguments_message(lang))
+                session.report_tool_result(tool_name, invalid_arguments_message(lang))
+                continue
+            if loop_guard is not None and not loop_guard.check(tool_name, arguments, schemas.get(tool_name)):
+                self.logger.warning(f"{log_label}: {tool_name} repeated with the same arguments, refusing the call")
+                session.append_tool(tc_id, repeated_call_message(lang))
+                session.report_tool_result(tool_name, repeated_call_message(lang))
+                continue
 
-            self._publish_stream_event(task, "tool_call", {"tool_name": tool_name, "arguments": arguments})
+            session.report_tool_call(tool_name, arguments)
             self.logger.info(f"{log_label}: {tool_name}({arguments})")
 
             stage = {
@@ -5043,7 +5310,7 @@ class RedisRequestQueue:
                 "camera_snapshot": "capturing_snapshot",
             }.get(tool_name)
             if stage:
-                self._publish_stream_event(task, "task_progress", {"stage": stage})
+                session.report_stage(stage)
 
             tool_context = {
                 "app": self.app,
@@ -5056,15 +5323,10 @@ class RedisRequestQueue:
             last_tool_result = tool_result
 
             self.logger.info(f"Tool result: {tool_result[:200]}")
-            self._publish_stream_event(
-                task,
-                "tool_result",
-                {
-                    "tool_name": tool_name,
-                    "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
-                },
+            session.report_tool_result(
+                tool_name, tool_result[:200] + "..." if len(tool_result) > 200 else tool_result
             )
-            messages.append({"role": "tool", "tool_call_id": tc_id, "content": tool_result})
+            session.append_tool(tc_id, tool_result)
         return last_tool_result
 
     def _process_chat_with_tools(
@@ -5079,6 +5341,9 @@ class RedisRequestQueue:
         stream: bool = True,
         include_tools: bool = True,
         expose_tools: bool | None = None,
+        tool_selection: tuple[str, ...] | None = None,
+        use_memory: bool | None = None,
+        skills: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
@@ -5099,13 +5364,18 @@ class RedisRequestQueue:
 
         # Build system + user messages for tool calling
         response_language = response_language_name(lang)
+        # The kernel may have decided this message needs no long-term memory at
+        # all ("what time is it"); skipping the recall saves a daemon round trip
+        # and the facts it would have injected. None keeps the old behaviour.
+        from .kernel import memory_is_skipped
+
         context_str = base._get_context_for_model(  # noqa: SLF001
             session_id,
             "multimodal",
             query,
             lang,
             user_id=user_id,
-            skip_slm=False,
+            skip_slm=memory_is_skipped(use_memory),
         )
         style_instruction = get_style_instruction(lang, response_style)
 
@@ -5134,119 +5404,139 @@ class RedisRequestQueue:
             {"role": "system", "content": system_content},
             {"role": "user", "content": query},
         ]
-        tools = get_tool_definitions(lang) if (expose_tools if expose_tools is not None else include_tools) else None
+        tools = (
+            select_tool_definitions(tool_selection, lang)
+            if (expose_tools if expose_tools is not None else include_tools)
+            else None
+        )
+        # A skill the request kernel selected is loaded before the first round:
+        # the body arrives as a tool result, exactly as if the model had called
+        # `activate_skill` itself, so the instructions are in the transcript and
+        # the transport cannot fail. Measured: asked to call the tool on its own,
+        # the small model answers with a plain search instead.
+        self._preload_skills(messages, skills, lang)
 
-        full_response = ""
-        last_tool_result = ""
+        session = ChatSession(
+            messages=messages,
+            is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            publish=lambda event, payload: self._publish_stream_event(task, event, payload),
+            report_stage=lambda stage: self._publish_stream_event(task, "task_progress", {"stage": stage}),
+            on_token=lambda text: self._publish_stream_token(task, text),
+        )
 
         # The multimodal model answers directly here: show "Thinking..." until
         # the first stream_token (auto-removed) so slow CPU generations are not
         # silent. Non-streaming paths have no token to clear the stage — skip.
         if stream and task:
-            self._publish_stream_event(task, "task_progress", {"stage": "reasoning_thinking"})
+            session.report_stage("reasoning_thinking")
 
-        for iteration in range(MAX_TOOL_ITERATIONS):
-            if self._is_task_cancelled(task["id"]):
-                break
+        # One guard per turn: a legitimate repeat in a later turn must not be
+        # blocked by a count collected in an earlier one.
+        tool_guard = ToolCallLoopGuard()
+        # The label only changes for a call the model printed as text; the loop
+        # hands the caller one kind of turn either way.
+        current_label = {"value": "Tool call"}
 
-            if stream:
-                # Real streaming: tokens are published to the client as they
-                # arrive; native tool calls come as a terminal dict chunk.
-                iteration_text = ""
-                error_detected = False
-                stream_tool_calls: list[dict[str, Any]] | None = None
-                for chunk in llamacpp.chat_stream(messages, model_type="multimodal", lang=lang, tools=tools):
-                    if isinstance(chunk, dict):
-                        if chunk.get("type") == "tool_calls":
-                            stream_tool_calls = chunk["tool_calls"]
-                        break
-                    iteration_text += chunk
-                    if not error_detected:
-                        if self._is_llm_error_string(iteration_text):
-                            error_detected = True
-                        else:
-                            self._publish_stream_token(task, chunk)
-                    if self._is_task_cancelled(task["id"]):
-                        break
+        def generate(round_tool_choice: str | None) -> Turn:
+            if not stream:
+                response = llamacpp.chat(
+                    messages,
+                    model_type="multimodal",
+                    lang=lang,
+                    tools=tools,
+                    tool_choice=round_tool_choice,
+                )
+                if isinstance(response, str):
+                    if self._is_llm_error_string(response):
+                        return Turn(error=response)
+                    parsed_tool_call = self._try_parse_text_tool_call(response)
+                    if parsed_tool_call:
+                        # The assistant message carries no prose: the JSON it
+                        # printed is the call, not an answer.
+                        current_label["value"] = "Tool call (text-parsed)"
+                        return Turn(tool_calls=[parsed_tool_call])
+                    return Turn(text=response)
+                if isinstance(response, dict) and response.get("tool_calls"):
+                    return Turn(text=response.get("content") or "", tool_calls=response["tool_calls"])
+                return Turn(text=response if isinstance(response, str) else str(response))
 
-                if error_detected:
-                    return self._build_error_response(
-                        session_id,
-                        iteration_text,
-                        round(time.time() - stream_start, 1),
-                        lang,
-                    )
-
-                if stream_tool_calls:
-                    last_tool_result = self._run_tool_calls(task, messages, stream_tool_calls, user_id, lang)
-                    self.logger.info(
-                        f"Tool calling iteration {iteration + 1}: "
-                        f"executed {len(stream_tool_calls)} tools: "
-                        f"{[tc.get('function', {}).get('name', '?') for tc in stream_tool_calls]}"
-                    )
-                    continue
-
-                full_response = iteration_text
-                # If reasoning stripping left nothing (model produced only plan/analysis),
-                # let the empty-response handler at the end deal with it.
-                if not full_response.strip():
-                    self.logger.warning("Chat model returned empty response after reasoning strip")
-                elif self._is_task_cancelled(task["id"]):
-                    self._publish_stream_event(task, "stream_cancelled")
-                break
-
-            response = llamacpp.chat(messages, model_type="multimodal", lang=lang, tools=tools)
-
-            # If response is an error string
-            if isinstance(response, str):
-                if self._is_llm_error_string(response):
-                    return self._build_error_response(
-                        session_id,
-                        response,
-                        round(time.time() - stream_start, 1),
-                        lang,
-                    )
-
-                # Detect raw JSON tool call in text (small models sometimes output tool calls as text)
-                parsed_tool_call = self._try_parse_text_tool_call(response)
-                if parsed_tool_call:
-                    last_tool_result = self._run_tool_calls(
-                        task,
-                        messages,
-                        [parsed_tool_call],
-                        user_id,
-                        lang,
-                        log_label="Tool call (text-parsed)",
-                    )
-                    continue
-
-                full_response = response
-                # If strip_generic_reasoning returned empty (model produced only plan/analysis),
-                # fall back to empty and let the empty-response handler at the end deal with it.
-                if not full_response.strip():
-                    self.logger.warning("Chat model returned empty response after reasoning strip")
-                # Check cancel after blocking chat() call — flag may have been set during generation
+            iteration_text = ""
+            error_detected = False
+            stream_tool_calls: list[dict[str, Any]] | None = None
+            for chunk in llamacpp.chat_stream(
+                messages,
+                model_type="multimodal",
+                lang=lang,
+                tools=tools,
+                tool_choice=round_tool_choice,
+            ):
+                if isinstance(chunk, dict):
+                    if chunk.get("type") == "tool_calls":
+                        stream_tool_calls = chunk["tool_calls"]
+                    break
+                iteration_text += chunk
+                if not error_detected:
+                    if self._is_llm_error_string(iteration_text):
+                        error_detected = True
+                    else:
+                        session.on_token(chunk)
                 if self._is_task_cancelled(task["id"]):
-                    self._publish_stream_event(task, "stream_cancelled")
-                break
+                    break
+            if error_detected:
+                return Turn(error=iteration_text)
+            return Turn(text=iteration_text, tool_calls=stream_tool_calls or [])
 
-            # If response is a dict with tool_calls
-            if isinstance(response, dict) and response.get("tool_calls"):
-                tool_calls = response["tool_calls"]
-                content = response.get("content", "")
-                last_tool_result = self._run_tool_calls(
-                    task, messages, tool_calls, user_id, lang, assistant_content=content
-                )
-                self.logger.info(
-                    f"Tool calling iteration {iteration + 1}: "
-                    f"executed {len(tool_calls)} tools: {[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
-                )
-                continue
+        def execute(tool_calls: list[dict[str, Any]], assistant_content: str) -> str:
+            label = current_label["value"]
+            current_label["value"] = "Tool call"
+            result = self._run_tool_calls(
+                task,
+                messages,
+                tool_calls,
+                user_id,
+                lang,
+                assistant_content=assistant_content,
+                log_label=label,
+                loop_guard=tool_guard,
+                session=session,
+            )
+            self.logger.info(
+                f"Tool calling round: executed {len(tool_calls)} tools: "
+                f"{[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
+            )
+            return result
 
-            # No tool_calls — final content response
-            full_response = response if isinstance(response, str) else str(response)
-            break
+        def refuse_tool_calls() -> None:
+            # Tools were withdrawn; a server that ignores tool_choice can still
+            # send one. Running it would only burn a call the loop has no room
+            # for. Dropping the raw result matters: without this the turn would
+            # end by showing the tool output as the answer.
+            self.logger.warning("Tool calls returned on the final round despite tool_choice=none")
+            session.report_tool_result("", cap_reached_message(lang))
 
+        loop_result = run_tool_loop(
+            max_iterations=MAX_TOOL_ITERATIONS,
+            generate=generate,
+            execute=execute,
+            is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            on_final_round=refuse_tool_calls,
+            on_cancelled=lambda: session.publish("stream_cancelled", {}),
+        )
+        if loop_result.error:
+            return self._build_error_response(
+                session_id,
+                loop_result.error,
+                round(time.time() - stream_start, 1),
+                lang,
+            )
+        full_response = loop_result.text
+        last_tool_result = loop_result.last_tool_result
+        if not full_response.strip() and not last_tool_result.strip():
+            self.logger.warning("Chat model returned empty response after reasoning strip")
+
+        # A turn cancelled mid-stream still saves its partial answer: that text is
+        # already on the user's screen, and dropping it would make the message
+        # vanish on the next reload.
         if not full_response.strip():
             if last_tool_result.strip():
                 full_response = last_tool_result.strip()

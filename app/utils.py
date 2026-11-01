@@ -504,11 +504,41 @@ def _load_skills_section(lang: str = "ru") -> str:
         return ""
 
 
+def _load_skill_catalog(lang: str = "ru") -> str:
+    """The installed skills as names and one-line descriptions.
+
+    Only the catalog enters the prompt: a body can be thousands of tokens and is
+    loaded as a tool result when the model activates the skill.
+    """
+    try:
+        from app.skills import catalog
+
+        lines = catalog(lang)
+    except Exception:
+        current_app.logger.warning("Skill catalog could not be loaded", exc_info=True)
+        return ""
+    if not lines:
+        return ""
+    # Measured: as a plain list the model read the catalog and answered with its
+    # own tools anyway (a request matching the shipped web-research skill went to
+    # `web_search` directly). Stated as a rule with the condition and the order —
+    # activate first, then work — the same prompt activates the skill.
+    # The header follows the language the prompt is being built in, not the
+    # ambient request locale: a chat prompt must not mix two languages.
+    with force_locale(lang):
+        header = gettext(
+            "Matching skills — if the request matches one of these, call `activate_skill` "
+            "BEFORE using any other tool and follow the instructions it returns:"
+        )
+    return f"{header}\n{lines}"
+
+
 def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru") -> str | None:
     """Load template and substitute variables.
 
     If the template contains ``{skills_section}`` and the caller did not
     provide it, it is automatically loaded from ``prompts/{lang}/skills.txt``.
+    ``{skill_catalog}`` is filled the same way from the installed skills.
     """
     template = load_prompt_template(template_name, lang)
     if not template:
@@ -516,6 +546,8 @@ def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru
     # Auto-inject skills if the template uses {skills_section}
     if "{skills_section}" in template and "skills_section" not in variables:
         variables["skills_section"] = _load_skills_section(lang)
+    if "{skill_catalog}" in template and "skill_catalog" not in variables:
+        variables["skill_catalog"] = _load_skill_catalog(lang)
     try:
         return template.format(**variables)
     except KeyError as e:
@@ -746,17 +778,20 @@ def remove_uploaded_dir(session_id: str, upload_folder: str) -> int:
 
 
 def extract_text_from_file(file_path: str) -> str | None:
-    """Extract text from a file (PDF, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB) and convert to Markdown."""
+    """Extract text from a supported document and convert it to Markdown.
+
+    Formats: pdf, docx, odt, rtf, epub, md, txt and the plain-text dialects
+    (log/ini/cfg/yaml/toml/xml), csv, json, html, xls/xlsx, pptx, fb2, eml.
+    """
     ext = os.path.splitext(file_path)[1].lower()
     try:
-        if ext == ".txt":
-            with open(file_path, encoding="utf-8") as f:
-                return f.read()
-        elif ext == ".md":
+        if ext in (".txt", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".xml"):
+            # Plain text and its configuration dialects: no structure worth
+            # parsing, the text itself is what retrieval needs.
+            return _read_plain_text(file_path)
+        elif ext in (".md", ".markdown"):
             # Markdown - already structured, convert to enhanced markdown
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
-                return _enhance_markdown(content)
+            return _enhance_markdown(_read_plain_text(file_path))
         elif ext == ".pdf":
             try:
                 result = subprocess.run(
@@ -795,6 +830,18 @@ def extract_text_from_file(file_path: str) -> str | None:
             return _extract_json(file_path)
         elif ext == ".epub":
             return _extract_epub(file_path)
+        elif ext in (".html", ".htm"):
+            return _extract_html(file_path)
+        elif ext == ".xlsx":
+            return _extract_xlsx(file_path)
+        elif ext == ".xls":
+            return _extract_xls(file_path)
+        elif ext == ".pptx":
+            return _extract_pptx(file_path)
+        elif ext == ".fb2":
+            return _extract_fb2(file_path)
+        elif ext == ".eml":
+            return _extract_eml(file_path)
         elif ext == ".recognized_text":
             # Companion file with multimodal image description - read as plain text
             with open(file_path, encoding="utf-8") as f:
@@ -803,6 +850,167 @@ def extract_text_from_file(file_path: str) -> str | None:
             return None
     except Exception:
         return None
+
+
+def _read_plain_text(file_path: str) -> str:
+    """Read a text file, tolerating a non-UTF-8 source."""
+    for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            with open(file_path, encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def _cell_text(value) -> str:
+    """One spreadsheet/slide cell as a Markdown-safe string."""
+    if value is None:
+        return ""
+    return str(value).replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _rows_to_markdown(rows: list[list[str]], title: str) -> list[str]:
+    """One Markdown table for a sheet: first row is the header, the rest are rows."""
+    rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    lines = [
+        f"## {title}",
+        "",
+        "| " + " | ".join(rows[0]) + " |",
+        "| " + " | ".join(["---"] * width) + " |",
+    ]
+    lines += ["| " + " | ".join(row) + " |" for row in rows[1:]]
+    return lines
+
+
+def _extract_html(file_path: str) -> str | None:
+    """Readable text from an HTML page: trafilatura first, tag stripping as a fallback."""
+    source = _read_plain_text(file_path)
+    extracted = ""
+    try:
+        import trafilatura
+
+        extracted = trafilatura.extract(source, include_comments=False, include_tables=True) or ""
+    except Exception:
+        extracted = ""
+    if not extracted.strip():
+        stripped = re.sub(r"<(script|style)\b.*?</\1>", " ", source, flags=re.S | re.I)
+        extracted = re.sub(r"<[^>]+>", " ", stripped)
+    text = " ".join(extracted.split())
+    return _pdf_to_markdown(text) if text else None
+
+
+def _extract_xlsx(file_path: str) -> str | None:
+    """Every worksheet as a Markdown table (openpyxl)."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        return None
+    workbook = load_workbook(file_path, read_only=True, data_only=True)
+    lines = ["# Spreadsheet"]
+    try:
+        for sheet in workbook.worksheets:
+            rows = [[_cell_text(cell) for cell in row] for row in sheet.iter_rows(values_only=True)]
+            lines += _rows_to_markdown(rows, sheet.title)
+    finally:
+        workbook.close()
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
+def _extract_xls(file_path: str) -> str | None:
+    """Legacy binary workbook as Markdown tables (xlrd)."""
+    try:
+        import xlrd
+    except ImportError:
+        return None
+    workbook = xlrd.open_workbook(file_path)
+    lines = ["# Spreadsheet"]
+    for sheet in workbook.sheets():
+        rows = [
+            [_cell_text(sheet.cell_value(row, column)) for column in range(sheet.ncols)]
+            for row in range(sheet.nrows)
+        ]
+        lines += _rows_to_markdown(rows, sheet.name)
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
+def _extract_pptx(file_path: str) -> str | None:
+    """Slide titles, text frames and tables (python-pptx)."""
+    try:
+        from pptx import Presentation
+    except ImportError:
+        return None
+    presentation = Presentation(file_path)
+    lines = ["# Presentation"]
+    for number, slide in enumerate(presentation.slides, 1):
+        blocks: list[str] = []
+        for shape in slide.shapes:
+            if getattr(shape, "has_text_frame", False):
+                value = shape.text_frame.text.strip()
+                if value:
+                    blocks.append(value)
+            if getattr(shape, "has_table", False):
+                rows = [[_cell_text(cell.text) for cell in row.cells] for row in shape.table.rows]
+                blocks.extend(_rows_to_markdown(rows, "Table"))
+        if blocks:
+            lines.append(f"## Slide {number}")
+            lines.extend(blocks)
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
+def _extract_fb2(file_path: str) -> str | None:
+    """FictionBook is XML: flatten its paragraphs, keeping the reading order."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(file_path).getroot()
+    parts: list[str] = []
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag not in ("p", "v", "subtitle"):
+            continue
+        text = " ".join("".join(element.itertext()).split())
+        if text and (not parts or parts[-1] != text):
+            parts.append(text)
+    return "\n\n".join(parts) if parts else None
+
+
+def _extract_eml(file_path: str) -> str | None:
+    """Headers plus the readable body of an .eml message (stdlib email)."""
+    import email
+    from email import policy
+
+    with open(file_path, "rb") as handle:
+        message = email.message_from_binary_file(handle, policy=policy.default)
+    lines = ["# Email", ""]
+    for header in ("From", "To", "Cc", "Date", "Subject"):
+        value = message.get(header)
+        if value:
+            lines.append(f"**{header}:** {value}")
+    lines.append("")
+    body = ""
+    if message.is_multipart():
+        for part in message.walk():
+            if part.get_content_type() == "text/plain":
+                body = part.get_content()
+                break
+        if not body:
+            for part in message.walk():
+                if part.get_content_type() == "text/html":
+                    body = re.sub(r"<[^>]+>", " ", str(part.get_content()))
+                    break
+    else:
+        body = str(message.get_content())
+        if message.get_content_type() == "text/html":
+            body = re.sub(r"<[^>]+>", " ", body)
+    text = " ".join(body.split())
+    if text:
+        lines.append(text)
+    return "\n".join(lines) if len(lines) > 3 else None
 
 
 def _pdf_to_markdown(text: str) -> str:
@@ -1340,8 +1548,8 @@ def check_document_quota(user_id: str, excluded_doc_id: str | None = None, lang:
                 return str(gettext(msgid).format(**params))
         return str(gettext(msgid).format(**params))
 
-    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
-    max_mb = current_app.config.get("MAX_DOCUMENTS_STORAGE_MB", 50)
+    max_docs = current_app.config.get("MAX_DOCUMENTS_PER_USER", 500)
+    max_mb = current_app.config.get("MAX_DOCUMENTS_STORAGE_MB", 500)
 
     try:
         with get_db() as conn:

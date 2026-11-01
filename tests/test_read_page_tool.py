@@ -76,6 +76,9 @@ class TestReadPageTool:
                 assert tools.get_crawler_module() is crawler
                 defs = tools.get_tool_definitions()
                 assert "read_page" in {d["function"]["name"] for d in defs}
-                assert defs is tools.TOOL_DEFINITIONS
+                # A fresh list: the skill loader and MCP tools are appended to it.
+                assert [d["function"]["name"] for d in defs][: len(tools.TOOL_DEFINITIONS)] == [
+                    d["function"]["name"] for d in tools.TOOL_DEFINITIONS
+                ]
             finally:
                 del test_app.modules["crawler"]

@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -610,7 +610,7 @@ def get_user_documents(user_id):
         )
         documents = [dict(row) for row in c.fetchall()]
         tz = current_app.config.get("TIMEZONE")
-        now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.utcnow()
+        now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.now(UTC).replace(tzinfo=None)
         for doc in documents:
             indexed_dt = None
             indexing_started_dt = None
@@ -942,8 +942,10 @@ def get_session_recent_history(session_id, limit=6, exclude_message_id=None):
         return []
     with get_db() as conn:
         c = conn.cursor()
+        # model_type lets the caller tell a real answer from a system notice
+        # (a failed search is not an answer to the question).
         c.execute(
-            "SELECT id, role, content FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT %s",
+            "SELECT id, role, content, model_type FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT %s",
             (session_id, 200),
         )
         rows = [dict(r) for r in c.fetchall()]
@@ -977,6 +979,11 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None, ret
     """
     limit = max_messages or 200
     messages = get_session_messages(session_id, limit=limit)
+
+    # A system notice (a failed search, an expired task) answered nothing. Fed to
+    # the model as an assistant turn it reads as a reply, and a measured session
+    # showed the model copying the notice verbatim into its next answer.
+    messages = [message for message in messages if str(message.get("model_type") or "") != "system"]
 
     # Filter out user+assistant pairs where assistant replied with a marker
     filtered = []

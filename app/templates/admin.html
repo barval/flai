@@ -12,6 +12,7 @@
         <button class="admin-tab" data-tab="settings">{{ _('Settings') }}</button>
         <button class="admin-tab" data-tab="hub">{{ _('Model Hub') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        <button class="admin-tab" data-tab="mcp">{{ _('MCP') }}</button>
         {% if camera_enabled %}
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
         {% endif %}
@@ -307,6 +308,46 @@
         </div>
     </div>
 
+    <!-- MCP tab content: the servers whose tools the chat model may call -->
+    <div id="mcp-tab" class="admin-tab-content">
+        <div class="mcp-toolbar">
+            <label class="mcp-inline">
+                <input type="checkbox" id="mcp-enabled">
+                <span>{{ _('Offer tools from MCP servers to the model') }}</span>
+            </label>
+            <label class="mcp-inline">
+                <span>{{ _('Request timeout (s)') }}</span>
+                <input type="number" id="mcp-timeout" min="1" max="60" step="1">
+            </label>
+            <button id="mcp-save" class="btn-primary">{{ _('Save changes') }}</button>
+            <span id="mcp-status" class="settings-status"></span>
+        </div>
+        <div class="mcp-table-wrapper">
+            <table id="mcp-servers-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Name') }}</th>
+                        <th>URL</th>
+                        <th>{{ _('Token') }}</th>
+                        <th>{{ _('Allowed tools') }}</th>
+                        <th>{{ _('Chat') }}</th>
+                        <th>{{ _('Tools') }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="mcp-servers-body"></tbody>
+            </table>
+            <div id="mcp-empty" class="no-backups">{{ _('No MCP servers configured') }}</div>
+        </div>
+        <div class="mcp-add">
+            <input id="mcp-new-name" type="text" placeholder="{{ _('Name') }}" autocomplete="off">
+            <input id="mcp-new-url" type="text" placeholder="https://host/mcp" autocomplete="off">
+            <input id="mcp-new-token" type="password" placeholder="{{ _('Token (optional)') }}" autocomplete="new-password">
+            <input id="mcp-new-allow" type="text" placeholder="{{ _('Allowed tools, comma separated') }}" autocomplete="off">
+            <button id="mcp-add-server" class="add-user-button">{{ _('Add server') }}</button>
+        </div>
+    </div>
+
     <!-- Cameras tab content -->
     {% if camera_enabled %}
     <div id="cameras-tab" class="admin-tab-content">
@@ -528,6 +569,19 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'lowest': {{ _('lowest')|tojson }},
     'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }},
     'unknown_error': {{ _('unknown_error')|tojson }},
+    'Test connection': {{ _('Test connection')|tojson }},
+    'Remove server': {{ _('Remove server')|tojson }},
+    'Token': {{ _('Token')|tojson }},
+    'Allowed tools': {{ _('Allowed tools')|tojson }},
+    'Tools': {{ _('Tools')|tojson }},
+    'Tools found': {{ _('Tools found')|tojson }},
+    'Saving...': {{ _('Saving...')|tojson }},
+    'mcp_token_keep': {{ _('mcp_token_keep')|tojson }},
+    'Token (optional)': {{ _('Token (optional)')|tojson }},
+    'empty means all': {{ _('empty means all')|tojson }},
+    'A server needs a name and a URL': {{ _('A server needs a name and a URL')|tojson }},
+    'The server did not answer': {{ _('The server did not answer')|tojson }},
+    'MCP servers are not valid JSON': {{ _('MCP servers are not valid JSON')|tojson }},
     'Variable': {{ _('Variable')|tojson }},
     'Value': {{ _('Value')|tojson }},
     'Default value': {{ _('Default value')|tojson }},
@@ -856,6 +910,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'CPU': {{ _('CPU')|tojson }},
     'CPU cores': {{ _('CPU cores')|tojson }},
     'VRAM': {{ _('VRAM')|tojson }},
+    'CUDA': {{ _('CUDA')|tojson }},
     'RAM': {{ _('RAM')|tojson }},
     'GB': {{ _('GB')|tojson }},
     'of': {{ _('of')|tojson }},
@@ -934,6 +989,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin-branding.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-monitoring.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-settings.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-mcp.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
 {% endif %}

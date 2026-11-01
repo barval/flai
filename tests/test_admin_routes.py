@@ -288,6 +288,7 @@ class TestAdminHardware:
         status = {
             "gpu_name": "NVIDIA GeForce RTX 5060 Ti",
             "cuda_detected": True,
+            "cuda_version": "13.2",
             "platform": "nvidia",
             "total_vram_mb": 16311,
             "available_vram_mb": 10000,
@@ -306,6 +307,7 @@ class TestAdminHardware:
         data = response.get_json()
         assert data["platform"] == "nvidia"
         assert data["gpu_name"] == "NVIDIA GeForce RTX 5060 Ti"
+        assert data["cuda_version"] == "13.2"
         assert data["total_vram_mb"] == 16311
         assert data["available_vram_mb"] == 10000
         assert data["total_ram_mb"] == 32456

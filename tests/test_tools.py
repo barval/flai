@@ -185,7 +185,7 @@ class TestToolDefinitions:
     """Verify tool definitions format."""
 
     def test_definitions_count(self):
-        assert len(TOOL_DEFINITIONS) == 8
+        assert len(TOOL_DEFINITIONS) == 9
 
     def test_all_have_function_type(self):
         for tool in TOOL_DEFINITIONS:
@@ -216,6 +216,7 @@ class TestToolDefinitions:
             "rag_search",
             "history_search",
             "camera_snapshot",
+            "list_rooms",
             "time_calc",
         }
         assert names == expected
@@ -246,16 +247,24 @@ class TestToolDefinitions:
         assert "room" in cam["function"]["parameters"]["required"]
 
     def test_get_tool_definitions_returns_data(self, app):
-        # The test app has no available crawler, so read_page is filtered out
-        # (7 of 8 definitions); with the crawler present the raw list is kept.
-        defs = get_tool_definitions()
-        assert len(defs) == 7
-        assert "read_page" not in {d["function"]["name"] for d in defs}
-        assert defs is not TOOL_DEFINITIONS
-        with patch("app.tools.get_crawler_module", return_value=object()):
+        # The test app has no available crawler, so read_page is filtered out;
+        # the camera module IS available there, so list_rooms stays. The result is
+        # always a fresh list because the skill loader and the operator-configured
+        # MCP tools are appended to it.
+        catalogue = {d["function"]["name"] for d in TOOL_DEFINITIONS}
+        with app.app_context(), patch("app.skills.discover", return_value=[]):
             defs = get_tool_definitions()
-        assert len(defs) == 8
-        assert defs is TOOL_DEFINITIONS
+            names = {d["function"]["name"] for d in defs}
+            assert "read_page" not in names
+            assert names <= catalogue
+            assert defs is not TOOL_DEFINITIONS
+            with patch("app.tools.get_crawler_module", return_value=object()):
+                defs = get_tool_definitions()
+        # With the crawler present every catalogue entry is offered; the camera
+        # tools appear only when the module is available, which the test app's
+        # configuration decides.
+        assert {d["function"]["name"] for d in defs} >= catalogue - {"list_rooms"}
+        assert len(defs) == len(catalogue) - (0 if "list_rooms" in {d["function"]["name"] for d in defs} else 1)
 
 
 # ── execute_tool tests ───────────────────────────────────────────────

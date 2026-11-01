@@ -1,0 +1,6 @@
+# Only app.py and requirements.txt are copied into the image; voices are
+# bind-mounted at run time.
+piper_models/
+__pycache__/
+*.pyc
+*.log

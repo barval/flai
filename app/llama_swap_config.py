@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Any
 
-from app.config import APP_VERSION
+from app.config import APP_VERSION, setting
 from app.model_config import get_model_config
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ class LlamaSwapConfigGenerator:
             if total_vram <= 0:
                 return False
             needed = sum(rm.get_vram_needed_mb(module) for module in ("multimodal", "reasoning", "embedding"))
-            headroom = int(os.getenv("VRAM_HEADROOM_MB", "1200"))
+            headroom = int(setting("VRAM_HEADROOM_MB", 1200))
             return bool(needed and needed + headroom <= total_vram)
         except Exception:
             return False
@@ -240,7 +240,7 @@ class LlamaSwapConfigGenerator:
         total_ram = self._total_ram_mb()
         multimodal_mb = self._model_file_mb("multimodal")
         reasoning_mb = self._model_file_mb("reasoning")
-        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        reserve_mb = int(setting("CPU_RAM_RESERVE_MB", 4096))
         return bool(total_ram and reasoning_mb and multimodal_mb + reasoning_mb + reserve_mb <= total_ram)
 
     def _cpu_ttl(self, module: str) -> int:
@@ -260,13 +260,13 @@ class LlamaSwapConfigGenerator:
         total_ram = self._total_ram_mb()
         multimodal_mb = self._model_file_mb("multimodal")
         reasoning_mb = self._model_file_mb("reasoning")
-        reserve_mb = int(os.getenv("CPU_RAM_RESERVE_MB", "4096"))
+        reserve_mb = int(setting("CPU_RAM_RESERVE_MB", 4096))
         fits = self._cpu_models_coexist()
         # Fits: the swap group stops the chat model when reasoning starts, so the
         # cheap reload is the small chat model — keep the big one warm.
         # Does not fit: the two never coexist anyway (the llm_fast group swaps
         # them), so the big model must not sit on RAM the host cannot spare.
-        ttl = 0 if fits else int(os.getenv("CPU_REASONING_TTL", "60"))
+        ttl = 0 if fits else int(setting("CPU_REASONING_TTL", 60))
         self.logger.info(
             f"CPU TTL policy for reasoning: multimodal {multimodal_mb}MB + reasoning {reasoning_mb}MB "
             f"+ reserve {reserve_mb}MB vs RAM {total_ram}MB -> ttl={ttl} ({'fits' if fits else 'does not fit'})"

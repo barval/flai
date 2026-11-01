@@ -32,7 +32,7 @@ services/room-snapshot-api/
 
 ```bash
 cd flai/services/room-snapshot-api
-git clone --branch v1.3 https://github.com/barval/room-snapshot-api.git room-snapshot-api
+git clone --branch v1.4 https://github.com/barval/room-snapshot-api.git room-snapshot-api
 ```
 
 ### 2. Configure cameras

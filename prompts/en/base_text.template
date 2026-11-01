@@ -42,7 +42,7 @@ NOT category 3:
 - a "how to make a video?" question — that is an explanation, not generation.
 Decide BY THE RESULT: does the user want the actual video file, or something else (code, text, reply, explanation)?
 
-{camera_section}
+Camera view requests: rules and room list under INPUT DATA
 
 ## 5. DOCUMENT SEARCH — [-RAG-] and query
 Specific person (first + last name), biography, resume, facts from uploaded documents.
@@ -86,6 +86,9 @@ Do NOT include: ordinary fact search (category 6), complex question with fresh d
 Link in the message: the message contains ONE link and asks about its CONTENT ('what is this project <URL>', 'what does this page say') → answer WITHOUT a marker — ordinary chat will open the page with the read_page tool. Do NOT route such messages to [-SEARCH-]: search cannot open addresses.
 
 # INPUT DATA
+
+{camera_section}
+
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."
 Current time: {current_time_str}.
 User query: "{user_query}".

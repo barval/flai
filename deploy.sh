@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.8 — Single-Server Deployment Script
+# FLAI v12.9 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -804,16 +804,20 @@ build_and_launch() {
     # this only fails if the clone is corrupt or .po changed without
     # recompilation.
     for LOC in en ru; do
-        if [[ ! -f "translations/$LOC/LC_MESSAGES/messages.mo" ]]; then
-            warn "Missing translations/$LOC/LC_MESSAGES/messages.mo — UI will fall back to English."
-            warn "Run: pybabel compile -d translations"
+        local mo="translations/$LOC/LC_MESSAGES/messages.mo"
+        local magic=""
+        [[ -f "$mo" ]] && magic=$(head -c 4 "$mo" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [[ "$magic" != "de120495" ]]; then
+            # An interrupted pybabel compile leaves a zero-length .mo, and then
+            # every page in that language answers 500 (gettext cannot parse it).
+            error "translations/$LOC/LC_MESSAGES/messages.mo is broken or missing — that language will answer 500. Run: pybabel compile -d translations"
         fi
     done
 
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.8 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v12.9 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -829,7 +833,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v12.8 — Deployment Script
+FLAI v12.9 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -930,7 +934,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.8 — Deployment Script"
+    echo "  FLAI v12.9 — Deployment Script"
     echo "============================================"
     echo ""
 

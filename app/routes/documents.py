@@ -22,26 +22,37 @@ bp = Blueprint("documents", __name__, url_prefix="/api")
 PREVIEW_PDF_MAX_PAGES = 30
 PREVIEW_PDF_SCALE = 1400
 
-# Mapping of MIME types to allowed extensions
+# One MIME type may back several extensions: text formats all sniff as
+# text/plain, and the legacy .xls workbook shows up as a generic OLE container.
 ALLOWED_MIME_TYPES = {
-    "application/pdf": ".pdf",
-    "application/msword": ".doc",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "text/plain": ".txt",
-    "application/vnd.oasis.opendocument.text": ".odt",
-    "application/rtf": ".rtf",
-    "text/rtf": ".rtf",
-    "text/csv": ".csv",
-    "application/json": ".json",
-    "application/epub+zip": ".epub",
+    "application/pdf": {".pdf"},
+    "application/msword": {".doc"},
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {".docx"},
+    "text/plain": {".txt", ".md", ".markdown", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".eml"},
+    "application/vnd.oasis.opendocument.text": {".odt"},
+    "application/rtf": {".rtf"},
+    "text/rtf": {".rtf"},
+    "text/csv": {".csv"},
+    "application/json": {".json"},
+    "application/epub+zip": {".epub"},
+    "text/html": {".html", ".htm"},
+    "application/xhtml+xml": {".html", ".htm"},
+    "text/xml": {".xml", ".fb2"},
+    "application/xml": {".xml", ".fb2"},
+    "application/x-fictionbook+xml": {".fb2"},
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {".xlsx"},
+    "application/vnd.ms-excel": {".xls"},
+    "application/x-ole-storage": {".xls"},
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": {".pptx"},
+    "message/rfc822": {".eml"},
     # Images — same formats as chat uploads (auto-resize + conversion to JPEG).
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/bmp": ".bmp",
-    "image/webp": ".webp",
-    "image/tiff": ".tiff",
-    "image/gif": ".gif",
-    "image/heic": ".heic",
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "image/bmp": {".bmp"},
+    "image/webp": {".webp"},
+    "image/tiff": {".tiff", ".tif"},
+    "image/gif": {".gif"},
+    "image/heic": {".heic"},
 }
 
 
@@ -51,7 +62,6 @@ def validate_file(file_stream, filename):
     """
     allowed_extensions = {
         ".pdf",
-        ".doc",
         ".docx",
         ".txt",
         ".odt",
@@ -59,6 +69,22 @@ def validate_file(file_stream, filename):
         ".csv",
         ".json",
         ".epub",
+        ".md",
+        ".markdown",
+        ".html",
+        ".htm",
+        ".xlsx",
+        ".xls",
+        ".pptx",
+        ".fb2",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".log",
+        ".eml",
         # Images — same set as chat uploads (auto-resize + conversion in upload).
         ".jpg",
         ".jpeg",
@@ -72,6 +98,11 @@ def validate_file(file_stream, filename):
     }
     ext = os.path.splitext(filename)[1].lower()
 
+    if ext == ".doc":
+        # The legacy binary format has no parser here, and the only free
+        # converter (antiword) is GPL: accepting the file produced a document
+        # that failed to index a second later.
+        return False, _("Legacy .doc is not supported. Save the document as .docx and upload it again.")
     if ext not in allowed_extensions:
         return False, _("Unsupported file type")
 
@@ -91,8 +122,7 @@ def validate_file(file_stream, filename):
         return True, None
 
     # Verify extension matches MIME type
-    expected_ext = ALLOWED_MIME_TYPES[mime]
-    if ext != expected_ext:
+    if ext not in ALLOWED_MIME_TYPES[mime]:
         return False, _("File type does not match extension")
 
     return True, None
@@ -154,7 +184,7 @@ def api_create_folder():
         return jsonify({"error": error}), 400
     if _is_duplicate_folder(login, name):
         return jsonify({"error": _("A folder with this name already exists")}), 409
-    max_folders = current_app.config.get("MAX_DOCUMENTS_PER_USER", 250)
+    max_folders = current_app.config.get("MAX_DOCUMENTS_PER_USER", 500)
     if len(db.get_user_folders(login)) >= max_folders:
         return jsonify({"error": _("Folder limit reached ({n})").format(n=max_folders)}), 409
     folder_id = str(uuid.uuid4())
@@ -390,8 +420,8 @@ def api_get_document(doc_id):
 
 
 PREVIEW_MAX_CHARS = 200_000
-_PREVIEW_TEXT_EXTS = {".txt", ".md", ".csv", ".json"}
-_PREVIEW_EXTRACTED_EXTS = {".pdf", ".docx", ".odt", ".rtf", ".epub"}
+_PREVIEW_TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".xml"}
+_PREVIEW_EXTRACTED_EXTS = {".pdf", ".docx", ".odt", ".rtf", ".epub", ".html", ".htm", ".xlsx", ".xls", ".pptx", ".fb2", ".eml"}
 _PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
 
 

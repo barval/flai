@@ -1,4 +1,4 @@
-# Architecture — FLAI v12.8
+# Architecture — FLAI v12.9
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -235,6 +235,71 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 ### SSE Tool Events
 
 `tool_call` and `tool_result` SSE events in `events.js`. `TOOL_LABELS` maps tool names to UI labels. `onToolCall(data)` shows progress label, `onToolResult(data)` removes it.
+
+## Agentic Engine (v12.9)
+
+The chat and the background task system share one engine; the differences are
+persistence and budget, not code.
+
+### Request kernel
+
+`app/kernel.py` turns one multimodal call into a typed decision — `intent` (eleven
+closed values, the router's marker names), `query`, `sources` and at most six
+`tools` — instead of a text marker parsed by substring.
+`BaseModule.process_message()` calls it when `KERNEL_ENABLED=1` and returns the
+same dict the marker parser returns, so nothing downstream changed; a malformed
+reply falls through to the marker router, which stays the reference. The prompt
+is English only and ~1 400 tokens against 2 637/3 538 for the marker template.
+
+### Engine loop and sessions
+
+`app/engine/loop.py:run_tool_loop` is the round loop: ask the model, run the tools
+it asked for, repeat, with `tool_choice: "none"` on the last round so the model
+must answer with what it has. It takes `generate`, `execute`, `is_cancelled` and
+two event callbacks, and imports nothing from Flask, the queue or `modules/`.
+`app/engine/session.py` holds the `Session` protocol and `ChatSession`, the
+in-memory adapter that owns the turn's transcript and routes stage/token/event
+publishing back to the queue.
+
+### Tool catalogues and roles
+
+`app/tools.py` holds the chat catalogue, the skill loader and `ROLE_TOOLS`: a
+restricted profile (today only the research step) receives a **filtered** list, so
+a tool outside its grant is absent from what the model is shown. Chat is the
+unrestricted default.
+
+`app/tool_registry.py` is the manifest for everything that is not a chat tool:
+task capabilities (`exec="direct"|"queue"`), the RLM sandbox tools
+(`exec="sandbox"`, with schemas) and, from it, the planner's prose, the UI badges
+and the executor's routing tables.
+
+### Skills
+
+`skills/<name>/SKILL.md` — `name` / `description` / `allowed-tools` frontmatter,
+the format Claude Code, opencode and pi use. Only the catalog (one line per skill)
+enters the system prompt through `{skill_catalog}`. Activation is the request
+kernel's job: it names the matching skill in the same JSON decision where it picks
+the intent (`skills`, ≤2, validated against the catalog), and the chat loop appends
+the body to the system prompt before the first round. The `activate_skill` tool
+still exists for a model that asks for a skill itself, and is advertised only when a
+skill is installed. With the marker router (`KERNEL_ENABLED=0`) nothing names a
+skill automatically. `SKILL.<lang>.md` carries a localized
+description and body.
+
+### Plan as a tool, and the research step
+
+The task planner records its plan by calling `write_plan`, whose schema lists the
+capabilities as an enum — it cannot name one that does not exist. The `research`
+capability runs the engine loop inside one task step (search, open, refine; four
+rounds) with the read-only half of the catalogue.
+
+### Depth
+
+`app/depth.py` names the budget in model calls (`turns`, `attempts`, `variants`,
+`revisions`, `verify`) and supplies the defaults of `TASK_MAX_STEPS`,
+`TASK_STEP_MAX_ATTEMPTS`, `TASK_MAX_REVISIONS` and `DEPTH_VERIFY`
+(`each` | `final` | `off`). `norm` reproduces the historical values; an explicit
+environment value always wins. The chat loop is outside the axis.
 
 ## Web Search Module
 

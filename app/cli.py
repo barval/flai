@@ -6,6 +6,7 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from app.config import setting
 from app.userdb import create_user, get_user_by_login, update_password
 
 logger = logging.getLogger(__name__)
@@ -611,8 +612,27 @@ def backfill_attachment_paths(dry_run):
 @click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
 @click.option("--label", default="", help="Report label, e.g. 'dense baseline'")
 @click.option("--out", default="", help="Report path (default: data/rag_eval/<timestamp>.json)")
+@click.option("--budget", is_flag=True, help="Let the derived budget choose top_k instead of --top-k")
+@click.option("--answer-share", type=float, default=None, help="Override ANSWER_SHARE for this run (sweep)")
+@click.option("--depth-over-coverage", type=float, default=None, help="Override DEPTH_OVER_COVERAGE (sweep)")
+@click.option("--breadth-share", type=float, default=None, help="Override BREADTH_SHARE (sweep)")
 @with_appcontext
-def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope_docs, label, out):
+def rag_eval(
+    user,
+    dataset,
+    top_k,
+    coverage,
+    answers,
+    model,
+    scope_folder,
+    scope_docs,
+    label,
+    out,
+    budget,
+    answer_share,
+    depth_over_coverage,
+    breadth_share,
+):
     """Measure retrieval quality (or end-to-end answer quality) on a fixed question set."""
     from datetime import datetime
 
@@ -639,9 +659,30 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope
         scope_ids = resolve_scope(user, scope)
         click.echo(f"Scope: {len(scope_ids or [])} document(s)")
 
+    # The policy constants are module-level; a sweep overrides them for the run
+    # only, and the report records what was actually used.
+    import app.context_budget as context_policy
+    import app.rag_budget as retrieval_policy
+
+    overrides = {}
+    if answer_share is not None:
+        context_policy.ANSWER_SHARE = answer_share
+        overrides["ANSWER_SHARE"] = answer_share
+    if depth_over_coverage is not None:
+        retrieval_policy.DEPTH_OVER_COVERAGE = depth_over_coverage
+        overrides["DEPTH_OVER_COVERAGE"] = depth_over_coverage
+    if breadth_share is not None:
+        retrieval_policy.BREADTH_SHARE = breadth_share
+        overrides["BREADTH_SHARE"] = breadth_share
+
     def search(query: str, limit: int) -> list[dict]:
         chunks, _scores = rag.search(
-            user, query, top_k=limit, file_coverage=coverage, doc_ids=scope_ids
+            user,
+            query,
+            # --budget lets the allocator decide; otherwise the fixed k is used.
+            top_k=None if budget else limit,
+            file_coverage=coverage,
+            doc_ids=scope_ids,
         )
         return chunks
 
@@ -650,6 +691,8 @@ def rag_eval(user, dataset, top_k, coverage, answers, model, scope_folder, scope
         for key in ("RAG_TOP_K", "RAG_CHUNK_SIZE", "RAG_CHUNK_OVERLAP", "RAG_CHUNK_STRATEGY", "RAG_CONTEXT_PERCENT")
     }
     config["coverage"] = coverage
+    config["budget"] = budget
+    config.update({f"override_{key}": value for key, value in overrides.items()})
     run_label = label or f"{user} @ {datetime.now():%Y-%m-%d %H:%M}"
 
     if answers:
@@ -898,7 +941,7 @@ def vram_plan(module):
     needed = rm.get_vram_needed_mb(module)
     loaded = rm._resident_modules(swap_url)  # noqa: SLF001 - read-only diagnosis
     plan = rm._eviction_plan(module, needed, loaded)  # noqa: SLF001
-    mode = os.getenv("VRAM_CO_RESIDENCY", "auto")
+    mode = setting("VRAM_CO_RESIDENCY", "auto")
 
     click.echo(f"mode:      {mode}")
     click.echo(f"card:      {rm.hardware.total_vram_mb} MB total, {rm.hardware.available_vram_mb} MB free")
@@ -1165,3 +1208,48 @@ def rag_reindex(user, doc):
             failed += 1
             click.echo(f"  FAIL {row.get('filename')} — {message}")
     click.echo(f"\nRe-indexed {done} documents, {failed} failed")
+
+
+@click.command("kernel-eval")
+@click.option("--dataset", required=True, help="JSONL with {message, lang, expected_intent, expected_tools}")
+@click.option("--mode", type=click.Choice(["router", "kernel", "both"]), default="both", show_default=True)
+@click.option("--out", default="", help="Write the metrics to this JSON file")
+@with_appcontext
+def kernel_eval(dataset, mode, out):
+    """Score the request kernel against the marker router on the same cases.
+
+    Both modes call ``BaseModule.process_message``, so the comparison is between
+    two decisions of the same function rather than two reimplementations. The
+    acceptance gate is: the kernel is not worse on intent, reports at most two
+    falsely selected tools on the seed set, and is not more than ten points
+    worse on Russian than on English (the kernel prompt is English only).
+    """
+    import json
+
+    from app.kernel_eval import load_dataset, run_evaluation, score, serialise
+
+    cases = load_dataset(dataset)
+    if not cases:
+        raise click.ClickException(f"dataset {dataset} is empty")
+
+    modes = ["router", "kernel"] if mode == "both" else [mode]
+    payload = {}
+    for name in modes:
+        report = score(run_evaluation(current_app._get_current_object(), cases, name), cases)
+        payload[name] = serialise(report)
+        click.echo(f"\n=== {name} ===")
+        click.echo(f"cases            {report['cases']}")
+        click.echo(f"intent accuracy  {report['intent_accuracy']:.3f}")
+        click.echo(f"tool exact       {report['tool_exact']:.3f}")
+        click.echo(f"false tools      {report['false_tools']}")
+        for lang, bucket in sorted(report["by_lang"].items()):
+            click.echo(f"  {lang}: intent {bucket['intent_accuracy']:.3f} on {bucket['cases']} cases")
+        if report["confusions"]:
+            click.echo("  confusions (expected -> got):")
+            for (expected, got), count in sorted(report["confusions"].items(), key=lambda item: -item[1]):
+                click.echo(f"    {expected} -> {got}: {count}")
+
+    if out:
+        with open(out, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        click.echo(f"\nwritten to {out}")

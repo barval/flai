@@ -1226,37 +1226,61 @@ function deleteDocument(docId, docName) {
         .catch(err => alert(t('error') + ': ' + err.message));
 }
 
-function uploadDocument(file, folderId) {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (folderId) {
-        formData.append('folder_id', folderId);
-    }
+// What the picker offers. The server validates for real (extension plus magic
+// bytes); this list only spares the user from picking a file that is refused.
+const DOCUMENT_ACCEPT = [
+    '.pdf', '.docx', '.txt', '.md', '.markdown', '.html', '.htm', '.odt', '.rtf',
+    '.csv', '.json', '.epub', '.xlsx', '.xls', '.pptx', '.fb2', '.xml',
+    '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.eml', 'image/*'
+].join(',');
 
-    fetchWithCSRF('/api/documents/upload', {
-        method: 'POST',
-        body: formData
-    })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                loadDocuments(); // Reload list to show new document with pending status
-            } else {
-                alert(t('error') + ': ' + (data.error || t('document_upload_failed')));
+// Upload files one after another: a bulk pick must not open N parallel requests
+// that each re-read the quota, and the list reloads once at the end.
+function uploadDocuments(files, folderId) {
+    const queue = Array.from(files || []);
+    if (!queue.length) return;
+    const button = document.getElementById('new-document-button');
+    const original = button ? button.textContent : '';
+    const total = queue.length;
+    let done = 0;
+    const failed = [];
+
+    const next = () => {
+        const file = queue.shift();
+        if (!file) {
+            if (button && original) button.textContent = original;
+            loadDocuments();
+            if (failed.length) {
+                alert(t('error') + ': ' + t('document_upload_failed') + ' — ' + failed.join(', '));
             }
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
+            return;
+        }
+        if (button) button.textContent = (done + 1) + '/' + total;
+        const formData = new FormData();
+        formData.append('file', file);
+        if (folderId) formData.append('folder_id', folderId);
+        fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'ok') failed.push(file.name);
+            })
+            .catch(() => failed.push(file.name))
+            .finally(() => {
+                done++;
+                next();
+            });
+    };
+    next();
 }
 
 // Open the file picker and upload into the chosen folder (null = root).
 function openFilePickerForFolder(folderId) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.pdf,.doc,.docx,.txt,.odt,.rtf,.csv,.json,.epub';
+    fileInput.multiple = true;
+    fileInput.accept = DOCUMENT_ACCEPT;
     fileInput.onchange = function(e) {
-        if (e.target.files.length > 0) {
-            uploadDocument(e.target.files[0], folderId);
-        }
+        uploadDocuments(e.target.files, folderId);
     };
     fileInput.click();
 }

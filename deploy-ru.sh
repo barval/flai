@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.8 — Скрипт развёртывания на одном сервере
+# FLAI v12.9 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -782,21 +782,36 @@ build_and_launch() {
         fi
     fi
 
-    # Проверка: каталоги .mo должны существовать, иначе интерфейс
-    # переключится на английский. При свежем клоне они берутся из git;
-    # проблема только если клон повреждён или .po изменились без
-    # компиляции.
+    # Проверка: каталоги .mo должны существовать И быть валидными. pybabel
+    # пишет .mo на месте, поэтому прерванная компиляция оставляет файл нулевой
+    # длины — и тогда КАЖДАЯ страница на этом языке отвечает 500 (gettext падает
+    # на разборе файла). Найденный пустой/битый каталог пересобираем.
+    local mo_broken=0
     for LOC in en ru; do
-        if [[ ! -f "translations/$LOC/LC_MESSAGES/messages.mo" ]]; then
-            warn "Отсутствует translations/$LOC/LC_MESSAGES/messages.mo — интерфейс будет на английском."
-            warn "Запустите: pybabel compile -d translations"
+        local mo="translations/$LOC/LC_MESSAGES/messages.mo"
+        local magic=""
+        [[ -f "$mo" ]] && magic=$(head -c 4 "$mo" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [[ "$magic" != "de120495" ]]; then
+            mo_broken=1
+            warn "Каталог $LOC повреждён или отсутствует (${mo}) — пересобираю."
         fi
     done
+    if [[ "$mo_broken" == "1" ]]; then
+        pybabel compile -d translations 2>&1 | tail -2 || true
+        for LOC in en ru; do
+            local mo="translations/$LOC/LC_MESSAGES/messages.mo"
+            local magic=""
+            [[ -f "$mo" ]] && magic=$(head -c 4 "$mo" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            if [[ "$magic" != "de120495" ]]; then
+                error "Не удалось собрать translations/$LOC/LC_MESSAGES/messages.mo — интерфейс на этом языке будет отдавать 500. Запустите: pybabel compile -d translations"
+            fi
+        done
+    fi
 
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.8 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v12.9 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -812,7 +827,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v12.8 — Скрипт развёртывания
+FLAI v12.9 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -909,7 +924,7 @@ VOICE_BACKEND=""
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.8 — Скрипт развёртывания"
+    echo "  FLAI v12.9 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

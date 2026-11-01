@@ -28,6 +28,7 @@ services:
       - ./app:/app/app
       - ./modules:/app/modules
       - ./prompts:/app/prompts
+      - ./skills:/app/skills
       - ./translations:/app/translations
     group_add:
       - "988"

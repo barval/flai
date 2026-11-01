@@ -118,6 +118,59 @@ def wait_for_service(
     return False
 
 
+def _kernel_skills() -> set[str]:
+    """The names the kernel may return, or an empty set when none is installed."""
+    try:
+        from app.skills import discover
+
+        return {skill.name for skill in discover()}
+    except Exception:  # noqa: BLE001 - a broken skills folder must not fail routing
+        return set()
+
+
+def _kernel_skill_catalog(names: set[str]) -> str:
+    """The skill lines the kernel chooses from (name and description, no body)."""
+    if not names:
+        return ""
+    from app.skills import catalog
+
+    return catalog("en")
+
+
+def _kernel_rooms(cam: Any) -> str:
+    """A compact room list for the kernel prompt: ``code (name form), ...``.
+
+    The marker prompt injects a whole section per room; the kernel only needs the
+    vocabulary, and it belongs after the cacheable head so an empty list costs
+    one line.
+    """
+    if cam is None or not getattr(cam, "available", False):
+        return ""
+    try:
+        rooms = cam.get_all_rooms_with_forms() or []
+    except Exception:  # noqa: BLE001 - a camera problem must not fail routing
+        return ""
+    parts = []
+    for code, forms in rooms:
+        primary = forms[0] if forms else code
+        parts.append(f"{code} ({primary})")
+    return ", ".join(parts)
+
+
+
+def _normalize_notice(text: str) -> str:
+    """Comparable form of a user-facing notice: without the warning sign or extra spaces.
+
+    The model copies a notice almost verbatim, usually dropping the leading
+    "⚠️ "; the digest compares normalized texts so such a copy is recognised.
+    """
+    cleaned = " ".join(str(text or "").split())
+    for prefix in ("⚠️", "⚠"):
+        if cleaned.startswith(prefix):
+            return cleaned[len(prefix):].strip()
+    return cleaned
+
+
 class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
 
@@ -138,6 +191,10 @@ class BaseModule(TranslationMixin):
         # How many document names the router sees; a constant on purpose —
         # the hint is a classification cue, not a tunable budget.
         self.ROUTER_DOC_NAMES = 5
+        # Request kernel (see app/kernel.py). Off by default: the marker router
+        # stays the reference until the kernel is measured against it.
+        self.KERNEL_ENABLED = False
+        self.KERNEL_CONSTRAINED = True
         if app:
             self.init_app(app)
 
@@ -147,7 +204,9 @@ class BaseModule(TranslationMixin):
         self.llamacpp.init_app(app)
         self.available = self.llamacpp.available
         self.token_chars = app.config.get("TOKEN_CHARS", 3)
-        self.context_history_percent = app.config.get("CONTEXT_HISTORY_PERCENT", 75)
+        # 0 means "automatic": the history gets what the session holds and what the
+        # window has left (app/context_budget.py); a positive value caps it.
+        self.context_history_percent = app.config.get("CONTEXT_HISTORY_PERCENT", 0)
         self.safety_margin = app.config.get("CONTEXT_SAFETY_MARGIN", SAFETY_MARGIN)
         self.max_messages_limit = app.config.get("MAX_HISTORY_MESSAGES", 30)
         self.summary_min_messages = app.config.get("SESSION_SUMMARY_MIN_MESSAGES", 6)
@@ -155,6 +214,8 @@ class BaseModule(TranslationMixin):
         self.ROUTER_CONTEXT_MESSAGES = app.config.get("ROUTER_CONTEXT_MESSAGES", 6)
         self.ROUTER_CONTEXT_MSG_CHARS = app.config.get("ROUTER_CONTEXT_MSG_CHARS", 240)
         self.ROUTER_SLM_FACTS = app.config.get("ROUTER_SLM_FACTS", 2)
+        self.KERNEL_ENABLED = bool(app.config.get("KERNEL_ENABLED", False))
+        self.KERNEL_CONSTRAINED = bool(app.config.get("KERNEL_CONSTRAINED", True))
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
@@ -173,9 +234,18 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
-        return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
+        return self.llamacpp.call(  # type: ignore[no-any-return]
+            messages,
+            model_type,
+            False,
+            lang,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
+        )
 
     # --- Context handling methods ---
     def get_search_context_limit(self) -> int:
@@ -188,9 +258,14 @@ class BaseModule(TranslationMixin):
         config = self._get_model_config("reasoning")
         if not config:
             return 10000
-        ctx = config.get("context_length", 16384)
-        budget = int(ctx * (self.context_history_percent / 100.0) * self.safety_margin)
-        return int(budget * 0.30 * 3.5)
+        from app.rag_budget import retrieval_budget
+
+        # One allocator for every consumer of the window: the search may use the
+        # whole evidence share when there is no session yet, and the character
+        # count comes from the measured cost of a fragment rather than "3.5".
+        budget = retrieval_budget(self.app if getattr(self, "app", None) else None, "ru")
+        chars_per_token = max(1.0, (self.app.config.get("RAG_CHUNK_SIZE", 500)) / max(1, budget.tokens_per_fragment))
+        return int(budget.tokens * self.safety_margin * chars_per_token)
 
     def _estimate_tokens(self, text: str, model_type: str = "multimodal", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""
@@ -343,9 +418,24 @@ class BaseModule(TranslationMixin):
         max_context_tokens = model_config.get("context_length", 32768)
         slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
 
-        # Apply safety margin to available tokens
-        available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
+        # The reply reserve and the fixed prompt are subtracted from the window;
+        # what remains is what history and evidence may share. A percentage of the
+        # window (the old 75 % x 85 %) gave the same room to a three-message
+        # session as to a fifty-message one and shrank on small hosts for no
+        # reason. ``CONTEXT_HISTORY_PERCENT`` > 0 still caps it for operators.
+        from app.context_budget import cap_share, context_budget
+
+        template_overhead = (
+            self.app.config.get("TEMPLATE_OVERHEAD_TOKENS", TEMPLATE_OVERHEAD)
+            if hasattr(self, "app") and self.app
+            else TEMPLATE_OVERHEAD
+        )
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
+        budget = context_budget(max_context_tokens, template_overhead + query_tokens)
+        available_tokens = cap_share(budget.available, budget.available, self.context_history_percent)
+        # The estimator can be a few percent off; the margin stays as a guard
+        # against that, not as an allocation policy.
+        available_tokens = int(available_tokens * self.safety_margin)
 
         # Step 1: Measure search context tokens (RAG docs / web search / history)
         search_tokens = 0
@@ -406,13 +496,8 @@ class BaseModule(TranslationMixin):
                 heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
             search_section = "\n" + heading + "\n" + rag_context
 
-        # Step 5: Calculate history budget — subtract query, template, RAG, and SLM
-        template_overhead = (
-            self.app.config.get("TEMPLATE_OVERHEAD_TOKENS", TEMPLATE_OVERHEAD)
-            if hasattr(self, "app") and self.app
-            else TEMPLATE_OVERHEAD
-        )
-        remaining_for_history = available_tokens - query_tokens - template_overhead - search_tokens - slm_tokens
+        # Step 5: Calculate history budget — subtract what is already granted
+        remaining_for_history = available_tokens - search_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(
@@ -520,7 +605,11 @@ class BaseModule(TranslationMixin):
                 forms_str = " / ".join(forms)
                 lines.append(f'  - "{forms_str}" → [-CAMERA-] {code}')
             lines.append("")
+            lines.append('  Если названы ВСЕ комнаты или конкретная не названа ("проверь все комнаты",')
+            lines.append('  "где кошки", "посмотри везде") → [-CAMERA-] * (звёздочка вместо кода).')
+            lines.append("")
             lines.append("Примеры:")
+            lines.append('  - "Проверь все комнаты - где кошки?" → [-CAMERA-] *')
             lines.append('  - "Покажи кабинет" → [-CAMERA-] kab')
             lines.append('  - "Что в гостиной" → [-CAMERA-] gos')
             lines.append('  - "как дела в гостиной?" → [-CAMERA-] gos')
@@ -548,7 +637,11 @@ class BaseModule(TranslationMixin):
                 forms_str = " / ".join(forms)
                 lines.append(f'  - "{forms_str}" → [-CAMERA-] {code}')
             lines.append("")
+            lines.append('  When EVERY room is meant or no room is named ("check every room",')
+            lines.append('  "where are the cats", "look everywhere") → [-CAMERA-] * (an asterisk instead of a code).')
+            lines.append("")
             lines.append("Examples:")
+            lines.append('  - "Check every room - where are the cats?" → [-CAMERA-] *')
             lines.append('  - "Show the study" → [-CAMERA-] kab')
             lines.append('  - "What\'s in the living room" → [-CAMERA-] gos')
             lines.append('  - "how\'s the living room?" → [-CAMERA-] gos')
@@ -566,6 +659,7 @@ class BaseModule(TranslationMixin):
         current_query: str,
         lang: str = "ru",
         exclude_message_id: int | None = None,
+        marker_hints: bool = True,
     ) -> str:
         """Build a compact recent-conversation digest for the router.
 
@@ -574,6 +668,11 @@ class BaseModule(TranslationMixin):
         exchanges instead of relying on hardcoded query rules. The digest is
         deliberately tiny (last N short messages, a documents line and a few
         SLM facts) so the router call stays fast.
+
+        ``marker_hints`` names the marker (``[-RAG-]``) in the documents line,
+        which the marker router matches on. The request kernel never sees a
+        marker and its prompt does not define one, so it gets the same rule
+        without the dialect.
         """
         if session_id:
             try:
@@ -587,14 +686,30 @@ class BaseModule(TranslationMixin):
                 messages = []
         else:
             messages = []
+        notices = {
+            _normalize_notice(msg.get("content", ""))
+            for msg in messages
+            if str(msg.get("model_type") or "") == "system"
+        }
         lines = []
         for msg in messages:
+            # A system notice (a failed search, an expired task) is not an answer.
+            # Measured live: with such a line as the last assistant turn the
+            # request kernel answered intent=none for the repeated question
+            # ("already answered"), and the chat model copied the notice into
+            # its answer; without it the same question routes to search at 0.90.
+            if str(msg.get("model_type") or "") == "system":
+                continue
             try:
                 text = _extract_text_content(msg.get("content", ""))
             except Exception:
                 text = str(msg.get("content", ""))
             text = text.strip()[: self.ROUTER_CONTEXT_MSG_CHARS]
             if not text:
+                continue
+            # An assistant turn that merely repeats a notice carries no answer:
+            # the model produced exactly that after reading the notice.
+            if _normalize_notice(text) in notices:
                 continue
             role = "User" if msg.get("role") == "user" else "Assistant"
             lines.append(f"{role}: {text}")
@@ -612,13 +727,13 @@ class BaseModule(TranslationMixin):
                     lines.append(
                         f"User's document library: {total} files (newest: {listed}). "
                         "A request to find, list or extract facts from these files "
-                        "is document search [-RAG-], not chat history."
+                        f"is document search{' [-RAG-]' if marker_hints else ''}, not chat history."
                     )
                 else:
                     lines.append(
                         f"Документы пользователя: {total} файлов (последние: {listed}). "
                         "Просьба найти, перечислить или вывести сведения из этих файлов — "
-                        "поиск в документах [-RAG-], а не история переписки."
+                        f"поиск в документах{' [-RAG-]' if marker_hints else ''}, а не история переписки."
                     )
         if self.ROUTER_SLM_FACTS > 0:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
@@ -686,6 +801,15 @@ class BaseModule(TranslationMixin):
         Router only classifies the query; conversation context is handled
         by the downstream chat/reasoning model.
         """
+        if self.KERNEL_ENABLED:
+            try:
+                route = self._route_with_kernel(message_text, current_time_str, lang, recent_context)
+            except Exception as exc:  # noqa: BLE001 - the fallback below is the contract
+                self.logger.warning(f"Request kernel failed ({exc}), using the marker router", exc_info=True)
+                route = None
+            if route is not None:
+                return route
+
         prompt = self._build_router_prompt(message_text, current_time_str, lang, response_style, recent_context)
 
         if not prompt:
@@ -722,6 +846,74 @@ class BaseModule(TranslationMixin):
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
         return result
 
+    def _route_with_kernel(
+        self,
+        message_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        recent_context: str = "",
+    ) -> dict[str, Any] | None:
+        """Ask the request kernel and return the router's dict shape.
+
+        ``None`` means "no usable decision" and sends the caller back to the
+        marker router: the flag can be switched on for one instance without
+        making a malformed reply change behaviour.
+
+        One model call, no retry on bad JSON. A retry would double the latency of
+        the hottest call in the system to rescue a case the fallback already
+        handles.
+        """
+        from app.kernel import (
+            KERNEL_RESPONSE_FORMAT,
+            build_kernel_catalog,
+            build_kernel_prompt,
+            decision_to_route,
+            parse_kernel_decision,
+        )
+        from app.tools import get_tool_definitions
+
+        cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+        skill_names = _kernel_skills()
+        prompt = build_kernel_prompt(
+            message_text,
+            build_kernel_catalog(get_tool_definitions()),
+            current_time_str,
+            recent_context,
+            _kernel_rooms(cam),
+            skills=_kernel_skill_catalog(skill_names),
+        )
+        if not prompt:
+            self.logger.error("Request kernel: prompt template is missing")
+            return None
+
+        error = self._validate_final_prompt(prompt, "multimodal", lang)
+        if error:
+            self.logger.warning(f"Request kernel: prompt rejected ({error}), using the marker router")
+            return None
+
+        reply = self.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0,
+            response_format=KERNEL_RESPONSE_FORMAT if self.KERNEL_CONSTRAINED else None,
+        )
+        decision = parse_kernel_decision(reply if isinstance(reply, str) else None, skill_names)
+        if decision is None:
+            self.logger.info("Request kernel: no usable decision, using the marker router")
+            return None
+
+        route = decision_to_route(decision, message_text, cam)
+        tool_count = "no-opinion" if decision.tools is None else len(decision.tools)
+        if decision.skills:
+            self.logger.info(f"Request kernel: skills={list(decision.skills)} -> chat loop")
+        prompt_tokens = estimate_tokens(prompt, "multimodal", lang)
+        self.logger.info(
+            f"Request kernel: intent={decision.intent} confidence={decision.confidence:.2f} "
+            f"tools={tool_count} prompt_tokens={prompt_tokens} query={decision.query[:80]!r}"
+        )
+        return route
+
     def _parse_router_response(
         self, response: str, original_query: str, current_time_str: str, lang: str = "ru"
     ) -> dict[str, Any]:
@@ -732,6 +924,8 @@ class BaseModule(TranslationMixin):
                 "action": "none",
                 "query": "",
                 "needs_reasoning": False,
+                "tools": None,
+                "memory": None,
                 "error": self._("Model returned empty response", lang),
             }
 
@@ -779,9 +973,11 @@ class BaseModule(TranslationMixin):
                     "action": action,
                     "query": processed,
                     "needs_reasoning": action in ("reasoning", "reasoning_web"),
+                    "tools": None,
+                    "memory": None,
                 }
 
-        return {"action": "none", "query": original_query, "needs_reasoning": False}
+        return {"action": "none", "query": original_query, "needs_reasoning": False, "tools": None, "memory": None}
 
     def build_reasoning_messages(
         self,

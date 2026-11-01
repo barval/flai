@@ -573,6 +573,8 @@ class AbstractLlamaBackend:
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
+        tool_choice: str | None = None,
     ) -> str | dict[str, Any]:
         raise NotImplementedError
 
@@ -587,6 +589,7 @@ class AbstractLlamaBackend:
         tools: list[dict] | None = None,
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
@@ -630,6 +633,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
+        tool_choice: str | None = None,
     ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -649,6 +654,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if response_format:
+            payload["response_format"] = response_format
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
 
         if not self.circuit_breaker.can_execute():
             return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -721,6 +730,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         tools: list[dict] | None = None,
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -740,6 +750,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
 
         # Ask the server to include real token usage in the final stream chunk
         payload["stream_options"] = {"include_usage": True}
@@ -1021,6 +1033,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
+        tool_choice: str | None = None,
     ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1040,6 +1054,10 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if response_format:
+            payload["response_format"] = response_format
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
 
         # Cap thinking tokens for reasoning model (llama-server build 10603 ignores
         # per-request reasoning_budget; the CLI --reasoning-budget is the primary
@@ -1161,6 +1179,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         tools: list[dict] | None = None,
         temperature: float | None = None,
         status_callback: Callable[[str], None] | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1179,6 +1198,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
 
         # Ask the server to include real token usage in the final stream chunk
         payload["stream_options"] = {"include_usage": True}
@@ -1625,6 +1646,8 @@ class LlamaCppClient:
         validate: bool = True,
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
+        tool_choice: str | None = None,
     ) -> str | dict[str, Any]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1644,7 +1667,16 @@ class LlamaCppClient:
 
         timeout = config.get("timeout", 300)
         return self.backend.chat(
-            messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
+            messages,
+            model,
+            config,
+            timeout,
+            lang,
+            model_type=model_type,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
+            tool_choice=tool_choice,
         )
 
     def chat_stream(
@@ -1657,6 +1689,7 @@ class LlamaCppClient:
         temperature: float | None = None,
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1689,6 +1722,7 @@ class LlamaCppClient:
             tools=tools,
             temperature=temperature,
             status_callback=status_callback,
+            tool_choice=tool_choice,
         )
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:
@@ -1770,13 +1804,28 @@ class LlamaCppClient:
         validate: bool = True,
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        response_format: dict | None = None,
+        tool_choice: str | None = None,
     ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
             return self.chat_stream(
-                messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
+                messages,
+                model_type=model_type,
+                lang=lang,
+                validate=validate,
+                tools=tools,
+                temperature=temperature,
+                tool_choice=tool_choice,
             )
         return self.chat(
-            messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
+            messages,
+            model_type=model_type,
+            lang=lang,
+            validate=validate,
+            tools=tools,
+            temperature=temperature,
+            response_format=response_format,
+            tool_choice=tool_choice,
         )
 
     def unload_all_models(self) -> bool:

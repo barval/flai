@@ -35,10 +35,10 @@ _DOUBLE_SPACE_RE = re.compile(r"  +")
 def sanitize_reference_markers(text: str) -> str:
     """Remove source-reference artifacts (line ranges, source pointers).
 
-    Strips parenthesized or bare markers like ``(строки ~540–621)``,
-    ``(lines 100-150)``, ``строка 42``, ``line ~7``, ``стр. 3``;
-    citation payloads up to 200 chars inside ``(источник: ...)`` /
-    ``(source: ...)`` are removed. Keeps scene numbering and quoted
+    Strips parenthesized or bare line-range markers written in Russian or
+    English (``(lines 100-150)``, ``line ~7``, and their Russian wordings);
+    citation payloads up to 200 chars inside a source note (``(source: ...)``
+    or its Russian equivalent) are removed. Keeps scene numbering and quoted
     phrases; removes an enclosing orphan parenthesis pair left empty and
     collapses doubled spaces. Applied repeatedly until the text is stable.
     """
@@ -79,9 +79,10 @@ def wants_text_in_image(text: str) -> bool:
 def strip_speech_for_image(text: str) -> str:
     """Drop quoted dialogue from an image prompt unless text was requested.
 
-    Keeps the scene narration, removes ``saying "…"`` / ``говорит «…»`` and
-    the remaining quoted fragments of four or more characters. Applied before
-    the multimodal prompt builder, so the final SD prompt never carries a
+    Keeps the scene narration, removes a speech verb plus its quote (in
+    English or Russian) and the remaining quoted fragments of four or more
+    characters. Applied before the multimodal prompt builder, so the final SD
+    prompt never carries a
     quote the model would try to letter.
     """
     source = str(text or "")
@@ -147,11 +148,12 @@ def select_cards(bible: dict, *texts: str) -> list[dict]:
     """Select continuity cards mentioned in any of the texts.
 
     Matching is case-insensitive: a fast substring pass first, then a lemma
-    pass via pymorphy3 («Разговор сов» matches alias «сова» through the
-    analyzer's normal forms). Multi-word aliases match word-wise: every
+    pass via pymorphy3, so an inflected word still matches its alias through
+    the analyzer's normal forms. Multi-word aliases match word-wise: every
     alias word's normal forms must be present among the text-token lemmas
-    (set containment over all parses, contiguity not required), so
-    «Нарисуй Бабу Ягу» matches alias «Баба Яга». Deduplicates by card id.
+    (set containment over all parses, contiguity not required), so a request
+    that declines a two-word name still matches its alias. Deduplicates by
+    card id.
     """
     joined = " ".join(filter(None, texts)).lower()
     if not joined.strip():
@@ -245,8 +247,8 @@ def render_sheet(bible: dict, goal: str = "", criteria: str = "") -> str:
 def goal_signature(text: str) -> frozenset[str]:
     """Comparable word-lemma set of a plan goal (order/punctuation ignored).
 
-    Used to treat a paraphrase («Нарисуй сцену 3» / «Нарисовать сцену 3») as
-    the same plan step instead of a new one.
+    Used to treat a paraphrase of the same goal, restated in another
+    grammatical form, as the same plan step instead of a new one.
     """
     tokens = re.findall(r"\w+", str(text or "").lower(), re.UNICODE)
     if not tokens:

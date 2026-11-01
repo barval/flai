@@ -16,7 +16,7 @@ __pycache__/
 *.sqlite3
 
 # Data directories (user data, uploads, documents)
-data/
+/data/
 # RAG evaluation datasets and reports contain real documents and personal data:
 # they are created locally and must never be committed or pushed.
 data/rag_eval/

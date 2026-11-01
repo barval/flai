@@ -1,11 +1,11 @@
 # tests/test_router_documents_hint.py
 """The router learns that the user has documents, and document extraction is RAG.
 
-Measured on the live instance: «выведи все работы по добавлению IP адресов в
-исключения» was classified as [-HISTORY-] and then [-REASONING-], both of which
-skip retrieval, so the model answered from its weights while the indexed files
-held every record. The prompt now names document extraction explicitly and the
-router digest carries the user's library.
+Measured on the live instance: a request to list every change that added an IP
+address to the exclusions was classified as [-HISTORY-] and then [-REASONING-],
+both of which skip retrieval, so the model answered from its weights while the
+indexed files held every record. The prompt now names document extraction
+explicitly and the router digest carries the user's library.
 """
 
 from pathlib import Path

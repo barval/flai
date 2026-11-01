@@ -100,6 +100,14 @@
 
 - **An MCP server cannot carry a per-user answer.** MCP requests have no user identity, so a server whose reply depends on who is asking bypassed FLAI's own permission checks — with the camera MCP server enabled, any account could call `list_rooms`, `room_info` (which returned the camera's internal IP and RTSP URL) and `get_snapshot`. A server marked `user_scoped` now contributes no tools to the chat catalogue and its names cannot be resolved for a call; the camera server is configured that way, and the admin MCP tab has a **Chat** checkbox that writes the flag.
 
+### Added
+
+- **More document formats, and the two that lied.** Uploads now accept Markdown, HTML, XLSX/XLS, PPTX, FB2, XML/YAML/TOML/INI/CFG/LOG and EML alongside PDF/DOCX/ODT/RTF/EPUB/TXT/CSV/JSON — each with its own extractor (spreadsheets become Markdown tables, slides keep text frames and tables, FB2 is flattened, EML keeps headers and body). Two formats were broken in opposite directions: `.md` was readable and previewable but rejected by the upload whitelist, and `.doc` was accepted with no parser at all, so the document failed to index a second later. `.doc` is now refused up front with a hint to save as `.docx` (the only free converter is GPL, which this project does not take).
+
+### Changed
+
+- **Per-user document limits are 500 documents and 500 MB** (was 250/250). The folder cap follows the document limit, as before.
+
 ## [v12.8] — 2026-10-30
 
 ### Changed

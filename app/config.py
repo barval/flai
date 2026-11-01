@@ -114,8 +114,8 @@ def load_config(app):
 
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
-    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 250))
-    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 250))
+    app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 500))
+    app.config["MAX_DOCUMENTS_PER_USER"] = int(os.getenv("MAX_DOCUMENTS_PER_USER", 500))
 
     # Admin Monitoring tab: how long a computed payload stays cached in Redis
     app.config["MONITORING_CACHE_TTL"] = 60

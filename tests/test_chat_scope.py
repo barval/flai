@@ -126,15 +126,21 @@ def test_deep_analysis_refuses_an_empty_corpus():
 
     html = _chat_html()
     assert "'rlm_needs_documents':" in html
-    for catalog, msgstr in (
+    # The value is read from the parsed catalog: a long msgstr is wrapped over
+    # several lines, so matching the raw file text is not a valid check.
+    from babel.messages.pofile import read_po
+
+    for path, msgstr in (
         ("translations/en/LC_MESSAGES/messages.po", "Deep analysis needs at least one document or an image"),
         (
             "translations/ru/LC_MESSAGES/messages.po",
             "Для глубокого анализа выберите хотя бы один документ или приложите изображение",
         ),
     ):
-        text = Path(catalog).read_text(encoding="utf-8")
-        assert f'msgid "rlm_needs_documents"\nmsgstr "{msgstr}"' in text, catalog
+        with open(path, "rb") as handle:
+            entry = read_po(handle).get("rlm_needs_documents")
+        assert entry is not None, path
+        assert entry.string == msgstr, path
 
     # A voice message whose corpus emptied before the transcription lands says
     # the same instead of only un-checking the toggle.

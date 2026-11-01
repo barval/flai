@@ -76,9 +76,12 @@ class TestReadPageTool:
                 assert tools.get_crawler_module() is crawler
                 defs = tools.get_tool_definitions()
                 assert "read_page" in {d["function"]["name"] for d in defs}
-                # A fresh list: the skill loader and MCP tools are appended to it.
-                assert [d["function"]["name"] for d in defs][: len(tools.TOOL_DEFINITIONS)] == [
-                    d["function"]["name"] for d in tools.TOOL_DEFINITIONS
-                ]
+                # A fresh list: the skill loader and MCP tools are appended to
+                # it, and gating removes entries without reordering the rest.
+                names = [d["function"]["name"] for d in defs]
+                base = [d["function"]["name"] for d in tools.TOOL_DEFINITIONS]
+                assert [name for name in names if name in base] == [name for name in base if name in names]
+                defs.append({"function": {"name": "injected"}})
+                assert "injected" not in {d["function"]["name"] for d in tools.TOOL_DEFINITIONS}
             finally:
                 del test_app.modules["crawler"]

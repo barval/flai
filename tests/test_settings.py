@@ -13,6 +13,14 @@ pytestmark = pytest.mark.requires_db
 MB = 1024 * 1024
 
 
+def catalog(path: str):
+    """The compiled source of truth for a catalog, wrapped msgids included."""
+    from babel.messages.pofile import read_po
+
+    with open(path, "rb") as handle:
+        return read_po(handle)
+
+
 @pytest.fixture
 def admin_client(client, test_app):
     with test_app.app_context():
@@ -165,14 +173,17 @@ def test_every_setting_has_a_description_in_both_languages():
     keys = movable_keys()
     assert all(DESCRIPTIONS.get(key) for key in keys), "a setting without a description"
 
-    en = Path("translations/en/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
-    ru = Path("translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+    # A long msgid is wrapped over several lines by pybabel, so the catalog is
+    # parsed rather than searched as text.
+    en = catalog("translations/en/LC_MESSAGES/messages.po")
+    ru = catalog("translations/ru/LC_MESSAGES/messages.po")
     html = Path("app/templates/admin.html").read_text(encoding="utf-8")
     for key in keys:
         msgid = DESCRIPTIONS[key]
-        assert f'msgid "{msgid}"' in en, f"missing English description for {key}"
-        assert f'msgid "{msgid}"' in ru, f"missing Russian description for {key}"
-        assert f"'{msgid}':" in html, f"{key} description is not exposed to the script"
+        assert msgid in en, f"missing English description for {key}"
+        assert msgid in ru, f"missing Russian description for {key}"
+        assert ru[msgid].string, f"empty Russian description for {key}"
+        assert f"'{msgid}':" in html or f'"{msgid}":' in html, f"{key} description is not exposed to the script"
 
 
 @pytest.mark.unit

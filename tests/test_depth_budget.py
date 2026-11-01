@@ -58,6 +58,8 @@ def test_every_scattered_constant_has_a_home():
         "TASK_MAX_REVISIONS",
         "TASK_MAX_STEPS",
         "RLM_MAX_STEPS",
-        "MAX_TOOL_ITERATIONS",
     }
+    # Chat is bounded by the user's patience, not by a background budget, so the
+    # tool-iteration cap stays outside the axis on purpose.
+    assert "MAX_TOOL_ITERATIONS" not in DEPTH_SOURCES
     assert set(DEPTH_SOURCES.values()) <= set(DepthBudget.__dataclass_fields__)

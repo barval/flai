@@ -260,3 +260,29 @@ class TestFolderDarkTheme:
     def test_folder_name_dialog_covered_in_dark_theme(self):
         assert ".dark-theme .folder-name-content" in DARK_CSS
         assert ".dark-theme .folder-name-input" in DARK_CSS
+
+
+class TestBulkUpload:
+    """Several documents at once: one picker, one request per file, one reload."""
+
+    def test_the_picker_accepts_several_files(self):
+        assert "fileInput.multiple = true;" in CHAT_DOCS
+        assert "function uploadDocuments(files, folderId)" in CHAT_DOCS
+        assert "uploadDocuments(e.target.files, folderId);" in CHAT_DOCS
+
+    def test_the_picker_offers_every_supported_format(self):
+        for ext in (".pdf", ".docx", ".md", ".html", ".xlsx", ".xls", ".pptx", ".fb2", ".eml", "image/*"):
+            assert f"'{ext}'" in CHAT_DOCS, f"{ext} is missing from the picker"
+        assert "'.doc'," not in CHAT_DOCS, "the legacy format is refused by the server"
+
+    def test_the_bulk_loop_uploads_one_file_at_a_time(self):
+        start = CHAT_DOCS.index("function uploadDocuments(")
+        body = CHAT_DOCS[start : CHAT_DOCS.index("function openFilePickerForFolder", start)]
+        assert "queue.shift()" in body
+        assert ".finally(() => {" in body, "the next file starts only when the previous request settled"
+        assert body.count("loadDocuments()") == 1, "the list reloads once, not per file"
+
+    def test_chat_attachment_picker_matches_the_document_formats(self):
+        line = next(ln for ln in CHAT_HTML.split("\n") if 'id="file-input"' in ln)
+        assert ".xlsx" in line and ".md" in line
+        assert ",.doc," not in line

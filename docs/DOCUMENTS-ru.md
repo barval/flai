@@ -37,7 +37,7 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 
 1. Войдите в веб-интерфейс
 2. Нажмите вкладку **«Документы»** в боковом меню
-3. Нажмите ➕ и загрузите файлы в форматах PDF, DOCX, ODT, RTF, EPUB, TXT, MD, HTML, CSV, JSON, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML и изображения
+3. Нажмите ➕ и загрузите файлы в форматах PDF, DOCX, ODT, RTF, EPUB, TXT, MD, HTML, CSV, JSON, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML и изображения. В диалоге можно выбрать несколько файлов сразу — они загружаются по очереди, а список обновляется после завершения пачки
 4. Дождитесь окончания индексации (статус: ✅ Проиндексирован)
 
 ## 4. Поиск по документам в чате

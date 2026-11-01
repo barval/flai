@@ -35,7 +35,7 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ## 3. Upload Documents
 1. Log in to web interface
 2. Click **Documents** tab in sidebar
-3. Click ➕ to upload PDF, DOCX, ODT, RTF, EPUB, TXT, MD, HTML, CSV, JSON, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML, and images
+3. Click ➕ to upload PDF, DOCX, ODT, RTF, EPUB, TXT, MD, HTML, CSV, JSON, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML, and images. The picker takes several files at once — they are uploaded one after another and the list reloads when the batch finishes
 4. Wait for indexing to complete (status: ✅ Indexed)
 
 ## 4. Search Your Documents in Chat

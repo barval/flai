@@ -726,6 +726,17 @@ class TestEstimateVideoVram:
 class TestUnloadVideoPipeline:
     """Tests for verify-on-unload behavior."""
 
+    @staticmethod
+    def _preflight_loaded():
+        """A /v1/vram_info answer that says the pipeline is loaded.
+
+        Without it the real pre-flight runs, finds nothing listening on the test
+        host and returns True early — the whole unload loop under test is skipped.
+        """
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"pipeline_loaded": True}
+        return MagicMock(return_value=response)
+
     def test_succeeds_when_vram_freed(self):
         """If VRAM grows by >=3GB after POST, return True."""
         rm = ResourceManager()
@@ -745,6 +756,7 @@ class TestUnloadVideoPipeline:
 
         with (
             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.get", new=self._preflight_loaded()),
             patch("app.resource_manager.requests.post", new=mock_post),
         ):
             result = rm.unload_video_pipeline()
@@ -764,6 +776,7 @@ class TestUnloadVideoPipeline:
         with (
             patch("time.sleep"),
             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.get", new=self._preflight_loaded()),
             patch("app.resource_manager.requests.post", new=mock_post),
         ):
             result = rm.unload_video_pipeline()
@@ -783,6 +796,7 @@ class TestUnloadVideoPipeline:
         with (
             patch("time.sleep"),
             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.get", new=self._preflight_loaded()),
             patch("app.resource_manager.requests.post", new=mock_post),
         ):
             result = rm.unload_video_pipeline()
@@ -800,7 +814,8 @@ class TestUnloadVideoPipeline:
         with (
             patch("time.sleep"),
             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
-            patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}),
+            patch("app.resource_manager.requests.get", new=self._preflight_loaded()),
+            patch("app.resource_manager.requests.post", new=mock_post),
         ):
             result = rm.unload_video_pipeline()
         assert result is False

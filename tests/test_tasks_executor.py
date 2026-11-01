@@ -1941,19 +1941,34 @@ def _llm_step(goal="g", extra=None):
 
 
 def test_recall_slm_facts_formats_section(test_app):
-    """Facts render as a prompt section, session-specific first (chat parity)."""
+    """Facts render as a prompt section, the profile block first (chat parity)."""
     from app.tasks.runner import recall_slm_facts
 
     test_app.modules["slm"] = _fake_slm(
         [
-            {"content": "general fact", "metadata": {"fact_type": "general"}},
-            {"content": "session fact", "metadata": {"fact_type": "session_specific"}},
+            {"content": "general fact", "score": 0.9, "metadata": {"fact_type": "general"}},
+            {"content": "profile fact", "kind": "profile", "score": 0.1, "metadata": {"fact_type": "general"}},
         ]
     )
     out = recall_slm_facts(test_app, "составь меню", "demo", "ru")
     assert "Дополнительная информация из долговременной памяти:" in out
-    assert "- session fact" in out and "- general fact" in out
-    assert out.index("session fact") < out.index("general fact")
+    assert "- profile fact" in out and "- general fact" in out
+    # The consolidated profile block leads the recall; the scored facts follow.
+    assert out.index("profile fact") < out.index("general fact")
+
+
+def test_recall_slm_facts_drops_noise_below_the_floor(test_app):
+    """A low-scoring non-profile fact never reaches a task prompt.
+
+    Measured on the live store, keyword recall returned image-generation prompts
+    at 0.63 for "do I like apples?" — injecting them costs tokens and misleads.
+    """
+    from app.tasks.runner import recall_slm_facts
+
+    test_app.modules["slm"] = _fake_slm(
+        [{"content": "a stale image prompt", "score": 0.2, "metadata": {"fact_type": "general"}}]
+    )
+    assert recall_slm_facts(test_app, "составь меню", "demo", "ru") == ""
 
 
 def test_recall_slm_facts_absent_module_is_empty(test_app):
@@ -1984,7 +1999,7 @@ def test_llm_step_prompt_contains_slm_facts(test_app):
         return "R"
 
     test_app.modules["slm"] = _fake_slm(
-        [{"content": "пользователь вегетарианец", "metadata": {"fact_type": "general"}}]
+        [{"content": "пользователь вегетарианец", "score": 0.9, "metadata": {"fact_type": "general"}}]
     )
     with (
         patch("app.tasks.runner._call_reasoning", side_effect=fake_call),
@@ -2032,7 +2047,7 @@ def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monke
     monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
     monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
     test_app.modules["slm"] = _fake_slm(
-        [{"content": "пользователь не ест грибы", "metadata": {"fact_type": "general"}}]
+        [{"content": "пользователь не ест грибы", "score": 0.9, "metadata": {"fact_type": "general"}}]
     )
 
     _cycle(test_app)

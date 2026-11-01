@@ -40,7 +40,9 @@ class TestInject:
         movie.write_bytes(b"\x00\x00\x00\x18ftypmp42")
         snapshot = _snapshot()
 
-        result = demo_edit.inject_media("ru", "Кафе", movie, answer="готово", snapshot=snapshot)
+        result = demo_edit.inject_media(
+            "ru", "Кафе", movie, answer="готово", model_name="ltx", snapshot=snapshot
+        )
 
         route = result["routes"][1]
         messages = route["body"]["messages"]
@@ -62,7 +64,7 @@ class TestInject:
         monkeypatch.setattr(demo_edit, "DEMO_DIR", tmp_path)
         bad = tmp_path / "clip.txt"
         bad.write_text("nope")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unsupported artifact format"):
             demo_edit.inject_media("ru", "Кафе", bad, snapshot=_snapshot())
 
 

@@ -88,7 +88,10 @@ def inject_media(
     if route is None:
         raise LookupError(f"scenario not found in the {lang} snapshot: {prompt[:40]}")
 
-    file_type = MIME_BY_SUFFIX[media.suffix.lower()]
+    file_type = MIME_BY_SUFFIX.get(media.suffix.lower())
+    if file_type is None:
+        allowed = ", ".join(sorted(MIME_BY_SUFFIX))
+        raise ValueError(f"unsupported artifact format {media.suffix!r}; allowed: {allowed}")
     if file_type.startswith("video/") and not model_name:
         raise ValueError("a video artifact needs the real backend name (model_name)")
 

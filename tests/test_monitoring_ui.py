@@ -1,6 +1,7 @@
 # tests/test_monitoring_ui.py
 """Static checks for the Monitoring tab markup, script and catalogs."""
 
+import re
 from pathlib import Path
 
 
@@ -50,9 +51,14 @@ def test_storage_card_declares_the_history_start_line():
 
 
 def test_charts_keep_their_aspect_ratio():
+    """Every chart SVG scales without distorting, whatever the chart count."""
     html = _admin_html()
     assert html.count('preserveAspectRatio="none"') == 0
-    assert html.count('preserveAspectRatio="xMidYMid meet"') == 9
+    charts = re.findall(r'<svg id="monitoring-chart-[^"]+"[^>]*>', html)
+    assert charts
+    for tag in charts:
+        assert 'preserveAspectRatio="xMidYMid meet"' in tag, tag
+        assert 'viewBox="0 0 360 150"' in tag, tag
 
 
 def test_range_buttons_use_short_equal_width_labels():
@@ -104,4 +110,10 @@ def test_axis_labels_are_smaller_than_the_card_text():
 
 def test_chart_viewbox_matches_the_script_coordinates():
     """The script draws into 360x150 — a stale viewBox would clip the bars."""
-    assert _admin_html().count('viewBox="0 0 360 150"') == 9
+    html = _admin_html()
+    charts = re.findall(r'<svg id="monitoring-chart-[^"]+"[^>]*>', html)
+    assert charts
+    missing = [tag for tag in charts if 'viewBox="0 0 360 150"' not in tag]
+    assert not missing, f"chart without the drawing viewBox: {missing}"
+    script = Path("app/static/js/admin-monitoring.js").read_text(encoding="utf-8")
+    assert "360" in script and "150" in script

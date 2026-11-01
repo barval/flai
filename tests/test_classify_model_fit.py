@@ -81,8 +81,15 @@ class TestClassifyModelFit:
         assert result["tier"] in ("good", "cpu_offload")
         if result["tier"] == "cpu_offload":
             assert result["can_save"] is True
-            assert result["ngl_recommended"] < 32
-            assert "Partial CPU offload" in result["message"]
+            if result.get("ctx_recommended"):
+                # An oversized window is its own verdict: KV cannot be offloaded
+                # layer by layer, so every layer stays on the GPU and the admin
+                # is told which window does fit.
+                assert result["ngl_recommended"] == 32
+                assert "smaller context" in result["message"]
+            else:
+                assert result["ngl_recommended"] < 32
+                assert "Partial CPU offload" in result["message"]
 
     @patch("app.utils.get_gguf_models_cached")
     def test_huge_model_tier_impossible(self, mock_cache):
@@ -185,7 +192,7 @@ class TestClassifyModelFit:
         # 9 GB + 5 GB KV = 14 GB > 85% of 16 GB (13.6 GB)
         # but < 70% × 64 GB (44.8 GB) - 2 GB = 42.8 GB
         # → tier should be cpu_offload
-        if result["tier"] == "cpu_offload":
+        if result["tier"] == "cpu_offload" and not result.get("ctx_recommended"):
             assert 1 <= result["ngl_recommended"] < 32
             assert result["ngl_recommended"] + (result["ngl_total"] - result["ngl_recommended"]) == result["ngl_total"]
 
@@ -218,7 +225,10 @@ class TestClassifyEdgeCases:
             model_name="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
             context_length=8192,
         )
-        mock_cache.assert_called_once_with("/models")
+        # The mmproj lookup reads the same cache, so the call happens twice; what
+        # matters is that every lookup points at the models directory.
+        assert mock_cache.call_args_list, "the GGUF cache was never consulted"
+        assert {call.args for call in mock_cache.call_args_list} == {("/models",)}
 
     @patch("app.utils.get_gguf_models_cached")
     def test_returns_vram_metadata(self, mock_cache):

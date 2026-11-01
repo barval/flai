@@ -77,6 +77,10 @@ def install_media_modules(test_app, *, image=True, video=True, multimodal=True):
         module.check_availability.return_value = available
         if name == "multimodal":
             module.validate_image.return_value = (True, None)
+        if name == "video":
+            # The route reads the active backend's defaults and duration ceiling.
+            module.default_params = {"width": 768, "height": 512, "num_frames": 240, "frame_rate": 24}
+            module.max_frames = 240
         modules[name] = module
     test_app.modules.update(modules)
     return modules
@@ -458,6 +462,10 @@ class TestTranscriptionQueueTask:
         from app.queue import RedisRequestQueue
 
         q = RedisRequestQueue.__new__(RedisRequestQueue)
+        # WHISPER_GPU decides whether the whisper sidecar takes the GPU lock; an
+        # instance built through __new__ has no app, so give it a config.
+        q.app = Mock()
+        q.app.config = {}
         assert q._get_model_for_task({"data": {"type": "api_transcribe", "file_type": "audio/wav"}}) == "none"
 
     def test_is_dispatched_by_the_request_processor(self):

@@ -193,14 +193,33 @@ class TestCpuPlanning:
 
 @pytest.mark.unit
 class TestUnload:
-    def test_wan_skips_the_ltx_unload(self, monkeypatch):
+    def test_a_wan_run_still_unloads_a_resident_ltx_pipeline(self, monkeypatch):
+        """Wan's own generator is one-shot, but a pipeline an earlier LTX run
+        left loaded still holds VRAM, so the unload must not be skipped."""
         from app.resource_manager import ResourceManager
 
+        rm = ResourceManager()
+        rm.hardware.total_vram_mb = 16311
+        rm.hardware.available_vram_mb = 9000
+        polls = {"n": 0}
+
+        def fake_poll():
+            polls["n"] += 1
+            if polls["n"] >= 2:
+                rm.hardware.available_vram_mb = 15000
+
+        rm._poll_vram = MagicMock(side_effect=fake_poll)
         monkeypatch.setenv("VIDEO_BACKEND", "wan")
-        with patch("app.resource_manager.requests.post") as post:
-            result = ResourceManager.unload_video_pipeline(MagicMock())
+        info = MagicMock(status_code=200)
+        info.json.return_value = {"pipeline_loaded": True}
+        with (
+            patch("app.resource_manager.requests.get", return_value=info),
+            patch("app.resource_manager.requests.post", return_value=MagicMock(status_code=200)) as post,
+        ):
+            result = rm.unload_video_pipeline()
         assert result is True
-        post.assert_not_called()
+        assert post.called
+        assert "/v1/unload" in post.call_args.args[0]
 
 
 @pytest.mark.unit
@@ -388,5 +407,8 @@ class TestRuntimeBackendSwitch:
         assert module.current_backend() == "wan"
 
     def test_margin_follows_the_backend(self):
-        assert _module().vram_margin_mb == 300
+        """Wan keeps only 100 MB: its figure is a measured peak that already sits
+        above the 500 MB desktop reserve, so a 1 GB margin rejects a clip that
+        demonstrably runs. LTX keeps 1 GB."""
+        assert _module().vram_margin_mb == 100
         assert _module(VIDEO_BACKEND="ltx").vram_margin_mb == 1000

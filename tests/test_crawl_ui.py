@@ -152,14 +152,22 @@ def _with_crawler_reads(script: Path) -> list[str]:
 
 
 def _prologue(script: Path) -> str:
-    """The script's own top-level flag-initialisation / argument-parsing block."""
+    """The script's own flag-initialisation / argument-parsing block.
+
+    It includes the .env helper functions the flag block calls: the reads of
+    $WITH_CRAWLER live in `enable_env_features()`, which dispatches to
+    `enable_env_key`/`disable_env_key`. Without the definitions the extracted
+    statements abort with "command not found" under `set -euo pipefail`, which
+    says nothing about the script.
+    """
     lines = script.read_text(encoding="utf-8").splitlines()
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == "VOICE_PIPER=false")
+        start = next(i for i, line in enumerate(lines) if line.strip() == "warn_env_override() {")
+        flags = next(i for i, line in enumerate(lines) if line.strip() == "VOICE_PIPER=false")
         end = next(i for i, line in enumerate(lines) if 'VOICE_BACKEND="kokoro"' in line)
     except StopIteration:
-        pytest.fail(f"could not locate the argument-parsing block in {script.name}")
-    return "\n".join(lines[start : end + 1])
+        pytest.fail(f"could not locate the helper / argument-parsing block in {script.name}")
+    return "\n".join(lines[start:flags] + lines[flags : end + 1])
 
 
 # ── compose ────────────────────────────────────────────────────────────
@@ -331,7 +339,12 @@ def test_with_crawler_is_initialised_before_every_read(name, tmp_path):
     assert reads, f"{name}: no read of WITH_CRAWLER found — is the feature still wired?"
 
     (tmp_path / ".env").write_text("CRAWL_ENABLED=false\nCRAWLER_URL=http://flai-crawler:11235\n", encoding="utf-8")
-    stubs = 'info() { :; }\nwarn() { :; }\nerror() { echo "$1" >&2; exit 1; }\nusage() { :; }\n'
+    stubs = (
+        'info() { :; }\nwarn() { :; }\nerror() { echo "$1" >&2; exit 1; }\nusage() { :; }\n'
+        # The helpers consult the admin-panel override table first; the test
+        # exercises the .env branch.
+        "settings_override_exists() { return 1; }\n"
+    )
     program = "set -euo pipefail\nset --\n" + stubs + _prologue(script) + "\n" + "\n".join(reads) + "\n:\n"
     proc = subprocess.run(["bash", "-c", program], capture_output=True, text=True, check=False, cwd=tmp_path)
     assert proc.returncode == 0, f"{name} aborts on a WITH_CRAWLER read under set -euo pipefail: {proc.stderr}"
@@ -346,7 +359,14 @@ def test_with_crawler_flag_toggles_the_env_key(name):
     start = next(i for i, line in enumerate(lines) if 'if [[ "$WITH_CRAWLER" == "true" ]]; then' in line)
     block = "\n".join(_balanced_block(lines, start))
     assert "CRAWL_ENABLED" in block, f"{name}: --with-crawler does not touch CRAWL_ENABLED"
-    assert "CRAWL_ENABLED=true" in block
-    assert "CRAWL_ENABLED=false" in block
-    # parity: the sibling feature uses the same info + sed shape
-    assert re.search(r'info "[^"]*Crawl4AI', block), f"{name}: no info line for the crawler feature"
+    # The key is switched through the shared helpers, never by a literal
+    # KEY=VALUE line: enable_env_key() keeps an existing value and refuses to
+    # touch a key that the admin panel overrides.
+    assert "enable_env_key CRAWL_ENABLED" in block
+    assert "disable_env_key CRAWL_ENABLED" in block
+    # parity: the sibling feature reports what it does, and the message names
+    # the feature. The wording travels as an argument to the helpers, which are
+    # the ones that call info().
+    messages = re.findall(r'(?:enable|disable)_env_key CRAWL_ENABLED\s+"([^"]+)"', block)
+    assert len(messages) == 2, f"{name}: both branches must carry a message: {block}"
+    assert all("Crawl4AI" in message for message in messages), f"{name}: {messages}"

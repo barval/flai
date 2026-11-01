@@ -116,6 +116,33 @@ class TestBaseModule:
         assert m.call_args.kwargs["exclude_message_id"] == 3
 
     @pytest.mark.unit
+    def test_build_router_context_skips_system_notices(self, base_module):
+        """A failed-search notice is not an answer, so it must not reach the classifier.
+
+        Measured on the live instance: with the notice as the last assistant turn,
+        the request kernel answered ``intent=none`` for "какие сегодня новости?"
+        ("already answered") and the chat model repeated the notice verbatim;
+        without it the same question routes to search with confidence 0.90.
+        """
+        from unittest.mock import patch
+
+        messages = [
+            {"id": 1, "role": "user", "content": "какие сегодня новости?", "model_type": None},
+            {
+                "id": 2,
+                "role": "assistant",
+                "content": "Поисковые сервисы временно недоступны из-за ограничений внешних поисковиков.",
+                "model_type": "system",
+            },
+            {"id": 3, "role": "assistant", "content": "Обычный ответ модели", "model_type": "multimodal"},
+        ]
+        with patch("app.db.get_session_recent_history", return_value=messages):
+            ctx = base_module.build_router_context("s1", None, "какие сегодня новости?", "ru")
+        assert "Поисковые сервисы временно недоступны" not in ctx
+        assert "Обычный ответ модели" in ctx
+        assert "какие сегодня новости?" in ctx
+
+    @pytest.mark.unit
     def test_build_router_context_slm_facts(self, mock_app):
         """SLM facts join the router context when the module is available."""
         from modules.base import BaseModule

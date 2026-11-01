@@ -942,8 +942,10 @@ def get_session_recent_history(session_id, limit=6, exclude_message_id=None):
         return []
     with get_db() as conn:
         c = conn.cursor()
+        # model_type lets the caller tell a real answer from a system notice
+        # (a failed search is not an answer to the question).
         c.execute(
-            "SELECT id, role, content FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT %s",
+            "SELECT id, role, content, model_type FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT %s",
             (session_id, 200),
         )
         rows = [dict(r) for r in c.fetchall()]

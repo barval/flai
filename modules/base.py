@@ -674,6 +674,13 @@ class BaseModule(TranslationMixin):
             messages = []
         lines = []
         for msg in messages:
+            # A system notice (a failed search, an expired task) is not an answer.
+            # Measured live: with such a line as the last assistant turn the
+            # request kernel answered intent=none for the repeated question
+            # ("already answered"), and the chat model copied the notice into
+            # its answer; without it the same question routes to search at 0.90.
+            if str(msg.get("model_type") or "") == "system":
+                continue
             try:
                 text = _extract_text_content(msg.get("content", ""))
             except Exception:

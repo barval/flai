@@ -2,14 +2,39 @@
 
 ## Budget allocation
 
-The table below shows how the effective context budget is distributed for the reasoning model at different context window sizes (values are approximate, measured in tokens). Budget formula: `available = ctx_len × 75% × 85% ≈ 64% of ctx_len`. Order of allocation: query → template (800 tokens) → search (RAG/web/history, ~30% of available) → SLM (up to 7 facts) → rolling summary → session history (the rest). The number of retrieved document chunks is bounded by retrieval itself (`top_k` plus the coverage pass) and then by this budget — there is no separate chunk count cap, because a fixed cap silently dropped the tail of a document's own chunks. Multimodal model uses its own simplified allocator: `available = ctx_len × 75%`, overhead 500 tokens, no search/SLM/summary — only session history.
+The window is split **by measured need**, not by fixed percentages (`app/context_budget.py`).
+Three things are decided before anything is shared:
 
-| Context window (ctx_len) | Available budget (64%) | Template overhead | Search budget (30% avail) | SLM facts (≤7) | Remaining for history + summary |
-|---|---|---|---|---|---|
-| 8 192 (CPU default) | ~5 220 | 800 | ~1 566 | ~200 | ~2 650 (50%) |
-| 16 384 (8–12 GB GPU) | ~10 445 | 800 | ~3 133 | ~200 | ~6 312 (60%) |
-| 24 576 (16 GB GPU reasoning) | ~15 667 | 800 | ~4 700 | ~200 | ~9 967 (64%) |
-| 32 768 (24 GB+ GPU multimodal) | ~20 889 | 800 | ~6 266 | ~200 | ~13 623 (64%) |
+- a reply reserve proportional to the window — 10 % of it, clamped to 512–4 096 tokens, because a
+  4 000-token answer in an 8 192-token window is as wrong as 200 tokens in a 32 768-token one;
+- the fixed prompt, measured for the request itself (800 tokens is the estimate used where the prompt
+  does not exist yet);
+- nothing else: there is no second safety multiplier.
+
+What remains is shared between the documents and the conversation **by what each one needs** — the
+corpus size and the session length are measured before a share is granted. Order of allocation: the
+query → the recalled SLM facts (at most `SLM_RECALL_LIMIT`, measured) → the fixed prompt → documents
+and history by need.
+
+- When both needs fit, each gets what it needs and the rest stays unused. Filling the window because
+  it is there is how a request pays for fragments nobody asked for.
+- When they do not both fit, the documents take a proportional share, never less than half of the
+  room, and the conversation keeps at least `max(256, available / 8)` tokens, capped by what it
+  actually holds — so neither side can silence the other.
+
+`RAG_CONTEXT_PERCENT` and `CONTEXT_HISTORY_PERCENT` stopped being the budget: they are optional caps
+with `0` meaning automatic. The retrieval side derives its fragment count from the same split
+(`app/rag_budget.py`): a corpus that fits the room is covered entirely, the rest of the room deepens
+the relevance half, and a corpus larger than the room gives a quarter of the fragments to covering the
+documents the relevance half missed. `RAG_TOP_K` is a **ceiling** for the relevance half, not the
+literal count.
+
+Measured on the live 16 GB instance — 24 576-token window, 29-document corpus — the allocator placed
+43 fragments covering **all 29** documents, 0 unrepresented, about 11.4k of 21.3k available tokens.
+The old fixed 30 % share produced 20 fragments from 12 documents on the same corpus.
+
+The multimodal model keeps its own simpler allocator: no search, no SLM and no summary — only the
+conversation.
 
 ## Assembly order
 
@@ -33,8 +58,6 @@ The thinking budget is derived from the same fill ratio rather than from the win
 `reasoning_budget_tokens(ctx) = max(1024, min(ctx × 0.4, ctx − 64% × ctx − 1500))`. A flat
 `ctx × 0.4` (9 830 on 24 576) could only be spent by eating the answer, because the prompt may
 already occupy 64% of the window.
-
-> **Why the history share grows with context size:** Template (800) and SLM (~200) are nearly fixed, so their % shrinks as the window grows. The search budget scales at ~30% of available, leaving a larger absolute remainder for conversation history on larger windows. On small windows (CPU 8192) history gets ~50%, on 32K it reaches ~64%.
 
 ---
 

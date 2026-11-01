@@ -19,17 +19,11 @@
     const t = (key) => (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
 
     let servers = [];
-    let dirty = false;
 
     function setStatus(text, isError) {
         if (!statusBox) return;
         statusBox.textContent = text || '';
         statusBox.classList.toggle('is-error', !!isError);
-    }
-
-    function markDirty() {
-        dirty = true;
-        if (saveButton) saveButton.disabled = false;
     }
 
     function field(className, value, placeholder, type) {
@@ -54,7 +48,6 @@
             const nameInput = field('mcp-input', server.name, t('Name'));
             nameInput.addEventListener('input', () => {
                 server.name = nameInput.value.trim();
-                markDirty();
             });
             nameCell.appendChild(nameInput);
             row.appendChild(nameCell);
@@ -64,7 +57,6 @@
             const urlInput = field('mcp-input', server.url, 'https://host/mcp');
             urlInput.addEventListener('input', () => {
                 server.url = urlInput.value.trim();
-                markDirty();
             });
             urlCell.appendChild(urlInput);
             row.appendChild(urlCell);
@@ -74,7 +66,6 @@
             const tokenInput = field('mcp-input', '', server.token ? t('mcp_token_keep') : t('Token (optional)'), 'password');
             tokenInput.addEventListener('input', () => {
                 server.newToken = tokenInput.value;
-                markDirty();
             });
             tokenCell.appendChild(tokenInput);
             row.appendChild(tokenCell);
@@ -84,7 +75,6 @@
             const allowInput = field('mcp-input', (server.allow || []).join(', '), t('empty means all'));
             allowInput.addEventListener('input', () => {
                 server.allow = allowInput.value.split(',').map((item) => item.trim()).filter(Boolean);
-                markDirty();
             });
             allowCell.appendChild(allowInput);
             row.appendChild(allowCell);
@@ -99,7 +89,6 @@
             chatBox.checked = !server.userScoped;
             chatBox.addEventListener('change', () => {
                 server.userScoped = !chatBox.checked;
-                markDirty();
             });
             chatCell.appendChild(chatBox);
             row.appendChild(chatCell);
@@ -133,7 +122,6 @@
             removeButton.textContent = t('Remove server');
             removeButton.addEventListener('click', () => {
                 servers.splice(index, 1);
-                markDirty();
                 render();
             });
             actionsCell.appendChild(removeButton);
@@ -201,12 +189,11 @@
         })
             .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
             .then(({ ok, payload }) => {
+                if (saveButton) saveButton.disabled = false;
                 if (!ok) {
                     setStatus(payload.error || t('settings_invalid'), true);
-                    if (saveButton) saveButton.disabled = false;
                     return;
                 }
-                dirty = false;
                 setStatus(t('Saved'), false);
                 load();
             })
@@ -251,8 +238,6 @@
                 enabledBox.checked = values.MCP_ENABLED === true;
                 if (timeoutInput) timeoutInput.value = values.MCP_TIMEOUT_S === null ? 10 : values.MCP_TIMEOUT_S;
                 servers = parseServers(values.MCP_SERVERS);
-                dirty = false;
-                if (saveButton) saveButton.disabled = true;
                 render();
             })
             .catch(() => setStatus(t('unknown_error'), true));
@@ -282,15 +267,12 @@
         [name, url, token, allow].forEach((input) => {
             if (input) input.value = '';
         });
-        markDirty();
         render();
     }
 
     if (saveButton) saveButton.addEventListener('click', save);
     const addButton = document.getElementById('mcp-add-server');
     if (addButton) addButton.addEventListener('click', addServer);
-    if (enabledBox) enabledBox.addEventListener('change', markDirty);
-    if (timeoutInput) timeoutInput.addEventListener('input', markDirty);
 
     document.addEventListener('DOMContentLoaded', load);
     if (document.readyState !== 'loading') load();

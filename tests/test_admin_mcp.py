@@ -72,3 +72,21 @@ def test_a_server_without_a_name_or_url_is_refused(app):
         response = mcp_test_view.__wrapped__()
     status = response[1] if isinstance(response, tuple) else response.status_code
     assert status == 400
+
+
+@pytest.mark.unit
+def test_the_save_button_is_the_green_primary_button_and_never_disabled():
+    """Save names in Personalization is green and always live; this one matches it.
+
+    A disabled primary button renders grey, so the tab looked like it had no
+    save action until something was typed.
+    """
+    from pathlib import Path
+
+    html = Path("app/templates/admin.html").read_text(encoding="utf-8")
+    assert '<button id="mcp-save" class="btn-primary">{{ _(\'Save changes\') }}</button>' in html
+    assert '<button id="mcp-save" class="btn-primary" disabled>' not in html
+
+    js = Path("app/static/js/admin-mcp.js").read_text(encoding="utf-8")
+    assert "markDirty" not in js, "nothing toggles the button any more, so nothing may reference the old toggle"
+    assert "saveButton.disabled = true;" in js, "it still locks during its own request"

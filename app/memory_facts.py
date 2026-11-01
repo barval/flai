@@ -2,7 +2,8 @@
 """Parsing and gating for long-term memory facts.
 
 The rule-based extractor in ``app/slm_rules.py`` only fires on explicit
-first-person statements ("я работаю", "I prefer") and misses everything else:
+first-person statements (a Russian "I work as..." phrasing, or "I prefer") and
+misses everything else:
 measured on 30 real messages it produced zero facts, while the import path
 stored raw questions as "facts". Extraction now runs on the resident model and
 its answer is parsed here — strictly, because a wrong fact is worse than none.

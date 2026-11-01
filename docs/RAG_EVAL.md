@@ -81,9 +81,9 @@ question, scored end to end), on the 16 GB reference host:
 | breadth-share 0.15 / 0.25 / 0.50 | 1.000 / 1.000 / 1.000 |
 | the same grid with the documents' share capped at 10 % | 1.000 everywhere |
 
-\* one run scored 0.909 because the model wrote «асiyat» (Cyrillic «а») where the
-expected answer was `asiyat` — a transliteration artifact of the scorer, not a
-retrieval miss.
+\* one run scored 0.909 because the model wrote the word with a Cyrillic "a"
+where the expected answer was `asiyat` — a transliteration artifact of the
+scorer, not a retrieval miss.
 
 **Finding:** the constants do not move answer quality on a corpus that fits the
 window — the allocator already sizes the evidence from the corpus, so all three

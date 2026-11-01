@@ -687,7 +687,7 @@ def test_gate_closed_does_not_freeze_task_waiting_on_own_subtask(db_env, test_ap
 def test_gate_closed_unfreezes_a_task_mislabelled_by_the_old_gate(db_env, test_app):
     """A frozen task whose own subtask is still in flight returns to active.
 
-    Existing rows frozen before the fix (a live RLM task showed «Приостановлено»
+    Existing rows frozen before the fix (a live RLM task showed a paused label
     for the whole analysis) must not stay mislabelled after a restart.
     """
     store = db_env
@@ -3725,7 +3725,7 @@ def test_strip_foreign_style_tail_removes_a_leading_english_instruction():
 
 
 def test_strip_foreign_style_tail_keeps_a_native_colon_prefix():
-    """A colon that belongs to the scene («Сцена 1: …») is not a foreign prefix."""
+    """A colon that belongs to the scene label is not a foreign prefix."""
     goal = "Сцена 1: кот спит на лежанке"
     assert ex._strip_foreign_style_tail(goal, "ru") == goal
 

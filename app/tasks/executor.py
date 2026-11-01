@@ -267,11 +267,11 @@ def _strip_foreign_prefix(text: str, lang: str) -> str:
     """Drop a leading foreign-language instruction from a media goal.
 
     The plan reviewer sometimes opens a Russian scene goal with an English
-    action phrase («Generate illustration for scene 1: …»). Only the segment
-    before the first colon is removed, and only when it is foreign (three or
-    more words), the rest of the line is in the target language, and the head
-    is not a URL, a path or an address. A native colon («Сцена 1: …») and a
-    wholly foreign goal are left untouched.
+    action phrase such as "Generate illustration for scene 1: ...". Only the
+    segment before the first colon is removed, and only when it is foreign
+    (three or more words), the rest of the line is in the target language, and
+    the head is not a URL, a path or an address. A native Russian scene label
+    before the colon, and a wholly foreign goal, are left untouched.
     """
     if lang not in ("ru", "en"):
         return text

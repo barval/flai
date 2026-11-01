@@ -120,7 +120,7 @@ class TestBaseModule:
         """A failed-search notice is not an answer, so it must not reach the classifier.
 
         Measured on the live instance: with the notice as the last assistant turn,
-        the request kernel answered ``intent=none`` for "какие сегодня новости?"
+        the request kernel answered ``intent=none`` for a plain news question
         ("already answered") and the chat model repeated the notice verbatim;
         without it the same question routes to search with confidence 0.90.
         """

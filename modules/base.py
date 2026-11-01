@@ -157,6 +157,20 @@ def _kernel_rooms(cam: Any) -> str:
     return ", ".join(parts)
 
 
+
+def _normalize_notice(text: str) -> str:
+    """Comparable form of a user-facing notice: without the warning sign or extra spaces.
+
+    The model copies a notice almost verbatim, usually dropping the leading
+    "⚠️ "; the digest compares normalized texts so such a copy is recognised.
+    """
+    cleaned = " ".join(str(text or "").split())
+    for prefix in ("⚠️", "⚠"):
+        if cleaned.startswith(prefix):
+            return cleaned[len(prefix):].strip()
+    return cleaned
+
+
 class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
 
@@ -672,6 +686,11 @@ class BaseModule(TranslationMixin):
                 messages = []
         else:
             messages = []
+        notices = {
+            _normalize_notice(msg.get("content", ""))
+            for msg in messages
+            if str(msg.get("model_type") or "") == "system"
+        }
         lines = []
         for msg in messages:
             # A system notice (a failed search, an expired task) is not an answer.
@@ -687,6 +706,10 @@ class BaseModule(TranslationMixin):
                 text = str(msg.get("content", ""))
             text = text.strip()[: self.ROUTER_CONTEXT_MSG_CHARS]
             if not text:
+                continue
+            # An assistant turn that merely repeats a notice carries no answer:
+            # the model produced exactly that after reading the notice.
+            if _normalize_notice(text) in notices:
                 continue
             role = "User" if msg.get("role") == "user" else "Assistant"
             lines.append(f"{role}: {text}")

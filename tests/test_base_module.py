@@ -143,6 +143,33 @@ class TestBaseModule:
         assert "какие сегодня новости?" in ctx
 
     @pytest.mark.unit
+    def test_build_router_context_skips_echoed_notices(self, base_module):
+        """The model's own copy of a notice is not an answer either.
+
+        After the failed-search notice reached the chat history, the model
+        reproduced it as an ordinary answer; the classifier read that as the
+        answer to the repeated question and kept routing to plain chat.
+        """
+        from unittest.mock import patch
+
+        notice = "⚠️ Поисковые сервисы временно недоступны из-за ограничений внешних поисковиков."
+        messages = [
+            {"id": 1, "role": "user", "content": "какие сегодня новости?", "model_type": None},
+            {"id": 2, "role": "assistant", "content": notice, "model_type": "system"},
+            {
+                "id": 3,
+                "role": "assistant",
+                "content": "Поисковые сервисы временно недоступны из-за ограничений внешних поисковиков.",
+                "model_type": "multimodal",
+            },
+            {"id": 4, "role": "assistant", "content": "Вот свежие новости: курс и погода.", "model_type": "multimodal"},
+        ]
+        with patch("app.db.get_session_recent_history", return_value=messages):
+            ctx = base_module.build_router_context("s1", None, "какие сегодня новости?", "ru")
+        assert "Поисковые сервисы" not in ctx
+        assert "Вот свежие новости" in ctx
+
+    @pytest.mark.unit
     def test_build_router_context_slm_facts(self, mock_app):
         """SLM facts join the router context when the module is available."""
         from modules.base import BaseModule

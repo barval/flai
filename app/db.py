@@ -980,6 +980,11 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None, ret
     limit = max_messages or 200
     messages = get_session_messages(session_id, limit=limit)
 
+    # A system notice (a failed search, an expired task) answered nothing. Fed to
+    # the model as an assistant turn it reads as a reply, and a measured session
+    # showed the model copying the notice verbatim into its next answer.
+    messages = [message for message in messages if str(message.get("model_type") or "") != "system"]
+
     # Filter out user+assistant pairs where assistant replied with a marker
     filtered = []
     skip_next = False

@@ -50,6 +50,7 @@
             row.className = 'mcp-server-row';
 
             const nameCell = document.createElement('td');
+            nameCell.dataset.label = t('Name');
             const nameInput = field('mcp-input', server.name, t('Name'));
             nameInput.addEventListener('input', () => {
                 server.name = nameInput.value.trim();
@@ -59,6 +60,7 @@
             row.appendChild(nameCell);
 
             const urlCell = document.createElement('td');
+            urlCell.dataset.label = 'URL';
             const urlInput = field('mcp-input', server.url, 'https://host/mcp');
             urlInput.addEventListener('input', () => {
                 server.url = urlInput.value.trim();
@@ -68,6 +70,7 @@
             row.appendChild(urlCell);
 
             const tokenCell = document.createElement('td');
+            tokenCell.dataset.label = t('Token');
             const tokenInput = field('mcp-input', '', server.token ? t('mcp_token_keep') : t('Token (optional)'), 'password');
             tokenInput.addEventListener('input', () => {
                 server.newToken = tokenInput.value;
@@ -77,6 +80,7 @@
             row.appendChild(tokenCell);
 
             const allowCell = document.createElement('td');
+            allowCell.dataset.label = t('Allowed tools');
             const allowInput = field('mcp-input', (server.allow || []).join(', '), t('empty means all'));
             allowInput.addEventListener('input', () => {
                 server.allow = allowInput.value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -89,6 +93,7 @@
             // is asking cannot be offered to chat without bypassing the panel's
             // own permissions. Unchecking writes user_scoped into the entry.
             const chatCell = document.createElement('td');
+            chatCell.dataset.label = t('Chat');
             const chatBox = document.createElement('input');
             chatBox.type = 'checkbox';
             chatBox.checked = !server.userScoped;
@@ -101,6 +106,7 @@
 
             const toolsCell = document.createElement('td');
             toolsCell.className = 'mcp-tools';
+            toolsCell.dataset.label = t('Tools');
             toolsCell.textContent = server.tools === null || server.tools === undefined
                 ? '—'
                 : String(server.tools.length);

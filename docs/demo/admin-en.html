@@ -12732,8 +12732,99 @@ body.dark-theme .settings-reset {
 }
 
 @media (max-width: 768px) {
+    /* The table used to scroll sideways here. One card per server keeps every
+       field reachable without a horizontal pan, like the Cameras and Users
+       tabs. */
     .mcp-table-wrapper {
-        overflow-x: auto;
+        width: 100%;
+        overflow-x: visible;
+    }
+
+    #mcp-servers-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    #mcp-servers-table thead {
+        display: none;
+    }
+
+    #mcp-servers-table tbody {
+        display: block;
+    }
+
+    #mcp-servers-table tbody tr {
+        display: block;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px solid #d8dde3;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    #mcp-servers-table tbody td {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        border: none;
+        border-bottom: 1px dashed #eee;
+    }
+
+    #mcp-servers-table tbody td:last-child {
+        border-bottom: none;
+    }
+
+    #mcp-servers-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 7rem;
+        color: #7f8c8d;
+        font-size: 11.5px;
+        line-height: 1.2;
+    }
+
+    /* The server name is the card title: no heading above its own input. */
+    #mcp-servers-table tbody td:first-child::before {
+        content: none;
+    }
+
+    #mcp-servers-table tbody td:first-child .mcp-input {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    #mcp-servers-table tbody td .mcp-input {
+        flex: 1 1 8rem;
+        min-width: 0;
+    }
+
+    #mcp-servers-table tbody td.mcp-tools {
+        white-space: normal;
+    }
+
+    #mcp-servers-table tbody td.mcp-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 8px;
+    }
+
+    #mcp-servers-table tbody td.mcp-actions::before {
+        content: none;
+    }
+
+    body.dark-theme #mcp-servers-table tbody tr {
+        background: #1e1e1e;
+        border-color: #444;
+    }
+
+    body.dark-theme #mcp-servers-table tbody td {
+        border-bottom-color: #333;
+    }
+
+    body.dark-theme #mcp-servers-table tbody td::before {
+        color: #999;
     }
 
     .mcp-add input {
@@ -17824,6 +17915,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.className = 'mcp-server-row';
 
             const nameCell = document.createElement('td');
+            nameCell.dataset.label = t('Name');
             const nameInput = field('mcp-input', server.name, t('Name'));
             nameInput.addEventListener('input', () => {
                 server.name = nameInput.value.trim();
@@ -17833,6 +17925,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.appendChild(nameCell);
 
             const urlCell = document.createElement('td');
+            urlCell.dataset.label = 'URL';
             const urlInput = field('mcp-input', server.url, 'https://host/mcp');
             urlInput.addEventListener('input', () => {
                 server.url = urlInput.value.trim();
@@ -17842,6 +17935,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.appendChild(urlCell);
 
             const tokenCell = document.createElement('td');
+            tokenCell.dataset.label = t('Token');
             const tokenInput = field('mcp-input', '', server.token ? t('mcp_token_keep') : t('Token (optional)'), 'password');
             tokenInput.addEventListener('input', () => {
                 server.newToken = tokenInput.value;
@@ -17851,6 +17945,7 @@ document.addEventListener('DOMContentLoaded', function() {
             row.appendChild(tokenCell);
 
             const allowCell = document.createElement('td');
+            allowCell.dataset.label = t('Allowed tools');
             const allowInput = field('mcp-input', (server.allow || []).join(', '), t('empty means all'));
             allowInput.addEventListener('input', () => {
                 server.allow = allowInput.value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -17863,6 +17958,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // is asking cannot be offered to chat without bypassing the panel's
             // own permissions. Unchecking writes user_scoped into the entry.
             const chatCell = document.createElement('td');
+            chatCell.dataset.label = t('Chat');
             const chatBox = document.createElement('input');
             chatBox.type = 'checkbox';
             chatBox.checked = !server.userScoped;
@@ -17875,6 +17971,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const toolsCell = document.createElement('td');
             toolsCell.className = 'mcp-tools';
+            toolsCell.dataset.label = t('Tools');
             toolsCell.textContent = server.tools === null || server.tools === undefined
                 ? '—'
                 : String(server.tools.length);

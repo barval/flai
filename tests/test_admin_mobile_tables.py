@@ -127,3 +127,20 @@ def test_the_page_title_keeps_half_its_spacing():
     block = _mobile_block(".admin-panel-title {\n        margin-top: 0;")
     assert "margin-top: 0;" in block
     assert "margin-bottom: 15px;" in block
+
+
+def test_mcp_servers_become_cards_with_their_own_headings():
+    """The MCP tab scrolled sideways on a phone: seven columns, one of them a
+    long URL. It becomes a card per server, every field keeping its heading."""
+    block = _mobile_block("#mcp-servers-table tbody td::before {")
+    assert "overflow-x: visible;" in block, "the wrapper must not be a scroll box on a phone"
+    assert "#mcp-servers-table thead {\n        display: none;" in block
+    assert "#mcp-servers-table tbody tr {\n        display: block;" in block
+    assert "content: attr(data-label);" in block
+    assert "#mcp-servers-table tbody td:first-child::before {\n        content: none;" in block, "the name is the title"
+    assert "#mcp-servers-table tbody td.mcp-actions::before {\n        content: none;" in block
+
+    js = Path("app/static/js/admin-mcp.js").read_text(encoding="utf-8")
+    for label in ("Name", "Token", "Allowed tools", "Chat", "Tools"):
+        assert f"dataset.label = t('{label}')" in js, f"{label} needs a card heading"
+    assert "urlCell.dataset.label = 'URL';" in js

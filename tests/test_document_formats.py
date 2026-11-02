@@ -267,3 +267,47 @@ def test_an_excel_workbook_renamed_to_doc_is_refused(app):
     with app.app_context():
         valid, _error = validate_file(io.BytesIO((DATA / "sample.xls").read_bytes()), "renamed.doc")
     assert not valid
+
+
+def test_every_accepted_format_can_be_previewed():
+    """A format the uploader takes must not answer «Preview is not available».
+
+    The preview decides by extension, so a format added to the whitelist and
+    forgotten here shows the user an empty panel for a document they just
+    uploaded.
+    """
+    from app.routes.documents import (
+        _PREVIEW_EXTRACTED_EXTS,
+        _PREVIEW_IMAGE_EXTS,
+        _PREVIEW_TEXT_EXTS,
+        ALLOWED_MIME_TYPES,
+    )
+
+    office = {
+        ext
+        for mime, extensions in ALLOWED_MIME_TYPES.items()
+        if not mime.startswith("image/")
+        for ext in extensions
+    }
+    covered = _PREVIEW_EXTRACTED_EXTS | _PREVIEW_IMAGE_EXTS | _PREVIEW_TEXT_EXTS
+    assert not (office - covered), f"no preview for: {sorted(office - covered)}"
+
+
+def test_the_preview_of_a_doc_returns_its_text(app, tmp_path, monkeypatch):
+    """The panel shows extracted text for a .doc, like it does for a .docx."""
+    from app.routes import documents
+
+    path = tmp_path / "law.doc"
+    from tests._doc_fixtures import build_doc
+
+    path.write_bytes(build_doc("Договор поставки\rВторой абзац документа."))
+    monkeypatch.setattr(
+        documents,
+        "_owned_document_file",
+        lambda doc_id: ({"filename": "law.doc", "file_path": "law.doc"}, str(path), None),
+    )
+    with app.test_request_context("/"):
+        payload = documents.api_document_preview("doc-1").get_json()
+    assert payload["kind"] == "text"
+    assert payload["extracted"] is True
+    assert "Договор поставки" in payload["text"]

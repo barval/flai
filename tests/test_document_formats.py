@@ -243,3 +243,27 @@ def test_an_archive_without_the_format_entry_is_refused(app, monkeypatch):
     with app.app_context():
         valid, _error = validate_file(io.BytesIO(buffer.getvalue()), "fake.xlsx")
     assert not valid
+
+
+def test_a_doc_is_accepted_when_magic_reports_the_generic_ole_type(app, monkeypatch):
+    """libmagic reads 2 KB and calls most Word files `application/x-ole-storage`,
+    which is exactly what a legacy .xls reports — the container decides instead.
+    """
+    from app.routes.documents import validate_file
+    from tests._doc_fixtures import build_doc
+
+    monkeypatch.setattr(
+        "app.routes.documents.magic.from_buffer", lambda data, mime=True: "application/x-ole-storage"
+    )
+    with app.app_context():
+        valid, error = validate_file(io.BytesIO(build_doc("Договор поставки")), "contract.doc")
+    assert valid, error
+
+
+def test_an_excel_workbook_renamed_to_doc_is_refused(app):
+    """.xls is the same OLE2 container: without the Word stream it is not a .doc."""
+    from app.routes.documents import validate_file
+
+    with app.app_context():
+        valid, _error = validate_file(io.BytesIO((DATA / "sample.xls").read_bytes()), "renamed.doc")
+    assert not valid

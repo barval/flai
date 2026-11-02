@@ -106,3 +106,14 @@ class TestScheduling:
             thread = warmup.schedule_chat_model_warmup(app)
             thread.join(timeout=5)
         warm.assert_not_called()
+
+
+def test_the_warm_up_does_not_run_under_pytest():
+    """conftest sets TESTING after create_app(); the guard must not depend on it.
+
+    A thread per created app would wait 90 s for a llama-swap that tests never
+    run, and the suite builds hundreds of apps.
+    """
+    from app import _is_test_process
+
+    assert _is_test_process() is True

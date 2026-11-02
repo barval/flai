@@ -16,12 +16,13 @@ a placement no user message could produce.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 
 import requests
 from flask import Flask
+
+from app.config import setting
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,10 @@ WARMUP_TIMEOUT_S = 120
 
 
 def _llama_swap_url() -> str:
-    return os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+    # Through app.config, so a URL saved in the admin panel reaches the warm-up:
+    # reading the environment directly would ignore the panel (the setting
+    # coverage test guards exactly that).
+    return str(setting("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")).rstrip("/")
 
 
 def wait_for_llama_swap(timeout: float = LLAMASWAP_READY_TIMEOUT_S) -> bool:

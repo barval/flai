@@ -18,6 +18,8 @@ python-magic==0.4.27
 odfpy>=1.4.0
 striprtf>=0.0.26
 ebooklib>=0.17
+# Legacy binary Word (.doc): olefile reads the OLE2 container (BSD).
+olefile==0.47
 # Spreadsheets and slides (openpyxl MIT, xlrd BSD, python-pptx MIT).
 openpyxl>=3.1.5
 xlrd>=2.0.2

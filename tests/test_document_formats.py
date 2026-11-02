@@ -133,6 +133,10 @@ def _valid_file(name: str) -> bytes:
         return stream.getvalue()
     if name.endswith(".xls"):
         return (DATA / "sample.xls").read_bytes()
+    if name.endswith(".doc"):
+        from tests._doc_fixtures import build_doc
+
+        return build_doc("Договор поставки\rВторой абзац документа.")
     if name.endswith(".eml"):
         return b"From: a@example.com\r\nSubject: Test\r\nContent-Type: text/plain\r\n\r\nBody\r\n"
     if name.endswith(".fb2"):
@@ -150,6 +154,7 @@ def _valid_file(name: str) -> bytes:
         "a.md",
         "a.markdown",
         "a.html",
+        "a.doc",
         "a.htm",
         "a.xlsx",
         "a.xls",
@@ -173,13 +178,37 @@ def test_new_formats_pass_validation(app, name):
     assert valid, f"{name} rejected: {error}"
 
 
-def test_legacy_doc_is_refused_with_a_hint(app):
+def test_legacy_doc_is_accepted_and_read(tmp_path):
+    """Word 97-2003 is a supported format: the text is parsed from the OLE2 file."""
+    from app.utils import extract_text_from_file
+    from tests._doc_fixtures import build_doc
+
+    path = tmp_path / "contract.doc"
+    path.write_bytes(build_doc("Договор поставки\rВторой абзац документа."))
+    text = extract_text_from_file(str(path)) or ""
+    assert "Договор поставки" in text
+    assert "Второй абзац" in text
+
+
+def test_an_encrypted_doc_is_refused_at_upload(app):
+    """A password-protected .doc would index as empty; say so at upload instead."""
     from app.routes.documents import validate_file
+    from tests._doc_fixtures import build_doc
 
     with app.app_context():
-        valid, error = validate_file(io.BytesIO(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 512), "old.doc")
+        valid, error = validate_file(io.BytesIO(build_doc("секрет", encrypted=True)), "protected.doc")
     assert not valid
-    assert "docx" in (error or "")
+    # The message is localized: match the concept, not one language's wording.
+    assert "парол" in (error or "").lower() or "password" in (error or "").lower()
+
+
+def test_a_broken_doc_indexes_as_empty_rather_than_crashing(tmp_path):
+    """A truncated .doc has no text; indexing reports "nothing", never an exception."""
+    from app.utils import extract_text_from_file
+
+    path = tmp_path / "broken.doc"
+    path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 512)
+    assert extract_text_from_file(str(path)) is None
 
 
 def test_an_unknown_extension_is_still_refused(app):

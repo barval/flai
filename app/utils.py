@@ -780,7 +780,7 @@ def remove_uploaded_dir(session_id: str, upload_folder: str) -> int:
 def extract_text_from_file(file_path: str) -> str | None:
     """Extract text from a supported document and convert it to Markdown.
 
-    Formats: pdf, docx, odt, rtf, epub, md, txt and the plain-text dialects
+    Formats: pdf, doc, docx, odt, rtf, epub, md, txt and the plain-text dialects
     (log/ini/cfg/yaml/toml/xml), csv, json, html, xls/xlsx, pptx, fb2, eml.
     """
     ext = os.path.splitext(file_path)[1].lower()
@@ -817,6 +817,8 @@ def extract_text_from_file(file_path: str) -> str | None:
                 return _pdf_to_markdown(text.strip()) if text.strip() else None
             except ImportError:
                 return None
+        elif ext == ".doc":
+            return _extract_doc(file_path)
         elif ext == ".docx":
             doc = Document(file_path)
             return _docx_to_markdown(doc)
@@ -850,6 +852,23 @@ def extract_text_from_file(file_path: str) -> str | None:
             return None
     except Exception:
         return None
+
+
+def _extract_doc(file_path: str) -> str | None:
+    """Legacy binary Word (Word 97-2003): plain text, one paragraph per line."""
+    import logging
+
+    from app.doc_extract import DocExtractError, extract_doc_text
+
+    logger = logging.getLogger(__name__)
+    with open(file_path, "rb") as handle:
+        data = handle.read()
+    try:
+        text = extract_doc_text(data)
+    except DocExtractError as e:
+        logger.info(f".doc not readable ({os.path.basename(file_path)}): {e}")
+        return None
+    return text or None
 
 
 def _read_plain_text(file_path: str) -> str:

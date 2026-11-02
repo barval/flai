@@ -1229,7 +1229,7 @@ function deleteDocument(docId, docName) {
 // What the picker offers. The server validates for real (extension plus magic
 // bytes); this list only spares the user from picking a file that is refused.
 const DOCUMENT_ACCEPT = [
-    '.pdf', '.docx', '.txt', '.md', '.markdown', '.html', '.htm', '.odt', '.rtf',
+    '.pdf', '.doc', '.docx', '.txt', '.md', '.markdown', '.html', '.htm', '.odt', '.rtf',
     '.csv', '.json', '.epub', '.xlsx', '.xls', '.pptx', '.fb2', '.xml',
     '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.eml', 'image/*'
 ].join(',');

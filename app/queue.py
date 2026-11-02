@@ -851,46 +851,14 @@ class RedisRequestQueue:
 
         Used at the end of a reasoning task — the user requires that after the
         reasoning answer the multimodal (router + chat + vision) model is loaded
-        back immediately, so the next router call is instant. Blocks up to
-        ``timeout`` seconds while llama-swap swaps the model in.
+        back immediately, so the next router call is instant. The load itself
+        lives in ``app.warmup`` so the startup warm-up and this path share one
+        implementation.
         """
-        try:
-            import requests as req
+        from app.warmup import load_chat_model
 
-            from app.model_config import get_model_config
-
-            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
-
-            resp = req.post(
-                f"{swap_url}/v1/chat/completions",
-                json={
-                    "model": "multimodal",
-                    "messages": [{"role": "user", "content": "hi"}],
-                    "max_tokens": 1,
-                },
-                timeout=timeout,
-            )
-            if resp.status_code != 200:
-                self.logger.debug(f"Multimodal sync preload returned {resp.status_code}")
-                return
-
-            config = get_model_config("multimodal")
-            model_name = config.get("model_name", "") if config else ""
-            deadline = time.time() + timeout
-            while time.time() < deadline:
-                try:
-                    check = req.get(f"{swap_url}/running", timeout=2)
-                    if check.status_code == 200:
-                        running = check.json().get("running", [])
-                        if model_name and any(model_name in m.get("cmd", "") for m in running):
-                            self.logger.info("Multimodal model reloaded synchronously after reasoning")
-                            return
-                except Exception:
-                    pass
-                time.sleep(1)
-            self.logger.debug("Multimodal sync preload timed out before reaching 'running' state")
-        except Exception as e:
-            self.logger.debug(f"Multimodal sync preload failed: {e}")
+        if not load_chat_model(timeout=timeout):
+            self.logger.debug("Multimodal sync preload did not reach the running state")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""

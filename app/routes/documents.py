@@ -7,6 +7,7 @@ import re
 import subprocess
 import tempfile
 import uuid
+import zipfile
 
 import magic
 from flask import Blueprint, current_app, jsonify, request, send_file, session
@@ -24,6 +25,20 @@ PREVIEW_PDF_SCALE = 1400
 
 # One MIME type may back several extensions: text formats all sniff as
 # text/plain, and the legacy .xls workbook shows up as a generic OLE container.
+# Office/OpenDocument files are ZIP packages. libmagic can only sniff the first
+# bytes it is given, and the marker that identifies an OOXML file sits either just
+# past that window or in the ZIP directory at the end — so the same .xlsx is
+# recognised on one libmagic build and reported as a plain archive on another.
+# When magic has no opinion, the container is inspected instead: the extension
+# decides which entry must exist inside the archive.
+ZIP_PACKAGE_MARKERS = {
+    ".docx": "word/document.xml",
+    ".xlsx": "xl/workbook.xml",
+    ".pptx": "ppt/presentation.xml",
+    ".odt": "content.xml",
+    ".epub": "META-INF/container.xml",
+}
+
 ALLOWED_MIME_TYPES = {
     "application/pdf": {".pdf"},
     "application/msword": {".doc"},
@@ -54,6 +69,26 @@ ALLOWED_MIME_TYPES = {
     "image/gif": {".gif"},
     "image/heic": {".heic"},
 }
+
+
+def _is_zip_package(stream, ext: str) -> bool:
+    """True when the stream is a ZIP archive carrying the format's own entry.
+
+    A renamed archive fails: the extension decides which member must be present,
+    so `.zip` renamed to `.xlsx` is refused while the real package is accepted
+    whatever libmagic thinks of its first two kilobytes.
+    """
+    marker = ZIP_PACKAGE_MARKERS.get(ext)
+    if not marker:
+        return False
+    try:
+        stream.seek(0)
+        with zipfile.ZipFile(stream) as archive:
+            return marker in archive.namelist()
+    except (zipfile.BadZipFile, OSError):
+        return False
+    finally:
+        stream.seek(0)
 
 
 def validate_file(file_stream, filename):
@@ -112,6 +147,8 @@ def validate_file(file_stream, filename):
     file_stream.seek(0)
 
     if mime not in ALLOWED_MIME_TYPES:
+        if _is_zip_package(file_stream, ext):
+            return True, None
         return False, _("Unsupported file type")
 
     # Images: chef does auto-resize + format conversion (whatever the source

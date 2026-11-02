@@ -479,7 +479,7 @@ def api_get_document(doc_id):
 
 PREVIEW_MAX_CHARS = 200_000
 _PREVIEW_TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".xml"}
-_PREVIEW_EXTRACTED_EXTS = {".pdf", ".docx", ".odt", ".rtf", ".epub", ".html", ".htm", ".xlsx", ".xls", ".pptx", ".fb2", ".eml"}
+_PREVIEW_EXTRACTED_EXTS = {".pdf", ".doc", ".docx", ".odt", ".rtf", ".epub", ".html", ".htm", ".xlsx", ".xls", ".pptx", ".fb2", ".eml"}
 _PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
 
 

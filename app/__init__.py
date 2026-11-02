@@ -385,6 +385,17 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not start tasks executor: {e}")
 
+    # Warm the chat model before the first message. It goes through
+    # ensure_vram_for() like a user request does: llama-swap's own preload hook
+    # started the model outside that gate and could leave its weights in RAM.
+    if not _is_cli_process():
+        try:
+            from app.warmup import schedule_chat_model_warmup
+
+            schedule_chat_model_warmup(app)
+        except Exception as e:
+            app.logger.warning(f"Could not schedule the chat model warm-up: {e}")
+
     # Initialize events publisher (Redis pub/sub for SSE)
     init_events_publisher(app)
 

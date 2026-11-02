@@ -1,0 +1,108 @@
+"""The chat model is warmed before the first message, through the VRAM gate.
+
+The llama-swap preload hook did this and could not do it safely: it started the
+model outside `ensure_vram_for()`, next to whatever was resident, and a model
+that did not fit kept its weights in RAM (11 tok/s instead of 75). The warm-up
+asks the gate first, so it can only produce a placement a user message could.
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app import warmup
+
+pytestmark = pytest.mark.unit
+
+
+def _response(status=200, payload=None):
+    response = MagicMock(status_code=status)
+    response.json.return_value = payload or {}
+    return response
+
+
+class TestReadiness:
+    def test_it_waits_until_llama_swap_answers(self):
+        with patch("app.warmup.requests.get", side_effect=[_response(), _response()]):
+            assert warmup.wait_for_llama_swap(timeout=5) is True
+
+    def test_it_gives_up_after_the_deadline(self):
+        with patch("app.warmup.requests.get", side_effect=OSError("no route")), patch("app.warmup.time.sleep"):
+            assert warmup.wait_for_llama_swap(timeout=0.2) is False
+
+
+class TestLoadChatModel:
+    def test_a_running_model_reports_success(self):
+        running = {"running": [{"model": "multimodal", "cmd": "llama-server -m /models/Qwen3VL-8B.gguf"}]}
+        with (
+            patch("app.warmup.requests.post", return_value=_response()),
+            patch("app.warmup.requests.get", return_value=_response(payload=running)),
+            patch("app.model_config.get_model_config", return_value={"model_name": "Qwen3VL-8B.gguf"}),
+        ):
+            assert warmup.load_chat_model(timeout=5) is True
+
+    def test_an_http_error_is_a_failure_not_a_success(self):
+        with patch("app.warmup.requests.post", return_value=_response(status=500)):
+            assert warmup.load_chat_model(timeout=5) is False
+
+    def test_a_model_that_never_reaches_running_times_out(self):
+        with (
+            patch("app.warmup.requests.post", return_value=_response()),
+            patch("app.warmup.requests.get", return_value=_response(payload={"running": []})),
+            patch("app.model_config.get_model_config", return_value={"model_name": "Qwen3VL-8B.gguf"}),
+            patch("app.warmup.time.sleep"),
+            patch("app.warmup.time.time", side_effect=[0, 0, 1, 2, 3, 4, 5, 6]),
+        ):
+            assert warmup.load_chat_model(timeout=5) is False
+
+
+class TestWarmUpThroughTheGate:
+    def test_the_gate_runs_before_any_load(self):
+        manager = MagicMock()
+        manager.ensure_vram_for.return_value = True
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=manager),
+            patch("app.warmup.load_chat_model", return_value=True) as load,
+        ):
+            assert warmup.warm_up_chat_model(MagicMock()) is True
+        manager.ensure_vram_for.assert_called_once_with("multimodal")
+        load.assert_called_once()
+
+    def test_a_refused_gate_does_not_load_anything(self):
+        manager = MagicMock()
+        manager.ensure_vram_for.return_value = False
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=manager),
+            patch("app.warmup.load_chat_model") as load,
+        ):
+            assert warmup.warm_up_chat_model(MagicMock()) is False
+        load.assert_not_called()
+
+
+class TestScheduling:
+    def test_the_warmup_runs_in_the_background(self):
+        app = MagicMock()
+        done = []
+
+        def fake_warm(app_arg):
+            done.append(app_arg)
+            return True
+
+        with (
+            patch("app.warmup.wait_for_llama_swap", return_value=True),
+            patch("app.warmup.warm_up_chat_model", side_effect=fake_warm),
+        ):
+            thread = warmup.schedule_chat_model_warmup(app)
+            assert thread is not None
+            thread.join(timeout=5)
+        assert done == [app]
+
+    def test_no_warmup_when_llama_swap_never_answers(self):
+        app = MagicMock()
+        with (
+            patch("app.warmup.wait_for_llama_swap", return_value=False),
+            patch("app.warmup.warm_up_chat_model") as warm,
+        ):
+            thread = warmup.schedule_chat_model_warmup(app)
+            thread.join(timeout=5)
+        warm.assert_not_called()

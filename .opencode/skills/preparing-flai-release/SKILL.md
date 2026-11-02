@@ -360,17 +360,29 @@ Replace the section; do not append. It contains only this release.
 
 Source of truth: the `CHANGELOG.md` section for `vX.Y`, `git log "$PREV..$REL"`, and the merged branches.
 
-Include only:
+**What's New is a release digest, not a changelog.** The CHANGELOG records every change; the README
+answers one question for someone upgrading: *what will change how I work, and what would surprise
+me?* A bullet that answers neither belongs in the CHANGELOG only.
 
-- major new features;
-- major behavior or architecture changes;
-- critical bug fixes.
+Test each candidate bullet before writing it:
 
-Exclude minor fixes, typos, tests, internal refactoring, routine dependency bumps and documentation-only edits.
+- Would a user upgrading from `$PREV` do something differently, or be surprised by the new behaviour?
+- Is it a whole feature or a whole subsystem, not one step inside one?
+
+If both answers are not yes, leave it out.
+
+Never in the README:
+
+- minor or one-line bug fixes;
+- typo corrections, wording and translation tweaks;
+- tests, internal refactoring, dead-code removal;
+- routine dependency and version bumps;
+- documentation-only edits;
+- catch-all bullets ("also fixed", "various improvements").
 
 Rules:
 
-- 3–6 bullets, each traceable to a release commit or CHANGELOG entry.
+- 3–6 bullets: the most significant changes, additions and fixes of **this** release only.
 - Each bullet links to its owning document.
 - Mirror the same order and meaning in `README-ru.md`; technical terms stay English.
 - Keep the current bullet-list format used by the READMEs. Do not switch to a table. If `RELEASE_GUIDE.md` disagrees, fix the guide.
@@ -393,7 +405,7 @@ Check and record evidence:
 | Demo pages current | `python -m demo.build --check`, `tests/test_demo_pages.py` | PASS / FAIL |
 | Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
-| What's New | manual traceability review | PASS / FAIL |
+| What's New | manual review: significant changes only, no minor fixes or typos | PASS / FAIL |
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |
 | API docs (paths) | `tests/test_api_docs.py` | PASS / FAIL |
 | API contract (methods) | `tests/test_api_inventory.py` | PASS / FAIL |

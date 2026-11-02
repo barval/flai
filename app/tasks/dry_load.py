@@ -134,7 +134,7 @@ def _rollback(
         # Regenerate llama-swap config
         from app.llama_swap_config import generate_and_write
 
-        if generate_and_write(app_obj, include_preload=True):
+        if generate_and_write(app_obj):
             from app.llama_swap_config import LlamaSwapConfigGenerator
 
             gen = LlamaSwapConfigGenerator(app_obj)

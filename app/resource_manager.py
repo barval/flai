@@ -56,6 +56,26 @@ class HardwareInfo:
         self.platform: str = "cpu"
 
 
+# A resident model whose share of the card falls below this fraction of its own
+# estimate is not on the GPU. llama.cpp keeps the weights in RAM when the card
+# could not hold them at load time, and llama-swap never reloads a model whose
+# ttl is 0 — measured, a multimodal model placed that way generated 11 tok/s
+# instead of 75 (prefill 49 instead of 933) for eight hours, with nothing in the
+# log. The floor is well below 1.0 because the estimate ignores the rest of the
+# card and because other processes legitimately share it.
+PLACEMENT_FLOOR = 0.6
+# One reload attempt per model per window: a model that genuinely cannot be
+# placed must not be reloaded on every request.
+PLACEMENT_RETRY_SECONDS = 600
+
+
+def placement_is_degraded(expected_mb: int, used_vram_mb: int | None) -> bool:
+    """True when a lone resident occupies far less VRAM than its own estimate."""
+    if not expected_mb or not used_vram_mb or used_vram_mb <= 0:
+        return False
+    return used_vram_mb < expected_mb * PLACEMENT_FLOOR
+
+
 class ResourceManager:
     """Manages GPU/CPU/RAM resources and computes optimal model configurations.
 
@@ -93,6 +113,8 @@ class ResourceManager:
         # Why the last ensure_vram_for() refused, so the caller can show a
         # localized reason instead of the generic "GPU memory unavailable".
         self.last_refusal: dict[str, Any] | None = None
+        # When a model was last reloaded because it sat in RAM instead of VRAM.
+        self._placement_retry_at: dict[str, float] = {}
 
     # ── Hardware detection ──
 
@@ -755,10 +777,12 @@ class ResourceManager:
 
                     config = get_model_config(model_type)
                     model_name = config.get("model_name", "") if config else ""
-                    if model_name and model_name in cmd:
-                        # Needed model already loaded — VRAM is already allocated,
-                        # no unload/reload needed. Skip VRAM threshold check which
-                        # can be inflated by stale measured_vram_mb estimates.
+                    if model_name and model_name in cmd and not self._reload_if_misplaced(
+                        model_type, needed_mb, running[0]
+                    ):
+                        # Needed model already loaded on the card — VRAM is already
+                        # allocated, no unload/reload needed. Skip the VRAM threshold
+                        # check, which stale measured_vram_mb entries inflate.
                         logger.info(f"ensure_vram_for [{model_type}]: model already loaded — skipping")
                         return True
         except Exception:
@@ -1191,6 +1215,40 @@ class ResourceManager:
             f"(transformer={transformer_bytes // 1024**2}MB, upscaler={upscaler_bytes // 1024**2}MB)"
         )
         return peak_mb
+
+    def _reload_if_misplaced(self, model_type: str, expected_mb: int, entry: dict[str, Any]) -> bool:
+        """Unload a resident model that llama.cpp left in RAM, so it loads again.
+
+        A model is loaded by whatever requests it, and llama-swap does not evict
+        what already answers — so a placement decided once (while another model
+        held the card) lasts until the model is evicted for some other reason.
+        Returns True when the model was unloaded and the caller must not treat it
+        as ready.
+        """
+        now = time.time()
+        if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+            return False
+        self._poll_vram()
+        used = self.hardware.total_vram_mb - self.hardware.available_vram_mb
+        if not placement_is_degraded(expected_mb, used):
+            return False
+        self._placement_retry_at[model_type] = now
+        logger.warning(
+            f"ensure_vram_for [{model_type}]: the resident model holds {used}MB of VRAM for an "
+            f"estimated {expected_mb}MB — llama.cpp kept the weights in RAM (partial offload). "
+            "Unloading it so the next request loads it on the card."
+        )
+        self._unload_running_model(entry)
+        return True
+
+    @staticmethod
+    def _unload_running_model(entry: dict[str, Any]) -> None:
+        url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+        name = entry.get("model") or entry.get("name") or ""
+        try:
+            requests.post(f"{url}/api/models/unload", json={"model": name}, timeout=30)
+        except Exception as e:
+            logger.warning(f"Unload of the misplaced model {name!r} failed: {e}")
 
     def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
         """Ensure sufficient VRAM for reasoning model.

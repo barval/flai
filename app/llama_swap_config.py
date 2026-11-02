@@ -580,12 +580,11 @@ class LlamaSwapConfigGenerator:
 
         return " ".join(cmd_parts)
 
-    def generate_yaml(self, ngl_overrides: dict[str, int] | None = None, include_preload: bool = True) -> str:
+    def generate_yaml(self, ngl_overrides: dict[str, int] | None = None) -> str:
         """Generate full llama-swap YAML configuration.
 
         Args:
             ngl_overrides: Per-module n_gpu_layers override, e.g. {"reasoning": 10}.
-            include_preload: Whether to include on_startup preload hook for multimodal model.
         """
         ngl_overrides = ngl_overrides or {}
         lines = [
@@ -637,17 +636,6 @@ class LlamaSwapConfigGenerator:
                 lines.append(f"  {group_name}:")
                 lines.append(f"    members: [{models_list}]")
         lines.append("")
-
-        # Preload multimodal model at startup via llama-swap hooks
-        # Skipped on initial write_config() to prevent crash when on-disk YAML
-        # contains stale degradation (e.g. --n-gpu-layers from previous session).
-        # Preload is only included on admin-triggered reloads when config is clean.
-        if include_preload:
-            lines.append("hooks:")
-            lines.append("  on_startup:")
-            lines.append("    preload:")
-            lines.append('      - "multimodal"')
-            lines.append("")
 
         lines.append("models:")
 
@@ -721,14 +709,11 @@ class LlamaSwapConfigGenerator:
 
         return "\n".join(lines)
 
-    def write_config(self, path: str | None = None, include_preload: bool = False) -> bool:
+    def write_config(self, path: str | None = None) -> bool:
         """Write config to file.
 
         Args:
             path: Optional config file path.
-            include_preload: Whether to include on_startup preload hook.
-                False on initial startup (prevents crash from stale on-disk config).
-                True on admin-triggered reloads.
         """
         config_path = path or os.path.join(CONFIG_DIR, CONFIG_FILE)
 
@@ -741,7 +726,7 @@ class LlamaSwapConfigGenerator:
                 self.logger.error(f"Failed to create config directory: {e}")
                 return False
 
-        yaml_content = self.generate_yaml(include_preload=include_preload)
+        yaml_content = self.generate_yaml()
 
         # Skip writing when the content is identical: llama-swap runs with
         # -watch-config and reloads on every write, which shuts down running
@@ -840,7 +825,7 @@ class LlamaSwapConfigGenerator:
         return True
 
 
-def generate_and_write(app=None, include_preload: bool = False) -> bool:
+def generate_and_write(app=None) -> bool:
     """Generate GPU config and write it."""
     generator = LlamaSwapConfigGenerator(app)
-    return generator.write_config(include_preload=include_preload)
+    return generator.write_config()

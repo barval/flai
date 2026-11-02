@@ -46,6 +46,17 @@ def register_babel(app):
     babel.init_app(app, locale_selector=get_locale)
 
 
+def _is_test_process() -> bool:
+    """True when the app is being built by the test suite.
+
+    conftest sets ``TESTING`` *after* ``create_app()`` returns, so the flag is
+    not readable here — and the warm-up must not run at all under pytest: each
+    created app would start a thread that waits up to 90 s for a llama-swap the
+    tests never run, and the suite builds hundreds of apps.
+    """
+    return "pytest" in sys.modules or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
 def _is_cli_process() -> bool:
     """True when the app was loaded by a `flask` CLI command (docker exec ...).
 
@@ -388,7 +399,7 @@ def create_app():
     # Warm the chat model before the first message. It goes through
     # ensure_vram_for() like a user request does: llama-swap's own preload hook
     # started the model outside that gate and could leave its weights in RAM.
-    if not _is_cli_process():
+    if not _is_cli_process() and not _is_test_process():
         try:
             from app.warmup import schedule_chat_model_warmup
 

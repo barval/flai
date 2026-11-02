@@ -155,7 +155,7 @@ Confirm the Qdrant profile is active and that the document was actually indexed 
 
 ### A file type is rejected on upload
 
-FLAI accepts PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON and EPUB, subject to `MAX_DOCUMENT_SIZE_MB` and the per-user document quota. Image uploads are resized and converted before storage. See [DOCUMENTS.md](DOCUMENTS.md).
+FLAI accepts PDF, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML and images — but not the legacy binary `.doc`, which is refused with a hint to save it as `.docx` — subject to `MAX_DOCUMENT_SIZE_MB` and the per-user document quota. Image uploads are resized and converted before storage. See [DOCUMENTS.md](DOCUMENTS.md).
 
 ---
 

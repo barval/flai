@@ -371,6 +371,10 @@ Test each candidate bullet before writing it:
 
 If both answers are not yes, leave it out.
 
+A **removal or refusal** is a What's New item even when the feature behind it is small: someone who
+used the removed path has a silently broken workflow, whatever a "major changes" reading of the list
+would call it.
+
 Never in the README:
 
 - minor or one-line bug fixes;

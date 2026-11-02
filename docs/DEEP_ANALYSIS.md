@@ -13,7 +13,7 @@ Everything runs **locally** as a single task: the reasoning model stays loaded f
 The answer always matches your language, and the actor must actually work through the selected files: a `final(answer)` call issued before any `python` corpus inspection is rejected with a corrective instruction (multi-file corpora), and the system prompt forbids answering before every corpus file has been examined — so an apartment question about two contracts won't silently report just the first one while missing the second.
 
 **How to use it:**
-1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
+1. Upload the files you want analyzed in **Documents** (PDF, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML and images).
 2. In the **Documents** panel, check the documents you want included. The checkboxes are the shared corpus for chat RAG, Deep Analysis and tasks: a folder checkbox picks every document inside it, and **Unfiled** picks the documents in the root. The 🔬 toggle only changes the tool — it does not clear the selection, and the same ticked set scopes ordinary questions and tasks.
 3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
 4. *(Optional)* Attach up to 4 images as well: the multimodal model produces a detailed text description of each and every description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photos against clause 4 of the contract". Chat-attached documents join the corpus too, so the Documents-panel selection is optional when you attach files directly in the message.

@@ -210,7 +210,7 @@ def create_app():
         try:
             from app.llama_swap_config import generate_and_write
 
-            generate_and_write(app, include_preload=True)
+            generate_and_write(app)
             app.logger.info("llama-swap config generated")
         except Exception as e:
             app.logger.warning(f"Could not generate llama-swap config: {e}")

@@ -449,9 +449,12 @@ class TestGenerateYaml:
         assert "embedding:" in yaml_str
         assert "reasoning:" in yaml_str
         assert "multimodal:" in yaml_str
-        assert "hooks:" in yaml_str
-        assert '      - "multimodal"' in yaml_str
         assert "llama-server" in yaml_str
+        # No startup preload: llama-swap would load the model outside the app's
+        # VRAM gate, next to whatever is already resident — measured, that is how
+        # a model ends up with its weights in RAM and generates at 11 tok/s.
+        assert "hooks:" not in yaml_str
+        assert "preload" not in yaml_str
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -716,7 +719,7 @@ def test_gpu_group_does_not_swap_behind_the_resource_manager(monkeypatch):
     monkeypatch.setattr(gen, "_platform_is_cpu", lambda: False)
     monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
 
-    yaml_str = gen.generate_yaml(include_preload=False)
+    yaml_str = gen.generate_yaml()
     block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
 
     assert "swap: false" in block
@@ -732,7 +735,7 @@ def test_cpu_group_keeps_llama_swap_in_charge_when_models_do_not_fit(monkeypatch
     monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: False)
     monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
 
-    yaml_str = gen.generate_yaml(include_preload=False)
+    yaml_str = gen.generate_yaml()
     block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
 
     assert "swap: false" not in block
@@ -747,7 +750,7 @@ def test_cpu_group_does_not_swap_when_both_models_fit_in_ram(monkeypatch):
     monkeypatch.setattr(gen, "_cpu_models_coexist", lambda: True)
     monkeypatch.setattr(gen, "build_model_entry", lambda module, ngl_override=None: None)
 
-    yaml_str = gen.generate_yaml(include_preload=False)
+    yaml_str = gen.generate_yaml()
     block = yaml_str.split("llm_fast:", 1)[1].split("cpu_only:", 1)[0]
 
     assert "swap: false" in block

@@ -280,6 +280,16 @@ Update:
 - `docs/CONFIGURATION.md` and `-ru`, `.env`, `.env.example` for every environment change; key order and sections match.
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/MODELS.md`, `docs/BENCHMARKS.md`, `docs/MONITORING.md` as touched.
 
+**A list in the documentation is a claim about the code.** An accepted-format list, a settings table, a
+limit or a default must match `app/routes/documents.py`, `app/settings_registry.py` and `app/config.py`.
+When the release changes one of them, grep the whole tree for the old values — the same list is usually
+repeated in the READMEs, `DEEP_ANALYSIS` and `TROUBLESHOOTING`, and a stale copy keeps advertising a
+format or a key the code now refuses:
+
+```bash
+grep -rn "PDF, DOC," README*.md docs/*.md AGENTS.md
+```
+
 ### ROADMAP reconciliation
 
 `docs/ROADMAP.md` and `docs/ROADMAP-ru.md` hold planned and in-progress work only; delivered work belongs to `CHANGELOG.md`, which is why the roadmap has no "Completed" section. Reconcile it against the release being prepared:
@@ -364,6 +374,17 @@ Source of truth: the `CHANGELOG.md` section for `vX.Y`, `git log "$PREV..$REL"`,
 answers one question for someone upgrading: *what will change how I work, and what would surprise
 me?* A bullet that answers neither belongs in the CHANGELOG only.
 
+Build the candidate list from the release, never from memory:
+
+```bash
+git log --oneline "$PREV..$REL"
+sed -n '/^## \[vX.Y\]/,/^## \[/p' CHANGELOG.md
+```
+
+Then walk the surfaces a user meets and read the release diff for each: accepted file formats, admin
+settings and their defaults, limits and quotas, user-facing routes, UI affordances. Every change to one
+of them is a candidate; the questions below decide whether it becomes a bullet.
+
 Test each candidate bullet before writing it:
 
 - Would a user upgrading from `$PREV` do something differently, or be surprised by the new behaviour?
@@ -392,6 +413,20 @@ Rules:
 - Keep the current bullet-list format used by the READMEs. Do not switch to a table. If `RELEASE_GUIDE.md` disagrees, fix the guide.
 - No "Unreleased" in the release READMEs.
 
+### Audit the section, do not only write it
+
+The gate is not "a section exists". At gate time read it again against the release and answer for every
+bullet and every gap:
+
+- does each bullet still describe the most significant work of **this** release?
+- is a bullet left over from the previous release, describing something this one did not ship?
+- is a user-facing change missing — a new format, setting, limit or route, or a removed and refused path?
+- does the section duplicate the minor fixes that belong to `CHANGELOG.md` alone?
+
+Two failures this audit exists for: a section that lists the previous release's headlines as this one's,
+and a section that omits a capability the user will notice (a widened format list, a new accepted file
+type) together with the refusal that can break their workflow.
+
 ## Phase 5 — Release gate and report
 
 Check and record evidence:
@@ -409,7 +444,7 @@ Check and record evidence:
 | Demo pages current | `python -m demo.build --check`, `tests/test_demo_pages.py` | PASS / FAIL |
 | Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
-| What's New | manual review: significant changes only, no minor fixes or typos | PASS / FAIL |
+| What's New | audit: every bullet traces to this release; no leftover, no minor fixes, no missing user-facing change | PASS / FAIL |
 | Focused tests | `pytest ...` | PASS / NOT VERIFIED |
 | API docs (paths) | `tests/test_api_docs.py` | PASS / FAIL |
 | API contract (methods) | `tests/test_api_inventory.py` | PASS / FAIL |
@@ -438,6 +473,7 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "The feature branch is probably merged." | A branch can sit hundreds of commits outside the release branch. Use `check_release_branches.py`. |
 | "Ruff is clean, so there is no dead code." | Ruff misses unused module-level functions and orphan assets. Inspect the diff. |
 | "This small fix belongs in What's New." | Minor fixes and typos are excluded by definition. |
+| "The What's New section exists, so it is done." | It can list the previous release's headlines, or miss a capability (a widened format list) and the refusal that breaks someone's workflow. Audit it against the release. |
 | "`check_translations.py` passed, so the translations are complete." | It compares the catalogs with each other. A string that is in the code and in neither catalog passes it and ships in English. Run `check_catalog_drift.py`. |
 | "I'll just replace this `.po` block with the new text." | A text splice leaves the old `msgstr` behind and glues the previous entry on. Let `pybabel update` write the entry, or re-run the drift check. |
 | "The demo is regenerated when someone asks." | `python -m demo.build --check` names every stale page; a stale page publishes an interface that no longer exists. |

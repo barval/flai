@@ -71,6 +71,28 @@ ALLOWED_MIME_TYPES = {
 }
 
 
+def _validate_doc(file_stream) -> tuple[bool, str | None]:
+    """Decide a .doc by its own container.
+
+    libmagic reads the first two kilobytes and reports the generic OLE2 type for
+    most Word documents — the marker sits further in — and that answer is the one
+    a legacy .xls produces too, so the extension cannot be checked against it.
+    The container is asked instead: a `WordDocument` stream with the Word
+    identifier makes it a document, and a password-protected one is refused here
+    because a stored-but-unreadable file would fail to index a second later.
+    """
+    from app.doc_extract import is_encrypted_doc, is_word_document
+
+    file_stream.seek(0)
+    payload = file_stream.read()
+    file_stream.seek(0)
+    if not is_word_document(payload):
+        return False, _("File type does not match extension")
+    if is_encrypted_doc(payload):
+        return False, _("This .doc is password-protected. Remove the password and upload it again.")
+    return True, None
+
+
 def _is_zip_package(stream, ext: str) -> bool:
     """True when the stream is a ZIP archive carrying the format's own entry.
 
@@ -137,6 +159,9 @@ def validate_file(file_stream, filename):
     if ext not in allowed_extensions:
         return False, _("Unsupported file type")
 
+    if ext == ".doc":
+        return _validate_doc(file_stream)
+
     # Check magic bytes
     file_stream.seek(0)
     mime = magic.from_buffer(file_stream.read(2048), mime=True)
@@ -157,17 +182,6 @@ def validate_file(file_stream, filename):
     # Verify extension matches MIME type
     if ext not in ALLOWED_MIME_TYPES[mime]:
         return False, _("File type does not match extension")
-
-    if ext == ".doc":
-        # A password-protected .doc is a valid container with unreadable text:
-        # accepting it would store a document that fails to index.
-        from app.doc_extract import is_encrypted_doc
-
-        file_stream.seek(0)
-        payload = file_stream.read()
-        file_stream.seek(0)
-        if is_encrypted_doc(payload):
-            return False, _("This .doc is password-protected. Remove the password and upload it again.")
 
     return True, None
 

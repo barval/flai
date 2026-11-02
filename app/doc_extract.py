@@ -92,6 +92,23 @@ def extract_doc_text(data: bytes) -> str:
     return _clean(text)
 
 
+def is_word_document(data: bytes) -> bool:
+    """True when the data is an OLE2 container holding a Word document.
+
+    libmagic is handed the first two kilobytes and answers with the generic
+    ``application/x-ole-storage`` for most Word files — the same answer a legacy
+    ``.xls`` produces — so the container itself has to decide.
+    """
+    try:
+        with olefile.OleFileIO(io.BytesIO(data)) as ole:
+            if not ole.exists("WordDocument"):
+                return False
+            head = ole.openstream("WordDocument").read(2)
+    except Exception:
+        return False
+    return len(head) == 2 and _u16(head, 0) == WORD_IDENTIFIER
+
+
 def is_encrypted_doc(data: bytes) -> bool:
     """True for a password-protected document, whose text cannot be read.
 

@@ -97,6 +97,7 @@ def validate_file(file_stream, filename):
     """
     allowed_extensions = {
         ".pdf",
+        ".doc",
         ".docx",
         ".txt",
         ".odt",
@@ -133,11 +134,6 @@ def validate_file(file_stream, filename):
     }
     ext = os.path.splitext(filename)[1].lower()
 
-    if ext == ".doc":
-        # The legacy binary format has no parser here, and the only free
-        # converter (antiword) is GPL: accepting the file produced a document
-        # that failed to index a second later.
-        return False, _("Legacy .doc is not supported. Save the document as .docx and upload it again.")
     if ext not in allowed_extensions:
         return False, _("Unsupported file type")
 
@@ -161,6 +157,17 @@ def validate_file(file_stream, filename):
     # Verify extension matches MIME type
     if ext not in ALLOWED_MIME_TYPES[mime]:
         return False, _("File type does not match extension")
+
+    if ext == ".doc":
+        # A password-protected .doc is a valid container with unreadable text:
+        # accepting it would store a document that fails to index.
+        from app.doc_extract import is_encrypted_doc
+
+        file_stream.seek(0)
+        payload = file_stream.read()
+        file_stream.seek(0)
+        if is_encrypted_doc(payload):
+            return False, _("This .doc is password-protected. Remove the password and upload it again.")
 
     return True, None
 

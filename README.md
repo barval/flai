@@ -80,7 +80,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 - **MCP servers.** External Model Context Protocol servers can supply chat tools; they are configured in their own admin tab, namespaced per server, and a server that is down costs nothing. → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
 - **Deeper agent tasks.** A request is planned as steps and executed with checkpoints; the planner records its plan as a `write_plan` tool call, and a `research` step can search, open pages and refine its own query before answering. → [TASKS.md](docs/TASKS.md)
 - **A depth profile.** `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend, and every new parameter is editable in the admin panel. → [CONFIGURATION.md](docs/CONFIGURATION.md)
-- **More document formats — and `.doc` is refused.** Markdown, HTML, XLSX/XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG and EML join the accepted types, the picker takes a batch of files, and the legacy binary `.doc` is now rejected with a hint to save as `.docx` — it used to be accepted and then failed to index. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **More document formats, including the legacy `.doc`.** Markdown, HTML, XLSX/XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG and EML join the accepted types, the picker takes a batch of files at once, and the old binary Word format is read straight from its OLE2 container — it used to be accepted and then fail to index, and now needs no converter and adds nothing to the image. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -117,7 +117,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 
 ### 🔎 Search & knowledge
 - **Web search** — self-hosted SearXNG metasearch plus optional Tavily, with page-content extraction when snippets are too thin. → [SEARCH.md](docs/SEARCH.md)
-- **Document search (RAG)** — PDF, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML and images, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **Document search (RAG)** — PDF, DOC, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML and images, indexed in Qdrant; every indexed file is guaranteed a slot in the context. **Hybrid search** (vectors + full-text with reciprocal rank fusion, on by default) and an optional **CPU cross-encoder reranker** handle entity questions the vectors miss. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on, and the 🔍 search scope mirrors them live (folder, **Unfiled** root, upload dates) with no separate Apply step. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.

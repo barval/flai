@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.9\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 23:39+0300\n"
+"POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -643,7 +643,7 @@ msgstr ""
 msgid "Transcribed from the voice message"
 msgstr "Transcribed from the voice message"
 
-#: app/queue.py:6876 app/routes/documents.py:282
+#: app/queue.py:6876 app/routes/documents.py:326
 msgid "No file provided"
 msgstr "No file provided"
 
@@ -1023,7 +1023,7 @@ msgstr ""
 "`activate_skill` BEFORE using any other tool and follow the instructions "
 "it returns:"
 
-#: app/utils.py:1520
+#: app/utils.py:1539
 #, python-brace-format
 msgid ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
@@ -1032,39 +1032,39 @@ msgstr ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
 "files to free space."
 
-#: app/utils.py:2024
+#: app/utils.py:2043
 msgid "Image generation failed. Try again later."
 msgstr "Image generation failed. Try again later."
 
-#: app/utils.py:2025
+#: app/utils.py:2044
 msgid "Image generation produced empty output."
 msgstr "Image generation produced empty output."
 
-#: app/utils.py:2026
+#: app/utils.py:2045
 msgid "Image generation error. Check logs for details."
 msgstr "Image generation error. Check logs for details."
 
-#: app/utils.py:2027
+#: app/utils.py:2046
 msgid "Image editing failed. Try again later."
 msgstr "Image editing failed. Try again later."
 
-#: app/utils.py:2028
+#: app/utils.py:2047
 msgid "Image editing produced empty output."
 msgstr "Image editing produced empty output."
 
-#: app/utils.py:2029
+#: app/utils.py:2048
 msgid "No editing instructions provided."
 msgstr "No editing instructions provided."
 
-#: app/utils.py:2030
+#: app/utils.py:2049
 msgid "No source image provided."
 msgstr "No source image provided."
 
-#: app/utils.py:2031
+#: app/utils.py:2050
 msgid "Image generation timed out. Try again later."
 msgstr "Image generation timed out. Try again later."
 
-#: app/utils.py:2032
+#: app/utils.py:2051
 msgid "Image editing timed out. Try again later."
 msgstr "Image editing timed out. Try again later."
 
@@ -1259,11 +1259,11 @@ msgstr "Both language variants are required"
 #: app/routes/api_keys.py:60 app/routes/api_keys.py:69
 #: app/routes/api_keys.py:82 app/routes/api_keys.py:93
 #: app/routes/api_keys.py:105 app/routes/api_keys.py:124
-#: app/routes/documents.py:134 app/routes/documents.py:180
-#: app/routes/documents.py:198 app/routes/documents.py:232
-#: app/routes/documents.py:247 app/routes/documents.py:264
-#: app/routes/documents.py:280 app/routes/documents.py:395
-#: app/routes/documents.py:431 app/routes/documents.py:600
+#: app/routes/documents.py:178 app/routes/documents.py:224
+#: app/routes/documents.py:242 app/routes/documents.py:276
+#: app/routes/documents.py:291 app/routes/documents.py:308
+#: app/routes/documents.py:324 app/routes/documents.py:439
+#: app/routes/documents.py:475 app/routes/documents.py:644
 #: app/routes/messages.py:48 app/routes/messages.py:79
 #: app/routes/messages.py:586 app/routes/messages.py:669
 #: app/routes/queue.py:118 app/routes/queue.py:142 app/routes/queue.py:158
@@ -1467,7 +1467,7 @@ msgid "Missing 'file' field"
 msgstr "Missing 'file' field"
 
 #: app/routes/api_v1.py:1151 app/routes/api_v1.py:1302
-#: app/routes/documents.py:285
+#: app/routes/documents.py:329
 msgid "No file selected"
 msgstr "No file selected"
 
@@ -1485,18 +1485,18 @@ msgstr "Transcription produced no text"
 
 #: app/routes/api_v1.py:1229 app/routes/api_v1.py:1241
 #: app/routes/api_v1.py:1243 app/routes/api_v1.py:1504
-#: app/routes/documents.py:250 app/routes/documents.py:398
-#: app/routes/documents.py:434 app/routes/documents.py:603
+#: app/routes/documents.py:294 app/routes/documents.py:442
+#: app/routes/documents.py:478 app/routes/documents.py:647
 #: app/routes/rlm.py:102
 msgid "Document not found"
 msgstr "Document not found"
 
-#: app/routes/api_v1.py:1307 app/routes/documents.py:107
-#: app/routes/documents.py:115 modules/multimodal.py:115
+#: app/routes/api_v1.py:1307 app/routes/documents.py:138
+#: app/routes/documents.py:148 modules/multimodal.py:115
 msgid "Unsupported file type"
 msgstr "Unsupported file type"
 
-#: app/routes/api_v1.py:1346 app/routes/documents.py:352
+#: app/routes/api_v1.py:1346 app/routes/documents.py:396
 #: app/routes/model_hub.py:30 app/routes/tasks.py:170
 msgid "Invalid file path"
 msgstr "Invalid file path"
@@ -1578,79 +1578,75 @@ msgstr "Archive checksum mismatch. File may be corrupted."
 msgid "Error restoring backup"
 msgstr "Error restoring backup"
 
-#: app/routes/backups.py:390 app/routes/documents.py:413
-#: app/routes/documents.py:444
+#: app/routes/backups.py:390 app/routes/documents.py:457
+#: app/routes/documents.py:488
 msgid "File not found"
 msgstr "File not found"
 
-#: app/routes/documents.py:105
-msgid ""
-"Legacy .doc is not supported. Save the document as .docx and upload it "
-"again."
-msgstr ""
-"Legacy .doc is not supported. Save the document as .docx and upload it "
-"again."
-
-#: app/routes/documents.py:126
+#: app/routes/documents.py:159
 msgid "File type does not match extension"
 msgstr "File type does not match extension"
 
-#: app/routes/documents.py:162
+#: app/routes/documents.py:170
+msgid "This .doc is password-protected. Remove the password and upload it again."
+msgstr "This .doc is password-protected. Remove the password and upload it again."
+
+#: app/routes/documents.py:206
 msgid "Folder name is required"
 msgstr "Folder name is required"
 
-#: app/routes/documents.py:164
+#: app/routes/documents.py:208
 msgid "Folder name is too long"
 msgstr "Folder name is too long"
 
-#: app/routes/documents.py:186 app/routes/documents.py:206
+#: app/routes/documents.py:230 app/routes/documents.py:250
 msgid "A folder with this name already exists"
 msgstr "A folder with this name already exists"
 
-#: app/routes/documents.py:189
+#: app/routes/documents.py:233
 #, python-brace-format
 msgid "Folder limit reached ({n})"
 msgstr "Folder limit reached ({n})"
 
-#: app/routes/documents.py:201 app/routes/documents.py:235
-#: app/routes/documents.py:256 app/routes/documents.py:272
-#: app/routes/documents.py:360
+#: app/routes/documents.py:245 app/routes/documents.py:279
+#: app/routes/documents.py:300 app/routes/documents.py:316
+#: app/routes/documents.py:404
 msgid "Folder not found"
 msgstr "Folder not found"
 
-#: app/routes/documents.py:253
+#: app/routes/documents.py:297
 msgid "Missing folder_id"
 msgstr "Missing folder_id"
 
-#: app/routes/documents.py:269
+#: app/routes/documents.py:313
 msgid "No documents selected"
 msgstr "No documents selected"
 
-#: app/routes/documents.py:302 app/routes/messages.py:175
+#: app/routes/documents.py:346 app/routes/messages.py:175
 #: app/routes/messages.py:212 app/routes/tasks.py:156 modules/multimodal.py:109
 #, python-brace-format
 msgid "Maximum file size {max_size} MB"
 msgstr "Maximum file size {max_size} MB"
 
-#: app/routes/documents.py:409 app/routes/documents.py:441
-#: app/routes/documents.py:620 app/templates/chat.html:192
+#: app/routes/documents.py:453 app/routes/documents.py:485
+#: app/routes/documents.py:664 app/templates/chat.html:192
 msgid "Permission denied"
 msgstr "Permission denied"
 
-#: app/routes/documents.py:495
+#: app/routes/documents.py:539
 msgid "Could not read the document"
 msgstr "⚠️ Could not read the document"
 
-#: app/routes/documents.py:526 app/routes/documents.py:550
+#: app/routes/documents.py:570 app/routes/documents.py:594
 #: app/templates/chat.html:232
 msgid "Preview is not available for this format"
 msgstr "Preview is not available for this format"
 
-#: app/routes/documents.py:552 app/routes/documents.py:555
+#: app/routes/documents.py:596 app/routes/documents.py:599
 msgid "Page not found"
 msgstr "Page not found"
 
-#: app/routes/documents.py:581 app/routes/documents.py:586
+#: app/routes/documents.py:625 app/routes/documents.py:630
 msgid "Could not render the page"
 msgstr "Could not render the page"
 
@@ -3036,37 +3032,36 @@ msgid ""
 "Manual cap on the documents' share of the window (0 = derived from the "
 "window and the corpus)"
 msgstr ""
-"Manual cap on the documents' share of the window (0 = derived from the"
-"window and the corpus)"
+"Manual cap on the documents' share of the window (0 = derived from "
+"thewindow and the corpus)"
 
 #: app/templates/admin.html:678
 msgid ""
 "Manual cap on the conversation share of the window (0 = derived from what"
 " the session holds)"
 msgstr ""
-"Manual cap on the conversation share of the window (0 = derived from"
-"what the session holds)"
+"Manual cap on the conversation share of the window (0 = derived fromwhat "
+"the session holds)"
 
 #: app/templates/admin.html:679
 msgid ""
 "How much work one task request may spend: min, norm or max (applies after"
 " a restart)"
 msgstr ""
-"How much work one task request may spend: min, norm or max (applies"
-"after a restart)"
+"How much work one task request may spend: min, norm or max (appliesafter "
+"a restart)"
 
 #: app/templates/admin.html:680
 msgid "When a step is checked: each, final or off (applies after a restart)"
-msgstr ""
-"When a step is checked: each, final or off (applies after a restart)"
+msgstr "When a step is checked: each, final or off (applies after a restart)"
 
 #: app/templates/admin.html:681
 msgid ""
 "Offer tools from the configured MCP servers to the chat model (applies "
 "immediately)"
 msgstr ""
-"Offer tools from the configured MCP servers to the chat model (applies"
-"immediately)"
+"Offer tools from the configured MCP servers to the chat model "
+"(appliesimmediately)"
 
 #: app/templates/admin.html:682
 msgid "Timeout for one MCP request (seconds)"
@@ -3078,16 +3073,16 @@ msgid ""
 "Configured MCP servers: a JSON array of {name, url, token, allow} "
 "(applies immediately)"
 msgstr ""
-"Configured MCP servers: a JSON array of {name, url, token, allow}"
-"(applies immediately)"
+"Configured MCP servers: a JSON array of {name, url, token, allow}(applies"
+" immediately)"
 
 #: app/templates/admin.html:684
 msgid ""
 "Route through the request kernel (one JSON decision) instead of the "
 "marker router"
 msgstr ""
-"Route through the request kernel (one JSON decision) instead of the"
-"marker router"
+"Route through the request kernel (one JSON decision) instead of themarker"
+" router"
 
 #: app/templates/admin.html:685
 msgid "Ask the server for a JSON-object reply from the request kernel"
@@ -3098,8 +3093,8 @@ msgid ""
 "Keep residents that fit next to a new model (auto) or unload everything "
 "(off)"
 msgstr ""
-"Keep residents that fit next to a new model (auto) or unload everything"
-"(off)"
+"Keep residents that fit next to a new model (auto) or unload "
+"everything(off)"
 
 #: app/templates/admin.html:687
 msgid "VRAM kept free for prefill buffers when deciding what to unload"
@@ -3107,47 +3102,39 @@ msgstr "VRAM kept free for prefill buffers when deciding what to unload"
 
 #: app/templates/admin.html:688
 msgid "RAM kept free for the OS before an idle model is unloaded for a service"
-msgstr ""
-"RAM kept free for the OS before an idle model is unloaded for a service"
+msgstr "RAM kept free for the OS before an idle model is unloaded for a service"
 
 #: app/templates/admin.html:689
 msgid "RAM kept free on a CPU-only host when deciding whether both big models fit"
-msgstr ""
-"RAM kept free on a CPU-only host when deciding whether both big models"
-"fit"
+msgstr "RAM kept free on a CPU-only host when deciding whether both big modelsfit"
 
 #: app/templates/admin.html:690
 msgid "CPU-only hosts: idle seconds before the reasoning model releases its RAM"
-msgstr ""
-"CPU-only hosts: idle seconds before the reasoning model releases its RAM"
+msgstr "CPU-only hosts: idle seconds before the reasoning model releases its RAM"
 
 #: app/templates/admin.html:691
 msgid "VRAM budget assumed for the LTX video pipeline when it is not measured"
-msgstr ""
-"VRAM budget assumed for the LTX video pipeline when it is not measured"
+msgstr "VRAM budget assumed for the LTX video pipeline when it is not measured"
 
 #: app/templates/admin.html:692
-#, python-format
 msgid "CPU-only LTX generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "CPU-only LTX generation budget in seconds (0 = 85 percent of the timeout)"
 
 #: app/templates/admin.html:693
-#, python-format
 msgid "CPU-only Wan generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "CPU-only Wan generation budget in seconds (0 = 85 percent of the timeout)"
 
 #: app/templates/admin.html:694
 msgid "Snapshots one \"check every room\" request may take"
-msgstr ""
-"Snapshots one \"check every room\" request may take"
+msgstr "Snapshots one \"check every room\" request may take"
 
 #: app/templates/admin.html:695
 msgid ""
 "Snapshot width the vision model reads in chat (384 px previews are too "
 "small)"
 msgstr ""
-"Snapshot width the vision model reads in chat (384 px previews are too"
-"small)"
+"Snapshot width the vision model reads in chat (384 px previews are "
+"toosmall)"
 
 #: app/templates/admin.html:696
 msgid "Recent messages passed to the router"
@@ -5264,4 +5251,13 @@ msgstr "Could not connect to video generation service"
 
 #~ msgid "Images in order: {rooms}"
 #~ msgstr "Images in order: {rooms}"
+
+#~ msgid ""
+#~ "Legacy .doc is not supported. Save "
+#~ "the document as .docx and upload "
+#~ "it again."
+#~ msgstr ""
+#~ "Legacy .doc is not supported. Save "
+#~ "the document as .docx and upload "
+#~ "it again."
 

@@ -271,9 +271,8 @@ class TestBulkUpload:
         assert "uploadDocuments(e.target.files, folderId);" in CHAT_DOCS
 
     def test_the_picker_offers_every_supported_format(self):
-        for ext in (".pdf", ".docx", ".md", ".html", ".xlsx", ".xls", ".pptx", ".fb2", ".eml", "image/*"):
+        for ext in (".pdf", ".doc", ".docx", ".md", ".html", ".xlsx", ".xls", ".pptx", ".fb2", ".eml", "image/*"):
             assert f"'{ext}'" in CHAT_DOCS, f"{ext} is missing from the picker"
-        assert "'.doc'," not in CHAT_DOCS, "the legacy format is refused by the server"
 
     def test_the_bulk_loop_uploads_one_file_at_a_time(self):
         start = CHAT_DOCS.index("function uploadDocuments(")
@@ -284,5 +283,4 @@ class TestBulkUpload:
 
     def test_chat_attachment_picker_matches_the_document_formats(self):
         line = next(ln for ln in CHAT_HTML.split("\n") if 'id="file-input"' in ln)
-        assert ".xlsx" in line and ".md" in line
-        assert ",.doc," not in line
+        assert ".xlsx" in line and ".md" in line and ",.doc," in line

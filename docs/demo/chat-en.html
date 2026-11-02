@@ -10102,7 +10102,7 @@ video {
         <div class="message-input">
             <input type="text" id="message-input" placeholder="Enter message..." autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="Record voice message">🎤</button>
-            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.docx,.txt,.md,.markdown,.html,.htm,.odt,.rtf,.csv,.json,.epub,.xlsx,.xls,.pptx,.fb2,.xml,.yaml,.yml,.toml,.ini,.cfg,.log,.eml" multiple class="hidden">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt,.md,.markdown,.html,.htm,.odt,.rtf,.csv,.json,.epub,.xlsx,.xls,.pptx,.fb2,.xml,.yaml,.yml,.toml,.ini,.cfg,.log,.eml" multiple class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">Send</button>
             <button id="retry-task-button" title="Restart task" style="display:none">🔄 Restart task</button>
@@ -12296,7 +12296,7 @@ function deleteDocument(docId, docName) {
 // What the picker offers. The server validates for real (extension plus magic
 // bytes); this list only spares the user from picking a file that is refused.
 const DOCUMENT_ACCEPT = [
-    '.pdf', '.docx', '.txt', '.md', '.markdown', '.html', '.htm', '.odt', '.rtf',
+    '.pdf', '.doc', '.docx', '.txt', '.md', '.markdown', '.html', '.htm', '.odt', '.rtf',
     '.csv', '.json', '.epub', '.xlsx', '.xls', '.pptx', '.fb2', '.xml',
     '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.eml', 'image/*'
 ].join(',');

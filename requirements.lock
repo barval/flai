@@ -45,6 +45,7 @@ MarkupSafe==3.0.4
 mistune==3.4.0
 numpy==2.4.6
 odfpy==1.4.1
+olefile==0.47
 openpyxl==3.1.5
 ordered-set==4.1.0
 packaging==26.3

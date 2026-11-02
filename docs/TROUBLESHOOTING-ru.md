@@ -155,7 +155,7 @@ docker inspect --format '{{.State.Health.Status}}' flai-qdrant
 
 ### Тип файла отклонён при загрузке
 
-ПЛИИ принимает PDF, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML и изображения, но не устаревший бинарный `.doc` — он отклоняется с подсказкой сохранить файл как `.docx` — с учётом `MAX_DOCUMENT_SIZE_MB` и квоты документов пользователя. Загруженные изображения уменьшаются и конвертируются перед сохранением. См. [DOCUMENTS-ru.md](DOCUMENTS-ru.md).
+ПЛИИ принимает PDF, DOC, DOCX, MD, HTML, ODT, RTF, TXT, CSV, JSON, EPUB, XLSX, XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG, EML и изображения — устаревший бинарный `.doc` читается через свой OLE2-контейнер, конвертер не нужен — с учётом `MAX_DOCUMENT_SIZE_MB` и квоты документов пользователя. Загруженные изображения уменьшаются и конвертируются перед сохранением. См. [DOCUMENTS-ru.md](DOCUMENTS-ru.md).
 
 ---
 

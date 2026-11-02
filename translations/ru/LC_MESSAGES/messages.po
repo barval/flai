@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 12.9\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 23:39+0300\n"
+"POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -646,7 +646,7 @@ msgstr "Не хватает RAM для {service}: нужно ~{needed} МБ, д�
 msgid "Transcribed from the voice message"
 msgstr "Расшифровка голосового сообщения"
 
-#: app/queue.py:6876 app/routes/documents.py:282
+#: app/queue.py:6876 app/routes/documents.py:326
 msgid "No file provided"
 msgstr "Файл не предоставлен"
 
@@ -1036,7 +1036,7 @@ msgstr ""
 "`activate_skill` ДО любого другого инструмента и следуйте полученным "
 "инструкциям:"
 
-#: app/utils.py:1520
+#: app/utils.py:1539
 #, python-brace-format
 msgid ""
 "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
@@ -1045,39 +1045,39 @@ msgstr ""
 "Превышена квота хранилища: использовано {used_mb:.0f}МБ из {max_mb}МБ. "
 "Удалите часть файлов."
 
-#: app/utils.py:2024
+#: app/utils.py:2043
 msgid "Image generation failed. Try again later."
 msgstr "Генерация изображения не удалась. Попробуйте позже."
 
-#: app/utils.py:2025
+#: app/utils.py:2044
 msgid "Image generation produced empty output."
 msgstr "Генерация изображения дала пустой результат."
 
-#: app/utils.py:2026
+#: app/utils.py:2045
 msgid "Image generation error. Check logs for details."
 msgstr "Ошибка генерации изображения. Подробности в логах."
 
-#: app/utils.py:2027
+#: app/utils.py:2046
 msgid "Image editing failed. Try again later."
 msgstr "Редактирование изображения не удалось. Попробуйте позже."
 
-#: app/utils.py:2028
+#: app/utils.py:2047
 msgid "Image editing produced empty output."
 msgstr "Редактирование дало пустой результат."
 
-#: app/utils.py:2029
+#: app/utils.py:2048
 msgid "No editing instructions provided."
 msgstr "Не указаны инструкции для редактирования."
 
-#: app/utils.py:2030
+#: app/utils.py:2049
 msgid "No source image provided."
 msgstr "Не предоставлено исходное изображение."
 
-#: app/utils.py:2031
+#: app/utils.py:2050
 msgid "Image generation timed out. Try again later."
 msgstr "Генерация изображения превысила лимит времени. Попробуйте позже."
 
-#: app/utils.py:2032
+#: app/utils.py:2051
 msgid "Image editing timed out. Try again later."
 msgstr "Редактирование изображения превысило лимит времени. Попробуйте позже."
 
@@ -1272,11 +1272,11 @@ msgstr "Требуются оба языковых варианта"
 #: app/routes/api_keys.py:60 app/routes/api_keys.py:69
 #: app/routes/api_keys.py:82 app/routes/api_keys.py:93
 #: app/routes/api_keys.py:105 app/routes/api_keys.py:124
-#: app/routes/documents.py:134 app/routes/documents.py:180
-#: app/routes/documents.py:198 app/routes/documents.py:232
-#: app/routes/documents.py:247 app/routes/documents.py:264
-#: app/routes/documents.py:280 app/routes/documents.py:395
-#: app/routes/documents.py:431 app/routes/documents.py:600
+#: app/routes/documents.py:178 app/routes/documents.py:224
+#: app/routes/documents.py:242 app/routes/documents.py:276
+#: app/routes/documents.py:291 app/routes/documents.py:308
+#: app/routes/documents.py:324 app/routes/documents.py:439
+#: app/routes/documents.py:475 app/routes/documents.py:644
 #: app/routes/messages.py:48 app/routes/messages.py:79
 #: app/routes/messages.py:586 app/routes/messages.py:669
 #: app/routes/queue.py:118 app/routes/queue.py:142 app/routes/queue.py:158
@@ -1486,7 +1486,7 @@ msgid "Missing 'file' field"
 msgstr "Отсутствует поле 'file'"
 
 #: app/routes/api_v1.py:1151 app/routes/api_v1.py:1302
-#: app/routes/documents.py:285
+#: app/routes/documents.py:329
 msgid "No file selected"
 msgstr "Файл не выбран"
 
@@ -1506,18 +1506,18 @@ msgstr "Распознавание не вернуло текст"
 
 #: app/routes/api_v1.py:1229 app/routes/api_v1.py:1241
 #: app/routes/api_v1.py:1243 app/routes/api_v1.py:1504
-#: app/routes/documents.py:250 app/routes/documents.py:398
-#: app/routes/documents.py:434 app/routes/documents.py:603
+#: app/routes/documents.py:294 app/routes/documents.py:442
+#: app/routes/documents.py:478 app/routes/documents.py:647
 #: app/routes/rlm.py:102
 msgid "Document not found"
 msgstr "Документ не найден"
 
-#: app/routes/api_v1.py:1307 app/routes/documents.py:107
-#: app/routes/documents.py:115 modules/multimodal.py:115
+#: app/routes/api_v1.py:1307 app/routes/documents.py:138
+#: app/routes/documents.py:148 modules/multimodal.py:115
 msgid "Unsupported file type"
 msgstr "Неподдерживаемый тип файла"
 
-#: app/routes/api_v1.py:1346 app/routes/documents.py:352
+#: app/routes/api_v1.py:1346 app/routes/documents.py:396
 #: app/routes/model_hub.py:30 app/routes/tasks.py:170
 msgid "Invalid file path"
 msgstr "Некорректный путь к файлу"
@@ -1599,79 +1599,75 @@ msgstr "Контрольная сумма не совпадает. Файл мо
 msgid "Error restoring backup"
 msgstr "Ошибка при восстановлении"
 
-#: app/routes/backups.py:390 app/routes/documents.py:413
-#: app/routes/documents.py:444
+#: app/routes/backups.py:390 app/routes/documents.py:457
+#: app/routes/documents.py:488
 msgid "File not found"
 msgstr "Файл не найден"
 
-#: app/routes/documents.py:105
-msgid ""
-"Legacy .doc is not supported. Save the document as .docx and upload it "
-"again."
-msgstr ""
-"Устаревший формат .doc не поддерживается. Сохраните документ как .docx и "
-"загрузите снова."
-
-#: app/routes/documents.py:126
+#: app/routes/documents.py:159
 msgid "File type does not match extension"
 msgstr "Тип файла не соответствует расширению"
 
-#: app/routes/documents.py:162
+#: app/routes/documents.py:170
+msgid "This .doc is password-protected. Remove the password and upload it again."
+msgstr "Этот .doc защищён паролем. Снимите пароль и загрузите файл снова."
+
+#: app/routes/documents.py:206
 msgid "Folder name is required"
 msgstr "Введите название папки"
 
-#: app/routes/documents.py:164
+#: app/routes/documents.py:208
 msgid "Folder name is too long"
 msgstr "Название папки слишком длинное"
 
-#: app/routes/documents.py:186 app/routes/documents.py:206
+#: app/routes/documents.py:230 app/routes/documents.py:250
 msgid "A folder with this name already exists"
 msgstr "Папка с таким названием уже существует"
 
-#: app/routes/documents.py:189
+#: app/routes/documents.py:233
 #, python-brace-format
 msgid "Folder limit reached ({n})"
 msgstr "Достигнут лимит папок ({n})"
 
-#: app/routes/documents.py:201 app/routes/documents.py:235
-#: app/routes/documents.py:256 app/routes/documents.py:272
-#: app/routes/documents.py:360
+#: app/routes/documents.py:245 app/routes/documents.py:279
+#: app/routes/documents.py:300 app/routes/documents.py:316
+#: app/routes/documents.py:404
 msgid "Folder not found"
 msgstr "Папка не найдена"
 
-#: app/routes/documents.py:253
+#: app/routes/documents.py:297
 msgid "Missing folder_id"
 msgstr "Не указана папка"
 
-#: app/routes/documents.py:269
+#: app/routes/documents.py:313
 msgid "No documents selected"
 msgstr "Не выбраны документы"
 
-#: app/routes/documents.py:302 app/routes/messages.py:175
+#: app/routes/documents.py:346 app/routes/messages.py:175
 #: app/routes/messages.py:212 app/routes/tasks.py:156 modules/multimodal.py:109
 #, python-brace-format
 msgid "Maximum file size {max_size} MB"
 msgstr "Максимальный размер файла {max_size} Мб"
 
-#: app/routes/documents.py:409 app/routes/documents.py:441
-#: app/routes/documents.py:620 app/templates/chat.html:192
+#: app/routes/documents.py:453 app/routes/documents.py:485
+#: app/routes/documents.py:664 app/templates/chat.html:192
 msgid "Permission denied"
 msgstr "Нет доступа"
 
-#: app/routes/documents.py:495
+#: app/routes/documents.py:539
 msgid "Could not read the document"
 msgstr "⚠️ Не удалось прочитать документ"
 
-#: app/routes/documents.py:526 app/routes/documents.py:550
+#: app/routes/documents.py:570 app/routes/documents.py:594
 #: app/templates/chat.html:232
 msgid "Preview is not available for this format"
 msgstr "Предпросмотр для этого формата недоступен"
 
-#: app/routes/documents.py:552 app/routes/documents.py:555
+#: app/routes/documents.py:596 app/routes/documents.py:599
 msgid "Page not found"
 msgstr "Страница не найдена"
 
-#: app/routes/documents.py:581 app/routes/documents.py:586
+#: app/routes/documents.py:625 app/routes/documents.py:630
 msgid "Could not render the page"
 msgstr "Не удалось отобразить страницу"
 
@@ -3062,38 +3058,35 @@ msgstr "Символов описаний медиа в контексте"
 msgid ""
 "Manual cap on the documents' share of the window (0 = derived from the "
 "window and the corpus)"
-msgstr ""
-"Ручной предел доли документов в окне (0 = вычисляется по окну и корпусу)"
+msgstr "Ручной предел доли документов в окне (0 = вычисляется по окну и корпусу)"
 
 #: app/templates/admin.html:678
 msgid ""
 "Manual cap on the conversation share of the window (0 = derived from what"
 " the session holds)"
 msgstr ""
-"Ручной предел доли диалога в окне (0 = вычисляется по тому, что"
-"накоплено в сессии)"
+"Ручной предел доли диалога в окне (0 = вычисляется по тому, чтонакоплено "
+"в сессии)"
 
 #: app/templates/admin.html:679
 msgid ""
 "How much work one task request may spend: min, norm or max (applies after"
 " a restart)"
 msgstr ""
-"Сколько работы может потратить один запрос задачи: min, norm или max"
-"(применяется после перезапуска)"
+"Сколько работы может потратить один запрос задачи: min, norm или "
+"max(применяется после перезапуска)"
 
 #: app/templates/admin.html:680
 msgid "When a step is checked: each, final or off (applies after a restart)"
-msgstr ""
-"Когда проверяется шаг: each, final или off (применяется после"
-"перезапуска)"
+msgstr "Когда проверяется шаг: each, final или off (применяется послеперезапуска)"
 
 #: app/templates/admin.html:681
 msgid ""
 "Offer tools from the configured MCP servers to the chat model (applies "
 "immediately)"
 msgstr ""
-"Отдавать инструменты настроенных MCP-серверов модели чата (применяется"
-"сразу)"
+"Отдавать инструменты настроенных MCP-серверов модели чата "
+"(применяетсясразу)"
 
 #: app/templates/admin.html:682
 msgid "Timeout for one MCP request (seconds)"
@@ -3105,16 +3098,16 @@ msgid ""
 "Configured MCP servers: a JSON array of {name, url, token, allow} "
 "(applies immediately)"
 msgstr ""
-"Настроенные MCP-серверы: JSON-массив {name, url, token, allow}"
-"(применяется сразу)"
+"Настроенные MCP-серверы: JSON-массив {name, url, token, "
+"allow}(применяется сразу)"
 
 #: app/templates/admin.html:684
 msgid ""
 "Route through the request kernel (one JSON decision) instead of the "
 "marker router"
 msgstr ""
-"Маршрутизировать через ядро запроса (одно JSON-решение) вместо роутера"
-"по маркерам"
+"Маршрутизировать через ядро запроса (одно JSON-решение) вместо роутерапо "
+"маркерам"
 
 #: app/templates/admin.html:685
 msgid "Ask the server for a JSON-object reply from the request kernel"
@@ -3125,43 +3118,36 @@ msgid ""
 "Keep residents that fit next to a new model (auto) or unload everything "
 "(off)"
 msgstr ""
-"Оставлять резидентные модели, если новая помещается рядом (auto), или"
-"выгружать всё (off)"
+"Оставлять резидентные модели, если новая помещается рядом (auto), "
+"иливыгружать всё (off)"
 
 #: app/templates/admin.html:687
 msgid "VRAM kept free for prefill buffers when deciding what to unload"
-msgstr ""
-"VRAM, оставляемая свободной под буферы префилла при решении, что"
-"выгружать"
+msgstr "VRAM, оставляемая свободной под буферы префилла при решении, чтовыгружать"
 
 #: app/templates/admin.html:688
 msgid "RAM kept free for the OS before an idle model is unloaded for a service"
-msgstr ""
-"RAM, оставляемая свободной для ОС, прежде чем выгрузить модель ради"
-"сервиса"
+msgstr "RAM, оставляемая свободной для ОС, прежде чем выгрузить модель радисервиса"
 
 #: app/templates/admin.html:689
 msgid "RAM kept free on a CPU-only host when deciding whether both big models fit"
 msgstr ""
-"RAM, оставляемая свободной на CPU-хосте при решении, помещаются ли обе"
-"большие модели"
+"RAM, оставляемая свободной на CPU-хосте при решении, помещаются ли "
+"обебольшие модели"
 
 #: app/templates/admin.html:690
 msgid "CPU-only hosts: idle seconds before the reasoning model releases its RAM"
-msgstr ""
-"CPU-хосты: секунды простоя до того, как модель рассуждений освободит RAM"
+msgstr "CPU-хосты: секунды простоя до того, как модель рассуждений освободит RAM"
 
 #: app/templates/admin.html:691
 msgid "VRAM budget assumed for the LTX video pipeline when it is not measured"
 msgstr "Бюджет VRAM для видеоконвейера LTX, когда он не измерен"
 
 #: app/templates/admin.html:692
-#, python-format
 msgid "CPU-only LTX generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "Бюджет генерации LTX на CPU в секундах (0 = 85% таймаута)"
 
 #: app/templates/admin.html:693
-#, python-format
 msgid "CPU-only Wan generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "Бюджет генерации Wan на CPU в секундах (0 = 85% таймаута)"
 
@@ -3174,8 +3160,8 @@ msgid ""
 "Snapshot width the vision model reads in chat (384 px previews are too "
 "small)"
 msgstr ""
-"Ширина снимка, которую читает модель зрения в чате (превью 384 px"
-"слишком малы)"
+"Ширина снимка, которую читает модель зрения в чате (превью 384 pxслишком "
+"малы)"
 
 #: app/templates/admin.html:696
 msgid "Recent messages passed to the router"
@@ -5296,4 +5282,13 @@ msgstr "Не удалось подключиться к сервису гене�
 
 #~ msgid "Images in order: {rooms}"
 #~ msgstr "Изображения по порядку: {rooms}"
+
+#~ msgid ""
+#~ "Legacy .doc is not supported. Save "
+#~ "the document as .docx and upload "
+#~ "it again."
+#~ msgstr ""
+#~ "Устаревший формат .doc не поддерживается. "
+#~ "Сохраните документ как .docx и загрузите"
+#~ " снова."
 

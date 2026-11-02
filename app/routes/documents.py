@@ -10,7 +10,7 @@ import uuid
 import zipfile
 
 import magic
-from flask import Blueprint, current_app, jsonify, request, send_file, session
+from flask import Blueprint, Response, current_app, jsonify, request, send_file, session
 from flask_babel import gettext as _
 
 from app import db
@@ -478,9 +478,27 @@ def api_get_document(doc_id):
 
 
 PREVIEW_MAX_CHARS = 200_000
+_CHARSET_RE = re.compile(rb"charset\s*=\s*[\"']?\s*([A-Za-z0-9_.:-]+)", re.I)
 _PREVIEW_TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".json", ".log", ".ini", ".cfg", ".yaml", ".yml", ".toml", ".xml"}
 _PREVIEW_EXTRACTED_EXTS = {".pdf", ".doc", ".docx", ".odt", ".rtf", ".epub", ".html", ".htm", ".xlsx", ".xls", ".pptx", ".fb2", ".eml"}
 _PREVIEW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"}
+
+
+def _html_charset(body: bytes) -> str:
+    """The encoding the page declares, so a cp1251 report is not mojibake.
+
+    Browsers honour the document's own meta tag; the header is what they read
+    before parsing, and a wrong one there would be unrecoverable.
+    """
+    match = _CHARSET_RE.search(body[:4096])
+    if not match:
+        return "utf-8"
+    name = match.group(1).decode("ascii", "ignore").lower()
+    try:
+        "".encode(name)
+    except LookupError:
+        return "utf-8"
+    return name
 
 
 def _owned_document_file(doc_id: str):
@@ -554,6 +572,9 @@ def api_document_preview(doc_id):
         truncated = len(text) > PREVIEW_MAX_CHARS
         payload.update({"kind": "text", "text": text[:PREVIEW_MAX_CHARS], "truncated": truncated})
         return jsonify(payload)
+    if ext in (".html", ".htm"):
+        payload.update({"kind": "html", "url": f"/api/documents/{doc_id}/preview/html"})
+        return jsonify(payload)
     if ext in _PREVIEW_EXTRACTED_EXTS and ext != ".pdf":
         from app.utils import extract_text_from_file
 
@@ -589,6 +610,41 @@ def api_document_preview_file(doc_id):
     response.headers["X-Own-CSP"] = "1"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
+    return response
+
+
+@bp.route("/documents/<doc_id>/preview/html", methods=["GET"])
+def api_document_preview_html(doc_id):
+    """Render an uploaded page inside the preview iframe, sandboxed.
+
+    Serving user HTML is an XSS vector: a script in the file would run in the
+    panel's origin with the reader's session. The document therefore arrives with
+    a `sandbox` CSP directive — an opaque origin, no scripts, no forms, no
+    navigation — and `default-src 'none'`, so nothing is fetched from anywhere.
+    Inline styles still apply, which is what makes an exported report readable; a
+    page that links a sibling stylesheet stays plain, because those files are not
+    served.
+    """
+    doc, file_path, error = _owned_document_file(doc_id)
+    if error:
+        return error
+    ext = os.path.splitext(doc["file_path"])[1].lower()
+    if ext not in (".html", ".htm"):
+        return jsonify({"error": _("Preview is not available for this format")}), 415
+    try:
+        with open(file_path, "rb") as handle:
+            body = handle.read()
+    except OSError as e:
+        current_app.logger.warning(f"Document preview read failed ({doc_id}): {e}")
+        return jsonify({"error": _("Could not read the document")}), 500
+    response = Response(body, mimetype="text/html")
+    response.headers["Content-Type"] = f"text/html; charset={_html_charset(body)}"
+    response.headers["X-Own-CSP"] = "1"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = (
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; "
+        "frame-ancestors 'self'"
+    )
     return response
 
 

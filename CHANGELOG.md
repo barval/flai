@@ -22,6 +22,8 @@
 
 ### Changed
 
+- **An uploaded HTML page is previewed as a page.** It used to be flattened to extracted text like a .docx; it now renders inside the panel with the server's own policy (`sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:`), so the markup and inline styles show while no script, form, navigation or network request can run. A page that links a sibling stylesheet stays plain, because those files are not served.
+
 - **The tool loop got its camera surface.** `list_rooms` returns the rooms the user may look at (offered only when the camera module is available), and `camera_snapshot` returns a **description** of the snapshot instead of the image: a tool result is text, and a base64 payload would consume the window without telling the model anything.
 
 - **Camera service upgraded to room-snapshot-api v1.4.** The bundled clone moved from v1.3 to v1.4: per-client rate limiting (`RATE_LIMIT_PER_MINUTE`, off by default — behind a reverse proxy every client shares one bucket, so the proxy is the better place), a ceiling on concurrent ffmpeg captures (`MAX_CONCURRENT_CAPTURES`, default 4), IPv6 camera addresses, installation files resolved through `CONFIG_DIR` with per-file overrides, and a lazy Flask app import so the MCP module no longer needs `API_KEY` to be importable. The service no longer requires `SECRET_KEY`. Verified live: both containers healthy, `/health` reports per-camera reachability, FLAI's MCP registry enumerates four tools and `list_rooms` returns the localized names.

@@ -311,3 +311,71 @@ def test_the_preview_of_a_doc_returns_its_text(app, tmp_path, monkeypatch):
     assert payload["kind"] == "text"
     assert payload["extracted"] is True
     assert "Договор поставки" in payload["text"]
+
+
+def test_an_html_document_is_rendered_not_flattened(app, tmp_path, monkeypatch):
+    """A page shows its markup in a sandboxed frame, not as one run of text."""
+    from app.routes import documents
+
+    path = tmp_path / "report.html"
+    path.write_text("<h1>Отчёт</h1><p>Текст страницы.</p>", encoding="utf-8")
+    monkeypatch.setattr(
+        documents,
+        "_owned_document_file",
+        lambda doc_id: ({"filename": "report.html", "file_path": "report.html"}, str(path), None),
+    )
+    with app.test_request_context("/"):
+        payload = documents.api_document_preview("doc-html").get_json()
+    assert payload["kind"] == "html"
+    assert payload["url"].endswith("/preview/html")
+
+
+def test_the_html_preview_response_is_sandboxed(app, tmp_path, monkeypatch):
+    """The served page cannot run scripts: that is the whole point of the route."""
+    from app.routes import documents
+
+    path = tmp_path / "page.html"
+    path.write_text(
+        '<html><head><meta charset="utf-8"></head><body><script>alert(1)</script>ok</body></html>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        documents,
+        "_owned_document_file",
+        lambda doc_id: ({"filename": "page.html", "file_path": "page.html"}, str(path), None),
+    )
+    with app.test_request_context("/"):
+        response = documents.api_document_preview_html("doc-html")
+    csp = response.headers["Content-Security-Policy"]
+    assert csp.startswith("sandbox")
+    assert "default-src 'none'" in csp
+    assert "unsafe-eval" not in csp
+    assert response.headers["X-Own-CSP"] == "1"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Content-Type"] == "text/html; charset=utf-8"
+    # The bytes are served as they are: the CSP, not a rewrite, is the guard.
+    assert b"<h" not in response.get_data() or b"<" in response.get_data()
+
+
+def test_the_html_route_refuses_another_format(app, tmp_path, monkeypatch):
+    from app.routes import documents
+
+    path = tmp_path / "doc.doc"
+    path.write_bytes(b"x")
+    monkeypatch.setattr(
+        documents,
+        "_owned_document_file",
+        lambda doc_id: ({"filename": "doc.doc", "file_path": "doc.doc"}, str(path), None),
+    )
+    with app.test_request_context("/"):
+        response = documents.api_document_preview_html("doc-1")
+    assert response[1] == 415
+
+
+def test_a_declared_charset_is_honoured():
+    """A cp1251 report must not become mojibake in the frame."""
+    from app.routes.documents import _html_charset
+
+    assert _html_charset(b'<meta charset="windows-1251">') == "windows-1251"
+    assert _html_charset(b"<html><body>x</body></html>") == "utf-8"
+    assert _html_charset(b'<meta charset="not-a-codec">') == "utf-8"

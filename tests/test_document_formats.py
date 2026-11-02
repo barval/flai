@@ -7,6 +7,7 @@ rejects is a feature nobody can use (`.md`).
 """
 
 import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -188,3 +189,28 @@ def test_an_unknown_extension_is_still_refused(app):
         valid, error = validate_file(io.BytesIO(b"PK\x03\x04" + b"\x00" * 600), "archive.zip")
     assert not valid
     assert error, "a refusal must say why"
+
+
+def test_an_ooxml_package_is_accepted_when_magic_sees_only_a_zip(app, monkeypatch):
+    """libmagic is given the first two kilobytes; an OOXML marker can sit past
+    them, and the same .xlsx is then reported as a plain archive on one build and
+    recognised on another. The container itself decides."""
+    from app.routes.documents import validate_file
+
+    monkeypatch.setattr("app.routes.documents.magic.from_buffer", lambda data, mime=True: "application/zip")
+    with app.app_context():
+        valid, error = validate_file(io.BytesIO(_valid_file("a.xlsx")), "a.xlsx")
+    assert valid, error
+
+
+def test_an_archive_without_the_format_entry_is_refused(app, monkeypatch):
+    """A .zip renamed to .xlsx never becomes a spreadsheet."""
+    from app.routes.documents import validate_file
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("readme.txt", "not a workbook")
+    monkeypatch.setattr("app.routes.documents.magic.from_buffer", lambda data, mime=True: "application/zip")
+    with app.app_context():
+        valid, _error = validate_file(io.BytesIO(buffer.getvalue()), "fake.xlsx")
+    assert not valid

@@ -311,3 +311,39 @@ def test_the_chat_fast_path_is_untouched_when_the_model_is_on_the_card():
         assert backend._ensure_vram("multimodal") is True
 
     manager.ensure_vram_for.assert_not_called()
+
+
+class TestTheReloadOnlyHappensWhenItCanHelp:
+    def _manager(self, used_mb: int) -> ResourceManager:
+        rm = ResourceManager()
+        rm.hardware.total_vram_mb = 16311
+        rm.hardware.available_vram_mb = 16311 - used_mb
+        rm._poll_vram = MagicMock()
+        return rm
+
+    def test_no_unload_when_the_card_cannot_hold_the_model_anyway(self):
+        """Two residents: reloading would land in the same remainder."""
+        rm = self._manager(15000)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 15000, 8217) is False
+        post.assert_not_called()
+
+    def test_the_retry_window_is_a_minute_not_ten(self):
+        """An unload followed by a fresh load must not block the next verdict.
+
+        Live, 2026-11-05: the check correctly found the model degraded at 23:04
+        but the ten-minute window opened by an earlier unload still held it, so
+        the answer ran at 6.7 tok/s.
+        """
+        rm = self._manager(2400)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 2400, 8217) is True
+            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 2400, 8217) is False
+        assert post.call_count == 1
+
+    def test_an_old_unload_does_not_block_a_new_verdict(self):
+        rm = self._manager(2400)
+        with patch("app.resource_manager.requests.post"):
+            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 2400, 8217) is True
+            rm._placement_retry_at["multimodal"] -= 61
+            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 2400, 8217) is True

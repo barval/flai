@@ -64,9 +64,10 @@ class HardwareInfo:
 # log. The floor is well below 1.0 because the estimate ignores the rest of the
 # card and because other processes legitimately share it.
 PLACEMENT_FLOOR = 0.6
-# One reload attempt per model per window: a model that genuinely cannot be
-# placed must not be reloaded on every request.
-PLACEMENT_RETRY_SECONDS = 600
+# One unload attempt per model per window: an unload/reload cycle takes seconds,
+# so a minute is enough to stop a storm, and a ten-minute window once held a
+# correct verdict back while the model ran at 6.7 tok/s.
+PLACEMENT_RETRY_SECONDS = 60
 # How often the card is read to verify a placement. The chat path asks on every
 # message, and reading the card spawns a subprocess: once a minute is enough for
 # a placement, which does not change from one message to the next.
@@ -1319,9 +1320,22 @@ class ResourceManager:
     def _unload_misplaced(
         self, model_type: str, entry: dict[str, Any], used_mb: int, expected_mb: int
     ) -> bool:
-        """Unload a model that is not on the card, at most once per retry window."""
+        """Unload a model that is not on the card, at most once per retry window.
+
+        Nothing is unloaded when the free VRAM could not hold the model anyway:
+        something else owns the card, and the reload would land in the same
+        remainder.
+        """
         now = time.time()
         if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+            return False
+        free_mb = self.hardware.total_vram_mb - used_mb
+        if self.hardware.total_vram_mb and free_mb < expected_mb:
+            self._placement_retry_at[model_type] = now
+            logger.warning(
+                f"placement [{model_type}]: {used_mb}MB on the card for an estimated {expected_mb}MB, "
+                f"but only {free_mb}MB is free — reloading would land in the same remainder"
+            )
             return False
         self._placement_retry_at[model_type] = now
         self._placement_checked_at[model_type] = now

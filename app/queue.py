@@ -796,55 +796,36 @@ class RedisRequestQueue:
             self.logger.debug(f"VRAM cleanup after task: {e}")
 
     def _preload_chat_model_background(self) -> None:
-        """Trigger multimodal model loading in llama-swap via a background thread.
+        """Bring the chat model back after a task, in a daemon thread.
 
-        After a reasoning task, llama-swap unloads the reasoning model and the
-        multimodal (router + chat + vision) model is no longer in VRAM. This sends a
-        tiny multimodal completion request in a daemon thread to trigger llama-swap
-        to load it, so the next router call doesn't suffer a cold start.
+        Called after every task by ``_cleanup_vram_after_task()``. The load goes
+        through ``warm_up_chat_model()`` like the startup warm-up: this path used
+        to post a completion request straight to llama-swap, so when it ran ~5 s
+        after a reasoning answer the chat model started next to the reasoning
+        model that still held 12.9 GB, llama.cpp kept the weights in RAM, and the
+        next answer ran at 6.7 tok/s (measured 2026-11-05 02:03).
         """
-        try:
-            import requests as req
 
-            from app.model_config import get_model_config
+        def _run() -> None:
+            from app.warmup import warm_up_chat_model
 
-            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
-
-            # Skip if multimodal model is already loaded
             try:
-                resp = req.get(f"{swap_url}/running", timeout=2)
-                if resp.status_code == 200:
-                    running = resp.json().get("running", [])
-                    config = get_model_config("multimodal")
-                    model_name = config.get("model_name", "") if config else ""
-                    if model_name and any(model_name in m.get("cmd", "") for m in running):
-                        self.logger.debug("Multimodal model already loaded, skipping preload")
-                        return
-            except Exception:
-                pass
-
-            def _do_preload():
-                try:
-                    resp = req.post(
-                        f"{swap_url}/v1/chat/completions",
-                        json={
-                            "model": "multimodal",
-                            "messages": [{"role": "user", "content": "hi"}],
-                            "max_tokens": 1,
-                        },
-                        timeout=60,
-                    )
-                    if resp.status_code == 200:
+                # A task dequeued in the meantime owns the GPU: loading here would
+                # evict what it just asked for. The next request loads through the
+                # gate anyway — it only loses the warm start.
+                if self.is_gpu_task_active():
+                    self.logger.debug("Skipping background preload: a GPU task is running")
+                    return
+                with self.app.app_context():
+                    if warm_up_chat_model(self.app, timeout=120):
                         self.logger.info("Multimodal model preloaded in background after non-multimodal task")
                     else:
-                        self.logger.debug(f"Multimodal preload returned {resp.status_code}")
-                except Exception as e:
-                    self.logger.debug(f"Background multimodal preload failed: {e}")
+                        self.logger.debug("Background multimodal preload did not reach the running state")
+            except Exception as e:
+                self.logger.debug(f"Background multimodal preload failed: {e}")
 
-            thread = threading.Thread(target=_do_preload, daemon=True)
-            thread.start()
-        except Exception as e:
-            self.logger.debug(f"Multimodal preload setup failed: {e}")
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
 
     def _preload_multimodal_sync(self, timeout: int = 60) -> None:
         """Synchronously ensure the multimodal model is resident in VRAM.

@@ -134,3 +134,31 @@ def test_the_post_reasoning_reload_goes_through_the_gate():
         RedisRequestQueue._preload_multimodal_sync(queue, timeout=30)
     warm.assert_called_once()
     assert warm.call_args.args[0] is queue.app
+
+
+def test_the_background_preload_after_a_task_goes_through_the_gate():
+    """The third load path, and the one that produced the 02:03 incident.
+
+    `_cleanup_vram_after_task()` runs after every task. Its preload posted a
+    completion request straight to llama-swap ~5 s after a reasoning answer,
+    while the reasoning model still held 12.9 GB — the chat model loaded into
+    the remainder with its weights in RAM, and the next answer ran at 6.7 tok/s.
+    """
+    import threading
+
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    queue.is_gpu_task_active.return_value = False
+    done = threading.Event()
+
+    def fake_warm(app_arg, timeout=0):
+        done.set()
+        return True
+
+    with patch("app.warmup.warm_up_chat_model", side_effect=fake_warm) as warm:
+        RedisRequestQueue._preload_chat_model_background(queue)
+        assert done.wait(timeout=5)
+
+    warm.assert_called_once()
+    assert warm.call_args.args[0] is queue.app

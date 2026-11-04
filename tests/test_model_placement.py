@@ -65,6 +65,17 @@ class TestReloadOfAMisplacedModel:
             assert rm._reload_if_misplaced("multimodal", 5058, {"model": "multimodal"}) is True
             assert rm._reload_if_misplaced("multimodal", 5058, {"model": "multimodal"}) is False
 
+    def test_a_model_that_is_still_loading_is_not_judged(self):
+        """Reading the card mid-upload calls a healthy load a failed placement.
+
+        Measured live: 932 MB of a 7 597 MB model, seen while that same load was
+        still running.
+        """
+        rm = self._manager(2414)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm._reload_if_misplaced("multimodal", 5058, {"model": "multimodal", "state": "starting"}) is False
+        post.assert_not_called()
+
     def test_a_failed_unload_is_logged_not_raised(self):
         rm = self._manager(2414)
         with patch("app.resource_manager.requests.post", side_effect=OSError("down")):
@@ -93,3 +104,70 @@ def test_ensure_vram_for_does_not_trust_a_misplaced_resident():
 
     assert post.called, "the misplaced resident was treated as ready"
     assert any("api/models/unload" in str(call.args[0]) for call in post.call_args_list)
+
+
+class TestAStoredMeasurementCannotBlindTheCheck:
+    """The degraded placement measured itself into the model's own estimate.
+
+    Live, 2026-11-05: `model_vram_estimates` held 3 230 MB for Qwen3VL at a
+    32 768 window (4 917 writes, the last one during the slow answer), while the
+    same model measured 7 893 MB at 16 384 and its metadata estimate is
+    7 938 MB. `get_vram_needed_mb()` returned 3 230, so a card holding 2 587 MB
+    looked healthy, the misplaced model was never reloaded, and every answer
+    recorded the degraded number again.
+    """
+
+    def _manager(self, monkeypatch, measured_mb: int | None) -> ResourceManager:
+        monkeypatch.setattr(
+            "app.model_config.get_model_config",
+            lambda module: {"model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "context_length": 32768},
+        )
+        monkeypatch.setattr(
+            "app.utils.get_gguf_models_cached",
+            lambda path: {"Qwen3VL-8B-Instruct-Q4_K_M": {"file_size_mb": 5000, "block_count": 36}},
+        )
+        monkeypatch.setattr("app.utils.get_mmproj_size_mb", lambda name: 700)
+        monkeypatch.setattr(
+            "app.database.get_vram_estimate",
+            lambda module: {
+                "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
+                "context_length": 32768,
+                "measured_vram_mb": measured_mb,
+            },
+        )
+        manager = ResourceManager()
+        manager.hardware.total_vram_mb = 16311
+        manager.compute_llamacpp_config = MagicMock(return_value={"n_gpu_layers": -1})
+        return manager
+
+    def test_the_weights_and_the_vision_encoder_are_the_floor(self, monkeypatch):
+        manager = self._manager(monkeypatch, 3230)
+        assert manager.model_weights_mb("multimodal") == 5700
+
+    def test_a_measurement_below_the_model_files_is_ignored(self, monkeypatch):
+        manager = self._manager(monkeypatch, 3230)
+        assert manager.measured_total_mb("multimodal") is None
+
+    def test_an_implausible_row_does_not_shrink_the_estimate(self, monkeypatch):
+        manager = self._manager(monkeypatch, 3230)
+        assert manager.get_vram_needed_mb("multimodal") >= 5700
+
+    def test_a_plausible_measurement_is_used_as_before(self, monkeypatch):
+        manager = self._manager(monkeypatch, 8650)
+        assert manager.measured_total_mb("multimodal") == 8650
+
+    def test_a_degraded_reading_is_not_stored(self, monkeypatch):
+        manager = self._manager(monkeypatch, None)
+        manager.hardware.available_vram_mb = 16311 - 2587
+        manager._poll_vram = MagicMock()
+        with patch("app.database.upsert_vram_estimate") as upsert:
+            manager.measure_model_vram("multimodal", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 32768, -1)
+        upsert.assert_not_called()
+
+    def test_a_healthy_reading_is_stored(self, monkeypatch):
+        manager = self._manager(monkeypatch, None)
+        manager.hardware.available_vram_mb = 16311 - 8600
+        manager._poll_vram = MagicMock()
+        with patch("app.database.upsert_vram_estimate") as upsert:
+            manager.measure_model_vram("multimodal", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 32768, -1)
+        assert upsert.call_args.kwargs["measured_mb"] == 8600

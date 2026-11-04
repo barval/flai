@@ -440,6 +440,19 @@ class ResourceManager:
                 return None
             if self.hardware.total_vram_mb and measured > self.hardware.total_vram_mb:
                 return None
+            # A row can record a failed placement: `measure_model_vram` reads the
+            # card, and a model whose weights stayed in RAM is simply not there.
+            # Live, 2026-11-05: a 3 230 MB row for Qwen3VL at 32 768 (4 917
+            # writes) made get_vram_needed_mb() promise 3 230 MB, so a card
+            # holding 2 587 MB looked healthy and the misplaced model was never
+            # reloaded — the estimate kept reproducing its own evidence.
+            floor_mb = self.model_weights_mb(model_type)
+            if floor_mb and measured < floor_mb:
+                logger.debug(
+                    f"measured_total_mb[{model_type}]: stored {measured}MB is below the model's own "
+                    f"{floor_mb}MB of files — a degraded placement, not a footprint; ignoring it"
+                )
+                return None
             return measured
         except Exception as e:
             logger.debug(f"measured_total_mb[{model_type}]: {e}")
@@ -646,35 +659,20 @@ class ResourceManager:
 
     # ── Dynamic VRAM estimation ──
 
-    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
-        """Compute VRAM needed for a model from GGUF metadata + DB config.
+    def _model_size_parts(self, model_type: str, model_name: str | None = None) -> tuple[float, float, float]:
+        """(weights on the card, vision encoder, model file size) in MB.
 
-        Reads model file size and layer count from GGUF cache,
-        context_length from model_configs, and n_gpu_layers from
-        compute_llamacpp_config().  Returns total estimated MB.
+        One source for the two callers that need the model's own size: the VRAM
+        estimate, and the floor below which a "measurement" cannot be the model.
         """
-        from app.model_config import get_model_config
-        from app.utils import get_gguf_models_cached
+        from app.utils import get_gguf_models_cached, get_mmproj_size_mb
 
-        if model_type == "whisper":
-            # Whisper is not managed by llama-swap: its footprint is the CUDA
-            # context of the ASR container, configured by the deployment.
-            return int(os.getenv("WHISPER_VRAM_MB", "3000"))
+        if model_name is None:
+            from app.model_config import get_model_config
 
-        measured = self.measured_total_mb(model_type)
-        if measured and ctx_size is None:
-            return measured
+            config = get_model_config(model_type)
+            model_name = config.get("model_name", "") if config else ""
 
-        config = get_model_config(model_type)
-        model_name = config.get("model_name", "") if config else ""
-
-        # Context length: prefer explicit argument, then DB config, then fallback
-        if ctx_size is None:
-            ctx_size = config.get("context_length") if config else 4096
-        if not ctx_size:
-            ctx_size = 4096
-
-        # GGUF metadata
         gguf_info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
         file_size_mb = gguf_info.get("file_size_mb") or 0
         block_count = gguf_info.get("block_count") or 0
@@ -707,17 +705,55 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
+        # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
+        return weights_mb, mmproj_mb, file_size_mb
+
+    def model_weights_mb(self, model_type: str) -> int:
+        """VRAM the model's own files occupy — the floor of any real placement.
+
+        A card holding less than this is not running the model: llama.cpp leaves
+        whatever does not fit in RAM, so a smaller number describes a failed
+        placement, never the model.
+        """
+        weights_mb, mmproj_mb, _file_size_mb = self._model_size_parts(model_type)
+        return int(weights_mb + mmproj_mb)
+
+    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
+        """Compute VRAM needed for a model from GGUF metadata + DB config.
+
+        Reads model file size and layer count from GGUF cache,
+        context_length from model_configs, and n_gpu_layers from
+        compute_llamacpp_config().  Returns total estimated MB.
+        """
+        from app.model_config import get_model_config
+
+        if model_type == "whisper":
+            # Whisper is not managed by llama-swap: its footprint is the CUDA
+            # context of the ASR container, configured by the deployment.
+            return int(os.getenv("WHISPER_VRAM_MB", "3000"))
+
+        measured = self.measured_total_mb(model_type)
+        if measured and ctx_size is None:
+            return measured
+
+        config = get_model_config(model_type)
+        model_name = config.get("model_name", "") if config else ""
+
+        # Context length: prefer explicit argument, then DB config, then fallback
+        if ctx_size is None:
+            ctx_size = config.get("context_length") if config else 4096
+        if not ctx_size:
+            ctx_size = 4096
+
+        weights_mb, mmproj_mb, file_size_mb = self._model_size_parts(model_type, model_name)
+
         # KV cache estimate (q4_0): the module constant until a real measurement
         # of this model at this window exists, then the measured value.
         kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
-
-        # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
-        from app.utils import get_mmproj_size_mb
-
-        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
 
         total = int(weights_mb + kv_mb + overhead + mmproj_mb)
 
@@ -1225,6 +1261,12 @@ class ResourceManager:
         Returns True when the model was unloaded and the caller must not treat it
         as ready.
         """
+        # A model that is still loading has uploaded only part of its weights:
+        # reading the card now calls a healthy load a failed placement and
+        # unloads it in the middle of the upload (measured live: 932 MB of a
+        # 7 597 MB model, seen while the same load was still running).
+        if (entry or {}).get("state") not in (None, "ready"):
+            return False
         now = time.time()
         if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
             return False
@@ -1274,6 +1316,17 @@ class ResourceManager:
 
             if total > 0 and after_free > 0:
                 used = total - after_free
+                floor_mb = self.model_weights_mb(module)
+                if floor_mb and used < floor_mb:
+                    # The model is not on the card: llama.cpp kept its weights in
+                    # RAM (a load that did not fit). Storing this number would
+                    # teach the estimator that the model is 2.5 GB, and the next
+                    # ensure_vram_for() would believe it.
+                    logger.debug(
+                        f"measure_model_vram[{module}]: {used}MB used is below the model's own "
+                        f"{floor_mb}MB of files — not storing a degraded placement"
+                    )
+                    return
                 upsert_vram_estimate(
                     module=module,
                     model_name=model_name,

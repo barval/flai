@@ -853,11 +853,15 @@ class RedisRequestQueue:
         reasoning answer the multimodal (router + chat + vision) model is loaded
         back immediately, so the next router call is instant. The load itself
         lives in ``app.warmup`` so the startup warm-up and this path share one
-        implementation.
+        implementation — and, like the warm-up, it goes through
+        ``ensure_vram_for()`` first: llama-swap would otherwise start the model
+        next to the reasoning model that still holds the card, and llama.cpp
+        keeps whatever does not fit in RAM (measured: 2 587 MB of a 5 700 MB
+        model on the card, 7 tok/s for hours, nothing logged).
         """
-        from app.warmup import load_chat_model
+        from app.warmup import warm_up_chat_model
 
-        if not load_chat_model(timeout=timeout):
+        if not warm_up_chat_model(self.app, timeout=timeout):
             self.logger.debug("Multimodal sync preload did not reach the running state")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:

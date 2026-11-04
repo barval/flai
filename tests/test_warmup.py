@@ -117,3 +117,20 @@ def test_the_warm_up_does_not_run_under_pytest():
     from app import _is_test_process
 
     assert _is_test_process() is True
+
+
+def test_the_post_reasoning_reload_goes_through_the_gate():
+    """After a reasoning answer the chat model is loaded through the gate too.
+
+    Live, 2026-11-05: this path asked llama-swap for the model directly while the
+    reasoning model still held 12.9 GB, so only 2 587 MB of the model's 5 700 MB
+    of files reached the card, the rest stayed in RAM, and every answer ran at
+    7 tok/s for hours — nothing logged it.
+    """
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    with patch("app.warmup.warm_up_chat_model", return_value=True) as warm:
+        RedisRequestQueue._preload_multimodal_sync(queue, timeout=30)
+    warm.assert_called_once()
+    assert warm.call_args.args[0] is queue.app

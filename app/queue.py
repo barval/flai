@@ -3575,6 +3575,7 @@ class RedisRequestQueue:
         first_message = self._save_camera_message(session_id, user_id, lang, camera_result, camera_time, response_style)
 
         messages = [first_message]
+        answer = ""
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
             # Multimodal model is always resident (router + chat + vision) — no
             # VRAM unload/wait needed; it directly answers on the camera snapshot.
@@ -3602,8 +3603,9 @@ class RedisRequestQueue:
             )
             second["response_time"] = mm_time
             messages.append(second)
+            answer = bot_reply
 
-        return {"messages": messages, "session_id": session_id}
+        return {"messages": messages, "session_id": session_id, "response": answer}
 
     def _camera_analysis_width(self) -> int:
         """Snapshot width the vision model reads: 384 px previews miss small animals."""
@@ -3771,6 +3773,7 @@ class RedisRequestQueue:
             for capture in captures
         ]
 
+        answer = ""
         multimodal = self.app.modules.get("multimodal")
         if message_text and multimodal is not None and multimodal.available:
             # ONE call per room, deliberately. Measured on the shipped
@@ -3802,6 +3805,7 @@ class RedisRequestQueue:
                 observations.append(f"- {capture['room_name']}: {text}")
             mm_time = round(time.time() - mm_start, 1)
             bot_reply = self._camera_summary(message_text, observations, lang) or "\n".join(observations)
+            answer = bot_reply
             second = self._save_and_respond(
                 session_id,
                 bot_reply,
@@ -3813,7 +3817,11 @@ class RedisRequestQueue:
             )
             second["response_time"] = mm_time
             messages.append(second)
-        return {"messages": messages, "session_id": session_id}
+        # ``response`` is the field the API serializes into
+        # choices[0].message.content. Without it the fan-out answered 200 with an
+        # empty completion — the summary was in the session and in ``messages``,
+        # but an API caller only reads this key.
+        return {"messages": messages, "session_id": session_id, "response": answer}
 
     def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
         """Camera step of a Tasks-subsystem plan: one room's snapshot + analysis.

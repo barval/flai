@@ -766,6 +766,28 @@ def _int_or_zero(value: Any) -> int:
     return value if isinstance(value, int) and value > 0 else 0
 
 
+def result_text(result: dict[str, Any]) -> str:
+    """The answer text of a queue result, whatever shape the handler returned.
+
+    Most handlers return ``response``. A handler that saves several messages —
+    the camera fan-out stores one snapshot per room and then the composed
+    answer — returns the messages themselves, and reading only ``response``
+    turned a successful task into an empty completion, which the caller reports
+    as "the model returned no answer". The last message that carries text is
+    the answer.
+    """
+    text = result.get("response")
+    if isinstance(text, str) and text:
+        return text
+    messages = result.get("messages")
+    if isinstance(messages, list):
+        for message in reversed(messages):
+            candidate = message.get("response") if isinstance(message, dict) else None
+            if isinstance(candidate, str) and candidate:
+                return candidate
+    return ""
+
+
 def serialize_chat_completion(result: dict[str, Any], task_id: str, session_id: str) -> dict[str, Any]:
     """Build an OpenAI ``chat.completion`` body from a queue result."""
     prompt_tokens = _int_or_zero(result.get("prompt_tokens"))
@@ -778,7 +800,7 @@ def serialize_chat_completion(result: dict[str, Any], task_id: str, session_id: 
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": result.get("response", "")},
+                "message": {"role": "assistant", "content": result_text(result)},
                 "finish_reason": "stop",
             }
         ],
@@ -861,7 +883,7 @@ def _stream_terminal(
         yield SSE_DONE
         return
 
-    final_text = (result or {}).get("response") or ""
+    final_text = result_text(result or {})
     if final_text.startswith(emitted):
         tail = final_text[len(emitted) :]
     elif emitted:

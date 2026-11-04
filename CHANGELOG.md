@@ -1,5 +1,9 @@
 ## [v13.0] — Unreleased
 
+### Fixed
+
+- **A request that checks every camera answered the API with an empty message.** `POST /v1/chat/completions` for «check every room» returned 200 with an empty `choices[0].message.content` while the correct summary was saved in the session, so the client reported that the local model returned no answer — a single room worked, because that path ends in the usual response envelope. The fan-out returned `{messages, session_id}` without `response`, and the serializer reads only that key. The result now carries the composed answer, and `api_bridge.result_text()` falls back to the last message with text for both the non-streaming and the streaming branch, so a handler that saves several messages can no longer produce an empty completion.
+
 ## [v12.9] — 2026-11-01
 
 ### Added

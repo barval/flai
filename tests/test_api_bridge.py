@@ -581,6 +581,55 @@ class TestSerializeChatCompletion:
         payload = serialize_chat_completion(assistant_result(), "task-1", "s1")
 
         assert payload["flai_session_id"] == "s1"
+    def test_a_multi_message_result_is_not_serialized_as_an_empty_answer(self):
+        """Camera fan-out returns `messages`, not `response`.
+
+        Measured live: POST /v1/chat/completions for "every room" answered 200
+        with empty choices[0].message.content while the summary was in the
+        session, so the client reported that the model returned no answer.
+        """
+        result = {
+            "session_id": "s1",
+            "messages": [
+                {"response": '{"prefix": "Camera snapshot: ", "text": "Hall"}', "model_used": "camera"},
+                {"response": "Cats are in the bedroom and on the balcony.", "model_used": "mm"},
+            ],
+        }
+
+        payload = serialize_chat_completion(result, "task-1", "s1")
+
+        assert payload["choices"][0]["message"]["content"] == "Cats are in the bedroom and on the balcony."
+        assert payload["choices"][0]["finish_reason"] == "stop"
+
+    def test_the_explicit_response_wins_over_the_messages(self):
+        result = {
+            "response": "the answer",
+            "session_id": "s1",
+            "messages": [{"response": "an older message"}],
+        }
+
+        assert serialize_chat_completion(result, "task-1", "s1")["choices"][0]["message"]["content"] == "the answer"
+
+    def test_a_result_without_any_text_stays_empty(self):
+        payload = serialize_chat_completion({"session_id": "s1", "messages": []}, "task-1", "s1")
+
+        assert payload["choices"][0]["message"]["content"] == ""
+
+    def test_a_multi_message_result_streams_its_answer(self):
+        """The streaming branch reads the same field, so it needs the same fallback."""
+        from app.api_bridge import _stream_terminal
+
+        result = {
+            "session_id": "s1",
+            "messages": [{"response": "Cats are in the bedroom.", "model_used": "mm"}],
+        }
+
+        body = "".join(
+            _stream_terminal("completed", result, "task-1", 1, "", "s1", False, lambda message: message)
+        )
+
+        assert "Cats are in the bedroom." in body
+        assert '"finish_reason": "stop"' in body
 
 
 @pytest.mark.unit

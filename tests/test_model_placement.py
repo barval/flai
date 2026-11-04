@@ -156,18 +156,158 @@ class TestAStoredMeasurementCannotBlindTheCheck:
         manager = self._manager(monkeypatch, 8650)
         assert manager.measured_total_mb("multimodal") == 8650
 
-    def test_a_degraded_reading_is_not_stored(self, monkeypatch):
-        manager = self._manager(monkeypatch, None)
-        manager.hardware.available_vram_mb = 16311 - 2587
+
+class TestTheMeasurementJudgesThePlacement:
+    """The card is read after every answer — judge there, not only at the gate.
+
+    Option 1 of the plan: the number is only this model's when it is the only one
+    resident, and a number below the model's own files means llama.cpp kept the
+    weights in RAM, so the model is unloaded at once and the next request places
+    it again.
+    """
+
+    def _manager(self, monkeypatch, used_mb: int, running: list[dict]) -> ResourceManager:
+        monkeypatch.setattr(
+            "app.model_config.get_model_config",
+            lambda module: {"model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "context_length": 32768},
+        )
+        monkeypatch.setattr(
+            "app.utils.get_gguf_models_cached",
+            lambda path: {"Qwen3VL-8B-Instruct-Q4_K_M": {"file_size_mb": 5000, "block_count": 36}},
+        )
+        monkeypatch.setattr("app.utils.get_mmproj_size_mb", lambda name: 700)
+        monkeypatch.setattr("app.resource_manager.requests.get", lambda *a, **k: MagicMock(
+            status_code=200, json=MagicMock(return_value={"running": running})
+        ))
+        manager = ResourceManager()
+        manager.hardware.total_vram_mb = 16311
+        manager.hardware.available_vram_mb = 16311 - used_mb
+        manager.compute_llamacpp_config = MagicMock(return_value={"n_gpu_layers": -1})
         manager._poll_vram = MagicMock()
-        with patch("app.database.upsert_vram_estimate") as upsert:
+        return manager
+
+    _MM = {"model": "multimodal", "state": "ready", "cmd": "llama-server -m /models/Qwen3VL-8B-Instruct-Q4_K_M.gguf"}
+
+    def test_a_lone_misplaced_model_is_unloaded_right_after_the_answer(self, monkeypatch):
+        manager = self._manager(monkeypatch, 2587, [self._MM])
+        with patch("app.database.upsert_vram_estimate") as upsert, patch(
+            "app.resource_manager.requests.post"
+        ) as post:
             manager.measure_model_vram("multimodal", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 32768, -1)
         upsert.assert_not_called()
+        assert post.called, "the misplaced model was left in RAM"
+        assert post.call_args.kwargs["json"] == {"model": "multimodal"}
 
-    def test_a_healthy_reading_is_stored(self, monkeypatch):
-        manager = self._manager(monkeypatch, None)
-        manager.hardware.available_vram_mb = 16311 - 8600
-        manager._poll_vram = MagicMock()
-        with patch("app.database.upsert_vram_estimate") as upsert:
+    def test_a_shared_card_is_not_attributed_to_one_model(self, monkeypatch):
+        """Two residents: the card-wide number is not this model's footprint."""
+        other = {"model": "reasoning", "state": "ready", "cmd": "llama-server -m /models/reasoning.gguf"}
+        manager = self._manager(monkeypatch, 15000, [self._MM, other])
+        with patch("app.database.upsert_vram_estimate") as upsert, patch("app.resource_manager.requests.post") as post:
+            manager.measure_model_vram("multimodal", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 32768, -1)
+        upsert.assert_not_called()
+        post.assert_not_called()
+
+    def test_a_healthy_lone_model_is_stored_and_left_alone(self, monkeypatch):
+        manager = self._manager(monkeypatch, 8600, [self._MM])
+        with patch("app.database.upsert_vram_estimate") as upsert, patch("app.resource_manager.requests.post") as post:
             manager.measure_model_vram("multimodal", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 32768, -1)
         assert upsert.call_args.kwargs["measured_mb"] == 8600
+        post.assert_not_called()
+
+
+class TestTheChatPathChecksThePlacement:
+    """Option 2: a throttled check before the fast path serves a message."""
+
+    def _manager(self, used_mb: int) -> ResourceManager:
+        rm = ResourceManager()
+        rm.hardware.platform = "gpu"
+        rm.hardware.total_vram_mb = 16311
+        rm.hardware.available_vram_mb = 16311 - used_mb
+        rm._poll_vram = MagicMock()
+        rm.get_vram_needed_mb = MagicMock(return_value=7597)
+        return rm
+
+    def test_a_misplaced_resident_is_not_reported_as_ok(self):
+        rm = self._manager(2587)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm.resident_placement_ok("multimodal", {"model": "multimodal"}) is False
+        assert post.called
+
+    def test_a_healthy_resident_is_reported_ok(self):
+        rm = self._manager(8600)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm.resident_placement_ok("multimodal", {"model": "multimodal"}) is True
+        post.assert_not_called()
+
+    def test_the_card_is_not_read_on_every_message(self):
+        """One nvidia-smi a minute, not one per message."""
+        rm = self._manager(8600)
+        rm.resident_placement_ok("multimodal", {"model": "multimodal"})
+        rm.resident_placement_ok("multimodal", {"model": "multimodal"})
+        rm.resident_placement_ok("multimodal", {"model": "multimodal"})
+        assert rm._poll_vram.call_count == 1
+
+
+def test_the_chat_fast_path_reloads_a_model_whose_weights_are_in_ram():
+    """Option 2 end to end: the shortcut must not serve a misplaced model.
+
+    `_ensure_vram()` returns early for the always-resident chat model. With the
+    placement check in front of that shortcut, a model that llama.cpp left in RAM
+    is unloaded there and the full path loads it again, instead of the answer
+    running at a tenth of the speed.
+    """
+    from app.llamacpp_client import LlamaCppClient
+
+    backend = LlamaCppClient()
+    backend._active_model_type = "multimodal"
+    running = {
+        "running": [
+            {
+                "model": "multimodal",
+                "state": "ready",
+                "cmd": "llama-server -m /models/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            }
+        ]
+    }
+    response = MagicMock(status_code=200, json=MagicMock(return_value=running))
+    manager = MagicMock()
+    manager.resident_placement_ok.return_value = False
+    manager.ensure_vram_for.return_value = True
+
+    with (
+        patch("app.llamacpp_client.requests.get", return_value=response),
+        patch("app.llamacpp_client.get_model_config", return_value={"model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf"}),
+        patch("app.resource_manager.get_resource_manager", return_value=manager),
+    ):
+        assert backend._ensure_vram("multimodal") is True
+
+    manager.resident_placement_ok.assert_called_once()
+    manager.ensure_vram_for.assert_called_once_with("multimodal")
+
+
+def test_the_chat_fast_path_is_untouched_when_the_model_is_on_the_card():
+    from app.llamacpp_client import LlamaCppClient
+
+    backend = LlamaCppClient()
+    backend._active_model_type = "multimodal"
+    running = {
+        "running": [
+            {
+                "model": "multimodal",
+                "state": "ready",
+                "cmd": "llama-server -m /models/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            }
+        ]
+    }
+    response = MagicMock(status_code=200, json=MagicMock(return_value=running))
+    manager = MagicMock()
+    manager.resident_placement_ok.return_value = True
+
+    with (
+        patch("app.llamacpp_client.requests.get", return_value=response),
+        patch("app.llamacpp_client.get_model_config", return_value={"model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf"}),
+        patch("app.resource_manager.get_resource_manager", return_value=manager),
+    ):
+        assert backend._ensure_vram("multimodal") is True
+
+    manager.ensure_vram_for.assert_not_called()

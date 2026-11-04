@@ -67,6 +67,10 @@ PLACEMENT_FLOOR = 0.6
 # One reload attempt per model per window: a model that genuinely cannot be
 # placed must not be reloaded on every request.
 PLACEMENT_RETRY_SECONDS = 600
+# How often the card is read to verify a placement. The chat path asks on every
+# message, and reading the card spawns a subprocess: once a minute is enough for
+# a placement, which does not change from one message to the next.
+PLACEMENT_CHECK_SECONDS = 60
 
 
 def placement_is_degraded(expected_mb: int, used_vram_mb: int | None) -> bool:
@@ -115,6 +119,8 @@ class ResourceManager:
         self.last_refusal: dict[str, Any] | None = None
         # When a model was last reloaded because it sat in RAM instead of VRAM.
         self._placement_retry_at: dict[str, float] = {}
+        # When the card was last read to verify a placement.
+        self._placement_checked_at: dict[str, float] = {}
 
     # ── Hardware detection ──
 
@@ -1252,6 +1258,39 @@ class ResourceManager:
         )
         return peak_mb
 
+    def _sole_running_model(self, model_name: str) -> dict[str, Any] | None:
+        """The ``/running`` entry when exactly one model is resident and it is this one.
+
+        ``None`` also covers a shared card and an unreadable list: in both cases
+        the card-wide number cannot be attributed to this model alone.
+        """
+        if not model_name:
+            return None
+        try:
+            url = str(setting("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")).rstrip("/")
+            response = requests.get(f"{url}/running", timeout=3)
+            if response.status_code != 200:
+                return None
+            running = response.json().get("running", [])
+        except Exception:
+            return None
+        if len(running) != 1:
+            return None
+        entry = running[0]
+        if model_name not in str(entry.get("cmd", "")):
+            return None
+        return entry
+
+    def resident_placement_ok(self, model_type: str, entry: dict[str, Any] | None = None) -> bool:
+        """True when the resident model occupies the card; False when it was unloaded.
+
+        The chat path asks this before it serves a message, so a model whose
+        weights stayed in RAM is not asked to answer at a tenth of the speed. The
+        card is read at most once per ``PLACEMENT_CHECK_SECONDS``.
+        """
+        expected_mb = self.get_vram_needed_mb(model_type)
+        return not self._reload_if_misplaced(model_type, expected_mb, entry or {})
+
     def _reload_if_misplaced(self, model_type: str, expected_mb: int, entry: dict[str, Any]) -> bool:
         """Unload a resident model that llama.cpp left in RAM, so it loads again.
 
@@ -1268,15 +1307,26 @@ class ResourceManager:
         if (entry or {}).get("state") not in (None, "ready"):
             return False
         now = time.time()
-        if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+        if now - self._placement_checked_at.get(model_type, 0.0) < PLACEMENT_CHECK_SECONDS:
             return False
+        self._placement_checked_at[model_type] = now
         self._poll_vram()
         used = self.hardware.total_vram_mb - self.hardware.available_vram_mb
         if not placement_is_degraded(expected_mb, used):
             return False
+        return self._unload_misplaced(model_type, entry, used, expected_mb)
+
+    def _unload_misplaced(
+        self, model_type: str, entry: dict[str, Any], used_mb: int, expected_mb: int
+    ) -> bool:
+        """Unload a model that is not on the card, at most once per retry window."""
+        now = time.time()
+        if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+            return False
         self._placement_retry_at[model_type] = now
+        self._placement_checked_at[model_type] = now
         logger.warning(
-            f"ensure_vram_for [{model_type}]: the resident model holds {used}MB of VRAM for an "
+            f"placement [{model_type}]: the resident model holds {used_mb}MB of VRAM for an "
             f"estimated {expected_mb}MB — llama.cpp kept the weights in RAM (partial offload). "
             "Unloading it so the next request loads it on the card."
         )
@@ -1306,8 +1356,19 @@ class ResourceManager:
         Called from llamacpp_client after a successful model response to track
         real VRAM usage per model type, which feeds into the admin panel display.
         For ltx-video the model_name is the pipeline config and ctx_size/ngl are unused.
+
+        Two things make the number trustworthy. It is only this model's when no
+        other model is resident: with two of them the card-wide figure belongs to
+        neither, which is what the old comment about inflated estimates
+        described. And a model holding less than its own files is not measured at
+        all — it is unloaded, because that is a placement that failed, and
+        storing it taught the estimator that a 5.9 GB model costs 2.9 GB (4 917
+        such writes on 2026-11-05).
         """
         try:
+            entry = self._sole_running_model(model_name)
+            if entry is None:
+                return
             from app.database import upsert_vram_estimate
 
             self._poll_vram()
@@ -1318,14 +1379,7 @@ class ResourceManager:
                 used = total - after_free
                 floor_mb = self.model_weights_mb(module)
                 if floor_mb and used < floor_mb:
-                    # The model is not on the card: llama.cpp kept its weights in
-                    # RAM (a load that did not fit). Storing this number would
-                    # teach the estimator that the model is 2.5 GB, and the next
-                    # ensure_vram_for() would believe it.
-                    logger.debug(
-                        f"measure_model_vram[{module}]: {used}MB used is below the model's own "
-                        f"{floor_mb}MB of files — not storing a degraded placement"
-                    )
+                    self._unload_misplaced(module, entry, used, floor_mb)
                     return
                 upsert_vram_estimate(
                     module=module,

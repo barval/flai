@@ -817,6 +817,15 @@ class RedisRequestQueue:
                     self.logger.debug("Skipping background preload: a GPU task is running")
                     return
                 with self.app.app_context():
+                    # The model has ttl 0 and is usually still resident: an
+                    # unconditional warm-up would send a completion request after
+                    # EVERY task, and llama-swap answers 429 while a model loads —
+                    # measured 2026-11-05, that is how a real request ended with
+                    # "Model crashed during startup" (llama-swap: starting
+                    # reasoning failed: upstream command exited prematurely).
+                    if self._chat_model_is_resident():
+                        self.logger.debug("Skipping background preload: the chat model is resident")
+                        return
                     if warm_up_chat_model(self.app, timeout=120):
                         self.logger.info("Multimodal model preloaded in background after non-multimodal task")
                     else:
@@ -826,6 +835,24 @@ class RedisRequestQueue:
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
+
+    def _chat_model_is_resident(self) -> bool:
+        """True when the multimodal model is already in llama-swap's ``/running``."""
+        try:
+            import requests as req
+
+            from app.config import setting
+            from app.model_config import get_model_config
+
+            url = str(setting("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")).rstrip("/")
+            response = req.get(f"{url}/running", timeout=3)
+            if response.status_code != 200:
+                return False
+            config = get_model_config("multimodal")
+            model_name = config.get("model_name", "") if config else ""
+            return bool(model_name) and any(model_name in entry.get("cmd", "") for entry in response.json().get("running", []))
+        except Exception:
+            return False
 
     def _preload_multimodal_sync(self, timeout: int = 60) -> None:
         """Synchronously ensure the multimodal model is resident in VRAM.

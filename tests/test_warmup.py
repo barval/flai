@@ -150,6 +150,7 @@ def test_the_background_preload_after_a_task_goes_through_the_gate():
 
     queue = MagicMock()
     queue.is_gpu_task_active.return_value = False
+    queue._chat_model_is_resident.return_value = False
     done = threading.Event()
 
     def fake_warm(app_arg, timeout=0):
@@ -162,3 +163,27 @@ def test_the_background_preload_after_a_task_goes_through_the_gate():
 
     warm.assert_called_once()
     assert warm.call_args.args[0] is queue.app
+
+
+def test_the_background_preload_does_not_wake_a_resident_model():
+    """The chat model has ttl 0: a warm-up after every task is a request storm.
+
+    Measured 2026-11-05: every task sent a one-token completion, llama-swap
+    answered 429 while a model was loading, and a real request ended with
+    "Model crashed during startup" (llama-swap: starting reasoning failed:
+    upstream command exited prematurely).
+    """
+    import threading
+
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    queue.is_gpu_task_active.return_value = False
+    done = threading.Event()
+    queue._chat_model_is_resident.side_effect = lambda: done.set() or True
+
+    with patch("app.warmup.warm_up_chat_model") as warm:
+        RedisRequestQueue._preload_chat_model_background(queue)
+        assert done.wait(timeout=5)
+
+    warm.assert_not_called()

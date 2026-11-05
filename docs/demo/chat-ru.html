@@ -14897,26 +14897,91 @@ function setTTSButtonState(button, state) {
     }
 }
 
+// Russian forms whose dot never ends a sentence: the abbreviation continues the
+// token (the "that is" / "so forth" pair). Deliberately short — ICU's
+// segmentation knows the rest, and the long list this replaces missed two of
+// these while carrying "tel" and "vs" twice each.
+const NON_TERMINAL_ABBREVIATIONS = /(?:^|\s)(?:т\.е|т\.д|т\.п|т\.к|т\.н|e\.g|i\.e)\.$/;
+
 /**
  * Split text into sentences for chunked TTS synthesis.
- * Splits on sentence boundaries (.!? followed by space or end of string).
- * Preserves Russian abbreviations (such as the ones for "year" and "etc.")
- * by using negative lookahead.
+ *
+ * ICU's sentence segmentation knows what a regex cannot: the dot inside 3.14, in
+ * example.com or in 1.2.3 is not a sentence end, and neither is the one before a
+ * closing quote. Measured before the change: a version line arrived as four
+ * fragments and a dotted domain as two, so the answer was spoken chopped up.
+ * Browsers without Intl.Segmenter fall back to a scanner that ends a sentence
+ * only where whitespace follows the terminator and its closing quotes.
  */
 function splitIntoSentences(text) {
-    // Common abbreviations that shouldn't split on
-    const abbreviations = '(?:г|т|тд|и|тп|тд|напр|пр|ул|пр-кт|бул|пер|кв|ж|д|корп|стр|оф|тел|тел|факс|e-mail|www|http|https|Mr|Mrs|Ms|Dr|Prof|Jr|Sr|vs|etc|No|Vol|pp|fig|Fig|eq|Eq|approx|cf|e\.g|i\.e|vs|al|№)';
+    if (!text) return [];
+    const sentences = _splitSentences(text)
+        .map(sentence => sentence.trim())
+        .filter(sentence => sentence.length > 0);
+    return _joinNonTerminalAbbreviations(sentences);
+}
 
-    // Match sentence endings
-    const sentenceRegex = new RegExp(
-        `[^.!?]*(?:${abbreviations}\\.)+[^.!?]*[.!?]+\\s*|[^.!?]+[.!?]+\\s*|.+`,
-        'g'
-    );
+function _splitSentences(text) {
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        const lang = (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang) || 'ru';
+        const segmenter = new Intl.Segmenter(lang, { granularity: 'sentence' });
+        return Array.from(segmenter.segment(text), part => part.segment);
+    }
+    return _splitSentencesWithoutSegmenter(text);
+}
 
-    const sentences = text.match(sentenceRegex) || [text];
-    return sentences
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
+/** Fallback for browsers without Intl.Segmenter: cut only at real boundaries. */
+function _splitSentencesWithoutSegmenter(text) {
+    const closers = '»”"\')]}';
+    const sentences = [];
+    let start = 0;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        // "…" is a pause, not a terminator: ICU does not break on it either, and
+        // breaking there cuts "I thought… and decided" in half.
+        if (char !== '.' && char !== '!' && char !== '?') continue;
+        // Closing quotes and brackets belong to the sentence that just ended.
+        let end = i + 1;
+        while (end < text.length && closers.includes(text[end])) end++;
+        // "3.14", "example.com" and "1.2.3." continue with a digit or a letter.
+        if (end < text.length && !/\s/.test(text[end])) continue;
+        sentences.push(text.slice(start, end));
+        start = end;
+        i = end - 1;
+    }
+    if (start < text.length) sentences.push(text.slice(start));
+    return sentences;
+}
+
+/** An abbreviation that continues cannot end a sentence: keep it with what follows. */
+function _joinNonTerminalAbbreviations(sentences) {
+    const joined = [];
+    for (const sentence of sentences) {
+        const previous = joined[joined.length - 1];
+        if (previous && NON_TERMINAL_ABBREVIATIONS.test(previous)) {
+            joined[joined.length - 1] = `${previous} ${sentence}`;
+        } else {
+            joined.push(sentence);
+        }
+    }
+    return joined;
+}
+
+/**
+ * Drop fenced code before the text is split for speech.
+ *
+ * The markdown cleaner runs on the server, per chunk, so a fence that a sentence
+ * boundary cut in half was spoken with its markers. Code is not worth reading
+ * aloud, and removing it here keeps every chunk self-contained. An unterminated
+ * fence drops the rest of the text — that half-fence is the same defect.
+ */
+function stripCodeBlocksForTTS(text) {
+    if (!text) return text;
+    return text
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/~~~[\s\S]*?~~~/g, ' ')
+        .replace(/(?:```|~~~)[\s\S]*$/g, ' ')
+        .replace(/[ \t]{2,}/g, ' ');
 }
 
 function resetTtsState() {
@@ -15207,8 +15272,8 @@ async function playTTS(button, messageElement) {
             updateSessionsListFromData();
         }
 
-        // Split text into sentences
-        const sentences = splitIntoSentences(text);
+        // Split text into sentences (code fences first: they must never be spoken)
+        const sentences = splitIntoSentences(stripCodeBlocksForTTS(text));
         dlog('playTTS: split into', sentences.length, 'sentences');
 
         // Initialize buffer with correct size

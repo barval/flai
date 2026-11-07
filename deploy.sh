@@ -570,17 +570,23 @@ download_piper_models() {
 }
 
 # ── Whisper ASR Models ──
+# The flai-whisper container mounts ./data/hf-cache/hub as /root/.cache/whisper,
+# so the model is fetched into that directory (cache_dir=/cache/hub) and the one
+# named in docker-compose.gpu.yml (ASR_MODEL=large-v3-turbo) is used rather than
+# medium, which never reached the mounted directory and was never used.
+WHISPER_REPO="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+WHISPER_CACHE_NAME="models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+
 download_whisper_models() {
-    info "Downloading Whisper ASR model (Systran/faster-whisper-medium)..."
+    info "Downloading Whisper ASR model (${WHISPER_REPO})..."
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
-    # snapshot_download(cache_dir="/cache") writes to the cache root, while older
-    # deployments left a copy under hub/ — both are checked.
     # compgen, not [[ -f ...*... ]]: a glob is not expanded inside [[ ]], so the
     # previous test was always false and the model was "downloaded" on every run.
-    if compgen -G "$CACHE_DIR/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null \
-        || compgen -G "$CACHE_DIR/hub/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null; then
+    # hub/ is what the container sees; the cache root covers older installations.
+    if compgen -G "$CACHE_DIR/hub/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null; then
         info "Whisper model already downloaded."
         return 0
     fi
@@ -596,8 +602,8 @@ from huggingface_hub import snapshot_download
 import sys
 try:
     path = snapshot_download(
-        \"Systran/faster-whisper-medium\",
-        cache_dir=\"/cache\",
+        \"${WHISPER_REPO}\",
+        cache_dir=\"/cache/hub\",
         ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
     print(f\"OK: downloaded to {path}\")

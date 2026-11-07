@@ -553,18 +553,24 @@ download_piper_models() {
 }
 
 # ── Модели Whisper ASR ──
+# Контейнер flai-whisper монтирует ./data/hf-cache/hub как /root/.cache/whisper,
+# поэтому модель кладём именно туда (cache_dir=/cache/hub), и берём ту, что
+# указана в docker-compose.gpu.yml (ASR_MODEL=large-v3-turbo), а не medium:
+# прежний medium не попадал в смонтированный каталог и не использовался.
+WHISPER_REPO="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+WHISPER_CACHE_NAME="models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+
 download_whisper_models() {
-    info "Скачиваю модель Whisper ASR (Systran/faster-whisper-medium)..."
+    info "Скачиваю модель Whisper ASR (${WHISPER_REPO})..."
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
     # Проверка: если модель уже скачана — пропускаем.
-    # snapshot_download(cache_dir="/cache") кладёт её в корень кэша, а старые
-    # развёртывания успели положить копию в hub/ — проверяем оба места.
     # compgen, а не [[ -f ...*... ]]: внутри [[ ]] шаблон не раскрывается, поэтому
     # прежняя проверка была ложной всегда и модель «скачивалась» каждый деплой.
-    if compgen -G "$CACHE_DIR/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null \
-        || compgen -G "$CACHE_DIR/hub/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null; then
+    # Смотрим hub/ (то, что видит контейнер) и корень кэша (старые установки).
+    if compgen -G "$CACHE_DIR/hub/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null; then
         info "Модель Whisper уже скачана."
         return 0
     fi
@@ -580,8 +586,8 @@ from huggingface_hub import snapshot_download
 import sys
 try:
     path = snapshot_download(
-        \"Systran/faster-whisper-medium\",
-        cache_dir=\"/cache\",
+        \"${WHISPER_REPO}\",
+        cache_dir=\"/cache/hub\",
         ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
     print(f\"OK: скачано в {path}\")

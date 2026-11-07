@@ -29,7 +29,10 @@ This list is not a commitment. Items move when their priority changes, and an it
   standalone instance.
 - **LTX-Video on a stable PyTorch** — the container force-installs a nightly (`2.12.0.dev+cu128`) for
   sm_120 support. Stable `cu128` wheels reach 2.11.0, so moving means a downgrade in exchange for
-  reproducible builds; needs a rebuild and one measured clip on the reference card.
+  reproducible builds; needs a rebuild and one measured clip on the reference card. **The CUDA floor does
+  not move:** both builds are `cu128`, so an RTX 3060 on a CUDA 12.2+ driver keeps working exactly as it
+  does today (minor-version compatibility plus `NVIDIA_DISABLE_REQUIRE`, the same mechanism the rest of the
+  stack already relies on).
 - **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
   engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
   in containers, the low-VRAM throughput they claim (8 GB cards), multimodal and embedding support,

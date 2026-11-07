@@ -1,6 +1,6 @@
 # Dependency and platform update audit
 
-Audit date: **2026-10-26**. This document records what is out of date in the shipped stack, which
+Audit date: **2026-11-07** (first pass 2026-10-26; the rows below are refreshed). This document records what is out of date in the shipped stack, which
 updates carry security fixes, which upstream features are worth adopting, and how the upgrades
 should be sequenced. It is an input to the `features/v12.8-dependency-updates` branch, not a
 commitment to update everything at once.
@@ -32,18 +32,18 @@ The numbers below are a snapshot. Refresh them with the commands listed under
 
 | Component | Shipped | Latest available | Note |
 |---|---|---|---|
-| Python in the image | 3.11.16 (`python:3.11-slim`) | 3.11.18 | 3.11 is in security-only support until 2027-10-31 |
+| Python in the image | 3.11.16 (`python:3.11-slim`, digest-pinned) | 3.11.18 | The published image still ships 3.11.16, so there is nothing to pull; 3.11 is in security-only support until 2027-10-31 |
 | Python in the dev virtualenv | 3.13.5 | 3.13.18 | 3.14.10 and 3.15.2 are also released |
-| PostgreSQL | 18.4 | 18.6 | Minor bug fixes only; `postgres:18-alpine` floats |
-| Redis | 8.4.2 | 8.4.8 (security) | Newer lines exist (8.6, 8.8, 8.10); a line jump needs a queue test |
-| Qdrant | 1.19.0 | 1.20.0 | The Python client must move to 1.20.0 as well |
-| llama-swap | v255 | v267 | Released on the audit date; GHCR images had not been pushed yet (the newest published line in the registry was v260) |
-| llama.cpp | b10991 | b11898 | About 900 builds behind; bundled into the llama-swap image tag |
-| Whisper ASR | v1.9.1 | v1.10.0 | New base image with CUDA 12.9.2 |
-| Crawl4AI | 0.9.4 | 0.9.5 | Security release, see below |
-| SearXNG | floating `latest`, image built 2026-09-17 | 2026.10.25 | The floating tag is not reproducible; pin a dated tag |
-| stable-diffusion.cpp | built from `master` | — | Not reproducible; pin a commit |
-| LTX-Video base | PyTorch 2.5.0, CUDA 12.4 | PyTorch 2.14.1 | A major jump; the LTX wrapper code must be checked |
+| PostgreSQL | 18.6 | 18.6 | Up to date |
+| Redis | 8.4.7 | 8.4.8 (security) | 8.4.8 has no `-alpine` variant yet, which is what this stack runs; newer lines exist (8.8, 8.10) and a line jump needs a queue test |
+| Qdrant | 1.20.0 | 1.20.0 | Up to date, client included |
+| llama-swap | v267 | v270 | v268–v270 are released but no GHCR image exists for them (`v270-cuda` is missing), so there is nothing to pull |
+| llama.cpp | b11889 | v0.9.0 (2026-11-04) | Upstream moved to semantic versions; the build is bundled into the llama-swap image tag, so this only moves with that image |
+| Whisper ASR | v1.10.0 | v1.10.0 | Up to date; the deploy now prefetches `large-v3-turbo`, the model the container actually loads |
+| Crawl4AI | 0.9.5 | 0.9.5 | Up to date |
+| SearXNG | `2026.11.6-ac11e14c5` + digest | 2026.11.6 | Pinned by dated tag and digest since 2026-11-07 (was a three-month-old digest) |
+| stable-diffusion.cpp | `be48649` | — | Pinned on purpose; moves only with a measured reason |
+| LTX-Video base | `pytorch/pytorch:2.5.0-cuda12.4` base, but the image force-installs nightly `2.12.0.dev+cu128` (sm_120) | stable `2.11.0+cu128` | Stable cu128 wheels stop at 2.11.0, so moving off the nightly is a downgrade in exchange for reproducible builds; needs a rebuild and one measured clip |
 | Kubernetes-side services | — | — | Not applicable; the project is Compose-only |
 
 ## Security findings
@@ -57,6 +57,8 @@ The numbers below are a snapshot. Refresh them with the commands listed under
 | Crawl4AI | 0.9.4 | 0.9.5 | Six coordinated advisories: SSRF in the cache validator, page JavaScript injection through `css_selector` / `wait_for`, ReDoS through caller regexes, unbounded delay fields, Chromium launched with certificate checks off, caller-chosen Hugging Face model | The sidecar parses untrusted pages — upgrade even though FLAI sends its own requests |
 | Redis | 8.4.2 | 8.4.8 | Heap buffer overflow when a `PUBLISH`/`SPUBLISH` larger than 4 GB crosses the cluster bus | FLAI runs standalone, so it is not reachable; patch for hygiene |
 | PostgreSQL | 18.4 | 18.6 | Bug fixes, no advisory in the release notes | Routine |
+
+**Re-checked 2026-11-07:** the OSV batch query over all 94 Python packages installed in the shipped `flai-web` container returns **no advisories**, and every row above is fixed in the current pins — Pillow 13.0.0, urllib3 2.8.0, Werkzeug 3.1.9, python-dotenv 1.2.4, Crawl4AI 0.9.5, Redis 8.4.7 (the 8.4 line's 4 GB `PUBLISH` overflow is unreachable for a standalone instance), PostgreSQL 18.6.
 
 The development virtualenv and the running container have drifted: the container already has
 Werkzeug 3.1.9, urllib3 2.8.0, cryptography 50.0.2 and gevent 26.9.0, while the virtualenv has

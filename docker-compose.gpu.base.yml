@@ -376,7 +376,7 @@ services:
   # SEARXNG (Optional - Web Search)
   # ============================================================
   searxng:
-    image: searxng/searxng@sha256:854f239d5c181db9c4282cd0ffc1737a61232dd6ad0ea964028b96df17d7758a
+    image: searxng/searxng:2026.11.6-ac11e14c5@sha256:c750ee1d859b26d3aeae51c07f6a48c3a0bfbaa9195d71a18b258862d88c4c3c
     container_name: flai-searxng
     volumes:
       - ./searxng:/etc/searxng

@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v12.9](#-whats-new-in-v129)
+- [🆕 What's New in v13.0](#-whats-new-in-v130)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,14 +73,13 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v12.9
+## 🆕 What's New in v13.0
 
-- **The engine was rebuilt around one decision and one loop.** A single JSON call (the request kernel) now classifies a message and picks its tools, and the same tool loop drives both chat and background tasks. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Skills.** Drop a folder with a `SKILL.md` into `skills/` and the assistant loads its instructions **by itself** when a request matches the skill's description (with the request kernel enabled — `KERNEL_ENABLED=1`) — the format is portable (Claude Code, opencode, pi). → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **MCP servers.** External Model Context Protocol servers can supply chat tools; they are configured in their own admin tab, namespaced per server, and a server that is down costs nothing. → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
-- **Deeper agent tasks.** A request is planned as steps and executed with checkpoints; the planner records its plan as a `write_plan` tool call, and a `research` step can search, open pages and refine its own query before answering. → [TASKS.md](docs/TASKS.md)
-- **A depth profile.** `DEPTH_LEVEL` (min | norm | max) sets how many model calls one request may spend, and every new parameter is editable in the admin panel. → [CONFIGURATION.md](docs/CONFIGURATION.md)
-- **More document formats, including the legacy `.doc`.** Markdown, HTML, XLSX/XLS, PPTX, FB2, XML, YAML, TOML, INI, LOG and EML join the accepted types, the picker takes a batch of files at once, and the old binary Word format is read straight from its OLE2 container — it used to be accepted and then fail to index, and now needs no converter and adds nothing to the image. → [DOCUMENTS.md](docs/DOCUMENTS.md)
+- **It runs on more than NVIDIA now — experimentally.** The stack ships one compose entry per vendor: `docker-compose.gpu.yml` (NVIDIA, unchanged), `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml`, which run llama.cpp on Vulkan via `./deploy.sh --gpu-amd` / `--gpu-intel`. Those two have never been run on real AMD or Intel hardware, and image generation, video and speech recognition stay on CPU there. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **A model that llama.cpp left in RAM is now caught instead of quietly serving at 7 tok/s.** Placement is verified after every load and on the chat path, the measurement can no longer record a failed placement as the model's footprint, and every preload goes through the VRAM gate. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **"Check every room" works through the public API.** `POST /v1/chat/completions` used to return 200 with an empty message for a multi-room camera request while the answer sat in the session; the composed text is returned now, with a fallback for any handler that saves several messages. → [API.md](docs/API.md)
+- **Spoken answers are no longer chopped at every dot.** Sentence splitting understands numbers, domains and closing quotes, and code fences are removed before the text is spoken. → [VOICE.md](docs/VOICE.md)
+- **A past-tense question about the world goes to the web, not to the chat history.** "What was the news yesterday" used to be answered from the conversation; the request kernel now treats it as a search. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -253,7 +252,7 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **GPU mode (NVIDIA, CUDA 12.2+)** — the recommended mode. The whole stack runs on CUDA builds with the NVIDIA Container Toolkit.
 - **CPU-only mode** — the same feature set with no GPU. Everything is slower, so image and video generation automatically downscale to stay inside their time budget.
 
-> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack** — the prebuilt images are CUDA-only. Run CPU-only mode for a guaranteed result.
+> ⚠️ **AMD and Intel GPUs are experimental.** `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml` (`./deploy.sh --gpu-amd` / `--gpu-intel`) run llama.cpp on Vulkan (`services/llamacpp/Dockerfile.vulkan`). Those two files have never been run on real AMD or Intel hardware — only NVIDIA and CPU are tested in this project — and on them image generation, video and speech recognition stay on CPU, while Wan is refused. For a guaranteed result use GPU mode on NVIDIA or CPU-only mode.
 
 ### Hardware tiers
 

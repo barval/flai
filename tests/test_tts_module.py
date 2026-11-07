@@ -354,3 +354,97 @@ class TestCleanMarkdownForTTS:
 
         text = "**bold *and italic* text**"
         assert clean_markdown_for_tts(text) == "bold and italic text"
+
+
+class TestCleanMarkdownForTTSGaps:
+    """Constructs the cleaner used to pass through, so TTS read them aloud.
+
+    Reported 2026-11-05: a table row was spoken as "|---|---|", a task list kept
+    its checkbox, a code fence delimited by ~~~ stayed in, and an answer made
+    only of code produced an empty string that still went to the synthesizer.
+    """
+
+    def test_a_table_is_read_as_a_list(self):
+        from app.utils import clean_markdown_for_tts
+
+        table = "| вид | цена |\n|-----|------|\n| кот | 3 |"
+        out = clean_markdown_for_tts(table)
+        assert "|" not in out
+        assert "вид, цена" in out
+        assert "кот, 3" in out
+
+    @pytest.mark.parametrize("box", ["[ ]", "[x]", "[X]"])
+    def test_a_task_list_loses_its_checkbox(self, box):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts(f"- {box} сделать") == "сделать"
+
+    def test_a_footnote_keeps_its_label(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("текст [1][ref] далее") == "текст 1 далее"
+
+    def test_multiple_backticks_keep_the_content(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("код ``a ` b`` тут") == "код a ` b тут"
+
+    def test_a_tilde_fence_is_removed(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("до\n~~~\ncode\n~~~\nпосле") == "до\n\nпосле"
+
+    def test_an_unterminated_fence_drops_the_rest(self):
+        """A fence cut in half by a sentence boundary must not be spoken."""
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("Текст. ```py\nprint(1)") == "Текст."
+
+    def test_indented_code_is_removed_but_a_nested_list_survives(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("    code line") == ""
+        assert clean_markdown_for_tts("- item\n    - subitem") == "item\nsubitem"
+
+    def test_a_bare_url_is_not_spoken(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("см. https://example.com/page?a=1 и всё") == "см. и всё"
+
+    def test_html_entities_are_decoded(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("a&nbsp;b &amp; c") == "a b & c"
+
+    def test_a_code_only_answer_cleans_to_nothing(self):
+        from app.utils import clean_markdown_for_tts
+
+        assert clean_markdown_for_tts("```\nprint(1)\n```") == ""
+
+
+class TestSynthesizeSkipsAnEmptyChunk:
+    """Nothing to speak means no request, not a request with an empty string."""
+
+    @pytest.fixture
+    def module(self):
+        from modules.tts import TTSModule
+
+        app = Mock()
+        app.config = {"KOKORO_URL": "http://test-kokoro:8888/tts", "KOKORO_TIMEOUT": 60}
+        app.logger = Mock()
+        with patch("modules.tts.requests.head") as head:
+            head.return_value = MagicMock(status_code=200)
+            yield TTSModule(app)
+
+    def test_an_image_only_chunk_is_not_sent(self, module):
+        with patch("modules.tts.requests.post") as post:
+            audio, mime = module.synthesize("![alt](img.png)")
+        assert (audio, mime) == (None, None)
+        post.assert_not_called()
+
+    def test_real_text_is_still_sent(self, module):
+        response = MagicMock(status_code=200, headers={"content-type": "audio/mpeg"}, content=b"ID3")
+        with patch("modules.tts.requests.post", return_value=response) as post:
+            audio, _mime = module.synthesize("**Привет**")
+        assert audio == b"ID3"
+        assert post.call_args.kwargs["json"]["text"] == "Привет"

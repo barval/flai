@@ -796,55 +796,63 @@ class RedisRequestQueue:
             self.logger.debug(f"VRAM cleanup after task: {e}")
 
     def _preload_chat_model_background(self) -> None:
-        """Trigger multimodal model loading in llama-swap via a background thread.
+        """Bring the chat model back after a task, in a daemon thread.
 
-        After a reasoning task, llama-swap unloads the reasoning model and the
-        multimodal (router + chat + vision) model is no longer in VRAM. This sends a
-        tiny multimodal completion request in a daemon thread to trigger llama-swap
-        to load it, so the next router call doesn't suffer a cold start.
+        Called after every task by ``_cleanup_vram_after_task()``. The load goes
+        through ``warm_up_chat_model()`` like the startup warm-up: this path used
+        to post a completion request straight to llama-swap, so when it ran ~5 s
+        after a reasoning answer the chat model started next to the reasoning
+        model that still held 12.9 GB, llama.cpp kept the weights in RAM, and the
+        next answer ran at 6.7 tok/s (measured 2026-11-05 02:03).
         """
+
+        def _run() -> None:
+            from app.warmup import warm_up_chat_model
+
+            try:
+                # A task dequeued in the meantime owns the GPU: loading here would
+                # evict what it just asked for. The next request loads through the
+                # gate anyway — it only loses the warm start.
+                if self.is_gpu_task_active():
+                    self.logger.debug("Skipping background preload: a GPU task is running")
+                    return
+                with self.app.app_context():
+                    # The model has ttl 0 and is usually still resident: an
+                    # unconditional warm-up would send a completion request after
+                    # EVERY task, and llama-swap answers 429 while a model loads —
+                    # measured 2026-11-05, that is how a real request ended with
+                    # "Model crashed during startup" (llama-swap: starting
+                    # reasoning failed: upstream command exited prematurely).
+                    if self._chat_model_is_resident():
+                        self.logger.debug("Skipping background preload: the chat model is resident")
+                        return
+                    if warm_up_chat_model(self.app, timeout=120):
+                        self.logger.info("Multimodal model preloaded in background after non-multimodal task")
+                    else:
+                        self.logger.debug("Background multimodal preload did not reach the running state")
+            except Exception as e:
+                self.logger.debug(f"Background multimodal preload failed: {e}")
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+    def _chat_model_is_resident(self) -> bool:
+        """True when the multimodal model is already in llama-swap's ``/running``."""
         try:
             import requests as req
 
+            from app.config import setting
             from app.model_config import get_model_config
 
-            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
-
-            # Skip if multimodal model is already loaded
-            try:
-                resp = req.get(f"{swap_url}/running", timeout=2)
-                if resp.status_code == 200:
-                    running = resp.json().get("running", [])
-                    config = get_model_config("multimodal")
-                    model_name = config.get("model_name", "") if config else ""
-                    if model_name and any(model_name in m.get("cmd", "") for m in running):
-                        self.logger.debug("Multimodal model already loaded, skipping preload")
-                        return
-            except Exception:
-                pass
-
-            def _do_preload():
-                try:
-                    resp = req.post(
-                        f"{swap_url}/v1/chat/completions",
-                        json={
-                            "model": "multimodal",
-                            "messages": [{"role": "user", "content": "hi"}],
-                            "max_tokens": 1,
-                        },
-                        timeout=60,
-                    )
-                    if resp.status_code == 200:
-                        self.logger.info("Multimodal model preloaded in background after non-multimodal task")
-                    else:
-                        self.logger.debug(f"Multimodal preload returned {resp.status_code}")
-                except Exception as e:
-                    self.logger.debug(f"Background multimodal preload failed: {e}")
-
-            thread = threading.Thread(target=_do_preload, daemon=True)
-            thread.start()
-        except Exception as e:
-            self.logger.debug(f"Multimodal preload setup failed: {e}")
+            url = str(setting("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")).rstrip("/")
+            response = req.get(f"{url}/running", timeout=3)
+            if response.status_code != 200:
+                return False
+            config = get_model_config("multimodal")
+            model_name = config.get("model_name", "") if config else ""
+            return bool(model_name) and any(model_name in entry.get("cmd", "") for entry in response.json().get("running", []))
+        except Exception:
+            return False
 
     def _preload_multimodal_sync(self, timeout: int = 60) -> None:
         """Synchronously ensure the multimodal model is resident in VRAM.
@@ -853,11 +861,15 @@ class RedisRequestQueue:
         reasoning answer the multimodal (router + chat + vision) model is loaded
         back immediately, so the next router call is instant. The load itself
         lives in ``app.warmup`` so the startup warm-up and this path share one
-        implementation.
+        implementation — and, like the warm-up, it goes through
+        ``ensure_vram_for()`` first: llama-swap would otherwise start the model
+        next to the reasoning model that still holds the card, and llama.cpp
+        keeps whatever does not fit in RAM (measured: 2 587 MB of a 5 700 MB
+        model on the card, 7 tok/s for hours, nothing logged).
         """
-        from app.warmup import load_chat_model
+        from app.warmup import warm_up_chat_model
 
-        if not load_chat_model(timeout=timeout):
+        if not warm_up_chat_model(self.app, timeout=timeout):
             self.logger.debug("Multimodal sync preload did not reach the running state")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
@@ -3575,6 +3587,7 @@ class RedisRequestQueue:
         first_message = self._save_camera_message(session_id, user_id, lang, camera_result, camera_time, response_style)
 
         messages = [first_message]
+        answer = ""
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
             # Multimodal model is always resident (router + chat + vision) — no
             # VRAM unload/wait needed; it directly answers on the camera snapshot.
@@ -3602,8 +3615,9 @@ class RedisRequestQueue:
             )
             second["response_time"] = mm_time
             messages.append(second)
+            answer = bot_reply
 
-        return {"messages": messages, "session_id": session_id}
+        return {"messages": messages, "session_id": session_id, "response": answer}
 
     def _camera_analysis_width(self) -> int:
         """Snapshot width the vision model reads: 384 px previews miss small animals."""
@@ -3771,6 +3785,7 @@ class RedisRequestQueue:
             for capture in captures
         ]
 
+        answer = ""
         multimodal = self.app.modules.get("multimodal")
         if message_text and multimodal is not None and multimodal.available:
             # ONE call per room, deliberately. Measured on the shipped
@@ -3802,6 +3817,7 @@ class RedisRequestQueue:
                 observations.append(f"- {capture['room_name']}: {text}")
             mm_time = round(time.time() - mm_start, 1)
             bot_reply = self._camera_summary(message_text, observations, lang) or "\n".join(observations)
+            answer = bot_reply
             second = self._save_and_respond(
                 session_id,
                 bot_reply,
@@ -3813,7 +3829,11 @@ class RedisRequestQueue:
             )
             second["response_time"] = mm_time
             messages.append(second)
-        return {"messages": messages, "session_id": session_id}
+        # ``response`` is the field the API serializes into
+        # choices[0].message.content. Without it the fan-out answered 200 with an
+        # empty completion — the summary was in the session and in ``messages``,
+        # but an API caller only reads this key.
+        return {"messages": messages, "session_id": session_id, "response": answer}
 
     def _process_camera_subtask(self, task: dict[str, Any]) -> dict[str, Any]:
         """Camera step of a Tasks-subsystem plan: one room's snapshot + analysis.

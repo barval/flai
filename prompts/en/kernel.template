@@ -10,14 +10,16 @@ Choose exactly one:
 - camera — the user asks to see a room's state NOW ("what is happening in the kitchen", "is anyone in the hall"). When every room is meant or no room is named ("check all rooms", "where are the cats"), the query is a single asterisk: "*".
 - rag — the answer lives in the user's own uploaded documents (reports, contracts, records, CVs, invoices).
 - search — current facts from the internet: news, weather, prices, rates, a website's content.
-- history — a question about what was said or sent earlier in the conversations ("what did we discuss", "when did we talk about ...").
+- history — a question about what was said or sent earlier in OUR conversation ("what did we discuss", "when did
+  we talk about ..."). The subject must be the conversation itself, never the world.
 - reasoning — writing, code, analysis, or a derivation that needs no external data.
 - reasoning_web — a complex analysis that also needs current internet data.
 - remember — an explicit request to remember something ("remember", "do not forget").
 - crawl — a request to study a whole site or its section in depth, over many pages.
 
 # KEY RULES
-- Past tense about the conversation itself is history, not the action it mentions.
+- Past tense about the conversation itself is history, not the action it mentions. Past tense about the world —
+  yesterday's news, last week's events — is search.
 - A request to extract facts that live in the user's documents is rag, even when it describes past events.
 - A question about the current time or date is none, never search.
 - Simple arithmetic is none: the calculator tool is enough, and it is never reasoning.

@@ -1,0 +1,72 @@
+# docker-compose.gpu.nvidia.yml
+# NVIDIA overlay: CUDA builds, the NVIDIA container runtime and the GPU ASR
+# profile. Included by docker-compose.gpu.yml so the documented path keeps
+# working; AMD and Intel use docker-compose.gpu-{amd,intel}.yml instead.
+services:
+  web:
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+  llama-swap:
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # The official llama-swap image carries a hard NVIDIA_REQUIRE_CUDA check;
+      # on older 12.x drivers deploy.sh sets this to waive it.
+      - NVIDIA_DISABLE_REQUIRE=${LLAMA_SWAP_DISABLE_REQUIRE:-0}
+  sd_cpp:
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DISABLE_REQUIRE=${SD_DISABLE_REQUIRE:-0}
+  ltxvideo:
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DISABLE_REQUIRE=${LTX_DISABLE_REQUIRE:-0}
+  whisper-gpu:
+    # The -gpu tag is the CUDA build; the plain image has no CUDA libraries and
+    # ASR_DEVICE=cuda would fail there.
+    image: onerahmet/openai-whisper-asr-webservice:v1.10.0-gpu
+    container_name: flai-whisper-gpu
+    runtime: nvidia
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      - ASR_MODEL=large-v3-turbo
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cuda
+    volumes:
+      - ./data/hf-cache/hub:/root/.cache/whisper
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-whisper-gpu
+
+  # ============================================================
+  # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
+  # ============================================================

@@ -117,3 +117,73 @@ def test_the_warm_up_does_not_run_under_pytest():
     from app import _is_test_process
 
     assert _is_test_process() is True
+
+
+def test_the_post_reasoning_reload_goes_through_the_gate():
+    """After a reasoning answer the chat model is loaded through the gate too.
+
+    Live, 2026-11-05: this path asked llama-swap for the model directly while the
+    reasoning model still held 12.9 GB, so only 2 587 MB of the model's 5 700 MB
+    of files reached the card, the rest stayed in RAM, and every answer ran at
+    7 tok/s for hours — nothing logged it.
+    """
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    with patch("app.warmup.warm_up_chat_model", return_value=True) as warm:
+        RedisRequestQueue._preload_multimodal_sync(queue, timeout=30)
+    warm.assert_called_once()
+    assert warm.call_args.args[0] is queue.app
+
+
+def test_the_background_preload_after_a_task_goes_through_the_gate():
+    """The third load path, and the one that produced the 02:03 incident.
+
+    `_cleanup_vram_after_task()` runs after every task. Its preload posted a
+    completion request straight to llama-swap ~5 s after a reasoning answer,
+    while the reasoning model still held 12.9 GB — the chat model loaded into
+    the remainder with its weights in RAM, and the next answer ran at 6.7 tok/s.
+    """
+    import threading
+
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    queue.is_gpu_task_active.return_value = False
+    queue._chat_model_is_resident.return_value = False
+    done = threading.Event()
+
+    def fake_warm(app_arg, timeout=0):
+        done.set()
+        return True
+
+    with patch("app.warmup.warm_up_chat_model", side_effect=fake_warm) as warm:
+        RedisRequestQueue._preload_chat_model_background(queue)
+        assert done.wait(timeout=5)
+
+    warm.assert_called_once()
+    assert warm.call_args.args[0] is queue.app
+
+
+def test_the_background_preload_does_not_wake_a_resident_model():
+    """The chat model has ttl 0: a warm-up after every task is a request storm.
+
+    Measured 2026-11-05: every task sent a one-token completion, llama-swap
+    answered 429 while a model was loading, and a real request ended with
+    "Model crashed during startup" (llama-swap: starting reasoning failed:
+    upstream command exited prematurely).
+    """
+    import threading
+
+    from app.queue import RedisRequestQueue
+
+    queue = MagicMock()
+    queue.is_gpu_task_active.return_value = False
+    done = threading.Event()
+    queue._chat_model_is_resident.side_effect = lambda: done.set() or True
+
+    with patch("app.warmup.warm_up_chat_model") as warm:
+        RedisRequestQueue._preload_chat_model_background(queue)
+        assert done.wait(timeout=5)
+
+    warm.assert_not_called()

@@ -1,4 +1,4 @@
-# VRAM Management — FLAI v12.9
+# VRAM Management — FLAI v13.0
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
 
@@ -11,6 +11,10 @@ For critical rules summary, see the root `AGENTS.md`.
 ## Centralized VRAM Management
 
 `app/resource_manager.py` provides two core methods:
+
+### Where the numbers come from, per vendor
+
+`app/platform_detect.py` reads the card through the vendor's own probe: `nvidia-smi` on NVIDIA, `rocm-smi` on AMD with a fallback to the kernel's `/sys/class/drm/card*/device/mem_info_vram_*` (consumer AMD cards rarely have the ROCm userspace installed), and the largest Vulkan memory heap on Intel. `GpuInfo.accelerator` (`cuda | vulkan | none`) says what the models can be offloaded to: a Vulkan card is a GPU without CUDA, so the CUDA-only services (video, speech recognition) keep reading `cuda_detected`. A card that cannot be measured behaves exactly like an unreadable NVIDIA card — the gate refuses rather than guessing. AMD and Intel are experimental; see [ROADMAP.md](ROADMAP.md).
 
 ### `get_vram_needed_mb(model_type)`
 

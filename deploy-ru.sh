@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.9 — Скрипт развёртывания на одном сервере
+# FLAI v13.0 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -553,14 +553,24 @@ download_piper_models() {
 }
 
 # ── Модели Whisper ASR ──
+# Контейнер flai-whisper монтирует ./data/hf-cache/hub как /root/.cache/whisper,
+# поэтому модель кладём именно туда (cache_dir=/cache/hub), и берём ту, что
+# указана в docker-compose.gpu.yml (ASR_MODEL=large-v3-turbo), а не medium:
+# прежний medium не попадал в смонтированный каталог и не использовался.
+WHISPER_REPO="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+WHISPER_CACHE_NAME="models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+
 download_whisper_models() {
-    info "Скачиваю модель Whisper ASR (Systran/faster-whisper-medium)..."
+    info "Скачиваю модель Whisper ASR (${WHISPER_REPO})..."
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
-    # Проверка: если модель уже скачана — пропускаем
-    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
-    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+    # Проверка: если модель уже скачана — пропускаем.
+    # compgen, а не [[ -f ...*... ]]: внутри [[ ]] шаблон не раскрывается, поэтому
+    # прежняя проверка была ложной всегда и модель «скачивалась» каждый деплой.
+    # Смотрим hub/ (то, что видит контейнер) и корень кэша (старые установки).
+    if compgen -G "$CACHE_DIR/hub/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null; then
         info "Модель Whisper уже скачана."
         return 0
     fi
@@ -576,8 +586,8 @@ from huggingface_hub import snapshot_download
 import sys
 try:
     path = snapshot_download(
-        \"Systran/faster-whisper-medium\",
-        cache_dir=\"/cache\",
+        \"${WHISPER_REPO}\",
+        cache_dir=\"/cache/hub\",
         ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
     print(f\"OK: скачано в {path}\")
@@ -668,21 +678,54 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
 
-    COMPOSE_FILE="docker-compose.gpu.yml"
-    if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
-        COMPOSE_FILE="docker-compose.cpu.yml"
-        info "Режим CPU — используется CPU compose файл (GPU не требуется)."
-    else
-        detect_cuda
-        if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
-            COMPOSE_FILE="docker-compose.cpu.yml"
-            info "GPU присутствует, но драйвер CUDA ниже 12.2 — переключение в режим CPU."
+    # Платформа: --platform/--gpu-*, иначе FLAI_PLATFORM из окружения, иначе автоопределение.
+    local platform="${FLAI_PLATFORM:-auto}"
+    if [[ "$platform" == "auto" ]]; then
+        if command -v nvidia-smi &>/dev/null; then
+            platform="nvidia"
+        elif [[ -d /sys/module/amdgpu ]] || command -v rocm-smi &>/dev/null; then
+            platform="amd"
+        elif command -v vulkaninfo &>/dev/null; then
+            platform="intel"
         else
-            info "Режим GPU — используется GPU compose файл."
+            platform="cpu"
         fi
     fi
 
-    if [[ "$COMPOSE_FILE" == *cpu.yml && "$VIDEO_BACKEND" == "wan" ]]; then
+    case "$platform" in
+        cpu)
+            COMPOSE_FILE="docker-compose.cpu.yml"
+            info "Платформа: CPU — используется CPU compose файл (GPU не требуется)."
+            ;;
+        nvidia)
+            COMPOSE_FILE="docker-compose.gpu.yml"
+            detect_cuda
+            if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
+                COMPOSE_FILE="docker-compose.cpu.yml"
+                platform="cpu"
+                info "GPU присутствует, но драйвер CUDA ниже 12.2 — переключение в режим CPU."
+            else
+                info "Платформа: NVIDIA (CUDA) — используется GPU compose файл."
+            fi
+            ;;
+        amd|intel)
+            COMPOSE_FILE="docker-compose.gpu-${platform}.yml"
+            warn "Платформа ${platform} (Vulkan) — ЭКСПЕРИМЕНТАЛЬНО: на реальном оборудовании не проверялась."
+            warn "На ${platform} генерация изображений, видео и распознавание речи работают на CPU."
+            ;;
+        *)
+            error "Неизвестная платформа '${platform}'. Допустимо: auto, nvidia, amd, intel, cpu."
+            exit 1
+            ;;
+    esac
+
+    # Выбор платформы пишем в .env: внутри контейнера нет ни rocm-smi, ни
+    # vulkaninfo, поэтому приложение доверяет значению, а пробы остаются
+    # запасным путём для запуска на голом железе.
+    set_env_key_value FLAI_PLATFORM "$platform"
+    FLAI_PLATFORM="$platform"
+
+    if [[ "$VIDEO_BACKEND" == "wan" && ( "$COMPOSE_FILE" == *cpu.yml || "$COMPOSE_FILE" == *amd.yml || "$COMPOSE_FILE" == *intel.yml ) ]]; then
         error "Wan 2.2 требует GPU: 5-секундный клип 480p на CPU идёт ~90 минут и не влезает в RAM контейнера."
         error "На CPU используйте --with-video (LTX-Video) или WAN_VIDEO_ALLOW_CPU=1 в .env, чтобы попробовать всё равно."
         exit 1
@@ -811,7 +854,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.9 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v13.0 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -827,7 +870,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v12.9 — Скрипт развёртывания
+FLAI v13.0 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -845,6 +888,10 @@ FLAI v12.9 — Скрипт развёртывания
 --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: выключено, используйте флаг для включения)
   --cpu               Принудительный режим только CPU (GPU не требуется)
+  --gpu-nvidia        Платформа NVIDIA/CUDA (по умолчанию, если найден nvidia-smi)
+  --gpu-amd           Платформа AMD (Vulkan) — ЭКСПЕРИМЕНТАЛЬНО, не проверялась
+  --gpu-intel         Платформа Intel (Vulkan) — ЭКСПЕРИМЕНТАЛЬНО, не проверялась
+  --platform=ИМЯ      То же одной опцией: auto|nvidia|amd|intel|cpu
 
 Переключение между GPU и CPU происходит мгновенно (без пересборки): образы
 тегируются по бэкенду (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) и
@@ -898,6 +945,10 @@ for arg in "$@"; do
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
+        --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
+        --gpu-amd)                       FLAI_PLATFORM=amd ;;
+        --gpu-intel)                     FLAI_PLATFORM=intel ;;
+        --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
         --help|-h)                       usage; exit 0 ;;
@@ -924,7 +975,7 @@ VOICE_BACKEND=""
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.9 — Скрипт развёртывания"
+    echo "  FLAI v13.0 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

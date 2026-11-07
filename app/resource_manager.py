@@ -64,9 +64,14 @@ class HardwareInfo:
 # log. The floor is well below 1.0 because the estimate ignores the rest of the
 # card and because other processes legitimately share it.
 PLACEMENT_FLOOR = 0.6
-# One reload attempt per model per window: a model that genuinely cannot be
-# placed must not be reloaded on every request.
-PLACEMENT_RETRY_SECONDS = 600
+# One unload attempt per model per window: an unload/reload cycle takes seconds,
+# so a minute is enough to stop a storm, and a ten-minute window once held a
+# correct verdict back while the model ran at 6.7 tok/s.
+PLACEMENT_RETRY_SECONDS = 60
+# How often the card is read to verify a placement. The chat path asks on every
+# message, and reading the card spawns a subprocess: once a minute is enough for
+# a placement, which does not change from one message to the next.
+PLACEMENT_CHECK_SECONDS = 60
 
 
 def placement_is_degraded(expected_mb: int, used_vram_mb: int | None) -> bool:
@@ -115,6 +120,8 @@ class ResourceManager:
         self.last_refusal: dict[str, Any] | None = None
         # When a model was last reloaded because it sat in RAM instead of VRAM.
         self._placement_retry_at: dict[str, float] = {}
+        # When the card was last read to verify a placement.
+        self._placement_checked_at: dict[str, float] = {}
 
     # ── Hardware detection ──
 
@@ -440,6 +447,19 @@ class ResourceManager:
                 return None
             if self.hardware.total_vram_mb and measured > self.hardware.total_vram_mb:
                 return None
+            # A row can record a failed placement: `measure_model_vram` reads the
+            # card, and a model whose weights stayed in RAM is simply not there.
+            # Live, 2026-11-05: a 3 230 MB row for Qwen3VL at 32 768 (4 917
+            # writes) made get_vram_needed_mb() promise 3 230 MB, so a card
+            # holding 2 587 MB looked healthy and the misplaced model was never
+            # reloaded — the estimate kept reproducing its own evidence.
+            floor_mb = self.model_weights_mb(model_type)
+            if floor_mb and measured < floor_mb:
+                logger.debug(
+                    f"measured_total_mb[{model_type}]: stored {measured}MB is below the model's own "
+                    f"{floor_mb}MB of files — a degraded placement, not a footprint; ignoring it"
+                )
+                return None
             return measured
         except Exception as e:
             logger.debug(f"measured_total_mb[{model_type}]: {e}")
@@ -646,35 +666,20 @@ class ResourceManager:
 
     # ── Dynamic VRAM estimation ──
 
-    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
-        """Compute VRAM needed for a model from GGUF metadata + DB config.
+    def _model_size_parts(self, model_type: str, model_name: str | None = None) -> tuple[float, float, float]:
+        """(weights on the card, vision encoder, model file size) in MB.
 
-        Reads model file size and layer count from GGUF cache,
-        context_length from model_configs, and n_gpu_layers from
-        compute_llamacpp_config().  Returns total estimated MB.
+        One source for the two callers that need the model's own size: the VRAM
+        estimate, and the floor below which a "measurement" cannot be the model.
         """
-        from app.model_config import get_model_config
-        from app.utils import get_gguf_models_cached
+        from app.utils import get_gguf_models_cached, get_mmproj_size_mb
 
-        if model_type == "whisper":
-            # Whisper is not managed by llama-swap: its footprint is the CUDA
-            # context of the ASR container, configured by the deployment.
-            return int(os.getenv("WHISPER_VRAM_MB", "3000"))
+        if model_name is None:
+            from app.model_config import get_model_config
 
-        measured = self.measured_total_mb(model_type)
-        if measured and ctx_size is None:
-            return measured
+            config = get_model_config(model_type)
+            model_name = config.get("model_name", "") if config else ""
 
-        config = get_model_config(model_type)
-        model_name = config.get("model_name", "") if config else ""
-
-        # Context length: prefer explicit argument, then DB config, then fallback
-        if ctx_size is None:
-            ctx_size = config.get("context_length") if config else 4096
-        if not ctx_size:
-            ctx_size = 4096
-
-        # GGUF metadata
         gguf_info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
         file_size_mb = gguf_info.get("file_size_mb") or 0
         block_count = gguf_info.get("block_count") or 0
@@ -707,17 +712,55 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
+        # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
+        return weights_mb, mmproj_mb, file_size_mb
+
+    def model_weights_mb(self, model_type: str) -> int:
+        """VRAM the model's own files occupy — the floor of any real placement.
+
+        A card holding less than this is not running the model: llama.cpp leaves
+        whatever does not fit in RAM, so a smaller number describes a failed
+        placement, never the model.
+        """
+        weights_mb, mmproj_mb, _file_size_mb = self._model_size_parts(model_type)
+        return int(weights_mb + mmproj_mb)
+
+    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
+        """Compute VRAM needed for a model from GGUF metadata + DB config.
+
+        Reads model file size and layer count from GGUF cache,
+        context_length from model_configs, and n_gpu_layers from
+        compute_llamacpp_config().  Returns total estimated MB.
+        """
+        from app.model_config import get_model_config
+
+        if model_type == "whisper":
+            # Whisper is not managed by llama-swap: its footprint is the CUDA
+            # context of the ASR container, configured by the deployment.
+            return int(os.getenv("WHISPER_VRAM_MB", "3000"))
+
+        measured = self.measured_total_mb(model_type)
+        if measured and ctx_size is None:
+            return measured
+
+        config = get_model_config(model_type)
+        model_name = config.get("model_name", "") if config else ""
+
+        # Context length: prefer explicit argument, then DB config, then fallback
+        if ctx_size is None:
+            ctx_size = config.get("context_length") if config else 4096
+        if not ctx_size:
+            ctx_size = 4096
+
+        weights_mb, mmproj_mb, file_size_mb = self._model_size_parts(model_type, model_name)
+
         # KV cache estimate (q4_0): the module constant until a real measurement
         # of this model at this window exists, then the measured value.
         kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
-
-        # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
-        from app.utils import get_mmproj_size_mb
-
-        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
 
         total = int(weights_mb + kv_mb + overhead + mmproj_mb)
 
@@ -1216,6 +1259,39 @@ class ResourceManager:
         )
         return peak_mb
 
+    def _sole_running_model(self, model_name: str) -> dict[str, Any] | None:
+        """The ``/running`` entry when exactly one model is resident and it is this one.
+
+        ``None`` also covers a shared card and an unreadable list: in both cases
+        the card-wide number cannot be attributed to this model alone.
+        """
+        if not model_name:
+            return None
+        try:
+            url = str(setting("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")).rstrip("/")
+            response = requests.get(f"{url}/running", timeout=3)
+            if response.status_code != 200:
+                return None
+            running = response.json().get("running", [])
+        except Exception:
+            return None
+        if len(running) != 1:
+            return None
+        entry = running[0]
+        if model_name not in str(entry.get("cmd", "")):
+            return None
+        return entry
+
+    def resident_placement_ok(self, model_type: str, entry: dict[str, Any] | None = None) -> bool:
+        """True when the resident model occupies the card; False when it was unloaded.
+
+        The chat path asks this before it serves a message, so a model whose
+        weights stayed in RAM is not asked to answer at a tenth of the speed. The
+        card is read at most once per ``PLACEMENT_CHECK_SECONDS``.
+        """
+        expected_mb = self.get_vram_needed_mb(model_type)
+        return not self._reload_if_misplaced(model_type, expected_mb, entry or {})
+
     def _reload_if_misplaced(self, model_type: str, expected_mb: int, entry: dict[str, Any]) -> bool:
         """Unload a resident model that llama.cpp left in RAM, so it loads again.
 
@@ -1225,16 +1301,46 @@ class ResourceManager:
         Returns True when the model was unloaded and the caller must not treat it
         as ready.
         """
-        now = time.time()
-        if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+        # A model that is still loading has uploaded only part of its weights:
+        # reading the card now calls a healthy load a failed placement and
+        # unloads it in the middle of the upload (measured live: 932 MB of a
+        # 7 597 MB model, seen while the same load was still running).
+        if (entry or {}).get("state") not in (None, "ready"):
             return False
+        now = time.time()
+        if now - self._placement_checked_at.get(model_type, 0.0) < PLACEMENT_CHECK_SECONDS:
+            return False
+        self._placement_checked_at[model_type] = now
         self._poll_vram()
         used = self.hardware.total_vram_mb - self.hardware.available_vram_mb
         if not placement_is_degraded(expected_mb, used):
             return False
+        return self._unload_misplaced(model_type, entry, used, expected_mb)
+
+    def _unload_misplaced(
+        self, model_type: str, entry: dict[str, Any], used_mb: int, expected_mb: int
+    ) -> bool:
+        """Unload a model that is not on the card, at most once per retry window.
+
+        Nothing is unloaded when the free VRAM could not hold the model anyway:
+        something else owns the card, and the reload would land in the same
+        remainder.
+        """
+        now = time.time()
+        if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
+            return False
+        free_mb = self.hardware.total_vram_mb - used_mb
+        if self.hardware.total_vram_mb and free_mb < expected_mb:
+            self._placement_retry_at[model_type] = now
+            logger.warning(
+                f"placement [{model_type}]: {used_mb}MB on the card for an estimated {expected_mb}MB, "
+                f"but only {free_mb}MB is free — reloading would land in the same remainder"
+            )
+            return False
         self._placement_retry_at[model_type] = now
+        self._placement_checked_at[model_type] = now
         logger.warning(
-            f"ensure_vram_for [{model_type}]: the resident model holds {used}MB of VRAM for an "
+            f"placement [{model_type}]: the resident model holds {used_mb}MB of VRAM for an "
             f"estimated {expected_mb}MB — llama.cpp kept the weights in RAM (partial offload). "
             "Unloading it so the next request loads it on the card."
         )
@@ -1264,8 +1370,19 @@ class ResourceManager:
         Called from llamacpp_client after a successful model response to track
         real VRAM usage per model type, which feeds into the admin panel display.
         For ltx-video the model_name is the pipeline config and ctx_size/ngl are unused.
+
+        Two things make the number trustworthy. It is only this model's when no
+        other model is resident: with two of them the card-wide figure belongs to
+        neither, which is what the old comment about inflated estimates
+        described. And a model holding less than its own files is not measured at
+        all — it is unloaded, because that is a placement that failed, and
+        storing it taught the estimator that a 5.9 GB model costs 2.9 GB (4 917
+        such writes on 2026-11-05).
         """
         try:
+            entry = self._sole_running_model(model_name)
+            if entry is None:
+                return
             from app.database import upsert_vram_estimate
 
             self._poll_vram()
@@ -1274,6 +1391,10 @@ class ResourceManager:
 
             if total > 0 and after_free > 0:
                 used = total - after_free
+                floor_mb = self.model_weights_mb(module)
+                if floor_mb and used < floor_mb:
+                    self._unload_misplaced(module, entry, used, floor_mb)
+                    return
                 upsert_vram_estimate(
                     module=module,
                     model_name=model_name,

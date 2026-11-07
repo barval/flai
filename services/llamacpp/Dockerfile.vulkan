@@ -1,0 +1,46 @@
+# services/llamacpp/Dockerfile.vulkan
+# llama-swap plus a Vulkan llama-server, for AMD and Intel GPUs.
+#
+# EXPERIMENTAL. The image builds on an NVIDIA host (building needs no GPU) and
+# was verified on 2026-11-07: `llama-server --version` reports build 11889, the
+# same as the CUDA image, and `llama-swap -h` runs. `llama-server --list-devices`
+# reports "(none)" there, which is expected — this host has no Vulkan device.
+# It has never been run against an AMD or Intel card: enumerate devices on real
+# hardware first.
+#
+# The llama.cpp build is pinned to the same b11889 as the CUDA image that
+# docker-compose.gpu.nvidia.yml uses, so every flag app/llama_swap_config.py
+# emits (--reasoning-budget, --cache-type-k q4_0, --jinja, --metrics) exists in
+# this binary too. Bump both together.
+ARG LLAMA_SERVER_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b11889
+ARG LLAMA_SWAP_VERSION=v267
+ARG GO_VERSION=1.27
+
+FROM golang:${GO_VERSION}-bookworm AS build
+ARG LLAMA_SWAP_VERSION
+# llama-swap's go.mod pins a toolchain newer than the base image; let Go fetch
+# it instead of failing the build when upstream bumps its requirement.
+ENV GOTOOLCHAIN=auto
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch "${LLAMA_SWAP_VERSION}" https://github.com/mostlygeek/llama-swap . \
+    && CGO_ENABLED=0 go build -trimpath -o /out/llama-swap .
+
+FROM ${LLAMA_SERVER_IMAGE}
+ARG LLAMA_SWAP_VERSION
+LABEL org.opencontainers.image.title="flai-llamaswap" \
+      org.opencontainers.image.description="llama-swap ${LLAMA_SWAP_VERSION} with a Vulkan llama-server" \
+      org.opencontainers.image.vendor="FLAI"
+
+COPY --from=build /out/llama-swap /usr/local/bin/llama-swap
+
+# llama-swap launches the server by name, and the ggml image keeps it in /app;
+# make that directory part of PATH and fail the build if it is not there, so a
+# moved binary is a build error rather than a failed deployment.
+ENV PATH="/app:${PATH}"
+RUN command -v llama-server >/dev/null || { echo "llama-server not found in ${PATH}" >&2; exit 1; }
+
+ENTRYPOINT ["/usr/local/bin/llama-swap"]
+CMD ["-config", "/config/llama-swap.yaml", "-watch-config"]

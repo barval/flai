@@ -1584,7 +1584,11 @@ class LlamaCppClient:
         # === Multimodal skip: multimodal is the router+chat model. When active,
         #     same instance serves router→response without unload/reload ===
         if model_type == "multimodal" and self._active_model_type == "multimodal":
-            # Quick sanity check: verify the model is actually still loaded
+            # Quick sanity check: the model is loaded AND on the card. "Loaded" is
+            # not enough — a model llama.cpp could not fit keeps its weights in
+            # RAM and answers at a tenth of the speed. The check reads the card at
+            # most once a minute, so a chat turn does not pay for it.
+            entry = None
             try:
                 swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
                 resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
@@ -1592,13 +1596,15 @@ class LlamaCppClient:
                     models = resp.json().get("running", [])
                     config = get_model_config("multimodal")
                     model_name = config.get("model_name", "") if config else ""
-                    if model_name and any(model_name in m.get("cmd", "") for m in models):
+                    entry = next((m for m in models if model_name and model_name in m.get("cmd", "")), None)
+                    if entry is not None and self._placement_ok("multimodal", entry):
                         self.logger.debug("VRAM skip: multimodal model already active")
                         return True
             except Exception:
                 pass
-            # Model was unloaded externally — clear flag and fall through to full ensure_vram
-            self.logger.debug("VRAM skip failed: multimodal model not in /running — full reload needed")
+            # Unloaded externally, or unloaded now because its weights were in
+            # RAM — either way the next step has to load it again.
+            self.logger.debug("VRAM skip failed: multimodal is not usable as loaded — full reload needed")
             self._active_model_type = None
 
         # === Stateless check: verify model is loaded via llama-swap + platform ===
@@ -1618,7 +1624,7 @@ class LlamaCppClient:
                         free = query_free_vram_mb(rm.hardware.platform)
                         if free is not None:
                             needed = rm.get_vram_needed_mb(model_type)
-                            if free >= needed:
+                            if free >= needed and self._placement_ok(model_type, models[0]):
                                 self._active_model_type = model_type
                                 self.logger.debug(
                                     f"VRAM skip: {model_type} already loaded, {free}MB free >= {needed}MB needed"
@@ -1637,6 +1643,18 @@ class LlamaCppClient:
         else:
             self._active_model_type = None
         return ok
+
+    def _placement_ok(self, model_type: str, entry: dict) -> bool:
+        """False when the resident model was unloaded because it was not on the card."""
+        from app.resource_manager import get_resource_manager
+
+        if get_resource_manager().resident_placement_ok(model_type, entry):
+            return True
+        self.logger.info(
+            f"{model_type}: the resident model had its weights in RAM — unloaded so the next "
+            "request loads it on the card"
+        )
+        return False
 
     def chat(
         self,

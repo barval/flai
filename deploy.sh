@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v12.9 — Single-Server Deployment Script
+# FLAI v13.0 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -570,13 +570,23 @@ download_piper_models() {
 }
 
 # ── Whisper ASR Models ──
+# The flai-whisper container mounts ./data/hf-cache/hub as /root/.cache/whisper,
+# so the model is fetched into that directory (cache_dir=/cache/hub) and the one
+# named in docker-compose.gpu.yml (ASR_MODEL=large-v3-turbo) is used rather than
+# medium, which never reached the mounted directory and was never used.
+WHISPER_REPO="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+WHISPER_CACHE_NAME="models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+
 download_whisper_models() {
-    info "Downloading Whisper ASR model (Systran/faster-whisper-medium)..."
+    info "Downloading Whisper ASR model (${WHISPER_REPO})..."
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
-    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
-    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+    # compgen, not [[ -f ...*... ]]: a glob is not expanded inside [[ ]], so the
+    # previous test was always false and the model was "downloaded" on every run.
+    # hub/ is what the container sees; the cache root covers older installations.
+    if compgen -G "$CACHE_DIR/hub/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/$WHISPER_CACHE_NAME/snapshots/*/model.bin" >/dev/null; then
         info "Whisper model already downloaded."
         return 0
     fi
@@ -592,8 +602,8 @@ from huggingface_hub import snapshot_download
 import sys
 try:
     path = snapshot_download(
-        \"Systran/faster-whisper-medium\",
-        cache_dir=\"/cache\",
+        \"${WHISPER_REPO}\",
+        cache_dir=\"/cache/hub\",
         ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
     print(f\"OK: downloaded to {path}\")
@@ -684,21 +694,55 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
 
-    COMPOSE_FILE="docker-compose.gpu.yml"
-    if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
-        COMPOSE_FILE="docker-compose.cpu.yml"
-        info "CPU mode — using CPU compose file (no GPU required)."
-    else
-        detect_cuda
-        if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
-            COMPOSE_FILE="docker-compose.cpu.yml"
-            info "GPU present but CUDA driver below 12.2 — falling back to CPU mode."
+    # Platform: --platform/--gpu-*, else FLAI_PLATFORM from the environment, else
+    # what the host reports.
+    local platform="${FLAI_PLATFORM:-auto}"
+    if [[ "$platform" == "auto" ]]; then
+        if command -v nvidia-smi &>/dev/null; then
+            platform="nvidia"
+        elif [[ -d /sys/module/amdgpu ]] || command -v rocm-smi &>/dev/null; then
+            platform="amd"
+        elif command -v vulkaninfo &>/dev/null; then
+            platform="intel"
         else
-            info "GPU mode — using GPU compose file."
+            platform="cpu"
         fi
     fi
 
-    if [[ "$COMPOSE_FILE" == *cpu.yml && "$VIDEO_BACKEND" == "wan" ]]; then
+    case "$platform" in
+        cpu)
+            COMPOSE_FILE="docker-compose.cpu.yml"
+            info "CPU mode — using CPU compose file (no GPU required)."
+            ;;
+        nvidia)
+            COMPOSE_FILE="docker-compose.gpu.yml"
+            detect_cuda
+            if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
+                COMPOSE_FILE="docker-compose.cpu.yml"
+                platform="cpu"
+                info "GPU present but CUDA driver below 12.2 — falling back to CPU mode."
+            else
+                info "Platform: NVIDIA (CUDA) — using the GPU compose file."
+            fi
+            ;;
+        amd|intel)
+            COMPOSE_FILE="docker-compose.gpu-${platform}.yml"
+            warn "Platform ${platform} (Vulkan) — EXPERIMENTAL: never verified on real hardware."
+            warn "On ${platform} image generation, video and speech recognition run on CPU."
+            ;;
+        *)
+            error "Unknown platform '${platform}'. Expected: auto, nvidia, amd, intel, cpu."
+            exit 1
+            ;;
+    esac
+
+    # The choice is written to .env: the container has neither rocm-smi nor
+    # vulkaninfo, so the app trusts this value and keeps the probes as a
+    # fallback for a bare-metal run.
+    set_env_key_value FLAI_PLATFORM "$platform"
+    FLAI_PLATFORM="$platform"
+
+    if [[ "$VIDEO_BACKEND" == "wan" && ( "$COMPOSE_FILE" == *cpu.yml || "$COMPOSE_FILE" == *amd.yml || "$COMPOSE_FILE" == *intel.yml ) ]]; then
         error "Wan 2.2 needs a GPU: a 5-second 480p clip takes ~90 minutes on CPU and exceeds the container RAM."
         error "Use --with-video (LTX-Video) on CPU hosts, or WAN_VIDEO_ALLOW_CPU=1 in .env to attempt it anyway."
         exit 1
@@ -817,7 +861,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v12.9 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v13.0 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -833,7 +877,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v12.9 — Deployment Script
+FLAI v13.0 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -851,6 +895,10 @@ Options:
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
+  --gpu-nvidia        NVIDIA/CUDA platform (default when nvidia-smi is present)
+  --gpu-amd           AMD platform (Vulkan) — EXPERIMENTAL, not verified
+  --gpu-intel         Intel platform (Vulkan) — EXPERIMENTAL, not verified
+  --platform=NAME     The same as one option: auto|nvidia|amd|intel|cpu
 
 Switching between GPU and CPU is instant (no rebuild): images are tagged per
 backend (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) and coexist locally.
@@ -908,6 +956,10 @@ for arg in "$@"; do
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
+        --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
+        --gpu-amd)                       FLAI_PLATFORM=amd ;;
+        --gpu-intel)                     FLAI_PLATFORM=intel ;;
+        --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
         --help|-h)                       usage; exit 0 ;;
@@ -934,7 +986,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v12.9 — Deployment Script"
+    echo "  FLAI v13.0 — Deployment Script"
     echo "============================================"
     echo ""
 

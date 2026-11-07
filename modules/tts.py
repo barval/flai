@@ -82,6 +82,12 @@ class TTSModule(TranslationMixin):
             text = clean_markdown_for_tts(text)
             if "**" in raw or "**" in text:
                 self.logger.info(f"TTS markdown: {raw!r} -> {text!r}")
+            if not text:
+                # A chunk that was only code, an image or a link has nothing to
+                # speak. Sending "" to the backend synthesizes silence and logs
+                # a failure that is not one.
+                self.logger.info("TTS skipped: nothing to speak after markdown cleanup")
+                return None, None
 
             if self.backend == "kokoro":
                 voice_name = self._resolve_voice(lang, gender, voice)

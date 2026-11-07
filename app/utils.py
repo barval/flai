@@ -1,6 +1,7 @@
 # app/utils.py
 import base64
 import contextlib
+import html
 import os
 import re
 import subprocess
@@ -2051,64 +2052,91 @@ def _sd_error_translation_markers() -> None:
     gettext("Image editing timed out. Try again later.")
 
 
+def _table_row_as_text(match):
+    """Read a markdown table row as a list: "a | b" becomes "a, b"."""
+    cells = [cell.strip() for cell in match.group(1).split("|")]
+    return ", ".join(cell for cell in cells if cell)
+
+
 def clean_markdown_for_tts(text: str) -> str:
     """Strip markdown formatting from text before TTS synthesis.
 
-    Removes common markdown constructs (bold, italic, code, links,
-    images, headings, quotes, lists, etc.) leaving only the text
+    Removes common markdown constructs (bold, italic, code, links, images,
+    headings, quotes, lists, tables, footnotes, URLs) leaving only the text
     content for natural speech synthesis.
 
     Args:
         text: Input text that may contain markdown formatting.
 
     Returns:
-        Clean text with markdown removed, suitable for TTS.
+        Clean text with markdown removed, suitable for TTS. It can be empty when
+        the input carried nothing but code or images; the caller must not send
+        that to the synthesizer.
     """
     if not text:
         return text
 
-    # 1. Fenced code blocks — remove entirely
+    # 0. HTML entities — decode first, so the rules below see real characters.
+    #    &nbsp; becomes a non-breaking space, which a synthesizer reads as a
+    #    word boundary only in some voices; a plain space is what we mean.
+    text = html.unescape(text).replace("\xa0", " ")
+    # 1. Fenced code blocks — remove entirely. An unterminated fence is a chunk a
+    #    sentence boundary cut in half; the rest of it is code either way.
     text = re.sub(r"```[\s\S]*?```", "", text)
-    # 2. Inline code — keep content
-    text = re.sub(r"`([^`]+)`", r"\1", text)
-    # 3. Images — remove entirely
+    text = re.sub(r"~~~[\s\S]*?~~~", "", text)
+    text = re.sub(r"(?:```|~~~)[\s\S]*$", "", text)
+    # 2. Indented code blocks. A list item at that indent is content, not code.
+    text = re.sub(r"^(?: {4,}|\t)(?![-*+] |\d+[.)] )\S.*$", "", text, flags=re.MULTILINE)
+    # 3. Inline code — keep the content, whatever number of backticks delimits it
+    #    (``a ` b`` holds a backtick inside, so the delimiter count must match).
+    text = re.sub(r"(`+)(.+?)\1", r"\2", text)
+    # 4. Tables — drop the alignment row, read the data rows as a list.
+    text = re.sub(r"^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^[ \t]*\|(.+)\|[ \t]*$", _table_row_as_text, text, flags=re.MULTILINE)
+    # 5. Task lists — the checkbox is markup, so the marker goes with it.
+    text = re.sub(r"^\s*[-*+]\s+\[[ xX]\]\s+", "", text, flags=re.MULTILINE)
+    # 6. Footnote references — keep the label.
+    text = re.sub(r"\[([^\]]+)\]\[[^\]]*\]", r"\1", text)
+    # 7. Images — remove entirely
     text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-    # 4. Links — keep only display text
+    # 8. Links — keep only display text
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
-    # 5. Auto-links <url> — remove
+    # 9. Auto-links <url> — remove
     text = re.sub(r"<https?://[^>]+>", "", text)
-    # 6. Bold-italic ***...*** — before ** and *
+    # 9b. Bare URLs — a URL read aloud is noise, not content.
+    text = re.sub(r"https?://\S+", "", text)
+    # 10. Bold-italic ***...*** — before ** and *
     text = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)
-    # 7. Bold **...**
+    # 11. Bold **...**
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    # 8. Italic *...*
+    # 12. Italic *...*
     text = re.sub(r"\*(.+?)\*", r"\1", text)
-    # 8b. Strip orphaned ** adjacent to letters
+    # 12b. Strip orphaned ** adjacent to letters
     #     (survives after sentence-split fragments such as "**AB. / CD**")
     text = re.sub(r"(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])", "", text)
-    # 9. Underline-bold __...__ (word-boundary guarded)
+    # 13. Underline-bold __...__ (word-boundary guarded)
     text = re.sub(r"\b__(.+?)__\b", r"\1", text)
-    # 10. Underline-italic _..._ (word-boundary guarded)
+    # 14. Underline-italic _..._ (word-boundary guarded)
     text = re.sub(r"\b_(.+?)_\b", r"\1", text)
-    # 11. Strikethrough ~~...~~
+    # 15. Strikethrough ~~...~~
     text = re.sub(r"~~(.+?)~~", r"\1", text)
-    # 12. HTML tags
+    # 16. HTML tags
     text = re.sub(r"</?[^>]+>", "", text)
-    # 13. Headings
+    # 17. Headings
     text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
-    # 14. Blockquotes
+    # 18. Blockquotes
     text = re.sub(r"^>\s+", "", text, flags=re.MULTILINE)
-    # 15. Unordered lists (-, *, +)
+    # 19. Unordered lists (-, *, +)
     text = re.sub(r"^[\s]*[-*+]\s+", "", text, flags=re.MULTILINE)
-    # 16. Ordered lists (1., 1), etc.)
+    # 20. Ordered lists (1., 1), etc.)
     text = re.sub(r"^[\s]*\d+[.)]\s+", "", text, flags=re.MULTILINE)
-    # 17. Thematic breaks (---, ***, ___)
+    # 21. Thematic breaks (---, ***, ___)
     text = re.sub(r"^[\s]*[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
-    # 18. Collapse multiple newlines
+    # 22. Collapse multiple newlines
     text = re.sub(r"\n{3,}", "\n\n", text)
-    # 19. Collapse multiple spaces/tabs
+    # 23. Collapse multiple spaces/tabs
     text = re.sub(r"[ \t]+", " ", text)
-    # 20. Trim leading/trailing whitespace
+    # 24. Trim leading/trailing whitespace
     text = text.strip()
 
     return text

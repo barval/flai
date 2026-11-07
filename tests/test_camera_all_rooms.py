@@ -221,3 +221,72 @@ def test_a_denied_room_is_skipped_while_permitted_rooms_are_captured():
     queue.app.modules = modules
     captures = RedisRequestQueue._capture_all_rooms(queue, "zoya", "ru")
     assert [item["room_name"] for item in captures] == ["Коридор"]
+
+
+@pytest.mark.unit
+def test_the_composed_answer_is_returned_for_the_api():
+    """The result carries the answer, not only the messages it was saved as.
+
+    Measured live at 12.9: POST /v1/chat/completions for "every room" answered
+    200 with an empty choices[0].message.content while the summary sat in the
+    session - the client pronounced "the local model returned no answer". The
+    result envelope had no ``response`` key, which is the only field the API
+    serializer reads.
+    """
+    queue = _queue()
+    queue.app.modules = _modules({"kuh": "Кухня", "gos": "Гостиная", "spa": "Спальня"})
+    with patch("app.queue.save_uploaded_file", return_value="u/1.jpg"):
+        result = RedisRequestQueue._process_camera_all_rooms(
+            queue, "s1", "user", "где кошки?", "2026-10-31 15:00", "ru"
+        )
+    answer = "Кошки есть на балконе; в остальных комнатах их нет."
+    assert result["response"] == answer
+    # The same text that was persisted as the last message in the session.
+    assert queue._save_and_respond.call_args.args[1] == answer
+
+
+@pytest.mark.unit
+def test_a_dead_camera_does_not_empty_the_answer():
+    """Some cameras having no signal must not turn the answer into nothing.
+
+    Live: two of ten rooms (det, pri) refused the snapshot and were skipped; the
+    answer over the remaining eight was correct and still reached the API as "".
+    """
+    queue = _queue()
+    queue.app.modules = _modules(
+        {"kuh": "Кухня", "det": "Детская", "pri": "Прихожая"}, fail={"det", "pri"}
+    )
+    with patch("app.queue.save_uploaded_file", return_value="u/2.jpg"):
+        result = RedisRequestQueue._process_camera_all_rooms(
+            queue, "s1", "user", "где кошки?", "2026-10-31 15:05", "ru"
+        )
+    assert result["response"] == "Кошки есть на балконе; в остальных комнатах их нет."
+
+
+@pytest.mark.unit
+def test_a_failed_summary_still_answers_with_the_observations():
+    queue = _queue()
+    modules = _modules({"kuh": "Кухня"})
+    modules["multimodal"].llamacpp.chat.side_effect = RuntimeError("model down")
+    queue.app.modules = modules
+    with patch("app.queue.save_uploaded_file", return_value="u/3.jpg"):
+        result = RedisRequestQueue._process_camera_all_rooms(
+            queue, "s1", "user", "где кошки?", "2026-10-31 15:10", "ru"
+        )
+    assert result["response"]
+    assert "Кухня" in result["response"]
+    assert queue._save_and_respond.call_args.args[1] == result["response"]
+
+
+@pytest.mark.unit
+def test_one_room_through_the_non_streaming_path_still_returns_its_answer():
+    """The single-room branch keeps working: its answer reaches the API too."""
+    queue = _queue()
+    queue.app.modules = _modules({"spa": "Спальня"})
+    queue._process_camera_task = lambda *args, **kwargs: RedisRequestQueue._process_camera_task(queue, *args, **kwargs)
+    with patch("app.queue.save_uploaded_file", return_value="u/5.jpg"):
+        result = RedisRequestQueue._process_camera_task(
+            queue, "spa", "s1", "user", "есть ли кошки?", "2026-10-31 15:20", "ru"
+        )
+    assert result["response"] == "кошка есть"
+    assert len(result["messages"]) == 2

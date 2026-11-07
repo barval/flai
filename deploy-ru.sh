@@ -558,9 +558,13 @@ download_whisper_models() {
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
-    # Проверка: если модель уже скачана — пропускаем
-    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
-    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+    # Проверка: если модель уже скачана — пропускаем.
+    # snapshot_download(cache_dir="/cache") кладёт её в корень кэша, а старые
+    # развёртывания успели положить копию в hub/ — проверяем оба места.
+    # compgen, а не [[ -f ...*... ]]: внутри [[ ]] шаблон не раскрывается, поэтому
+    # прежняя проверка была ложной всегда и модель «скачивалась» каждый деплой.
+    if compgen -G "$CACHE_DIR/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/hub/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null; then
         info "Модель Whisper уже скачана."
         return 0
     fi

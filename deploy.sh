@@ -575,8 +575,12 @@ download_whisper_models() {
     local CACHE_DIR="data/hf-cache"
     mkdir -p "$CACHE_DIR/hub"
 
-    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
-    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+    # snapshot_download(cache_dir="/cache") writes to the cache root, while older
+    # deployments left a copy under hub/ — both are checked.
+    # compgen, not [[ -f ...*... ]]: a glob is not expanded inside [[ ]], so the
+    # previous test was always false and the model was "downloaded" on every run.
+    if compgen -G "$CACHE_DIR/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null \
+        || compgen -G "$CACHE_DIR/hub/models--Systran--faster-whisper-medium/snapshots/*/model.bin" >/dev/null; then
         info "Whisper model already downloaded."
         return 0
     fi

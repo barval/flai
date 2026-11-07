@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- **A past-tense question about the world was answered from the chat history.** «What was the news yesterday» was classified as `history`, so the evidence stage loaded the conversation and no request left the machine; the answer reported that it had no news. Three minutes earlier «what news is there today» went to search and answered correctly, so it was the wording. The kernel now states that a past-tense question about the world (yesterday's news, last week's events) is search, while past tense about our conversation stays history. Measured with `flask kernel-eval`: 10 news/past-tense cases 0.900 → 1.000, the 35-case seed set unchanged at 1.000; a first, longer wording cost two `image` cases and was narrowed until it did not.
+
+- **Every deployment re-downloaded a Whisper model the ASR container never used.** The download wrote to `cache_dir="/cache"` while `flai-whisper` mounts `data/hf-cache/hub`, and fetched `faster-whisper-medium` although the compose file runs `ASR_MODEL=large-v3-turbo`. The guard that should have skipped it was always false — `[[ -f "…/snapshots/*/model.bin" ]]` does not expand a glob — so each run printed «downloading ~1.5 GB», started a container and reinstalled `huggingface_hub` before hitting the cache. The script now fetches `large-v3-turbo` into the mounted directory and checks both locations with `compgen`.
+
 - **An answer argued with a name the user never wrote.** «Сколько лет валерию барсукову» was answered with «нет данных о женщине по имени Валерия Барсукова» beside the correct man from the user's own document — the model declined the lowercase name into the feminine form and then treated its own paraphrase as a second person. Routing and retrieval were right (the document scores 1.0 for both spellings); the answer prompt now says that a close variant of a name in the evidence is the same entity and that a variant the evidence does not contain needs no discussion. Measured: two runs answer «Валерию Барсукову 49 лет, родился 28 декабря 1976» directly. The same rule in the kernel was measured too and dropped — it moved one to two image requests into reasoning on the seed set while changing nothing about retrieval.
 
 - **A warm-up after every task hammered llama-swap until a real request failed.** The post-task preload runs `warm_up_chat_model()` on every completed task, and the chat model stays resident (`ttl: 0`), so each task sent a one-token completion nobody needed: 322 of them, with llama-swap answering 429 while a model loaded. On 2026-11-05 that ended a real request with «Model crashed during startup» (`starting reasoning failed: upstream command exited prematurely`). The preload now returns immediately when the chat model is already in `/running`, so it only acts after a reasoning or embedding task actually evicted it.
@@ -20,7 +24,7 @@
 
 - **A request that checks every camera answered the API with an empty message.** `POST /v1/chat/completions` for «check every room» returned 200 with an empty `choices[0].message.content` while the correct summary was saved in the session, so the client reported that the local model returned no answer — a single room worked, because that path ends in the usual response envelope. The fan-out returned `{messages, session_id}` without `response`, and the serializer reads only that key. The result now carries the composed answer, and `api_bridge.result_text()` falls back to the last message with text for both the non-streaming and the streaming branch, so a handler that saves several messages can no longer produce an empty completion.
 
-## [v12.9] — 2026-11-01
+## [v12.9] — 2026-11-02
 
 ### Added
 

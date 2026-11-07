@@ -10,6 +10,10 @@
 ## Централизованное управление VRAM
 
 `app/resource_manager.py` предоставляет два основных метода:
+
+### Откуда берутся числа: по вендорам
+
+`app/platform_detect.py` читает карту родной для вендора пробой: `nvidia-smi` на NVIDIA, `rocm-smi` на AMD с запасным путём через `/sys/class/drm/card*/device/mem_info_vram_*` ядра (у потребительских карт AMD userspace ROCm обычно не установлен), и самая большая куча памяти Vulkan на Intel. `GpuInfo.accelerator` (`cuda | vulkan | none`) говорит, куда можно выгружать модели: карта Vulkan — это GPU без CUDA, поэтому CUDA-only сервисы (видео, распознавание речи) продолжают читать `cuda_detected`. Карта, которую не удалось измерить, ведёт себя как нечитаемая карта NVIDIA — шлюз отказывает, а не угадывает. AMD и Intel — экспериментально; см. [ROADMAP-ru.md](ROADMAP-ru.md).
 ### `get_vram_needed_mb(model_type)`
 
 Вычисляет требуемый объём VRAM на основе:

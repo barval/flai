@@ -39,7 +39,7 @@ Chat, tool calling, reasoning, web search, document search and image generation 
 
 ### Can I run it on AMD or Intel?
 
-Not yet. Multi-platform GPU support is in progress — see [ROADMAP.md](ROADMAP.md). CPU-only mode works everywhere a GPU does not.
+Experimentally, yes. `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml` (`./deploy.sh --gpu-amd` / `--gpu-intel`) run llama.cpp on Vulkan. Neither has ever been run on real AMD or Intel hardware — this project has NVIDIA and CPU only — and image generation, video and speech recognition stay on CPU there. For a guaranteed result use NVIDIA or CPU-only mode. See [ROADMAP.md](ROADMAP.md).
 
 ### Why did my context window change after I restarted?
 

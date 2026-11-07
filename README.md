@@ -75,6 +75,12 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 ## 🆕 What's New in v13.0
 
+- **It runs on more than NVIDIA now — experimentally.** The stack ships one compose entry per vendor: `docker-compose.gpu.yml` (NVIDIA, unchanged), `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml`, which run llama.cpp on Vulkan via `./deploy.sh --gpu-amd` / `--gpu-intel`. Those two have never been run on real AMD or Intel hardware, and image generation, video and speech recognition stay on CPU there. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **A model that llama.cpp left in RAM is now caught instead of quietly serving at 7 tok/s.** Placement is verified after every load and on the chat path, the measurement can no longer record a failed placement as the model's footprint, and every preload goes through the VRAM gate. → [VRAM_MANAGEMENT.md](docs/VRAM_MANAGEMENT.md)
+- **"Check every room" works through the public API.** `POST /v1/chat/completions` used to return 200 with an empty message for a multi-room camera request while the answer sat in the session; the composed text is returned now, with a fallback for any handler that saves several messages. → [API.md](docs/API.md)
+- **Spoken answers are no longer chopped at every dot.** Sentence splitting understands numbers, domains and closing quotes, and code fences are removed before the text is spoken. → [VOICE.md](docs/VOICE.md)
+- **A past-tense question about the world goes to the web, not to the chat history.** "What was the news yesterday" used to be answered from the conversation; the request kernel now treats it as a search. → [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## 🖼 Demo

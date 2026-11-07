@@ -694,21 +694,55 @@ resolve_stack() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
 
-    COMPOSE_FILE="docker-compose.gpu.yml"
-    if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
-        COMPOSE_FILE="docker-compose.cpu.yml"
-        info "CPU mode — using CPU compose file (no GPU required)."
-    else
-        detect_cuda
-        if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
-            COMPOSE_FILE="docker-compose.cpu.yml"
-            info "GPU present but CUDA driver below 12.2 — falling back to CPU mode."
+    # Platform: --platform/--gpu-*, else FLAI_PLATFORM from the environment, else
+    # what the host reports.
+    local platform="${FLAI_PLATFORM:-auto}"
+    if [[ "$platform" == "auto" ]]; then
+        if command -v nvidia-smi &>/dev/null; then
+            platform="nvidia"
+        elif [[ -d /sys/module/amdgpu ]] || command -v rocm-smi &>/dev/null; then
+            platform="amd"
+        elif command -v vulkaninfo &>/dev/null; then
+            platform="intel"
         else
-            info "GPU mode — using GPU compose file."
+            platform="cpu"
         fi
     fi
 
-    if [[ "$COMPOSE_FILE" == *cpu.yml && "$VIDEO_BACKEND" == "wan" ]]; then
+    case "$platform" in
+        cpu)
+            COMPOSE_FILE="docker-compose.cpu.yml"
+            info "CPU mode — using CPU compose file (no GPU required)."
+            ;;
+        nvidia)
+            COMPOSE_FILE="docker-compose.gpu.yml"
+            detect_cuda
+            if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
+                COMPOSE_FILE="docker-compose.cpu.yml"
+                platform="cpu"
+                info "GPU present but CUDA driver below 12.2 — falling back to CPU mode."
+            else
+                info "Platform: NVIDIA (CUDA) — using the GPU compose file."
+            fi
+            ;;
+        amd|intel)
+            COMPOSE_FILE="docker-compose.gpu-${platform}.yml"
+            warn "Platform ${platform} (Vulkan) — EXPERIMENTAL: never verified on real hardware."
+            warn "On ${platform} image generation, video and speech recognition run on CPU."
+            ;;
+        *)
+            error "Unknown platform '${platform}'. Expected: auto, nvidia, amd, intel, cpu."
+            exit 1
+            ;;
+    esac
+
+    # The choice is written to .env: the container has neither rocm-smi nor
+    # vulkaninfo, so the app trusts this value and keeps the probes as a
+    # fallback for a bare-metal run.
+    set_env_key_value FLAI_PLATFORM "$platform"
+    FLAI_PLATFORM="$platform"
+
+    if [[ "$VIDEO_BACKEND" == "wan" && ( "$COMPOSE_FILE" == *cpu.yml || "$COMPOSE_FILE" == *amd.yml || "$COMPOSE_FILE" == *intel.yml ) ]]; then
         error "Wan 2.2 needs a GPU: a 5-second 480p clip takes ~90 minutes on CPU and exceeds the container RAM."
         error "Use --with-video (LTX-Video) on CPU hosts, or WAN_VIDEO_ALLOW_CPU=1 in .env to attempt it anyway."
         exit 1
@@ -861,6 +895,10 @@ Options:
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
+  --gpu-nvidia        NVIDIA/CUDA platform (default when nvidia-smi is present)
+  --gpu-amd           AMD platform (Vulkan) — EXPERIMENTAL, not verified
+  --gpu-intel         Intel platform (Vulkan) — EXPERIMENTAL, not verified
+  --platform=NAME     The same as one option: auto|nvidia|amd|intel|cpu
 
 Switching between GPU and CPU is instant (no rebuild): images are tagged per
 backend (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) and coexist locally.
@@ -918,6 +956,10 @@ for arg in "$@"; do
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
+        --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
+        --gpu-amd)                       FLAI_PLATFORM=amd ;;
+        --gpu-intel)                     FLAI_PLATFORM=intel ;;
+        --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
         --help|-h)                       usage; exit 0 ;;

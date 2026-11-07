@@ -1,0 +1,46 @@
+# docker-compose.gpu-intel.yml
+# Intel GPU stack (Vulkan). EXPERIMENTAL — not verified on real hardware; FLAI's
+# own testing hardware is NVIDIA and CPU only.
+#
+# Vendor delta against docker-compose.gpu.nvidia.yml:
+#   llama-swap   Vulkan llama-server image, /dev/dri, video/render groups
+#   sd_cpp       CPU build (no Vulkan path in sd_wrapper yet)
+#   ltxvideo     CPU build (no SYCL/oneAPI PyTorch base yet)
+#   whisper      CPU image (the -gpu tag is CUDA)
+#   web          /dev/dri so vulkaninfo can report the card's memory heaps
+# Everything else comes from docker-compose.gpu.base.yml.
+include:
+  - docker-compose.gpu.base.yml
+
+services:
+  web:
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+
+  llama-swap:
+    # Build it with: docker build -f services/llamacpp/Dockerfile.vulkan \
+    #                  -t flai-llamaswap:vulkan services/llamacpp
+    image: ${LLAMA_SWAP_VULKAN_IMAGE:-flai-llamaswap:vulkan}
+    build:
+      context: ./services/llamacpp
+      dockerfile: Dockerfile.vulkan
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+
+  sd_cpp:
+    image: flai-sd_cpp:cpu
+    build:
+      args:
+        SD_BACKEND: cpu
+
+  ltxvideo:
+    image: flai-ltxvideo:cpu
+    build:
+      args:
+        LTX_BACKEND: cpu

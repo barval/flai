@@ -45,6 +45,11 @@ class GpuInfo:
     available_vram_mb: int = 0
     cuda_detected: bool = False
     cuda_version: str = ""
+    # What the models can actually be offloaded to: "cuda" (NVIDIA), "vulkan"
+    # (AMD/Intel) or "none" (CPU). ``cuda_detected`` stays the CUDA-only switch
+    # for the callers that genuinely need CUDA (video, ASR), so the two must not
+    # be conflated: a Vulkan host has a GPU but no CUDA.
+    accelerator: str = "none"
 
 
 # ── Vendor probes ──────────────────────────────────────────────────────
@@ -109,6 +114,7 @@ def _probe_nvidia() -> GpuInfo | None:
         available_vram_mb=int(parts[3]),
         cuda_detected=True,
         cuda_version=_nvidia_cuda_version(),
+        accelerator="cuda",
     )
 
 
@@ -129,8 +135,40 @@ def _rocm_parse_mb(value: str) -> int | None:
     return num // (1024 * 1024) if num > 1_000_000_000 else num
 
 
+def _amd_sysfs_vram(root: str = "/sys/class/drm") -> tuple[int, int, str]:
+    """(total, used, name) in MB straight from the DRM sysfs.
+
+    Consumer AMD cards rarely have the ROCm userspace installed, but the kernel
+    exposes the same numbers in ``mem_info_vram_*`` (bytes), which needs no
+    rocm-smi at all. Returns ``(0, 0, "")`` when no amdgpu card is present.
+    """
+    import glob
+
+    for device in sorted(glob.glob(f"{root}/card[0-9]*/device")):
+        try:
+            with open(f"{device}/mem_info_vram_total", encoding="utf-8") as handle:
+                total = int(handle.read().strip()) // (1024 * 1024)
+            with open(f"{device}/mem_info_vram_used", encoding="utf-8") as handle:
+                used = int(handle.read().strip()) // (1024 * 1024)
+        except (OSError, ValueError):
+            continue
+        if total <= 0:
+            continue
+        name = "AMD GPU"
+        try:
+            with open(f"{device}/product_name", encoding="utf-8") as handle:
+                name = handle.read().strip() or name
+        except OSError:
+            pass
+        return total, used, name
+    return 0, 0, ""
+
+
 def _probe_amd() -> GpuInfo | None:
-    """Query primary GPU via rocm-smi --json. Returns None when unavailable."""
+    """Query primary GPU via rocm-smi --json, falling back to sysfs.
+
+    Returns None when neither source finds an AMD card.
+    """
     try:
         result = subprocess.run(
             ["rocm-smi", "--showmeminfo", "vram", "--json"],
@@ -139,12 +177,24 @@ def _probe_amd() -> GpuInfo | None:
             timeout=10,
         )
     except FileNotFoundError:
-        return None
+        result = None
     except Exception as e:
         logger.warning(f"rocm-smi probe failed: {e}")
-        return None
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
+        result = None
+
+    if result is None or result.returncode != 0 or not result.stdout.strip():
+        total, used, name = _amd_sysfs_vram()
+        if total <= 0:
+            return None
+        return GpuInfo(
+            platform="amd",
+            gpu_name=name,
+            total_vram_mb=total,
+            used_vram_mb=used,
+            available_vram_mb=max(0, total - used),
+            cuda_detected=False,
+            accelerator="vulkan",
+        )
 
     total = used = free = 0
     gpu_name = "AMD GPU"
@@ -176,6 +226,7 @@ def _probe_amd() -> GpuInfo | None:
         used_vram_mb=used,
         available_vram_mb=free or max(0, total - used),
         cuda_detected=False,
+        accelerator="vulkan",
     )
 
 
@@ -208,7 +259,53 @@ def _probe_intel() -> GpuInfo | None:
     lowered = gpu_name.lower()
     if not any(p in lowered for p in ("intel", "arc", "iris")) or "llvmpipe" in lowered:
         return None
-    return GpuInfo(platform="intel", gpu_name=gpu_name, cuda_detected=False)
+    total, used = _intel_vulkan_memory()
+    return GpuInfo(
+        platform="intel",
+        gpu_name=gpu_name,
+        total_vram_mb=total,
+        used_vram_mb=used,
+        available_vram_mb=max(0, total - used) if total else 0,
+        cuda_detected=False,
+        accelerator="vulkan",
+    )
+
+
+def _intel_vulkan_memory() -> tuple[int, int]:
+    """(total, used) MB from the largest Vulkan device-local heap.
+
+    ``vulkaninfo --summary`` names the device but carries no memory numbers, so
+    the full report is read once and the biggest heap is taken as the card's
+    memory. Intel iGPUs report system RAM here, which is what they actually use.
+    Returns ``(0, 0)`` when the report cannot be read — the caller then behaves
+    exactly like an unreadable NVIDIA card.
+    """
+    try:
+        result = subprocess.run(["vulkaninfo"], capture_output=True, text=True, timeout=20)
+    except FileNotFoundError:
+        return 0, 0
+    except Exception as e:
+        logger.debug(f"vulkaninfo memory probe failed: {e}")
+        return 0, 0
+    if result.returncode != 0 or not result.stdout:
+        return 0, 0
+
+    best_total = 0
+    best_budget = 0
+    current_size = 0
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("size"):
+            match = re.search(r"= (\d+)", stripped)
+            current_size = int(match.group(1)) // (1024 * 1024) if match else 0
+        elif stripped.startswith("budget"):
+            match = re.search(r"= (\d+)", stripped)
+            budget = int(match.group(1)) // (1024 * 1024) if match else 0
+            if current_size > best_total:
+                best_total = current_size
+                best_budget = budget
+    used = max(0, best_total - best_budget) if best_budget else 0
+    return best_total, used
 
 
 def _probe_cpu() -> GpuInfo:

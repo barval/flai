@@ -246,7 +246,7 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **GPU mode (NVIDIA, CUDA 12.2+)** — the recommended mode. The whole stack runs on CUDA builds with the NVIDIA Container Toolkit.
 - **CPU-only mode** — the same feature set with no GPU. Everything is slower, so image and video generation automatically downscale to stay inside their time budget.
 
-> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack** — the prebuilt images are CUDA-only. Run CPU-only mode for a guaranteed result.
+> ⚠️ **AMD and Intel GPUs are experimental.** `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml` (`./deploy.sh --gpu-amd` / `--gpu-intel`) run llama.cpp on Vulkan (`services/llamacpp/Dockerfile.vulkan`). Those two files have never been run on real AMD or Intel hardware — only NVIDIA and CPU are tested in this project — and on them image generation, video and speech recognition stay on CPU, while Wan is refused. For a guaranteed result use GPU mode on NVIDIA or CPU-only mode.
 
 ### Hardware tiers
 

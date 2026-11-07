@@ -165,3 +165,90 @@ class TestQuery:
     def test_query_vram_cpu_none(self):
         with patch("app.platform_detect._probe_cpu", return_value=GpuInfo(platform="cpu")):
             assert query_vram("cpu") == (None, None)
+
+
+class TestAccelerator:
+    """A GPU is not necessarily CUDA: the two flags must stay distinct."""
+
+    def test_nvidia_is_cuda(self):
+        query = MagicMock(returncode=0, stdout="RTX 4090, 24564, 2048, 22516\n")
+        header = MagicMock(returncode=0, stdout="")
+        with (
+            patch("app.platform_detect._cuda_version_cache", ""),
+            patch("app.platform_detect.subprocess.run", side_effect=[query, header]),
+        ):
+            info = get_platform_info("nvidia")
+        assert info.accelerator == "cuda"
+        assert info.cuda_detected is True
+
+    def test_cpu_has_no_accelerator(self):
+        assert GpuInfo(platform="cpu").accelerator == "none"
+        assert GpuInfo(platform="cpu").cuda_detected is False
+
+    def test_amd_and_intel_are_vulkan_without_cuda(self):
+        assert GpuInfo(platform="amd", accelerator="vulkan").cuda_detected is False
+        assert GpuInfo(platform="intel", accelerator="vulkan").cuda_detected is False
+
+
+class TestAmdSysfs:
+    """Consumer AMD cards have no ROCm userspace; the kernel still reports VRAM."""
+
+    def _card(self, tmp_path, total_bytes, used_bytes, name="Radeon RX 7800 XT"):
+        device = tmp_path / "card0" / "device"
+        device.mkdir(parents=True)
+        (device / "mem_info_vram_total").write_text(str(total_bytes))
+        (device / "mem_info_vram_used").write_text(str(used_bytes))
+        (device / "product_name").write_text(name + "\n")
+        return str(tmp_path)
+
+    def test_reads_total_and_used(self, tmp_path):
+        from app.platform_detect import _amd_sysfs_vram
+
+        root = self._card(tmp_path, 16 * 1024**3, 2 * 1024**3)
+        assert _amd_sysfs_vram(root) == (16384, 2048, "Radeon RX 7800 XT")
+
+    def test_no_amd_card_is_empty(self, tmp_path):
+        from app.platform_detect import _amd_sysfs_vram
+
+        assert _amd_sysfs_vram(str(tmp_path)) == (0, 0, "")
+
+    def test_probe_falls_back_to_sysfs_without_rocm(self):
+        """No rocm-smi binary: the kernel's own numbers are used instead."""
+        with (
+            patch("app.platform_detect.subprocess.run", side_effect=FileNotFoundError),
+            patch("app.platform_detect._amd_sysfs_vram", return_value=(8192, 1024, "Radeon RX 7800 XT")),
+        ):
+            info = get_platform_info("amd")
+        assert info.platform == "amd"
+        assert info.total_vram_mb == 8192
+        assert info.available_vram_mb == 7168
+        assert info.accelerator == "vulkan"
+
+
+class TestIntelVulkanMemory:
+    VULKANINFO = """
+VkPhysicalDeviceMemoryProperties:
+=================================
+memoryHeaps: count = 2
+        memoryHeaps[0]:
+                size   = 17179869184 (0x400000000)
+                budget = 12884901888 (0x300000000)
+                usage  = 0 (0x00000000)
+                flags: count = 1
+                        MEMORY_HEAP_DEVICE_LOCAL_BIT
+        memoryHeaps[1]:
+                size   = 16777216 (0x1000000)
+                budget = 16777216 (0x1000000)
+"""
+
+    def test_the_largest_heap_is_the_card(self):
+        from app.platform_detect import _intel_vulkan_memory
+
+        with patch("app.platform_detect.subprocess.run", return_value=MagicMock(returncode=0, stdout=self.VULKANINFO)):
+            assert _intel_vulkan_memory() == (16384, 4096)
+
+    def test_unreadable_report_is_zero(self):
+        from app.platform_detect import _intel_vulkan_memory
+
+        with patch("app.platform_detect.subprocess.run", side_effect=FileNotFoundError):
+            assert _intel_vulkan_memory() == (0, 0)

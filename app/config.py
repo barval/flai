@@ -11,7 +11,7 @@ from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
-APP_VERSION = "13.0"
+APP_VERSION = "13.1"
 
 
 def setting(name: str, default: Any = None) -> Any:

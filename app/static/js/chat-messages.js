@@ -315,6 +315,24 @@ function getModelEmoji(modelType) {
     return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
 }
 
+/**
+ * Wrap a bare HTML document in a fenced block before markdown rendering.
+ *
+ * A model that answers with a whole page (the text starts with <!DOCTYPE html>
+ * or <html>) and no fence used to be rendered as markup: DOMPurify then removed
+ * its <script> and <style>, and the page collapsed to whichever plain text nodes
+ * it happened to contain — measured on 2026-11-09, a Three.js voxel scene "became"
+ * its three control hints. Showing the document as code keeps it visible and
+ * copyable, and gives the existing preview button the block it looks for.
+ */
+function wrapBareHtmlDocument(text) {
+    if (!text) return text;
+    const head = text.replace(/^\s+/, '').slice(0, 64).toLowerCase();
+    if (!head.startsWith('<!doctype html') && !head.startsWith('<html')) return text;
+    const fence = '```';
+    return fence + 'html\n' + text.trim() + '\n' + fence;
+}
+
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
@@ -580,7 +598,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                     throw new Error('not structured');
                 }
             } catch (e) {
-                const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+                const decodedText = (role === 'assistant') ? wrapBareHtmlDocument(decodeHtmlEntities(content)) : escapeHtml(content);
                 contentHTML += marked.parse(decodedText);
             }
         } else if (content.startsWith('[')) {
@@ -617,11 +635,11 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                     window.__extraAttachments = null;
                 }
             } catch (e) {
-                const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+                const decodedText = (role === 'assistant') ? wrapBareHtmlDocument(decodeHtmlEntities(content)) : escapeHtml(content);
                 contentHTML += marked.parse(decodedText);
             }
         } else {
-            const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+            const decodedText = (role === 'assistant') ? wrapBareHtmlDocument(decodeHtmlEntities(content)) : escapeHtml(content);
             contentHTML += marked.parse(decodedText);
         }
     }

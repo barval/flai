@@ -2,6 +2,8 @@
 
 ### Fixed
 
+- **A preview opened a snippet instead of the page.** One answer carried an import snippet, two javascript fragments and the 7 KB document; the preview took the first ```html block, so the ▶ button opened a 99-byte `<script>` include and showed a blank page while the code the user could save and run sat in the last block. The preview now prefers a complete document, falls back to the longest block, and keeps the first-document order when a reply offers several.
+
 - **An answer that was a whole web page collapsed to its few text lines.** Asked for a voxel scene, the model returned a complete `<!DOCTYPE html>` document without a ```html fence. The chat rendered the reply as markdown, so the document became markup, `DOMPurify` removed its `<script>` and `<style>` — and what stayed on screen was the three control hints while the 7 KB page sat complete in the session. Such a reply is wrapped as a ```html block before rendering now (visible, copyable, with the ▶ preview), the preview endpoint accepts a bare document as well as a fenced one, and both the chat and reasoning prompts ask for the fence.
 
 ## [v13.0] — 2026-11-08

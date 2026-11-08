@@ -302,3 +302,40 @@ class TestSeveralBlocksInOneAnswer:
         from app.routes.messages import _extract_html_code_block
 
         assert _extract_html_code_block("```js\nconsole.log(1)\n```") is None
+
+
+@pytest.mark.unit
+class TestClassicScriptUrlsSurviveTheRescue:
+    """The import-map rescue must not rewrite a classic script src.
+
+    2026-11-09: a page loaded three from
+    `<script src=".../three@0.126.0/build/three.min.js">`. The rescue replaced
+    the URL with the bare specifier `three`, which an import map does not resolve
+    for a src attribute — the browser requested `/three`, THREE stayed undefined
+    and the preview was blank while the saved file worked.
+    """
+
+    CLASSIC = (
+        "<!DOCTYPE html><html><head>"
+        '<script src="https://cdn.jsdelivr.net/npm/three@0.126.0/build/three.min.js"></script>'
+        "</head><body><script>new THREE.Scene();</script></body></html>"
+    )
+
+    def test_a_classic_include_keeps_its_url(self):
+        from app.routes.messages import _ensure_three_importmap
+
+        assert 'src="https://cdn.jsdelivr.net/npm/three@0.126.0/build/three.min.js"' in _ensure_three_importmap(self.CLASSIC)
+
+    def test_an_inline_module_import_is_still_bare_aliased(self):
+        from app.routes.messages import _ensure_three_importmap
+
+        page = (
+            "<html><head></head><body><script type=\"module\">\n"
+            "import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';\n"
+            "import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';\n"
+            "</script></body></html>"
+        )
+        rescued = _ensure_three_importmap(page)
+        assert "from 'three'" in rescued
+        assert "from 'three/addons/controls/OrbitControls.js'" in rescued
+        assert 'type="importmap"' in rescued

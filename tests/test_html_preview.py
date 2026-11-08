@@ -258,3 +258,47 @@ class TestBareDocumentIsPreviewable:
             response = authenticated_client.get("/api/html-preview/1")
         assert response.status_code == 200
         assert "console.log(1)" in response.get_data(as_text=True)
+
+
+@pytest.mark.unit
+class TestSeveralBlocksInOneAnswer:
+    """The preview must open the page, not the first snippet that mentions HTML.
+
+    2026-11-09: an answer carried an import snippet, a second CDN snippet, two
+    javascript fragments and the 7 KB document. The first ```html block won, so
+    the ▶ button opened a 99-byte <script> include — blank — while the page the
+    user could save and run was the last block.
+    """
+
+    SNIPPET = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>'
+    PAGE = "<!DOCTYPE html>\n<html><body><canvas id=c></canvas><script>init()</script></body></html>"
+
+    def _message(self, *blocks: tuple[str, str]) -> str:
+        parts = ["Вот что нужно поправить."]
+        for language, body in blocks:
+            parts.append(f"```{language}\n{body}\n```")
+        return "\n\n".join(parts)
+
+    def test_a_complete_document_wins_over_an_earlier_snippet(self):
+        from app.routes.messages import _extract_html_code_block
+
+        message = self._message(("html", self.SNIPPET), ("js", "console.log(1)"), ("html", self.PAGE))
+        assert _extract_html_code_block(message) == self.PAGE
+
+    def test_the_longest_block_wins_when_none_is_complete(self):
+        from app.routes.messages import _extract_html_code_block
+
+        message = self._message(("html", "<div>short</div>"), ("html", "<div>" + "x" * 200 + "</div>"))
+        assert _extract_html_code_block(message).startswith("<div>xxx")
+
+    def test_two_documents_keep_their_order(self):
+        from app.routes.messages import _extract_html_code_block
+
+        second = "<!DOCTYPE html>\n<html><body>second</body></html>"
+        message = self._message(("html", self.PAGE), ("html", second))
+        assert _extract_html_code_block(message) == self.PAGE
+
+    def test_no_html_block_is_still_none(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block("```js\nconsole.log(1)\n```") is None

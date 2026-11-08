@@ -592,26 +592,38 @@ def cancel_task(task_id):
     return jsonify({"status": "ok"})
 
 
-def _extract_html_code_block(content: str) -> str | None:
-    """Return the first ```html fenced code block, or a bare HTML document.
+HTML_FENCE_RE = re.compile(r"```html[ \t]*\n(.*?)```", re.DOTALL)
 
-    A model sometimes answers with the whole page and no fence. The browser now
-    shows such a reply as code (see ``wrapBareHtmlDocument`` in chat-messages.js),
-    and the preview must accept it too — otherwise a message that is a document
-    has no block to open.
+
+def _looks_like_html_document(text: str) -> bool:
+    head = text.lstrip()[:64].lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
+def _extract_html_code_block(content: str) -> str | None:
+    """Return the block worth previewing, or a bare HTML document.
+
+    A reply can carry several blocks — an import snippet, a fragment, then the
+    page. The first one used to win, which opened a preview of a 99-byte
+    ``<script>`` include: a blank page while the real document sat in the last
+    block (measured 2026-11-09). A complete document is preferred; if none is
+    complete, the longest block is taken, because a fragment still renders while
+    a lone include does not.
+
+    A model sometimes answers with the whole page and no fence. The browser shows
+    such a reply as code (see ``wrapBareHtmlDocument`` in chat-messages.js), and
+    the preview accepts it too.
     """
-    marker = "```html"
-    start = content.find(marker)
-    if start != -1:
-        start += len(marker)
-        end = content.find("```", start)
-        if end == -1:
-            return None
-        return content[start:end].strip() or None
+    blocks = [match.group(1).strip() for match in HTML_FENCE_RE.finditer(content)]
+    blocks = [block for block in blocks if block]
+    if blocks:
+        documents = [block for block in blocks if _looks_like_html_document(block)]
+        if documents:
+            return documents[0]
+        return max(blocks, key=len)
 
     stripped = content.strip()
-    head = stripped[:64].lower()
-    if head.startswith("<!doctype html") or head.startswith("<html"):
+    if _looks_like_html_document(stripped):
         return stripped or None
     return None
 

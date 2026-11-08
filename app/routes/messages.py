@@ -639,6 +639,19 @@ _THREE_ADDONS_URL_RE = re.compile(
 )
 
 
+_SCRIPT_BLOCK_RE = re.compile(r"(<script\b[^>]*>)(.*?)(</script>)", re.IGNORECASE | re.DOTALL)
+
+
+def _rewrite_three_imports(match: re.Match) -> str:
+    """Bare-alias the CDN URLs inside an inline script, never in a src attribute."""
+    opening, body, closing = match.group(1), match.group(2), match.group(3)
+    if re.search(r"\bsrc\s*=", opening, re.IGNORECASE):
+        return opening + body + closing
+    body = _THREE_BUILD_URL_RE.sub("three", body)
+    body = _THREE_ADDONS_URL_RE.sub("three/addons/", body)
+    return opening + body + closing
+
+
 def _ensure_three_importmap(html: str) -> str:
     """Repair generated pages that skipped the Three.js import map.
 
@@ -660,8 +673,11 @@ def _ensure_three_importmap(html: str) -> str:
         return html
     version = version_match.group(1) if version_match else "0.160.0"
 
-    html = _THREE_BUILD_URL_RE.sub("three", html)
-    html = _THREE_ADDONS_URL_RE.sub("three/addons/", html)
+    # Only imports may be rewritten. A classic <script src=".../three.min.js">
+    # must keep its absolute URL: an import map does not resolve src attributes,
+    # so rewriting it produced <script src="three"> — a 404, THREE undefined and
+    # a blank preview while the saved file worked (measured 2026-11-09).
+    html = _SCRIPT_BLOCK_RE.sub(_rewrite_three_imports, html)
 
     imports = {
         "three": f"https://unpkg.com/three@{version}/build/three.module.js",

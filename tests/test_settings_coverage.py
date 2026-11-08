@@ -37,7 +37,6 @@ KNOWN_DIRECT_READS: set[tuple[str, str]] = {
     ("app/model_hub.py", "MODEL_HUB_FREE_MARGIN_GB"),
     ("app/model_hub.py", "MODEL_HUB_MAX_FILE_GB"),
     ("app/model_hub.py", "MODEL_HUB_TIMEOUT_S"),
-    ("app/queue.py", "LLAMA_SWAP_URL"),
     ("app/resource_manager.py", "LLAMACP_BACKEND"),
     ("app/resource_manager.py", "LLAMA_SWAP_URL"),
     ("app/resource_manager.py", "LTX_VIDEO_WRAPPER_URL"),

@@ -7,12 +7,19 @@ import pytest
 import yaml
 
 from modules.audio import whisper_service_url
+from tests._compose import gpu_nvidia_services
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def _services(name: str) -> dict:
     return yaml.safe_load((ROOT / name).read_text(encoding="utf-8"))["services"]
+
+
+def _gpu_services() -> dict:
+    # docker-compose.gpu.yml is an include since v13.0; the NVIDIA stack is the
+    # base plus the overlay.
+    return gpu_nvidia_services()
 
 
 @pytest.mark.unit
@@ -23,7 +30,7 @@ def test_the_endpoint_follows_the_profile_flag():
 
 @pytest.mark.unit
 def test_gpu_compose_offers_both_whisper_profiles():
-    services = _services("docker-compose.gpu.yml")
+    services = _gpu_services()
 
     assert "with-whisper-cpu" in services["whisper"]["profiles"]
     assert services["whisper-gpu"]["profiles"] == ["with-whisper-gpu"]
@@ -42,7 +49,7 @@ def test_cpu_compose_has_no_gpu_whisper():
 @pytest.mark.unit
 def test_tts_profiles_do_not_start_the_asr_container():
     """A GPU-ASR deployment selects TTS alone: `--profile with-tts-piper`."""
-    gpu = _services("docker-compose.gpu.yml")
+    gpu = _gpu_services()
 
     assert "with-tts-piper" in gpu["piper"]["profiles"]
     assert "with-tts-kokoro" in gpu["kokoro"]["profiles"]

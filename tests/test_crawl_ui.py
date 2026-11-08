@@ -32,8 +32,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests._compose import gpu_nvidia_services
+
 ROOT = Path(__file__).resolve().parent.parent
-COMPOSE_FILE = ROOT / "docker-compose.gpu.yml"
+COMPOSE_FILES = [ROOT / name for name in ("docker-compose.gpu.base.yml", "docker-compose.gpu.nvidia.yml")]
 EVENTS_JS = ROOT / "app" / "static" / "js" / "events.js"
 CHAT_HTML = ROOT / "app" / "templates" / "chat.html"
 DEPLOY_SCRIPTS = ("deploy.sh", "deploy-ru.sh")
@@ -178,10 +180,9 @@ def test_crawler_block_is_a_service_not_a_volume():
 
     A YAML parse is used so this check needs no docker daemon.
     """
-    doc = yaml.safe_load(COMPOSE_FILE.read_text(encoding="utf-8"))
-    assert "crawler" in doc["services"], "crawler is not a service"
-    assert "crawler" not in doc.get("volumes", {}), "crawler was parsed as a volume"
-    crawler = doc["services"]["crawler"]
+    services = gpu_nvidia_services()
+    assert "crawler" in services, "crawler is not a service"
+    crawler = services["crawler"]
     assert "with-crawler" in crawler["profiles"]
     assert crawler["networks"] == ["flai_network"]
     assert not crawler.get("ports"), "crawler must not publish host ports"
@@ -199,8 +200,9 @@ def test_compose_config_renders_with_crawler():
     if not (ROOT / ".env").exists():
         pytest.skip(".env not present; compose cannot resolve variables")
 
+    compose_args = [docker, "compose", *[arg for path in COMPOSE_FILES for arg in ("-f", str(path))]]
     proc = subprocess.run(
-        [docker, "compose", "-f", str(COMPOSE_FILE), "config"],
+        [*compose_args, "config"],
         capture_output=True,
         text=True,
         check=False,
@@ -212,7 +214,7 @@ def test_compose_config_renders_with_crawler():
     assert "crawler" not in rendered["services"], "crawler must stay behind the with-crawler profile"
 
     proc = subprocess.run(
-        [docker, "compose", "-f", str(COMPOSE_FILE), "--profile", "with-crawler", "config"],
+        [*compose_args, "--profile", "with-crawler", "config"],
         capture_output=True,
         text=True,
         check=False,

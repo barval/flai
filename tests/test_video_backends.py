@@ -15,6 +15,7 @@ from modules.video import (
     WAN_MAX_FRAMES,
     VideoModule,
 )
+from tests._compose import gpu_nvidia_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -269,7 +270,7 @@ class TestFallbackChain:
 @pytest.mark.unit
 class TestDeployWiring:
     def test_gpu_compose_serves_wan_from_the_sd_container(self):
-        compose = (ROOT / "docker-compose.gpu.yml").read_text(encoding="utf-8")
+        compose = gpu_nvidia_text()
         assert "with-video-wan" in compose
         assert "sd_cpp:" in compose
 
@@ -310,7 +311,7 @@ class TestTranslations:
 @pytest.mark.unit
 class TestVideoSourceFields:
     def test_compose_passes_the_planner_ram_cap(self):
-        gpu = (ROOT / "docker-compose.gpu.yml").read_text(encoding="utf-8")
+        gpu = gpu_nvidia_text()
         assert "WAN_VIDEO_RAM_LIMIT_MB" in gpu
 
     def test_wrapper_builds_the_diffusion_model_command(self):

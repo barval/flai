@@ -593,16 +593,27 @@ def cancel_task(task_id):
 
 
 def _extract_html_code_block(content: str) -> str | None:
-    """Return the first ```html fenced code block from a message, or None."""
+    """Return the first ```html fenced code block, or a bare HTML document.
+
+    A model sometimes answers with the whole page and no fence. The browser now
+    shows such a reply as code (see ``wrapBareHtmlDocument`` in chat-messages.js),
+    and the preview must accept it too — otherwise a message that is a document
+    has no block to open.
+    """
     marker = "```html"
     start = content.find(marker)
-    if start == -1:
-        return None
-    start += len(marker)
-    end = content.find("```", start)
-    if end == -1:
-        return None
-    return content[start:end].strip() or None
+    if start != -1:
+        start += len(marker)
+        end = content.find("```", start)
+        if end == -1:
+            return None
+        return content[start:end].strip() or None
+
+    stripped = content.strip()
+    head = stripped[:64].lower()
+    if head.startswith("<!doctype html") or head.startswith("<html"):
+        return stripped or None
+    return None
 
 
 _IMPORT_MAP_RE = re.compile(r'<script[^>]*\btype=["\']importmap["\']', re.IGNORECASE)

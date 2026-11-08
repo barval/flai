@@ -217,3 +217,44 @@ def test_handle_open_html_uses_preview_endpoint():
     assert "/api/html-preview/" in src
     # the blob path must be gone
     assert "URL.createObjectURL" not in src
+
+
+@pytest.mark.unit
+class TestBareDocumentIsPreviewable:
+    """A model that answers with a whole page and no fence still gets a preview.
+
+    2026-11-09: a Three.js voxel scene came back as a bare `<!DOCTYPE html>`
+    document. The chat rendered it as markup, DOMPurify removed its script and
+    style, and the message collapsed to its three control hints; the stored text
+    was complete, but there was no ```html block for the ▶ button to open.
+    """
+
+    BARE = "<!DOCTYPE html>\n<html><body><script>console.log(1)</script>Hi</body></html>"
+
+    def test_a_bare_document_is_returned_whole(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block(self.BARE) == self.BARE
+
+    def test_a_fenced_block_still_wins(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block(HTML_BLOCK) == "<!DOCTYPE html>\n<html><body><h1>Hi</h1></body></html>"
+
+    def test_plain_text_and_an_unterminated_fence_are_not_a_document(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block("just text, no code") is None
+        assert _extract_html_code_block("```html\n<!DOCTYPE html>\n<html>") is None
+
+    def test_the_endpoint_serves_a_bare_document(self, authenticated_client):
+        with (
+            patch("app.routes.messages.validate_session_ownership", return_value=True),
+            patch("app.routes.messages.get_db") as mock_get_db,
+        ):
+            conn = MagicMock()
+            conn.cursor.return_value.fetchone.return_value = {"id": 1, "content": self.BARE, "session_id": "s1"}
+            mock_get_db.return_value.__enter__.return_value = conn
+            response = authenticated_client.get("/api/html-preview/1")
+        assert response.status_code == 200
+        assert "console.log(1)" in response.get_data(as_text=True)

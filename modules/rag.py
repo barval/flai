@@ -581,7 +581,7 @@ class RagModule:
             document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
 
             sql = (
-                "SELECT doc_id, chunk_index, filename, text, lemmas FROM rag_chunks "
+                "SELECT user_id, doc_id, chunk_index, filename, text, lemmas FROM rag_chunks "
                 "WHERE user_id = %s AND lemmas && %s"
             )
             params: list = [user_id, terms]
@@ -603,6 +603,74 @@ class RagModule:
 
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [row for _, row in scored[:limit]]
+
+    def _chunk_tokens(self, text, lang: str) -> int:
+        """The measured cost of one chunk in the answering model's prompt."""
+        return estimate_tokens(str(text or ""), "reasoning", lang)
+
+    def _expand_best_document(
+        self, chunks: list[dict], scores: list[float], budget_tokens: int, lang: str
+    ) -> tuple[list[dict], list[float]]:
+        """Pass the best-matching document whole when it fits the evidence budget.
+
+        One relevance chunk is not enough when the answer is split across two
+        chunks of the same document — the rule in one, its time window in the
+        other. Measured on the live instance: a question about the noise law
+        retrieved article 4 ("repair works") as its only relevant chunk while
+        the quiet hours sat in article 2, thirteen places down, and 96 % of the
+        window stayed unused. The whole law (10 chunks, about 1 900 tokens)
+        answered it exactly. A document larger than ``WHOLE_DOCUMENT_MAX_TOKENS``
+        keeps the chunk-level result, so a book is never poured into the prompt.
+        """
+        from app.rag_budget import WHOLE_DOCUMENT_MAX_TOKENS
+
+        if not chunks or not scores or budget_tokens <= 0:
+            return chunks, scores
+        best = chunks[0]
+        doc_id = str(best.get("doc_id") or "")
+        owner = str(best.get("user_id") or "")
+        if not doc_id or not owner:
+            return chunks, scores
+        try:
+            points = self._scroll_document_points(owner, doc_id)
+        except Exception as exc:  # noqa: BLE001 — no expansion is better than no answer
+            self.logger.debug(f"search: could not read {doc_id} whole: {exc}")
+            return chunks, scores
+        ordered = sorted(points, key=lambda point: (point.payload or {}).get("chunk_index", 0))
+        payloads = [dict(point.payload or {}) for point in ordered]
+        if len(payloads) <= 1 or not all(str(payload.get("text") or "") for payload in payloads):
+            return chunks, scores
+        full = sum(self._chunk_tokens(payload.get("text"), lang) for payload in payloads)
+        if full > WHOLE_DOCUMENT_MAX_TOKENS or full > budget_tokens:
+            return chunks, scores
+        for payload in payloads:
+            payload.pop("coverage", None)
+
+        # The rest of the retrieval keeps whatever room the document left, so a
+        # second document still reaches the prompt when it fits. What does not
+        # fit is reported as unrepresented instead of silently disappearing.
+        remaining = budget_tokens - full
+        taken = {(doc_id, int(payload.get("chunk_index") or 0)) for payload in payloads}
+        kept: list[dict] = []
+        kept_scores: list[float] = []
+        for chunk, score in zip(chunks[1:], scores[1:], strict=False):
+            key = (str(chunk.get("doc_id") or ""), int(chunk.get("chunk_index") or 0))
+            if key in taken:
+                continue
+            cost = self._chunk_tokens(chunk.get("text"), lang)
+            if cost > remaining:
+                continue
+            remaining -= cost
+            taken.add(key)
+            kept.append(chunk)
+            kept_scores.append(score)
+
+        self.logger.info(
+            f"search: document {best.get('filename') or doc_id} passed whole — "
+            f"{len(payloads)} chunks, {full} tokens (budget {budget_tokens}), "
+            f"{len(kept)} other chunk(s) kept"
+        )
+        return payloads + kept, [scores[0]] * len(payloads) + kept_scores
 
     def search(
         self,
@@ -769,13 +837,17 @@ class RagModule:
             )
             chunks = [chunk for chunk, _score in pairs]
             scores = [score for _chunk, score in pairs]
+            chunks, scores = self._expand_best_document(chunks, scores, budget.tokens, lang)
+            # What actually reached the prompt: the expansion may have used the
+            # room a coverage chunk was counted for.
+            added = sum(1 for chunk in chunks if chunk.get("coverage"))
             unrepresented = 0
             covered = {str(c.get("doc_id")) for c in chunks if c.get("doc_id")}
             # A document that the extended fetch did not reach either stays out;
             # saying so is the point, the old code refused coverage entirely when
             # the count exceeded its cap and looked like a complete answer.
             try:
-                docs = get_user_documents(user_id) or []
+                docs = get_user_documents(user_id, include_shared=True) or []
                 if scope:
                     docs = [d for d in docs if str(d.get("id")) in set(scope)]
                 indexed = {str(d.get("id")) for d in docs if d.get("index_status") == INDEX_STATUS_INDEXED}

@@ -33,6 +33,18 @@ Measured on the live 16 GB instance — 24 576-token window, 29-document corpus 
 43 fragments covering **all 29** documents, 0 unrepresented, about 11.4k of 21.3k available tokens.
 The old fixed 30 % share produced 20 fragments from 12 documents on the same corpus.
 
+A small corpus may also need **one document whole**. When the answer is split between two chunks of
+one document — the rule in one article, its time window in another — a single relevance chunk cannot
+hold it, so the allocator guarantees room for one document of up to `WHOLE_DOCUMENT_MAX_TOKENS`
+(2 000) and retrieval passes the best-matching small document in full
+(`RagModule._expand_best_document()`). Its chunks are placed in document order at the position of the
+hit, the rest of the retrieval keeps whatever room is left, and documents that no longer fit are
+reported as unrepresented instead of disappearing silently. Measured on the live instance: the
+question "can repair works be done now" retrieved article 4 of the regional noise law (the list of
+noisy works) as its only relevant chunk, while the quiet hours sat in article 2, thirteen places down,
+and the answer said it could not find the hours. With the whole 10-chunk law (about 1 900 tokens) the
+same model answered "not now — quiet hours are 22:00–07:00 on weekdays, article 2".
+
 The multimodal model keeps its own simpler allocator: no search, no SLM and no summary — only the
 conversation.
 

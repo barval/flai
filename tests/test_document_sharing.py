@@ -52,6 +52,16 @@ class TestSharingModel:
             with_shared = db.get_user_documents("bob", include_shared=True)
             assert [(d["id"], d["shared_by"]) for d in with_shared] == [("d2", "carol")]
 
+    def test_owner_folder_is_not_applied_to_the_recipient(self, test_app):
+        from app import db
+
+        db.save_folder("alice", "f1", "Contracts")
+        db.save_document("alice", "d1", "c.pdf", 1000, ".pdf", "alice/d1.pdf", folder_id="f1")
+        db.share_document("d1", "alice", "bob")
+
+        shared = db.get_user_documents("bob", include_shared=True)[0]
+        assert shared["folder_id"] is None
+
     def test_deleting_a_document_removes_its_shares(self, test_app):
         with test_app.app_context():
             from app import db

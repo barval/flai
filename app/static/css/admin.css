@@ -123,9 +123,11 @@
 }
 #users-table .storage-cell {
     white-space: nowrap;
+    line-height: 1.25;
 }
+/* Two lines: "X of" above "Y MB", so the column stays narrow. */
 #users-table .storage-used {
-    margin-right: 4px;
+    display: block;
 }
 #users-table td input[type="text"],
 #users-table td input[type="number"],

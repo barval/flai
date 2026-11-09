@@ -317,6 +317,8 @@ def get_users():
                              FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
                          ) u
                          WHERE t3.user_id = %s) as plan_incoming,
+                        (SELECT COUNT(DISTINCT document_id) FROM document_shares
+                         WHERE owner_login = %s) as shared_documents_count,
                         (SELECT COALESCE(used_bytes, 0)
                          FROM user_storage
                          WHERE user_id = %s) as storage_used
@@ -325,6 +327,7 @@ def get_users():
                     WHERE cs.user_id = %s
                 """,
                     (
+                        u["login"],
                         u["login"],
                         u["login"],
                         u["login"],
@@ -362,6 +365,7 @@ def get_users():
                 ) if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
+                u_dict["shared_documents_count"] = stats["shared_documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
                 u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
                 default_limit_mb = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500))

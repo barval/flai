@@ -152,10 +152,14 @@ function loadUsers() {
             storageCell.className = 'storage-cell';
             const storageUsedMb = (user.storage_used || 0) / (1024 * 1024);
             const storageLimitMb = user.storage_limit_mb || 500;
-            const storageUsedText = document.createElement('span');
+            // Two lines, so the column stays narrow: "X из" above "Y МБ".
+            const storageUsedText = document.createElement('div');
             storageUsedText.className = 'storage-used';
-            storageUsedText.textContent = `${storageUsedMb.toFixed(1)} /`;
+            storageUsedText.textContent = `${storageUsedMb.toFixed(1)} ${t('of')}`;
             storageCell.appendChild(storageUsedText);
+
+            const storageLimitLine = document.createElement('div');
+            storageLimitLine.className = 'storage-limit';
 
             const storageLimitInput = document.createElement('input');
             storageLimitInput.type = 'number';
@@ -169,12 +173,13 @@ function loadUsers() {
                 '{default}', storageLimitInput.dataset.default
             );
             storageLimitInput.addEventListener('change', () => saveStorageLimit(user.login, storageLimitInput));
-            storageCell.appendChild(storageLimitInput);
+            storageLimitLine.appendChild(storageLimitInput);
 
             const storageUnit = document.createElement('span');
             storageUnit.className = 'storage-unit';
             storageUnit.textContent = t('mb');
-            storageCell.appendChild(storageUnit);
+            storageLimitLine.appendChild(storageUnit);
+            storageCell.appendChild(storageLimitLine);
 
             if (storageUsedMb >= storageLimitMb) {
                 storageCell.classList.add('storage-over-quota');
@@ -201,7 +206,11 @@ function loadUsers() {
             filesCell.textContent = user.files_count || 0;
             row.appendChild(filesCell);
             const documentsCell = document.createElement('td');
-            documentsCell.textContent = user.documents_count || 0;
+            // "12 (3)": all documents, then how many of them are shared.
+            const sharedDocuments = Number(user.shared_documents_count || 0);
+            documentsCell.textContent = sharedDocuments > 0
+                ? `${user.documents_count || 0} (${sharedDocuments})`
+                : String(user.documents_count || 0);
             row.appendChild(documentsCell);
             const slmCell = document.createElement('td');
             slmCell.textContent = user.slm_facts_count || 0;

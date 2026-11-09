@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- **The Users tab stops printing token totals without digit grouping.** The task and planner token sums are SQL `numeric`, which psycopg2 returns as `Decimal` and Flask serializes as a **string**; `String.prototype.toLocaleString()` then ignores the locale and returns the digits unchanged, so a user showed `1469852` where another showed `1 469 852`. The route now casts the totals to `int` where the payload is built, and the cell coerces with `Number()` as a second line of defence. Verified on the live data: all 14 accounts report integers, the largest being 1 469 852 / 321 411.
+
 - **Deleting a document through the API unlinked a file it no longer owned.** `/v1/files/{id}` deleted the physical file directly, so with content addressing a shared blob vanished from under every other document pointing at it — the same defect the single web route had. Every deletion path (web route, folder delete, API) now goes through `db.delete_document_resources()`: the index entry, the blob reference and the row are released together, the bytes are unlinked only with the last reference, and the API still deletes only the caller's own documents.
 
 - **A preview that kept the page but lost three.js stayed black.** Pages that load three as a classic `<script src="…/three.min.js">` were rewritten by the import-map rescue into `<script src="three">` — an import map resolves module specifiers, not src attributes, so the browser asked for a URL that does not exist, `THREE` stayed undefined and the scene never started, while the saved file worked. The rewrite now applies only to inline imports and leaves any script with a `src` attribute alone.

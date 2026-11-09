@@ -345,12 +345,17 @@ def get_users():
                 u_dict["messages_count"] = stats["messages"] if stats else 0
                 # Chat + task steps (incl. checkpoints and retries) + planner /
                 # plan reviews: the Users tab shows the user's whole LLM spend.
-                u_dict["outgoing_tokens"] = (
+                # The task and plan sums are SQL ``numeric``, which psycopg2 hands
+                # back as Decimal — and Flask's JSON encoder writes a Decimal as a
+                # STRING, so the browser received "628614" and
+                # String.toLocaleString() left it ungrouped. Cast to int here, at
+                # the boundary where the payload is built.
+                u_dict["outgoing_tokens"] = int(
                     (stats["outgoing_tokens"] or 0)
                     + (stats["task_outgoing"] or 0)
                     + (stats["plan_outgoing"] or 0)
                 ) if stats else 0
-                u_dict["incoming_tokens"] = (
+                u_dict["incoming_tokens"] = int(
                     (stats["incoming_tokens"] or 0)
                     + (stats["task_incoming"] or 0)
                     + (stats["plan_incoming"] or 0)

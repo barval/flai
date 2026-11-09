@@ -2365,9 +2365,14 @@ body.dark-theme .settings-reset {
         align-items: center;
         gap: 3px;
     }
-    #users-table .storage-limit-input {
-        flex: 0 1 5rem;
-        width: 5rem;
+    /* The generic input rule above (one id, one attribute, three elements) is
+       more specific than a class selector, so every input grew and the limit
+       box pushed the unit onto the next line. This selector matches its weight
+       and comes later, which is what keeps the field 4.5rem wide. */
+    #users-table tbody td input.storage-limit-input {
+        flex: 0 0 4.5rem;
+        width: 4.5rem;
+        min-width: 0;
     }
     #users-table td input[type="checkbox"] {
         transform: scale(1.2);

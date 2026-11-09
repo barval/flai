@@ -22,6 +22,40 @@ FICTIONAL_USERS = {
     "en": [("alex", "Alex"), ("priya", "Priya"), ("tom", "Tom")],
 }
 
+# The captured backup rows name a real installation's archives and carry their
+# checksums — a backup file name is exactly what a published artefact must not
+# contain. The demo builds its two rows from this allowlist instead.
+DEMO_BACKUPS = [
+    {
+        "created_at": "2026-01-05T09:00:00",
+        "filename": "users_2026-01-05_09-00-00.tar.gz",
+        "metadata": {
+            "checksum": "0" * 64,
+            "created_at": "2026-01-05T09:00:00",
+            "database_type": "postgresql",
+            "tables": ["users"],
+            "type": "users",
+            "version": "13.1",
+        },
+        "size": 2660,
+        "type": "users",
+    },
+    {
+        "created_at": "2026-01-05T09:00:06",
+        "filename": "full_2026-01-05_09-00-00.tar.gz",
+        "metadata": {
+            "checksum": "0" * 64,
+            "created_at": "2026-01-05T09:00:06",
+            "database_type": "postgresql",
+            "tables": [],
+            "type": "full",
+            "version": "13.1",
+        },
+        "size": 53406450,
+        "type": "full",
+    },
+]
+
 # Camera room names belong to the host that ran the capture, so the English demo
 # would otherwise show the Russian rooms of that machine. An unknown code falls
 # back to the code itself, which keeps the page free of Cyrillic either way.
@@ -304,6 +338,8 @@ def rewrite_for_publication(snapshot: dict, lang: str) -> dict:
             body = _synthetic_monitoring(body, range_key)
             body["users"] = [{"login": login} for login, _ in users]
             route["body"] = body
+        elif str(route.get("path", "")).startswith("/admin/api/backups"):
+            route["body"] = json.loads(json.dumps(DEMO_BACKUPS))
         elif route.get("path") == "/admin/api/cameras" and isinstance(route.get("body"), list):
             for room in route["body"]:
                 if lang == "en" and isinstance(room, dict):

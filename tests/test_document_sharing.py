@@ -253,7 +253,7 @@ class TestRecallHygiene:
     def test_explicitly_remembered_fact_is_injected(self):
         from modules.base import BaseModule
 
-        facts = [{"content": "Call me Valery", "score": 0.9, "source": "user_request"}]
+        facts = [{"content": "Call me Ivan", "score": 0.9, "source": "user_request"}]
         assert len(BaseModule.select_recalled_facts(facts, limit=7, min_score=0.5)) == 1
 
 
@@ -261,8 +261,8 @@ class TestUserName:
     def test_web_turn_carries_the_account_name(self):
         from app.queue import RedisRequestQueue
 
-        with patch("app.userdb.get_display_name", return_value="Валерий"):
-            assert RedisRequestQueue._user_name_for_task({"user_id": "valery", "data": {}}) == "Валерий"
+        with patch("app.userdb.get_display_name", return_value="Иван"):
+            assert RedisRequestQueue._user_name_for_task({"user_id": "ivan", "data": {}}) == "Иван"
 
     def test_api_turn_never_carries_it(self):
         from app.queue import RedisRequestQueue
@@ -274,6 +274,6 @@ class TestUserName:
     def test_context_line_is_localized(self):
         from modules.base import BaseModule
 
-        assert BaseModule._user_section("ru", "Валерий") == "\nИмя пользователя: Валерий."
-        assert BaseModule._user_section("en", "Valery") == "\nThe user's name is Valery."
+        assert BaseModule._user_section("ru", "Иван") == "\nИмя пользователя: Иван."
+        assert BaseModule._user_section("en", "Ivan") == "\nThe user's name is Ivan."
         assert BaseModule._user_section("ru", "") == ""

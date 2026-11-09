@@ -85,6 +85,9 @@ def admin_context(snapshot: dict[str, Any]) -> dict[str, Any]:
         "user_db_size": _as_int(stats.get("user_db_size"), 0),
         "files_db_size": _as_int(stats.get("files_db_size"), 0),
         "documents_db_size": _as_int(stats.get("documents_db_size"), 0),
+        # The snapshot was captured before deduplication existed, so it carries
+        # no counter and the page shows 0.00 MB — which is what that dataset has.
+        "dedup_saved_bytes": _as_int(stats.get("dedup_saved_bytes"), 0),
         "chunk_size": chunk_size,
         "chunk_overlap": _as_int(settings.get("RAG_CHUNK_OVERLAP"), 50),
         "chunk_strategy": settings.get("RAG_CHUNK_STRATEGY") or "fixed",

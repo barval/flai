@@ -2355,6 +2355,16 @@ body.dark-theme .settings-reset {
     #users-table .storage-cell {
         white-space: normal;
     }
+    /* On a card the column is not narrow, so the value fits one line:
+       "12.3 of [500] MB" instead of the two-line desktop layout. */
+    #users-table .storage-cell .storage-used {
+        display: inline;
+    }
+    #users-table .storage-limit {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
     #users-table .storage-limit-input {
         flex: 0 1 5rem;
         width: 5rem;

@@ -32,3 +32,11 @@ def test_admin_query_counts_shared_documents_not_readers():
     source = (ROOT / "app/routes/admin.py").read_text(encoding="utf-8")
     assert "COUNT(DISTINCT document_id) FROM document_shares" in source
     assert 'u_dict["shared_documents_count"]' in source
+
+
+def test_mobile_storage_is_one_line():
+    """The card layout has room, so the storage value must not break in two."""
+    styles = (ROOT / "app/static/css/admin.css").read_text(encoding="utf-8")
+    mobile = styles[styles.index("@media (max-width: 768px)"):]
+    assert "#users-table .storage-cell .storage-used {\n        display: inline;" in mobile
+    assert "#users-table .storage-limit {\n        display: inline-flex;" in mobile

@@ -653,12 +653,16 @@ def _localize_document_dates(documents):
     return documents
 
 
-def get_user_documents(user_id, include_shared=False):
+def get_user_documents(user_id, include_shared=False, with_share_counts=False):
     """Get all documents for a user, including index status, processing time and embedding model.
 
     With ``include_shared`` the documents other users shared with this one are
     appended, each carrying ``shared_by`` (the owner's login); their file paths
     and index rows stay the owner's, and the caller only ever reads them.
+
+    With ``with_share_counts`` every owned document carries ``shared_with`` (the
+    logins it is open to) and ``shared_count``, so the panel can mark it. The
+    extra query is opt-in: most callers only need the documents themselves.
     """
     with get_db() as conn:
         c = conn.cursor()
@@ -676,6 +680,19 @@ def get_user_documents(user_id, include_shared=False):
         documents = [dict(row) for row in c.fetchall()]
         for doc in documents:
             doc["shared_by"] = None
+            doc["shared_with"] = []
+            doc["shared_count"] = 0
+        if with_share_counts and documents:
+            c.execute(
+                "SELECT document_id, array_agg(shared_with ORDER BY shared_with) AS shared_with "
+                "FROM document_shares WHERE owner_login = %s GROUP BY document_id",
+                (user_id,),
+            )
+            open_to = {row["document_id"]: list(row["shared_with"] or []) for row in c.fetchall()}
+            for doc in documents:
+                readers = open_to.get(doc["id"]) or []
+                doc["shared_with"] = readers
+                doc["shared_count"] = len(readers)
         if include_shared:
             c.execute(
                 """

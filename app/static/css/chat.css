@@ -627,6 +627,10 @@
     background-color: #fbfaf3;
     cursor: pointer;
 }
+.document-share-count {
+    background-color: #e3eef7;
+    color: #2c5d80;
+}
 .document-shared-badge {
     display: inline-block;
     margin-left: 0.4rem;

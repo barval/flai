@@ -63,6 +63,22 @@ class TestSharingModel:
         shared = db.get_user_documents("bob", include_shared=True)[0]
         assert shared["folder_id"] is None
 
+    def test_owner_listing_carries_who_can_read_it(self, test_app):
+        from app import db
+
+        _add_doc("alice", "d1", "own.txt")
+        _add_doc("alice", "d2", "private.txt")
+        db.share_document("d1", "alice", "carol")
+        db.share_document("d1", "alice", "bob")
+
+        plain = {d["id"]: d for d in db.get_user_documents("alice")}
+        assert plain["d1"]["shared_count"] == 0, "the extra query is opt-in"
+
+        marked = {d["id"]: d for d in db.get_user_documents("alice", with_share_counts=True)}
+        assert marked["d1"]["shared_with"] == ["bob", "carol"]
+        assert marked["d1"]["shared_count"] == 2
+        assert marked["d2"]["shared_count"] == 0
+
     def test_deleting_a_document_removes_its_shares(self, test_app):
         with test_app.app_context():
             from app import db
@@ -154,6 +170,14 @@ class TestShareDialog:
         assert "type = 'checkbox'" in source
         assert "documents_share_add" not in source
         assert "doc-share-select" not in source
+
+    def test_owner_sees_a_counter_badge(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "app/static/js/chat-documents.js").read_text(encoding="utf-8")
+        assert "document-share-count" in source
+        assert "documents_shared_with" in source
+        template = (root / "app/templates/chat.html").read_text(encoding="utf-8")
+        assert "'documents_shared_with'" in template
 
     def test_admin_is_not_offered(self):
         source = (Path(__file__).resolve().parents[1] / "app/routes/documents.py").read_text(encoding="utf-8")

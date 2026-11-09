@@ -191,7 +191,7 @@ def api_get_documents():
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
     login = session["login"]
-    documents = db.get_user_documents(login, include_shared=True)
+    documents = db.get_user_documents(login, include_shared=True, with_share_counts=True)
     folders = db.get_user_folders(login)
     counts = {f["id"]: 0 for f in folders}
     sizes = {f["id"]: 0 for f in folders}

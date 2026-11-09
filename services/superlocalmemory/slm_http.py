@@ -139,7 +139,12 @@ def _with_profile_block(results: list, profile: str) -> list:
 
 
 def _attach_fact_meta(results: list) -> list:
-    """Add kind/confidence to recall results from the side store."""
+    """Add kind/confidence/source to recall results from the side store.
+
+    ``source`` is what wrote the fact: ``auto_import`` rows are the raw messages
+    of an imported history, not facts about the user, so the chat filters them
+    out and the daemon is never asked to guess.
+    """
     if not results:
         return results
     ids = [str(r.get("fact_id")) for r in results if r.get("fact_id")]
@@ -149,17 +154,18 @@ def _attach_fact_meta(results: list) -> list:
         with _meta_conn() as conn:
             placeholders = ",".join("?" for _ in ids)
             rows = conn.execute(
-                f"SELECT fact_id, kind, confidence FROM fact_meta WHERE fact_id IN ({placeholders})",
+                f"SELECT fact_id, kind, confidence, source FROM fact_meta WHERE fact_id IN ({placeholders})",
                 ids,
             ).fetchall()
     except Exception:
         return results
-    known = {str(row[0]): (row[1], row[2]) for row in rows}
+    known = {str(row[0]): (row[1], row[2], row[3]) for row in rows}
     for item in results:
         meta = known.get(str(item.get("fact_id")))
         if meta:
             item["kind"] = meta[0]
             item["kind_confidence"] = meta[1]
+            item["source"] = meta[2]
     return results
 
 

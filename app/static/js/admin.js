@@ -152,10 +152,14 @@ function loadUsers() {
             storageCell.className = 'storage-cell';
             const storageUsedMb = (user.storage_used || 0) / (1024 * 1024);
             const storageLimitMb = user.storage_limit_mb || 500;
-            const storageUsedText = document.createElement('span');
+            // Two lines, so the column stays narrow: "X из" above "Y МБ".
+            const storageUsedText = document.createElement('div');
             storageUsedText.className = 'storage-used';
-            storageUsedText.textContent = `${storageUsedMb.toFixed(1)} /`;
+            storageUsedText.textContent = `${storageUsedMb.toFixed(1)} ${t('of')}`;
             storageCell.appendChild(storageUsedText);
+
+            const storageLimitLine = document.createElement('div');
+            storageLimitLine.className = 'storage-limit';
 
             const storageLimitInput = document.createElement('input');
             storageLimitInput.type = 'number';
@@ -169,12 +173,13 @@ function loadUsers() {
                 '{default}', storageLimitInput.dataset.default
             );
             storageLimitInput.addEventListener('change', () => saveStorageLimit(user.login, storageLimitInput));
-            storageCell.appendChild(storageLimitInput);
+            storageLimitLine.appendChild(storageLimitInput);
 
             const storageUnit = document.createElement('span');
             storageUnit.className = 'storage-unit';
             storageUnit.textContent = t('mb');
-            storageCell.appendChild(storageUnit);
+            storageLimitLine.appendChild(storageUnit);
+            storageCell.appendChild(storageLimitLine);
 
             if (storageUsedMb >= storageLimitMb) {
                 storageCell.classList.add('storage-over-quota');
@@ -187,10 +192,12 @@ function loadUsers() {
             tasksCell.textContent = user.tasks_count || 0;
             row.appendChild(tasksCell);
             const outgoingTokensCell = document.createElement('td');
-            outgoingTokensCell.textContent = (user.outgoing_tokens || 0).toLocaleString();
+            // Number() first: a string would make toLocaleString() a no-op and
+            // print the digits ungrouped.
+            outgoingTokensCell.textContent = Number(user.outgoing_tokens || 0).toLocaleString();
             row.appendChild(outgoingTokensCell);
             const incomingTokensCell = document.createElement('td');
-            incomingTokensCell.textContent = (user.incoming_tokens || 0).toLocaleString();
+            incomingTokensCell.textContent = Number(user.incoming_tokens || 0).toLocaleString();
             row.appendChild(incomingTokensCell);
             const messagesCell = document.createElement('td');
             messagesCell.textContent = user.messages_count;
@@ -199,7 +206,11 @@ function loadUsers() {
             filesCell.textContent = user.files_count || 0;
             row.appendChild(filesCell);
             const documentsCell = document.createElement('td');
-            documentsCell.textContent = user.documents_count || 0;
+            // "12 (3)": all documents, then how many of them are shared.
+            const sharedDocuments = Number(user.shared_documents_count || 0);
+            documentsCell.textContent = sharedDocuments > 0
+                ? `${user.documents_count || 0} (${sharedDocuments})`
+                : String(user.documents_count || 0);
             row.appendChild(documentsCell);
             const slmCell = document.createElement('td');
             slmCell.textContent = user.slm_facts_count || 0;
@@ -458,11 +469,13 @@ function refreshStats() {
         const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
         const filesMb = (data.files_db_size / (1024 * 1024)).toFixed(2);
         const documentsMb = (data.documents_db_size / (1024 * 1024)).toFixed(2);
+        const dedupSavedMb = ((data.dedup_saved_bytes || 0) / (1024 * 1024)).toFixed(2);
         // Update with unit (MB) to keep them visible
         document.getElementById('chat-db-size').textContent = chatMb + ' ' + t('mb');
         document.getElementById('user-db-size').textContent = userMb + ' ' + t('mb');
         document.getElementById('files-db-size').textContent = filesMb + ' ' + t('mb');
         document.getElementById('documents-db-size').textContent = documentsMb + ' ' + t('mb');
+        document.getElementById('dedup-saved-size').textContent = dedupSavedMb + ' ' + t('mb');
     })
     .catch(err => console.error('Error fetching stats:', err));
 }

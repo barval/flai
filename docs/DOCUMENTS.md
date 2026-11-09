@@ -1,5 +1,41 @@
 # Documents and RAG
 
+## Duplicate files
+
+An upload is stored by content: the file's SHA-256 decides the physical copy, and an
+identical document already on the instance is reused instead of written twice. Each upload
+still becomes its own document — its own name, folder and owner — so deleting yours removes
+only your record; the file itself survives while somebody else still holds the same content
+and is deleted with the last reference.
+
+The storage quota is charged on what an upload actually added: the first upload of a file
+pays for the bytes, and anybody who later adds the same file pays nothing, because nobody can
+know in advance that the document exists. The admin Users tab reports the disk saved this way
+next to the database sizes.
+
+Indexing follows the same idea. A document whose content hash is already indexed has its
+vectors copied into the new owner's collection instead of being embedded again, so a colleague
+adding the same contract costs one copy of the file and no embedding work — the copy is
+searchable on its own name, and the original document is untouched. The vectors are reused only
+when the source was indexed with the current embedding model; otherwise the document is indexed
+normally.
+
+## Sharing documents
+
+A document can be shared with other accounts of the same instance. Sharing grants **read access
+only**: the recipient finds the document in their own Documents panel marked with the owner's
+name, can open its preview and download it, and their own questions search it. They cannot
+rename, move, delete or re-share it, and the file, the index and the storage quota stay with the
+owner.
+
+Nothing is copied for a share. The document's vectors remain in the owner's Qdrant collection,
+and a search visits the collection of every user who shared a document with the caller (plus the
+caller's own) and ranks the merged hits; a scope limited to attached documents is split the same
+way. Revoking a share takes effect on the next question, because that collection is simply no
+longer visited.
+
+Sharing is per document, never per folder.
+
 ## Upload limits
 
 | What | Limit | Variable |

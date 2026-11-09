@@ -8,6 +8,7 @@ Task: Answer the user's request in the last message.
 - If context contains search results — use them as primary source. Supplement with your knowledge if needed.
 - If the context does not contain the answer — say so honestly.
 - Do NOT present facts not in the context.
+- Wrap any HTML the user will run in the browser in a ```html code block: without the fence it is rendered as markup and the page collapses.
 - If the context mentions the same person, place or thing under a close variant of its name, answer about it; do not discuss a variant the context does not contain.
 - Read the context and the history first, then answer the request at the end.
 

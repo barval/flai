@@ -1,5 +1,5 @@
 # app/routes/documents.py
-import contextlib
+import hashlib
 import io
 import mimetypes
 import os
@@ -191,7 +191,7 @@ def api_get_documents():
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
     login = session["login"]
-    documents = db.get_user_documents(login)
+    documents = db.get_user_documents(login, include_shared=True, with_share_counts=True)
     folders = db.get_user_folders(login)
     counts = {f["id"]: 0 for f in folders}
     sizes = {f["id"]: 0 for f in folders}
@@ -266,24 +266,6 @@ def api_rename_folder(folder_id):
     return jsonify({"status": "ok"})
 
 
-def _delete_document_resources(doc, login):
-    """Delete one document: RAG entry, file on disk and DB row."""
-    rag = current_app.modules.get("rag")
-    if rag and rag.available:
-        try:
-            rag.delete_document(doc["id"], login)
-        except Exception as e:
-            current_app.logger.error(f"Failed to delete document from index: {e}")
-    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    file_path = os.path.join(documents_folder, doc.get("file_path") or "")
-    real_file_path = os.path.realpath(file_path)
-    real_documents_folder = os.path.realpath(documents_folder)
-    if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
-        with contextlib.suppress(Exception):
-            os.remove(file_path)
-    db.delete_document(doc["id"], login)
-
-
 @bp.route("/document-folders/<folder_id>", methods=["DELETE"])
 def api_delete_folder(folder_id):
     if "login" not in session:
@@ -294,7 +276,7 @@ def api_delete_folder(folder_id):
     docs = db.get_folder_documents(login, folder_id)
     deleted_size = sum(doc.get("file_size") or 0 for doc in docs)
     for doc in docs:
-        _delete_document_resources(doc, login)
+        db.delete_document_resources(doc, login)
     db.delete_folder(folder_id, login)
     return jsonify({"status": "ok", "deleted_documents": len(docs), "deleted_size": deleted_size})
 
@@ -395,24 +377,39 @@ def api_upload_document():
         filename = img_new_name
 
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    user_folder = os.path.join(documents_folder, session["login"])
-    os.makedirs(user_folder, exist_ok=True)
+    # One physical file per content, shared by every user who uploads it. The
+    # per-user record stays independent: deleting it drops a reference and the
+    # file survives while anybody else still holds the same content.
+    blobs_folder = os.path.join(documents_folder, "_blobs")
+    os.makedirs(blobs_folder, exist_ok=True)
 
-    # Safe name: UUID + original extension
+    sha256 = hashlib.sha256(file_content).hexdigest()
     safe_ext = os.path.splitext(filename)[1].lower()
-    safe_filename = f"{doc_id}{safe_ext}"
-    file_path = os.path.join(user_folder, safe_filename)
+    relative_path = os.path.join("_blobs", f"{sha256}{safe_ext}")
+    file_path = os.path.join(documents_folder, relative_path)
 
-    # Double-check path does not escape DOCUMENTS_FOLDER
+    # The blob path is built from a hex digest and a lowercased extension, never
+    # from user input; the containment check stays as a guard against a future
+    # change to that construction.
     real_file_path = os.path.realpath(file_path)
-    real_user_folder = os.path.realpath(user_folder)
-    if not real_file_path.startswith(real_user_folder + os.sep):
+    real_blobs_folder = os.path.realpath(blobs_folder)
+    if not real_file_path.startswith(real_blobs_folder + os.sep):
         return jsonify({"error": _("Invalid file path")}), 400
 
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-
-    relative_path = os.path.join(session["login"], safe_filename)
+    created_blob = db.retain_document_blob(sha256, relative_path, file_size, image_mime or None)
+    if created_blob:
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+    else:
+        # Reuse the stored copy: the extension of this upload may differ, so the
+        # authoritative path comes from the blob row.
+        with db.get_db() as _conn:
+            _c = _conn.cursor()
+            _c.execute("SELECT file_path FROM document_blobs WHERE sha256 = %s", (sha256,))
+            _row = _c.fetchone()
+        if _row and _row["file_path"]:
+            relative_path = _row["file_path"]
+            file_path = os.path.join(documents_folder, relative_path)
     folder_id = request.form.get("folder_id") or None
     if folder_id is not None and not db.get_folder(folder_id, session["login"]):
         return jsonify({"error": _("Folder not found")}), 400
@@ -424,6 +421,8 @@ def api_upload_document():
         file_ext=os.path.splitext(filename)[1].lower(),
         file_path=relative_path,
         folder_id=folder_id,
+        blob_sha256=sha256,
+        stored_bytes=file_size if created_blob else 0,
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
@@ -451,7 +450,7 @@ def api_get_document(doc_id):
 
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
-    doc = db.get_document(doc_id, session["login"])
+    doc = db.get_readable_document(doc_id, session["login"])
     if not doc:
         return jsonify({"error": _("Document not found")}), 404
 
@@ -505,7 +504,7 @@ def _owned_document_file(doc_id: str):
     """Resolve an owned document to a safe on-disk path (or an error response)."""
     if "login" not in session:
         return None, None, (jsonify({"error": _("Not authorized")}), 401)
-    doc = db.get_document(doc_id, session["login"])
+    doc = db.get_readable_document(doc_id, session["login"])
     if not doc:
         return None, None, (jsonify({"error": _("Document not found")}), 404)
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
@@ -708,6 +707,66 @@ def api_document_preview_pdf_page(doc_id, page):
     return response
 
 
+@bp.route("/documents/shareable-users", methods=["GET"])
+def api_shareable_users():
+    """Logins a document may be shared with.
+
+    The caller is not offered their own document, and neither is the admin:
+    the admin account has no chats and no documents, so a share to it would be
+    a permission nobody can use.
+    """
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    from app.userdb import get_all_user_ids
+
+    login = session["login"]
+    users = [other for other in get_all_user_ids() if other != login and other != "admin"]
+    return jsonify({"users": users})
+
+
+@bp.route("/documents/<doc_id>/shares", methods=["GET"])
+def api_get_document_shares(doc_id):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    if not db.get_document(doc_id, session["login"]):
+        return jsonify({"error": _("Document not found")}), 404
+    return jsonify({"shares": db.get_document_shares(doc_id)})
+
+
+@bp.route("/documents/<doc_id>/share", methods=["POST"])
+def api_share_document(doc_id):
+    """Give another user read access; only the owner may do this."""
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    if not db.get_document(doc_id, login):
+        return jsonify({"error": _("Document not found")}), 404
+
+    from app.userdb import get_user_by_login
+
+    payload = request.get_json(silent=True) or {}
+    shared_with = str(payload.get("login") or "").strip()
+    if not shared_with:
+        return jsonify({"error": _("Choose a user to share with")}), 400
+    if shared_with == login:
+        return jsonify({"error": _("You already have access to this document")}), 400
+    if not get_user_by_login(shared_with):
+        return jsonify({"error": _("User not found")}), 404
+
+    db.share_document(doc_id, login, shared_with)
+    return jsonify({"status": "ok", "shares": db.get_document_shares(doc_id)})
+
+
+@bp.route("/documents/<doc_id>/share/<shared_with>", methods=["DELETE"])
+def api_unshare_document(doc_id, shared_with):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    if not db.get_document(doc_id, session["login"]):
+        return jsonify({"error": _("Document not found")}), 404
+    db.unshare_document(doc_id, shared_with)
+    return jsonify({"status": "ok", "shares": db.get_document_shares(doc_id)})
+
+
 @bp.route("/documents/<doc_id>", methods=["DELETE"])
 def api_delete_document(doc_id):
     if "login" not in session:
@@ -716,28 +775,9 @@ def api_delete_document(doc_id):
     if not doc:
         return jsonify({"error": _("Document not found")}), 404
 
-    rag = current_app.modules.get("rag")
-    if rag and rag.available:
-        try:
-            rag.delete_document(doc_id, session["login"])
-        except Exception as e:
-            current_app.logger.error(f"Failed to delete document from index: {e}")
-
-    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    file_path = os.path.join(documents_folder, doc["file_path"])
-
-    # Security: prevent path traversal attacks
-    real_file_path = os.path.realpath(file_path)
-    real_documents_folder = os.path.realpath(documents_folder)
-    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
-        current_app.logger.warning(f"Path traversal attempt blocked: {doc['file_path']}")
-        return jsonify({"error": _("Permission denied")}), 403
-
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            current_app.logger.error(f"Error deleting file {file_path}: {e}")
-
-    db.delete_document(doc_id, session["login"])
+    # One deletion path for every caller: it releases the blob reference and
+    # unlinks the file only when this was the last document using it. This route
+    # used to unlink the file itself, which removed a shared blob out from under
+    # every other document pointing at it.
+    db.delete_document_resources(doc, session["login"])
     return jsonify({"status": "ok"})

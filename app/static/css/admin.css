@@ -123,9 +123,11 @@
 }
 #users-table .storage-cell {
     white-space: nowrap;
+    line-height: 1.25;
 }
+/* Two lines: "X of" above "Y MB", so the column stays narrow. */
 #users-table .storage-used {
-    margin-right: 4px;
+    display: block;
 }
 #users-table td input[type="text"],
 #users-table td input[type="number"],
@@ -2353,9 +2355,24 @@ body.dark-theme .settings-reset {
     #users-table .storage-cell {
         white-space: normal;
     }
-    #users-table .storage-limit-input {
-        flex: 0 1 5rem;
-        width: 5rem;
+    /* On a card the column is not narrow, so the value fits one line:
+       "12.3 of [500] MB" instead of the two-line desktop layout. */
+    #users-table .storage-cell .storage-used {
+        display: inline;
+    }
+    #users-table .storage-limit {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+    /* The generic input rule above (one id, one attribute, three elements) is
+       more specific than a class selector, so every input grew and the limit
+       box pushed the unit onto the next line. This selector matches its weight
+       and comes later, which is what keeps the field 4.5rem wide. */
+    #users-table tbody td input.storage-limit-input {
+        flex: 0 0 4.5rem;
+        width: 4.5rem;
+        min-width: 0;
     }
     #users-table td input[type="checkbox"] {
         transform: scale(1.2);

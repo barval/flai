@@ -38,7 +38,7 @@ def _corpus_doc_ids(raw, user_id: str) -> list[str]:
         return []
     from app.db import get_user_documents
 
-    owned = {str(doc["id"]) for doc in (get_user_documents(user_id) or []) if doc.get("id")}
+    owned = {str(doc["id"]) for doc in (get_user_documents(user_id, include_shared=True) or []) if doc.get("id")}
     return [doc_id for doc_id in wanted if doc_id in owned]
 
 
@@ -592,17 +592,40 @@ def cancel_task(task_id):
     return jsonify({"status": "ok"})
 
 
+HTML_FENCE_RE = re.compile(r"```html[ \t]*\n(.*?)```", re.DOTALL)
+
+
+def _looks_like_html_document(text: str) -> bool:
+    head = text.lstrip()[:64].lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
 def _extract_html_code_block(content: str) -> str | None:
-    """Return the first ```html fenced code block from a message, or None."""
-    marker = "```html"
-    start = content.find(marker)
-    if start == -1:
-        return None
-    start += len(marker)
-    end = content.find("```", start)
-    if end == -1:
-        return None
-    return content[start:end].strip() or None
+    """Return the block worth previewing, or a bare HTML document.
+
+    A reply can carry several blocks — an import snippet, a fragment, then the
+    page. The first one used to win, which opened a preview of a 99-byte
+    ``<script>`` include: a blank page while the real document sat in the last
+    block (measured 2026-11-09). A complete document is preferred; if none is
+    complete, the longest block is taken, because a fragment still renders while
+    a lone include does not.
+
+    A model sometimes answers with the whole page and no fence. The browser shows
+    such a reply as code (see ``wrapBareHtmlDocument`` in chat-messages.js), and
+    the preview accepts it too.
+    """
+    blocks = [match.group(1).strip() for match in HTML_FENCE_RE.finditer(content)]
+    blocks = [block for block in blocks if block]
+    if blocks:
+        documents = [block for block in blocks if _looks_like_html_document(block)]
+        if documents:
+            return documents[0]
+        return max(blocks, key=len)
+
+    stripped = content.strip()
+    if _looks_like_html_document(stripped):
+        return stripped or None
+    return None
 
 
 _IMPORT_MAP_RE = re.compile(r'<script[^>]*\btype=["\']importmap["\']', re.IGNORECASE)
@@ -614,6 +637,19 @@ _THREE_BUILD_URL_RE = re.compile(
 _THREE_ADDONS_URL_RE = re.compile(
     r"https://(?:unpkg\.com|cdn\.jsdelivr\.net/npm)/three@[0-9]+\.[0-9]+\.[0-9]+/examples/jsm/"
 )
+
+
+_SCRIPT_BLOCK_RE = re.compile(r"(<script\b[^>]*>)(.*?)(</script>)", re.IGNORECASE | re.DOTALL)
+
+
+def _rewrite_three_imports(match: re.Match) -> str:
+    """Bare-alias the CDN URLs inside an inline script, never in a src attribute."""
+    opening, body, closing = match.group(1), match.group(2), match.group(3)
+    if re.search(r"\bsrc\s*=", opening, re.IGNORECASE):
+        return opening + body + closing
+    body = _THREE_BUILD_URL_RE.sub("three", body)
+    body = _THREE_ADDONS_URL_RE.sub("three/addons/", body)
+    return opening + body + closing
 
 
 def _ensure_three_importmap(html: str) -> str:
@@ -637,8 +673,11 @@ def _ensure_three_importmap(html: str) -> str:
         return html
     version = version_match.group(1) if version_match else "0.160.0"
 
-    html = _THREE_BUILD_URL_RE.sub("three", html)
-    html = _THREE_ADDONS_URL_RE.sub("three/addons/", html)
+    # Only imports may be rewritten. A classic <script src=".../three.min.js">
+    # must keep its absolute URL: an import map does not resolve src attributes,
+    # so rewriting it produced <script src="three"> — a 404, THREE undefined and
+    # a blank preview while the saved file worked (measured 2026-11-09).
+    html = _SCRIPT_BLOCK_RE.sub(_rewrite_three_imports, html)
 
     imports = {
         "three": f"https://unpkg.com/three@{version}/build/three.module.js",

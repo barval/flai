@@ -593,8 +593,77 @@ INDEX_STATUS_INDEXED = "indexed"
 INDEX_STATUS_FAILED = "failed"
 
 
-def get_user_documents(user_id):
-    """Get all documents for a user, including index status, processing time and embedding model."""
+def _localize_document_dates(documents):
+    """Add processing time and timezone-aware timestamps to document rows."""
+    tz = current_app.config.get("TIMEZONE")
+    now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.now(UTC).replace(tzinfo=None)
+    for doc in documents:
+        indexed_dt = None
+        indexing_started_dt = None
+        uploaded_dt = None
+        if doc.get("uploaded_at"):
+            dt = doc["uploaded_at"]
+            if isinstance(dt, datetime):
+                uploaded_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
+            else:
+                with contextlib.suppress(Exception):
+                    uploaded_dt = datetime.strptime(str(doc["uploaded_at"])[:19], "%Y-%m-%d %H:%M:%S")
+        if doc.get("indexed_at"):
+            dt = doc["indexed_at"]
+            if isinstance(dt, datetime):
+                indexed_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
+            else:
+                with contextlib.suppress(Exception):
+                    indexed_dt = datetime.strptime(str(doc["indexed_at"])[:19], "%Y-%m-%d %H:%M:%S")
+        if doc.get("indexing_started_at"):
+            dt = doc["indexing_started_at"]
+            if isinstance(dt, datetime):
+                indexing_started_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
+            else:
+                with contextlib.suppress(Exception):
+                    indexing_started_dt = datetime.strptime(
+                        str(doc["indexing_started_at"])[:19], "%Y-%m-%d %H:%M:%S"
+                    )
+        processing_time = None
+        status = doc.get("index_status")
+        if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
+            delta = indexed_dt - indexing_started_dt
+            processing_time = delta.total_seconds()
+        elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
+            delta = now - indexing_started_dt
+            processing_time = delta.total_seconds()
+        # NOTE: For indexed documents without indexing_started_at, we don't fall back
+        # to uploaded_dt because the difference (indexed_at - uploaded_at) can be days/weeks
+        # and does not represent actual processing time.
+        if processing_time is not None and processing_time < 0:
+            processing_time = abs(processing_time)
+        doc["processing_time"] = processing_time
+        if uploaded_dt:
+            if tz:
+                uploaded_dt = tz.localize(uploaded_dt)
+            doc["uploaded_at"] = uploaded_dt.isoformat()
+        if indexed_dt:
+            if tz:
+                indexed_dt = tz.localize(indexed_dt)
+            doc["indexed_at"] = indexed_dt.isoformat()
+        if indexing_started_dt:
+            if tz:
+                indexing_started_dt = tz.localize(indexing_started_dt)
+            doc["indexing_started_at"] = indexing_started_dt.isoformat()
+    return documents
+
+
+def get_user_documents(user_id, include_shared=False, with_share_counts=False):
+    """Get all documents for a user, including index status, processing time and embedding model.
+
+    With ``include_shared`` the documents other users shared with this one are
+    appended, each carrying ``shared_by`` (the owner's login); their file paths
+    and index rows stay the owner's, and the caller only ever reads them.
+
+    With ``with_share_counts`` every owned document carries ``shared_with`` (the
+    logins it is open to) and ``shared_count``, so the panel can mark it. The
+    extra query is opt-in: most callers only need the documents themselves.
+    """
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
@@ -609,75 +678,249 @@ def get_user_documents(user_id):
             (user_id,),
         )
         documents = [dict(row) for row in c.fetchall()]
-        tz = current_app.config.get("TIMEZONE")
-        now = datetime.now(tz).replace(tzinfo=None) if tz else datetime.now(UTC).replace(tzinfo=None)
         for doc in documents:
-            indexed_dt = None
-            indexing_started_dt = None
-            uploaded_dt = None
-            if doc.get("uploaded_at"):
-                dt = doc["uploaded_at"]
-                if isinstance(dt, datetime):
-                    uploaded_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
-                else:
-                    with contextlib.suppress(Exception):
-                        uploaded_dt = datetime.strptime(str(doc["uploaded_at"])[:19], "%Y-%m-%d %H:%M:%S")
-            if doc.get("indexed_at"):
-                dt = doc["indexed_at"]
-                if isinstance(dt, datetime):
-                    indexed_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
-                else:
-                    with contextlib.suppress(Exception):
-                        indexed_dt = datetime.strptime(str(doc["indexed_at"])[:19], "%Y-%m-%d %H:%M:%S")
-            if doc.get("indexing_started_at"):
-                dt = doc["indexing_started_at"]
-                if isinstance(dt, datetime):
-                    indexing_started_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
-                else:
-                    with contextlib.suppress(Exception):
-                        indexing_started_dt = datetime.strptime(
-                            str(doc["indexing_started_at"])[:19], "%Y-%m-%d %H:%M:%S"
-                        )
-            processing_time = None
-            status = doc.get("index_status")
-            if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
-                delta = indexed_dt - indexing_started_dt
-                processing_time = delta.total_seconds()
-            elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
-                delta = now - indexing_started_dt
-                processing_time = delta.total_seconds()
-            # NOTE: For indexed documents without indexing_started_at, we don't fall back
-            # to uploaded_dt because the difference (indexed_at - uploaded_at) can be days/weeks
-            # and does not represent actual processing time.
-            if processing_time is not None and processing_time < 0:
-                processing_time = abs(processing_time)
-            doc["processing_time"] = processing_time
-            if uploaded_dt:
-                if tz:
-                    uploaded_dt = tz.localize(uploaded_dt)
-                doc["uploaded_at"] = uploaded_dt.isoformat()
-            if indexed_dt:
-                if tz:
-                    indexed_dt = tz.localize(indexed_dt)
-                doc["indexed_at"] = indexed_dt.isoformat()
-            if indexing_started_dt:
-                if tz:
-                    indexing_started_dt = tz.localize(indexing_started_dt)
-                doc["indexing_started_at"] = indexing_started_dt.isoformat()
-        return documents
+            doc["shared_by"] = None
+            doc["shared_with"] = []
+            doc["shared_count"] = 0
+        if with_share_counts and documents:
+            c.execute(
+                "SELECT document_id, array_agg(shared_with ORDER BY shared_with) AS shared_with "
+                "FROM document_shares WHERE owner_login = %s GROUP BY document_id",
+                (user_id,),
+            )
+            open_to = {row["document_id"]: list(row["shared_with"] or []) for row in c.fetchall()}
+            for doc in documents:
+                readers = open_to.get(doc["id"]) or []
+                doc["shared_with"] = readers
+                doc["shared_count"] = len(readers)
+        if include_shared:
+            c.execute(
+                """
+            SELECT d.id, d.filename, d.file_size, d.file_ext, d.file_path, d.uploaded_at,
+                   d.index_status, d.indexed_at, d.indexing_started_at, d.embedding_model,
+                   d.description_model, d.folder_id, s.owner_login AS shared_by
+            FROM document_shares s
+            JOIN documents d ON d.id = s.document_id
+            WHERE s.shared_with = %s
+            ORDER BY d.uploaded_at DESC
+            """,
+                (user_id,),
+            )
+            shared_rows = [dict(row) for row in c.fetchall()]
+            for doc in shared_rows:
+                # The folder belongs to the owner and means nothing to the
+                # recipient, who would silently lose the document from the panel.
+                doc["folder_id"] = None
+            documents.extend(shared_rows)
+            documents.sort(key=lambda doc: str(doc.get("uploaded_at") or ""), reverse=True)
+        return _localize_document_dates(documents)
 
 
-def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None):
-    """Save document metadata to database."""
+def share_document(document_id, owner_login, shared_with):
+    """Give ``shared_with`` read access to one of ``owner_login``'s documents."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO document_shares (document_id, owner_login, shared_with) VALUES (%s, %s, %s) "
+            "ON CONFLICT (document_id, shared_with) DO NOTHING",
+            (document_id, owner_login, shared_with),
+        )
+
+
+def unshare_document(document_id, shared_with):
+    """Revoke one reader's access; returns True when a share was removed."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM document_shares WHERE document_id = %s AND shared_with = %s",
+            (document_id, shared_with),
+        )
+        return c.rowcount > 0
+
+
+def get_document_shares(document_id):
+    """Every reader a document is shared with, oldest first."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT shared_with, created_at FROM document_shares WHERE document_id = %s ORDER BY created_at",
+            (document_id,),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
+def get_shared_document(document_id, viewer_login):
+    """A document shared with ``viewer_login`` (owner's fields plus ``shared_by``)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        SELECT d.id, d.user_id, d.filename, d.file_size, d.file_ext, d.file_path, d.index_status,
+               d.indexed_at, d.uploaded_at, d.embedding_model, d.folder_id, d.blob_sha256,
+               d.stored_bytes, s.owner_login AS shared_by
+        FROM document_shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.document_id = %s AND s.shared_with = %s
+        """,
+            (document_id, viewer_login),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def get_readable_document(document_id, viewer_login):
+    """A document the viewer may read: their own, or one shared with them."""
+    doc = get_document(document_id, viewer_login)
+    if doc:
+        return doc
+    return get_shared_document(document_id, viewer_login)
+
+
+def get_shared_document_ids(viewer_login):
+    """Map of document id -> owner login for everything shared with the viewer."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT document_id, owner_login FROM document_shares WHERE shared_with = %s",
+            (viewer_login,),
+        )
+        return {row["document_id"]: row["owner_login"] for row in c.fetchall()}
+
+
+def retain_document_blob(sha256, file_path, size_bytes, mime=None):
+    """Register one more reference to a content blob.
+
+    Returns True when this call created the blob (the caller must write the
+    file); False means an identical document already exists and the bytes are
+    already on disk.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT sha256 FROM document_blobs WHERE sha256 = %s", (sha256,))
+        if c.fetchone():
+            c.execute("UPDATE document_blobs SET refcount = refcount + 1 WHERE sha256 = %s", (sha256,))
+            return False
+        c.execute(
+            "INSERT INTO document_blobs (sha256, file_path, size_bytes, mime, refcount) VALUES (%s, %s, %s, %s, 1)",
+            (sha256, file_path, size_bytes, mime),
+        )
+        return True
+
+
+def release_document_blob(sha256):
+    """Drop one reference to a content blob.
+
+    Returns ``(removed, file_path)``: the file may be unlinked only when the last
+    reference is gone, because every other document pointing at it is somebody
+    else's own document, not a share.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT refcount, file_path FROM document_blobs WHERE sha256 = %s", (sha256,))
+        row = c.fetchone()
+        if not row:
+            return False, None
+        if row["refcount"] > 1:
+            c.execute("UPDATE document_blobs SET refcount = refcount - 1 WHERE sha256 = %s", (sha256,))
+            return False, row["file_path"]
+        c.execute("DELETE FROM document_blobs WHERE sha256 = %s", (sha256,))
+        return True, row["file_path"]
+
+
+def find_indexed_document_by_blob(blob_sha256, exclude_doc_id):
+    """Return an indexed document with the same content hash, if there is one.
+
+    Its vectors can be copied instead of embedding the same chunks again; the
+    document is the source, not a share — nothing of it becomes visible to the
+    caller, only the vectors derived from bytes the caller uploaded anyway.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, user_id, filename, embedding_model FROM documents "
+            "WHERE blob_sha256 = %s AND id <> %s AND index_status = %s "
+            "ORDER BY indexed_at DESC NULLS LAST LIMIT 1",
+            (blob_sha256, exclude_doc_id, INDEX_STATUS_INDEXED),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def document_blob_savings_bytes():
+    """Bytes not stored because identical content was reused."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COALESCE(SUM(size_bytes * (refcount - 1)), 0) AS saved FROM document_blobs")
+        row = c.fetchone()
+        return int((row["saved"] if row else 0) or 0)
+
+
+def delete_document_resources(doc, login):
+    """Delete one document: index entry, blob reference, file and DB row.
+
+    The single deletion path for every caller (web route, folder delete, API):
+    the file is unlinked only when this was the last document using it.
+    """
+    rag = current_app.modules.get("rag")
+    if rag and rag.available:
+        try:
+            rag.delete_document(doc["id"], login)
+        except Exception as e:
+            current_app.logger.error(f"Failed to delete document from index: {e}")
+    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
+    blob_sha256 = doc.get("blob_sha256")
+    if blob_sha256:
+        # Content-addressed: drop this user's reference; the bytes stay while
+        # another document still points at them.
+        removed, _relative = release_document_blob(blob_sha256)
+        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
+        if removed:
+            real_file_path = os.path.realpath(file_path)
+            real_documents_folder = os.path.realpath(documents_folder)
+            if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
+                with contextlib.suppress(Exception):
+                    os.remove(file_path)
+    else:
+        # Legacy row, stored before content addressing: the file is this
+        # document's own.
+        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
+        real_file_path = os.path.realpath(file_path)
+        real_documents_folder = os.path.realpath(documents_folder)
+        if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
+            with contextlib.suppress(Exception):
+                os.remove(file_path)
+    delete_document(doc["id"], login)
+
+
+def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None,
+                  blob_sha256=None, stored_bytes=None):
+    """Save document metadata to database.
+
+    ``stored_bytes`` is what this upload added to the disk: the file size when it
+    created a new blob, 0 when an identical document already existed. The quota
+    is charged on it, so a user pays for the bytes they actually store.
+    """
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """
-        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id,
+                               blob_sha256, stored_bytes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time, folder_id),
+            (
+                doc_id,
+                user_id,
+                filename,
+                file_size,
+                file_ext,
+                file_path,
+                current_time,
+                folder_id,
+                blob_sha256,
+                stored_bytes if stored_bytes is not None else file_size,
+            ),
         )
 
 
@@ -734,7 +977,8 @@ def get_document(doc_id, user_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at, embedding_model
+        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at,
+               embedding_model, blob_sha256, stored_bytes
         FROM documents
         WHERE id = %s AND user_id = %s
         """,
@@ -851,7 +1095,7 @@ def get_folder_documents(user_id, folder_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_path
+        SELECT id, filename, file_size, file_path, blob_sha256
         FROM documents
         WHERE user_id = %s AND folder_id = %s
         """,
@@ -888,6 +1132,7 @@ def delete_document(doc_id, user_id):
         if row:
             file_size = row["file_size"] or 0
         archive_documents(c, user_id, [doc_id])
+        c.execute("DELETE FROM document_shares WHERE document_id = %s", (doc_id,))
         c.execute("DELETE FROM documents WHERE id = %s AND user_id = %s", (doc_id, user_id))
 
     if file_size > 0:

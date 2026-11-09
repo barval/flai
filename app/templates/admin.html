@@ -46,12 +46,20 @@
                 <span>{{ _('Chat DB') }}: <span id="chat-db-size" class="db-value">{{ (chat_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Files DB') }}: <span id="files-db-size" class="db-value">{{ (files_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Documents DB') }}: <span id="documents-db-size" class="db-value">{{ (documents_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+                <span>{{ _('Saved by deduplication') }}: <span id="dedup-saved-size" class="db-value">{{ (dedup_saved_bytes / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
             </div>
         </div>
         <div class="users-table-wrapper">
             <table id="users-table">
                 <thead>
-                     <tr>
+                     {# Four headers are split on their first space so the column
+                       stays narrow: the two halves become two lines and the
+                       translation keeps one msgid per header. #}
+                    {% set outgoing_header = _('Outgoing tokens').split(' ', 1) %}
+                    {% set incoming_header = _('Incoming tokens').split(' ', 1) %}
+                    {% set documents_header = _('Documents (shared)').split(' ', 1) %}
+                    {% set internet_header = _('Internet requests').split(' ', 1) %}
+                    <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
                         <th data-sort="login">{{ _('Login') }}</th>
                         <th>{{ _('Password') }}</th>
@@ -60,13 +68,13 @@
                         <th data-sort="storage_used">{{ _('Storage') }}</th>
                         <th data-sort="sessions_count">{{ _('Sessions') }}</th>
                         <th data-sort="tasks_count">{{ _('Tasks') }}</th>
-                        <th data-sort="outgoing_tokens">{{ _('Outgoing tokens') }}</th>
-                        <th data-sort="incoming_tokens">{{ _('Incoming tokens') }}</th>
+                        <th data-sort="outgoing_tokens">{{ outgoing_header[0] }}<br>{{ outgoing_header[1] }}</th>
+                        <th data-sort="incoming_tokens">{{ incoming_header[0] }}<br>{{ incoming_header[1] }}</th>
                         <th data-sort="messages_count">{{ _('Messages') }}</th>
                         <th data-sort="files_count">{{ _('Files') }}</th>
-                        <th data-sort="documents_count">{{ _('Documents') }}</th>
+                        <th data-sort="documents_count">{{ documents_header[0] }}<br>{{ documents_header[1] }}</th>
                         <th data-sort="slm_facts_count">{{ _('SLM Facts') }}</th>
-                        <th data-sort="web_requests_month">{{ _('Internet requests') }}</th>
+                        <th data-sort="web_requests_month">{{ internet_header[0] }}<br>{{ internet_header[1] }}</th>
                         <th>{{ _('Tavily API') }}</th>
                         <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
                         {% if rooms %}

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.0\n"
+"Project-Id-Version: FLAI 13.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -2089,6 +2089,10 @@ msgstr "Files DB"
 #: app/templates/admin.html:48 app/templates/admin.html:804
 msgid "Documents DB"
 msgstr "Documents DB"
+
+#: app/templates/admin.html
+msgid "Saved by deduplication"
+msgstr "Saved by deduplication"
 
 #: app/templates/admin.html:55 app/templates/admin.html:362
 #: app/templates/admin.html:551 app/templates/admin.html:919
@@ -5221,6 +5225,50 @@ msgstr "Video generation timeout ({timeout}s)"
 #: modules/video.py:825
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
+
+#: app/templates/chat.html:325
+msgid "Share"
+msgstr "Share"
+
+#: app/templates/chat.html:325
+msgid "Shared by"
+msgstr "Shared by"
+
+#: app/templates/chat.html:325
+msgid "Share document"
+msgstr "Share document"
+
+#: app/templates/chat.html:325
+msgid "Not shared with anyone yet"
+msgstr "Not shared with anyone yet"
+
+#: app/templates/chat.html:325
+msgid "No other users"
+msgstr "No other users"
+
+#: app/templates/chat.html:325
+msgid "Choose a user to share with"
+msgstr "Choose a user to share with"
+
+#: app/templates/chat.html:325
+msgid "You already have access to this document"
+msgstr "You already have access to this document"
+
+#: app/templates/chat.html:325
+msgid "User not found"
+msgstr "User not found"
+
+#: app/templates/chat.html:325
+msgid "Close"
+msgstr "Close"
+
+#: app/templates/chat.html:326
+msgid "Shared with"
+msgstr "Shared with"
+
+#: app/templates/admin.html:60
+msgid "Documents (shared)"
+msgstr "Documents (shared)"
 
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Tool execution error: {error}"

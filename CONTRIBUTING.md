@@ -6,10 +6,10 @@ Contributions are welcome. FLAI is a self-hosted, fully local multimodal AI plat
 
 ## Where to work
 
-Development happens on a numbered main branch (`v12.9`, `v13.0`, …), never on `master`. Branch naming:
+Development happens on a numbered main branch (`v13.0`, `v13.1`, …), never on `master`. Branch naming:
 
-- Feature: `features/v13.0-<short-description>`
-- Fix: `fix/v13.0-<short-description>`
+- Feature: `features/v13.1-<short-description>`
+- Fix: `fix/v13.1-<short-description>`
 
 Do not commit to `master` — it only ever advances through `--no-ff` merges from a development branch, and only after review.
 
@@ -24,17 +24,17 @@ cd flai
 pip install -e ".[dev]"
 
 # 3. Branch from the current main development branch
-git checkout v13.0
-git checkout -b features/v13.0-my-feature
+git checkout v13.1
+git checkout -b features/v13.1-my-feature
 
 # 4. Make your change, then verify it
 ruff check .
 mypy app/ modules/
 pytest -m unit
 
-# 5. Commit, push, open a Pull Request against v13.0
+# 5. Commit, push, open a Pull Request against v13.1
 git commit -m "feat(module): short description of the change"
-git push origin features/v13.0-my-feature
+git push origin features/v13.1-my-feature
 ```
 
 ## Hard constraints

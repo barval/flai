@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.0\n"
+"Project-Id-Version: FLAI 13.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -2112,6 +2112,10 @@ msgstr "База файлов"
 #: app/templates/admin.html:48 app/templates/admin.html:804
 msgid "Documents DB"
 msgstr "База документов"
+
+#: app/templates/admin.html
+msgid "Saved by deduplication"
+msgstr "Сэкономлено дедупликацией"
 
 #: app/templates/admin.html:55 app/templates/admin.html:362
 #: app/templates/admin.html:551 app/templates/admin.html:919
@@ -5252,6 +5256,50 @@ msgstr "Превышено время ожидания генерации вид
 #: modules/video.py:825
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
+
+#: app/templates/chat.html:325
+msgid "Share"
+msgstr "Поделиться"
+
+#: app/templates/chat.html:325
+msgid "Shared by"
+msgstr "Владелец"
+
+#: app/templates/chat.html:325
+msgid "Share document"
+msgstr "Поделиться документом"
+
+#: app/templates/chat.html:325
+msgid "Not shared with anyone yet"
+msgstr "Пока никому не открыт"
+
+#: app/templates/chat.html:325
+msgid "No other users"
+msgstr "Других пользователей нет"
+
+#: app/templates/chat.html:325
+msgid "Choose a user to share with"
+msgstr "Выберите пользователя"
+
+#: app/templates/chat.html:325
+msgid "You already have access to this document"
+msgstr "У вас уже есть доступ к этому документу"
+
+#: app/templates/chat.html:325
+msgid "User not found"
+msgstr "Пользователь не найден"
+
+#: app/templates/chat.html:325
+msgid "Close"
+msgstr "Закрыть"
+
+#: app/templates/chat.html:326
+msgid "Shared with"
+msgstr "Открыт для"
+
+#: app/templates/admin.html:60
+msgid "Documents (shared)"
+msgstr "Документы (общие)"
 
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Ошибка выполнения инструмента: {error}"

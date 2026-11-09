@@ -12,7 +12,14 @@ from flask_babel import gettext as _
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from app.db import INDEX_STATUS_INDEXED, get_document, get_session_text_history, get_user_documents
+from app.db import (
+    INDEX_STATUS_INDEXED,
+    find_indexed_document_by_blob,
+    get_document,
+    get_session_text_history,
+    get_shared_document_ids,
+    get_user_documents,
+)
 from app.lemmatizer import lemmas as lemmatize
 from app.llamacpp_client import LlamaCppClient
 from app.model_config import get_model_config
@@ -220,6 +227,28 @@ class RagModule:
         """Return collection name for a specific user."""
         return f"{self.collection_name_prefix}{user_id}"
 
+    def _search_scopes(self, user_id: str, scope_ids: list[str] | None) -> list[tuple[str, list[str] | None]]:
+        """Collections a search must visit: the caller's own and the sharers'.
+
+        Each entry is ``(owner_login, doc_ids)``; ``doc_ids`` is ``None`` for the
+        caller's own collection when the request is not scoped to attachments.
+        """
+        shared = get_shared_document_ids(user_id)
+        scopes: list[tuple[str, list[str] | None]] = []
+        if scope_ids is None:
+            scopes.append((user_id, None))
+        else:
+            own = [doc_id for doc_id in scope_ids if doc_id not in shared]
+            if own:
+                scopes.append((user_id, own))
+        by_owner: dict[str, list[str]] = {}
+        for doc_id, owner in shared.items():
+            if scope_ids is not None and doc_id not in scope_ids:
+                continue
+            by_owner.setdefault(owner, []).append(doc_id)
+        scopes.extend(by_owner.items())
+        return scopes
+
     def _ensure_collection(self, user_id: str):
         """
         Ensure that a collection exists for the user with the correct vector dimension.
@@ -274,6 +303,12 @@ class RagModule:
 
         filename = doc_info["filename"]
         file_ext = doc_info["file_ext"]
+
+        # 0. Identical bytes are already indexed somewhere: their chunks are the
+        #    same chunks, so copy the vectors instead of embedding them again.
+        reused = self._reuse_indexed_content(user_id, doc_id, doc_info)
+        if reused is not None:
+            return reused
 
         # 1. Extract text
         text = extract_text_from_file(file_path)
@@ -352,6 +387,103 @@ class RagModule:
         except Exception as e:
             self.logger.error(f"Error during upsert: {e}")
             return False, f"Qdrant error: {str(e)}"
+
+    def _reuse_indexed_content(self, user_id: str, doc_id: str, doc_info: dict) -> tuple[bool, str] | None:
+        """Copy the vectors of an already-indexed document with identical bytes.
+
+        Content addressing gives two documents the same SHA-256, so their chunks
+        are identical and re-embedding them would produce the same vectors at
+        full cost. The source's points are copied into this user's collection
+        under this document's ``doc_id`` and payload; the source keeps its own.
+
+        Returns ``None`` when there is nothing to reuse — no twin, a different
+        embedding model, or no stored vectors — so the caller falls back to
+        ordinary indexing rather than failing.
+        """
+        sha = (doc_info or {}).get("blob_sha256")
+        if not sha:
+            return None
+        source = find_indexed_document_by_blob(sha, doc_id)
+        if not source:
+            return None
+
+        config = get_model_config("embedding")
+        model_name = config.get("model_name", "unknown") if config else "unknown"
+        if source.get("embedding_model") != model_name:
+            self.logger.info(
+                f"reuse: {doc_id} has the same bytes as {source['id']} but a different embedding model "
+                f"({source.get('embedding_model')} != {model_name}); indexing normally"
+            )
+            return None
+
+        try:
+            points = self._scroll_document_points(source["user_id"], source["id"])
+        except Exception as exc:  # noqa: BLE001 — a failed copy falls back to indexing
+            self.logger.warning(f"reuse: cannot read vectors of {source['id']}: {exc}")
+            return None
+        if not points:
+            self.logger.info(f"reuse: {source['id']} has no stored vectors; indexing normally")
+            return None
+
+        ordered = sorted(points, key=lambda point: (point.payload or {}).get("chunk_index", 0))
+        chunks = [(point.payload or {}).get("text", "") for point in ordered]
+        try:
+            self._ensure_collection(user_id)
+            self.qdrant_client.upsert(
+                collection_name=self._get_collection_name(user_id),
+                points=self._copy_points(ordered, user_id, doc_id, doc_info),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(f"reuse: copy into {user_id} failed for {doc_id}: {exc}")
+            return None
+
+        self._store_chunks(user_id, doc_id, filename=doc_info["filename"], chunks=chunks)
+        self.logger.info(
+            f"reuse: copied {len(points)} vectors of {source['id']} ({source['user_id']}) to {doc_id} ({user_id})"
+        )
+        return True, f"Indexed {len(points)} chunks (reused embeddings)"
+
+    def _scroll_document_points(self, user_id: str, doc_id: str) -> list:
+        """Read every stored point of one document, vectors included."""
+        points: list = []
+        offset = None
+        while True:
+            batch, offset = self.qdrant_client.scroll(
+                collection_name=self._get_collection_name(user_id),
+                scroll_filter=models.Filter(
+                    must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+                ),
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=True,
+            )
+            points.extend(batch)
+            if offset is None:
+                return points
+
+    def _copy_points(self, points: list, user_id: str, doc_id: str, doc_info: dict) -> list:
+        """Rebuild the source's points as this document's own points."""
+        copied = []
+        for position, point in enumerate(points):
+            payload = dict(point.payload or {})
+            index = payload.get("chunk_index", position)
+            payload.update(
+                {
+                    "doc_id": doc_id,
+                    "user_id": user_id,
+                    "filename": doc_info["filename"],
+                    "file_ext": doc_info["file_ext"],
+                }
+            )
+            copied.append(
+                models.PointStruct(
+                    id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{doc_id}_{index}")),
+                    vector=point.vector,
+                    payload=payload,
+                )
+            )
+        return copied
 
     def delete_document(self, doc_id: str, user_id: str) -> bool:
         """Delete all points belonging to a document from the index."""
@@ -508,7 +640,7 @@ class RagModule:
         corpus_documents: int | None = None
         if file_coverage:
             try:
-                documents = get_user_documents(user_id) or []
+                documents = get_user_documents(user_id, include_shared=True) or []
                 if scope_ids:
                     documents = [d for d in documents if str(d.get("id")) in set(scope_ids)]
                 corpus_documents = len([d for d in documents if d.get("index_status") == INDEX_STATUS_INDEXED])
@@ -542,29 +674,39 @@ class RagModule:
             self.logger.warning(f"Failed to get embedding for query: {query[:50]}...")
             return [], []
 
-        collection_name = self._get_collection_name(user_id)
-        must: list[models.FieldCondition] = [
-            models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))
-        ]
-        if scope:
-            must.append(models.FieldCondition(key="doc_id", match=models.MatchAny(any=scope)))
-        try:
-            result = self.qdrant_client.query_points(
-                collection_name=collection_name,
-                query=query_emb,
-                query_filter=models.Filter(must=must),
-                limit=fetch_limit,
-            )
-            search_result = result.points
-        except Exception as e:
-            self.logger.warning(f"Search failed for query '{query[:30]}...': {e}")
-            return [], []
+        # The caller's own collection plus every collection holding a document
+        # shared with them: sharing is an access right, not a copy, so the points
+        # never move and the owner's index stays the single source.
+        scopes = self._search_scopes(user_id, scope if doc_ids is not None else None)
+        search_result = []
+        for owner, owner_scope in scopes:
+            must: list[models.FieldCondition] = [
+                models.FieldCondition(key="user_id", match=models.MatchValue(value=owner))
+            ]
+            if owner_scope:
+                must.append(models.FieldCondition(key="doc_id", match=models.MatchAny(any=owner_scope)))
+            try:
+                result = self.qdrant_client.query_points(
+                    collection_name=self._get_collection_name(owner),
+                    query=query_emb,
+                    query_filter=models.Filter(must=must),
+                    limit=fetch_limit,
+                )
+                search_result.extend(result.points)
+            except Exception as e:
+                # One owner's collection is not the caller's problem: it may be
+                # absent or being recreated. Keep the scopes that answered.
+                self.logger.warning(f"Search failed in the collection of {owner} for '{query[:30]}...': {e}")
+        search_result.sort(key=lambda hit: hit.score, reverse=True)
+        search_result = search_result[:fetch_limit]
 
         chunks = [hit.payload for hit in search_result]
         scores = [hit.score for hit in search_result]
 
         if self.hybrid_enabled:
-            lexical = self._lexical_search(user_id, query, self.hybrid_candidates, scope)
+            lexical: list[dict] = []
+            for owner, owner_scope in scopes:
+                lexical.extend(self._lexical_search(owner, query, self.hybrid_candidates, owner_scope))
             fused = rrf_fuse(
                 [chunks, lexical],
                 key=lambda item: (str(item.get("doc_id") or ""), int(item.get("chunk_index") or 0)),

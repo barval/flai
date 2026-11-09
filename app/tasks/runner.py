@@ -474,7 +474,7 @@ def wait_for_documents_indexed(app: Flask, user_id: str, doc_ids: list[str], can
         if cancel_check is not None and cancel_check():
             raise StepAborted("step cancelled while waiting for document indexing")
         try:
-            docs = get_user_documents(user_id) or []
+            docs = get_user_documents(user_id, include_shared=True) or []
         except Exception as e:
             logger.warning(f"document index status check failed: {e}")
             return

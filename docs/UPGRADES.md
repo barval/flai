@@ -206,7 +206,7 @@ with the next published image.
 | python-docx | 1.1.0 → **1.2.0** |
 
 The Qdrant volume was backed up before the first start. The collections came up green with every
-point in place (`user_valery` 350 points) and no migration error in the log, and the RAG evaluation
+point in place (`user_<login>` 350 points) and no migration error in the log, and the RAG evaluation
 after the upgrade reproduces the Phase 0 baseline exactly: hit@20 0.900, recall@20 0.900, MRR 0.688,
 nDCG@20 0.765, p50 39 ms and p95 63 ms once the server is warm (the first run after the restart
 showed p95 359 ms while the index was cold). A DOCX built with python-docx 1.2.0 imports, indexes

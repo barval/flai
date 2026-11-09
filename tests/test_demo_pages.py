@@ -88,8 +88,13 @@ PERSONAL_DATA = re.compile(
     r"password_hash|scrypt:|tavily_key_added_at|tvly-[A-Za-z0-9]|flai_[A-Za-z0-9]{16,}"
 )
 # The copyright line in the About dialog names the author and is part of the
-# interface; a leaked *account* shows up as a login value instead.
-REAL_ACCOUNTS = ('"login": "valery"', '"login": "andrey"', '"login": "testuser"')
+# interface; a leaked *account* shows up as a login value instead. The check is
+# an allowlist of the fictional demo users, so a name that is not on it — the
+# capture host's own accounts included — fails without naming any of them here.
+DEMO_LOGINS = {"anna", "igor", "maria", "alex", "priya", "tom"}
+LOGIN_VALUE = re.compile(r'"login":\s*"([^"]+)"')
+BACKUP_ARCHIVE = re.compile(r'"((?:users|full|documents|files)_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9-]+\.tar\.gz)"')
+DEMO_BACKUPS = {"users_2026-01-05_09-00-00.tar.gz", "full_2026-01-05_09-00-00.tar.gz"}
 BASE64_PAYLOAD = re.compile(r"data:[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+")
 
 
@@ -103,16 +108,16 @@ def test_pages_carry_no_personal_data(name):
     """A demo page is downloadable by anyone: no hashes, key ids or real accounts."""
     html = _readable(PAGES / name)
     assert not PERSONAL_DATA.search(html), f"{name}: personal data leaked into the demo"
-    for account in REAL_ACCOUNTS:
-        assert account not in html, f"{name}: real account {account} leaked into the demo"
+    assert set(LOGIN_VALUE.findall(html)) <= DEMO_LOGINS, f"{name}: a non-demo account leaked into the demo"
+    assert set(BACKUP_ARCHIVE.findall(html)) <= DEMO_BACKUPS, f"{name}: a real backup name leaked into the demo"
 
 
 def test_snapshots_carry_no_personal_data():
     for lang in ("ru", "en"):
         text = _readable(DEMO / "snapshot" / f"{lang}.json")
         assert not PERSONAL_DATA.search(text), f"{lang} snapshot: personal data"
-        for account in REAL_ACCOUNTS:
-            assert account not in text, f"{lang} snapshot: real account {account}"
+        assert set(LOGIN_VALUE.findall(text)) <= DEMO_LOGINS, f"{lang} snapshot: a non-demo account"
+        assert set(BACKUP_ARCHIVE.findall(text)) <= DEMO_BACKUPS, f"{lang} snapshot: a real backup name"
 
 
 def test_user_rows_are_rebuilt_not_copied():
@@ -123,7 +128,7 @@ def test_user_rows_are_rebuilt_not_copied():
         "routes": [
             {
                 "path": "/admin/api/users",
-                "body": [{"password_hash": "scrypt:32768:8:1$abc", "tavily_key_added_at": "x", "login": "valery"}],
+                "body": [{"password_hash": "scrypt:32768:8:1$abc", "tavily_key_added_at": "x", "login": "realuser"}],
             }
         ]
     }

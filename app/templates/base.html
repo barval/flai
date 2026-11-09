@@ -5,13 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ branding_site_name or _('FLAI') }}</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <link rel="stylesheet" href="/static/css/header-footer.css">
-    <link rel="stylesheet" href="/static/css/login.css">
-    <link rel="stylesheet" href="/static/css/chat.css">
-    <link rel="stylesheet" href="/static/css/modal.css">
-    <link rel="stylesheet" href="/static/css/markdown.css">
-    <link rel="stylesheet" href="/static/css/dark-theme.css">
+    {# Versioned like the scripts: STATIC_VERSION changes on every app start, so a
+       normal reload after a deploy fetches the new styles — a phone has no
+       hard-reload shortcut, and an unversioned stylesheet stays in its cache. #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/header-footer.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modal.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/markdown.css', v=config.STATIC_VERSION) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dark-theme.css', v=config.STATIC_VERSION) }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script>
         window.DEBUG_JS = {% if config.get('DEBUG_JS') %}true{% else %}false{% endif %};

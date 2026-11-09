@@ -59,7 +59,10 @@ def build_all(out_dir: Path, demo_dir: Path = DEMO_DIR) -> list[Path]:
     for lang in LANGS:
         for kind in KINDS:
             path = out_dir / f"{kind}-{lang}.html"
-            path.write_text(build_page(lang, kind, demo_dir), encoding="utf-8", newline="\n")
+            # The templates carry indentation-only lines; a published file should
+            # not, so `git diff --check` stays clean.
+            page = "\n".join(line.rstrip() for line in build_page(lang, kind, demo_dir).splitlines())
+            path.write_text(page + "\n", encoding="utf-8", newline="\n")
             written.append(path)
     return written
 

@@ -217,3 +217,125 @@ def test_handle_open_html_uses_preview_endpoint():
     assert "/api/html-preview/" in src
     # the blob path must be gone
     assert "URL.createObjectURL" not in src
+
+
+@pytest.mark.unit
+class TestBareDocumentIsPreviewable:
+    """A model that answers with a whole page and no fence still gets a preview.
+
+    2026-11-09: a Three.js voxel scene came back as a bare `<!DOCTYPE html>`
+    document. The chat rendered it as markup, DOMPurify removed its script and
+    style, and the message collapsed to its three control hints; the stored text
+    was complete, but there was no ```html block for the ▶ button to open.
+    """
+
+    BARE = "<!DOCTYPE html>\n<html><body><script>console.log(1)</script>Hi</body></html>"
+
+    def test_a_bare_document_is_returned_whole(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block(self.BARE) == self.BARE
+
+    def test_a_fenced_block_still_wins(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block(HTML_BLOCK) == "<!DOCTYPE html>\n<html><body><h1>Hi</h1></body></html>"
+
+    def test_plain_text_and_an_unterminated_fence_are_not_a_document(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block("just text, no code") is None
+        assert _extract_html_code_block("```html\n<!DOCTYPE html>\n<html>") is None
+
+    def test_the_endpoint_serves_a_bare_document(self, authenticated_client):
+        with (
+            patch("app.routes.messages.validate_session_ownership", return_value=True),
+            patch("app.routes.messages.get_db") as mock_get_db,
+        ):
+            conn = MagicMock()
+            conn.cursor.return_value.fetchone.return_value = {"id": 1, "content": self.BARE, "session_id": "s1"}
+            mock_get_db.return_value.__enter__.return_value = conn
+            response = authenticated_client.get("/api/html-preview/1")
+        assert response.status_code == 200
+        assert "console.log(1)" in response.get_data(as_text=True)
+
+
+@pytest.mark.unit
+class TestSeveralBlocksInOneAnswer:
+    """The preview must open the page, not the first snippet that mentions HTML.
+
+    2026-11-09: an answer carried an import snippet, a second CDN snippet, two
+    javascript fragments and the 7 KB document. The first ```html block won, so
+    the ▶ button opened a 99-byte <script> include — blank — while the page the
+    user could save and run was the last block.
+    """
+
+    SNIPPET = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>'
+    PAGE = "<!DOCTYPE html>\n<html><body><canvas id=c></canvas><script>init()</script></body></html>"
+
+    def _message(self, *blocks: tuple[str, str]) -> str:
+        parts = ["Вот что нужно поправить."]
+        for language, body in blocks:
+            parts.append(f"```{language}\n{body}\n```")
+        return "\n\n".join(parts)
+
+    def test_a_complete_document_wins_over_an_earlier_snippet(self):
+        from app.routes.messages import _extract_html_code_block
+
+        message = self._message(("html", self.SNIPPET), ("js", "console.log(1)"), ("html", self.PAGE))
+        assert _extract_html_code_block(message) == self.PAGE
+
+    def test_the_longest_block_wins_when_none_is_complete(self):
+        from app.routes.messages import _extract_html_code_block
+
+        message = self._message(("html", "<div>short</div>"), ("html", "<div>" + "x" * 200 + "</div>"))
+        assert _extract_html_code_block(message).startswith("<div>xxx")
+
+    def test_two_documents_keep_their_order(self):
+        from app.routes.messages import _extract_html_code_block
+
+        second = "<!DOCTYPE html>\n<html><body>second</body></html>"
+        message = self._message(("html", self.PAGE), ("html", second))
+        assert _extract_html_code_block(message) == self.PAGE
+
+    def test_no_html_block_is_still_none(self):
+        from app.routes.messages import _extract_html_code_block
+
+        assert _extract_html_code_block("```js\nconsole.log(1)\n```") is None
+
+
+@pytest.mark.unit
+class TestClassicScriptUrlsSurviveTheRescue:
+    """The import-map rescue must not rewrite a classic script src.
+
+    2026-11-09: a page loaded three from
+    `<script src=".../three@0.126.0/build/three.min.js">`. The rescue replaced
+    the URL with the bare specifier `three`, which an import map does not resolve
+    for a src attribute — the browser requested `/three`, THREE stayed undefined
+    and the preview was blank while the saved file worked.
+    """
+
+    CLASSIC = (
+        "<!DOCTYPE html><html><head>"
+        '<script src="https://cdn.jsdelivr.net/npm/three@0.126.0/build/three.min.js"></script>'
+        "</head><body><script>new THREE.Scene();</script></body></html>"
+    )
+
+    def test_a_classic_include_keeps_its_url(self):
+        from app.routes.messages import _ensure_three_importmap
+
+        assert 'src="https://cdn.jsdelivr.net/npm/three@0.126.0/build/three.min.js"' in _ensure_three_importmap(self.CLASSIC)
+
+    def test_an_inline_module_import_is_still_bare_aliased(self):
+        from app.routes.messages import _ensure_three_importmap
+
+        page = (
+            "<html><head></head><body><script type=\"module\">\n"
+            "import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';\n"
+            "import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';\n"
+            "</script></body></html>"
+        )
+        rescued = _ensure_three_importmap(page)
+        assert "from 'three'" in rescued
+        assert "from 'three/addons/controls/OrbitControls.js'" in rescued
+        assert 'type="importmap"' in rescued

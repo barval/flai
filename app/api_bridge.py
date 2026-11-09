@@ -563,6 +563,9 @@ def _enqueue_chat_data(
         "preview": preview,
         "response_style": response_style,
         "stream": True,
+        # A service account speaks for itself: the chat must not introduce it by
+        # the account's own name (the voice columns are such accounts).
+        "api_request": True,
     }
     if request_type == "image":
         first = images[0]

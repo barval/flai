@@ -168,6 +168,7 @@ def admin_panel():
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
     documents_db_size = get_folder_size_bytes(documents_folder)
+    dedup_saved_bytes = db.document_blob_savings_bytes()
 
     # Get chunk configuration from RAG module
     chunk_size = 500
@@ -221,6 +222,7 @@ def admin_panel():
         user_db_size=user_db_size,
         files_db_size=files_db_size,
         documents_db_size=documents_db_size,
+        dedup_saved_bytes=dedup_saved_bytes,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         chunk_strategy=chunk_strategy,
@@ -315,6 +317,8 @@ def get_users():
                              FROM jsonb_each(COALESCE(t3.step_plan->'revision_meta', '{}'::jsonb)) AS rev
                          ) u
                          WHERE t3.user_id = %s) as plan_incoming,
+                        (SELECT COUNT(DISTINCT document_id) FROM document_shares
+                         WHERE owner_login = %s) as shared_documents_count,
                         (SELECT COALESCE(used_bytes, 0)
                          FROM user_storage
                          WHERE user_id = %s) as storage_used
@@ -323,6 +327,7 @@ def get_users():
                     WHERE cs.user_id = %s
                 """,
                     (
+                        u["login"],
                         u["login"],
                         u["login"],
                         u["login"],
@@ -343,18 +348,24 @@ def get_users():
                 u_dict["messages_count"] = stats["messages"] if stats else 0
                 # Chat + task steps (incl. checkpoints and retries) + planner /
                 # plan reviews: the Users tab shows the user's whole LLM spend.
-                u_dict["outgoing_tokens"] = (
+                # The task and plan sums are SQL ``numeric``, which psycopg2 hands
+                # back as Decimal — and Flask's JSON encoder writes a Decimal as a
+                # STRING, so the browser received "628614" and
+                # String.toLocaleString() left it ungrouped. Cast to int here, at
+                # the boundary where the payload is built.
+                u_dict["outgoing_tokens"] = int(
                     (stats["outgoing_tokens"] or 0)
                     + (stats["task_outgoing"] or 0)
                     + (stats["plan_outgoing"] or 0)
                 ) if stats else 0
-                u_dict["incoming_tokens"] = (
+                u_dict["incoming_tokens"] = int(
                     (stats["incoming_tokens"] or 0)
                     + (stats["task_incoming"] or 0)
                     + (stats["plan_incoming"] or 0)
                 ) if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
+                u_dict["shared_documents_count"] = stats["shared_documents_count"] if stats else 0
                 u_dict["api_keys_count"] = stats["api_keys_count"] if stats else 0
                 u_dict["storage_used"] = int(stats.get("storage_used") or 0) if stats else 0
                 default_limit_mb = int(current_app.config.get("MAX_UPLOAD_STORAGE_MB", 500))
@@ -728,6 +739,7 @@ def get_stats():
                 "user_db_size": user_db_size,
                 "files_db_size": files_db_size,
                 "documents_db_size": documents_db_size,
+                "dedup_saved_bytes": db.document_blob_savings_bytes(),
             }
         )
     except Exception as e:

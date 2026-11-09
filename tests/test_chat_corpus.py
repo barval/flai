@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 
 def test_corpus_keeps_only_owned_ids(monkeypatch):
     monkeypatch.setattr(
-        "app.db.get_user_documents", lambda user_id: [{"id": "a"}, {"id": "b"}]
+        "app.db.get_user_documents", lambda user_id, include_shared=False: [{"id": "a"}, {"id": "b"}]
     )
 
     assert _corpus_doc_ids('["a", "foreign"]', "u") == ["a"]

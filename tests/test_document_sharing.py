@@ -7,6 +7,22 @@ from unittest.mock import patch
 import pytest
 
 
+@pytest.fixture
+def database(test_app):
+    """An application context on a clean slate for the database-backed tests."""
+    from app.database import get_db
+
+    with test_app.app_context():
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM document_shares WHERE owner_login IN ('alice', 'bob', 'carol') "
+                "OR shared_with IN ('alice', 'bob', 'carol')"
+            )
+            cursor.execute("DELETE FROM documents WHERE user_id IN ('alice', 'bob', 'carol')")
+        yield
+
+
 def _add_doc(login, doc_id, name="contract.pdf"):
     from app import db
 
@@ -14,6 +30,7 @@ def _add_doc(login, doc_id, name="contract.pdf"):
 
 
 @pytest.mark.requires_db
+@pytest.mark.usefixtures("database")
 class TestSharingModel:
     def test_share_and_unshare(self, test_app):
         with test_app.app_context():
@@ -105,6 +122,7 @@ class TestSharingModel:
 
 
 @pytest.mark.requires_db
+@pytest.mark.usefixtures("database")
 class TestSharingRoutes:
     @pytest.fixture
     def users(self, test_app):

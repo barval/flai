@@ -51,7 +51,12 @@ def test_context_places_history_before_long_term_facts(base_module):
     Putting the facts ahead of the transcript broke the llama.cpp prefix cache
     on every turn: the whole history after them had to be re-processed.
     """
-    fact = {"content": "Пользователь предпочитает кофе без сахара", "score": 0.8, "metadata": {"kind": "preference"}}
+    fact = {
+        "content": "Пользователь предпочитает кофе без сахара",
+        "score": 0.8,
+        "source": "llm_extract",
+        "metadata": {"kind": "preference"},
+    }
     base_module.app.modules["slm"] = MagicMock()
     base_module.app.modules["slm"].recall.return_value = [fact]
 
@@ -137,9 +142,12 @@ def test_only_scored_facts_and_the_profile_reach_the_prompt():
     from modules.base import BaseModule
 
     facts = [
-        {"content": "Сделай фото: тарелка с яблоками", "score": 0.31, "metadata": {"kind": "preference"}},
-        {"content": "Любит кофе без сахара", "score": 0.72, "metadata": {"kind": "preference"}},
-        {"content": "Работает системным администратором", "score": 0.05, "metadata": {"kind": "profile"}},
+        {"content": "Сделай фото: тарелка с яблоками", "score": 0.31, "source": "llm_extract",
+         "metadata": {"kind": "preference"}},
+        {"content": "Любит кофе без сахара", "score": 0.72, "source": "llm_extract",
+         "metadata": {"kind": "preference"}},
+        {"content": "Работает системным администратором", "score": 0.05, "source": "llm_extract",
+         "metadata": {"kind": "profile"}},
     ]
 
     selected = BaseModule.select_recalled_facts(facts, limit=7, min_score=0.5)
@@ -152,9 +160,11 @@ def test_only_scored_facts_and_the_profile_reach_the_prompt():
 def test_selection_keeps_the_limit_with_the_profile_first():
     from modules.base import BaseModule
 
-    facts = [{"content": f"Факт {i}", "score": 0.9, "metadata": {"kind": "preference"}} for i in range(10)]
-    facts.append({"content": "Профиль пользователя", "score": 0.0, "metadata": {"kind": "profile"}})
-    facts.append({"content": "Живёт в Твери", "score": 0.0, "metadata": {"kind": "profile"}})
+    facts = [{"content": f"Факт {i}", "score": 0.9, "source": "llm_extract", "metadata": {"kind": "preference"}}
+             for i in range(10)]
+    facts.append({"content": "Профиль пользователя", "score": 0.0, "kind": "profile",
+                  "metadata": {"kind": "profile"}})
+    facts.append({"content": "Живёт в Твери", "score": 0.0, "kind": "profile", "metadata": {"kind": "profile"}})
 
     selected = BaseModule.select_recalled_facts(facts, limit=3, min_score=0.5)
 

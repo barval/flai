@@ -1946,8 +1946,10 @@ def test_recall_slm_facts_formats_section(test_app):
 
     test_app.modules["slm"] = _fake_slm(
         [
-            {"content": "general fact", "score": 0.9, "metadata": {"fact_type": "general"}},
-            {"content": "profile fact", "kind": "profile", "score": 0.1, "metadata": {"fact_type": "general"}},
+            {"content": "general fact", "score": 0.9, "source": "llm_extract",
+             "metadata": {"fact_type": "general"}},
+            {"content": "profile fact", "kind": "profile", "score": 0.1, "source": "llm_extract",
+             "metadata": {"fact_type": "general"}},
         ]
     )
     out = recall_slm_facts(test_app, "составь меню", "demo", "ru")
@@ -1999,7 +2001,8 @@ def test_llm_step_prompt_contains_slm_facts(test_app):
         return "R"
 
     test_app.modules["slm"] = _fake_slm(
-        [{"content": "пользователь вегетарианец", "score": 0.9, "metadata": {"fact_type": "general"}}]
+        [{"content": "пользователь вегетарианец", "score": 0.9, "source": "llm_extract",
+          "metadata": {"fact_type": "general"}}]
     )
     with (
         patch("app.tasks.runner._call_reasoning", side_effect=fake_call),

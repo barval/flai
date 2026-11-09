@@ -22,7 +22,7 @@ def chat():
 
     user_id = session["login"]
     sessions = get_user_sessions(user_id)
-    documents = get_user_documents(user_id)
+    documents = get_user_documents(user_id, include_shared=True)
 
     if not session.get("current_session"):
         from app.db import get_last_session

@@ -38,7 +38,7 @@ def _corpus_doc_ids(raw, user_id: str) -> list[str]:
         return []
     from app.db import get_user_documents
 
-    owned = {str(doc["id"]) for doc in (get_user_documents(user_id) or []) if doc.get("id")}
+    owned = {str(doc["id"]) for doc in (get_user_documents(user_id, include_shared=True) or []) if doc.get("id")}
     return [doc_id for doc_id in wanted if doc_id in owned]
 
 

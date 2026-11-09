@@ -2505,7 +2505,7 @@ class RedisRequestQueue:
 
     def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Run an explicit deep-analysis (RLM) task on the slow worker."""
-        from app.db import get_document
+        from app.db import get_readable_document
         from app.resource_manager import get_resource_manager
         from app.utils import extract_text_from_file
         from modules.rlm import RlmModule
@@ -2556,7 +2556,9 @@ class RedisRequestQueue:
         corpus: dict[str, str] = {}
         documents_folder = self.app.config["DOCUMENTS_FOLDER"]
         for doc_id in doc_ids:
-            doc = get_document(doc_id, user_id)
+            # A document shared with this user is read from the owner's copy:
+            # sharing is an access right, not a duplicate of the file.
+            doc = get_readable_document(doc_id, user_id)
             if not doc or not doc.get("file_path"):
                 continue
             full_path = os.path.join(documents_folder, doc["file_path"])
@@ -2859,6 +2861,22 @@ class RedisRequestQueue:
         except RuntimeError:
             return f"{width}×{height}"
 
+    @staticmethod
+    def _user_name_for_task(task: dict[str, Any] | None) -> str:
+        """The account's own name for a web chat turn; empty for API callers.
+
+        A service account (a voice column, an integration) speaks for itself, so
+        an API request never introduces it by the account's name.
+        """
+        from app.userdb import get_display_name
+
+        task = task or {}
+        data = task.get("data") or {}
+        if data.get("api_request"):
+            return ""
+        login = task.get("user_id") or ""
+        return get_display_name(login) if login else ""
+
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
 
@@ -2993,6 +3011,7 @@ class RedisRequestQueue:
                 # skip the unload/reload on the retry to avoid ~20s dead time.
                 ensure_vram=(attempt == 0),
                 status_callback=_on_generation_started,
+                user_name=self._user_name_for_task(task),
             ):
                 full_response += token
                 if not error_detected:
@@ -5364,6 +5383,7 @@ class RedisRequestQueue:
             lang,
             user_id=user_id,
             skip_slm=memory_is_skipped(use_memory),
+            user_name=self._user_name_for_task(task),
         )
         style_instruction = get_style_instruction(lang, response_style)
 

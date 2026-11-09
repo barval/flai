@@ -20,6 +20,22 @@ searchable on its own name, and the original document is untouched. The vectors 
 when the source was indexed with the current embedding model; otherwise the document is indexed
 normally.
 
+## Sharing documents
+
+A document can be shared with other accounts of the same instance. Sharing grants **read access
+only**: the recipient finds the document in their own Documents panel marked with the owner's
+name, can open its preview and download it, and their own questions search it. They cannot
+rename, move, delete or re-share it, and the file, the index and the storage quota stay with the
+owner.
+
+Nothing is copied for a share. The document's vectors remain in the owner's Qdrant collection,
+and a search visits the collection of every user who shared a document with the caller (plus the
+caller's own) and ranks the merged hits; a scope limited to attached documents is split the same
+way. Revoking a share takes effect on the next question, because that collection is simply no
+longer visited.
+
+Sharing is per document, never per folder.
+
 ## Upload limits
 
 | What | Limit | Variable |

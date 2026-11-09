@@ -171,6 +171,12 @@ def _normalize_notice(text: str) -> str:
     return cleaned
 
 
+# Sources whose facts may be injected into a prompt. ``auto_import`` is the raw
+# history import; a fact with no provenance at all predates the meta store and
+# cannot be told apart from that import.
+TRUSTED_FACT_SOURCES = frozenset({"llm_extract", "user_request", "profile_consolidation"})
+
+
 class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
 
@@ -364,6 +370,18 @@ class BaseModule(TranslationMixin):
         return self._format_summary_section(prev_summary, lang)
 
     @staticmethod
+    def _user_section(lang: str, user_name: str) -> str:
+        """The one line that tells the assistant who it is talking to.
+
+        Empty for API callers: a service account (a voice column, an
+        integration) speaks for itself and must not introduce itself by the
+        account's name.
+        """
+        if not user_name:
+            return ""
+        return f"\nИмя пользователя: {user_name}." if lang == "ru" else f"\nThe user's name is {user_name}."
+
+    @staticmethod
     def select_recalled_facts(
         raw_facts: list[dict[str, Any]],
         limit: int = 7,
@@ -384,6 +402,15 @@ class BaseModule(TranslationMixin):
             if kind == "profile":
                 profile.append(fact)
                 continue
+            # Only facts the system knows how to place are injected. Imported
+            # history is the user's raw messages — questions and task text, not
+            # facts about them — and keyword recall scores it high (measured 0.68
+            # for "draw a cat" against a line about water blocks), so a fact with
+            # no provenance or an untrusted one is dropped by source instead of
+            # by score.
+            source = fact.get("source") or meta.get("source")
+            if source not in TRUSTED_FACT_SOURCES:
+                continue
             try:
                 score = float(fact.get("score") or 0.0)
             except (TypeError, ValueError):
@@ -402,6 +429,7 @@ class BaseModule(TranslationMixin):
         skip_slm: bool = False,
         rag_context: str = "",
         rag_source: str = "",
+        user_name: str = "",
     ) -> str:
         """Retrieve conversation history + SLM long-term memory with safety margin.
 
@@ -475,6 +503,11 @@ class BaseModule(TranslationMixin):
             slm_facts_str = "\n" + "\n".join(lines)
             slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
 
+        # Who the assistant is talking to. The web UI knows the account's own
+        # name; API callers pass nothing, because a service account speaks for
+        # itself and must not introduce itself by the account's name.
+        user_section = self._user_section(lang, user_name)
+
         # Step 4: Build search section (needed before budget check for fallback)
         search_section = ""
         if rag_context:
@@ -505,7 +538,7 @@ class BaseModule(TranslationMixin):
                 f"SLM: {slm_tokens}, Available: {available_tokens} — returning search+SLM without history"
             )
             summary_section = self._get_session_summary_section(session_id, None, lang)
-            context = search_section + summary_section + slm_facts_str
+            context = user_section + search_section + summary_section + slm_facts_str
             return context.lstrip()
 
         # Step 6: Load history with SQL-level limit based on remaining budget.
@@ -524,7 +557,7 @@ class BaseModule(TranslationMixin):
         # Facts come last on purpose: the recalled set changes with every query,
         # and anything after it in the system prompt would lose its llama.cpp
         # prefix cache each turn (the transcript alone is ~5k tokens).
-        context = search_section + summary_section + history_str + slm_facts_str
+        context = user_section + search_section + summary_section + history_str + slm_facts_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
@@ -1026,6 +1059,7 @@ class BaseModule(TranslationMixin):
         user_id: str | None = None,
         rag_context: str = "",
         rag_source: str = "",
+        user_name: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         context_str = self._get_context_for_model(
@@ -1036,6 +1070,7 @@ class BaseModule(TranslationMixin):
             user_id=user_id,
             rag_context=rag_context,
             rag_source=rag_source,
+            user_name=user_name,
         )
         messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
         if not messages:
@@ -1066,6 +1101,7 @@ class BaseModule(TranslationMixin):
         rag_source: str = "",
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
+        user_name: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response.
 
@@ -1080,6 +1116,7 @@ class BaseModule(TranslationMixin):
             user_id=user_id,
             rag_context=rag_context,
             rag_source=rag_source,
+            user_name=user_name,
         )
         messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
         if not messages:

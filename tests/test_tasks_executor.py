@@ -2050,7 +2050,14 @@ def test_plan_phase_prompt_contains_slm_facts(db_env, test_app, gate_open, monke
     monkeypatch.setattr(ex, "run_direct_step", lambda *a, **k: _ok_step_result())
     monkeypatch.setattr(ex, "_run_final_summary", lambda *a, **k: "final answer text here")
     test_app.modules["slm"] = _fake_slm(
-        [{"content": "пользователь не ест грибы", "score": 0.9, "metadata": {"fact_type": "general"}}]
+        [
+            {
+                "content": "пользователь не ест грибы",
+                "score": 0.9,
+                "source": "llm_extract",
+                "metadata": {"fact_type": "general"},
+            }
+        ]
     )
 
     _cycle(test_app)

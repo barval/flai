@@ -39,6 +39,12 @@ BREADTH_SHARE = 0.25
 MIN_TOP_K = 1
 # Used only when the reasoning model has no configured window (a fresh install).
 DEFAULT_CONTEXT_TOKENS = 8192
+# A document no larger than this is passed whole once it is the best match,
+# because a question can need two of its chunks — a rule in one, its time window
+# in another. Measured on the noise-law case: one relevant chunk (article 4,
+# "repair works"), the hours in article 2 thirteen places down, and 96 % of the
+# window unused; the whole 10-chunk law (about 1 900 tokens) answered exactly.
+WHOLE_DOCUMENT_MAX_TOKENS = 2000
 # The fixed prompt is measured for the request itself; this is the estimate used
 # where the prompt does not exist yet (the search cap, the fast worker).
 DEFAULT_FIXED_TOKENS = 800
@@ -107,6 +113,12 @@ def retrieval_budget(
         if corpus_documents
         else budget.available
     )
+    if corpus_documents:
+        # A small corpus can still need one whole document: a rule and its time
+        # window live in different chunks, and a single relevance chunk cannot
+        # answer. The floor is what one small document costs, so the expansion
+        # has somewhere to put it without stealing the conversation's room.
+        documents_need = max(documents_need, min(budget.available, WHOLE_DOCUMENT_MAX_TOKENS))
     documents_tokens, history_tokens = budget.split(history_need=history_need, document_need=documents_need)
     documents_tokens = cap_share(documents_tokens, budget.available, _config_value(app, "RAG_CONTEXT_PERCENT", 0))
 

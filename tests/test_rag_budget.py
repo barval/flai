@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.rag_budget import retrieval_budget, tokens_per_fragment
+from app.rag_budget import WHOLE_DOCUMENT_MAX_TOKENS, retrieval_budget, tokens_per_fragment
 from modules.rag import apply_coverage
 
 
@@ -50,6 +50,15 @@ def test_a_small_corpus_is_covered_entirely(app):
     assert budget.coverage_files == 26
     assert budget.top_k >= 1
     assert budget.top_k + budget.coverage_files == budget.fragments
+
+
+@pytest.mark.unit
+def test_a_small_corpus_can_hold_one_document_whole(app):
+    # The noise-law case: three visible documents, one relevance chunk, and the
+    # answer split between two chunks of the same document. The budget must have
+    # room for the whole small document, otherwise depth stays at one chunk.
+    budget = _budget(app, 24576, corpus_documents=3)
+    assert budget.tokens >= WHOLE_DOCUMENT_MAX_TOKENS
 
 
 @pytest.mark.unit

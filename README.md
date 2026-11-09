@@ -91,6 +91,10 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 - **Long-term memory stops repeating imported history.** Recall used to inject the user's imported
   messages as "facts about the user" — a request to draw a cat could retrieve a line about water
   blocks. Only facts with a known provenance are injected now.
+- **A small document reaches the model whole, not as a single fragment.** A rule and the hours it
+  applies to can sit in different chunks of the same law; a matching document of up to
+  `WHOLE_DOCUMENT_MAX_TOKENS` (2 000 tokens) is now passed in full. Verified on the noise law: the
+  answer became exact — "not now, quiet hours are 22:00–07:00 on weekdays".
 - **The Admin Users tab is readable again.** Outgoing and incoming token totals arrive as numbers
   (they used to arrive as strings and print without digit grouping), the headers of the four widest
   columns sit on two lines, the Documents column shows how many of them are shared, and the storage

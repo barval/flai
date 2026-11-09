@@ -689,7 +689,12 @@ def get_user_documents(user_id, include_shared=False):
             """,
                 (user_id,),
             )
-            documents.extend(dict(row) for row in c.fetchall())
+            shared_rows = [dict(row) for row in c.fetchall()]
+            for doc in shared_rows:
+                # The folder belongs to the owner and means nothing to the
+                # recipient, who would silently lose the document from the panel.
+                doc["folder_id"] = None
+            documents.extend(shared_rows)
             documents.sort(key=lambda doc: str(doc.get("uploaded_at") or ""), reverse=True)
         return _localize_document_dates(documents)
 

@@ -40,6 +40,9 @@ def test_mobile_storage_is_one_line():
     mobile = styles[styles.index("@media (max-width: 768px)"):]
     assert "#users-table .storage-cell .storage-used {\n        display: inline;" in mobile
     assert "#users-table .storage-limit {\n        display: inline-flex;" in mobile
+    # The generic input rule would otherwise win on specificity and grow the box.
+    assert "#users-table tbody td input.storage-limit-input {\n        flex: 0 0 4.5rem;" in mobile
+    assert mobile.index("input.storage-limit-input") > mobile.index('#users-table tbody td input[type="number"]')
 
 
 def test_stylesheets_are_cache_versioned():

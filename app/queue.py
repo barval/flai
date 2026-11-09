@@ -5039,6 +5039,15 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "routing"})
         current_message_id = (task or {}).get("data", {}).get("current_message_id")
+        # The classifier cannot see the panel selection, and the library digest
+        # only names the newest files: a question about an older CV was routed to
+        # a web search (and answered about a namesake) while the document the
+        # user had ticked held the answer. Name the attached documents here.
+        attached_names: list[str] = []
+        for doc_id in ((task or {}).get("data") or {}).get("doc_ids") or []:
+            doc = db.get_readable_document(str(doc_id), user_id)
+            if doc and doc.get("filename"):
+                attached_names.append(str(doc["filename"]))
         recent_context = self.app.modules["base"].build_router_context(
             session_id,
             user_id,
@@ -5046,6 +5055,7 @@ class RedisRequestQueue:
             lang,
             exclude_message_id=current_message_id,
             marker_hints=not self.app.modules["base"].KERNEL_ENABLED,
+            attached_docs=attached_names,
         )
         router_result = self.app.modules["base"].process_message(
             message_text,

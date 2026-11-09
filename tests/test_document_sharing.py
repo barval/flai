@@ -1,6 +1,7 @@
 # tests/test_document_sharing.py
 """Read-only document sharing: ACL, listing, access checks, search scope."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -134,11 +135,29 @@ class TestSharingRoutes:
         assert alice.post("/api/documents/d1/share", json={"login": "nobody"}).status_code == 404
         assert alice.post("/api/documents/d1/share", json={}).status_code == 400
 
-    def test_shareable_users_excludes_the_caller(self, test_app, users):
+    def test_shareable_users_excludes_the_caller_and_the_admin(self, test_app, users):
         alice = self._client(test_app, "alice")
         users = alice.get("/api/documents/shareable-users").get_json()["users"]
         assert "alice" not in users
         assert "bob" in users
+        # The admin account has no chats or documents of its own.
+        assert "admin" not in users
+
+
+class TestShareDialog:
+    """The picker is one checkbox per user, not a one-at-a-time add."""
+
+    def test_dialog_renders_a_checkbox_list(self):
+        source = (Path(__file__).resolve().parents[1] / "app/static/js/chat-documents.js").read_text(encoding="utf-8")
+        assert "doc-share-option" in source
+        assert "doc-share-check" in source
+        assert "type = 'checkbox'" in source
+        assert "documents_share_add" not in source
+        assert "doc-share-select" not in source
+
+    def test_admin_is_not_offered(self):
+        source = (Path(__file__).resolve().parents[1] / "app/routes/documents.py").read_text(encoding="utf-8")
+        assert 'other != "admin"' in source
 
 
 class TestSearchScope:

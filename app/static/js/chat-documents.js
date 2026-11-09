@@ -800,18 +800,6 @@ function openShareDialog(docId, docName) {
     list.className = 'doc-share-list';
     box.appendChild(list);
 
-    const row = document.createElement('div');
-    row.className = 'doc-share-add';
-    const select = document.createElement('select');
-    select.className = 'doc-share-select';
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'doc-share-add-button';
-    addBtn.textContent = t('documents_share_add');
-    row.appendChild(select);
-    row.appendChild(addBtn);
-    box.appendChild(row);
-
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'doc-share-close';
@@ -822,74 +810,72 @@ function openShareDialog(docId, docName) {
     document.body.appendChild(overlay);
     activeShareDialog = overlay;
 
+    // One checkbox per user: a checked box means the document is shared with
+    // that account, and the change is saved the moment it is clicked.
+    function toggleShare(login, shared, checkbox) {
+        checkbox.disabled = true;
+        const base = '/api/documents/' + encodeURIComponent(docId);
+        const request = shared
+            ? fetchWithCSRF(base + '/share', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login: login })
+            })
+            : fetchWithCSRF(base + '/share/' + encodeURIComponent(login), { method: 'DELETE' });
+        request
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    checkbox.checked = !shared;
+                    alert(data.error);
+                }
+            })
+            .catch(err => {
+                checkbox.checked = !shared;
+                alert(t('error') + ': ' + err.message);
+            })
+            .finally(() => {
+                checkbox.disabled = false;
+            });
+    }
+
     function refresh() {
         Promise.all([
             fetchWithCSRF('/api/documents/shareable-users').then(res => res.json()),
             fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/shares').then(res => res.json())
         ]).then(([usersData, sharesData]) => {
-            const shares = (sharesData.shares || []).map(share => share.shared_with);
-            const users = (usersData.users || []).filter(user => !shares.includes(user));
+            const shared = new Set((sharesData.shares || []).map(share => share.shared_with));
+            const users = usersData.users || [];
             list.innerHTML = '';
-            if (!shares.length) {
+            if (!users.length) {
                 const empty = document.createElement('div');
                 empty.className = 'doc-share-empty';
-                empty.textContent = t('documents_share_empty');
+                empty.textContent = t('documents_share_none_available');
                 list.appendChild(empty);
+                return;
             }
-            shares.forEach(login => {
-                const line = document.createElement('div');
-                line.className = 'doc-share-row';
+            users.forEach(login => {
+                const option = document.createElement('label');
+                option.className = 'doc-share-option';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'doc-share-check';
+                checkbox.checked = shared.has(login);
+                checkbox.addEventListener('change', () => toggleShare(login, checkbox.checked, checkbox));
                 const name = document.createElement('span');
                 name.textContent = login;
-                const revoke = document.createElement('button');
-                revoke.type = 'button';
-                revoke.className = 'doc-share-revoke';
-                revoke.title = t('documents_share_revoke');
-                revoke.textContent = '\u2716';
-                revoke.addEventListener('click', () => {
-                    fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/share/' + encodeURIComponent(login), { method: 'DELETE' })
-                        .then(res => res.json())
-                        .then(refresh)
-                        .catch(err => alert(t('error') + ': ' + err.message));
-                });
-                line.appendChild(name);
-                line.appendChild(revoke);
-                list.appendChild(line);
+                option.appendChild(checkbox);
+                option.appendChild(name);
+                list.appendChild(option);
             });
-            select.innerHTML = '';
-            if (!users.length) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = t('documents_share_none_available');
-                select.appendChild(option);
-                addBtn.disabled = true;
-            } else {
-                users.forEach(login => {
-                    const option = document.createElement('option');
-                    option.value = login;
-                    option.textContent = login;
-                    select.appendChild(option);
-                });
-                addBtn.disabled = false;
+            if (!shared.size) {
+                const note = document.createElement('div');
+                note.className = 'doc-share-empty';
+                note.textContent = t('documents_share_empty');
+                list.appendChild(note);
             }
         }).catch(err => alert(t('error') + ': ' + err.message));
     }
-
-    addBtn.addEventListener('click', () => {
-        const chosen = select.value;
-        if (!chosen) return;
-        fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/share', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ login: chosen })
-        }).then(res => res.json()).then(data => {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-            refresh();
-        }).catch(err => alert(t('error') + ': ' + err.message));
-    });
 
     closeBtn.addEventListener('click', closeShareDialog);
     overlay.addEventListener('click', event => {

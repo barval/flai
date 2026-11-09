@@ -709,13 +709,18 @@ def api_document_preview_pdf_page(doc_id, page):
 
 @bp.route("/documents/shareable-users", methods=["GET"])
 def api_shareable_users():
-    """Logins a document may be shared with (everyone but the caller)."""
+    """Logins a document may be shared with.
+
+    The caller is not offered their own document, and neither is the admin:
+    the admin account has no chats and no documents, so a share to it would be
+    a permission nobody can use.
+    """
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
     from app.userdb import get_all_user_ids
 
     login = session["login"]
-    users = [other for other in get_all_user_ids() if other != login]
+    users = [other for other in get_all_user_ids() if other != login and other != "admin"]
     return jsonify({"users": users})
 
 

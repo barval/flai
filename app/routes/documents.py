@@ -749,28 +749,9 @@ def api_delete_document(doc_id):
     if not doc:
         return jsonify({"error": _("Document not found")}), 404
 
-    rag = current_app.modules.get("rag")
-    if rag and rag.available:
-        try:
-            rag.delete_document(doc_id, session["login"])
-        except Exception as e:
-            current_app.logger.error(f"Failed to delete document from index: {e}")
-
-    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    file_path = os.path.join(documents_folder, doc["file_path"])
-
-    # Security: prevent path traversal attacks
-    real_file_path = os.path.realpath(file_path)
-    real_documents_folder = os.path.realpath(documents_folder)
-    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
-        current_app.logger.warning(f"Path traversal attempt blocked: {doc['file_path']}")
-        return jsonify({"error": _("Permission denied")}), 403
-
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            current_app.logger.error(f"Error deleting file {file_path}: {e}")
-
-    db.delete_document(doc_id, session["login"])
+    # One deletion path for every caller: it releases the blob reference and
+    # unlinks the file only when this was the last document using it. This route
+    # used to unlink the file itself, which removed a shared blob out from under
+    # every other document pointing at it.
+    _delete_document_resources(doc, session["login"])
     return jsonify({"status": "ok"})

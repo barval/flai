@@ -801,7 +801,8 @@ def get_document(doc_id, user_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at, embedding_model
+        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at,
+               embedding_model, blob_sha256, stored_bytes
         FROM documents
         WHERE id = %s AND user_id = %s
         """,
@@ -918,7 +919,7 @@ def get_folder_documents(user_id, folder_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_path
+        SELECT id, filename, file_size, file_path, blob_sha256
         FROM documents
         WHERE user_id = %s AND folder_id = %s
         """,

@@ -40,3 +40,12 @@ def test_mobile_storage_is_one_line():
     mobile = styles[styles.index("@media (max-width: 768px)"):]
     assert "#users-table .storage-cell .storage-used {\n        display: inline;" in mobile
     assert "#users-table .storage-limit {\n        display: inline-flex;" in mobile
+
+
+def test_stylesheets_are_cache_versioned():
+    """A phone cannot hard-reload; a cached stylesheet must expire on its own."""
+    for template in ("base.html", "admin.html"):
+        source = (ROOT / "app/templates" / template).read_text(encoding="utf-8")
+        for line in source.splitlines():
+            if "stylesheet" in line and "/static/css/" in line:
+                assert "v=config.STATIC_VERSION" in line, line.strip()

@@ -80,3 +80,42 @@ def test_templates_name_document_extraction_as_rag():
     # Both templates keep the category-5 header the parser contract relies on.
     assert "## 5. ПОИСК В ДОКУМЕНТАХ — [-RAG-]" in ru
     assert "## 5. DOCUMENT SEARCH — [-RAG-]" in en
+
+
+def test_attached_documents_are_named_for_this_message(monkeypatch):
+    """The library line lists the newest five files, so an older document the
+    user ticked is invisible to the classifier unless the attachment is named."""
+    monkeypatch.setattr(app.db, "get_user_document_names", lambda user_id, limit=5: (96, ["latest.xlsx"]))
+
+    context = _module().build_router_context(
+        "", "tester", "Сколько лет Валерию Барсукову?", "ru", attached_docs=["CV.pdf"]
+    )
+
+    assert "К сообщению приложены документы: CV.pdf" in context
+    assert "[-RAG-]" in context
+    assert context.index("CV.pdf") > context.index("latest.xlsx"), "the attachment follows the library line"
+
+
+def test_attached_documents_line_is_absent_without_attachments(monkeypatch):
+    monkeypatch.setattr(app.db, "get_user_document_names", lambda user_id, limit=5: (96, ["latest.xlsx"]))
+
+    assert "приложены документы" not in _module().build_router_context("", "tester", "query", "ru")
+
+
+def test_attached_documents_line_speaks_the_user_language(monkeypatch):
+    monkeypatch.setattr(app.db, "get_user_document_names", lambda user_id, limit=5: (1, ["a.pdf"]))
+
+    context = _module().build_router_context("", "tester", "how old is he?", "en", attached_docs=["CV.pdf"])
+
+    assert "Documents attached to this message: CV.pdf" in context
+
+
+def test_at_most_five_attached_names_are_listed(monkeypatch):
+    monkeypatch.setattr(app.db, "get_user_document_names", lambda user_id, limit=5: (10, ["a.pdf"]))
+
+    context = _module().build_router_context(
+        "", "tester", "query", "ru", attached_docs=[f"doc{i}.pdf" for i in range(8)]
+    )
+
+    assert "doc4.pdf" in context
+    assert "doc5.pdf" not in context

@@ -81,7 +81,8 @@ class TestFolderFrontendLogic:
 
     def test_drag_and_drop(self):
         assert "function attachDocumentDragAndDrop" in CHAT_DOCS
-        assert 'draggable="true"' in CHAT_DOCS
+        # A document shared with this account is read-only and not draggable.
+        assert 'draggable="${sharedBy ? ' + "'false'" + ' : ' + "'true'" + '}"' in CHAT_DOCS
         assert "dataTransfer.setData" in CHAT_DOCS
         assert "onDocumentDrop" in CHAT_DOCS
 

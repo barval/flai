@@ -27,6 +27,7 @@ ADMIN_CONTEXT = {
     "user_db_size": 1,
     "files_db_size": 1,
     "documents_db_size": 1,
+    "dedup_saved_bytes": 0,
     "chunk_size": 500,
     "chunk_overlap": 50,
     "chunk_strategy": "structured",

@@ -74,13 +74,14 @@ class TestAdminUserColumns:
             assert isinstance(row["outgoing_tokens"], int), row["login"]
             assert isinstance(row["incoming_tokens"], int), row["login"]
 
-    def test_shared_documents_count_counts_documents_not_readers(self, admin_client, member):
+    def test_shared_documents_count_counts_documents_not_readers(self, admin_client, member, test_app):
         from app import db
 
-        db.save_document(member, "shared-1", "contract.pdf", 100, ".pdf", f"{member}/shared-1.pdf")
-        db.save_document(member, "private-1", "notes.txt", 100, ".txt", f"{member}/private-1.txt")
-        db.share_document("shared-1", member, "reader-one")
-        db.share_document("shared-1", member, "reader-two")
+        with test_app.app_context():
+            db.save_document(member, "shared-1", "contract.pdf", 100, ".pdf", f"{member}/shared-1.pdf")
+            db.save_document(member, "private-1", "notes.txt", 100, ".txt", f"{member}/private-1.txt")
+            db.share_document("shared-1", member, "reader-one")
+            db.share_document("shared-1", member, "reader-two")
 
         rows = {row["login"]: row for row in admin_client.get("/admin/api/users").get_json()}
 

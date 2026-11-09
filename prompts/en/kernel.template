@@ -21,6 +21,10 @@ Choose exactly one:
 - Past tense about the conversation itself is history, not the action it mentions. Past tense about the world —
   yesterday's news, last week's events — is search.
 - A request to extract facts that live in the user's documents is rag, even when it describes past events.
+- When the context says documents are attached to this message, a question whose answer may be in them is rag,
+  even when the message does not mention documents and reads like a general fact about a person or an event.
+- In "query" keep proper names exactly as the user wrote them: never change their case or their gender form.
+  A name rewritten into another form sends the next stage after a different person.
 - A question about the current time or date is none, never search.
 - Simple arithmetic is none: the calculator tool is enough, and it is never reasoning.
 - Converting an amount at a current rate or price is search.

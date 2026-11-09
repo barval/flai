@@ -296,7 +296,7 @@ def test_rag_step_waits_for_attached_documents_to_be_indexed(test_app):
     """
     polls = []
 
-    def fake_docs(user_id):
+    def fake_docs(user_id, include_shared=False):
         polls.append(user_id)
         # First two polls: the attachment is still indexing; then it settles.
         status = "indexing" if len(polls) < 3 else "indexed"

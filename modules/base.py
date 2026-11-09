@@ -693,6 +693,7 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         exclude_message_id: int | None = None,
         marker_hints: bool = True,
+        attached_docs: list[str] | None = None,
     ) -> str:
         """Build a compact recent-conversation digest for the router.
 
@@ -706,6 +707,11 @@ class BaseModule(TranslationMixin):
         which the marker router matches on. The request kernel never sees a
         marker and its prompt does not define one, so it gets the same rule
         without the dialect.
+
+        ``attached_docs`` are the documents the user attached or ticked for THIS
+        message. The library line lists the newest files, which is why a question
+        about an older CV ("how old is ...?") was routed to a web search while
+        the answer sat in the selected document — measured 2026-11-09.
         """
         if session_id:
             try:
@@ -768,6 +774,21 @@ class BaseModule(TranslationMixin):
                         "Просьба найти, перечислить или вывести сведения из этих файлов — "
                         f"поиск в документах{' [-RAG-]' if marker_hints else ''}, а не история переписки."
                     )
+        if attached_docs:
+            listed = ", ".join(str(name) for name in attached_docs[:5])
+            if lang == "en":
+                lines.append(
+                    f"Documents attached to this message: {listed}. A question whose answer "
+                    "may be in them is document search"
+                    f"{' [-RAG-]' if marker_hints else ''}, even when the message does not "
+                    "mention documents."
+                )
+            else:
+                lines.append(
+                    f"К сообщению приложены документы: {listed}. Вопрос, ответ на который "
+                    "может быть в них, — поиск в документах"
+                    f"{' [-RAG-]' if marker_hints else ''}, даже если документы не упомянуты."
+                )
         if self.ROUTER_SLM_FACTS > 0:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
             if slm:

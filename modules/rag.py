@@ -233,7 +233,14 @@ class RagModule:
         Each entry is ``(owner_login, doc_ids)``; ``doc_ids`` is ``None`` for the
         caller's own collection when the request is not scoped to attachments.
         """
-        shared = get_shared_document_ids(user_id)
+        try:
+            shared = get_shared_document_ids(user_id)
+        except Exception as exc:  # noqa: BLE001 — a sharing lookup must never break a search
+            # The database is not reachable from every caller (unit-level use, a
+            # degraded start): search then sees only its own collection, exactly
+            # as it did before sharing existed.
+            self.logger.debug(f"sharing lookup failed for {user_id}: {exc}")
+            shared = {}
         scopes: list[tuple[str, list[str] | None]] = []
         if scope_ids is None:
             scopes.append((user_id, None))
@@ -697,7 +704,10 @@ class RagModule:
                 # One owner's collection is not the caller's problem: it may be
                 # absent or being recreated. Keep the scopes that answered.
                 self.logger.warning(f"Search failed in the collection of {owner} for '{query[:30]}...': {e}")
-        search_result.sort(key=lambda hit: hit.score, reverse=True)
+        # Qdrant returns a single collection already ordered by score; a merge
+        # across collections is the only case that has to be sorted here.
+        if len(scopes) > 1:
+            search_result.sort(key=lambda hit: hit.score, reverse=True)
         search_result = search_result[:fetch_limit]
 
         chunks = [hit.payload for hit in search_result]

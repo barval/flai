@@ -168,6 +168,7 @@ def admin_panel():
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
     documents_db_size = get_folder_size_bytes(documents_folder)
+    dedup_saved_bytes = db.document_blob_savings_bytes()
 
     # Get chunk configuration from RAG module
     chunk_size = 500
@@ -221,6 +222,7 @@ def admin_panel():
         user_db_size=user_db_size,
         files_db_size=files_db_size,
         documents_db_size=documents_db_size,
+        dedup_saved_bytes=dedup_saved_bytes,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         chunk_strategy=chunk_strategy,
@@ -728,6 +730,7 @@ def get_stats():
                 "user_db_size": user_db_size,
                 "files_db_size": files_db_size,
                 "documents_db_size": documents_db_size,
+                "dedup_saved_bytes": db.document_blob_savings_bytes(),
             }
         )
     except Exception as e:

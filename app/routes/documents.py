@@ -1,5 +1,6 @@
 # app/routes/documents.py
 import contextlib
+import hashlib
 import io
 import mimetypes
 import os
@@ -275,12 +276,27 @@ def _delete_document_resources(doc, login):
         except Exception as e:
             current_app.logger.error(f"Failed to delete document from index: {e}")
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    file_path = os.path.join(documents_folder, doc.get("file_path") or "")
-    real_file_path = os.path.realpath(file_path)
-    real_documents_folder = os.path.realpath(documents_folder)
-    if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
-        with contextlib.suppress(Exception):
-            os.remove(file_path)
+    blob_sha256 = doc.get("blob_sha256")
+    if blob_sha256:
+        # Content-addressed: drop this user's reference; the bytes stay while
+        # another document still points at them.
+        removed, _relative = db.release_document_blob(blob_sha256)
+        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
+        if removed:
+            real_file_path = os.path.realpath(file_path)
+            real_documents_folder = os.path.realpath(documents_folder)
+            if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
+                with contextlib.suppress(Exception):
+                    os.remove(file_path)
+    else:
+        # Legacy row, stored before content addressing: the file is this
+        # document's own.
+        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
+        real_file_path = os.path.realpath(file_path)
+        real_documents_folder = os.path.realpath(documents_folder)
+        if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
+            with contextlib.suppress(Exception):
+                os.remove(file_path)
     db.delete_document(doc["id"], login)
 
 
@@ -395,24 +411,39 @@ def api_upload_document():
         filename = img_new_name
 
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    user_folder = os.path.join(documents_folder, session["login"])
-    os.makedirs(user_folder, exist_ok=True)
+    # One physical file per content, shared by every user who uploads it. The
+    # per-user record stays independent: deleting it drops a reference and the
+    # file survives while anybody else still holds the same content.
+    blobs_folder = os.path.join(documents_folder, "_blobs")
+    os.makedirs(blobs_folder, exist_ok=True)
 
-    # Safe name: UUID + original extension
+    sha256 = hashlib.sha256(file_content).hexdigest()
     safe_ext = os.path.splitext(filename)[1].lower()
-    safe_filename = f"{doc_id}{safe_ext}"
-    file_path = os.path.join(user_folder, safe_filename)
+    relative_path = os.path.join("_blobs", f"{sha256}{safe_ext}")
+    file_path = os.path.join(documents_folder, relative_path)
 
-    # Double-check path does not escape DOCUMENTS_FOLDER
+    # The blob path is built from a hex digest and a lowercased extension, never
+    # from user input; the containment check stays as a guard against a future
+    # change to that construction.
     real_file_path = os.path.realpath(file_path)
-    real_user_folder = os.path.realpath(user_folder)
-    if not real_file_path.startswith(real_user_folder + os.sep):
+    real_blobs_folder = os.path.realpath(blobs_folder)
+    if not real_file_path.startswith(real_blobs_folder + os.sep):
         return jsonify({"error": _("Invalid file path")}), 400
 
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-
-    relative_path = os.path.join(session["login"], safe_filename)
+    created_blob = db.retain_document_blob(sha256, relative_path, file_size, image_mime or None)
+    if created_blob:
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+    else:
+        # Reuse the stored copy: the extension of this upload may differ, so the
+        # authoritative path comes from the blob row.
+        with db.get_db() as _conn:
+            _c = _conn.cursor()
+            _c.execute("SELECT file_path FROM document_blobs WHERE sha256 = %s", (sha256,))
+            _row = _c.fetchone()
+        if _row and _row["file_path"]:
+            relative_path = _row["file_path"]
+            file_path = os.path.join(documents_folder, relative_path)
     folder_id = request.form.get("folder_id") or None
     if folder_id is not None and not db.get_folder(folder_id, session["login"]):
         return jsonify({"error": _("Folder not found")}), 400
@@ -424,6 +455,8 @@ def api_upload_document():
         file_ext=os.path.splitext(filename)[1].lower(),
         file_path=relative_path,
         folder_id=folder_id,
+        blob_sha256=sha256,
+        stored_bytes=file_size if created_blob else 0,
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)

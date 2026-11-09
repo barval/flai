@@ -46,6 +46,7 @@
                 <span>{{ _('Chat DB') }}: <span id="chat-db-size" class="db-value">{{ (chat_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Files DB') }}: <span id="files-db-size" class="db-value">{{ (files_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Documents DB') }}: <span id="documents-db-size" class="db-value">{{ (documents_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+                <span>{{ _('Saved by deduplication') }}: <span id="dedup-saved-size" class="db-value">{{ (dedup_saved_bytes / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
             </div>
         </div>
         <div class="users-table-wrapper">

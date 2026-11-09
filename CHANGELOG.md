@@ -1,5 +1,9 @@
 ## [v13.1] — Unreleased
 
+### Added
+
+- **Identical documents are stored once.** An upload is keyed by the file's SHA-256: a document already on the instance is reused instead of written a second time, while each upload keeps its own name, folder and owner, so deleting one removes only that record and the bytes go away with the last reference. The storage quota is charged on what the upload added — the first copy pays, later copies of the same content pay nothing — and the admin Users tab reports the saved volume next to the database sizes.
+
 ### Fixed
 
 - **A preview that kept the page but lost three.js stayed black.** Pages that load three as a classic `<script src="…/three.min.js">` were rewritten by the import-map rescue into `<script src="three">` — an import map resolves module specifiers, not src attributes, so the browser asked for a URL that does not exist, `THREE` stayed undefined and the scene never started, while the saved file worked. The rewrite now applies only to inline imports and leaves any script with a `src` attribute alone.

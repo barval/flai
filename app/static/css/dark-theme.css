@@ -554,6 +554,28 @@
 .dark-theme .bulk-delete-button:hover {
     color: #e74c3c;
 }
+.dark-theme .document-item.document-shared {
+    background-color: #33301f;
+}
+.dark-theme .document-shared-badge {
+    background-color: #4b421f;
+    color: #e6d79a;
+}
+.dark-theme .doc-share-box {
+    background: #2b2b2b;
+    color: #e6e6e6;
+}
+.dark-theme .doc-share-row {
+    border-bottom-color: #444;
+}
+.dark-theme .doc-share-select,
+.dark-theme .doc-share-add-button,
+.dark-theme .doc-share-close {
+    background: #3a3a3a;
+    color: #e6e6e6;
+    border-color: #555;
+}
+
 .dark-theme .folder-picker-menu {
     background-color: #2d2d2d;
     border-color: #444;

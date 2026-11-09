@@ -840,7 +840,7 @@ def _attachments_section(task: dict, lang: str) -> str:
 
                 by_id = {
                     str(d.get("id")): str(d.get("filename") or "")
-                    for d in (get_user_documents(task.get("user_id") or "") or [])
+                    for d in (get_user_documents(task.get("user_id") or "", include_shared=True) or [])
                 }
                 doc_names = [by_id[d] for d in doc_ids if by_id.get(d)]
             except Exception as e:
@@ -3724,7 +3724,7 @@ class TaskExecutor:
 
                     doc_ids = [
                         str(d["id"])
-                        for d in (get_user_documents(task.get("user_id") or "") or [])
+                        for d in (get_user_documents(task.get("user_id") or "", include_shared=True) or [])
                         if d.get("index_status") == INDEX_STATUS_INDEXED and d.get("id")
                     ]
                 except Exception as e:

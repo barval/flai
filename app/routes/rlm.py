@@ -96,7 +96,7 @@ def analyze():
         current_app.logger.warning(f"User {user_id} attempted to use session {session_id} for RLM analysis")
         return jsonify({"error": "⚠️ " + _("Session not found")}), 403
 
-    owned = {d["id"] for d in (get_user_documents(user_id) or [])}
+    owned = {d["id"] for d in (get_user_documents(user_id, include_shared=True) or [])}
     if not set(doc_ids).issubset(owned):
         current_app.logger.warning(f"User {user_id} attempted to analyze foreign documents in RLM: {doc_ids}")
         return jsonify({"error": "⚠️ " + _("Document not found")}), 403

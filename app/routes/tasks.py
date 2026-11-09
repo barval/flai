@@ -355,7 +355,8 @@ def _document_names(task: dict) -> list[str]:
     from app.db import get_user_documents
 
     by_id = {
-        str(d.get("id")): str(d.get("filename") or "") for d in (get_user_documents(task.get("user_id") or "") or [])
+        str(d.get("id")): str(d.get("filename") or "")
+        for d in (get_user_documents(task.get("user_id") or "", include_shared=True) or [])
     }
     return [by_id[d] for d in doc_ids if by_id.get(d)]
 

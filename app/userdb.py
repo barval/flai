@@ -21,6 +21,12 @@ def get_user_by_login(login: str) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
+def get_display_name(login: str) -> str:
+    """The user's own name, never the login. Empty when the account has none."""
+    user = get_user_by_login(login)
+    return str((user or {}).get("name") or "").strip()
+
+
 def create_user(
     login: str,
     password: str,

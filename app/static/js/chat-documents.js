@@ -272,9 +272,22 @@ function renderDocItem(doc) {
 
     const showRlm = isRlmMode() && rlmSelectedDocs.has(doc.id);
     const docChecked = selectedDocIds.has(doc.id);
+    // A document shared with this account belongs to somebody else: it is read
+    // only, so it carries no move/delete/share actions and cannot be dragged.
+    const sharedBy = doc.shared_by || '';
+    const sharedBadge = sharedBy
+        ? `<span class="document-shared-badge" title="${t('documents_shared_by')} ${escapeHtml(sharedBy)}">👥 ${escapeHtml(sharedBy)}</span>`
+        : '';
+    const documentActions = sharedBy
+        ? ''
+        : `<div class="document-actions">
+                <button class="share-document-button" title="${t('documents_share')}">👥</button>
+                <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+            </div>`;
 
     return `
-    <div class="document-item${showRlm ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="true">
+    <div class="document-item${showRlm ? ' rlm-selected' : ''}${sharedBy ? ' document-shared' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="${sharedBy ? 'false' : 'true'}">
         <div class="document-content">
             <label class="document-checkbox" title="${isRlmMode() ? t('documents_select_for_analysis') : t('documents_select_for_move')}">
                 <input type="checkbox" class="doc-check" data-document-id="${doc.id}"${docChecked ? ' checked' : ''}>
@@ -282,16 +295,13 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    📄 ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                 ${embeddingLine}
                 ${descriptionLine}
             </div>
-            <div class="document-actions">
-                <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
-                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
-            </div>
+            ${documentActions}
         </div>
     </div>
     `;
@@ -429,6 +439,13 @@ function attachDocumentEventHandlers() {
             const docId = docItem.dataset.documentId;
             const docName = docItem.dataset.documentName;
             deleteDocument(docId, docName);
+        });
+    });
+    document.querySelectorAll('.share-document-button').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const docItem = this.closest('.document-item');
+            openShareDialog(docItem.dataset.documentId, docItem.dataset.documentName || '');
         });
     });
     document.querySelectorAll('.move-document-button').forEach(btn => {
@@ -753,6 +770,140 @@ function moveSelectedDocuments(folderId) {
             }
         })
         .catch(err => alert(t('error') + ': ' + err.message));
+}
+
+let activeShareDialog = null;
+
+function closeShareDialog() {
+    if (activeShareDialog) {
+        activeShareDialog.remove();
+        activeShareDialog = null;
+    }
+}
+
+// Sharing is read-only access: the owner picks who may read the document, and
+// the recipient finds it in their own list marked with the owner's name.
+function openShareDialog(docId, docName) {
+    closeShareDialog();
+    const overlay = document.createElement('div');
+    overlay.className = 'doc-share-overlay';
+    overlay.dataset.testid = 'doc-share-dialog';
+
+    const box = document.createElement('div');
+    box.className = 'doc-share-box';
+
+    const heading = document.createElement('h3');
+    heading.textContent = `${t('documents_share_title')}: ${docName}`;
+    box.appendChild(heading);
+
+    const list = document.createElement('div');
+    list.className = 'doc-share-list';
+    box.appendChild(list);
+
+    const row = document.createElement('div');
+    row.className = 'doc-share-add';
+    const select = document.createElement('select');
+    select.className = 'doc-share-select';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'doc-share-add-button';
+    addBtn.textContent = t('documents_share_add');
+    row.appendChild(select);
+    row.appendChild(addBtn);
+    box.appendChild(row);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'doc-share-close';
+    closeBtn.textContent = t('documents_share_close');
+    box.appendChild(closeBtn);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    activeShareDialog = overlay;
+
+    function refresh() {
+        Promise.all([
+            fetchWithCSRF('/api/documents/shareable-users').then(res => res.json()),
+            fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/shares').then(res => res.json())
+        ]).then(([usersData, sharesData]) => {
+            const shares = (sharesData.shares || []).map(share => share.shared_with);
+            const users = (usersData.users || []).filter(user => !shares.includes(user));
+            list.innerHTML = '';
+            if (!shares.length) {
+                const empty = document.createElement('div');
+                empty.className = 'doc-share-empty';
+                empty.textContent = t('documents_share_empty');
+                list.appendChild(empty);
+            }
+            shares.forEach(login => {
+                const line = document.createElement('div');
+                line.className = 'doc-share-row';
+                const name = document.createElement('span');
+                name.textContent = login;
+                const revoke = document.createElement('button');
+                revoke.type = 'button';
+                revoke.className = 'doc-share-revoke';
+                revoke.title = t('documents_share_revoke');
+                revoke.textContent = '\u2716';
+                revoke.addEventListener('click', () => {
+                    fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/share/' + encodeURIComponent(login), { method: 'DELETE' })
+                        .then(res => res.json())
+                        .then(refresh)
+                        .catch(err => alert(t('error') + ': ' + err.message));
+                });
+                line.appendChild(name);
+                line.appendChild(revoke);
+                list.appendChild(line);
+            });
+            select.innerHTML = '';
+            if (!users.length) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = t('documents_share_none_available');
+                select.appendChild(option);
+                addBtn.disabled = true;
+            } else {
+                users.forEach(login => {
+                    const option = document.createElement('option');
+                    option.value = login;
+                    option.textContent = login;
+                    select.appendChild(option);
+                });
+                addBtn.disabled = false;
+            }
+        }).catch(err => alert(t('error') + ': ' + err.message));
+    }
+
+    addBtn.addEventListener('click', () => {
+        const chosen = select.value;
+        if (!chosen) return;
+        fetchWithCSRF('/api/documents/' + encodeURIComponent(docId) + '/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login: chosen })
+        }).then(res => res.json()).then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            refresh();
+        }).catch(err => alert(t('error') + ': ' + err.message));
+    });
+
+    closeBtn.addEventListener('click', closeShareDialog);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeShareDialog();
+    });
+    const onKeyDown = event => {
+        if (event.key === 'Escape') {
+            closeShareDialog();
+            document.removeEventListener('keydown', onKeyDown);
+        }
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    refresh();
 }
 
 function closeFolderPicker() {

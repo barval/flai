@@ -1,5 +1,4 @@
 # app/routes/documents.py
-import contextlib
 import hashlib
 import io
 import mimetypes
@@ -192,7 +191,7 @@ def api_get_documents():
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
     login = session["login"]
-    documents = db.get_user_documents(login)
+    documents = db.get_user_documents(login, include_shared=True)
     folders = db.get_user_folders(login)
     counts = {f["id"]: 0 for f in folders}
     sizes = {f["id"]: 0 for f in folders}
@@ -267,39 +266,6 @@ def api_rename_folder(folder_id):
     return jsonify({"status": "ok"})
 
 
-def _delete_document_resources(doc, login):
-    """Delete one document: RAG entry, file on disk and DB row."""
-    rag = current_app.modules.get("rag")
-    if rag and rag.available:
-        try:
-            rag.delete_document(doc["id"], login)
-        except Exception as e:
-            current_app.logger.error(f"Failed to delete document from index: {e}")
-    documents_folder = current_app.config["DOCUMENTS_FOLDER"]
-    blob_sha256 = doc.get("blob_sha256")
-    if blob_sha256:
-        # Content-addressed: drop this user's reference; the bytes stay while
-        # another document still points at them.
-        removed, _relative = db.release_document_blob(blob_sha256)
-        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
-        if removed:
-            real_file_path = os.path.realpath(file_path)
-            real_documents_folder = os.path.realpath(documents_folder)
-            if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
-                with contextlib.suppress(Exception):
-                    os.remove(file_path)
-    else:
-        # Legacy row, stored before content addressing: the file is this
-        # document's own.
-        file_path = os.path.join(documents_folder, doc.get("file_path") or "")
-        real_file_path = os.path.realpath(file_path)
-        real_documents_folder = os.path.realpath(documents_folder)
-        if real_file_path.startswith(real_documents_folder + os.sep) and os.path.exists(file_path):
-            with contextlib.suppress(Exception):
-                os.remove(file_path)
-    db.delete_document(doc["id"], login)
-
-
 @bp.route("/document-folders/<folder_id>", methods=["DELETE"])
 def api_delete_folder(folder_id):
     if "login" not in session:
@@ -310,7 +276,7 @@ def api_delete_folder(folder_id):
     docs = db.get_folder_documents(login, folder_id)
     deleted_size = sum(doc.get("file_size") or 0 for doc in docs)
     for doc in docs:
-        _delete_document_resources(doc, login)
+        db.delete_document_resources(doc, login)
     db.delete_folder(folder_id, login)
     return jsonify({"status": "ok", "deleted_documents": len(docs), "deleted_size": deleted_size})
 
@@ -484,7 +450,7 @@ def api_get_document(doc_id):
 
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
-    doc = db.get_document(doc_id, session["login"])
+    doc = db.get_readable_document(doc_id, session["login"])
     if not doc:
         return jsonify({"error": _("Document not found")}), 404
 
@@ -538,7 +504,7 @@ def _owned_document_file(doc_id: str):
     """Resolve an owned document to a safe on-disk path (or an error response)."""
     if "login" not in session:
         return None, None, (jsonify({"error": _("Not authorized")}), 401)
-    doc = db.get_document(doc_id, session["login"])
+    doc = db.get_readable_document(doc_id, session["login"])
     if not doc:
         return None, None, (jsonify({"error": _("Document not found")}), 404)
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
@@ -741,6 +707,61 @@ def api_document_preview_pdf_page(doc_id, page):
     return response
 
 
+@bp.route("/documents/shareable-users", methods=["GET"])
+def api_shareable_users():
+    """Logins a document may be shared with (everyone but the caller)."""
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    from app.userdb import get_all_user_ids
+
+    login = session["login"]
+    users = [other for other in get_all_user_ids() if other != login]
+    return jsonify({"users": users})
+
+
+@bp.route("/documents/<doc_id>/shares", methods=["GET"])
+def api_get_document_shares(doc_id):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    if not db.get_document(doc_id, session["login"]):
+        return jsonify({"error": _("Document not found")}), 404
+    return jsonify({"shares": db.get_document_shares(doc_id)})
+
+
+@bp.route("/documents/<doc_id>/share", methods=["POST"])
+def api_share_document(doc_id):
+    """Give another user read access; only the owner may do this."""
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    login = session["login"]
+    if not db.get_document(doc_id, login):
+        return jsonify({"error": _("Document not found")}), 404
+
+    from app.userdb import get_user_by_login
+
+    payload = request.get_json(silent=True) or {}
+    shared_with = str(payload.get("login") or "").strip()
+    if not shared_with:
+        return jsonify({"error": _("Choose a user to share with")}), 400
+    if shared_with == login:
+        return jsonify({"error": _("You already have access to this document")}), 400
+    if not get_user_by_login(shared_with):
+        return jsonify({"error": _("User not found")}), 404
+
+    db.share_document(doc_id, login, shared_with)
+    return jsonify({"status": "ok", "shares": db.get_document_shares(doc_id)})
+
+
+@bp.route("/documents/<doc_id>/share/<shared_with>", methods=["DELETE"])
+def api_unshare_document(doc_id, shared_with):
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    if not db.get_document(doc_id, session["login"]):
+        return jsonify({"error": _("Document not found")}), 404
+    db.unshare_document(doc_id, shared_with)
+    return jsonify({"status": "ok", "shares": db.get_document_shares(doc_id)})
+
+
 @bp.route("/documents/<doc_id>", methods=["DELETE"])
 def api_delete_document(doc_id):
     if "login" not in session:
@@ -753,5 +774,5 @@ def api_delete_document(doc_id):
     # unlinks the file only when this was the last document using it. This route
     # used to unlink the file itself, which removed a shared blob out from under
     # every other document pointing at it.
-    _delete_document_resources(doc, session["login"])
+    db.delete_document_resources(doc, session["login"])
     return jsonify({"status": "ok"})

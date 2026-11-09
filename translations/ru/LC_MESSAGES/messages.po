@@ -5257,6 +5257,50 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/templates/chat.html:325
+msgid "Share"
+msgstr "Поделиться"
+
+#: app/templates/chat.html:325
+msgid "Shared by"
+msgstr "Владелец"
+
+#: app/templates/chat.html:325
+msgid "Share document"
+msgstr "Поделиться документом"
+
+#: app/templates/chat.html:325
+msgid "Add"
+msgstr "Добавить"
+
+#: app/templates/chat.html:325
+msgid "Not shared with anyone yet"
+msgstr "Пока никому не открыт"
+
+#: app/templates/chat.html:325
+msgid "Remove access"
+msgstr "Убрать доступ"
+
+#: app/templates/chat.html:325
+msgid "No other users"
+msgstr "Других пользователей нет"
+
+#: app/templates/chat.html:325
+msgid "Choose a user to share with"
+msgstr "Выберите пользователя"
+
+#: app/templates/chat.html:325
+msgid "You already have access to this document"
+msgstr "У вас уже есть доступ к этому документу"
+
+#: app/templates/chat.html:325
+msgid "User not found"
+msgstr "Пользователь не найден"
+
+#: app/templates/chat.html:325
+msgid "Close"
+msgstr "Закрыть"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Ошибка выполнения инструмента: {error}"
 

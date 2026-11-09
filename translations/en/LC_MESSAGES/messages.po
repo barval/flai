@@ -5226,6 +5226,50 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr "Could not connect to video generation service"
 
+#: app/templates/chat.html:325
+msgid "Share"
+msgstr "Share"
+
+#: app/templates/chat.html:325
+msgid "Shared by"
+msgstr "Shared by"
+
+#: app/templates/chat.html:325
+msgid "Share document"
+msgstr "Share document"
+
+#: app/templates/chat.html:325
+msgid "Add"
+msgstr "Add"
+
+#: app/templates/chat.html:325
+msgid "Not shared with anyone yet"
+msgstr "Not shared with anyone yet"
+
+#: app/templates/chat.html:325
+msgid "Remove access"
+msgstr "Remove access"
+
+#: app/templates/chat.html:325
+msgid "No other users"
+msgstr "No other users"
+
+#: app/templates/chat.html:325
+msgid "Choose a user to share with"
+msgstr "Choose a user to share with"
+
+#: app/templates/chat.html:325
+msgid "You already have access to this document"
+msgstr "You already have access to this document"
+
+#: app/templates/chat.html:325
+msgid "User not found"
+msgstr "User not found"
+
+#: app/templates/chat.html:325
+msgid "Close"
+msgstr "Close"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Tool execution error: {error}"
 

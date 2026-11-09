@@ -1223,8 +1223,10 @@ def _serialize_api_file(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _owned_document_or_404(file_id: str) -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
-    doc = db.get_document(file_id, g.api_user["login"])
+def _owned_document_or_404(file_id: str, owner_only: bool = False) -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
+    """A document readable by the caller; ``owner_only`` also requires ownership."""
+    login = g.api_user["login"]
+    doc = db.get_document(file_id, login) if owner_only else db.get_readable_document(file_id, login)
     if not doc:
         return None, api_error(404, "invalid_request_error", "file_not_found", _("Document not found"))
     return doc, None
@@ -1245,7 +1247,7 @@ def _document_disk_path(doc: dict[str, Any]) -> tuple[str | None, tuple[Any, int
 
 
 def _api_list_documents():
-    docs = db.get_user_documents(g.api_user["login"])
+    docs = db.get_user_documents(g.api_user["login"], include_shared=True)
     return jsonify({"object": "list", "data": [_serialize_api_file(doc) for doc in docs]})
 
 
@@ -1273,24 +1275,13 @@ def _api_file_content(file_id: str):
 
 
 def _api_file_delete(file_id: str):
-    doc, err = _owned_document_or_404(file_id)
+    doc, err = _owned_document_or_404(file_id, owner_only=True)
     if err is not None or doc is None:
         return err
     login = g.api_user["login"]
-    rag = cast(Any, current_app).modules.get("rag")
-    if rag and rag.available:
-        try:
-            rag.delete_document(doc["id"], login)
-        except Exception:
-            current_app.logger.exception("Failed to delete document from index")
-    file_path, err = _document_disk_path(doc)
-    if err is not None or file_path is None:
-        return err
-    try:
-        os.remove(file_path)
-    except OSError:
-        current_app.logger.exception("Failed to delete document file %s", file_path)
-    db.delete_document(doc["id"], login)
+    # Same path as the web route: a blob shared with another user's document
+    # must survive this deletion.
+    db.delete_document_resources(doc, login)
     return jsonify({"id": doc["id"], "object": "file", "deleted": True})
 
 
@@ -1498,7 +1489,7 @@ def api_rlm_analysis():
     if not validate_session_ownership(session_id, login):
         return api_error(404, "invalid_request_error", "session_not_found", _("Session not found"))
 
-    owned = {doc["id"] for doc in (db.get_user_documents(login) or [])}
+    owned = {doc["id"] for doc in (db.get_user_documents(login, include_shared=True) or [])}
     owned_doc_ids = [doc_id for doc_id in doc_ids if doc_id in owned]
     if len(owned_doc_ids) != len(doc_ids):
         return api_error(404, "invalid_request_error", "document_not_found", _("Document not found"))

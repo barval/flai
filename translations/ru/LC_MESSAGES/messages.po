@@ -2113,6 +2113,10 @@ msgstr "База файлов"
 msgid "Documents DB"
 msgstr "База документов"
 
+#: app/templates/admin.html
+msgid "Saved by deduplication"
+msgstr "Сэкономлено дедупликацией"
+
 #: app/templates/admin.html:55 app/templates/admin.html:362
 #: app/templates/admin.html:551 app/templates/admin.html:919
 #: app/templates/admin.html:945

@@ -1574,14 +1574,21 @@ def check_document_quota(user_id: str, excluded_doc_id: str | None = None, lang:
     try:
         with get_db() as conn:
             c = conn.cursor()
+            # Storage is charged on what the upload added: a document that
+            # reused an already-stored blob costs its owner nothing, because
+            # nobody can know in advance that the file exists (the first upload
+            # paid for the bytes). Legacy rows with no blob are charged in full.
+            quota_sum = (
+                "COALESCE(SUM(CASE WHEN blob_sha256 IS NULL THEN file_size ELSE COALESCE(stored_bytes, 0) END), 0)"
+            )
             if excluded_doc_id:
                 c.execute(
-                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s AND id <> %s",
+                    f"SELECT COUNT(*), {quota_sum} FROM documents WHERE user_id = %s AND id <> %s",
                     (user_id, excluded_doc_id),
                 )
             else:
                 c.execute(
-                    "SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s",
+                    f"SELECT COUNT(*), {quota_sum} FROM documents WHERE user_id = %s",
                     (user_id,),
                 )
             row = c.fetchone()

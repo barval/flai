@@ -2090,6 +2090,10 @@ msgstr "Files DB"
 msgid "Documents DB"
 msgstr "Documents DB"
 
+#: app/templates/admin.html
+msgid "Saved by deduplication"
+msgstr "Saved by deduplication"
+
 #: app/templates/admin.html:55 app/templates/admin.html:362
 #: app/templates/admin.html:551 app/templates/admin.html:919
 #: app/templates/admin.html:945

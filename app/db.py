@@ -667,17 +667,84 @@ def get_user_documents(user_id):
         return documents
 
 
-def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None):
-    """Save document metadata to database."""
+def retain_document_blob(sha256, file_path, size_bytes, mime=None):
+    """Register one more reference to a content blob.
+
+    Returns True when this call created the blob (the caller must write the
+    file); False means an identical document already exists and the bytes are
+    already on disk.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT sha256 FROM document_blobs WHERE sha256 = %s", (sha256,))
+        if c.fetchone():
+            c.execute("UPDATE document_blobs SET refcount = refcount + 1 WHERE sha256 = %s", (sha256,))
+            return False
+        c.execute(
+            "INSERT INTO document_blobs (sha256, file_path, size_bytes, mime, refcount) VALUES (%s, %s, %s, %s, 1)",
+            (sha256, file_path, size_bytes, mime),
+        )
+        return True
+
+
+def release_document_blob(sha256):
+    """Drop one reference to a content blob.
+
+    Returns ``(removed, file_path)``: the file may be unlinked only when the last
+    reference is gone, because every other document pointing at it is somebody
+    else's own document, not a share.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT refcount, file_path FROM document_blobs WHERE sha256 = %s", (sha256,))
+        row = c.fetchone()
+        if not row:
+            return False, None
+        if row["refcount"] > 1:
+            c.execute("UPDATE document_blobs SET refcount = refcount - 1 WHERE sha256 = %s", (sha256,))
+            return False, row["file_path"]
+        c.execute("DELETE FROM document_blobs WHERE sha256 = %s", (sha256,))
+        return True, row["file_path"]
+
+
+def document_blob_savings_bytes():
+    """Bytes not stored because identical content was reused."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COALESCE(SUM(size_bytes * (refcount - 1)), 0) AS saved FROM document_blobs")
+        row = c.fetchone()
+        return int((row["saved"] if row else 0) or 0)
+
+
+def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None,
+                  blob_sha256=None, stored_bytes=None):
+    """Save document metadata to database.
+
+    ``stored_bytes`` is what this upload added to the disk: the file size when it
+    created a new blob, 0 when an identical document already existed. The quota
+    is charged on it, so a user pays for the bytes they actually store.
+    """
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             """
-        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id,
+                               blob_sha256, stored_bytes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-            (doc_id, user_id, filename, file_size, file_ext, file_path, current_time, folder_id),
+            (
+                doc_id,
+                user_id,
+                filename,
+                file_size,
+                file_ext,
+                file_path,
+                current_time,
+                folder_id,
+                blob_sha256,
+                stored_bytes if stored_bytes is not None else file_size,
+            ),
         )
 
 
@@ -734,7 +801,8 @@ def get_document(doc_id, user_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at, embedding_model
+        SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at,
+               embedding_model, blob_sha256, stored_bytes
         FROM documents
         WHERE id = %s AND user_id = %s
         """,
@@ -851,7 +919,7 @@ def get_folder_documents(user_id, folder_id):
         c = conn.cursor()
         c.execute(
             """
-        SELECT id, filename, file_size, file_path
+        SELECT id, filename, file_size, file_path, blob_sha256
         FROM documents
         WHERE user_id = %s AND folder_id = %s
         """,

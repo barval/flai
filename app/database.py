@@ -332,6 +332,23 @@ def _init_postgresql():
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Content-addressed storage for documents: one physical file per SHA-256,
+    # referenced by every user who uploaded the same content. Deleting one
+    # document only drops a reference; the file goes away with the last one (a
+    # shared blob is storage, not a share). The ALTERs must follow the CREATE
+    # TABLE documents above: on a fresh database the column does not exist yet.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS document_blobs (
+            sha256 TEXT PRIMARY KEY,
+            file_path TEXT NOT NULL,
+            size_bytes BIGINT NOT NULL DEFAULT 0,
+            mime TEXT,
+            refcount INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS blob_sha256 TEXT;
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS stored_bytes BIGINT DEFAULT 0;
+    """)
     c.execute("""
         DO $migrate$
         BEGIN

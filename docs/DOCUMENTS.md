@@ -1,5 +1,18 @@
 # Documents and RAG
 
+## Duplicate files
+
+An upload is stored by content: the file's SHA-256 decides the physical copy, and an
+identical document already on the instance is reused instead of written twice. Each upload
+still becomes its own document — its own name, folder and owner — so deleting yours removes
+only your record; the file itself survives while somebody else still holds the same content
+and is deleted with the last reference.
+
+The storage quota is charged on what an upload actually added: the first upload of a file
+pays for the bytes, and anybody who later adds the same file pays nothing, because nobody can
+know in advance that the document exists. The admin Users tab reports the disk saved this way
+next to the database sizes.
+
 ## Upload limits
 
 | What | Limit | Variable |

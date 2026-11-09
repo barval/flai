@@ -458,11 +458,13 @@ function refreshStats() {
         const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
         const filesMb = (data.files_db_size / (1024 * 1024)).toFixed(2);
         const documentsMb = (data.documents_db_size / (1024 * 1024)).toFixed(2);
+        const dedupSavedMb = ((data.dedup_saved_bytes || 0) / (1024 * 1024)).toFixed(2);
         // Update with unit (MB) to keep them visible
         document.getElementById('chat-db-size').textContent = chatMb + ' ' + t('mb');
         document.getElementById('user-db-size').textContent = userMb + ' ' + t('mb');
         document.getElementById('files-db-size').textContent = filesMb + ' ' + t('mb');
         document.getElementById('documents-db-size').textContent = documentsMb + ' ' + t('mb');
+        document.getElementById('dedup-saved-size').textContent = dedupSavedMb + ' ' + t('mb');
     })
     .catch(err => console.error('Error fetching stats:', err));
 }

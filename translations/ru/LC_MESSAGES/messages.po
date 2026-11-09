@@ -5297,6 +5297,10 @@ msgstr "Закрыть"
 msgid "Shared with"
 msgstr "Открыт для"
 
+#: app/templates/admin.html:60
+msgid "Documents (shared)"
+msgstr "Документы (общие)"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Ошибка выполнения инструмента: {error}"
 

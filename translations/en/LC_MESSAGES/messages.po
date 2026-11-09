@@ -5266,6 +5266,10 @@ msgstr "Close"
 msgid "Shared with"
 msgstr "Shared with"
 
+#: app/templates/admin.html:60
+msgid "Documents (shared)"
+msgstr "Documents (shared)"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Tool execution error: {error}"
 

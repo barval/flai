@@ -561,6 +561,10 @@
     background-color: #4b421f;
     color: #e6d79a;
 }
+.dark-theme .document-share-count {
+    background-color: #2c3f4d;
+    color: #a8cbe3;
+}
 .dark-theme .doc-share-box {
     background: #2b2b2b;
     color: #e6e6e6;

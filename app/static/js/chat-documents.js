@@ -275,9 +275,14 @@ function renderDocItem(doc) {
     // A document shared with this account belongs to somebody else: it is read
     // only, so it carries no move/delete/share actions and cannot be dragged.
     const sharedBy = doc.shared_by || '';
+    const shareCount = Array.isArray(doc.shared_with) ? doc.shared_with.length : (doc.shared_count || 0);
+    // The recipient sees who owns the document; the owner sees how many people
+    // can read it.
     const sharedBadge = sharedBy
         ? `<span class="document-shared-badge" title="${t('documents_shared_by')} ${escapeHtml(sharedBy)}">👥 ${escapeHtml(sharedBy)}</span>`
-        : '';
+        : (shareCount > 0
+            ? `<span class="document-shared-badge document-share-count" title="${t('documents_shared_with')}: ${escapeHtml((doc.shared_with || []).join(', '))}">👥 ${shareCount}</span>`
+            : '');
     const documentActions = sharedBy
         ? ''
         : `<div class="document-actions">

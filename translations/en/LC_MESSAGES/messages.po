@@ -5262,6 +5262,10 @@ msgstr "User not found"
 msgid "Close"
 msgstr "Close"
 
+#: app/templates/chat.html:326
+msgid "Shared with"
+msgstr "Shared with"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Tool execution error: {error}"
 

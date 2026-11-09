@@ -5293,6 +5293,10 @@ msgstr "Пользователь не найден"
 msgid "Close"
 msgstr "Закрыть"
 
+#: app/templates/chat.html:326
+msgid "Shared with"
+msgstr "Открыт для"
+
 #~ msgid "Tool execution error: {error}"
 #~ msgstr "Ошибка выполнения инструмента: {error}"
 

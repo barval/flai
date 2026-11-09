@@ -2,6 +2,8 @@
 
 ### Added
 
+- **Identical documents are not embedded twice.** The content hash that decides whether a file is written also decides whether its vectors are computed: a document whose bytes are already indexed has its chunks copied from that index into the new owner's collection, under the new document's own id. A second upload of the same 9-chunk file made **no embedding call** (measured on a scratch database against the real model) and was still retrieved by its own name, while the original document stayed intact; the copy is taken only when the source was indexed with the current embedding model, and any failure falls back to ordinary indexing.
+
 - **Identical documents are stored once.** An upload is keyed by the file's SHA-256: a document already on the instance is reused instead of written a second time, while each upload keeps its own name, folder and owner, so deleting one removes only that record and the bytes go away with the last reference. The storage quota is charged on what the upload added — the first copy pays, later copies of the same content pay nothing — and the admin Users tab reports the saved volume next to the database sizes.
 
 ### Fixed

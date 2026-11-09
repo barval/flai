@@ -13,6 +13,13 @@ pays for the bytes, and anybody who later adds the same file pays nothing, becau
 know in advance that the document exists. The admin Users tab reports the disk saved this way
 next to the database sizes.
 
+Indexing follows the same idea. A document whose content hash is already indexed has its
+vectors copied into the new owner's collection instead of being embedded again, so a colleague
+adding the same contract costs one copy of the file and no embedding work — the copy is
+searchable on its own name, and the original document is untouched. The vectors are reused only
+when the source was indexed with the current embedding model; otherwise the document is indexed
+normally.
+
 ## Upload limits
 
 | What | Limit | Variable |

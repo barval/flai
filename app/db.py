@@ -707,6 +707,25 @@ def release_document_blob(sha256):
         return True, row["file_path"]
 
 
+def find_indexed_document_by_blob(blob_sha256, exclude_doc_id):
+    """Return an indexed document with the same content hash, if there is one.
+
+    Its vectors can be copied instead of embedding the same chunks again; the
+    document is the source, not a share — nothing of it becomes visible to the
+    caller, only the vectors derived from bytes the caller uploaded anyway.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, user_id, filename, embedding_model FROM documents "
+            "WHERE blob_sha256 = %s AND id <> %s AND index_status = %s "
+            "ORDER BY indexed_at DESC NULLS LAST LIMIT 1",
+            (blob_sha256, exclude_doc_id, INDEX_STATUS_INDEXED),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
 def document_blob_savings_bytes():
     """Bytes not stored because identical content was reused."""
     with get_db() as conn:

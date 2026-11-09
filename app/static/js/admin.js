@@ -187,10 +187,12 @@ function loadUsers() {
             tasksCell.textContent = user.tasks_count || 0;
             row.appendChild(tasksCell);
             const outgoingTokensCell = document.createElement('td');
-            outgoingTokensCell.textContent = (user.outgoing_tokens || 0).toLocaleString();
+            // Number() first: a string would make toLocaleString() a no-op and
+            // print the digits ungrouped.
+            outgoingTokensCell.textContent = Number(user.outgoing_tokens || 0).toLocaleString();
             row.appendChild(outgoingTokensCell);
             const incomingTokensCell = document.createElement('td');
-            incomingTokensCell.textContent = (user.incoming_tokens || 0).toLocaleString();
+            incomingTokensCell.textContent = Number(user.incoming_tokens || 0).toLocaleString();
             row.appendChild(incomingTokensCell);
             const messagesCell = document.createElement('td');
             messagesCell.textContent = user.messages_count;

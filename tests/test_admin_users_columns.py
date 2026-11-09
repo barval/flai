@@ -66,6 +66,14 @@ class TestAdminUserColumns:
 
         assert rows[member]["api_keys_count"] == 1
 
+    def test_token_totals_are_numbers_not_strings(self, admin_client, member):
+        """A Decimal is serialized as a string and printed without grouping."""
+        rows = admin_client.get("/admin/api/users").get_json()
+        assert rows
+        for row in rows:
+            assert isinstance(row["outgoing_tokens"], int), row["login"]
+            assert isinstance(row["incoming_tokens"], int), row["login"]
+
     def test_plaintext_tavily_key_never_leaves_the_server(self, admin_client, member):
         set_tavily_key(member, "tvly-abcdefgh12345678")
 

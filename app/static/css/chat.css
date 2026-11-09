@@ -664,33 +664,25 @@
     max-height: 40vh;
     overflow-y: auto;
 }
-.doc-share-row {
+.doc-share-option {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.25rem 0;
+    gap: 0.5rem;
+    padding: 0.35rem 0.25rem;
     border-bottom: 1px solid #eee;
+    cursor: pointer;
+}
+.doc-share-option:hover {
+    background-color: #f2f7fb;
+}
+.doc-share-option:last-of-type {
+    border-bottom: none;
 }
 .doc-share-empty {
     color: #7f8c8d;
     font-size: 0.85rem;
+    padding-top: 0.25rem;
 }
-.doc-share-revoke {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #e74c3c;
-}
-.doc-share-add {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-}
-.doc-share-select {
-    flex: 1;
-    padding: 0.3rem;
-}
-.doc-share-add-button,
 .doc-share-close {
     padding: 0.3rem 0.8rem;
     border: 1px solid #ccc;

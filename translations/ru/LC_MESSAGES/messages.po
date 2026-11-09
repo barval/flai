@@ -5270,16 +5270,8 @@ msgid "Share document"
 msgstr "Поделиться документом"
 
 #: app/templates/chat.html:325
-msgid "Add"
-msgstr "Добавить"
-
-#: app/templates/chat.html:325
 msgid "Not shared with anyone yet"
 msgstr "Пока никому не открыт"
-
-#: app/templates/chat.html:325
-msgid "Remove access"
-msgstr "Убрать доступ"
 
 #: app/templates/chat.html:325
 msgid "No other users"

@@ -477,6 +477,85 @@ def reset_slm_checkpoint(user_id):
         conn.commit()
 
 
+@click.command("backfill-document-blobs")
+@click.option("--dry-run", is_flag=True, help="Only report what would change, do not move files")
+@with_appcontext
+def backfill_document_blobs(dry_run):
+    """Move documents uploaded before content addressing into the blob store.
+
+    Documents stored before v13.1 keep their own file and no blob_sha256, so a
+    later upload of the same content cannot reuse them. This computes each file's
+    SHA-256, moves it to DOCUMENTS_FOLDER/_blobs/<sha><ext>, registers the blob
+    and points the row at it. Quota is untouched: stored_bytes keeps the size the
+    owner already paid for. Idempotent - rows with a blob are skipped. Run a
+    database backup first.
+
+    Two rules keep this safe, and both were learned the hard way: a dry run never
+    writes to the database (an earlier version registered blobs it had not
+    stored), and a source file is deleted only after the target file is confirmed
+    to exist (that same version deleted documents whose blob row existed while
+    the bytes had never been written).
+    """
+    import hashlib
+    import shutil
+
+    from app import db
+
+    folder = current_app.config.get("DOCUMENTS_FOLDER", "data/documents")
+    blobs_folder = os.path.join(folder, "_blobs")
+
+    with db.get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, user_id, file_path, file_size, file_ext FROM documents WHERE blob_sha256 IS NULL")
+        rows = c.fetchall()
+
+    if not rows:
+        click.echo("Nothing to do: every document already points at a blob.")
+        return
+
+    moved = reused = missing = 0
+    for row in rows:
+        relative = row["file_path"] or ""
+        source = os.path.join(folder, relative)
+        if not relative or not os.path.exists(source):
+            missing += 1
+            click.echo(f"  missing file, left alone: {row['id']} ({relative or 'no path'})")
+            continue
+        with open(source, "rb") as handle:
+            sha = hashlib.sha256(handle.read()).hexdigest()
+        target_relative = os.path.join("_blobs", f"{sha}{row['file_ext'] or ''}")
+        target = os.path.join(folder, target_relative)
+        target_exists = os.path.exists(target)
+        label = "reused" if target_exists else "new blob"
+        click.echo(f"  {'[dry-run] ' if dry_run else ''}{row['id']}: {relative} -> {target_relative} ({label})")
+        if dry_run:
+            continue
+
+        os.makedirs(blobs_folder, exist_ok=True)
+        if not os.path.exists(target):
+            shutil.move(source, target)
+            moved += 1
+        else:
+            reused += 1
+            if os.path.realpath(source) != os.path.realpath(target):
+                os.remove(source)
+        if not os.path.exists(target):
+            click.echo(f"  refused to register {row['id']}: the target file is missing")
+            continue
+        db.retain_document_blob(sha, target_relative, row["file_size"] or 0)
+        with db.get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE documents SET blob_sha256 = %s, file_path = %s, stored_bytes = %s WHERE id = %s",
+                (sha, target_relative, row["file_size"] or 0, row["id"]),
+            )
+
+    click.echo(
+        f"{'Would move' if dry_run else 'Moved'} {moved} file(s), reused {reused} existing blob(s), "
+        f"{missing} missing file(s)."
+    )
+
+
 @click.command("backfill-attachment-paths")
 @click.option("--dry-run", is_flag=True, help="Only report what would change, do not update")
 @with_appcontext

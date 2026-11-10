@@ -1322,19 +1322,23 @@ class ResourceManager:
     ) -> bool:
         """Unload a model that is not on the card, at most once per retry window.
 
-        Nothing is unloaded when the free VRAM could not hold the model anyway:
-        something else owns the card, and the reload would land in the same
-        remainder.
+        Nothing is unloaded when the model cannot fit the card at all — then a
+        reload would land in the same remainder. The comparison is against the
+        card itself, not against the free space *now*: this model is the only
+        resident (both callers check ``/running`` first), so unloading it returns
+        its own share, and counting the model against itself refused every reload
+        — measured 2026-11-10, the reasoning model held 7 095 MB of an estimated
+        9 627 MB while "only 9 216 MB is free", and the answer took 176 s.
         """
         now = time.time()
         if now - self._placement_retry_at.get(model_type, 0.0) < PLACEMENT_RETRY_SECONDS:
             return False
-        free_mb = self.hardware.total_vram_mb - used_mb
-        if self.hardware.total_vram_mb and free_mb < expected_mb:
+        total_mb = self.hardware.total_vram_mb
+        if total_mb and expected_mb > total_mb:
             self._placement_retry_at[model_type] = now
             logger.warning(
                 f"placement [{model_type}]: {used_mb}MB on the card for an estimated {expected_mb}MB, "
-                f"but only {free_mb}MB is free — reloading would land in the same remainder"
+                f"but the card holds only {total_mb}MB — reloading would land in the same remainder"
             )
             return False
         self._placement_retry_at[model_type] = now

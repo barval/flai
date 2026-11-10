@@ -1627,3 +1627,22 @@ def get_kg_doc_edges(user_id, doc_id):
             (user_id, doc_id),
         )
         return [(row["dst_doc_id"], float(row["score"])) for row in c.fetchall()]
+
+
+def get_rag_chunk(user_id, doc_id, chunk_index):
+    """One indexed chunk of a document, or ``None`` when it does not exist."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT text FROM rag_chunks WHERE user_id = %s AND doc_id = %s AND chunk_index = %s",
+            (user_id, doc_id, chunk_index),
+        )
+        row = c.fetchone()
+        return row["text"] if row else None
+
+
+def count_rag_chunks(user_id, doc_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT count(*) AS n FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        return int(c.fetchone()["n"])

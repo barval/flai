@@ -10,7 +10,7 @@ Rules:
 - Reply with JSON only, no prose and no markdown fence.
 
 Shape:
-{"entities":[{"name":"...","type":"organization","description":"..."}],"relations":[{"source":"...","target":"...","predicate":"...","evidence":"..."}]}
+{{"entities":[{{"name":"...","type":"organization","description":"..."}}],"relations":[{{"source":"...","target":"...","predicate":"...","evidence":"..."}}]}}
 
 Fragment:
 {chunk_text}

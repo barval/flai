@@ -296,6 +296,7 @@ class RedisRequestQueue:
             "fact_merge_task",
             "memory_extract_task",
             "session_summary_task",
+            "graph_extract_task",
         }
     )
 
@@ -320,6 +321,7 @@ class RedisRequestQueue:
             # nothing, so the task is re-queued and runs after the quiet window.
             quiet_s = int(self.app.config.get("MEMORY_EXTRACT_QUIET_S", 45))
             self.redis.set(self.MEMORY_EXTRACT_INTERRUPT_KEY, "1", ex=quiet_s)
+            self.redis.set(self.GRAPH_EXTRACT_INTERRUPT_KEY, "1", ex=quiet_s)
             # Mid-step abort (v12.6): every running task step must die when a
             # chat request arrives. The executor publishes one pointer per
             # running task (task:running_step:<task_id> + the
@@ -509,6 +511,8 @@ class RedisRequestQueue:
             return "background"  # Background task — runs only in idle, no GPU lock
         if task_type == "memory_extract_task":
             return "background"  # LLM extraction — idle only, takes the GPU lock itself
+        if task_type == "graph_extract_task":
+            return "background"  # knowledge-graph extraction — idle only, one chunk per task
         if task_type == "session_summary_task":
             return "background"  # rolling summary refresh — idle only, GPU lock
         if task_type == "fact_extraction_task":
@@ -716,8 +720,8 @@ class RedisRequestQueue:
             return "none"
         if task_type == "crawl_task" or req_type == "crawl_task":
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
-        if task_type in ("memory_extract_task", "session_summary_task"):
-            return "multimodal"  # both run on the resident model
+        if task_type in ("memory_extract_task", "session_summary_task", "graph_extract_task"):
+            return "multimodal"  # all three run on the resident model
         if task_type == "camera_task":
             return "multimodal"  # snapshot analysis via the resident multimodal model
         if task_type == "vision_task":
@@ -1067,7 +1071,7 @@ class RedisRequestQueue:
                         # Background tasks are CPU-only except the LLM fact
                         # extraction, which needs the resident model and must
                         # therefore wait for the GPU like any other call.
-                        if task.get("type") in ("memory_extract_task", "session_summary_task"):
+                        if task.get("type") in ("memory_extract_task", "session_summary_task", "graph_extract_task"):
                             with self._gpu_lock:
                                 self._process_single_task(task, self.background_processing_key)
                         else:
@@ -5921,6 +5925,125 @@ class RedisRequestQueue:
             self.app.logger.warning(f"Fact extraction failed: {e}")
             return {"status": "ok"}
 
+    def enqueue_graph_extract(self, user_id: str, doc_id: str, chunk_index: int) -> str | None:
+        """Queue one chunk of a document for knowledge-graph extraction."""
+        from app.db import count_rag_chunks, get_kg_build_state, set_kg_build_state
+
+        total = count_rag_chunks(user_id, doc_id)
+        model = str(self.app.config.get("GRAPH_EXTRACT_MODEL", "multimodal"))
+        state = get_kg_build_state(doc_id, user_id)
+        if state is None:
+            set_kg_build_state(doc_id, user_id, "pending", total, 0, model)
+        task = {
+            "id": uuid.uuid4().hex,
+            "type": "graph_extract_task",
+            "user_id": user_id,
+            "timestamp": time.time(),
+            "data": {"doc_id": doc_id, "chunk_index": int(chunk_index)},
+        }
+        self.redis.rpush(self.background_queue_key, self._serialize(task))
+        return task["id"]
+
+    def _process_graph_extract(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Extract one chunk's entities and relations into the graph.
+
+        One chunk per task on purpose: the background queue is shared with fact
+        extraction and session summaries, and a document-sized task would keep
+        them waiting for minutes.
+        """
+        from app.db import get_kg_build_state, set_kg_build_state
+
+        data = task.get("data", {})
+        user_id = task.get("user_id", "")
+        doc_id = str(data.get("doc_id") or "")
+        chunk_index = int(data.get("chunk_index") or 0)
+        if not user_id or not doc_id:
+            return {"status": "error"}
+        try:
+            return self._run_graph_extract_chunk(user_id, doc_id, chunk_index, task)
+        except Exception as e:  # noqa: BLE001 — one bad chunk must not stop the build
+            self.app.logger.error(f"graph extract failed for {doc_id}/{chunk_index}: {e}")
+            state = get_kg_build_state(doc_id, user_id) or {}
+            set_kg_build_state(
+                doc_id,
+                user_id,
+                "failed",
+                int(state.get("chunks_total") or 0),
+                int(state.get("chunks_done") or 0),
+                str(state.get("model") or ""),
+                str(e)[:300],
+            )
+            return {"status": "error"}
+
+    def _run_graph_extract_chunk(self, user_id: str, doc_id: str, chunk_index: int, task: dict) -> dict[str, Any]:
+        from app.db import count_rag_chunks, get_kg_build_state, get_rag_chunk, set_kg_build_state
+        from app.graph_extract import build_extraction_prompt, merge_extraction, parse_extraction
+        from app.memory_facts import detect_language
+
+        total = count_rag_chunks(user_id, doc_id)
+        state = get_kg_build_state(doc_id, user_id)
+        model = str(self.app.config.get("GRAPH_EXTRACT_MODEL", "multimodal"))
+        if state is None:
+            # A task can arrive before anything recorded the document (a queue
+            # left over from a restart), so the row is created here as well.
+            set_kg_build_state(doc_id, user_id, "pending", total, 0, model)
+            state = get_kg_build_state(doc_id, user_id) or {}
+        done = int(state.get("chunks_done") or 0)
+        model = str(state.get("model") or model)
+
+        if total == 0:
+            set_kg_build_state(doc_id, user_id, "empty", 0, 0, model)
+            return {"status": "empty"}
+
+        # Checked before the call as well as during it: a chat request that
+        # arrived a moment ago must not start a fresh generation.
+        if self.redis.exists(self.GRAPH_EXTRACT_INTERRUPT_KEY):
+            self.redis.lpush(self.background_queue_key, self._serialize(task))
+            return {"status": "interrupted"}
+
+        text = get_rag_chunk(user_id, doc_id, chunk_index)
+        if not text:
+            set_kg_build_state(doc_id, user_id, "done" if done >= total else "pending", total, done, model)
+            return {"status": "no such chunk"}
+
+        lang = detect_language(text, fallback="ru")
+        prompt = build_extraction_prompt(text, lang=lang)
+        if not prompt:
+            set_kg_build_state(doc_id, user_id, "failed", total, done, model, "prompt missing")
+            return {"status": "error"}
+
+        chunks: list[str] = []
+        last_check = 0.0
+        for chunk in self.app.modules["base"].llamacpp.chat_stream(
+            [{"role": "user", "content": prompt}], model_type=model, lang=lang
+        ):
+            if isinstance(chunk, dict):
+                break
+            chunks.append(chunk)
+            if sum(len(part) for part in chunks) > 8000:
+                break
+            now = time.monotonic()
+            if now - last_check > 0.5:
+                last_check = now
+                if self.redis.exists(self.GRAPH_EXTRACT_INTERRUPT_KEY):
+                    self.app.logger.info(f"Graph extraction of {doc_id} interrupted — re-queued")
+                    self.redis.lpush(self.background_queue_key, self._serialize(task))
+                    return {"status": "interrupted"}
+
+        parsed = parse_extraction("".join(chunks))
+        if parsed is None:
+            set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")
+            return {"status": "error"}
+
+        nodes, edges = merge_extraction(user_id, doc_id, chunk_index, text, parsed)
+        done += 1
+        next_index = chunk_index + 1
+        finished = next_index >= total
+        set_kg_build_state(doc_id, user_id, "done" if finished else "pending", total, done, model)
+        if not finished:
+            self.enqueue_graph_extract(user_id, doc_id, next_index)
+        return {"status": "ok", "nodes": nodes, "edges": edges}
+
     def _process_fact_merge(self, task: dict[str, Any]) -> dict[str, Any]:
         """Rule-based fact merging (background, CPU-only — no GPU lock)."""
         try:
@@ -6038,6 +6161,7 @@ class RedisRequestQueue:
             "fact_merge_task",
             "memory_extract_task",
             "session_summary_task",
+            "graph_extract_task",
             "api_embedding",
             "api_transcribe",
         ):
@@ -6079,6 +6203,8 @@ class RedisRequestQueue:
             return self._process_fact_merge(task)
         if task_type == "memory_extract_task":
             return self._process_memory_extract(task)
+        if task_type == "graph_extract_task":
+            return self._process_graph_extract(task)
         if task_type == "session_summary_task":
             return self._process_session_summary(task)
         if task_type == "api_embedding":
@@ -7319,12 +7445,13 @@ class RedisRequestQueue:
     # Task types that run in the background and are invisible to the user.
     # They should not trigger ⚡ or ⏳ indicators in the UI.
     _BACKGROUND_TASK_TYPES = frozenset(
-        {"fact_extraction_task", "fact_merge_task", "memory_extract_task", "session_summary_task"}
+        {"fact_extraction_task", "fact_merge_task", "memory_extract_task", "session_summary_task", "graph_extract_task"}
     )
 
     # Set by every user-facing request; the memory extraction (and the idle
     # merge queue behind it) waits it out.
     MEMORY_EXTRACT_INTERRUPT_KEY = "memory_extract:interrupt"
+    GRAPH_EXTRACT_INTERRUPT_KEY = "graph_extract:interrupt"
 
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
         """Get status of user's requests (processing, queued, completed).

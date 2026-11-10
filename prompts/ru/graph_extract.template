@@ -10,7 +10,7 @@
 - Ответ — только JSON, без пояснений и без markdown-обёртки.
 
 Формат:
-{"entities":[{"name":"...","type":"organization","description":"..."}],"relations":[{"source":"...","target":"...","predicate":"...","evidence":"..."}]}
+{{"entities":[{{"name":"...","type":"organization","description":"..."}}],"relations":[{{"source":"...","target":"...","predicate":"...","evidence":"..."}}]}}
 
 Фрагмент:
 {chunk_text}

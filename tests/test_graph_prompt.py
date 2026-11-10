@@ -43,3 +43,25 @@ def test_an_empty_section_is_not_rendered(test_app):
     assert "Связи: Альфа" not in messages[-1]["content"]
     assert "Связи: Альфа" in rendered[-1]["content"]
     assert estimate_tokens(rendered[-1]["content"]) > estimate_tokens(messages[-1]["content"])
+
+
+def test_the_section_reaches_the_generated_prompt(test_app, monkeypatch):
+    """The live path is the generator; the renderer alone being wired proves nothing."""
+    from types import SimpleNamespace
+
+    base = BaseModule()
+    captured = {}
+
+    def fake_build(query, time_str, lang, style, context, graph_section=""):
+        captured["section"] = graph_section
+        return [{"role": "system", "content": "rules"}, {"role": "user", "content": graph_section or "question"}]
+
+    monkeypatch.setattr(base, "build_reasoning_messages", fake_build)
+    monkeypatch.setattr(base, "_get_context_for_model", lambda *args, **kwargs: "context")
+    monkeypatch.setattr(base, "_validate_final_prompt", lambda *args, **kwargs: "")
+    monkeypatch.setattr(base, "llamacpp", SimpleNamespace(chat_stream=lambda *args, **kwargs: iter(["ok"])))
+
+    with test_app.app_context():
+        list(base.generate_reasoning_response_stream("вопрос", "10:00", graph_section="Альфа —[поставляет]→ Бета"))
+
+    assert captured["section"] == "Альфа —[поставляет]→ Бета"

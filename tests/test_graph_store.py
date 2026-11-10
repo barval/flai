@@ -71,3 +71,21 @@ def test_traversal_stays_inside_the_document_scope(database):
     edges = get_kg_edges(LOGIN, [source], hops=1, doc_ids=["doc-1"])
 
     assert [edge["doc_id"] for edge in edges] == ["doc-1"]
+
+
+@pytest.mark.requires_db
+def test_erasing_an_account_removes_its_graph(test_app):
+    from app import userdb
+    from app.database import get_db
+    from app.db import find_kg_node_ids, upsert_kg_node
+
+    login = "graph_erase"
+    with test_app.app_context():
+        with get_db() as conn:
+            conn.cursor().execute("DELETE FROM kg_nodes WHERE user_id = %s", (login,))
+        userdb.create_user(login=login, password="erase-me-123", name="Graph")
+        upsert_kg_node(login, "project", "Сокол", "сокол", ["сокол"], "")
+
+        userdb.delete_user(login)
+
+        assert find_kg_node_ids(login, ["сокол"], None, 8) == []

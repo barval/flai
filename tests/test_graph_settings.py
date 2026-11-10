@@ -57,3 +57,18 @@ def test_a_local_env_matches_the_example():
     if not Path(".env").exists():
         pytest.skip(".env is not present")
     assert _graph_keys(".env") == _graph_keys(".env.example")
+
+
+@pytest.mark.unit
+def test_auto_extraction_follows_the_platform(test_app):
+    from app.config import graph_auto_extract_enabled
+
+    test_app.config["GRAPH_AUTO_EXTRACT"] = "auto"
+    test_app.config["FLAI_PLATFORM"] = "cpu"
+    assert graph_auto_extract_enabled(test_app) is False
+
+    test_app.config["FLAI_PLATFORM"] = "nvidia"
+    assert graph_auto_extract_enabled(test_app) is True
+
+    test_app.config["GRAPH_AUTO_EXTRACT"] = "off"
+    assert graph_auto_extract_enabled(test_app) is False

@@ -116,3 +116,24 @@ def test_the_budget_reserves_graph_room_only_when_enabled(test_app):
     assert without.graph_fragments == 0
     assert with_graph.graph_fragments > 0
     assert with_graph.top_k < without.top_k
+
+
+def test_a_previous_section_cannot_leak_into_the_next_request(database, test_app):
+    rag = test_app.modules["rag"]
+    rag.last_graph_section = "Сокол —[поставляет]→ Луна"
+    rag.available = False
+
+    assert rag.search(LOGIN, "вопрос") == ([], [])
+    assert rag.last_graph_section == ""
+
+
+def test_the_graph_share_cannot_swallow_a_pinned_relevance_half(test_app):
+    from app.rag_budget import retrieval_budget
+
+    test_app.config["GRAPH_RAG_ENABLED"] = True
+    test_app.config["RAG_TOP_K"] = 5
+
+    budget = retrieval_budget(test_app, "ru")
+
+    assert budget.graph_fragments <= 1
+    assert budget.top_k >= 4

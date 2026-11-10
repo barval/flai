@@ -338,6 +338,16 @@ class RagModule:
             return False, "No text chunks generated"
         self.logger.info(f"index_document: generated {len(chunks)} chunks")
 
+        # 2b. A re-index replaces the text, so the graph built from the old text
+        #     is stale: its edges would cite chunk indices that now hold other
+        #     sentences, and a build state would resume past new chunks.
+        try:
+            from app.db import delete_kg_document
+
+            delete_kg_document(doc_id, user_id)
+        except Exception as exc:  # noqa: BLE001 — the graph must not fail indexing
+            self.logger.warning(f"graph: stale rows of {doc_id} not removed: {exc}")
+
         # 3. A re-index may produce a different chunk count: drop the previous
         #    points first, otherwise higher-index chunks survive as orphans.
         try:
@@ -726,6 +736,11 @@ class RagModule:
         them: the allowance is what the answering model's window holds beyond the
         relevance half, so breadth follows the hardware instead of a constant.
         """
+        # The section is read by the caller after this returns, so it must never
+        # survive from an earlier request: the early returns below skip the
+        # stage entirely and would otherwise hand a stranger's entity names to
+        # the next question.
+        self.last_graph_section = ""
         if not self.check_availability():
             return [], []
         from flask import has_app_context

@@ -5355,3 +5355,37 @@ msgstr "Найти узел"
 
 msgid "Back"
 msgstr "Назад"
+
+#: app/templates/chat.html
+msgid "Click a node to inspect it"
+msgstr "Нажмите на узел, чтобы рассмотреть его"
+
+msgid "Mentions"
+msgstr "Упоминаний"
+
+msgid "Loading the graph"
+msgstr "Загружаю граф"
+
+msgid "The graph could not be loaded"
+msgstr "Не удалось загрузить граф"
+
+msgid "The graph is still being built for these documents"
+msgstr "Граф по этим документам ещё строится"
+
+msgid "This browser cannot render the graph"
+msgstr "Этот браузер не может отобразить граф"
+
+msgid "Pick the second node of the path"
+msgstr "Выберите второй узел пути"
+
+msgid "No relation path was found"
+msgstr "Путь связей не найден"
+
+msgid "Build the graph"
+msgstr "Построить граф"
+
+msgid "Building"
+msgstr "Строится"
+
+msgid "Queued; the graph fills while the instance is idle"
+msgstr "В очереди: граф заполняется, пока инсталляция простаивает"

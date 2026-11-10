@@ -116,6 +116,46 @@
         }[kind] || '#9aa0a6';
     }
 
+    async function showEmptyState() {
+        setStatus(t('graph_empty', 'The graph is still being built for these documents'));
+        const panel = document.getElementById('graph-side-panel');
+        if (!panel) return;
+        let status = null;
+        try {
+            const response = await fetch('/api/graph/status', { credentials: 'same-origin' });
+            if (response.ok) status = await response.json();
+        } catch (error) {
+            status = null;
+        }
+        const progress = status && status.chunks_total
+            ? ' ' + status.chunks_done + '/' + status.chunks_total
+            : '';
+        panel.innerHTML =
+            '<p class="graph-hint">' + escapeHtml(t('graph_empty', 'The graph is still being built for these documents')) +
+            escapeHtml(progress) + '</p>' +
+            '<button type="button" class="graph-build-btn" id="graph-build-now">' +
+            escapeHtml(t('graph_build_now', 'Build the graph')) + '</button>';
+        const button = document.getElementById('graph-build-now');
+        if (button) button.addEventListener('click', startBuild);
+    }
+
+    async function startBuild() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        setStatus(t('graph_building', 'Building...'));
+        try {
+            const response = await fetch('/api/graph/build', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: meta ? { 'X-CSRFToken': meta.content } : {},
+            });
+            setStatus(response.ok
+                ? t('graph_build_queued', 'Queued; the graph fills while the instance is idle')
+                : t('graph_error', 'The graph could not be loaded'));
+        } catch (error) {
+            setStatus(t('graph_error', 'The graph could not be loaded'));
+        }
+    }
+
     async function draw(params) {
         const view = viewRoot();
         const canvas = document.getElementById('graph-canvas');
@@ -129,7 +169,7 @@
             return;
         }
         if (!data.nodes || !data.nodes.length) {
-            setStatus(t('graph_empty', 'The graph is still being built for these documents'));
+            await showEmptyState();
             return;
         }
         selectedNode = null;
@@ -207,7 +247,6 @@
         if (!view) return;
         focusedDoc = (options && options.docId) || '';
         view.classList.remove('hidden');
-        if (typeof enterGraphView === 'function') enterGraphView();
         const title = document.getElementById('graph-title-text');
         if (title) title.textContent = focusedDoc ? t('graph_focused', 'Knowledge graph of the document') : t('graph_title', 'Knowledge graph');
         draw({ doc: focusedDoc, layer: currentLayer });
@@ -216,7 +255,6 @@
     window.closeGraphView = function () {
         const view = viewRoot();
         if (view) view.classList.add('hidden');
-        if (typeof leaveGraphView === 'function') leaveGraphView();
     };
 
     window.loadGraph = function (params) {

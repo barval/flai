@@ -71,9 +71,10 @@ def test_a_relation_whose_evidence_is_not_in_the_chunk_is_dropped(database):
 
     nodes, edges = merge_extraction(LOGIN, "doc-1", 0, "проект Сокол стартовал", data)
 
-    # Both entities are real mentions of the chunk; only the relation is
-    # rejected for evidence that is not in the text.
-    assert (nodes, edges) == (2, 0)
+    # "Сокол" is in the chunk and survives; "Луна" is not mentioned there at
+    # all, so it is dropped too — an invented entity would merge with a
+    # same-named node elsewhere and seed unrelated questions.
+    assert (nodes, edges) == (1, 0)
     assert [node for node, _ in find_kg_node_ids(LOGIN, ["сокол"], None, 8)]
 
 

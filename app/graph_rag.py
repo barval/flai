@@ -143,7 +143,10 @@ def format_graph_section(triples: list[dict], path: list[dict], max_tokens: int 
     """
     if not triples and not path:
         return ""
-    budget_chars = max(80, int(max_tokens) * 4)
+    # Measured, not guessed: a flat chars-per-token ratio made a "600 token"
+    # block 1 200 tokens on Russian text, because the reasoning coefficient is
+    # about 2 characters per token, not 4.
+    budget_chars = max(80, int(max_tokens) * 2)
     lines: list[str] = []
     used = 0
     for triple in triples or []:

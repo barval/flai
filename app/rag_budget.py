@@ -155,6 +155,10 @@ def retrieval_budget(
     graph_fragments = 0
     if _graph_enabled(app):
         graph_fragments = max(1, int(fragments * _config_float(app, "GRAPH_SHARE", 0.15)))
+        # A pinned RAG_TOP_K has already narrowed the relevance half; the graph
+        # must not take most of what is left, so its share is capped at a
+        # quarter of the fragments that survived that narrowing.
+        graph_fragments = min(graph_fragments, max(1, top_k // 4))
         top_k = max(MIN_TOP_K, top_k - graph_fragments)
     return RetrievalBudget(
         top_k=top_k,

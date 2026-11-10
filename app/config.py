@@ -35,6 +35,32 @@ def setting(name: str, default: Any = None) -> Any:
     return os.getenv(name, default)
 
 
+def graph_auto_extract_enabled(app=None) -> bool:
+    """Whether a freshly indexed document is queued for graph extraction.
+
+    ``auto`` follows the platform: extraction is one call per chunk on the
+    resident model, which is affordable on a GPU host and would run for days on
+    a CPU-only one.
+    """
+    if app is not None and app.config.get("GRAPH_AUTO_EXTRACT") is not None:
+        mode = str(app.config.get("GRAPH_AUTO_EXTRACT")).strip().lower()
+    else:
+        mode = str(setting("GRAPH_AUTO_EXTRACT", "auto")).strip().lower()
+    if mode in ("on", "true", "1", "yes"):
+        return True
+    if mode in ("off", "false", "0", "no"):
+        return False
+    platform = ""
+    try:
+        if app is not None:
+            platform = str(app.config.get("FLAI_PLATFORM") or "")
+    except Exception:  # noqa: BLE001 — a missing config is not a failure here
+        platform = ""
+    if not platform:
+        platform = str(setting("FLAI_PLATFORM", "") or "")
+    return platform.strip().lower() != "cpu"
+
+
 def load_config(app):
     app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""

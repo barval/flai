@@ -99,12 +99,17 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
         return 0, 0
 
     haystack = _normalise_evidence(chunk_text)
+    chunk_lemmas = set(lemmatize(chunk_text))
     nodes: dict[str, str] = {}
     written_nodes = 0
 
     for entity in data.get("entities", []):
         normalized, lemma_list = normalise_entity(entity["name"])
         if not normalized:
+            continue
+        # An entity the model invented is worse than a missed one: it merges
+        # with a same-named node elsewhere and seeds unrelated questions.
+        if not chunk_lemmas.intersection(lemma_list):
             continue
         node_id = upsert_kg_node(
             user_id,

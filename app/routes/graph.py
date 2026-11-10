@@ -12,6 +12,32 @@ from app.db import get_kg_document_graph, get_kg_graph, kg_status
 bp = Blueprint("graph", __name__, url_prefix="/api")
 
 
+def _graph_scopes(login: str, doc_id: str = "") -> list[tuple[str, list[str] | None]]:
+    """The accounts whose graph the caller may read.
+
+    Own account unrestricted, plus the owner of every document shared with the
+    caller, restricted to those document ids — the same rule the vector search
+    uses, so a recipient sees the entities of a document they can already read.
+    """
+    from app.db import get_user_documents
+
+    scopes: list[tuple[str, list[str] | None]] = [(login, [doc_id] if doc_id else None)]
+    shared: dict[str, list[str]] = {}
+    try:
+        documents = get_user_documents(login, include_shared=True) or []
+    except Exception:  # noqa: BLE001 — sharing is an extra, never a failure
+        documents = []
+    for document in documents:
+        owner = document.get("shared_by")
+        if not owner:
+            continue
+        if doc_id and str(document.get("id")) != doc_id:
+            continue
+        shared.setdefault(str(owner), []).append(str(document.get("id")))
+    scopes.extend(shared.items())
+    return scopes
+
+
 def _limit(default: int) -> int:
     from flask import current_app
 
@@ -32,12 +58,32 @@ def graph_data():
 
     limit = _limit(400)
     layer = request.args.get("layer", "entities")
-    if layer == "documents":
-        return jsonify(get_kg_document_graph(login, limit=limit))
+    doc_id = request.args.get("doc", "")
+    scopes = _graph_scopes(login, doc_id)
 
-    return jsonify(
-        get_kg_graph(login, doc_id=request.args.get("doc", ""), kind=request.args.get("kind", ""), limit=limit)
-    )
+    merged: dict = {"nodes": [], "edges": []}
+    seen: set[str] = set()
+    for owner, owner_doc_ids in scopes:
+        if layer == "documents":
+            part = get_kg_document_graph(owner, limit=limit, doc_ids=owner_doc_ids)
+        else:
+            part = get_kg_graph(
+                owner,
+                doc_id=doc_id if owner == login else "",
+                doc_ids=owner_doc_ids if owner != login else None,
+                kind=request.args.get("kind", ""),
+                limit=limit,
+            )
+        for node in part["nodes"]:
+            if node["id"] in seen or len(seen) >= limit:
+                continue
+            seen.add(node["id"])
+            merged["nodes"].append(node)
+        merged["edges"].extend(part["edges"])
+    merged["edges"] = [
+        edge for edge in merged["edges"] if edge["source"] in seen and edge["target"] in seen
+    ]
+    return jsonify(merged)
 
 
 @bp.route("/graph/path", methods=["GET"])
@@ -50,8 +96,16 @@ def graph_path():
     from app.db import get_kg_node_names
     from app.graph_rag import shortest_path_edges
 
-    edges = shortest_path_edges(login, request.args.get("source", ""), request.args.get("target", ""), None)
-    names = get_kg_node_names(login, [edge[key] for edge in edges for key in ("src_id", "dst_id")])
+    source = request.args.get("source", "")
+    target = request.args.get("target", "")
+    edges: list[dict] = []
+    owner = login
+    for candidate, _scope in _graph_scopes(login):
+        edges = shortest_path_edges(candidate, source, target, None)
+        if edges:
+            owner = candidate
+            break
+    names = get_kg_node_names(owner, [edge[key] for edge in edges for key in ("src_id", "dst_id")])
     return jsonify(
         {
             "edges": [

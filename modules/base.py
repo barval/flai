@@ -430,6 +430,7 @@ class BaseModule(TranslationMixin):
         rag_context: str = "",
         rag_source: str = "",
         user_name: str = "",
+        reserve_tokens: int = 0,
     ) -> str:
         """Retrieve conversation history + SLM long-term memory with safety margin.
 
@@ -464,6 +465,9 @@ class BaseModule(TranslationMixin):
         # The estimator can be a few percent off; the margin stays as a guard
         # against that, not as an allocation policy.
         available_tokens = int(available_tokens * self.safety_margin)
+        # Evidence outside the retrieved context — today the graph relations
+        # block — is paid for out of the same window.
+        available_tokens = max(0, available_tokens - max(0, int(reserve_tokens)))
 
         # Step 1: Measure search context tokens (RAG docs / web search / history)
         search_tokens = 0
@@ -1149,8 +1153,11 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
             user_name=user_name,
+            reserve_tokens=self._estimate_tokens(graph_section, "reasoning", lang) if graph_section else 0,
         )
-        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        messages = self.build_reasoning_messages(
+            query, current_time_str, lang, response_style, context_str, graph_section
+        )
         if not messages:
             yield "⚠️ " + self._("Error loading prompt template", lang)
             return

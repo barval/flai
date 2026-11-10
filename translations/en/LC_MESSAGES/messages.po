@@ -5324,3 +5324,37 @@ msgstr "Find a node"
 
 msgid "Back"
 msgstr "Back"
+
+#: app/templates/chat.html
+msgid "Click a node to inspect it"
+msgstr "Click a node to inspect it"
+
+msgid "Mentions"
+msgstr "Mentions"
+
+msgid "Loading the graph"
+msgstr "Loading the graph"
+
+msgid "The graph could not be loaded"
+msgstr "The graph could not be loaded"
+
+msgid "The graph is still being built for these documents"
+msgstr "The graph is still being built for these documents"
+
+msgid "This browser cannot render the graph"
+msgstr "This browser cannot render the graph"
+
+msgid "Pick the second node of the path"
+msgstr "Pick the second node of the path"
+
+msgid "No relation path was found"
+msgstr "No relation path was found"
+
+msgid "Build the graph"
+msgstr "Build the graph"
+
+msgid "Building"
+msgstr "Building"
+
+msgid "Queued; the graph fills while the instance is idle"
+msgstr "Queued; the graph fills while the instance is idle"

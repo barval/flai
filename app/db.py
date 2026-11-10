@@ -1671,7 +1671,7 @@ def get_document_filenames(user_id, doc_ids):
         return {row["id"]: row["filename"] for row in c.fetchall()}
 
 
-def get_kg_graph(user_id, doc_id="", kind="", limit=400):
+def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
     """Nodes and the edges among them, for the graph view."""
     limit = max(1, int(limit))
     params: list = [user_id]
@@ -1682,9 +1682,15 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400):
     if doc_id:
         filters += (
             " AND EXISTS (SELECT 1 FROM kg_occurrences o"
-            " WHERE o.node_id = n.id AND o.doc_id = %s)"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = %s)"
         )
         params.append(doc_id)
+    elif doc_ids is not None:
+        filters += (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = ANY(%s::text[]))"
+        )
+        params.append(list(doc_ids))
     params.append(limit)
     with get_db() as conn:
         c = conn.cursor()
@@ -1730,15 +1736,21 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400):
     return {"nodes": nodes, "edges": edges}
 
 
-def get_kg_document_graph(user_id, limit=400):
+def get_kg_document_graph(user_id, limit=400, doc_ids=None):
     """The document layer: indexed documents and their similarity edges."""
     limit = max(1, int(limit))
+    params: list = [user_id]
+    scope_sql = ""
+    if doc_ids is not None:
+        scope_sql = " AND id = ANY(%s::text[])"
+        params.append(list(doc_ids))
+    params.append(limit)
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
             "SELECT id, filename FROM documents WHERE user_id = %s AND index_status = 'indexed'"
-            " ORDER BY filename LIMIT %s",
-            (user_id, limit),
+            f"{scope_sql} ORDER BY filename LIMIT %s",
+            tuple(params),
         )
         nodes = [
             {"id": row["id"], "label": row["filename"], "kind": "document", "description": "", "mentions": 0}

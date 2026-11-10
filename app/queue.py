@@ -147,6 +147,15 @@ def _run_document_indexing(
         embedding_model=embedding_model,
     )
     publish(INDEX_STATUS_INDEXED)
+    # Extraction runs on the background queue, so the answer never waits for it.
+    try:
+        from app.config import graph_auto_extract_enabled
+
+        queue = getattr(app, "request_queue", None)
+        if queue is not None and graph_auto_extract_enabled(app):
+            queue.enqueue_graph_extract(user_id, doc_id, 0)
+    except Exception as exc:  # noqa: BLE001 — indexing succeeded either way
+        app.logger.warning(f"graph: extraction not queued for {doc_id}: {exc}")
     return True, message, embedding_model, False
 
 

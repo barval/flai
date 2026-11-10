@@ -5309,3 +5309,18 @@ msgstr "Documents (shared)"
 #~ "the document as .docx and upload "
 #~ "it again."
 
+#: app/templates/chat.html
+msgid "View in knowledge graph"
+msgstr "View in knowledge graph"
+
+msgid "Knowledge graph"
+msgstr "Knowledge graph"
+
+msgid "Entities"
+msgstr "Entities"
+
+msgid "Find a node"
+msgstr "Find a node"
+
+msgid "Back"
+msgstr "Back"

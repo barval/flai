@@ -283,12 +283,13 @@ function renderDocItem(doc) {
         : (shareCount > 0
             ? `<span class="document-shared-badge document-share-count" title="${t('documents_shared_with')}: ${escapeHtml((doc.shared_with || []).join(', '))}">👥 ${shareCount}</span>`
             : '');
-    const documentActions = sharedBy
-        ? ''
-        : `<div class="document-actions">
-                <button class="share-document-button" title="${t('documents_share')}">👥</button>
+    // The graph is readable for a shared document too, so its button sits
+    // outside the owner-only block.
+    const documentActions = `<div class="document-actions">
+                <button class="graph-document-button" data-graph-doc="${doc.id}" title="${t('documents_view_in_graph')}">🕸️</button>
+                ${sharedBy ? '' : `<button class="share-document-button" title="${t('documents_share')}">👥</button>
                 <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
-                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
     return `
@@ -375,6 +376,9 @@ function updateDocumentsList(documents, folders = []) {
     const rootDocs = documents.filter(d => !d.folder_id);
 
     let html = `
+    <div class="documents-graph-bar">
+        <button type="button" id="documents-graph-button" class="documents-graph-button" title="${t('documents_view_in_graph')}">🕸️</button>
+    </div>
     <div class="bulk-documents-bar hidden" id="bulk-documents-bar">
         <span id="bulk-selected-count" class="bulk-label"></span>
         <button id="bulk-move-button" class="bulk-move-button" title="${t('folder_move')}">➤ 📂</button>
@@ -446,6 +450,21 @@ function attachDocumentEventHandlers() {
             deleteDocument(docId, docName);
         });
     });
+    document.querySelectorAll('.graph-document-button').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window.openGraphView === 'function') {
+                window.openGraphView({ docId: this.dataset.graphDoc });
+            }
+        });
+    });
+    const graphAllButton = document.getElementById('documents-graph-button');
+    if (graphAllButton) {
+        graphAllButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window.openGraphView === 'function') window.openGraphView({});
+        });
+    }
     document.querySelectorAll('.share-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();

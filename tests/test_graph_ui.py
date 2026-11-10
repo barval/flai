@@ -41,3 +41,18 @@ def test_the_view_offers_the_documented_entry_points():
     assert "openGraphView" in script
     assert "closeGraphView" in script
     assert "/api/graph" in script
+
+
+def test_the_card_and_the_panel_header_open_the_view():
+    script = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
+
+    assert 'data-graph-doc="' in script
+    assert "documents-graph-button" in script
+    assert "openGraphView" in script
+
+
+def test_the_tooltip_exists_in_both_catalogs():
+    assert "documents_view_in_graph" in Path("app/templates/chat.html").read_text(encoding="utf-8")
+    for lang in ("en", "ru"):
+        po = Path(f"translations/{lang}/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+        assert 'msgid "View in knowledge graph"' in po

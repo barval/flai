@@ -5340,3 +5340,18 @@ msgstr "Документы (общие)"
 #~ "Сохраните документ как .docx и загрузите"
 #~ " снова."
 
+#: app/templates/chat.html
+msgid "View in knowledge graph"
+msgstr "Посмотреть в графе знаний"
+
+msgid "Knowledge graph"
+msgstr "Граф знаний"
+
+msgid "Entities"
+msgstr "Сущности"
+
+msgid "Find a node"
+msgstr "Найти узел"
+
+msgid "Back"
+msgstr "Назад"

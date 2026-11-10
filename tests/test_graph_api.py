@@ -20,6 +20,7 @@ def database(test_app):
                 "kg_nodes",
                 "kg_doc_edges",
                 "kg_doc_vectors",
+                "kg_doc_layer",
                 "kg_build_state",
             ):
                 c.execute(f"DELETE FROM {table} WHERE user_id = ANY(%s)", ([LOGIN, OTHER],))
@@ -63,7 +64,7 @@ def test_the_node_cap_is_enforced(database, client, test_app):
 
 def test_the_document_layer_lists_documents_and_their_edges(database, client, test_app):
     from app.database import get_db
-    from app.db import replace_kg_doc_edges
+    from app.graph_docs import record_document_centroid
 
     with test_app.app_context():
         with get_db() as conn:
@@ -75,12 +76,14 @@ def test_the_document_layer_lists_documents_and_their_edges(database, client, te
                     " VALUES (%s, %s, %s, %s, 10, '.pdf', 'indexed')",
                     (doc_id, LOGIN, f"{doc_id}.pdf", f"{LOGIN}/{doc_id}.pdf"),
                 )
-        replace_kg_doc_edges(LOGIN, [("doc-1", "doc-2", 0.9)])
+        # The layer is rebuilt on demand: two identical centroids make one pair.
+        record_document_centroid(LOGIN, "doc-1", [1.0, 0.0], "bge-m3")
+        record_document_centroid(LOGIN, "doc-2", [1.0, 0.0], "bge-m3")
 
     data = client.get("/api/graph?layer=documents").get_json()
 
     assert {node["id"] for node in data["nodes"]} == {"doc-1", "doc-2"}
-    assert data["edges"][0]["source"] == "doc-1"
+    assert {edge["source"] for edge in data["edges"]} == {"doc-1", "doc-2"}
 
 
 def test_an_anonymous_request_is_refused(database, test_app):

@@ -358,13 +358,10 @@ def ensure_kg_schema(c):
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_kg_build_state_user ON kg_build_state (user_id, status)")
     c.execute("""
-        CREATE TABLE IF NOT EXISTS kg_communities (
-            user_id TEXT NOT NULL,
-            community INTEGER NOT NULL,
-            summary TEXT DEFAULT '',
-            node_count INTEGER NOT NULL DEFAULT 0,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, community)
+        CREATE TABLE IF NOT EXISTS kg_doc_layer (
+            user_id TEXT PRIMARY KEY,
+            vectors INTEGER NOT NULL DEFAULT 0,
+            rebuilt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
 

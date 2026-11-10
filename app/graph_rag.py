@@ -40,6 +40,7 @@ def _candidate_nodes(user_id: str, lemmas: list[str], doc_ids: list[str] | None,
             SELECT n.id, n.lemmas
             FROM kg_nodes n
             WHERE n.user_id = %s AND n.lemmas && %s::text[]{scope_sql}
+            ORDER BY (SELECT count(*) FROM kg_occurrences o WHERE o.node_id = n.id) DESC, n.name
             LIMIT %s
             """,
             tuple(params),
@@ -114,12 +115,21 @@ def graph_chunk_refs(edges: list[dict], max_edges: int = 12) -> list[tuple[str, 
     return refs
 
 
-def shortest_path_edges(user_id: str, source: str, target: str, doc_ids: list[str] | None, hops: int = 4) -> list[dict]:
-    """Edges along the shortest relation path between two entities."""
+def shortest_path_edges(user_id: str, source: str, target: str, doc_ids: list[str] | None, hops: int | None = None) -> list[dict]:
+    """Edges along the shortest relation path between two entities.
+
+    The search radius follows ``GRAPH_HOPS`` unless the caller pins it, so a
+    deployment that widened its traversal does not silently keep a shorter path
+    radius.
+    """
     if not source or not target or source == target:
         return []
     import networkx as nx
 
+    if hops is None:
+        from app.config import setting
+
+        hops = max(1, int(setting("GRAPH_HOPS", 2))) * 2
     edges = get_kg_edges(user_id, [source], hops=hops, doc_ids=doc_ids)
     graph = nx.DiGraph()
     by_pair: dict[tuple[str, str], dict] = {}

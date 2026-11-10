@@ -5945,7 +5945,7 @@ class RedisRequestQueue:
             self.app.logger.warning(f"Fact extraction failed: {e}")
             return {"status": "ok"}
 
-    def enqueue_graph_extract(self, user_id: str, doc_id: str, chunk_index: int) -> str | None:
+    def enqueue_graph_extract(self, user_id: str, doc_id: str, chunk_index: int) -> str:
         """Queue one chunk of a document for knowledge-graph extraction."""
         from app.db import count_rag_chunks, get_kg_build_state, set_kg_build_state
 
@@ -5983,6 +5983,8 @@ class RedisRequestQueue:
             return self._run_graph_extract_chunk(user_id, doc_id, chunk_index, task)
         except Exception as e:  # noqa: BLE001 — one bad chunk must not stop the build
             self.app.logger.error(f"graph extract failed for {doc_id}/{chunk_index}: {e}")
+            if self._retry_graph_task(task, str(e)[:120]):
+                return {"status": "retry"}
             state = get_kg_build_state(doc_id, user_id) or {}
             set_kg_build_state(
                 doc_id,
@@ -5994,6 +5996,17 @@ class RedisRequestQueue:
                 str(e)[:300],
             )
             return {"status": "error"}
+
+    def _retry_graph_task(self, task: dict, reason: str) -> bool:
+        """Re-queue one chunk at most twice, then give up on it."""
+        attempts = int(task.get("data", {}).get("attempts") or 0) + 1
+        if attempts > 2:
+            return False
+        retry = {**task, "id": uuid.uuid4().hex}
+        retry["data"] = {**task.get("data", {}), "attempts": attempts}
+        self.app.logger.warning(f"graph extract retry {attempts} ({reason})")
+        self.redis.rpush(self.background_queue_key, self._serialize(retry))
+        return True
 
     def _run_graph_extract_chunk(self, user_id: str, doc_id: str, chunk_index: int, task: dict) -> dict[str, Any]:
         from app.db import count_rag_chunks, get_kg_build_state, get_rag_chunk, set_kg_build_state
@@ -6052,6 +6065,8 @@ class RedisRequestQueue:
 
         parsed = parse_extraction("".join(chunks))
         if parsed is None:
+            if self._retry_graph_task(task, "unparsable extraction"):
+                return {"status": "retry"}
             set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")
             return {"status": "error"}
 

@@ -22,6 +22,7 @@ def database(test_app):
                 "kg_nodes",
                 "kg_doc_edges",
                 "kg_doc_vectors",
+                "kg_doc_layer",
                 "kg_build_state",
             ):
                 c.execute(f"DELETE FROM {table} WHERE user_id = %s", (LOGIN,))
@@ -50,10 +51,12 @@ def test_edges_keep_only_the_strongest_neighbour(database):
 
 
 def test_a_centroid_from_another_model_marks_the_layer_stale(database):
-    from app.graph_docs import document_layer_ready, record_document_centroid
+    from app.graph_docs import document_layer_ready, rebuild_document_edges, record_document_centroid
 
     record_document_centroid(LOGIN, "doc-1", [1.0, 0.0], "bge-m3")
+    record_document_centroid(LOGIN, "doc-2", [1.0, 0.0], "bge-m3")
+    rebuild_document_edges(LOGIN)
     assert document_layer_ready(LOGIN) is True
 
-    record_document_centroid(LOGIN, "doc-2", [1.0, 0.0], "other-model")
+    record_document_centroid(LOGIN, "doc-3", [1.0, 0.0], "other-model")
     assert document_layer_ready(LOGIN) is False

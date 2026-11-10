@@ -1641,6 +1641,30 @@ def get_rag_chunk(user_id, doc_id, chunk_index):
         return row["text"] if row else None
 
 
+def get_rag_chunks(user_id, refs):
+    """Chunk texts and file names for many ``(doc_id, chunk_index)`` at once.
+
+    The graph stage reads the chunks behind a dozen edges; one connection per
+    chunk was a dozen short-lived connections inside a single search.
+    """
+    if not refs:
+        return {}
+    wanted = {(str(doc_id), int(index)) for doc_id, index in refs}
+    doc_ids = sorted({doc_id for doc_id, _ in wanted})
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT doc_id, chunk_index, text, filename FROM rag_chunks"
+            " WHERE user_id = %s AND doc_id = ANY(%s::text[])",
+            (user_id, doc_ids),
+        )
+        return {
+            (row["doc_id"], int(row["chunk_index"])): (row["text"], row["filename"] or "")
+            for row in c.fetchall()
+            if (row["doc_id"], int(row["chunk_index"])) in wanted
+        }
+
+
 def count_rag_chunks(user_id, doc_id):
     with get_db() as conn:
         c = conn.cursor()
@@ -1718,10 +1742,13 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
         if not nodes:
             return {"nodes": [], "edges": []}
         ids = [node["id"] for node in nodes]
+        # Nodes are capped by the caller; edges need a cap of their own or a
+        # dense account returns tens of thousands of links in one response.
         c.execute(
             "SELECT src_id, dst_id, predicate, weight, doc_id FROM kg_edges"
-            " WHERE user_id = %s AND src_id = ANY(%s::uuid[]) AND dst_id = ANY(%s::uuid[])",
-            (user_id, ids, ids),
+            " WHERE user_id = %s AND src_id = ANY(%s::uuid[]) AND dst_id = ANY(%s::uuid[])"
+            " ORDER BY weight DESC LIMIT %s",
+            (user_id, ids, ids, max(1, limit * 4)),
         )
         edges = [
             {

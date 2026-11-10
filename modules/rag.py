@@ -16,7 +16,6 @@ from app.db import (
     INDEX_STATUS_INDEXED,
     find_indexed_document_by_blob,
     get_document,
-    get_rag_chunk,
     get_session_text_history,
     get_shared_document_ids,
     get_user_documents,
@@ -415,18 +414,15 @@ class RagModule:
         indexing that produced the vectors.
         """
         try:
-            from app.graph_docs import centroid_from_points, rebuild_document_edges, record_document_centroid
+            from app.graph_docs import centroid_from_points, record_document_centroid
 
             centroid = centroid_from_points(points)
             if not centroid:
                 return
             config = get_model_config("embedding") or {}
             record_document_centroid(user_id, doc_id, centroid, config.get("model_name", ""))
-            from flask import current_app, has_app_context
-
-            similarity = current_app.config.get("GRAPH_DOC_SIMILARITY", 0.75) if has_app_context() else 0.75
-            neighbours = current_app.config.get("GRAPH_DOC_NEIGHBOURS", 8) if has_app_context() else 8
-            rebuild_document_edges(user_id, similarity=similarity, neighbours=neighbours)
+            # The similarity layer is rebuilt on demand (graph view, graph-build):
+            # an exhaustive pass has no business inside an upload task.
         except Exception as exc:  # noqa: BLE001 — the graph must never fail indexing
             self.logger.warning(f"graph: centroid of {doc_id} not recorded: {exc}")
 
@@ -953,7 +949,7 @@ class RagModule:
         allowance: int,
     ) -> tuple[list[dict], str]:
         """Chunks reachable through the knowledge graph, and the relation section."""
-        from app.db import get_document_filenames, get_kg_edges, get_kg_node_names
+        from app.db import get_document_filenames, get_kg_edges, get_kg_node_names, get_rag_chunks
         from app.graph_rag import format_graph_section, rank_edges, seed_nodes, shortest_path_edges
 
         hops = int(current_app.config.get("GRAPH_HOPS", 2))
@@ -982,21 +978,26 @@ class RagModule:
             return [], ""
 
         candidates: list[dict] = []
-        for edge in edges:
+        for owner in scope_by_owner:
             if len(candidates) >= allowance:
                 break
-            text = get_rag_chunk(edge["user_id"], edge["doc_id"], edge["chunk_index"])
-            if not text:
-                continue
-            candidates.append(
-                {
-                    "doc_id": edge["doc_id"],
-                    "chunk_index": edge["chunk_index"],
-                    "text": text,
-                    "filename": "",
-                    "origin": "graph",
-                }
-            )
+            owner_edges = [edge for edge in edges if edge["user_id"] == owner]
+            texts = get_rag_chunks(owner, [(e["doc_id"], e["chunk_index"]) for e in owner_edges])
+            for edge in owner_edges:
+                if len(candidates) >= allowance:
+                    break
+                text, filename = texts.get((edge["doc_id"], int(edge["chunk_index"])), ("", ""))
+                if not text:
+                    continue
+                candidates.append(
+                    {
+                        "doc_id": edge["doc_id"],
+                        "chunk_index": edge["chunk_index"],
+                        "text": text,
+                        "filename": filename,
+                        "origin": "graph",
+                    }
+                )
 
         names: dict[str, str] = {}
         files: dict[str, str] = {}

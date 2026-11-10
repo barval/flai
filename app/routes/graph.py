@@ -5,6 +5,8 @@ Every answer is scoped to the caller: no id from another account can be
 resolved here, and no filesystem path leaves the server.
 """
 
+import contextlib
+
 from flask import Blueprint, jsonify, request, session
 
 from app.db import get_kg_document_graph, get_kg_graph, kg_status
@@ -60,6 +62,16 @@ def graph_data():
     layer = request.args.get("layer", "entities")
     doc_id = request.args.get("doc", "")
     scopes = _graph_scopes(login, doc_id)
+
+    if layer == "documents":
+        # The similarity layer is rebuilt on demand: an upload only stores a
+        # centroid, and an exhaustive pass belongs here, not in the upload task.
+        from app.graph_docs import ensure_document_layer
+
+        for owner, _owner_doc_ids in scopes:
+            # A stale layer is not a failed request: it is simply rebuilt next time.
+            with contextlib.suppress(Exception):
+                ensure_document_layer(owner)
 
     merged: dict = {"nodes": [], "edges": []}
     seen: set[str] = set()
@@ -143,19 +155,7 @@ def graph_build():
     if queue is None:
         return jsonify({"error": "queue unavailable"}), 503
 
-    from app.cli import _graph_documents
-    from app.db import count_rag_chunks, get_kg_build_state, set_kg_build_state
+    from app.graph_extract import queue_missing_documents
 
-    queued = 0
-    for document in _graph_documents(login):
-        state = get_kg_build_state(document, login)
-        total = count_rag_chunks(login, document)
-        if total == 0:
-            set_kg_build_state(document, login, "empty", 0, 0, "")
-            continue
-        if state and state.get("status") == "done" and int(state.get("chunks_done") or 0) >= total:
-            continue
-        start = int((state or {}).get("chunks_done") or 0)
-        queue.enqueue_graph_extract(login, document, 0 if start >= total else start)
-        queued += 1
+    queued = queue_missing_documents(queue, login)
     return jsonify({"queued": queued})

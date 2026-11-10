@@ -61,8 +61,15 @@ def record_document_centroid(user_id, doc_id, vector, embedding_model):
         )
 
 
+def _centroid_count(user_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT count(*) AS n FROM kg_doc_vectors WHERE user_id = %s", (user_id,))
+        return int(c.fetchone()["n"])
+
+
 def document_layer_ready(user_id):
-    """True when every centroid of the account was built by the same model."""
+    """True when the stored document edges match the stored centroids."""
     with get_db() as conn:
         c = conn.cursor()
         c.execute(
@@ -71,7 +78,23 @@ def document_layer_ready(user_id):
             (user_id,),
         )
         row = c.fetchone()
-    return bool(row["total"]) and row["models"] == 1
+        c.execute("SELECT vectors FROM kg_doc_layer WHERE user_id = %s", (user_id,))
+        layer = c.fetchone()
+    if not row["total"] or row["models"] != 1:
+        return False
+    return bool(layer) and int(layer["vectors"]) == int(row["total"])
+
+
+def ensure_document_layer(user_id, similarity=0.75, neighbours=8):
+    """Rebuild the document layer only when a centroid arrived since last time.
+
+    Kept out of the indexing path: at a few hundred documents the exhaustive
+    pass is millions of float operations, which has no business running inside
+    an upload task, and the layer is only ever read by the graph view.
+    """
+    if document_layer_ready(user_id):
+        return 0
+    return rebuild_document_edges(user_id, similarity=similarity, neighbours=neighbours)
 
 
 def rebuild_document_edges(user_id, similarity=0.75, neighbours=8):
@@ -91,7 +114,9 @@ def rebuild_document_edges(user_id, similarity=0.75, neighbours=8):
         rows = c.fetchall()
 
     if len(rows) < 2:
-        return replace_kg_doc_edges(user_id, [])
+        written = replace_kg_doc_edges(user_id, [])
+        _mark_layer(user_id, len(rows))
+        return written
 
     # A layer built from two different embedding models is not comparable. The
     # newest model wins and the older centroids are simply not linked.
@@ -110,4 +135,18 @@ def rebuild_document_edges(user_id, similarity=0.75, neighbours=8):
         scores.sort(key=lambda pair: pair[1], reverse=True)
         for neighbour_doc_id, score in scores[:neighbours]:
             edges.append((row["doc_id"], neighbour_doc_id, score))
-    return replace_kg_doc_edges(user_id, edges)
+    written = replace_kg_doc_edges(user_id, edges)
+    _mark_layer(user_id, len(rows))
+    return written
+
+
+def _mark_layer(user_id, vectors):
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_doc_layer (user_id, vectors, rebuilt_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) DO UPDATE SET vectors = EXCLUDED.vectors, rebuilt_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, int(vectors)),
+        )

@@ -24,7 +24,11 @@
             const script = document.createElement('script');
             script.src = VENDOR_SRC;
             script.onload = resolve;
-            script.onerror = function () { reject(new Error('renderer unavailable')); };
+            script.onerror = function () {
+                // A transient failure must not poison the view until a reload.
+                vendorPromise = null;
+                reject(new Error('renderer unavailable'));
+            };
             document.head.appendChild(script);
         });
         return vendorPromise;

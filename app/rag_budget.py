@@ -78,9 +78,13 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
 
 
 def _config_float(app, key: str, default: float) -> float:
+    # An explicit 0 is a value, not a missing setting: ``or default`` would turn
+    # "no graph evidence" into the shipped 15 %.
     if app is not None:
-        return float(app.config.get(key, default) or default)
-    return float(setting(key, default) or default)
+        value = app.config.get(key)
+        return float(default if value is None else value)
+    value = setting(key, None)
+    return float(default if value is None else value)
 
 
 def _graph_enabled(app) -> bool:
@@ -154,7 +158,8 @@ def retrieval_budget(
     # off, which keeps every existing budget identical.
     graph_fragments = 0
     if _graph_enabled(app):
-        graph_fragments = max(1, int(fragments * _config_float(app, "GRAPH_SHARE", 0.15)))
+        share = _config_float(app, "GRAPH_SHARE", 0.15)
+        graph_fragments = max(1, int(fragments * share)) if share > 0 else 0
         # A pinned RAG_TOP_K has already narrowed the relevance half; the graph
         # must not take most of what is left, so its share is capped at a
         # quarter of the fragments that survived that narrowing.

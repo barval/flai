@@ -376,7 +376,6 @@ def load_config(app):
     app.config["GRAPH_MAX_NODES"] = int(os.getenv("GRAPH_MAX_NODES", 400))
     app.config["GRAPH_DOC_SIMILARITY"] = float(os.getenv("GRAPH_DOC_SIMILARITY", 0.75))
     app.config["GRAPH_DOC_NEIGHBOURS"] = int(os.getenv("GRAPH_DOC_NEIGHBOURS", 8))
-    app.config["GRAPH_COMMUNITY_THRESHOLD"] = float(os.getenv("GRAPH_COMMUNITY_THRESHOLD", 0.45))
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3

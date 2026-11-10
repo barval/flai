@@ -1334,30 +1334,22 @@ def kernel_eval(dataset, mode, out):
         click.echo(f"\nwritten to {out}")
 
 
-def _graph_documents(login: str, doc_id: str = "") -> list[str]:
-    """Documents of one account that have indexed chunks."""
-    from app.database import get_db
-
-    with get_db() as conn:
-        c = conn.cursor()
-        if doc_id:
-            c.execute(
-                "SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s AND doc_id = %s",
-                (login, doc_id),
-            )
-        else:
-            c.execute("SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s ORDER BY doc_id", (login,))
-        return [row["doc_id"] for row in c.fetchall()]
-
-
 def _follow_graph_build(login: str) -> None:
     """Poll the build until no chunk is left. Ctrl-C stops following, not the build."""
     import time
 
     from app.db import kg_status
 
+    stalled = 0
+    previous = None
     while True:
         status = kg_status(login)
+        progress = (status["chunks_done"], status["chunks_total"])
+        stalled = stalled + 1 if progress == previous else 0
+        previous = progress
+        if stalled >= 120:
+            click.echo("No progress for ten minutes; stop following and check `flask graph-status`.")
+            return
         click.echo(
             f"chunks {status['chunks_done']}/{status['chunks_total']}  "
             f"nodes {status['nodes']}  edges {status['edges']}"
@@ -1380,12 +1372,7 @@ def graph_build(login, doc_id, rebuild, follow, cancel):
     The command only enqueues work: a CLI process does not share the worker's
     GPU lock, so calling the model here would run next to chat.
     """
-    from app.db import (
-        count_rag_chunks,
-        delete_kg_document,
-        get_kg_build_state,
-        set_kg_build_state,
-    )
+    from app.graph_extract import queue_missing_documents
 
     queue = current_app.request_queue
     if cancel:
@@ -1393,28 +1380,15 @@ def graph_build(login, doc_id, rebuild, follow, cancel):
         click.echo("Graph extraction stopped; the running chunk returns to the queue.")
         return
 
-    documents = _graph_documents(login, doc_id)
-    if not documents:
-        click.echo(f"No indexed documents for {login}.")
-        return
+    queued = queue_missing_documents(queue, login, doc_id=doc_id, rebuild=rebuild)
+    try:
+        from app.graph_docs import ensure_document_layer
 
-    queued = 0
-    for document in documents:
-        if rebuild:
-            delete_kg_document(document, login)
-        state = get_kg_build_state(document, login)
-        total = count_rag_chunks(login, document)
-        if total == 0:
-            set_kg_build_state(document, login, "empty", 0, 0, "")
-            continue
-        if state and state.get("status") == "done" and int(state.get("chunks_done") or 0) >= total:
-            continue
-        start = int((state or {}).get("chunks_done") or 0)
-        if start >= total:
-            start = 0
-        queue.enqueue_graph_extract(login, document, start)
-        queued += 1
-
+        ensure_document_layer(login)
+    except Exception as exc:  # noqa: BLE001 — the layer is a view, not the build
+        click.echo(f"document layer not refreshed: {exc}")
+    if not queued:
+        click.echo(f"Nothing to do for {login}.")
     click.echo(f"queued {queued} document(s) for {login}")
     if follow and queued:
         _follow_graph_build(login)

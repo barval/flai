@@ -229,7 +229,6 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "GRAPH_MAX_NODES",
             "GRAPH_DOC_SIMILARITY",
             "GRAPH_DOC_NEIGHBOURS",
-            "GRAPH_COMMUNITY_THRESHOLD",
         ],
     ),
     "voice": (
@@ -570,7 +569,6 @@ DESCRIPTIONS: dict[str, str] = {
     "GRAPH_MAX_NODES": "Node cap of one graph API response",
     "GRAPH_DOC_SIMILARITY": "Cosine threshold for a document-to-document edge",
     "GRAPH_DOC_NEIGHBOURS": "Document edges kept per document",
-    "GRAPH_COMMUNITY_THRESHOLD": "Weak-signal cut for community summaries",
     "RLM_ENABLED": "Enable deep analysis",
     "RLM_ACTOR_MODEL": "Model driving the analysis loop",
     "RLM_MAX_STEPS": "Hard ceiling on analysis steps",

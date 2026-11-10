@@ -161,3 +161,46 @@ def build_extraction_prompt(chunk_text: str, lang: str = "ru") -> str:
         {"chunk_text": safe_text, "entity_kinds": kinds},
         lang=lang,
     )
+
+
+def documents_with_chunks(user_id: str, doc_id: str = "") -> list[str]:
+    """Documents of one account that have indexed chunks."""
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        if doc_id:
+            c.execute(
+                "SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s AND doc_id = %s",
+                (user_id, doc_id),
+            )
+        else:
+            c.execute("SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s ORDER BY doc_id", (user_id,))
+        return [row["doc_id"] for row in c.fetchall()]
+
+
+def queue_missing_documents(queue, user_id: str, doc_id: str = "", rebuild: bool = False) -> int:
+    """Queue extraction for every document that still has chunks to process.
+
+    Shared by ``flask graph-build`` and ``POST /api/graph/build`` so the two can
+    never disagree about what "already done" means.
+    """
+    from app.db import count_rag_chunks, delete_kg_document, get_kg_build_state, set_kg_build_state
+
+    queued = 0
+    for document in documents_with_chunks(user_id, doc_id):
+        if rebuild:
+            delete_kg_document(document, user_id)
+        state = get_kg_build_state(document, user_id)
+        total = count_rag_chunks(user_id, document)
+        if total == 0:
+            set_kg_build_state(document, user_id, "empty", 0, 0, "")
+            continue
+        if state and state.get("status") == "done" and int(state.get("chunks_done") or 0) >= total:
+            continue
+        start = int((state or {}).get("chunks_done") or 0)
+        if start >= total:
+            start = 0
+        queue.enqueue_graph_extract(user_id, document, start)
+        queued += 1
+    return queued

@@ -19,6 +19,7 @@ def database(test_app):
             cursor.execute("DELETE FROM kg_nodes WHERE user_id = %s", (LOGIN,))
             cursor.execute("DELETE FROM kg_doc_edges WHERE user_id = %s", (LOGIN,))
             cursor.execute("DELETE FROM kg_doc_vectors WHERE user_id = %s", (LOGIN,))
+            cursor.execute("DELETE FROM kg_doc_layer WHERE user_id = %s", (LOGIN,))
             cursor.execute("DELETE FROM kg_build_state WHERE user_id = %s", (LOGIN,))
         yield
 

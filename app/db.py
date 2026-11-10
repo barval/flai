@@ -1134,6 +1134,7 @@ def delete_document(doc_id, user_id):
         archive_documents(c, user_id, [doc_id])
         c.execute("DELETE FROM document_shares WHERE document_id = %s", (doc_id,))
         c.execute("DELETE FROM documents WHERE id = %s AND user_id = %s", (doc_id, user_id))
+        _delete_kg_rows(c, doc_id, user_id)
 
     if file_size > 0:
         update_user_storage(user_id, -file_size)
@@ -1533,23 +1534,31 @@ def get_kg_edges(user_id, node_ids, hops=2, doc_ids=None):
     return edges
 
 
+def _delete_kg_rows(cursor, doc_id, user_id):
+    """Remove every graph row derived from one document, then orphan nodes.
+
+    Shared by ``delete_kg_document`` and ``delete_document`` so the cascade
+    runs inside the caller's transaction when there is one.
+    """
+    cursor.execute("DELETE FROM kg_occurrences WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_edges WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_doc_vectors WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_build_state WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute(
+        "DELETE FROM kg_doc_edges WHERE user_id = %s AND (src_doc_id = %s OR dst_doc_id = %s)",
+        (user_id, doc_id, doc_id),
+    )
+    cursor.execute(
+        "DELETE FROM kg_nodes n WHERE n.user_id = %s"
+        " AND NOT EXISTS (SELECT 1 FROM kg_occurrences o WHERE o.node_id = n.id)",
+        (user_id,),
+    )
+
+
 def delete_kg_document(doc_id, user_id):
     """Drop every graph row derived from one document, then orphan nodes."""
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM kg_occurrences WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
-        c.execute("DELETE FROM kg_edges WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
-        c.execute("DELETE FROM kg_doc_vectors WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
-        c.execute("DELETE FROM kg_build_state WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
-        c.execute(
-            "DELETE FROM kg_doc_edges WHERE user_id = %s AND (src_doc_id = %s OR dst_doc_id = %s)",
-            (user_id, doc_id, doc_id),
-        )
-        c.execute(
-            "DELETE FROM kg_nodes n WHERE n.user_id = %s"
-            " AND NOT EXISTS (SELECT 1 FROM kg_occurrences o WHERE o.node_id = n.id)",
-            (user_id,),
-        )
+        _delete_kg_rows(conn.cursor(), doc_id, user_id)
 
 
 def get_kg_build_state(doc_id, user_id):

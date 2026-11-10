@@ -390,10 +390,33 @@ class RagModule:
             self.qdrant_client.upsert(collection_name=collection_name, points=points)
             self.logger.info(f"index_document: upserted {len(points)} points for doc_id={doc_id}")
             self._store_chunks(user_id, doc_id, filename, chunks)
+            self._record_centroid(user_id, doc_id, points)
             return True, f"Indexed {len(chunks)} chunks"
         except Exception as e:
             self.logger.error(f"Error during upsert: {e}")
             return False, f"Qdrant error: {str(e)}"
+
+    def _record_centroid(self, user_id: str, doc_id: str, points: list) -> None:
+        """Store the document centroid and refresh the document layer.
+
+        The graph is derived data: a failure here is logged and never fails the
+        indexing that produced the vectors.
+        """
+        try:
+            from app.graph_docs import centroid_from_points, rebuild_document_edges, record_document_centroid
+
+            centroid = centroid_from_points(points)
+            if not centroid:
+                return
+            config = get_model_config("embedding") or {}
+            record_document_centroid(user_id, doc_id, centroid, config.get("model_name", ""))
+            from flask import current_app, has_app_context
+
+            similarity = current_app.config.get("GRAPH_DOC_SIMILARITY", 0.75) if has_app_context() else 0.75
+            neighbours = current_app.config.get("GRAPH_DOC_NEIGHBOURS", 8) if has_app_context() else 8
+            rebuild_document_edges(user_id, similarity=similarity, neighbours=neighbours)
+        except Exception as exc:  # noqa: BLE001 — the graph must never fail indexing
+            self.logger.warning(f"graph: centroid of {doc_id} not recorded: {exc}")
 
     def _reuse_indexed_content(self, user_id: str, doc_id: str, doc_info: dict) -> tuple[bool, str] | None:
         """Copy the vectors of an already-indexed document with identical bytes.
@@ -445,6 +468,7 @@ class RagModule:
             return None
 
         self._store_chunks(user_id, doc_id, filename=doc_info["filename"], chunks=chunks)
+        self._record_centroid(user_id, doc_id, ordered)
         self.logger.info(
             f"reuse: copied {len(points)} vectors of {source['id']} ({source['user_id']}) to {doc_id} ({user_id})"
         )

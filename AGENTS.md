@@ -177,6 +177,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Raw `str(e)` must NEVER be returned to the user.
 
 # 4. Git — Branching & No Autonomous Commits
+  - **GitHub is write-only-on-request. Nothing is pushed, tagged, branched or deleted there without a direct instruction for that exact action in the current request.** Gitea (`origin`) is the project's home: branches, commits and tags live there. The GitHub mirror is a convenience the user asks for by name; approval to mirror once does **not** carry over to a new branch, a new version or a later session, and silence is never permission.
   - **NEVER create any branch without explicit user approval.**
   - **All development happens ONLY in the numbered main project branch** (e.g. `v13.1`, `v13.2`) that the user has designated as the current working branch for the project.
   - **NEVER commit directly to `master`.** `master` must only ever advance via merges (`--no-ff`) from development branches, approved by the user.

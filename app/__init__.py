@@ -504,6 +504,8 @@ def create_app():
     app.cli.add_command(cli.memory_eval)
     app.cli.add_command(cli.kernel_eval)
     app.cli.add_command(cli.rag_reindex)
+    app.cli.add_command(cli.graph_build)
+    app.cli.add_command(cli.graph_status)
 
     # Additional camera routes
     if "cam" in modules:

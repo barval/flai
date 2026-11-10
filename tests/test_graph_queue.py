@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from tests.graph_fakes import FakeRedis
+
 LOGIN = "graph_queue"
 DOC = "graph-doc-1"
 
@@ -28,37 +30,6 @@ def graph_env(test_app):
         yield
 
 
-class _FakeRedis:
-    """Just enough Redis for the extractor: flags and two queues."""
-
-    def __init__(self):
-        self.values: dict = {}
-        self.lists: dict = {}
-
-    def exists(self, key):
-        return 1 if key in self.values else 0
-
-    def set(self, key, value, ex=None):
-        self.values[key] = value
-        return True
-
-    def delete(self, *keys):
-        for key in keys:
-            self.values.pop(key, None)
-        return 1
-
-    def lpush(self, key, value):
-        self.lists.setdefault(key, []).insert(0, value)
-        return 1
-
-    def rpush(self, key, value):
-        self.lists.setdefault(key, []).append(value)
-        return 1
-
-    def llen(self, key):
-        return len(self.lists.get(key, []))
-
-
 @pytest.fixture
 def queue(test_app):
     from app.queue import RedisRequestQueue
@@ -66,7 +37,7 @@ def queue(test_app):
     queue = RedisRequestQueue(test_app, start_workers=False)
     # The suite patches redis.from_url to a mock whose exists() is truthy, which
     # would make every extraction look interrupted; the flag needs real state.
-    queue.redis = _FakeRedis()
+    queue.redis = FakeRedis()
     return queue
 
 

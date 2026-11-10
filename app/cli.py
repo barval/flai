@@ -1332,3 +1332,117 @@ def kernel_eval(dataset, mode, out):
         with open(out, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         click.echo(f"\nwritten to {out}")
+
+
+def _graph_documents(login: str, doc_id: str = "") -> list[str]:
+    """Documents of one account that have indexed chunks."""
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        if doc_id:
+            c.execute(
+                "SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s AND doc_id = %s",
+                (login, doc_id),
+            )
+        else:
+            c.execute("SELECT DISTINCT doc_id FROM rag_chunks WHERE user_id = %s ORDER BY doc_id", (login,))
+        return [row["doc_id"] for row in c.fetchall()]
+
+
+def _follow_graph_build(login: str) -> None:
+    """Poll the build until no chunk is left. Ctrl-C stops following, not the build."""
+    import time
+
+    from app.db import kg_status
+
+    while True:
+        status = kg_status(login)
+        click.echo(
+            f"chunks {status['chunks_done']}/{status['chunks_total']}  "
+            f"nodes {status['nodes']}  edges {status['edges']}"
+        )
+        if not status["chunks_total"] or status["chunks_done"] >= status["chunks_total"]:
+            return
+        time.sleep(5)
+
+
+@click.command("graph-build")
+@click.option("--user", "login", required=True, help="Login whose documents are extracted")
+@click.option("--doc", "doc_id", default="", help="Restrict the build to one document id")
+@click.option("--rebuild", is_flag=True, help="Drop the existing graph rows of those documents and start over")
+@click.option("--follow/--no-follow", default=True, show_default=True, help="Poll until every chunk is processed")
+@click.option("--cancel", is_flag=True, help="Raise the interrupt flag so a running build stops")
+@with_appcontext
+def graph_build(login, doc_id, rebuild, follow, cancel):
+    """Queue knowledge-graph extraction for a user's documents.
+
+    The command only enqueues work: a CLI process does not share the worker's
+    GPU lock, so calling the model here would run next to chat.
+    """
+    from app.db import (
+        count_rag_chunks,
+        delete_kg_document,
+        get_kg_build_state,
+        set_kg_build_state,
+    )
+
+    queue = current_app.request_queue
+    if cancel:
+        queue.redis.set(queue.GRAPH_EXTRACT_INTERRUPT_KEY, "1", ex=300)
+        click.echo("Graph extraction stopped; the running chunk returns to the queue.")
+        return
+
+    documents = _graph_documents(login, doc_id)
+    if not documents:
+        click.echo(f"No indexed documents for {login}.")
+        return
+
+    queued = 0
+    for document in documents:
+        if rebuild:
+            delete_kg_document(document, login)
+        state = get_kg_build_state(document, login)
+        total = count_rag_chunks(login, document)
+        if total == 0:
+            set_kg_build_state(document, login, "empty", 0, 0, "")
+            continue
+        if state and state.get("status") == "done" and int(state.get("chunks_done") or 0) >= total:
+            continue
+        start = int((state or {}).get("chunks_done") or 0)
+        if start >= total:
+            start = 0
+        queue.enqueue_graph_extract(login, document, start)
+        queued += 1
+
+    click.echo(f"queued {queued} document(s) for {login}")
+    if follow and queued:
+        _follow_graph_build(login)
+
+
+@click.command("graph-status")
+@click.option("--user", "login", required=True, help="Login whose build state is printed")
+@with_appcontext
+def graph_status(login):
+    """Print the per-document build state and the totals."""
+    from app.database import get_db
+    from app.db import kg_status
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT doc_id, status, chunks_done, chunks_total, error FROM kg_build_state"
+            " WHERE user_id = %s ORDER BY doc_id",
+            (login,),
+        )
+        rows = c.fetchall()
+
+    for row in rows:
+        error = f"  {row['error']}" if row["error"] else ""
+        click.echo(f"{row['doc_id']}  {row['status']}  {row['chunks_done']}/{row['chunks_total']}{error}")
+
+    status = kg_status(login)
+    click.echo(
+        f"{login}: documents {status['documents']}  chunks {status['chunks_done']}/{status['chunks_total']}  "
+        f"nodes {status['nodes']}  edges {status['edges']}  ready={status['ready']}"
+    )

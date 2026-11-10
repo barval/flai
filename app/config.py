@@ -336,6 +336,22 @@ def load_config(app):
     # (app/context_budget.py). A positive value pins the documents' share.
     app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 0))
 
+    # Knowledge graph (v13.2). Retrieval stays off until the corpus is built;
+    # extraction is automatic only while the instance is idle, and on a CPU-only
+    # host it is off by default for the same reason SLM_AUTO_EXTRACT is.
+    app.config["GRAPH_RAG_ENABLED"] = os.getenv("GRAPH_RAG_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["GRAPH_AUTO_EXTRACT"] = os.getenv("GRAPH_AUTO_EXTRACT", "auto").strip().lower()
+    app.config["GRAPH_EXTRACT_MODEL"] = os.getenv("GRAPH_EXTRACT_MODEL", "multimodal")
+    app.config["GRAPH_HOPS"] = int(os.getenv("GRAPH_HOPS", 2))
+    app.config["GRAPH_MAX_SEEDS"] = int(os.getenv("GRAPH_MAX_SEEDS", 8))
+    app.config["GRAPH_MAX_EDGES"] = int(os.getenv("GRAPH_MAX_EDGES", 12))
+    app.config["GRAPH_SHARE"] = float(os.getenv("GRAPH_SHARE", 0.15))
+    app.config["GRAPH_SECTION_TOKENS"] = int(os.getenv("GRAPH_SECTION_TOKENS", 600))
+    app.config["GRAPH_MAX_NODES"] = int(os.getenv("GRAPH_MAX_NODES", 400))
+    app.config["GRAPH_DOC_SIMILARITY"] = float(os.getenv("GRAPH_DOC_SIMILARITY", 0.75))
+    app.config["GRAPH_DOC_NEIGHBOURS"] = int(os.getenv("GRAPH_DOC_NEIGHBOURS", 8))
+    app.config["GRAPH_COMMUNITY_THRESHOLD"] = float(os.getenv("GRAPH_COMMUNITY_THRESHOLD", 0.45))
+
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3
     app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.25

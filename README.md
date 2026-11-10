@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.1](#-whats-new-in-v131)
+- [🆕 What's New in v13.2](#-whats-new-in-v132)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,32 +73,7 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.1
-
-- **Identical documents are stored and indexed once.** An upload is keyed by the file's SHA-256: the
-  bytes of a document already on the instance are not written again, and its search vectors are copied
-  instead of being computed a second time. Each upload keeps its own name, folder and owner, the first
-  copy pays the storage quota and the rest pay nothing, and Admin → Users reports the volume saved.
-  See [DOCUMENTS.md](docs/DOCUMENTS.md).
-- **Documents can be shared with other accounts, read-only.** The owner marks who may read a document
-  (👥 in the document card) and the recipient finds it in their own panel with the owner's name,
-  opens its preview, downloads it, and their questions search it. The file, the index and the quota
-  stay with the owner, and revoking access takes effect on the next question. See
-  [DOCUMENTS.md](docs/DOCUMENTS.md).
-- **The chat knows who it is talking to.** The web chat receives the account's own name, so the
-  assistant stops answering about the user in the third person. API integrations are deliberately
-  excluded: a service account such as a voice column speaks for itself.
-- **Long-term memory stops repeating imported history.** Recall used to inject the user's imported
-  messages as "facts about the user" — a request to draw a cat could retrieve a line about water
-  blocks. Only facts with a known provenance are injected now.
-- **A small document reaches the model whole, not as a single fragment.** A rule and the hours it
-  applies to can sit in different chunks of the same law; a matching document of up to
-  `WHOLE_DOCUMENT_MAX_TOKENS` (2 000 tokens) is now passed in full. Verified on the noise law: the
-  answer became exact — "not now, quiet hours are 22:00–07:00 on weekdays".
-- **The Admin Users tab is readable again.** Outgoing and incoming token totals arrive as numbers
-  (they used to arrive as strings and print without digit grouping), the headers of the four widest
-  columns sit on two lines, the Documents column shows how many of them are shared, and the storage
-  value fits one line on a phone.
+## 🆕 What's New in v13.2
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 

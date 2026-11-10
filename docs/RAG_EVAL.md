@@ -129,6 +129,12 @@ while helping only the 5-chunk tool window (0.831 vs 0.815).
 
 Every candidate change (reranker, metadata filters, chunking) is measured on both datasets.
 
+- **Graph evidence (v13.2).** Run the same set twice with `GRAPH_RAG_ENABLED` off and on; a
+  regression in MRR or nDCG on either existing set is a blocker. `tests/data/graph_eval.jsonl`
+  holds ten relation and aggregation questions over the fictional demo offers
+  (`demo/pdfs/ru/`), five of the "how are X and Y related" kind and five that need an answer
+  assembled across documents; acceptance is every expected document in the top 5.
+
 ## Notes
 
 - A set of 5 questions proves nothing: generation is cheap, use 20–30.

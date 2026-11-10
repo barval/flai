@@ -1,0 +1,142 @@
+/* app/static/css/chat-graph.css */
+/* Knowledge-graph view (v13.2): a full-window 3D canvas with a side panel. */
+
+/* The overlay is anchored to the window it covers. */
+.chat-main {
+    position: relative;
+}
+
+.graph-view {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-primary, #12151c);
+    color: var(--text-primary, #e6e6e6);
+}
+
+.graph-view.hidden {
+    display: none;
+}
+
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-color, #2a2f3a);
+    flex-wrap: wrap;
+}
+
+.graph-back-btn {
+    border: 1px solid var(--border-color, #2a2f3a);
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.15rem 0.5rem;
+    cursor: pointer;
+}
+
+.graph-title {
+    font-weight: 600;
+}
+
+.graph-layer-btn {
+    border: 1px solid var(--border-color, #2a2f3a);
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.graph-layer-btn.active {
+    background: var(--accent-color, #4c8bf5);
+    border-color: var(--accent-color, #4c8bf5);
+    color: #fff;
+}
+
+.graph-search {
+    min-width: 10rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #2a2f3a);
+    background: transparent;
+    color: inherit;
+}
+
+.graph-status {
+    margin-left: auto;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
+.graph-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.graph-canvas {
+    flex: 1;
+    min-width: 0;
+    cursor: grab;
+}
+
+.graph-canvas:active {
+    cursor: grabbing;
+}
+
+.graph-side-panel {
+    width: 18rem;
+    border-left: 1px solid var(--border-color, #2a2f3a);
+    padding: 0.75rem;
+    overflow-y: auto;
+    font-size: 0.9rem;
+}
+
+.graph-side-panel h4 {
+    margin: 0 0 0.25rem;
+}
+
+.graph-node-kind {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.graph-neighbours {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.graph-neighbours li {
+    padding: 0.2rem 0;
+    border-bottom: 1px solid var(--border-color, #2a2f3a);
+}
+
+.graph-hint,
+.graph-mentions {
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+/* A phone keeps the canvas usable: the panel becomes a strip below it. */
+@media (max-width: 768px) {
+    .graph-body {
+        flex-direction: column;
+    }
+
+    .graph-side-panel {
+        width: auto;
+        max-height: 35%;
+        border-left: none;
+        border-top: 1px solid var(--border-color, #2a2f3a);
+    }
+}

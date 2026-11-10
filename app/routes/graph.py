@@ -40,6 +40,35 @@ def graph_data():
     )
 
 
+@bp.route("/graph/path", methods=["GET"])
+def graph_path():
+    """The shortest relation path between two of the caller's nodes."""
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "authentication required"}), 401
+
+    from app.db import get_kg_node_names
+    from app.graph_rag import shortest_path_edges
+
+    edges = shortest_path_edges(login, request.args.get("source", ""), request.args.get("target", ""), None)
+    names = get_kg_node_names(login, [edge[key] for edge in edges for key in ("src_id", "dst_id")])
+    return jsonify(
+        {
+            "edges": [
+                {
+                    "source": edge["src_id"],
+                    "target": edge["dst_id"],
+                    "predicate": edge["predicate"],
+                    "evidence": edge.get("evidence", ""),
+                    "source_name": names.get(edge["src_id"], ""),
+                    "target_name": names.get(edge["dst_id"], ""),
+                }
+                for edge in edges
+            ]
+        }
+    )
+
+
 @bp.route("/graph/status", methods=["GET"])
 def graph_status():
     login = session.get("login")

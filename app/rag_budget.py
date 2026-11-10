@@ -61,6 +61,7 @@ class RetrievalBudget:
     tokens: int
     tokens_per_fragment: int
     history_tokens: int = 0
+    graph_fragments: int = 0
 
 
 def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = None) -> int:
@@ -74,6 +75,18 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
     sample = (_SAMPLE * (size // len(_SAMPLE) + 1))[: max(80, size)]
     text = ("Источник: документ.txt\n" if lang == "ru" else "Source: document.txt\n") + sample
     return max(1, estimate_tokens(text, "reasoning", lang))
+
+
+def _config_float(app, key: str, default: float) -> float:
+    if app is not None:
+        return float(app.config.get(key, default) or default)
+    return float(setting(key, default) or default)
+
+
+def _graph_enabled(app) -> bool:
+    if app is not None:
+        return bool(app.config.get("GRAPH_RAG_ENABLED"))
+    return str(setting("GRAPH_RAG_ENABLED", "false")).lower() in ("true", "1", "yes")
 
 
 def _config_value(app, key: str, default: int) -> int:
@@ -136,6 +149,13 @@ def retrieval_budget(
     configured = _config_value(app, "RAG_TOP_K", 0)
     if configured > 0:
         top_k = min(top_k, configured)
+    # Graph evidence has no cosine score, so it takes a room of its own instead
+    # of competing with the dense half. Nothing is reserved while the graph is
+    # off, which keeps every existing budget identical.
+    graph_fragments = 0
+    if _graph_enabled(app):
+        graph_fragments = max(1, int(fragments * _config_float(app, "GRAPH_SHARE", 0.15)))
+        top_k = max(MIN_TOP_K, top_k - graph_fragments)
     return RetrievalBudget(
         top_k=top_k,
         coverage_files=coverage,
@@ -143,4 +163,5 @@ def retrieval_budget(
         tokens=documents_tokens,
         tokens_per_fragment=per_fragment,
         history_tokens=history_tokens,
+        graph_fragments=graph_fragments,
     )

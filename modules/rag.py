@@ -16,6 +16,7 @@ from app.db import (
     INDEX_STATUS_INDEXED,
     find_indexed_document_by_blob,
     get_document,
+    get_rag_chunk,
     get_session_text_history,
     get_shared_document_ids,
     get_user_documents,
@@ -127,6 +128,7 @@ class RagModule:
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
         self.last_coverage: dict = {}
+        self.last_graph_section: str = ""
         self.llamacpp = LlamaCppClient(app)
         self.available = False
         self.collection_name_prefix = "user_"
@@ -884,7 +886,111 @@ class RagModule:
                 f"stay out of this context"
             )
 
+        chunks, scores, graph_section = self._graph_stage_with_section(
+            user_id, query, scopes, chunks, scores, budget, top_k
+        )
+        self.last_graph_section = graph_section
         return chunks, scores
+
+    def _graph_stage_with_section(
+        self,
+        user_id: str,
+        query: str,
+        scopes: list[tuple[str, list[str] | None]],
+        chunks: list[dict],
+        scores: list[float],
+        budget,
+        top_k: int,
+    ) -> tuple[list[dict], list[float], str]:
+        """Add graph evidence to a finished retrieval, bounded by the budget.
+
+        Wrapped so that a broken graph can never fail a search that already has
+        an answer: a disabled flag, an empty graph or an exception all leave the
+        retrieval exactly as the dense and lexical halves produced it.
+        """
+        from flask import has_app_context
+
+        self.last_graph_section = ""
+        if not has_app_context() or not current_app.config.get("GRAPH_RAG_ENABLED"):
+            return chunks, scores, ""
+        allowance = int(getattr(budget, "graph_fragments", 0) or 0)
+        if allowance <= 0 or not chunks:
+            return chunks, scores, ""
+        try:
+            extra, section = self._graph_stage(user_id, query, scopes, chunks[:top_k], allowance)
+        except Exception as exc:  # noqa: BLE001 — the graph is optional evidence
+            self.logger.warning(f"graph stage skipped: {exc}")
+            return chunks, scores, ""
+        if not extra:
+            return chunks, scores, section
+        top_score = max(scores) if scores else 0.0
+        added = [chunk for chunk in extra if (chunk.get("doc_id"), chunk.get("chunk_index")) not in {
+            (existing.get("doc_id"), existing.get("chunk_index")) for existing in chunks
+        }]
+        return chunks + added, scores + [top_score] * len(added), section
+
+    def _graph_stage(
+        self,
+        user_id: str,
+        query: str,
+        scopes: list[tuple[str, list[str] | None]],
+        top_chunks: list[dict],
+        allowance: int,
+    ) -> tuple[list[dict], str]:
+        """Chunks reachable through the knowledge graph, and the relation section."""
+        from app.db import get_kg_edges
+        from app.graph_rag import rank_edges, seed_nodes, shortest_path_edges
+
+        hops = int(current_app.config.get("GRAPH_HOPS", 2))
+        max_seeds = int(current_app.config.get("GRAPH_MAX_SEEDS", 8))
+        max_edges = int(current_app.config.get("GRAPH_MAX_EDGES", 12))
+        chunk_refs = [(str(c.get("doc_id")), int(c.get("chunk_index") or 0)) for c in top_chunks]
+        scope_by_owner = {owner: scope for owner, scope in scopes}
+
+        seeded: list[tuple[str, str]] = []
+        for owner, owner_scope in scopes:
+            for node_id in seed_nodes(owner, query, owner_scope, chunk_refs, max_seeds):
+                seeded.append((owner, node_id))
+        if not seeded:
+            return [], ""
+
+        edges: list[dict] = []
+        for owner in scope_by_owner:
+            nodes = [node for node_owner, node in seeded if node_owner == owner]
+            if not nodes:
+                continue
+            for edge in get_kg_edges(owner, nodes, hops=hops, doc_ids=scope_by_owner[owner]):
+                edge["user_id"] = owner
+                edges.append(edge)
+        edges = rank_edges(edges)[:max_edges]
+        if not edges:
+            return [], ""
+
+        candidates: list[dict] = []
+        for edge in edges:
+            if len(candidates) >= allowance:
+                break
+            text = get_rag_chunk(edge["user_id"], edge["doc_id"], edge["chunk_index"])
+            if not text:
+                continue
+            candidates.append(
+                {
+                    "doc_id": edge["doc_id"],
+                    "chunk_index": edge["chunk_index"],
+                    "text": text,
+                    "filename": "",
+                    "origin": "graph",
+                }
+            )
+
+        section = ""
+        strongest = [(owner, node) for owner, node in seeded[:2]]
+        if len(strongest) == 2 and strongest[0][0] == strongest[1][0]:
+            owner = strongest[0][0]
+            path = shortest_path_edges(owner, strongest[0][1], strongest[1][1], scope_by_owner.get(owner))
+            if path:
+                section = "\n".join(f"{edge['predicate']}: {edge.get('evidence', '')}" for edge in path)
+        return candidates, section
 
     def _estimate_tokens(self, text: str) -> int:
         """Estimate tokens using configured characters per token."""

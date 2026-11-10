@@ -1669,3 +1669,97 @@ def get_document_filenames(user_id, doc_ids):
         c = conn.cursor()
         c.execute("SELECT id, filename FROM documents WHERE user_id = %s AND id = ANY(%s::text[])", (user_id, list(doc_ids)))
         return {row["id"]: row["filename"] for row in c.fetchall()}
+
+
+def get_kg_graph(user_id, doc_id="", kind="", limit=400):
+    """Nodes and the edges among them, for the graph view."""
+    limit = max(1, int(limit))
+    params: list = [user_id]
+    filters = ""
+    if kind:
+        filters += " AND n.kind = %s"
+        params.append(kind)
+    if doc_id:
+        filters += (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.doc_id = %s)"
+        )
+        params.append(doc_id)
+    params.append(limit)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            SELECT n.id, n.name, n.kind, n.description,
+                   (SELECT count(*) FROM kg_occurrences o WHERE o.node_id = n.id) AS mentions
+            FROM kg_nodes n
+            WHERE n.user_id = %s{filters}
+            ORDER BY mentions DESC, n.name
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        nodes = [
+            {
+                "id": str(row["id"]),
+                "label": row["name"],
+                "kind": row["kind"],
+                "description": row["description"] or "",
+                "mentions": int(row["mentions"] or 0),
+            }
+            for row in c.fetchall()
+        ]
+        if not nodes:
+            return {"nodes": [], "edges": []}
+        ids = [node["id"] for node in nodes]
+        c.execute(
+            "SELECT src_id, dst_id, predicate, weight, doc_id FROM kg_edges"
+            " WHERE user_id = %s AND src_id = ANY(%s::uuid[]) AND dst_id = ANY(%s::uuid[])",
+            (user_id, ids, ids),
+        )
+        edges = [
+            {
+                "source": str(row["src_id"]),
+                "target": str(row["dst_id"]),
+                "predicate": row["predicate"],
+                "weight": int(row["weight"] or 1),
+                "doc_id": row["doc_id"],
+            }
+            for row in c.fetchall()
+        ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def get_kg_document_graph(user_id, limit=400):
+    """The document layer: indexed documents and their similarity edges."""
+    limit = max(1, int(limit))
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, filename FROM documents WHERE user_id = %s AND index_status = 'indexed'"
+            " ORDER BY filename LIMIT %s",
+            (user_id, limit),
+        )
+        nodes = [
+            {"id": row["id"], "label": row["filename"], "kind": "document", "description": "", "mentions": 0}
+            for row in c.fetchall()
+        ]
+        if not nodes:
+            return {"nodes": [], "edges": []}
+        ids = [node["id"] for node in nodes]
+        c.execute(
+            "SELECT src_doc_id, dst_doc_id, score FROM kg_doc_edges"
+            " WHERE user_id = %s AND src_doc_id = ANY(%s::text[]) AND dst_doc_id = ANY(%s::text[])",
+            (user_id, ids, ids),
+        )
+        edges = [
+            {
+                "source": row["src_doc_id"],
+                "target": row["dst_doc_id"],
+                "predicate": "similar_to",
+                "weight": round(float(row["score"]), 3),
+                "doc_id": row["src_doc_id"],
+            }
+            for row in c.fetchall()
+        ]
+    return {"nodes": nodes, "edges": edges}

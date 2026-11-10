@@ -507,6 +507,10 @@ def create_app():
     app.cli.add_command(cli.graph_build)
     app.cli.add_command(cli.graph_status)
 
+    from .routes.graph import bp as graph_bp
+
+    app.register_blueprint(graph_bp)
+
     # Additional camera routes
     if "cam" in modules:
         from modules.cam import CamAPI

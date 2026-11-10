@@ -1,0 +1,16 @@
+You extract knowledge from one fragment of a document.
+
+Allowed entity types: {entity_kinds}.
+
+Rules:
+- Extract only what the text states. Do not infer.
+- evidence is a verbatim quote from the fragment that supports the relation.
+- predicate is a short lower-case phrase: "supplies", "belongs to", "allowed between".
+- If there are no entities, return empty lists.
+- Reply with JSON only, no prose and no markdown fence.
+
+Shape:
+{"entities":[{"name":"...","type":"organization","description":"..."}],"relations":[{"source":"...","target":"...","predicate":"...","evidence":"..."}]}
+
+Fragment:
+{chunk_text}

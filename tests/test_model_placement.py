@@ -321,12 +321,25 @@ class TestTheReloadOnlyHappensWhenItCanHelp:
         rm._poll_vram = MagicMock()
         return rm
 
-    def test_no_unload_when_the_card_cannot_hold_the_model_anyway(self):
-        """Two residents: reloading would land in the same remainder."""
-        rm = self._manager(15000)
+    def test_no_unload_when_the_card_is_smaller_than_the_model(self):
+        """The card cannot hold the model at all: reloading would land in the same remainder."""
+        rm = self._manager(2400)
+        rm.hardware.total_vram_mb = 8192
         with patch("app.resource_manager.requests.post") as post:
-            assert rm._unload_misplaced("multimodal", {"model": "multimodal"}, 15000, 8217) is False
+            assert rm._unload_misplaced("reasoning", {"model": "reasoning"}, 2400, 9627) is False
         post.assert_not_called()
+
+    def test_a_lone_misplaced_model_is_unloaded_even_when_the_current_free_space_is_smaller(self):
+        """Live 2026-11-10: 7 095 MB on the card for an estimated 9 627 MB.
+
+        The free space *before* the unload was 9 216 MB, so the old check refused
+        the reload and the answer ran for 176 s. The model was the only resident,
+        so unloading it returns its own 7 095 MB and the reload fits the card.
+        """
+        rm = self._manager(7095)
+        with patch("app.resource_manager.requests.post") as post:
+            assert rm._unload_misplaced("reasoning", {"model": "reasoning"}, 7095, 9627) is True
+        assert post.call_args.kwargs["json"] == {"model": "reasoning"}
 
     def test_the_retry_window_is_a_minute_not_ten(self):
         """An unload followed by a fresh load must not block the next verdict.

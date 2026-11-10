@@ -2,7 +2,7 @@
 
 ## Measured throughput
 
-All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603) on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s): Flash Attention on, q4_0 KV cache, all layers on GPU (`-ngl -1`). Two metrics are reported: **Prompt (pp512)** — throughput for processing a 512-token prompt — and **Generation (tg128)** — throughput for generating 128 tokens, averaged over 3 repetitions after a warmup run. File sizes are the GGUF file sizes. Real-world throughput differs: the FLAI system prompt and chat history enlarge the prompt, and llama-swap shares VRAM between loaded models.
+All numbers are **synthetic measurements** on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s): Flash Attention on, q4_0 KV cache, all layers on GPU (`-ngl -1`). Most rows come from **`llama-bench`** (llama.cpp build 10603); the Swift row was measured through **llama-server timings** (build 11889, the runtime FLAI actually uses) — a 544-token prompt and 128 generated tokens, `timings.prompt_per_second` / `timings.predicted_per_second`, averaged over 3 runs after a warm-up with the prompt cache disabled. Two metrics are reported: **Prompt (pp512)** — throughput for processing a ~512-token prompt — and **Generation (tg128)** — throughput for generating 128 tokens. File sizes are the GGUF file sizes. File sizes are the GGUF file sizes. Real-world throughput differs: the FLAI system prompt and chat history enlarge the prompt, and llama-swap shares VRAM between loaded models.
 
 | Model | Type | Quant | File | Prompt (pp512) | Generation (tg128) | Notes |
 |-------|------|-------|------|----------------|--------------------|-------|
@@ -13,6 +13,7 @@ All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603)
 | Ternary-Bonsai-27B | Reasoning | Q2_g64 | 7.05 GiB | 993 t/s | 43.3 t/s | Ternary 27B |
 | gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.24 GiB | 2310 t/s | 48.3 t/s | Dense 12B |
 | Qwen3.8-27B | Reasoning | UD Q2_K_XL | 9.14 GiB | 763 t/s | 33.2 t/s | Dense 27B |
+| **Swift-1.5-Qwen3.8-27B** | Reasoning | IQ3_XXS | 9.40 GiB | 652 t/s | **33.0 t/s** | **Installed on this instance** — dense 27B fine-tune; measured **10.9 GB** VRAM at 24 576 ctx |
 | Muse-Glimmer-30B | Reasoning | UD Q2_K_XL | 11.58 GiB | 664 t/s | 26.1 t/s | Dense 30B |
 | **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.68 GiB | 3343 t/s | **74.8 t/s** | **Current multimodal model** — fastest vision model |
 | bge-m3-Q8_0 | Embedding | Q8_0 | 0.60 GiB | 31500 t/s | 550 t/s | Embedding (RAG) only |
@@ -32,6 +33,8 @@ The CPU column in the table below was measured **live on the previous 12-core CP
 > **Context windows (auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
+
+> **A dense 27B at IQ3_XXS:** Swift-1.5-Qwen3.8-27B keeps all 27B parameters active, so every token reads the whole 9.4 GiB of weights: 33.0 t/s — about a third of the MoE Qwen3.6-35B-A3B at a similar file size, which reads ~3B active parameters per token. Measured VRAM: 9 626 MB of weights + 1 305 MB of KV cache and buffers, **10 931 MB** total at the 24 576-token window.
 
 > **Why MoE models win as reasoning models:** Despite "20B+" parameters, these models use the Mixture-of-Experts (MoE) architecture with several experts — only a small number of parameters (~3B) is active per token. This gives the compute cost of a 3B model with the "knowledge" of a 20B+ model. MoE models are always faster than dense models of the same size.
 

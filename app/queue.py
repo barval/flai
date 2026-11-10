@@ -2373,6 +2373,7 @@ class RedisRequestQueue:
         rag_context: str = "",
         rag_source: str = "",
         skip_rag: bool = False,
+        graph_section: str = "",
     ) -> dict[str, Any]:
         """Re-queue a reasoning task to the slow queue.
         Prevents GPU contention with SD/Video (all GPU ops are serialised
@@ -2385,6 +2386,7 @@ class RedisRequestQueue:
             "text": query,
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Reasoning request", lang=lang),
             "response_style": response_style,
+            "graph_section": graph_section,
         }
         # Carry the original request identity + usage into the re-queued task so
         # the slow worker can account router + generation tokens together and
@@ -2906,6 +2908,9 @@ class RedisRequestQueue:
 
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
+        # A pre-computed context carries its section in the task data; a context
+        # built here reads it from the search that just ran.
+        graph_section = request_data.get("graph_section", "")
         rag_source = request_data.get("rag_source", "")
         skip_rag = request_data.get("skip_rag", False)
         if rag_context:
@@ -2948,6 +2953,7 @@ class RedisRequestQueue:
                         doc_ids=self._rag_scope(request_data),
                         lang=lang,
                     )
+                    graph_section = getattr(rag, "last_graph_section", "") or ""
                     if task and chunks:
                         self._publish_stream_event(
                             task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -3011,6 +3017,7 @@ class RedisRequestQueue:
                 user_id=user_id,
                 rag_context=rag_context,
                 rag_source=rag_source,
+                graph_section=graph_section,
                 # Attempt 0 already loaded the model (and VRAM is confirmed);
                 # skip the unload/reload on the retry to avoid ~20s dead time.
                 ensure_vram=(attempt == 0),
@@ -4278,6 +4285,7 @@ class RedisRequestQueue:
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
                 lang=lang,
             )
+            graph_section = getattr(rag, "last_graph_section", "") or ""
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -4336,6 +4344,7 @@ class RedisRequestQueue:
             response_style,
             rag_context=rag_context,
             rag_source="rag",
+            graph_section=graph_section,
         )
 
     def _process_search_task(
@@ -4906,6 +4915,7 @@ class RedisRequestQueue:
                 doc_ids=self._rag_scope((task or {}).get("data") or {}),
                 lang=lang,
             )
+            graph_section = getattr(rag, "last_graph_section", "") or ""
             if task and chunks:
                 self._publish_stream_event(
                     task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
@@ -4964,6 +4974,7 @@ class RedisRequestQueue:
             response_style,
             rag_context=rag_context,
             rag_source="rag",
+            graph_section=graph_section,
         )
 
     def _process_text_task(

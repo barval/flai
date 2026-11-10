@@ -133,3 +133,38 @@ def shortest_path_edges(user_id: str, source: str, target: str, doc_ids: list[st
     path = nx.shortest_path(graph, source, target, weight="weight")
     return [by_pair[(left, right)] for left, right in zip(path, path[1:], strict=False) if (left, right) in by_pair]
 
+
+
+def format_graph_section(triples: list[dict], path: list[dict], max_tokens: int = 600) -> str:
+    """Render relations for the reasoning prompt, capped by a token estimate.
+
+    Every line names its document: the answer may cite what the graph believes,
+    and a relation whose source the reader cannot find is not evidence.
+    """
+    if not triples and not path:
+        return ""
+    budget_chars = max(80, int(max_tokens) * 4)
+    lines: list[str] = []
+    used = 0
+    for triple in triples or []:
+        source = triple.get("src") or triple.get("src_id") or "?"
+        target = triple.get("dst") or triple.get("dst_id") or "?"
+        line = f"- {source} —[{triple.get('predicate') or '?'}]→ {target}"
+        document = triple.get("doc_name")
+        if document:
+            line += f"  ({document})"
+        if used + len(line) + 1 > budget_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+
+    if path and used < budget_chars:
+        chain = " → ".join(
+            f"{edge.get('src') or edge.get('src_id') or '?'} —[{edge.get('predicate') or '?'}]→ "
+            f"{edge.get('dst') or edge.get('dst_id') or '?'}"
+            for edge in path
+        )
+        line = f"Path: {chain}"
+        if used + len(line) + 1 <= budget_chars:
+            lines.append(line)
+    return "\n".join(lines)

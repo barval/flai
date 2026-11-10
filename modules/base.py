@@ -1040,6 +1040,7 @@ class BaseModule(TranslationMixin):
         lang: str,
         response_style: str,
         context_str: str,
+        graph_section: str = "",
     ) -> list[dict[str, str]] | None:
         """System instructions + one user message: context first, question last.
 
@@ -1060,7 +1061,13 @@ class BaseModule(TranslationMixin):
         )
         user_content = format_prompt(
             "reasoning_user.template",
-            {"conversation_history": (context_str or "").strip(), "reasoning_query": query},
+            {
+                "conversation_history": (context_str or "").strip(),
+                "reasoning_query": query,
+                # Relations found in the knowledge graph, rendered by
+                # app.graph_rag.format_graph_section; empty when none survived.
+                "graph_section": (graph_section or "").strip(),
+            },
             lang=lang,
         )
         if not system_content or not user_content:
@@ -1081,6 +1088,7 @@ class BaseModule(TranslationMixin):
         rag_context: str = "",
         rag_source: str = "",
         user_name: str = "",
+        graph_section: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         context_str = self._get_context_for_model(
@@ -1093,7 +1101,9 @@ class BaseModule(TranslationMixin):
             rag_source=rag_source,
             user_name=user_name,
         )
-        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        messages = self.build_reasoning_messages(
+            query, current_time_str, lang, response_style, context_str, graph_section
+        )
         if not messages:
             return "⚠️ " + self._("Error loading prompt template", lang)
 
@@ -1123,6 +1133,7 @@ class BaseModule(TranslationMixin):
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
         user_name: str = "",
+        graph_section: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response.
 

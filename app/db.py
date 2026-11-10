@@ -1646,3 +1646,26 @@ def count_rag_chunks(user_id, doc_id):
         c = conn.cursor()
         c.execute("SELECT count(*) AS n FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
         return int(c.fetchone()["n"])
+
+
+def get_kg_node_names(user_id, node_ids):
+    """Display names of graph nodes, keyed by id."""
+    if not node_ids:
+        return {}
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, name FROM kg_nodes WHERE user_id = %s AND id = ANY(%s::uuid[])",
+            (user_id, [str(node_id) for node_id in node_ids]),
+        )
+        return {str(row["id"]): row["name"] for row in c.fetchall()}
+
+
+def get_document_filenames(user_id, doc_ids):
+    """File names of documents, keyed by id (used to cite graph evidence)."""
+    if not doc_ids:
+        return {}
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, filename FROM documents WHERE user_id = %s AND id = ANY(%s::text[])", (user_id, list(doc_ids)))
+        return {row["id"]: row["filename"] for row in c.fetchall()}

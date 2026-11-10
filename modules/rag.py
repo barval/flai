@@ -938,8 +938,8 @@ class RagModule:
         allowance: int,
     ) -> tuple[list[dict], str]:
         """Chunks reachable through the knowledge graph, and the relation section."""
-        from app.db import get_kg_edges
-        from app.graph_rag import rank_edges, seed_nodes, shortest_path_edges
+        from app.db import get_document_filenames, get_kg_edges, get_kg_node_names
+        from app.graph_rag import format_graph_section, rank_edges, seed_nodes, shortest_path_edges
 
         hops = int(current_app.config.get("GRAPH_HOPS", 2))
         max_seeds = int(current_app.config.get("GRAPH_MAX_SEEDS", 8))
@@ -983,13 +983,36 @@ class RagModule:
                 }
             )
 
-        section = ""
-        strongest = [(owner, node) for owner, node in seeded[:2]]
+        names: dict[str, str] = {}
+        files: dict[str, str] = {}
+        for owner in scope_by_owner:
+            owner_edges = [edge for edge in edges if edge["user_id"] == owner]
+            if not owner_edges:
+                continue
+            names.update(get_kg_node_names(owner, [e[key] for e in owner_edges for key in ("src_id", "dst_id")]))
+            files.update(get_document_filenames(owner, [e["doc_id"] for e in owner_edges]))
+
+        def _named(edge: dict) -> dict:
+            return {
+                **edge,
+                "src": names.get(edge["src_id"], ""),
+                "dst": names.get(edge["dst_id"], ""),
+                "doc_name": files.get(edge["doc_id"], ""),
+            }
+
+        path_edges: list[dict] = []
+        strongest = seeded[:2]
         if len(strongest) == 2 and strongest[0][0] == strongest[1][0]:
             owner = strongest[0][0]
             path = shortest_path_edges(owner, strongest[0][1], strongest[1][1], scope_by_owner.get(owner))
             if path:
-                section = "\n".join(f"{edge['predicate']}: {edge.get('evidence', '')}" for edge in path)
+                path_names = get_kg_node_names(owner, [e[key] for e in path for key in ("src_id", "dst_id")])
+                path_edges = [{**edge, "src": path_names.get(edge["src_id"], ""), "dst": path_names.get(edge["dst_id"], "")} for edge in path]
+        section = format_graph_section(
+            [_named(edge) for edge in edges],
+            path_edges,
+            int(current_app.config.get("GRAPH_SECTION_TOKENS", 600)),
+        )
         return candidates, section
 
     def _estimate_tokens(self, text: str) -> int:

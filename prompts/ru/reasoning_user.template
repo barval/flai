@@ -1,4 +1,5 @@
 {conversation_history}
+{graph_section}
 
 # ЗАПРОС
 {reasoning_query}

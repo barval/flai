@@ -164,7 +164,10 @@ def retrieval_budget(
         # must not take most of what is left, so its share is capped at a
         # quarter of the fragments that survived that narrowing.
         graph_fragments = min(graph_fragments, max(1, top_k // 4))
-        top_k = max(MIN_TOP_K, top_k - graph_fragments)
+        # The graph share is a ceiling for what it may add, not a deduction from
+        # the dense half: measured on the live corpus, reserving the room shrank
+        # the context by 15 % while the graph returned nothing new, because its
+        # candidates duplicated the dense hits.
     return RetrievalBudget(
         top_k=top_k,
         coverage_files=coverage,

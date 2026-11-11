@@ -95,6 +95,16 @@ def graph_data():
     merged["edges"] = [
         edge for edge in merged["edges"] if edge["source"] in seen and edge["target"] in seen
     ]
+    from app.db import get_kg_counts
+
+    total_nodes = 0
+    total_edges = 0
+    for owner, owner_doc_ids in scopes:
+        counts = get_kg_counts(owner, owner_doc_ids if owner != login else None)
+        total_nodes += counts["nodes"]
+        total_edges += counts["edges"]
+    merged["total_nodes"] = total_nodes
+    merged["total_edges"] = total_edges
     return jsonify(merged)
 
 

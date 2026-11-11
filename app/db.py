@@ -1763,6 +1763,25 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
     return {"nodes": nodes, "edges": edges}
 
 
+def get_kg_counts(user_id, doc_ids=None):
+    """Total nodes and edges in scope, not just the ones a page returns."""
+    params: list = [user_id]
+    scope_sql = ""
+    if doc_ids is not None:
+        scope_sql = (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = ANY(%s::text[]))"
+        )
+        params.append(list(doc_ids))
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT count(*) AS n FROM kg_nodes n WHERE n.user_id = %s{scope_sql}", tuple(params))
+        nodes = int(c.fetchone()["n"])
+        c.execute("SELECT count(*) AS n FROM kg_edges WHERE user_id = %s", (user_id,))
+        edges = int(c.fetchone()["n"])
+    return {"nodes": nodes, "edges": edges}
+
+
 def get_kg_document_graph(user_id, limit=400, doc_ids=None):
     """The document layer: indexed documents and their similarity edges."""
     limit = max(1, int(limit))

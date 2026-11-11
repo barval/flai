@@ -232,6 +232,13 @@
                     focusNode(node);
                     renderSidePanel(node);
                 })
+                .cameraPosition({ z: 700 })
+                .onEngineStop(function () {
+                    if (graphInstance && !graphInstance.__fitted) {
+                        graphInstance.__fitted = true;
+                        graphInstance.zoomToFit(600, 60);
+                    }
+                })
                 .onNodeRightClick(function (node) {
                     pathSourceId = node.id;
                     setStatus(t('graph_path_pick', 'Pick the second node of the path'));
@@ -244,11 +251,14 @@
             }
         }
         setStatus(
-            t('graph_counts', 'nodes: {n} · links: {m}')
+            t('graph_counts', 'shown {n} of {total} nodes · {m} links')
                 .replace('{n}', data.nodes.length)
+                .replace('{total}', data.total_nodes || data.nodes.length)
                 .replace('{m}', (data.edges || []).length)
         );
-        graphInstance.zoomToFit(600, 60);
+        // The fit happens when the engine stops; a fresh graph is repositioned
+        // each time, so the flag is cleared here.
+        graphInstance.__fitted = false;
     }
 
     async function showPath(sourceId, targetId) {

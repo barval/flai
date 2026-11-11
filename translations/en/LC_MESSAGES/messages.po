@@ -5364,5 +5364,5 @@ msgid "Knowledge graph of the document"
 msgstr "Knowledge graph of the document"
 
 #: app/templates/chat.html
-msgid "nodes: {n} · links: {m}"
-msgstr "nodes: {n} · links: {m}"
+msgid "shown {n} of {total} nodes · {m} links"
+msgstr "shown {n} of {total} nodes · {m} links"

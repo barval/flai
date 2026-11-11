@@ -450,19 +450,18 @@ function attachDocumentEventHandlers() {
             deleteDocument(docId, docName);
         });
     });
-    document.querySelectorAll('.graph-document-button').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (typeof window.openGraphView === 'function') {
-                window.openGraphView({ docId: this.dataset.graphDoc });
-            }
-        });
-    });
-    const graphAllButton = document.getElementById('documents-graph-button');
-    if (graphAllButton) {
-        graphAllButton.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (typeof window.openGraphView === 'function') window.openGraphView({});
+    // One delegated listener instead of per-button handlers: the list is
+    // re-rendered on every processing tick, and freshly rendered buttons had no
+    // handler at all until the next full refresh.
+    if (!documentsList.dataset.graphBound) {
+        documentsList.dataset.graphBound = '1';
+        documentsList.addEventListener('click', function handleGraphClick(e) {
+        const cardButton = e.target.closest('.graph-document-button');
+        const allButton = e.target.closest('#documents-graph-button');
+        if (!cardButton && !allButton) return;
+        e.stopPropagation();
+        if (typeof window.openGraphView !== 'function') return;
+        window.openGraphView(cardButton ? { docId: cardButton.dataset.graphDoc } : {});
         });
     }
     document.querySelectorAll('.share-document-button').forEach(btn => {

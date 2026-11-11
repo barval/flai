@@ -85,7 +85,45 @@ def document_layer_ready(user_id):
     return bool(layer) and int(layer["vectors"]) == int(row["total"])
 
 
-def ensure_document_layer(user_id, similarity=0.75, neighbours=8):
+def backfill_centroids(app, user_id):
+    """Compute centroids for documents indexed before the graph existed.
+
+    The vectors are already in Qdrant; only the mean was never stored, so the
+    document layer of an existing corpus would otherwise stay empty forever.
+    """
+    from app.db import get_user_documents
+
+    rag = app.modules.get("rag") if hasattr(app, "modules") else None
+    if not rag or not rag.available:
+        return 0
+    config = {}
+    try:
+        from app.model_config import get_model_config
+
+        config = get_model_config("embedding") or {}
+    except Exception:  # noqa: BLE001 — the model name is cosmetic here
+        config = {}
+    written = 0
+    for document in get_user_documents(user_id) or []:
+        if not document.get("id"):
+            continue
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute("SELECT 1 FROM kg_doc_vectors WHERE doc_id = %s", (document["id"],))
+            if c.fetchone():
+                continue
+        try:
+            points = rag._scroll_document_points(user_id, document["id"])
+        except Exception:  # noqa: BLE001 — one unreadable document is not the layer
+            continue
+        centroid = centroid_from_points(points)
+        if centroid:
+            record_document_centroid(user_id, document["id"], centroid, config.get("model_name", ""))
+            written += 1
+    return written
+
+
+def ensure_document_layer(user_id, similarity=0.60, neighbours=8):
     """Rebuild the document layer only when a centroid arrived since last time.
 
     Kept out of the indexing path: at a few hundred documents the exhaustive
@@ -123,6 +161,7 @@ def rebuild_document_edges(user_id, similarity=0.75, neighbours=8):
     newest_model = rows[0]["embedding_model"]
     rows = [row for row in rows if row["embedding_model"] == newest_model]
 
+    floor = 0.35
     edges = []
     for index, row in enumerate(rows):
         scores = []
@@ -130,10 +169,14 @@ def rebuild_document_edges(user_id, similarity=0.75, neighbours=8):
             if index == other_index:
                 continue
             score = _cosine(row["vector"], other["vector"])
-            if score >= similarity:
+            if score >= floor:
                 scores.append((other["doc_id"], score))
         scores.sort(key=lambda pair: pair[1], reverse=True)
-        for neighbour_doc_id, score in scores[:neighbours]:
+        # The strongest neighbours are kept whether or not they clear the
+        # configured threshold: an isolated dot says nothing, and the top pair of
+        # a small corpus can sit below any absolute cut.
+        chosen = [pair for pair in scores[:neighbours] if pair[1] >= similarity] or scores[:2]
+        for neighbour_doc_id, score in chosen:
             edges.append((row["doc_id"], neighbour_doc_id, score))
     written = replace_kg_doc_edges(user_id, edges)
     _mark_layer(user_id, len(rows))

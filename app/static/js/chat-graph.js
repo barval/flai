@@ -68,6 +68,16 @@
         if (canvas) canvas.innerHTML = '';
     }
 
+    function resizeRenderer() {
+        const canvas = document.getElementById('graph-canvas');
+        if (!graphInstance || !canvas) return;
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        if (width > 0 && height > 0 && typeof graphInstance.width === 'function') {
+            graphInstance.width(width).height(height);
+        }
+    }
+
     function reportKind(kind) {
         const button = document.getElementById('graph-kind-btn');
         if (button) button.textContent = kind === '3d' ? '3D' : '2D';
@@ -287,7 +297,7 @@
                     .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
                     .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
                     .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
-                    .linkWidth(function (link) { return Math.max(0.5, Math.log(1 + (link.weight || 1))); })
+                    .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
                     .onNodeClick(function (node) {
                         if (pathSourceId && pathSourceId !== node.id) {
                             showPath(pathSourceId, node.id);
@@ -310,6 +320,7 @@
                 if (kind === '3d' && typeof graphInstance.backgroundColor === 'function') {
                     graphInstance.backgroundColor(graphBackground());
                 }
+                resizeRenderer();
                 graphInstance = graphInstance.graphData(graph);
                 if (kind === '3d' && typeof graphInstance.cameraPosition === 'function') {
                     graphInstance.cameraPosition({ z: 700 });
@@ -386,6 +397,11 @@
         new MutationObserver(function () {
             if (graphInstance) graphInstance.backgroundColor(graphBackground());
         }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        const canvasBox = document.getElementById('graph-canvas');
+        if (canvasBox && typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () { resizeRenderer(); }).observe(canvasBox);
+        }
+        window.addEventListener('resize', resizeRenderer);
         const kindButton = document.getElementById('graph-kind-btn');
         if (kindButton) {
             kindButton.addEventListener('click', function () {

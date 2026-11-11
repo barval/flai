@@ -1382,8 +1382,10 @@ def graph_build(login, doc_id, rebuild, follow, cancel):
 
     queued = queue_missing_documents(queue, login, doc_id=doc_id, rebuild=rebuild)
     try:
-        from app.graph_docs import ensure_document_layer
+        from app.graph_docs import backfill_centroids, ensure_document_layer
 
+        if backfill_centroids(current_app, login):
+            click.echo("document centroids backfilled from the index")
         ensure_document_layer(login)
     except Exception as exc:  # noqa: BLE001 — the layer is a view, not the build
         click.echo(f"document layer not refreshed: {exc}")

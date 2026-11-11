@@ -66,10 +66,14 @@ def graph_data():
     if layer == "documents":
         # The similarity layer is rebuilt on demand: an upload only stores a
         # centroid, and an exhaustive pass belongs here, not in the upload task.
-        from app.graph_docs import ensure_document_layer
+        from flask import current_app
+
+        from app.graph_docs import backfill_centroids, ensure_document_layer
 
         for owner, _owner_doc_ids in scopes:
             # A stale layer is not a failed request: it is simply rebuilt next time.
+            with contextlib.suppress(Exception):
+                backfill_centroids(current_app._get_current_object(), owner)
             with contextlib.suppress(Exception):
                 ensure_document_layer(owner)
 

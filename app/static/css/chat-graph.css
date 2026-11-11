@@ -163,8 +163,10 @@
 /* Entry points in the Documents panel. */
 .documents-graph-bar {
     display: flex;
-    justify-content: flex-end;
-    padding: 0.25rem 0.25rem 0;
+    justify-content: flex-start;
+    /* The same 0.6rem inset as .document-folder-header, so the graph icon lines
+       up with the folder emoji below it. */
+    padding: 0.25rem 0.6rem 0;
 }
 
 .documents-graph-button,

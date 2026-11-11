@@ -5366,3 +5366,10 @@ msgstr "Knowledge graph of the document"
 #: app/templates/chat.html
 msgid "shown {n} of {total} nodes · {m} links"
 msgstr "shown {n} of {total} nodes · {m} links"
+
+#: app/templates/chat.html
+msgid "WebGL is unavailable here — 2D mode"
+msgstr "WebGL is unavailable here — 2D mode"
+
+msgid "Switch between 2D and 3D"
+msgstr "Switch between 2D and 3D"

@@ -5,6 +5,7 @@ The project must run offline: nothing is loaded from a CDN.
 | File | Version | Licence | Source |
 |---|---|---|---|
 | `3d-force-graph.min.js` | 1.79.0 | MIT | https://github.com/vasturiano/3d-force-graph |
+| `force-graph.min.js` | 1.45.0 | MIT | https://github.com/vasturiano/force-graph |
 
 The bundle embeds `three.js` (MIT, https://github.com/mrdoob/three.js) and
 `d3-force-3d` (MIT, https://github.com/vasturiano/d3-force-3d).

@@ -5397,3 +5397,10 @@ msgstr "Граф знаний документа"
 #: app/templates/chat.html
 msgid "shown {n} of {total} nodes · {m} links"
 msgstr "показано {n} из {total} узлов · {m} связей"
+
+#: app/templates/chat.html
+msgid "WebGL is unavailable here — 2D mode"
+msgstr "WebGL недоступен — режим 2D"
+
+msgid "Switch between 2D and 3D"
+msgstr "Переключить 2D и 3D"

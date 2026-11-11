@@ -56,3 +56,12 @@ def test_the_tooltip_exists_in_both_catalogs():
     for lang in ("en", "ru"):
         po = Path(f"translations/{lang}/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
         assert 'msgid "View in knowledge graph"' in po
+
+
+def test_a_webgl_free_renderer_is_vendored():
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert Path("app/static/vendor/force-graph.min.js").exists()
+    assert "force-graph.min.js" in script
+    assert "webglAvailable" in script
+    assert "graph-kind-btn" in Path("app/templates/chat.html").read_text(encoding="utf-8")

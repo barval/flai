@@ -6,9 +6,11 @@
 (function () {
     'use strict';
 
-    const VENDOR_SRC = '/static/vendor/3d-force-graph.min.js';
+    const VENDOR_3D = '/static/vendor/3d-force-graph.min.js';
+    const VENDOR_2D = '/static/vendor/force-graph.min.js';
     let graphInstance = null;
     let vendorPromise = null;
+    let rendererKind = '3d';
     let currentLayer = 'entities';
     let focusedDoc = '';
     let selectedNode = null;
@@ -18,20 +20,71 @@
         return (window.TRANSLATIONS && window.TRANSLATIONS[key]) || fallback;
     }
 
-    function loadVendor() {
-        if (vendorPromise) return vendorPromise;
-        vendorPromise = new Promise(function (resolve, reject) {
+    function webglAvailable() {
+        try {
+            const probe = document.createElement('canvas');
+            return !!(window.WebGLRenderingContext &&
+                (probe.getContext('webgl') || probe.getContext('experimental-webgl')));
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function loadScript(src) {
+        return new Promise(function (resolve, reject) {
             const script = document.createElement('script');
-            script.src = VENDOR_SRC;
+            script.src = src;
             script.onload = resolve;
-            script.onerror = function () {
-                // A transient failure must not poison the view until a reload.
-                vendorPromise = null;
-                reject(new Error('renderer unavailable'));
-            };
+            script.onerror = function () { reject(new Error('renderer unavailable')); };
             document.head.appendChild(script);
         });
+    }
+
+    // 3D needs WebGL; the 2D renderer draws on a plain canvas and works where
+    // the browser refuses a GL context, which is a common corporate setting.
+    function loadVendor(kind) {
+        if (vendorPromise && kind === rendererKind) return vendorPromise;
+        rendererKind = kind;
+        const source = kind === '3d' ? VENDOR_3D : VENDOR_2D;
+        vendorPromise = loadScript(source).catch(function (error) {
+            // A transient failure must not poison the view until a reload.
+            vendorPromise = null;
+            throw error;
+        });
         return vendorPromise;
+    }
+
+    function preferredKind() {
+        return window.__graphKind === '2d' ? '2d' : '3d';
+    }
+
+    function disposeRenderer(canvas) {
+        try {
+            if (graphInstance && typeof graphInstance._destructor === 'function') graphInstance._destructor();
+        } catch (error) {
+            // the renderer is being replaced anyway
+        }
+        graphInstance = null;
+        if (canvas) canvas.innerHTML = '';
+    }
+
+    function reportKind(kind) {
+        const button = document.getElementById('graph-kind-btn');
+        if (button) button.textContent = kind === '3d' ? '3D' : '2D';
+        if (kind === '2d' && preferredKind() === '3d') {
+            // Only say it when the fallback was not the user's choice.
+            setStatus(t('graph_no_webgl', 'WebGL is unavailable here — 2D mode'));
+        }
+    }
+
+    function buildRenderer(kind, element) {
+        if (kind === '3d' && typeof window.ForceGraph3D === 'function') {
+            return window.ForceGraph3D()(element);
+        }
+        if (typeof window.ForceGraph !== 'function') {
+            throw new Error('ForceGraph is missing from the vendored bundle');
+        }
+        return window.ForceGraph()(element);
     }
 
     function viewRoot() {
@@ -197,17 +250,18 @@
         selectedNode = null;
         renderSidePanel(null);
 
+        const wanted = preferredKind();
+        const kind = wanted === '3d' && !webglAvailable() ? '2d' : wanted;
+        if (graphInstance && rendererKind !== kind) {
+            disposeRenderer(canvas);
+        }
         if (graphInstance) {
             graphInstance.graphData(data);
         } else {
             try {
-                await loadVendor();
+                await loadVendor(kind);
             } catch (error) {
                 showFailure(error);
-                return;
-            }
-            if (typeof window.ForceGraph3D !== 'function') {
-                showFailure(new Error('ForceGraph3D is missing from the vendored bundle'));
                 return;
             }
             // The canvas must have a size before the renderer measures it.
@@ -215,41 +269,44 @@
                 canvas.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
             }
             try {
-                graphInstance = window.ForceGraph3D()(canvas)
-                .backgroundColor(graphBackground())
-                .nodeLabel(function (node) { return escapeHtml(node.label); })
-                .nodeColor(function (node) { return colorFor(node.kind); })
-                .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
-                .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
-                .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
-                .linkWidth(function (link) { return Math.max(0.5, Math.log(1 + (link.weight || 1))); })
-                .onNodeClick(function (node) {
-                    if (pathSourceId && pathSourceId !== node.id) {
-                        showPath(pathSourceId, node.id);
-                        pathSourceId = null;
-                    }
-                    selectedNode = node;
-                    focusNode(node);
-                    renderSidePanel(node);
-                })
-                .cameraPosition({ z: 700 })
-                .onEngineStop(function () {
-                    if (graphInstance && !graphInstance.__fitted) {
-                        graphInstance.__fitted = true;
-                        graphInstance.zoomToFit(600, 60);
-                    }
-                })
-                .onNodeRightClick(function (node) {
-                    pathSourceId = node.id;
-                    setStatus(t('graph_path_pick', 'Pick the second node of the path'));
-                })
-                .graphData(data);
+                graphInstance = buildRenderer(kind, canvas)
+                    .backgroundColor(kind === '3d' ? graphBackground() : undefined)
+                    .nodeLabel(function (node) { return escapeHtml(node.label); })
+                    .nodeColor(function (node) { return colorFor(node.kind); })
+                    .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
+                    .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
+                    .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
+                    .linkWidth(function (link) { return Math.max(0.5, Math.log(1 + (link.weight || 1))); })
+                    .onNodeClick(function (node) {
+                        if (pathSourceId && pathSourceId !== node.id) {
+                            showPath(pathSourceId, node.id);
+                            pathSourceId = null;
+                        }
+                        selectedNode = node;
+                        focusNode(node);
+                        renderSidePanel(node);
+                    })
+                    .onEngineStop(function () {
+                        if (graphInstance && !graphInstance.__fitted) {
+                            graphInstance.__fitted = true;
+                            graphInstance.zoomToFit(600, 60);
+                        }
+                    })
+                    .onNodeRightClick(function (node) {
+                        pathSourceId = node.id;
+                        setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+                    })
+                    .graphData(data);
+                if (kind === '3d' && typeof graphInstance.cameraPosition === 'function') {
+                    graphInstance.cameraPosition({ z: 700 });
+                }
             } catch (error) {
                 graphInstance = null;
                 showFailure(error);
                 return;
             }
         }
+        reportKind(kind);
         setStatus(
             t('graph_counts', 'shown {n} of {total} nodes · {m} links')
                 .replace('{n}', data.nodes.length)
@@ -316,6 +373,13 @@
         new MutationObserver(function () {
             if (graphInstance) graphInstance.backgroundColor(graphBackground());
         }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        const kindButton = document.getElementById('graph-kind-btn');
+        if (kindButton) {
+            kindButton.addEventListener('click', function () {
+                window.__graphKind = preferredKind() === '3d' ? '2d' : '3d';
+                draw({ doc: focusedDoc, layer: currentLayer });
+            });
+        }
         const back = document.getElementById('graph-back-btn');
         if (back) back.addEventListener('click', window.closeGraphView);
         document.querySelectorAll('.graph-layer-btn').forEach(function (button) {

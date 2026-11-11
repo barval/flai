@@ -56,6 +56,7 @@
                 <span class="graph-title" id="graph-title-text">{{ _('Knowledge graph') }}</span>
                 <button type="button" class="graph-layer-btn active" data-layer="entities">{{ _('Entities') }}</button>
                 <button type="button" class="graph-layer-btn" data-layer="documents">{{ _('Documents') }}</button>
+                <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="{{ _('Switch between 2D and 3D') }}">3D</button>
                 <input type="search" id="graph-search-input" class="graph-search" placeholder="{{ _('Find a node') }}">
                 <span class="graph-status" id="graph-status-line"></span>
             </div>
@@ -352,6 +353,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_build_queued': {{ _('Queued; the graph fills while the instance is idle')|tojson }},
     'graph_focused': {{ _('Knowledge graph of the document')|tojson }},
     'graph_counts': {{ _('shown {n} of {total} nodes · {m} links')|tojson }},
+    'graph_no_webgl': {{ _('WebGL is unavailable here — 2D mode')|tojson }},
+    'graph_switch_kind': {{ _('Switch between 2D and 3D')|tojson }},
     'documents_share': {{ _('Share')|tojson }},
     'documents_shared_by': {{ _('Shared by')|tojson }},
     'documents_shared_with': {{ _('Shared with')|tojson }},

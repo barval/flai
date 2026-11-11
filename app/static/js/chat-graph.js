@@ -432,6 +432,7 @@
     }
 
     function setLayer(layer) {
+        if (!layer) return;
         currentLayer = layer;
         draw({ doc: focusedDoc, layer: layer });
         document.querySelectorAll('.graph-layer-btn').forEach(function (button) {
@@ -493,7 +494,9 @@
         }
         const back = document.getElementById('graph-back-btn');
         if (back) back.addEventListener('click', window.closeGraphView);
-        document.querySelectorAll('.graph-layer-btn').forEach(function (button) {
+        // Only the layer buttons carry a layer; the 2D/3D switch shares the
+        // class and used to call setLayer(undefined), which deselected both.
+        document.querySelectorAll('.graph-layer-btn[data-layer]').forEach(function (button) {
             button.addEventListener('click', function () { setLayer(button.dataset.layer); });
         });
         const search = document.getElementById('graph-search-input');

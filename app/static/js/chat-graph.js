@@ -75,10 +75,14 @@
         const tabs = document.querySelector('.sessions-header');
         const desktop = window.matchMedia('(min-width: 769px)').matches;
 
-        let top = 0;
+        // The site header (language, theme, logout) stays above the graph.
+        const siteHeader = document.querySelector('header');
+        const headerBottom = siteHeader ? Math.max(0, Math.round(siteHeader.getBoundingClientRect().bottom)) : 0;
+
+        let top = headerBottom;
         let left = 0;
         let width = window.innerWidth;
-        let height = window.innerHeight;
+        let height = Math.max(240, Math.round(window.innerHeight - top));
 
         if (desktop && sidebar) {
             // The tabs and the lists keep their column; the graph takes the rest.
@@ -89,7 +93,7 @@
             // A phone shows the tab row on top and the active view below it; the
             // graph is one more view in that space, not a full-screen cover.
             const rect = tabs.getBoundingClientRect();
-            top = Math.max(0, Math.round(rect.bottom));
+            top = Math.max(headerBottom, Math.round(rect.bottom));
             height = Math.max(240, Math.round(window.innerHeight - top));
         }
 

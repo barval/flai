@@ -1380,6 +1380,33 @@ def upsert_kg_node(user_id, kind, name, normalized, lemmas, description="", sour
     """
     with get_db() as conn:
         c = conn.cursor()
+        # "Барсуков Валерий" and "Барсуков Валерий Владимирович" are one person:
+        # an exact key split them. A name that is a word-prefix of a known one
+        # (at least two words) is the same entity, and the longer form wins.
+        if len(str(normalized).split()) >= 2:
+            c.execute(
+                """
+                SELECT id, name, normalized, lemmas FROM kg_nodes
+                WHERE user_id = %s AND kind = %s
+                  AND (normalized LIKE %s OR %s LIKE normalized || ' %%')
+                ORDER BY length(normalized) DESC LIMIT 1
+                """,
+                (user_id, kind, f"{normalized} %", normalized),
+            )
+            existing = c.fetchone()
+            if existing:
+                longer = (
+                    (normalized, name, list(lemmas or []))
+                    if len(str(normalized)) >= len(existing["normalized"])
+                    else (existing["normalized"], existing["name"], list(existing["lemmas"] or []))
+                )
+                merged_lemmas = sorted(set(longer[2]) | set(lemmas or []))
+                c.execute(
+                    "UPDATE kg_nodes SET name = %s, normalized = %s, lemmas = %s,"
+                    " description = CASE WHEN %s <> '' THEN %s ELSE description END WHERE id = %s",
+                    (longer[1], longer[0], merged_lemmas, description, description, existing["id"]),
+                )
+                return str(existing["id"])
         c.execute(
             """
             INSERT INTO kg_nodes (user_id, kind, name, normalized, lemmas, description, source_kind)

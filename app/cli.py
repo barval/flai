@@ -1422,3 +1422,86 @@ def graph_status(login):
         f"{login}: documents {status['documents']}  chunks {status['chunks_done']}/{status['chunks_total']}  "
         f"nodes {status['nodes']}  edges {status['edges']}  ready={status['ready']}"
     )
+
+
+@click.command("graph-merge-entities")
+@click.option("--user", "login", required=True, help="Login whose duplicate nodes are merged")
+@with_appcontext
+def graph_merge_entities(login):
+    """Merge graph nodes that name the same entity in different words.
+
+    Extraction produced "Барсуков Валерий", "Валерий Барсуков" and "Барсуков
+    Валерий Владимирович" as three nodes before the matcher ignored word order
+    and patronymics. Two passes: identical lemma sets, then a name that extends a
+    shorter one word by word. Occurrences and edges move to the longer name.
+    """
+    from app.database import get_db
+
+    def absorb(cursor, keeper, victim):
+        cursor.execute(
+            "INSERT INTO kg_occurrences (node_id, user_id, doc_id, chunk_index, mention_text)"
+            " SELECT %s, user_id, doc_id, chunk_index, mention_text FROM kg_occurrences"
+            " WHERE node_id = %s ON CONFLICT DO NOTHING",
+            (keeper["id"], victim["id"]),
+        )
+        cursor.execute("DELETE FROM kg_occurrences WHERE node_id = %s", (victim["id"],))
+        # Re-pointing by UPDATE collides with the unique edge key; an upsert that
+        # sums the weights collides gracefully instead.
+        for column in ("src_id", "dst_id"):
+            other = "dst_id" if column == "src_id" else "src_id"
+            cursor.execute(
+                f"INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
+                f" SELECT user_id, %s, {other}, predicate, weight, doc_id, chunk_index, evidence"
+                f" FROM kg_edges WHERE {column} = %s"
+                f" ON CONFLICT (user_id, src_id, dst_id, predicate)"
+                f" DO UPDATE SET weight = kg_edges.weight + EXCLUDED.weight",
+                (keeper["id"], victim["id"]),
+            )
+            cursor.execute(f"DELETE FROM kg_edges WHERE {column} = %s", (victim["id"],))
+        cursor.execute("DELETE FROM kg_edges WHERE user_id = %s AND src_id = dst_id", (login,))
+        cursor.execute(
+            "DELETE FROM kg_edges a USING kg_edges b WHERE a.user_id = %s AND b.user_id = a.user_id"
+            " AND a.src_id = b.src_id AND a.dst_id = b.dst_id AND a.predicate = b.predicate AND a.id < b.id",
+            (login,),
+        )
+        cursor.execute("DELETE FROM kg_nodes WHERE id = %s", (victim["id"],))
+        cursor.execute(
+            "UPDATE kg_nodes SET lemmas = (SELECT array_agg(DISTINCT value) FROM unnest(lemmas || %s) AS value)"
+            " WHERE id = %s",
+            (list(victim["lemmas"] or []), keeper["id"]),
+        )
+
+    merged = 0
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, kind, name, normalized, lemmas FROM kg_nodes WHERE user_id = %s",
+            (login,),
+        )
+        nodes = [dict(row) for row in c.fetchall()]
+
+        by_key: dict[tuple[str, str], dict] = {}
+        for node in nodes:
+            key = (node["kind"], " ".join(sorted(set(node["lemmas"] or []))))
+            keeper = by_key.get(key)
+            if keeper is None:
+                by_key[key] = node
+                continue
+            longer = node if len(node["name"]) >= len(keeper["name"]) else keeper
+            absorb(c, longer, keeper if longer is node else node)
+            by_key[key] = longer
+            merged += 1
+
+        by_norm = {(node["kind"], node["normalized"]): node for node in by_key.values()}
+        for node in sorted(by_key.values(), key=lambda item: len(str(item["normalized"]))):
+            words = str(node["normalized"]).split()
+            for cut in range(2, len(words)):
+                parent = by_norm.get((node["kind"], " ".join(words[:cut])))
+                if not parent or parent["id"] == node["id"]:
+                    continue
+                absorb(c, node, parent)
+                node["lemmas"] = list(node["lemmas"] or []) + list(parent["lemmas"] or [])
+                by_norm.pop((parent["kind"], parent["normalized"]), None)
+                merged += 1
+
+    click.echo(f"merged {merged} duplicate node(s) for {login}")

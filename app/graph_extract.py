@@ -35,7 +35,9 @@ def normalise_entity(name: str) -> tuple[str, list[str]]:
     lemma_list = lemmatize(cleaned)
     if not lemma_list:
         return cleaned, []
-    return " ".join(lemma_list), lemma_list
+    # Sorted: the order of a name carries nothing, and "Валерий Барсуков" must
+    # key the same as "Барсуков Валерий".
+    return " ".join(sorted(set(lemma_list))), lemma_list
 
 
 def _normalise_evidence(text: str) -> str:

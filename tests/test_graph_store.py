@@ -90,3 +90,16 @@ def test_erasing_an_account_removes_its_graph(test_app):
         userdb.delete_user(login)
 
         assert find_kg_node_ids(login, ["сокол"], None, 8) == []
+
+
+@pytest.mark.requires_db
+def test_a_patronymic_does_not_create_a_second_node(database):
+    from app.db import upsert_kg_node
+
+    short = upsert_kg_node(LOGIN, "person", "Барсуков Валерий", "барсуков валерий", ["барсуков", "валерий"], "")
+    long = upsert_kg_node(
+        LOGIN, "person", "Барсуков Валерий Владимирович", "барсуков валерий владимирович",
+        ["барсуков", "валерий", "владимирович"], "",
+    )
+
+    assert short == long

@@ -350,6 +350,15 @@ def build_schema(app) -> list[dict]:
     """Grouped schema for the panel: label, key, type, current value, default."""
     groups: list[dict] = []
     for group_id, (label, keys) in GROUPS.items():
+        # Labelled here, not in the browser: the admin page dictionary carries
+        # only the labels that existed when it was built, so a newer group stayed
+        # English and read as missing.
+        try:
+            from flask_babel import gettext as _translate
+
+            label = _translate(label) or label
+        except Exception:  # noqa: BLE001 — a label is not worth a failed page
+            pass
         fields = []
         for key in keys:
             value = app.config.get(config_key(key))

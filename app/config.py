@@ -373,7 +373,7 @@ def load_config(app):
     app.config["GRAPH_MAX_EDGES"] = int(os.getenv("GRAPH_MAX_EDGES", 12))
     app.config["GRAPH_SHARE"] = float(os.getenv("GRAPH_SHARE", 0.15))
     app.config["GRAPH_SECTION_TOKENS"] = int(os.getenv("GRAPH_SECTION_TOKENS", 600))
-    app.config["GRAPH_MAX_NODES"] = int(os.getenv("GRAPH_MAX_NODES", 400))
+    app.config["GRAPH_MAX_NODES"] = int(os.getenv("GRAPH_MAX_NODES", 1000))
     app.config["GRAPH_DOC_SIMILARITY"] = float(os.getenv("GRAPH_DOC_SIMILARITY", 0.75))
     app.config["GRAPH_DOC_NEIGHBOURS"] = int(os.getenv("GRAPH_DOC_NEIGHBOURS", 8))
 

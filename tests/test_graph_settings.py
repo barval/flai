@@ -41,7 +41,7 @@ def test_the_defaults_match_the_design(test_app):
     assert test_app.config["GRAPH_RAG_ENABLED"] is False
     assert test_app.config["GRAPH_AUTO_EXTRACT"] == "auto"
     assert test_app.config["GRAPH_HOPS"] == 2
-    assert test_app.config["GRAPH_MAX_NODES"] == 400
+    assert test_app.config["GRAPH_MAX_NODES"] == 1000
     assert test_app.config["GRAPH_SHARE"] == pytest.approx(0.15)
 
 

@@ -13,8 +13,16 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-primary, #12151c);
-    color: var(--text-primary, #e6e6e6);
+    /* The project themes with a body class and plain colours, not variables:
+       var(--bg-primary) does not exist, which is why the view stayed black in
+       the light theme. */
+    background: #ffffff;
+    color: #1e1e1e;
+}
+
+.dark-theme .graph-view {
+    background: #1e1e1e;
+    color: #e0e0e0;
 }
 
 .graph-view.hidden {
@@ -26,12 +34,12 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border-color, #2a2f3a);
+    border-bottom: 1px solid #d0d0d0;
     flex-wrap: wrap;
 }
 
 .graph-back-btn {
-    border: 1px solid var(--border-color, #2a2f3a);
+    border: 1px solid #c8c8c8;
     background: transparent;
     color: inherit;
     border-radius: 6px;
@@ -44,7 +52,7 @@
 }
 
 .graph-layer-btn {
-    border: 1px solid var(--border-color, #2a2f3a);
+    border: 1px solid #c8c8c8;
     background: transparent;
     color: inherit;
     border-radius: 999px;
@@ -54,8 +62,8 @@
 }
 
 .graph-layer-btn.active {
-    background: var(--accent-color, #4c8bf5);
-    border-color: var(--accent-color, #4c8bf5);
+    background: #4c8bf5;
+    border-color: #4c8bf5;
     color: #fff;
 }
 
@@ -63,15 +71,24 @@
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
     border-radius: 6px;
-    border: 1px solid var(--border-color, #2a2f3a);
+    border: 1px solid #c8c8c8;
     background: transparent;
     color: inherit;
 }
 
 .graph-status {
     margin-left: auto;
+    padding-left: 0.75rem;
+    border-left: 1px solid #d0d0d0;
     font-size: 0.8rem;
-    opacity: 0.75;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.dark-theme .graph-status,
+.dark-theme .graph-side-panel,
+.dark-theme .graph-toolbar {
+    border-color: #3a3a3a;
 }
 
 .graph-body {
@@ -92,7 +109,7 @@
 
 .graph-side-panel {
     width: 18rem;
-    border-left: 1px solid var(--border-color, #2a2f3a);
+    border-left: 1px solid #d0d0d0;
     padding: 0.75rem;
     overflow-y: auto;
     font-size: 0.9rem;
@@ -118,7 +135,7 @@
 
 .graph-neighbours li {
     padding: 0.2rem 0;
-    border-bottom: 1px solid var(--border-color, #2a2f3a);
+    border-bottom: 1px solid #d0d0d0;
 }
 
 .graph-hint,
@@ -137,7 +154,7 @@
         width: auto;
         max-height: 35%;
         border-left: none;
-        border-top: 1px solid var(--border-color, #2a2f3a);
+        border-top: 1px solid #d0d0d0;
     }
 }
 
@@ -166,7 +183,7 @@
 
 .graph-build-btn {
     margin-top: 0.5rem;
-    border: 1px solid var(--accent-color, #4c8bf5);
+    border: 1px solid #4c8bf5;
     background: transparent;
     color: inherit;
     border-radius: 6px;

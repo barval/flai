@@ -5358,3 +5358,7 @@ msgstr "Building"
 
 msgid "Queued; the graph fills while the instance is idle"
 msgstr "Queued; the graph fills while the instance is idle"
+
+#: app/templates/chat.html
+msgid "Knowledge graph of the document"
+msgstr "Knowledge graph of the document"

@@ -120,6 +120,20 @@
         }[kind] || '#9aa0a6';
     }
 
+    function showFailure(error) {
+        // A blank canvas tells the user nothing: the reason goes to the panel
+        // and to the console, and the status line stays readable.
+        const message = (error && error.message) || String(error);
+        setStatus(t('graph_error', 'The graph could not be loaded'));
+        const panel = document.getElementById('graph-side-panel');
+        if (panel) {
+            panel.innerHTML =
+                '<p class="graph-hint">' + escapeHtml(t('graph_error', 'The graph could not be loaded')) + '</p>' +
+                '<p class="graph-error-detail">' + escapeHtml(message) + '</p>';
+        }
+        if (window.console) console.error('graph view:', error);
+    }
+
     async function showEmptyState() {
         setStatus(t('graph_empty', 'The graph is still being built for these documents'));
         const panel = document.getElementById('graph-side-panel');
@@ -169,7 +183,7 @@
         try {
             data = await fetchGraph(params);
         } catch (error) {
-            setStatus(t('graph_error', 'The graph could not be loaded'));
+            showFailure(error);
             return;
         }
         if (!data.nodes || !data.nodes.length) {
@@ -185,10 +199,19 @@
             try {
                 await loadVendor();
             } catch (error) {
-                setStatus(t('graph_webgl_missing', 'This browser cannot render the graph'));
+                showFailure(error);
                 return;
             }
-            graphInstance = window.ForceGraph3D()(canvas)
+            if (typeof window.ForceGraph3D !== 'function') {
+                showFailure(new Error('ForceGraph3D is missing from the vendored bundle'));
+                return;
+            }
+            // The canvas must have a size before the renderer measures it.
+            if (!canvas.clientHeight) {
+                canvas.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
+            }
+            try {
+                graphInstance = window.ForceGraph3D()(canvas)
                 .backgroundColor('rgba(0,0,0,0)')
                 .nodeLabel(function (node) { return escapeHtml(node.label); })
                 .nodeColor(function (node) { return colorFor(node.kind); })
@@ -210,7 +233,11 @@
                     setStatus(t('graph_path_pick', 'Pick the second node of the path'));
                 })
                 .graphData(data);
-            graphInstance.controlType = 'trackball';
+            } catch (error) {
+                graphInstance = null;
+                showFailure(error);
+                return;
+            }
         }
         setStatus(data.nodes.length + ' / ' + (data.edges || []).length);
         graphInstance.zoomToFit(600, 60);

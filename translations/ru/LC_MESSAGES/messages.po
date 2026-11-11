@@ -5389,3 +5389,7 @@ msgstr "Строится"
 
 msgid "Queued; the graph fills while the instance is idle"
 msgstr "В очереди: граф заполняется, пока инсталляция простаивает"
+
+#: app/templates/chat.html
+msgid "Knowledge graph of the document"
+msgstr "Граф знаний документа"

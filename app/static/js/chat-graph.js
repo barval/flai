@@ -59,12 +59,17 @@
     }
 
     let fitTimer = null;
+    let pendingFit = false;
 
     function fitGraph(delay) {
+        // One fit per data load: the engine reports a stop after every zoom and
+        // drag, and refitting there undid the user's own scaling.
+        if (!pendingFit) return;
         if (fitTimer) clearTimeout(fitTimer);
         fitTimer = setTimeout(function () {
             fitTimer = null;
-            if (!graphInstance || typeof graphInstance.zoomToFit !== 'function') return;
+            if (!pendingFit || !graphInstance || typeof graphInstance.zoomToFit !== 'function') return;
+            pendingFit = false;
             // The renderer must know the real slot before it centres anything:
             // with a stale, wider width the cloud is drawn off-centre.
             resizeRenderer();
@@ -415,6 +420,7 @@
         );
         // The whole cloud has to be visible on open: the engine reports a stop
         // long before the layout settles, so the fit is repeated after it relaxes.
+        pendingFit = true;
         fitGraph(1500);
     }
 
@@ -490,6 +496,17 @@
             if (graphInstance) graphInstance.backgroundColor(graphBackground());
         }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
         const canvasBox = document.getElementById('graph-canvas');
+        if (canvasBox) {
+            ['wheel', 'pointerdown', 'touchstart'].forEach(function (eventName) {
+                canvasBox.addEventListener(eventName, function () {
+                    pendingFit = false;
+                    if (fitTimer) {
+                        clearTimeout(fitTimer);
+                        fitTimer = null;
+                    }
+                }, { passive: true });
+            });
+        }
         if (canvasBox && typeof ResizeObserver === 'function') {
             new ResizeObserver(function () { resizeRenderer(); }).observe(canvasBox);
         }

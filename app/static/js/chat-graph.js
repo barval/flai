@@ -73,7 +73,7 @@
         if (button) button.textContent = kind === '3d' ? '3D' : '2D';
         if (kind === '2d' && preferredKind() === '3d') {
             // Only say it when the fallback was not the user's choice.
-            setStatus(t('graph_no_webgl', 'WebGL is unavailable here — 2D mode'));
+            setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
         }
     }
 
@@ -158,7 +158,13 @@
             });
             return linked ? colorFor(candidate.kind) : 'rgba(120,120,120,0.15)';
         });
-        graphInstance.cameraPosition({ z: 220 }, node, 900);
+        // The 2D renderer has no camera; it flies by centring instead.
+        if (typeof graphInstance.cameraPosition === 'function') {
+            graphInstance.cameraPosition({ z: 220 }, node, 900);
+        } else if (typeof graphInstance.centerAt === 'function') {
+            graphInstance.centerAt(node.x, node.y, 900);
+            graphInstance.zoom(3, 900);
+        }
     }
 
     function graphBackground() {
@@ -186,7 +192,8 @@
         if (panel) {
             panel.innerHTML =
                 '<p class="graph-hint">' + escapeHtml(t('graph_error', 'The graph could not be loaded')) + '</p>' +
-                '<p class="graph-error-detail">' + escapeHtml(message) + '</p>';
+                '<p class="graph-error-detail">' + escapeHtml(message) + '</p>' +
+                '<p class="graph-hint">' + escapeHtml(t('graph_error_hint', 'Open the browser console for details, or copy the line above.')) + '</p>';
         }
         if (window.console) console.error('graph view:', error);
     }
@@ -269,8 +276,10 @@
                 canvas.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
             }
             try {
+                // Built step by step: passing undefined to a setter (the 2D
+                // renderer has no background colour) makes it throw later, in
+                // the middle of the first paint.
                 graphInstance = buildRenderer(kind, canvas)
-                    .backgroundColor(kind === '3d' ? graphBackground() : undefined)
                     .nodeLabel(function (node) { return escapeHtml(node.label); })
                     .nodeColor(function (node) { return colorFor(node.kind); })
                     .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
@@ -295,8 +304,11 @@
                     .onNodeRightClick(function (node) {
                         pathSourceId = node.id;
                         setStatus(t('graph_path_pick', 'Pick the second node of the path'));
-                    })
-                    .graphData(data);
+                    });
+                if (kind === '3d' && typeof graphInstance.backgroundColor === 'function') {
+                    graphInstance.backgroundColor(graphBackground());
+                }
+                graphInstance = graphInstance.graphData(data);
                 if (kind === '3d' && typeof graphInstance.cameraPosition === 'function') {
                     graphInstance.cameraPosition({ z: 700 });
                 }

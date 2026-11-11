@@ -190,3 +190,16 @@
     padding: 0.25rem 0.75rem;
     cursor: pointer;
 }
+
+/* The failure line is a diagnostic: it has to be selectable and copyable. */
+.graph-error-detail {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+    background: rgba(200, 60, 60, 0.08);
+    border-left: 3px solid #c83c3c;
+    padding: 0.4rem 0.6rem;
+}

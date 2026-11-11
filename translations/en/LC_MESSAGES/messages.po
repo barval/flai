@@ -5368,8 +5368,12 @@ msgid "shown {n} of {total} nodes · {m} links"
 msgstr "shown {n} of {total} nodes · {m} links"
 
 #: app/templates/chat.html
-msgid "WebGL is unavailable here — 2D mode"
-msgstr "WebGL is unavailable here — 2D mode"
+msgid "This browser does not provide WebGL — 2D mode"
+msgstr "This browser does not provide WebGL — 2D mode"
 
 msgid "Switch between 2D and 3D"
 msgstr "Switch between 2D and 3D"
+
+#: app/templates/chat.html
+msgid "Open the browser console for details, or copy the line above."
+msgstr "Open the browser console for details, or copy the line above."

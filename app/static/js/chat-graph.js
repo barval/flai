@@ -111,7 +111,17 @@
 
     function reportKind(kind) {
         const button = document.getElementById('graph-kind-btn');
-        if (button) button.textContent = kind === '3d' ? '3D' : '2D';
+        if (button) {
+            // The label names the action, not the current mode: in 3D it offers
+            // 2D, and the other way round.
+            button.textContent = kind === '3d' ? '2D' : '3D';
+            button.title = kind === '3d'
+                ? t('graph_switch_to_2d', 'Switch to 2D')
+                : t('graph_switch_to_3d', 'Switch to 3D');
+            // A forced 2D fallback (no WebGL in this browser) has nothing to
+            // switch to; the button would only rediscover the same limit.
+            button.disabled = kind === '2d' && preferredKind() === '3d';
+        }
         if (kind === '2d' && preferredKind() === '3d') {
             // Only say it when the fallback was not the user's choice.
             setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));

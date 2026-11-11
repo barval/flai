@@ -5408,3 +5408,10 @@ msgstr "Переключить 2D и 3D"
 #: app/templates/chat.html
 msgid "Open the browser console for details, or copy the line above."
 msgstr "Подробности — в консоли браузера; строку выше можно выделить и скопировать."
+
+#: app/templates/chat.html
+msgid "Switch to 2D"
+msgstr "Переключить в 2D"
+
+msgid "Switch to 3D"
+msgstr "Переключить в 3D"

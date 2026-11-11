@@ -340,6 +340,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_counts': {{ _('shown {n} of {total} nodes · {m} links')|tojson }},
     'graph_no_webgl': {{ _('This browser does not provide WebGL — 2D mode')|tojson }},
     'graph_switch_kind': {{ _('Switch between 2D and 3D')|tojson }},
+    'graph_switch_to_2d': {{ _('Switch to 2D')|tojson }},
+    'graph_switch_to_3d': {{ _('Switch to 3D')|tojson }},
     'graph_error_hint': {{ _('Open the browser console for details, or copy the line above.')|tojson }},
     'documents_share': {{ _('Share')|tojson }},
     'documents_shared_by': {{ _('Shared by')|tojson }},
@@ -443,7 +445,7 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
             <span class="graph-title" id="graph-title-text">{{ _('Knowledge graph') }}</span>
             <button type="button" class="graph-layer-btn active" data-layer="entities">{{ _('Entities') }}</button>
             <button type="button" class="graph-layer-btn" data-layer="documents">{{ _('Documents') }}</button>
-            <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="{{ _('Switch between 2D and 3D') }}">3D</button>
+            <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="{{ _('Switch to 2D') }}">2D</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="{{ _('Find a node') }}">
             <span class="graph-status" id="graph-status-line"></span>
         </div>

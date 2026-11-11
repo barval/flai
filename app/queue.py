@@ -6013,7 +6013,7 @@ class RedisRequestQueue:
 
     def _run_graph_extract_chunk(self, user_id: str, doc_id: str, chunk_index: int, task: dict) -> dict[str, Any]:
         from app.db import count_rag_chunks, get_kg_build_state, get_rag_chunk, set_kg_build_state
-        from app.graph_extract import build_extraction_prompt, merge_extraction, parse_extraction
+        from app.graph_extract import build_extraction_prompt, merge_extraction_with_stats, parse_extraction
         from app.memory_facts import detect_language
 
         total = count_rag_chunks(user_id, doc_id)
@@ -6073,7 +6073,13 @@ class RedisRequestQueue:
             set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")
             return {"status": "error"}
 
-        nodes, edges = merge_extraction(user_id, doc_id, chunk_index, text, parsed)
+        stats = merge_extraction_with_stats(user_id, doc_id, chunk_index, text, parsed)
+        nodes, edges = stats["nodes"], stats["edges"]
+        from app.db import add_kg_extract_stats
+
+        add_kg_extract_stats(
+            doc_id, user_id, stats["entities"], stats["relations_found"], stats["relations_kept"]
+        )
         done += 1
         next_index = chunk_index + 1
         finished = next_index >= total

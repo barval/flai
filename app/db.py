@@ -1611,6 +1611,52 @@ def set_kg_build_state(doc_id, user_id, status, chunks_total=0, chunks_done=0, m
         )
 
 
+def add_kg_extract_stats(doc_id, user_id, entities, relations_found, relations_kept):
+    """Accumulate what one chunk's extraction produced and what survived."""
+    with get_db() as conn:
+        conn.cursor().execute(
+            "UPDATE kg_build_state SET entities_found = entities_found + %s,"
+            " relations_found = relations_found + %s, relations_kept = relations_kept + %s"
+            " WHERE doc_id = %s AND user_id = %s",
+            (int(entities), int(relations_found), int(relations_kept), doc_id, user_id),
+        )
+
+
+def kg_extraction_stats(user_id):
+    """Aggregate extraction counters and graph shape for one account."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT coalesce(sum(entities_found), 0) AS entities,"
+            " coalesce(sum(relations_found), 0) AS found,"
+            " coalesce(sum(relations_kept), 0) AS kept,"
+            " coalesce(sum(chunks_done), 0) AS chunks"
+            " FROM kg_build_state WHERE user_id = %s",
+            (user_id,),
+        )
+        totals = dict(c.fetchone())
+        c.execute(
+            "SELECT count(*) AS nodes,"
+            " (SELECT count(*) FROM kg_nodes n2 WHERE n2.user_id = %s AND NOT EXISTS"
+            "  (SELECT 1 FROM kg_edges e WHERE e.user_id = %s AND (e.src_id = n2.id OR e.dst_id = n2.id))) AS isolated"
+            " FROM kg_nodes WHERE user_id = %s",
+            (user_id, user_id, user_id),
+        )
+        shape = dict(c.fetchone())
+        c.execute("SELECT count(*) AS edges FROM kg_edges WHERE user_id = %s", (user_id,))
+        edges = int(c.fetchone()["edges"])
+        c.execute(
+            "SELECT predicate, count(*) AS n FROM kg_edges WHERE user_id = %s"
+            " GROUP BY predicate ORDER BY n DESC LIMIT 8",
+            (user_id,),
+        )
+        predicates = [(row["predicate"], int(row["n"])) for row in c.fetchall()]
+    totals.update(shape)
+    totals["edges"] = edges
+    totals["predicates"] = predicates
+    return totals
+
+
 def kg_status(user_id):
     """Counters the UI and the CLI print."""
     with get_db() as conn:

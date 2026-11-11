@@ -90,7 +90,20 @@ def parse_extraction(raw: str) -> dict | None:
     return {"entities": clean_entities, "relations": clean_relations}
 
 
+def merge_extraction_with_stats(
+    user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: dict
+) -> dict:
+    """Same as :func:`merge_extraction`, plus what the evidence check rejected."""
+    result = _merge(user_id, doc_id, chunk_index, chunk_text, data)
+    return result
+
+
 def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: dict) -> tuple[int, int]:
+    result = _merge(user_id, doc_id, chunk_index, chunk_text, data)
+    return result["nodes"], result["edges"]
+
+
+def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: dict) -> dict:
     """Write one chunk's extraction into the graph.
 
     A relation survives only when its quoted evidence really occurs in the
@@ -98,7 +111,7 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
     creating a node the model never named.
     """
     if not data:
-        return 0, 0
+        return {"nodes": 0, "edges": 0, "entities": 0, "relations_found": 0, "relations_kept": 0}
 
     haystack = _normalise_evidence(chunk_text)
     chunk_lemmas = set(lemmatize(chunk_text))
@@ -126,6 +139,7 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
         written_nodes += 1
 
     written_edges = 0
+    proposed = len(data.get("relations", []))
     for relation in data.get("relations", []):
         evidence = _normalise_evidence(relation.get("evidence", ""))
         if not evidence or evidence not in haystack:
@@ -147,7 +161,13 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
         )
         written_edges += 1
 
-    return written_nodes, written_edges
+    return {
+        "nodes": written_nodes,
+        "edges": written_edges,
+        "entities": len(data.get("entities", [])),
+        "relations_found": proposed,
+        "relations_kept": written_edges,
+    }
 
 
 def build_extraction_prompt(chunk_text: str, lang: str = "ru") -> str:

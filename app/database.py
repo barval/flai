@@ -357,6 +357,10 @@ def ensure_kg_schema(c):
         )
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_kg_build_state_user ON kg_build_state (user_id, status)")
+    # Extraction quality proxies: what the model proposed and what survived the
+    # evidence check, accumulated per document while a build runs.
+    for column in ("entities_found", "relations_found", "relations_kept"):
+        c.execute(f"ALTER TABLE kg_build_state ADD COLUMN IF NOT EXISTS {column} INTEGER NOT NULL DEFAULT 0")
     c.execute("""
         CREATE TABLE IF NOT EXISTS kg_doc_layer (
             user_id TEXT PRIMARY KEY,

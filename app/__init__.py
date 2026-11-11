@@ -507,6 +507,7 @@ def create_app():
     app.cli.add_command(cli.graph_build)
     app.cli.add_command(cli.graph_status)
     app.cli.add_command(cli.graph_merge_entities)
+    app.cli.add_command(cli.graph_stats)
 
     from .routes.graph import bp as graph_bp
 

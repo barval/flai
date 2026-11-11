@@ -1505,3 +1505,37 @@ def graph_merge_entities(login):
                 merged += 1
 
     click.echo(f"merged {merged} duplicate node(s) for {login}")
+
+
+@click.command("graph-stats")
+@click.option("--user", "login", required=True, help="Login whose extraction quality is reported")
+@with_appcontext
+def graph_stats(login):
+    """Extraction quality without a labelled set.
+
+    The proxies: how many relations the model proposed and how many survived the
+    evidence check, how dense the graph is, how many entities stand alone, and
+    which predicates dominate. They catch a regression in extraction the moment a
+    build runs, with no human work.
+    """
+    from app.db import kg_extraction_stats
+
+    stats = kg_extraction_stats(login)
+    chunks = max(1, stats["chunks"])
+    nodes = stats["nodes"]
+    edges = stats["edges"]
+    found = stats["found"]
+    kept = stats["kept"]
+
+    click.echo(f"user            {login}")
+    click.echo(f"chunks          {stats['chunks']}")
+    click.echo(f"entities        {stats['entities']}  ({stats['entities'] / chunks:.2f} per chunk)")
+    click.echo(f"relations       {found} proposed, {kept} kept  ({100 * kept / found if found else 0:.0f} % survive)")
+    click.echo(f"nodes           {nodes}")
+    click.echo(f"edges           {edges}")
+    click.echo(f"density         {edges / nodes if nodes else 0:.2f} edges per node")
+    click.echo(f"isolated        {stats['isolated']}  ({100 * stats['isolated'] / nodes if nodes else 0:.0f} % of nodes)")
+    if stats["predicates"]:
+        click.echo("top predicates")
+        for predicate, count in stats["predicates"]:
+            click.echo(f"  {count:>4}  {predicate}")

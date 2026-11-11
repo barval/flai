@@ -86,3 +86,54 @@ def test_the_same_entity_merged_across_documents_keeps_one_node(database):
     merge_extraction(LOGIN, "doc-2", 0, "Вектор-Тех", parse_extraction(_payload("Вектор-Тех")))
 
     assert len(find_kg_node_ids(LOGIN, ["вектор"], None, 8)) == 1
+
+def test_an_english_predicate_maps_onto_the_closed_list():
+    from app.graph_extract import canonical_predicate
+
+    # The list is written in one surface form, so both an inflected verb and a
+    # light-verb phrase have to land on it.
+    assert canonical_predicate("supplied equipment") == "supplies"
+    assert canonical_predicate("is the supplier of") == "supplies"
+    assert canonical_predicate("поставка") == "поставляет"
+    assert canonical_predicate("осуществляет поставку") == "поставляет"
+
+
+def test_an_english_entity_key_ignores_the_legal_form_and_word_order():
+    from app.graph_extract import normalise_entity
+
+    keys = {normalise_entity(name)[0] for name in ("Acme Corp", "ACME Corporation", "The Acme Company")}
+
+    assert keys == {"acme"}
+
+
+def test_an_english_relation_lands_under_one_predicate(database):
+    from app.database import get_db
+    from app.graph_extract import merge_extraction, parse_extraction
+
+    chunk = "Brightline Systems supplies laptops to Project Halyard."
+    data = parse_extraction(
+        json.dumps(
+            {
+                "entities": [
+                    {"name": "Brightline Systems", "type": "organization", "description": ""},
+                    {"name": "Project Halyard", "type": "project", "description": ""},
+                ],
+                "relations": [
+                    {
+                        "source": "Brightline Systems",
+                        "target": "Project Halyard",
+                        "predicate": "supplied laptops to",
+                        "evidence": "Brightline Systems supplies laptops to Project Halyard",
+                    }
+                ],
+            }
+        )
+    )
+
+    nodes, edges = merge_extraction(LOGIN, "doc-en", 0, chunk, data)
+
+    assert (nodes, edges) == (2, 1)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT predicate FROM kg_edges WHERE user_id = %s", (LOGIN,))
+        assert [row["predicate"] for row in c.fetchall()] == ["supplies"]

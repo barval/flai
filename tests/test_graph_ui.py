@@ -66,5 +66,6 @@ def test_a_webgl_free_renderer_is_vendored():
 
     assert Path("app/static/vendor/force-graph.min.js").exists()
     assert "force-graph.min.js" in script
-    assert "webglAvailable" in script
+    # 3D is attempted for real and only then replaced by the 2D canvas.
+    assert "createRenderer" in script and "window.__graphKind = '2d'" in script
     assert "graph-kind-btn" in Path("app/templates/chat.html").read_text(encoding="utf-8")

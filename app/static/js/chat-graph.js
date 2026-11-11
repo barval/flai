@@ -20,16 +20,6 @@
         return (window.TRANSLATIONS && window.TRANSLATIONS[key]) || fallback;
     }
 
-    function webglAvailable() {
-        try {
-            const probe = document.createElement('canvas');
-            return !!(window.WebGLRenderingContext &&
-                (probe.getContext('webgl') || probe.getContext('experimental-webgl')));
-        } catch (error) {
-            return false;
-        }
-    }
-
     function loadScript(src) {
         return new Promise(function (resolve, reject) {
             const script = document.createElement('script');
@@ -134,14 +124,49 @@
             button.title = kind === '3d'
                 ? t('graph_switch_to_2d', 'Switch to 2D')
                 : t('graph_switch_to_3d', 'Switch to 3D');
-            // A forced 2D fallback (no WebGL in this browser) has nothing to
-            // switch to; the button would only rediscover the same limit.
-            button.disabled = kind === '2d' && preferredKind() === '3d';
+            button.disabled = false;
         }
         if (kind === '2d' && preferredKind() === '3d') {
             // Only say it when the fallback was not the user's choice.
             setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
         }
+    }
+
+    async function createRenderer(kind, element, graph) {
+        await loadVendor(kind);
+        if (!element.clientHeight) {
+            element.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
+        }
+        let instance = buildRenderer(kind, element)
+            .nodeLabel(function (node) { return escapeHtml(node.label); })
+            .nodeColor(function (node) { return colorFor(node.kind); })
+            .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
+            .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
+            .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
+            .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
+            .onNodeClick(function (node) {
+                if (pathSourceId && pathSourceId !== node.id) {
+                    showPath(pathSourceId, node.id);
+                    pathSourceId = null;
+                }
+                selectedNode = node;
+                focusNode(node);
+                renderSidePanel(node);
+            })
+            .onEngineStop(function () { fitGraph(0); })
+            .onNodeRightClick(function (node) {
+                pathSourceId = node.id;
+                setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+            });
+        if (kind === '3d' && typeof instance.backgroundColor === 'function') {
+            instance.backgroundColor(graphBackground());
+        }
+        instance = instance.graphData(graph);
+        if (kind === '3d' && typeof instance.cameraPosition === 'function') {
+            instance.cameraPosition({ z: 700 });
+        }
+        resizeRenderer();
+        return instance;
     }
 
     function buildRenderer(kind, element) {
@@ -324,73 +349,39 @@
         selectedNode = null;
         renderSidePanel(null);
 
-        const wanted = preferredKind();
-        const kind = wanted === '3d' && !webglAvailable() ? '2d' : wanted;
+        let kind = preferredKind();
         reportKind(kind);
         if (graphInstance && rendererKind !== kind) {
             disposeRenderer(canvas);
         }
-        const graph = { nodes: data.nodes, links: data.edges || [] };
         if (graphInstance) {
             graphInstance.graphData(graph);
         } else {
             try {
-                await loadVendor(kind);
+                graphInstance = await createRenderer(kind, canvas, graph);
             } catch (error) {
-                showFailure(error);
-                return;
-            }
-            // The canvas must have a size before the renderer measures it.
-            if (!canvas.clientHeight) {
-                canvas.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
-            }
-            try {
-                // Built step by step: passing undefined to a setter (the 2D
-                // renderer has no background colour) makes it throw later, in
-                // the middle of the first paint.
-                graphInstance = buildRenderer(kind, canvas)
-                    .nodeLabel(function (node) { return escapeHtml(node.label); })
-                    .nodeColor(function (node) { return colorFor(node.kind); })
-                    .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
-                    .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
-                    .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
-                    .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
-                    .onNodeClick(function (node) {
-                        if (pathSourceId && pathSourceId !== node.id) {
-                            showPath(pathSourceId, node.id);
-                            pathSourceId = null;
-                        }
-                        selectedNode = node;
-                        focusNode(node);
-                        renderSidePanel(node);
-                    })
-                    .onEngineStop(function () {
-                        fitGraph(0);
-                    })
-                    .onNodeRightClick(function (node) {
-                        pathSourceId = node.id;
-                        setStatus(t('graph_path_pick', 'Pick the second node of the path'));
-                    });
-                if (kind === '3d' && typeof graphInstance.backgroundColor === 'function') {
-                    graphInstance.backgroundColor(graphBackground());
+                if (kind !== '3d') {
+                    showFailure(error);
+                    return;
                 }
-                resizeRenderer();
-                graphInstance = graphInstance.graphData(graph);
-                if (kind === '3d' && typeof graphInstance.cameraPosition === 'function') {
-                    graphInstance.cameraPosition({ z: 700 });
+                // WebGL refused the context: fall back once, and say why. The
+                // attempt is real — a pre-flight probe rejects browsers that
+                // would have rendered fine.
+                disposeRenderer(canvas);
+                try {
+                    kind = '2d';
+                    // Remembered for the session so the next open does not pay
+                    // for the same refusal; the 3D button retries on demand.
+                    window.__graphKind = '2d';
+                    reportKind(kind);
+                    graphInstance = await createRenderer('2d', canvas, graph);
+                    setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
+                } catch (fallbackError) {
+                    showFailure(fallbackError);
+                    return;
                 }
-            } catch (error) {
-                graphInstance = null;
-                showFailure(error);
-                return;
             }
         }
-        setStatus(
-            t('graph_counts', 'shown {n} of {total} nodes · {m} links')
-                .replace('{n}', data.nodes.length)
-                .replace('{total}', data.total_nodes || data.nodes.length)
-                .replace('{m}', (data.edges || []).length)
-        );
         // The whole cloud has to be visible on open: the engine reports a stop
         // long before the layout settles, so the fit is repeated after it relaxes.
         fitGraph(1500);

@@ -93,6 +93,39 @@ def _normalise_evidence(text: str) -> str:
     return _WHITESPACE.sub(" ", (text or "").strip().lower())
 
 
+def first_json_object(text: str) -> str:
+    """The first balanced ``{...}`` in an answer, or an empty string.
+
+    The model closes its JSON and then explains itself in prose, so requiring
+    the whole answer to be JSON threw away a perfectly good extraction.
+    """
+    start = text.find("{")
+    if start < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return ""
+
+
 def parse_extraction(raw: str) -> dict | None:
     """Parse the model's answer, or return ``None`` on any schema drift."""
     if not raw:
@@ -107,7 +140,13 @@ def parse_extraction(raw: str) -> dict | None:
     try:
         data = json.loads(text)
     except (ValueError, TypeError):
-        return None
+        candidate = first_json_object(text)
+        if not candidate:
+            return None
+        try:
+            data = json.loads(candidate)
+        except (ValueError, TypeError):
+            return None
     if not isinstance(data, dict):
         return None
     entities = data.get("entities")

@@ -149,3 +149,18 @@ def test_a_stray_closing_fence_does_not_void_the_answer():
 
     assert parsed is not None
     assert parsed["entities"][0]["name"] == "mon.vezubr.ru"
+
+def test_json_followed_by_prose_is_still_an_answer():
+    from app.graph_extract import parse_extraction
+
+    # The model closed its JSON and then explained why it found no relations.
+    # Requiring the whole answer to be JSON threw the extraction away.
+    raw = (
+        '{"entities":[{"name":"Мотив","type":"organization","description":""}],"relations":[]}\n\n'
+        "Поскольку в фрагменте нет явных связей между сущностями, связей не выделено."
+    )
+
+    parsed = parse_extraction(raw)
+
+    assert parsed is not None
+    assert parsed["entities"][0]["name"] == "Мотив"

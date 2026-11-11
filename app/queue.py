@@ -5971,8 +5971,6 @@ class RedisRequestQueue:
         extraction and session summaries, and a document-sized task would keep
         them waiting for minutes.
         """
-        from app.db import get_kg_build_state, set_kg_build_state
-
         data = task.get("data", {})
         user_id = task.get("user_id", "")
         doc_id = str(data.get("doc_id") or "")
@@ -5985,17 +5983,39 @@ class RedisRequestQueue:
             self.app.logger.error(f"graph extract failed for {doc_id}/{chunk_index}: {e}")
             if self._retry_graph_task(task, str(e)[:120]):
                 return {"status": "retry"}
-            state = get_kg_build_state(doc_id, user_id) or {}
-            set_kg_build_state(
-                doc_id,
-                user_id,
-                "failed",
-                int(state.get("chunks_total") or 0),
-                int(state.get("chunks_done") or 0),
-                str(state.get("model") or ""),
-                str(e)[:300],
-            )
+            # One chunk that cannot be extracted must not abandon the rest of
+            # its document: measured on the live build, a handful of permanent
+            # failures stopped 77 of 96 documents mid-way and left the queue
+            # empty. The chunk is counted as processed with its error kept, and
+            # the build moves on.
+            self._advance_graph_build(user_id, doc_id, chunk_index, f"chunk {chunk_index}: {e}")
             return {"status": "error"}
+
+    def _advance_graph_build(self, user_id: str, doc_id: str, chunk_index: int, error: str = "") -> None:
+        """Count one chunk as processed and continue its document.
+
+        Every terminal path goes through here. A chunk that failed used to
+        return without queueing the next one, so one bad chunk ended the whole
+        document's build: measured live, that left the queue empty with 388
+        chunks of 840 unprocessed.
+        """
+        from app.db import get_kg_build_state, set_kg_build_state
+
+        state = get_kg_build_state(doc_id, user_id) or {}
+        total = int(state.get("chunks_total") or 0)
+        done = int(state.get("chunks_done") or 0) + 1
+        finished = done >= total
+        set_kg_build_state(
+            doc_id,
+            user_id,
+            "done" if finished else "pending",
+            total,
+            done,
+            str(state.get("model") or ""),
+            error[:300],
+        )
+        if not finished:
+            self.enqueue_graph_extract(user_id, doc_id, chunk_index + 1)
 
     def _retry_graph_task(self, task: dict, reason: str) -> bool:
         """Re-queue one chunk at most twice, then give up on it."""
@@ -6044,13 +6064,13 @@ class RedisRequestQueue:
 
         text, before, after = get_rag_chunk_window(user_id, doc_id, chunk_index)
         if not text:
-            set_kg_build_state(doc_id, user_id, "done" if done >= total else "pending", total, done, model)
+            self._advance_graph_build(user_id, doc_id, chunk_index, "chunk text missing")
             return {"status": "no such chunk"}
 
         lang = detect_language(text, fallback="ru")
         prompt = build_extraction_prompt(text, lang=lang, context_before=before, context_after=after)
         if not prompt:
-            set_kg_build_state(doc_id, user_id, "failed", total, done, model, "prompt missing")
+            self._advance_graph_build(user_id, doc_id, chunk_index, "prompt missing")
             return {"status": "error"}
 
         chunks: list[str] = []
@@ -6078,7 +6098,7 @@ class RedisRequestQueue:
             self.app.logger.warning(f"graph extract unparsable answer: {''.join(chunks)[:300]!r}")
             if self._retry_graph_task(task, "unparsable extraction"):
                 return {"status": "retry"}
-            set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")
+            self._advance_graph_build(user_id, doc_id, chunk_index, "unparsable extraction")
             return {"status": "error"}
 
         # The evidence may come from the neighbouring slice, which is why the

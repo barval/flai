@@ -6073,6 +6073,9 @@ class RedisRequestQueue:
 
         parsed = parse_extraction("".join(chunks))
         if parsed is None:
+            # The raw answer is the only way to tell a model that ignored the
+            # schema from one that never finished, and the retry hides it.
+            self.app.logger.warning(f"graph extract unparsable answer: {''.join(chunks)[:300]!r}")
             if self._retry_graph_task(task, "unparsable extraction"):
                 return {"status": "retry"}
             set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")

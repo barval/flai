@@ -137,3 +137,15 @@ def test_an_english_relation_lands_under_one_predicate(database):
         c = conn.cursor()
         c.execute("SELECT predicate FROM kg_edges WHERE user_id = %s", (LOGIN,))
         assert [row["predicate"] for row in c.fetchall()] == ["supplies"]
+
+def test_a_stray_closing_fence_does_not_void_the_answer():
+    from app.graph_extract import parse_extraction
+
+    # Measured on the live build: the model closed a block it never opened, and
+    # a valid entity list was retried four times before the chunk failed.
+    raw = '{"entities":[{"name":"mon.vezubr.ru","type":"place","description":""}],"relations":[]}```'
+
+    parsed = parse_extraction(raw)
+
+    assert parsed is not None
+    assert parsed["entities"][0]["name"] == "mon.vezubr.ru"

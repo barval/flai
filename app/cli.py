@@ -1436,40 +1436,10 @@ def graph_merge_entities(login):
     shorter one word by word. Occurrences and edges move to the longer name.
     """
     from app.database import get_db
+    from app.db import merge_kg_nodes_sql
 
     def absorb(cursor, keeper, victim):
-        cursor.execute(
-            "INSERT INTO kg_occurrences (node_id, user_id, doc_id, chunk_index, mention_text)"
-            " SELECT %s, user_id, doc_id, chunk_index, mention_text FROM kg_occurrences"
-            " WHERE node_id = %s ON CONFLICT DO NOTHING",
-            (keeper["id"], victim["id"]),
-        )
-        cursor.execute("DELETE FROM kg_occurrences WHERE node_id = %s", (victim["id"],))
-        # Re-pointing by UPDATE collides with the unique edge key; an upsert that
-        # sums the weights collides gracefully instead.
-        for column in ("src_id", "dst_id"):
-            other = "dst_id" if column == "src_id" else "src_id"
-            cursor.execute(
-                f"INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
-                f" SELECT user_id, %s, {other}, predicate, weight, doc_id, chunk_index, evidence"
-                f" FROM kg_edges WHERE {column} = %s"
-                f" ON CONFLICT (user_id, src_id, dst_id, predicate)"
-                f" DO UPDATE SET weight = kg_edges.weight + EXCLUDED.weight",
-                (keeper["id"], victim["id"]),
-            )
-            cursor.execute(f"DELETE FROM kg_edges WHERE {column} = %s", (victim["id"],))
-        cursor.execute("DELETE FROM kg_edges WHERE user_id = %s AND src_id = dst_id", (login,))
-        cursor.execute(
-            "DELETE FROM kg_edges a USING kg_edges b WHERE a.user_id = %s AND b.user_id = a.user_id"
-            " AND a.src_id = b.src_id AND a.dst_id = b.dst_id AND a.predicate = b.predicate AND a.id < b.id",
-            (login,),
-        )
-        cursor.execute("DELETE FROM kg_nodes WHERE id = %s", (victim["id"],))
-        cursor.execute(
-            "UPDATE kg_nodes SET lemmas = (SELECT array_agg(DISTINCT value) FROM unnest(lemmas || %s) AS value)"
-            " WHERE id = %s",
-            (list(victim["lemmas"] or []), keeper["id"]),
-        )
+        merge_kg_nodes_sql(cursor, login, keeper["id"], victim["id"])
 
     merged = 0
     with get_db() as conn:

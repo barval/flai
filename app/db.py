@@ -1372,6 +1372,54 @@ def set_branding_site_names(site_name_ru: str, site_name_en: str) -> None:
 # through the same scopes the vector search uses.
 
 
+def merge_kg_nodes_sql(cursor, user_id: str, keeper_id: str, victim_id: str) -> None:
+    """Move everything a duplicate node owns onto the keeper, then delete it.
+
+    Two rows can hold the same key at different moments: a prefix merge renames
+    a short node onto a name another row already carries, and re-pointing edges
+    with a plain UPDATE collides with the unique edge key. Both cases need the
+    same arithmetic, so it lives here instead of being repeated in the CLI.
+    """
+    cursor.execute(
+        "INSERT INTO kg_occurrences (node_id, user_id, doc_id, chunk_index, mention_text)"
+        " SELECT %s, user_id, doc_id, chunk_index, mention_text FROM kg_occurrences"
+        " WHERE node_id = %s ON CONFLICT DO NOTHING",
+        (keeper_id, victim_id),
+    )
+    cursor.execute("DELETE FROM kg_occurrences WHERE node_id = %s", (victim_id,))
+    for column in ("src_id", "dst_id"):
+        other = "dst_id" if column == "src_id" else "src_id"
+        cursor.execute(
+            f"INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
+            f" SELECT user_id, %s, {other}, predicate, weight, doc_id, chunk_index, evidence"
+            f" FROM kg_edges WHERE {column} = %s"
+            f" ON CONFLICT (user_id, src_id, dst_id, predicate)"
+            f" DO UPDATE SET weight = kg_edges.weight + EXCLUDED.weight",
+            (keeper_id, victim_id),
+        )
+        cursor.execute(f"DELETE FROM kg_edges WHERE {column} = %s", (victim_id,))
+    cursor.execute("DELETE FROM kg_edges WHERE user_id = %s AND src_id = dst_id", (user_id,))
+    cursor.execute(
+        "DELETE FROM kg_edges a USING kg_edges b WHERE a.user_id = %s AND b.user_id = a.user_id"
+        " AND a.src_id = b.src_id AND a.dst_id = b.dst_id AND a.predicate = b.predicate AND a.id < b.id",
+        (user_id,),
+    )
+    cursor.execute(
+        "UPDATE kg_nodes SET lemmas = (SELECT array_agg(DISTINCT value) FROM unnest(lemmas ||"
+        " (SELECT lemmas FROM kg_nodes WHERE id = %s)) AS value) WHERE id = %s",
+        (victim_id, keeper_id),
+    )
+    cursor.execute("DELETE FROM kg_nodes WHERE id = %s", (victim_id,))
+
+
+def merge_kg_nodes(user_id: str, keeper_id: str, victim_id: str) -> None:
+    """Same as :func:`merge_kg_nodes_sql`, on its own connection."""
+    if str(keeper_id) == str(victim_id):
+        return
+    with get_db() as conn:
+        merge_kg_nodes_sql(conn.cursor(), user_id, keeper_id, victim_id)
+
+
 def upsert_kg_node(user_id, kind, name, normalized, lemmas, description="", source_kind="document"):
     """Insert or merge an entity, returning its id.
 
@@ -1400,13 +1448,26 @@ def upsert_kg_node(user_id, kind, name, normalized, lemmas, description="", sour
                     if len(str(normalized)) >= len(existing["normalized"])
                     else (existing["normalized"], existing["name"], list(existing["lemmas"] or []))
                 )
+                # Renaming the short node onto the long name collides when the
+                # long name already has a row — which it does as soon as another
+                # chunk mentioned the same person in full.
+                keeper_id = existing["id"]
+                if longer[0] != existing["normalized"]:
+                    c.execute(
+                        "SELECT id FROM kg_nodes WHERE user_id = %s AND kind = %s AND normalized = %s AND id <> %s",
+                        (user_id, kind, longer[0], existing["id"]),
+                    )
+                    holder = c.fetchone()
+                    if holder:
+                        merge_kg_nodes_sql(c, user_id, holder["id"], existing["id"])
+                        keeper_id = holder["id"]
                 merged_lemmas = sorted(set(longer[2]) | set(lemmas or []))
                 c.execute(
                     "UPDATE kg_nodes SET name = %s, normalized = %s, lemmas = %s,"
                     " description = CASE WHEN %s <> '' THEN %s ELSE description END WHERE id = %s",
-                    (longer[1], longer[0], merged_lemmas, description, description, existing["id"]),
+                    (longer[1], longer[0], merged_lemmas, description, description, keeper_id),
                 )
-                return str(existing["id"])
+                return str(keeper_id)
         c.execute(
             """
             INSERT INTO kg_nodes (user_id, kind, name, normalized, lemmas, description, source_kind)

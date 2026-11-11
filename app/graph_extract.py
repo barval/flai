@@ -98,9 +98,12 @@ def parse_extraction(raw: str) -> dict | None:
     if not raw:
         return None
     text = raw.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
+    # Both fences are stripped independently: the model sometimes closes a
+    # block it never opened, and that stray fence alone made the answer
+    # unparsable, so a chunk with valid entities was retried four times.
+    text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    text = text.strip()
     try:
         data = json.loads(text)
     except (ValueError, TypeError):

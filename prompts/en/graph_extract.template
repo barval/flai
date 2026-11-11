@@ -3,13 +3,17 @@ You extract knowledge from one fragment of a document.
 Allowed entity types: {entity_kinds}.
 
 Rules:
-- Extract only what the text states. Do not infer.
+- Extract EVERY entity the text names: people, organizations, projects, documents, events, places and terms.
+- Do not invent what the text does not say, and do not skip what it does.
 - evidence is a verbatim quote from the fragment that supports the relation.
 - predicate is a short lower-case phrase: "supplies", "belongs to", "allowed between".
-- If there are no entities, return empty lists.
 - Reply with JSON only, no prose and no markdown fence.
 
-Shape:
+Example.
+Text: "Director Ivan Petrov signed a contract with Romashka LLC for laptop delivery to the Shkola project."
+Answer: {{"entities":[{{"name":"Ivan Petrov","type":"person","description":"director"}},{{"name":"Romashka LLC","type":"organization","description":""}},{{"name":"contract","type":"document","description":""}},{{"name":"Shkola","type":"project","description":""}}],"relations":[{{"source":"Ivan Petrov","target":"Romashka LLC","predicate":"signed a contract with","evidence":"Director Ivan Petrov signed a contract with Romashka LLC"}}]}}
+
+Reply shape:
 {{"entities":[{{"name":"...","type":"organization","description":"..."}}],"relations":[{{"source":"...","target":"...","predicate":"...","evidence":"..."}}]}}
 
 Fragment:

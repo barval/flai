@@ -191,7 +191,9 @@
         if (params.doc) query.set('doc', params.doc);
         if (params.layer) query.set('layer', params.layer);
         if (params.kind) query.set('kind', params.kind);
-        query.set('limit', String(params.limit || 300));
+        // No limit from here: the server caps the scene with GRAPH_MAX_NODES, so
+        // the admin setting is the one place that decides how much is drawn.
+        if (params.limit) query.set('limit', String(params.limit));
         return '/api/graph?' + query.toString();
     }
 

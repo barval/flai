@@ -44,10 +44,13 @@ def test_the_view_offers_the_documented_entry_points():
 
 
 def test_the_card_and_the_panel_header_open_the_view():
-    script = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
+    documents = Path("app/static/js/chat-documents.js").read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
 
-    assert 'data-graph-doc="' in script
-    assert "documents-graph-button" in script
+    assert 'data-graph-doc="' in documents
+    assert "documents-graph-button" in documents
+    # One document-level listener survives every re-render of the list.
+    assert "document.addEventListener('click'" in script
     assert "openGraphView" in script
 
 

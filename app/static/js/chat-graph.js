@@ -68,6 +68,37 @@
         if (canvas) canvas.innerHTML = '';
     }
 
+    function positionOverlay() {
+        const view = viewRoot();
+        if (!view) return;
+        const sidebar = document.querySelector('.sessions-sidebar');
+        const tabs = document.querySelector('.sessions-header');
+        const desktop = window.matchMedia('(min-width: 769px)').matches;
+
+        let top = 0;
+        let left = 0;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        if (desktop && sidebar) {
+            // The tabs and the lists keep their column; the graph takes the rest.
+            const rect = sidebar.getBoundingClientRect();
+            left = Math.max(0, Math.round(rect.right));
+            width = Math.max(320, Math.round(window.innerWidth - left));
+        } else if (tabs) {
+            // A phone shows the tab row on top and the active view below it; the
+            // graph is one more view in that space, not a full-screen cover.
+            const rect = tabs.getBoundingClientRect();
+            top = Math.max(0, Math.round(rect.bottom));
+            height = Math.max(240, Math.round(window.innerHeight - top));
+        }
+
+        view.style.top = top + 'px';
+        view.style.left = left + 'px';
+        view.style.width = width + 'px';
+        view.style.height = height + 'px';
+    }
+
     function resizeRenderer() {
         const canvas = document.getElementById('graph-canvas');
         if (!graphInstance || !canvas) return;
@@ -376,6 +407,7 @@
         const view = viewRoot();
         if (!view) return;
         focusedDoc = (options && options.docId) || '';
+        positionOverlay();
         view.classList.remove('hidden');
         const title = document.getElementById('graph-title-text');
         if (title) title.textContent = focusedDoc ? t('graph_focused', 'Knowledge graph of the document') : t('graph_title', 'Knowledge graph');
@@ -391,6 +423,20 @@
         draw(params || { doc: focusedDoc, layer: currentLayer });
     };
 
+    // One document-level listener: it works on any layout and survives every
+    // re-render of the documents list.
+    document.addEventListener('click', function (event) {
+        if (!event.target || !event.target.closest) return;
+        const cardButton = event.target.closest('.graph-document-button');
+        const allButton = event.target.closest('#documents-graph-button');
+        if (!cardButton && !allButton) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof window.openGraphView === 'function') {
+            window.openGraphView(cardButton ? { docId: cardButton.dataset.graphDoc } : {});
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', function () {
         // The theme is a body class; the canvas has to be repainted, because its
         // colour is set on the renderer, not in CSS.
@@ -401,7 +447,7 @@
         if (canvasBox && typeof ResizeObserver === 'function') {
             new ResizeObserver(function () { resizeRenderer(); }).observe(canvasBox);
         }
-        window.addEventListener('resize', resizeRenderer);
+        window.addEventListener('resize', function () { positionOverlay(); resizeRenderer(); });
         const kindButton = document.getElementById('graph-kind-btn');
         if (kindButton) {
             kindButton.addEventListener('click', function () {

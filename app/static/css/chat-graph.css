@@ -1,12 +1,14 @@
 /* app/static/css/chat-graph.css */
 /* Knowledge-graph view (v13.2): a full-window 3D canvas with a side panel. */
 
-/* Full screen, not a child of the chat column: on a phone the documents list
-   covers the whole width and .chat-main is hidden, so an overlay anchored to it
-   never appeared. */
+/* The overlay lives outside the chat column: on a phone that column is hidden
+   while the documents list is open, and a child of it would never appear. On a
+   desktop it starts after the sidebar, so the tabs stay reachable. */
 .graph-view {
+    /* Geometry is set in JS: on a desktop the graph covers the main column and
+       leaves the sidebar tabs alone; on a phone it takes the area below the tab
+       row, exactly where the documents list sits. */
     position: fixed;
-    inset: 0;
     z-index: 1000;
     display: flex;
     flex-direction: column;
@@ -203,3 +205,4 @@
     border-left: 3px solid #c83c3c;
     padding: 0.4rem 0.6rem;
 }
+

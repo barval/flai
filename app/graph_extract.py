@@ -12,6 +12,15 @@ import re
 from app.db import add_kg_occurrence, upsert_kg_edge, upsert_kg_node
 from app.lemmatizer import lemmas as lemmatize
 
+
+def graph_lemmas(text: str) -> list[str]:
+    """Lemmas as the graph keys them: Russian analysed, English folded.
+
+    The lexical index of a document is stored without English folding, so this
+    stays graph-local and no corpus has to be re-indexed.
+    """
+    return lemmatize(text, stem_latin=True)
+
 ENTITY_KINDS = ("person", "organization", "project", "document", "event", "place", "term")
 
 # A closed vocabulary: measured on the live corpus, an open list produced
@@ -51,7 +60,10 @@ PREDICATES = {
 _PUNCTUATION = re.compile(r"[\"'«»„“”()\[\]{}.,;:!?]+")
 # Legal forms carry no identity: "ООО Вектор-Тех" and "Вектор-Тех" are one
 # company, and leaving the prefix in the key creates a second node.
-_LEGAL_FORMS = {"ооо", "оао", "зао", "пао", "ао", "ип", "нко", "llc", "ltd", "inc", "gmbh"}
+_LEGAL_FORMS = {
+    "ооо", "оао", "зао", "пао", "ао", "ип", "нко",
+    "llc", "ltd", "inc", "gmbh", "corp", "corporation", "company", "co", "limited", "incorporated", "plc",
+}
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -63,10 +75,13 @@ def normalise_entity(name: str) -> tuple[str, list[str]]:
     """
     cleaned = _PUNCTUATION.sub(" ", (name or "").strip().lower())
     words = [word for word in _WHITESPACE.sub(" ", cleaned).strip().split() if word]
-    if len(words) > 1 and words[0] in _LEGAL_FORMS:
+    # Both ends: "ООО Вектор-Тех" and "Acme Corp" carry the form on either side.
+    while len(words) > 1 and words[0] in _LEGAL_FORMS:
         words = words[1:]
+    while len(words) > 1 and words[-1] in _LEGAL_FORMS:
+        words = words[:-1]
     cleaned = " ".join(words)
-    lemma_list = lemmatize(cleaned)
+    lemma_list = graph_lemmas(cleaned)
     if not lemma_list:
         return cleaned, []
     # Sorted: the order of a name carries nothing, and "Валерий Барсуков" must
@@ -148,7 +163,7 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
         return {"nodes": 0, "edges": 0, "entities": 0, "relations_found": 0, "relations_kept": 0}
 
     haystack = _normalise_evidence(chunk_text)
-    chunk_lemmas = set(lemmatize(chunk_text))
+    chunk_lemmas = set(graph_lemmas(chunk_text))
     nodes: dict[str, str] = {}
     written_nodes = 0
 
@@ -174,7 +189,7 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
 
     written_edges = 0
     proposed = len(data.get("relations", []))
-    window_lemmas = set(lemmatize(chunk_text))
+    window_lemmas = set(graph_lemmas(chunk_text))
     for relation in data.get("relations", []):
         evidence = _normalise_evidence(relation.get("evidence", ""))
         if not evidence:
@@ -183,7 +198,7 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
             # A verbatim match is too strict for an 8B model: measured, half the
             # proposed relations were dropped for a reordered quote. The quote
             # still has to be made of words the window actually contains.
-            words = set(lemmatize(evidence))
+            words = set(graph_lemmas(evidence))
             if not words or len(words & window_lemmas) / len(words) < 0.8:
                 continue
         source_normalized, _ = normalise_entity(relation["source"])
@@ -212,7 +227,7 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
             user_id,
             source_id,
             target_id,
-            canonical_predicate(relation["predicate"], "ru"),
+            canonical_predicate(relation["predicate"]),
             doc_id,
             chunk_index,
             relation.get("evidence", ""),
@@ -228,29 +243,39 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
     }
 
 
-def canonical_predicate(predicate: str, lang: str = "ru") -> str:
+def _stem_key(lemma: str) -> str:
+    """A five-letter prefix: enough to identify a stem, short enough to ignore inflection."""
+    return lemma[:5] if len(lemma) >= 5 else lemma
+
+
+def canonical_predicate(predicate: str) -> str:
     """Map a free-form predicate onto the closed list by lemma overlap.
 
     "осуществляет поставку", "поставка" and "поставляет" become one predicate,
     which is what lets two documents share an edge and give it weight.
+
+    Both lists are matched. The call used to pin the Russian one, so every
+    English predicate came back unchanged even though the English prompt offers
+    a list; Latin and Cyrillic lemmas cannot collide, so one lookup serves a
+    bilingual corpus as well.
     """
-    allowed = PREDICATES.get(lang) or PREDICATES["ru"]
+    allowed = PREDICATES["ru"] + PREDICATES["en"]
     cleaned = _WHITESPACE.sub(" ", (predicate or "").strip().lower())
     for candidate in allowed:
         if cleaned == candidate:
             return candidate
-    wanted = set(lemmatize(cleaned))
+    wanted = {_stem_key(lemma) for lemma in graph_lemmas(cleaned)}
     if not wanted:
         return cleaned
-    best, best_score = cleaned, 0.0
+    # Compare stems, not whole lemmas: the list is written in one surface form
+    # ("поставляет"), and "поставка" or "осуществляет поставку" must map onto it.
+    best, best_hits = cleaned, 0
     for candidate in allowed:
-        words = set(lemmatize(candidate))
-        if not words:
-            continue
-        score = len(wanted & words) / len(wanted | words)
-        if score > best_score:
-            best, best_score = candidate, score
-    return best if best_score >= 0.5 else cleaned
+        stems = {_stem_key(lemma) for lemma in graph_lemmas(candidate)}
+        hits = len(wanted & stems)
+        if hits > best_hits:
+            best, best_hits = candidate, hits
+    return best if best_hits else cleaned
 
 
 def build_extraction_prompt(chunk_text: str, lang: str = "ru", context_before: str = "", context_after: str = "") -> str:

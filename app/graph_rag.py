@@ -8,12 +8,12 @@ on the graph itself.
 
 from app.database import get_db
 from app.db import get_kg_edges, get_kg_node_ids_for_chunks
-from app.lemmatizer import lemmas as lemmatize
+from app.graph_extract import graph_lemmas
 
 
 def seed_lemmas(query: str) -> list[str]:
     """Content lemmas of the question, long enough to be meaningful."""
-    return [lemma for lemma in dict.fromkeys(lemmatize(query or "")) if len(lemma) > 2]
+    return [lemma for lemma in dict.fromkeys(graph_lemmas(query or "")) if len(lemma) > 2]
 
 
 def _candidate_nodes(user_id: str, lemmas: list[str], doc_ids: list[str] | None, limit: int) -> list[dict]:
@@ -172,12 +172,13 @@ def format_graph_section(triples: list[dict], path: list[dict], max_tokens: int 
         used += len(line) + 1
 
     if path and used < budget_chars:
-        chain = " → ".join(
+        # No label: the arrow form already reads as a chain, and a fixed English
+        # word would sit inside a prompt written in the answer language.
+        line = " → ".join(
             f"{edge.get('src') or edge.get('src_id') or '?'} —[{edge.get('predicate') or '?'}]→ "
             f"{edge.get('dst') or edge.get('dst_id') or '?'}"
             for edge in path
         )
-        line = f"Path: {chain}"
         if used + len(line) + 1 <= budget_chars:
             lines.append(line)
     return "\n".join(lines)

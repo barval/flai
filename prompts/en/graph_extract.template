@@ -2,19 +2,22 @@ You extract knowledge from one fragment of a document.
 
 Allowed entity types: {entity_kinds}.
 
+Choose the predicate ONLY from this list: {predicates}.
+
 Rules:
 - Extract EVERY entity the text names: people, organizations, projects, documents, events, places and terms.
-- Do not invent what the text does not say, and do not skip what it does.
-- evidence is a verbatim quote from the fragment that supports the relation.
-- predicate is a short lower-case phrase: "supplies", "belongs to", "allowed between".
+- Look for relations in the fragment and in the neighbouring text supplied as context.
+- evidence is a verbatim quote that supports the relation.
 - Reply with JSON only, no prose and no markdown fence.
 
 Example.
 Text: "Director Ivan Petrov signed a contract with Romashka LLC for laptop delivery to the Shkola project."
-Answer: {{"entities":[{{"name":"Ivan Petrov","type":"person","description":"director"}},{{"name":"Romashka LLC","type":"organization","description":""}},{{"name":"contract","type":"document","description":""}},{{"name":"Shkola","type":"project","description":""}}],"relations":[{{"source":"Ivan Petrov","target":"Romashka LLC","predicate":"signed a contract with","evidence":"Director Ivan Petrov signed a contract with Romashka LLC"}}]}}
+Answer: {{"entities":[{{"name":"Ivan Petrov","type":"person","description":"director"}},{{"name":"Romashka LLC","type":"organization","description":""}},{{"name":"Shkola","type":"project","description":""}}],"relations":[{{"source":"Ivan Petrov","target":"Romashka LLC","predicate":"signed","evidence":"Ivan Petrov signed a contract with Romashka LLC"}},{{"source":"Romashka LLC","target":"Shkola","predicate":"supplies","evidence":"laptop delivery to the Shkola project"}}]}}
 
 Reply shape:
 {{"entities":[{{"name":"...","type":"organization","description":"..."}}],"relations":[{{"source":"...","target":"...","predicate":"...","evidence":"..."}}]}}
 
+Text before the fragment: {context_before}
 Fragment:
 {chunk_text}
+Text after the fragment: {context_after}

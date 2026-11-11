@@ -14,6 +14,40 @@ from app.lemmatizer import lemmas as lemmatize
 
 ENTITY_KINDS = ("person", "organization", "project", "document", "event", "place", "term")
 
+# A closed vocabulary: measured on the live corpus, an open list produced
+# "происходит на", "созвон с" and "обновление" — ad-hoc phrases that never merge
+# across documents and cannot gain weight.
+PREDICATES = {
+    "ru": (
+        "поставляет",
+        "входит в",
+        "работает в",
+        "руководит",
+        "подписал",
+        "арендует",
+        "обслуживает",
+        "выполняет",
+        "запрещает",
+        "разрешает",
+        "расположен в",
+        "связан с",
+    ),
+    "en": (
+        "supplies",
+        "belongs to",
+        "works for",
+        "leads",
+        "signed",
+        "rents",
+        "maintains",
+        "performs",
+        "forbids",
+        "allows",
+        "located in",
+        "related to",
+    ),
+}
+
 _PUNCTUATION = re.compile(r"[\"'«»„“”()\[\]{}.,;:!?]+")
 # Legal forms carry no identity: "ООО Вектор-Тех" and "Вектор-Тех" are one
 # company, and leaving the prefix in the key creates a second node.
@@ -140,12 +174,36 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
 
     written_edges = 0
     proposed = len(data.get("relations", []))
+    window_lemmas = set(lemmatize(chunk_text))
     for relation in data.get("relations", []):
         evidence = _normalise_evidence(relation.get("evidence", ""))
-        if not evidence or evidence not in haystack:
+        if not evidence:
             continue
+        if evidence not in haystack:
+            # A verbatim match is too strict for an 8B model: measured, half the
+            # proposed relations were dropped for a reordered quote. The quote
+            # still has to be made of words the window actually contains.
+            words = set(lemmatize(evidence))
+            if not words or len(words & window_lemmas) / len(words) < 0.8:
+                continue
         source_normalized, _ = normalise_entity(relation["source"])
         target_normalized, _ = normalise_entity(relation["target"])
+        source_id = nodes.get(source_normalized)
+        target_id = nodes.get(target_normalized)
+        # An endpoint the model named inside a relation but forgot in the entity
+        # list is still a real mention: create it, provided its words are in the
+        # window (the same guard that rejects invented entities).
+        for missing, key in ((source_id, source_normalized), (target_id, target_normalized)):
+            if missing:
+                continue
+            name = relation["source"] if missing is source_id else relation["target"]
+            _, name_lemmas = normalise_entity(name)
+            if not name_lemmas or not window_lemmas.intersection(name_lemmas):
+                continue
+            node_id = upsert_kg_node(user_id, "term", name, key, name_lemmas, "")
+            add_kg_occurrence(node_id, user_id, doc_id, chunk_index, name)
+            nodes[key] = node_id
+            written_nodes += 1
         source_id = nodes.get(source_normalized)
         target_id = nodes.get(target_normalized)
         if not source_id or not target_id or source_id == target_id:
@@ -154,7 +212,7 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
             user_id,
             source_id,
             target_id,
-            relation["predicate"].lower(),
+            canonical_predicate(relation["predicate"], "ru"),
             doc_id,
             chunk_index,
             relation.get("evidence", ""),
@@ -170,7 +228,32 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
     }
 
 
-def build_extraction_prompt(chunk_text: str, lang: str = "ru") -> str:
+def canonical_predicate(predicate: str, lang: str = "ru") -> str:
+    """Map a free-form predicate onto the closed list by lemma overlap.
+
+    "осуществляет поставку", "поставка" and "поставляет" become one predicate,
+    which is what lets two documents share an edge and give it weight.
+    """
+    allowed = PREDICATES.get(lang) or PREDICATES["ru"]
+    cleaned = _WHITESPACE.sub(" ", (predicate or "").strip().lower())
+    for candidate in allowed:
+        if cleaned == candidate:
+            return candidate
+    wanted = set(lemmatize(cleaned))
+    if not wanted:
+        return cleaned
+    best, best_score = cleaned, 0.0
+    for candidate in allowed:
+        words = set(lemmatize(candidate))
+        if not words:
+            continue
+        score = len(wanted & words) / len(wanted | words)
+        if score > best_score:
+            best, best_score = candidate, score
+    return best if best_score >= 0.5 else cleaned
+
+
+def build_extraction_prompt(chunk_text: str, lang: str = "ru", context_before: str = "", context_after: str = "") -> str:
     """Render the extraction instruction for one chunk."""
     from app.utils import format_prompt
 
@@ -178,9 +261,17 @@ def build_extraction_prompt(chunk_text: str, lang: str = "ru") -> str:
     # A document may contain braces: escape them before the template is
     # formatted, otherwise a stray "{" raises KeyError inside format_prompt.
     safe_text = (chunk_text or "").replace("{", "{{").replace("}", "}}")
+    safe_before = (context_before or "").replace("{", "{{").replace("}", "}}")
+    safe_after = (context_after or "").replace("{", "{{").replace("}", "}}")
     return format_prompt(
         "graph_extract.template",
-        {"chunk_text": safe_text, "entity_kinds": kinds},
+        {
+            "chunk_text": safe_text,
+            "context_before": safe_before,
+            "context_after": safe_after,
+            "entity_kinds": kinds,
+            "predicates": ", ".join(PREDICATES.get(lang) or PREDICATES["ru"]),
+        },
         lang=lang,
     )
 

@@ -1714,6 +1714,23 @@ def get_rag_chunk(user_id, doc_id, chunk_index):
         return row["text"] if row else None
 
 
+def get_rag_chunk_window(user_id, doc_id, chunk_index, chars=200):
+    """The chunk plus a slice of its neighbours, for relation context."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT chunk_index, text FROM rag_chunks WHERE user_id = %s AND doc_id = %s"
+            " AND chunk_index BETWEEN %s AND %s ORDER BY chunk_index",
+            (user_id, doc_id, int(chunk_index) - 1, int(chunk_index) + 1),
+        )
+        rows = {int(row["chunk_index"]): row["text"] or "" for row in c.fetchall()}
+    return (
+        rows.get(int(chunk_index)) or "",
+        (rows.get(int(chunk_index) - 1) or "")[-chars:],
+        (rows.get(int(chunk_index) + 1) or "")[:chars],
+    )
+
+
 def get_rag_chunks(user_id, refs):
     """Chunk texts and file names for many ``(doc_id, chunk_index)`` at once.
 

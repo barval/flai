@@ -6012,7 +6012,12 @@ class RedisRequestQueue:
         return True
 
     def _run_graph_extract_chunk(self, user_id: str, doc_id: str, chunk_index: int, task: dict) -> dict[str, Any]:
-        from app.db import count_rag_chunks, get_kg_build_state, get_rag_chunk, set_kg_build_state
+        from app.db import (
+            count_rag_chunks,
+            get_kg_build_state,
+            get_rag_chunk_window,
+            set_kg_build_state,
+        )
         from app.graph_extract import build_extraction_prompt, merge_extraction_with_stats, parse_extraction
         from app.memory_facts import detect_language
 
@@ -6037,13 +6042,13 @@ class RedisRequestQueue:
             self.redis.lpush(self.background_queue_key, self._serialize(task))
             return {"status": "interrupted"}
 
-        text = get_rag_chunk(user_id, doc_id, chunk_index)
+        text, before, after = get_rag_chunk_window(user_id, doc_id, chunk_index)
         if not text:
             set_kg_build_state(doc_id, user_id, "done" if done >= total else "pending", total, done, model)
             return {"status": "no such chunk"}
 
         lang = detect_language(text, fallback="ru")
-        prompt = build_extraction_prompt(text, lang=lang)
+        prompt = build_extraction_prompt(text, lang=lang, context_before=before, context_after=after)
         if not prompt:
             set_kg_build_state(doc_id, user_id, "failed", total, done, model, "prompt missing")
             return {"status": "error"}
@@ -6073,7 +6078,10 @@ class RedisRequestQueue:
             set_kg_build_state(doc_id, user_id, "failed", total, done, model, "unparsable extraction")
             return {"status": "error"}
 
-        stats = merge_extraction_with_stats(user_id, doc_id, chunk_index, text, parsed)
+        # The evidence may come from the neighbouring slice, which is why the
+        # whole window is checked rather than the fragment alone.
+        window = f"{before} {text} {after}"
+        stats = merge_extraction_with_stats(user_id, doc_id, chunk_index, window, parsed)
         nodes, edges = stats["nodes"], stats["edges"]
         from app.db import add_kg_extract_stats
 

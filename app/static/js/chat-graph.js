@@ -259,11 +259,13 @@
 
         const wanted = preferredKind();
         const kind = wanted === '3d' && !webglAvailable() ? '2d' : wanted;
+        reportKind(kind);
         if (graphInstance && rendererKind !== kind) {
             disposeRenderer(canvas);
         }
+        const graph = { nodes: data.nodes, links: data.edges || [] };
         if (graphInstance) {
-            graphInstance.graphData(data);
+            graphInstance.graphData(graph);
         } else {
             try {
                 await loadVendor(kind);
@@ -308,7 +310,7 @@
                 if (kind === '3d' && typeof graphInstance.backgroundColor === 'function') {
                     graphInstance.backgroundColor(graphBackground());
                 }
-                graphInstance = graphInstance.graphData(data);
+                graphInstance = graphInstance.graphData(graph);
                 if (kind === '3d' && typeof graphInstance.cameraPosition === 'function') {
                     graphInstance.cameraPosition({ z: 700 });
                 }
@@ -318,7 +320,6 @@
                 return;
             }
         }
-        reportKind(kind);
         setStatus(
             t('graph_counts', 'shown {n} of {total} nodes · {m} links')
                 .replace('{n}', data.nodes.length)

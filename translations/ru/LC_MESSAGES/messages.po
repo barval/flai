@@ -5393,3 +5393,7 @@ msgstr "В очереди: граф заполняется, пока инста�
 #: app/templates/chat.html
 msgid "Knowledge graph of the document"
 msgstr "Граф знаний документа"
+
+#: app/templates/chat.html
+msgid "nodes: {n} · links: {m}"
+msgstr "узлов: {n} · связей: {m}"

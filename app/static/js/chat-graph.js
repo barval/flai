@@ -108,6 +108,10 @@
         graphInstance.cameraPosition({ z: 220 }, node, 900);
     }
 
+    function graphBackground() {
+        return document.body.classList.contains('dark-theme') ? '#1e1e1e' : '#ffffff';
+    }
+
     function colorFor(kind) {
         return {
             person: '#f6b26b',
@@ -212,7 +216,7 @@
             }
             try {
                 graphInstance = window.ForceGraph3D()(canvas)
-                .backgroundColor('rgba(0,0,0,0)')
+                .backgroundColor(graphBackground())
                 .nodeLabel(function (node) { return escapeHtml(node.label); })
                 .nodeColor(function (node) { return colorFor(node.kind); })
                 .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
@@ -239,7 +243,11 @@
                 return;
             }
         }
-        setStatus(data.nodes.length + ' / ' + (data.edges || []).length);
+        setStatus(
+            t('graph_counts', 'nodes: {n} · links: {m}')
+                .replace('{n}', data.nodes.length)
+                .replace('{m}', (data.edges || []).length)
+        );
         graphInstance.zoomToFit(600, 60);
     }
 
@@ -293,6 +301,11 @@
     };
 
     document.addEventListener('DOMContentLoaded', function () {
+        // The theme is a body class; the canvas has to be repainted, because its
+        // colour is set on the renderer, not in CSS.
+        new MutationObserver(function () {
+            if (graphInstance) graphInstance.backgroundColor(graphBackground());
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
         const back = document.getElementById('graph-back-btn');
         if (back) back.addEventListener('click', window.closeGraphView);
         document.querySelectorAll('.graph-layer-btn').forEach(function (button) {

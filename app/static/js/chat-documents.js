@@ -377,7 +377,9 @@ function updateDocumentsList(documents, folders = []) {
 
     let html = `
     <div class="documents-graph-bar">
-        <button type="button" id="documents-graph-button" class="documents-graph-button" title="${t('documents_view_in_graph')}">🕸️</button>
+        <button type="button" id="documents-graph-button" class="documents-graph-button" title="${t('documents_view_in_graph')}">
+            <span class="documents-graph-icon">🕸️</span><span class="documents-graph-label">${t('graph_title')}</span>
+        </button>
     </div>
     <div class="bulk-documents-bar hidden" id="bulk-documents-bar">
         <span id="bulk-selected-count" class="bulk-label"></span>

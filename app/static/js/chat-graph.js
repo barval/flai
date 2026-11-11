@@ -68,6 +68,18 @@
         if (canvas) canvas.innerHTML = '';
     }
 
+    let fitTimer = null;
+
+    function fitGraph(delay) {
+        if (fitTimer) clearTimeout(fitTimer);
+        fitTimer = setTimeout(function () {
+            fitTimer = null;
+            if (!graphInstance || typeof graphInstance.zoomToFit !== 'function') return;
+            // Padding keeps the outermost nodes off the edge of the window.
+            graphInstance.zoomToFit(800, 60);
+        }, delay || 0);
+    }
+
     function positionOverlay() {
         const view = viewRoot();
         if (!view) return;
@@ -353,10 +365,7 @@
                         renderSidePanel(node);
                     })
                     .onEngineStop(function () {
-                        if (graphInstance && !graphInstance.__fitted) {
-                            graphInstance.__fitted = true;
-                            graphInstance.zoomToFit(600, 60);
-                        }
+                        fitGraph(0);
                     })
                     .onNodeRightClick(function (node) {
                         pathSourceId = node.id;
@@ -382,9 +391,9 @@
                 .replace('{total}', data.total_nodes || data.nodes.length)
                 .replace('{m}', (data.edges || []).length)
         );
-        // The fit happens when the engine stops; a fresh graph is repositioned
-        // each time, so the flag is cleared here.
-        graphInstance.__fitted = false;
+        // The whole cloud has to be visible on open: the engine reports a stop
+        // long before the layout settles, so the fit is repeated after it relaxes.
+        fitGraph(1500);
     }
 
     async function showPath(sourceId, targetId) {

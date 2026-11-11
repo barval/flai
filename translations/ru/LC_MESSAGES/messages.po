@@ -5415,3 +5415,7 @@ msgstr "Переключить в 2D"
 
 msgid "Switch to 3D"
 msgstr "Переключить в 3D"
+
+#: app/templates/chat.html
+msgid "similarity {v}"
+msgstr "похожесть {v}"

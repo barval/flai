@@ -144,7 +144,15 @@
             .nodeLabel(function (node) { return escapeHtml(node.label); })
             .nodeColor(function (node) { return colorFor(node.kind); })
             .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
-            .linkLabel(function (link) { return escapeHtml(link.predicate || ''); })
+            .linkLabel(function (link) {
+                // Document links carry a similarity score, not a verb.
+                if (link.predicate === 'similar') {
+                    return escapeHtml(
+                        t('graph_similarity', 'similarity {v}').replace('{v}', Number(link.weight || 0).toFixed(2))
+                    );
+                }
+                return escapeHtml(link.predicate || '');
+            })
             .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
             .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
             .onNodeClick(function (node) {

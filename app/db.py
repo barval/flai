@@ -1814,7 +1814,7 @@ def get_kg_document_graph(user_id, limit=400, doc_ids=None):
             {
                 "source": row["src_doc_id"],
                 "target": row["dst_doc_id"],
-                "predicate": "similar_to",
+                "predicate": "similar",
                 "weight": round(float(row["score"]), 3),
                 "doc_id": row["src_doc_id"],
             }

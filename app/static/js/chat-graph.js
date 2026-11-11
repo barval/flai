@@ -65,6 +65,9 @@
         fitTimer = setTimeout(function () {
             fitTimer = null;
             if (!graphInstance || typeof graphInstance.zoomToFit !== 'function') return;
+            // The renderer must know the real slot before it centres anything:
+            // with a stale, wider width the cloud is drawn off-centre.
+            resizeRenderer();
             // Padding keeps the outermost nodes off the edge of the window.
             graphInstance.zoomToFit(800, 60);
         }, delay || 0);

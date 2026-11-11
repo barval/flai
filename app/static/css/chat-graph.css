@@ -100,6 +100,9 @@
 .graph-canvas {
     flex: 1;
     min-width: 0;
+    /* The renderer sizes its own canvas; clipping here keeps a stale, wider
+       surface from pushing the cloud to one side. */
+    overflow: hidden;
     cursor: grab;
     /* Panning the cloud must not scroll the page on a touch screen. */
     touch-action: none;

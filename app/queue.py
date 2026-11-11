@@ -6000,7 +6000,10 @@ class RedisRequestQueue:
     def _retry_graph_task(self, task: dict, reason: str) -> bool:
         """Re-queue one chunk at most twice, then give up on it."""
         attempts = int(task.get("data", {}).get("attempts") or 0) + 1
-        if attempts > 2:
+        # Extraction is a JSON answer from an 8B model: a single malformed reply
+        # is ordinary, and giving up after two left 46 of 96 documents unfinished
+        # on the first live build.
+        if attempts > 4:
             return False
         retry = {**task, "id": uuid.uuid4().hex}
         retry["data"] = {**task.get("data", {}), "attempts": attempts}
@@ -6048,7 +6051,7 @@ class RedisRequestQueue:
         chunks: list[str] = []
         last_check = 0.0
         for chunk in self.app.modules["base"].llamacpp.chat_stream(
-            [{"role": "user", "content": prompt}], model_type=model, lang=lang
+            [{"role": "user", "content": prompt}], model_type=model, lang=lang, temperature=0
         ):
             if isinstance(chunk, dict):
                 break

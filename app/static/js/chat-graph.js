@@ -387,6 +387,13 @@
                 }
             }
         }
+        // The loading label has to be replaced by the actual size of the view.
+        setStatus(
+            t('graph_counts', 'shown {n} of {total} nodes · {m} links')
+                .replace('{n}', data.nodes.length)
+                .replace('{total}', data.total_nodes || data.nodes.length)
+                .replace('{m}', (data.edges || []).length)
+        );
         // The whole cloud has to be visible on open: the engine reports a stop
         // long before the layout settles, so the fit is repeated after it relaxes.
         fitGraph(1500);

@@ -349,6 +349,8 @@
         selectedNode = null;
         renderSidePanel(null);
 
+        // The renderers read `links`; the API names the array `edges`.
+        const graph = { nodes: data.nodes, links: data.edges || [] };
         let kind = preferredKind();
         reportKind(kind);
         if (graphInstance && rendererKind !== kind) {

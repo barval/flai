@@ -382,6 +382,7 @@
                 // WebGL refused the context: fall back once, and say why. The
                 // attempt is real — a pre-flight probe rejects browsers that
                 // would have rendered fine.
+                const reason3d = error;
                 disposeRenderer(canvas);
                 try {
                     kind = '2d';
@@ -390,7 +391,15 @@
                     window.__graphKind = '2d';
                     reportKind(kind);
                     graphInstance = await createRenderer('2d', canvas, graph);
-                    setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
+                    const message = (reason3d && reason3d.message) || String(reason3d);
+                    // Show what 3D actually said: calling every failure "no WebGL"
+                    // hides a bug behind an environment explanation.
+                    if (/webgl|context/i.test(message)) {
+                        setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
+                    } else {
+                        setStatus(message);
+                    }
+                    if (window.console) console.error('graph 3D failed:', reason3d);
                 } catch (fallbackError) {
                     showFailure(fallbackError);
                     return;

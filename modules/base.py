@@ -430,6 +430,7 @@ class BaseModule(TranslationMixin):
         rag_context: str = "",
         rag_source: str = "",
         user_name: str = "",
+        reserve_tokens: int = 0,
     ) -> str:
         """Retrieve conversation history + SLM long-term memory with safety margin.
 
@@ -464,6 +465,9 @@ class BaseModule(TranslationMixin):
         # The estimator can be a few percent off; the margin stays as a guard
         # against that, not as an allocation policy.
         available_tokens = int(available_tokens * self.safety_margin)
+        # Evidence outside the retrieved context — today the graph relations
+        # block — is paid for out of the same window.
+        available_tokens = max(0, available_tokens - max(0, int(reserve_tokens)))
 
         # Step 1: Measure search context tokens (RAG docs / web search / history)
         search_tokens = 0
@@ -1040,6 +1044,7 @@ class BaseModule(TranslationMixin):
         lang: str,
         response_style: str,
         context_str: str,
+        graph_section: str = "",
     ) -> list[dict[str, str]] | None:
         """System instructions + one user message: context first, question last.
 
@@ -1060,7 +1065,13 @@ class BaseModule(TranslationMixin):
         )
         user_content = format_prompt(
             "reasoning_user.template",
-            {"conversation_history": (context_str or "").strip(), "reasoning_query": query},
+            {
+                "conversation_history": (context_str or "").strip(),
+                "reasoning_query": query,
+                # Relations found in the knowledge graph, rendered by
+                # app.graph_rag.format_graph_section; empty when none survived.
+                "graph_section": (graph_section or "").strip(),
+            },
             lang=lang,
         )
         if not system_content or not user_content:
@@ -1081,6 +1092,7 @@ class BaseModule(TranslationMixin):
         rag_context: str = "",
         rag_source: str = "",
         user_name: str = "",
+        graph_section: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         context_str = self._get_context_for_model(
@@ -1093,7 +1105,9 @@ class BaseModule(TranslationMixin):
             rag_source=rag_source,
             user_name=user_name,
         )
-        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        messages = self.build_reasoning_messages(
+            query, current_time_str, lang, response_style, context_str, graph_section
+        )
         if not messages:
             return "⚠️ " + self._("Error loading prompt template", lang)
 
@@ -1123,6 +1137,7 @@ class BaseModule(TranslationMixin):
         ensure_vram: bool = True,
         status_callback: Callable[[str], None] | None = None,
         user_name: str = "",
+        graph_section: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response.
 
@@ -1138,8 +1153,11 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
             user_name=user_name,
+            reserve_tokens=self._estimate_tokens(graph_section, "reasoning", lang) if graph_section else 0,
         )
-        messages = self.build_reasoning_messages(query, current_time_str, lang, response_style, context_str)
+        messages = self.build_reasoning_messages(
+            query, current_time_str, lang, response_style, context_str, graph_section
+        )
         if not messages:
             yield "⚠️ " + self._("Error loading prompt template", lang)
             return

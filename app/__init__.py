@@ -494,6 +494,7 @@ def create_app():
     app.cli.add_command(cli.backfill_document_blobs)
     app.cli.add_command(cli.rag_eval)
     app.cli.add_command(cli.rag_eval_generate)
+    app.cli.add_command(cli.rag_eval_judge)
     app.cli.add_command(cli.rag_backfill_chunks)
     app.cli.add_command(cli.rag_lemmatize_chunks)
     app.cli.add_command(cli.vram_probe)
@@ -504,6 +505,14 @@ def create_app():
     app.cli.add_command(cli.memory_eval)
     app.cli.add_command(cli.kernel_eval)
     app.cli.add_command(cli.rag_reindex)
+    app.cli.add_command(cli.graph_build)
+    app.cli.add_command(cli.graph_status)
+    app.cli.add_command(cli.graph_merge_entities)
+    app.cli.add_command(cli.graph_stats)
+
+    from .routes.graph import bp as graph_bp
+
+    app.register_blueprint(graph_bp)
 
     # Additional camera routes
     if "cam" in modules:

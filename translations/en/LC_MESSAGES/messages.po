@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.1\n"
+"Project-Id-Version: FLAI 13.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -5309,3 +5309,92 @@ msgstr "Documents (shared)"
 #~ "the document as .docx and upload "
 #~ "it again."
 
+#: app/templates/chat.html
+msgid "View in knowledge graph"
+msgstr "View in knowledge graph"
+
+msgid "Knowledge graph"
+msgstr "Knowledge graph"
+
+msgid "Entities"
+msgstr "Entities"
+
+msgid "Find a node"
+msgstr "Find a node"
+
+
+#: app/templates/chat.html
+msgid "Click a node to inspect it"
+msgstr "Click a node to inspect it"
+
+msgid "Mentions"
+msgstr "Mentions"
+
+msgid "Loading the graph"
+msgstr "Loading the graph"
+
+msgid "The graph could not be loaded"
+msgstr "The graph could not be loaded"
+
+msgid "The graph is still being built for these documents"
+msgstr "The graph is still being built for these documents"
+
+msgid "This browser cannot render the graph"
+msgstr "This browser cannot render the graph"
+
+msgid "Pick the second node of the path"
+msgstr "Pick the second node of the path"
+
+msgid "No relation path was found"
+msgstr "No relation path was found"
+
+msgid "Build the graph"
+msgstr "Build the graph"
+
+msgid "Building"
+msgstr "Building"
+
+msgid "Queued; the graph fills while the instance is idle"
+msgstr "Queued; the graph fills while the instance is idle"
+
+#: app/templates/chat.html
+msgid "Knowledge graph of the document"
+msgstr "Knowledge graph of the document"
+
+#: app/templates/chat.html
+msgid "shown {n} of {total} nodes · {m} links"
+msgstr "shown {n} of {total} nodes · {m} links"
+
+#: app/templates/chat.html
+msgid "This browser does not provide WebGL — 2D mode"
+msgstr "This browser does not provide WebGL — 2D mode"
+
+msgid "Switch between 2D and 3D"
+msgstr "Switch between 2D and 3D"
+
+#: app/templates/chat.html
+msgid "Open the browser console for details, or copy the line above."
+msgstr "Open the browser console for details, or copy the line above."
+
+#: app/templates/chat.html
+msgid "Switch to 2D"
+msgstr "Switch to 2D"
+
+msgid "Switch to 3D"
+msgstr "Switch to 3D"
+
+#: app/templates/chat.html
+msgid "similarity {v}"
+msgstr "similarity {v}"
+
+#: app/templates/chat.html:343
+msgid "3D is unavailable: {reason}"
+msgstr "3D is unavailable: {reason}"
+
+#: app/templates/chat.html:451
+msgid "Switch to documents"
+msgstr "Switch to documents"
+
+#: app/templates/chat.html:451
+msgid "Switch to entities"
+msgstr "Switch to entities"

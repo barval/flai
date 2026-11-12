@@ -93,6 +93,11 @@ function applyCurrentView() {
 }
 
 function switchView(view) {
+    // A tab is navigation: the graph is a destination, so opening a section
+    // must show that section instead of leaving the cloud on screen.
+    if (typeof window.isGraphViewActive === 'function' && window.isGraphViewActive()) {
+        window.closeGraphView();
+    }
     if (window.isMobileViewport && window.isMobileViewport()) {
         // Mobile: clicking a tab opens its list as a full-screen panel;
         // clicking the tab of the already-open panel returns to the chat.
@@ -283,12 +288,13 @@ function renderDocItem(doc) {
         : (shareCount > 0
             ? `<span class="document-shared-badge document-share-count" title="${t('documents_shared_with')}: ${escapeHtml((doc.shared_with || []).join(', '))}">👥 ${shareCount}</span>`
             : '');
-    const documentActions = sharedBy
-        ? ''
-        : `<div class="document-actions">
-                <button class="share-document-button" title="${t('documents_share')}">👥</button>
+    // The graph is readable for a shared document too, so its button sits
+    // outside the owner-only block.
+    const documentActions = `<div class="document-actions">
+                <button class="graph-document-button" data-graph-doc="${doc.id}" title="${t('documents_view_in_graph')}">🕸️</button>
+                ${sharedBy ? '' : `<button class="share-document-button" title="${t('documents_share')}">👥</button>
                 <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
-                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
     return `
@@ -375,6 +381,11 @@ function updateDocumentsList(documents, folders = []) {
     const rootDocs = documents.filter(d => !d.folder_id);
 
     let html = `
+    <div class="documents-graph-bar">
+        <button type="button" id="documents-graph-button" class="documents-graph-button" title="${t('documents_view_in_graph')}">
+            <span class="documents-graph-icon">🕸️</span><span class="documents-graph-label">${t('graph_title')}</span>
+        </button>
+    </div>
     <div class="bulk-documents-bar hidden" id="bulk-documents-bar">
         <span id="bulk-selected-count" class="bulk-label"></span>
         <button id="bulk-move-button" class="bulk-move-button" title="${t('folder_move')}">➤ 📂</button>

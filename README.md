@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.1](#-whats-new-in-v131)
+- [🆕 What's New in v13.2](#-whats-new-in-v132)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,34 +73,15 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.1
-
-- **Identical documents are stored and indexed once.** An upload is keyed by the file's SHA-256: the
-  bytes of a document already on the instance are not written again, and its search vectors are copied
-  instead of being computed a second time. Each upload keeps its own name, folder and owner, the first
-  copy pays the storage quota and the rest pay nothing, and Admin → Users reports the volume saved.
-  See [DOCUMENTS.md](docs/DOCUMENTS.md).
-- **Documents can be shared with other accounts, read-only.** The owner marks who may read a document
-  (👥 in the document card) and the recipient finds it in their own panel with the owner's name,
-  opens its preview, downloads it, and their questions search it. The file, the index and the quota
-  stay with the owner, and revoking access takes effect on the next question. See
-  [DOCUMENTS.md](docs/DOCUMENTS.md).
-- **The chat knows who it is talking to.** The web chat receives the account's own name, so the
-  assistant stops answering about the user in the third person. API integrations are deliberately
-  excluded: a service account such as a voice column speaks for itself.
-- **Long-term memory stops repeating imported history.** Recall used to inject the user's imported
-  messages as "facts about the user" — a request to draw a cat could retrieve a line about water
-  blocks. Only facts with a known provenance are injected now.
-- **A small document reaches the model whole, not as a single fragment.** A rule and the hours it
-  applies to can sit in different chunks of the same law; a matching document of up to
-  `WHOLE_DOCUMENT_MAX_TOKENS` (2 000 tokens) is now passed in full. Verified on the noise law: the
-  answer became exact — "not now, quiet hours are 22:00–07:00 on weekdays".
-- **The Admin Users tab is readable again.** Outgoing and incoming token totals arrive as numbers
-  (they used to arrive as strings and print without digit grouping), the headers of the four widest
-  columns sit on two lines, the Documents column shows how many of them are shared, and the storage
-  value fits one line on a phone.
+## 🆕 What's New in v13.2
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
+
+- **A knowledge graph of your documents, drawn as a cloud you can walk through.** 🕸️ on a document card opens that document's neighbourhood, the same icon in the Documents panel header opens the whole corpus: entities coloured by kind, typed relations, a path between any two nodes, and one click from a relation to the document that states it. The document layer links similar documents and marks the ones other accounts shared with you. → [GRAPH.md](docs/GRAPH.md)
+
+- **The graph stays out of answers by default, and that is a measured decision.** With the stage running, answers were neither better nor worse: MRR 0.770 and nDCG@10 0.848 with the graph on and off, graded answer quality 0.367 against 0.400, at about 65 ms more per query and 11 % more context. What it does well is make relations readable, so it ships as an instrument for studying a corpus rather than as an extra retriever — `GRAPH_RAG_ENABLED=true` opts in anyway. → [GRAPH.md](docs/GRAPH.md#measurements)
+
+- **Extraction became worth looking at.** The first version produced 0.19 relations per entity and left 77 % of entities unconnected; a closed predicate vocabulary, neighbouring text as context and a relation endpoint that is created instead of dropped brought the same corpus to 0.63 relations per node with 43 % isolated, and to 99 % of proposed relations kept. `flask graph-stats` now reports density, isolation and the dominant predicates after every build, and `flask graph-merge-entities` merges names that only looked like different entities. → [GRAPH.md](docs/GRAPH.md)
 
 ## 🖼 Demo
 
@@ -139,6 +120,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on, and the 🔍 search scope mirrors them live (folder, **Unfiled** root, upload dates) with no separate Apply step. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
+- **Knowledge graph** — every indexed document is mined for entities and typed relations and drawn as a 3D cloud (2D without WebGL): a document's neighbourhood, the whole corpus, paths between entities, and the source document behind each relation. It is a reading instrument, not a retriever: retrieval use is opt-in because measurements show no gain. → [GRAPH.md](docs/GRAPH.md)
 
 ## 🔎 Working with document search
 

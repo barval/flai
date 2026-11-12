@@ -215,6 +215,22 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "RLM_MAX_CORPUS_CHARS",
         ],
     ),
+    "graph": (
+        "Knowledge graph",
+        [
+            "GRAPH_RAG_ENABLED",
+            "GRAPH_AUTO_EXTRACT",
+            "GRAPH_EXTRACT_MODEL",
+            "GRAPH_HOPS",
+            "GRAPH_MAX_SEEDS",
+            "GRAPH_MAX_EDGES",
+            "GRAPH_SHARE",
+            "GRAPH_SECTION_TOKENS",
+            "GRAPH_MAX_NODES",
+            "GRAPH_DOC_SIMILARITY",
+            "GRAPH_DOC_NEIGHBOURS",
+        ],
+    ),
     "voice": (
         "Voice",
         [
@@ -334,6 +350,15 @@ def build_schema(app) -> list[dict]:
     """Grouped schema for the panel: label, key, type, current value, default."""
     groups: list[dict] = []
     for group_id, (label, keys) in GROUPS.items():
+        # Labelled here, not in the browser: the admin page dictionary carries
+        # only the labels that existed when it was built, so a newer group stayed
+        # English and read as missing.
+        try:
+            from flask_babel import gettext as _translate
+
+            label = _translate(label) or label
+        except Exception:  # noqa: BLE001 — a label is not worth a failed page
+            pass
         fields = []
         for key in keys:
             value = app.config.get(config_key(key))
@@ -542,6 +567,17 @@ DESCRIPTIONS: dict[str, str] = {
     "MAX_CHAT_AUDIO": "Audio attachments per chat message",
     "MAX_AUDIO_SIZE_MB": "Largest audio upload (MB)",
     "MAX_VOICE_SIZE_MB": "Largest voice message (MB)",
+    "GRAPH_RAG_ENABLED": "Use the knowledge graph in retrieval",
+    "GRAPH_AUTO_EXTRACT": "Extract entities while idle (auto: on for a GPU host)",
+    "GRAPH_EXTRACT_MODEL": "Model that extracts entities (multimodal or reasoning)",
+    "GRAPH_HOPS": "Traversal depth around the seeds",
+    "GRAPH_MAX_SEEDS": "Entities seeded per question",
+    "GRAPH_MAX_EDGES": "Relations turned into retrieval candidates",
+    "GRAPH_SHARE": "Share of the evidence budget the graph may take",
+    "GRAPH_SECTION_TOKENS": "Cap for the graph block in the prompt",
+    "GRAPH_MAX_NODES": "Node cap of one graph API response",
+    "GRAPH_DOC_SIMILARITY": "Cosine threshold for a document-to-document edge",
+    "GRAPH_DOC_NEIGHBOURS": "Document edges kept per document",
     "RLM_ENABLED": "Enable deep analysis",
     "RLM_ACTOR_MODEL": "Model driving the analysis loop",
     "RLM_MAX_STEPS": "Hard ceiling on analysis steps",

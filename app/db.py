@@ -1134,6 +1134,7 @@ def delete_document(doc_id, user_id):
         archive_documents(c, user_id, [doc_id])
         c.execute("DELETE FROM document_shares WHERE document_id = %s", (doc_id,))
         c.execute("DELETE FROM documents WHERE id = %s AND user_id = %s", (doc_id, user_id))
+        _delete_kg_rows(c, doc_id, user_id)
 
     if file_size > 0:
         update_user_storage(user_id, -file_size)
@@ -1362,3 +1363,614 @@ def set_branding_site_names(site_name_ru: str, site_name_en: str) -> None:
             "UPDATE branding_settings SET site_name_ru = %s, site_name_en = %s, updated_at = %s WHERE id = 1",
             (site_name_ru, site_name_en, _branding_now()),
         )
+
+
+# ── Knowledge graph (v13.2) ────────────────────────────────────────────
+# The graph is derived data: entities, the chunks that mention them, typed
+# relations between them, and a document layer built from chunk centroids.
+# Every row is user-scoped; documents shared with another account are reached
+# through the same scopes the vector search uses.
+
+
+def merge_kg_nodes_sql(cursor, user_id: str, keeper_id: str, victim_id: str) -> None:
+    """Move everything a duplicate node owns onto the keeper, then delete it.
+
+    Two rows can hold the same key at different moments: a prefix merge renames
+    a short node onto a name another row already carries, and re-pointing edges
+    with a plain UPDATE collides with the unique edge key. Both cases need the
+    same arithmetic, so it lives here instead of being repeated in the CLI.
+    """
+    cursor.execute(
+        "INSERT INTO kg_occurrences (node_id, user_id, doc_id, chunk_index, mention_text)"
+        " SELECT %s, user_id, doc_id, chunk_index, mention_text FROM kg_occurrences"
+        " WHERE node_id = %s ON CONFLICT DO NOTHING",
+        (keeper_id, victim_id),
+    )
+    cursor.execute("DELETE FROM kg_occurrences WHERE node_id = %s", (victim_id,))
+    for column in ("src_id", "dst_id"):
+        other = "dst_id" if column == "src_id" else "src_id"
+        cursor.execute(
+            f"INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
+            f" SELECT user_id, %s, {other}, predicate, weight, doc_id, chunk_index, evidence"
+            f" FROM kg_edges WHERE {column} = %s"
+            f" ON CONFLICT (user_id, src_id, dst_id, predicate)"
+            f" DO UPDATE SET weight = kg_edges.weight + EXCLUDED.weight",
+            (keeper_id, victim_id),
+        )
+        cursor.execute(f"DELETE FROM kg_edges WHERE {column} = %s", (victim_id,))
+    cursor.execute("DELETE FROM kg_edges WHERE user_id = %s AND src_id = dst_id", (user_id,))
+    cursor.execute(
+        "DELETE FROM kg_edges a USING kg_edges b WHERE a.user_id = %s AND b.user_id = a.user_id"
+        " AND a.src_id = b.src_id AND a.dst_id = b.dst_id AND a.predicate = b.predicate AND a.id < b.id",
+        (user_id,),
+    )
+    cursor.execute(
+        "UPDATE kg_nodes SET lemmas = (SELECT array_agg(DISTINCT value) FROM unnest(lemmas ||"
+        " (SELECT lemmas FROM kg_nodes WHERE id = %s)) AS value) WHERE id = %s",
+        (victim_id, keeper_id),
+    )
+    cursor.execute("DELETE FROM kg_nodes WHERE id = %s", (victim_id,))
+
+
+def merge_kg_nodes(user_id: str, keeper_id: str, victim_id: str) -> None:
+    """Same as :func:`merge_kg_nodes_sql`, on its own connection."""
+    if str(keeper_id) == str(victim_id):
+        return
+    with get_db() as conn:
+        merge_kg_nodes_sql(conn.cursor(), user_id, keeper_id, victim_id)
+
+
+def upsert_kg_node(user_id, kind, name, normalized, lemmas, description="", source_kind="document"):
+    """Insert or merge an entity, returning its id.
+
+    A node is identified by its normalised name and its kind, so a company
+    written with its legal form and the same company without it land on one
+    node instead of two.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        # A short personal name and the same name with a patronymic are one
+        # person: an exact key split them. A name that is a word-prefix of a
+        # known one (at least two words) is the same entity, and the longer
+        # form wins.
+        if len(str(normalized).split()) >= 2:
+            c.execute(
+                """
+                SELECT id, name, normalized, lemmas FROM kg_nodes
+                WHERE user_id = %s AND kind = %s
+                  AND (normalized LIKE %s OR %s LIKE normalized || ' %%')
+                ORDER BY length(normalized) DESC LIMIT 1
+                """,
+                (user_id, kind, f"{normalized} %", normalized),
+            )
+            existing = c.fetchone()
+            if existing:
+                longer = (
+                    (normalized, name, list(lemmas or []))
+                    if len(str(normalized)) >= len(existing["normalized"])
+                    else (existing["normalized"], existing["name"], list(existing["lemmas"] or []))
+                )
+                # Renaming the short node onto the long name collides when the
+                # long name already has a row — which it does as soon as another
+                # chunk mentioned the same person in full.
+                keeper_id = existing["id"]
+                if longer[0] != existing["normalized"]:
+                    c.execute(
+                        "SELECT id FROM kg_nodes WHERE user_id = %s AND kind = %s AND normalized = %s AND id <> %s",
+                        (user_id, kind, longer[0], existing["id"]),
+                    )
+                    holder = c.fetchone()
+                    if holder:
+                        merge_kg_nodes_sql(c, user_id, holder["id"], existing["id"])
+                        keeper_id = holder["id"]
+                merged_lemmas = sorted(set(longer[2]) | set(lemmas or []))
+                c.execute(
+                    "UPDATE kg_nodes SET name = %s, normalized = %s, lemmas = %s,"
+                    " description = CASE WHEN %s <> '' THEN %s ELSE description END WHERE id = %s",
+                    (longer[1], longer[0], merged_lemmas, description, description, keeper_id),
+                )
+                return str(keeper_id)
+        c.execute(
+            """
+            INSERT INTO kg_nodes (user_id, kind, name, normalized, lemmas, description, source_kind)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, normalized, kind) DO UPDATE
+            SET lemmas = ARRAY(SELECT DISTINCT unnest(kg_nodes.lemmas || EXCLUDED.lemmas)),
+                description = CASE WHEN EXCLUDED.description <> '' THEN EXCLUDED.description
+                                   ELSE kg_nodes.description END
+            RETURNING id
+            """,
+            (user_id, kind, name, normalized, list(lemmas or []), description, source_kind),
+        )
+        return str(c.fetchone()["id"])
+
+
+def add_kg_occurrence(node_id, user_id, doc_id, chunk_index, mention_text=""):
+    """Record that a node is mentioned in one chunk (idempotent)."""
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_occurrences (node_id, user_id, doc_id, chunk_index, mention_text)
+            VALUES (%s::uuid, %s, %s, %s, %s)
+            ON CONFLICT (node_id, doc_id, chunk_index) DO NOTHING
+            """,
+            (node_id, user_id, doc_id, chunk_index, mention_text),
+        )
+
+
+def upsert_kg_edge(user_id, src_id, dst_id, predicate, doc_id, chunk_index, evidence="", source_kind="document"):
+    """Insert a relation, or raise the weight of the identical one."""
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, doc_id, chunk_index, evidence, source_kind)
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, src_id, dst_id, predicate)
+            DO UPDATE SET weight = kg_edges.weight + 1
+            """,
+            (user_id, src_id, dst_id, predicate, doc_id, chunk_index, evidence, source_kind),
+        )
+
+
+def find_kg_node_ids(user_id, lemmas, doc_ids=None, limit=8):
+    """Nodes whose lemmas overlap the given ones, rarest match first.
+
+    ``doc_ids`` restricts the answer to nodes mentioned inside those documents,
+    which is how a share recipient and a request naming specific documents stay
+    inside their scope.
+    """
+    if not lemmas:
+        return []
+    params = [list(lemmas), user_id, list(lemmas)]
+    scope_sql = ""
+    if doc_ids is not None:
+        scope_sql = (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = ANY(%s::text[]))"
+        )
+        params.append(list(doc_ids))
+    params.append(limit)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            SELECT n.id,
+                   cardinality(ARRAY(SELECT unnest(n.lemmas) INTERSECT SELECT unnest(%s::text[]))) AS matched
+            FROM kg_nodes n
+            WHERE n.user_id = %s AND n.lemmas && %s::text[]{scope_sql}
+            ORDER BY matched DESC, n.name
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        return [(str(row["id"]), int(row["matched"])) for row in c.fetchall()]
+
+
+def get_kg_node_ids_for_chunks(user_id, refs):
+    """Nodes mentioned in the given ``(doc_id, chunk_index)`` pairs."""
+    if not refs:
+        return []
+    doc_ids = sorted({doc_id for doc_id, _ in refs})
+    wanted = set(refs)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT node_id, doc_id, chunk_index FROM kg_occurrences"
+            " WHERE user_id = %s AND doc_id = ANY(%s::text[])",
+            (user_id, doc_ids),
+        )
+        found = []
+        for row in c.fetchall():
+            if (row["doc_id"], row["chunk_index"]) in wanted:
+                node_id = str(row["node_id"])
+                if node_id not in found:
+                    found.append(node_id)
+        return found
+
+
+def get_kg_edges(user_id, node_ids, hops=2, doc_ids=None):
+    """Breadth-first edges around ``node_ids``, scoped to ``doc_ids``.
+
+    Each returned edge carries the distance at which it was reached, so the
+    caller can weigh a direct relation above a two-hop one.
+    """
+    if not node_ids or hops < 1:
+        return []
+    visited = {str(node_id) for node_id in node_ids}
+    frontier = list(visited)
+    edges = []
+    seen_ids = set()
+    with get_db() as conn:
+        c = conn.cursor()
+        for distance in range(1, hops + 1):
+            if not frontier:
+                break
+            params = [user_id, frontier, frontier]
+            scope_sql = ""
+            if doc_ids is not None:
+                scope_sql = " AND doc_id = ANY(%s::text[])"
+                params.append(list(doc_ids))
+            c.execute(
+                f"""
+                SELECT id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence
+                FROM kg_edges
+                WHERE user_id = %s AND (src_id = ANY(%s::uuid[]) OR dst_id = ANY(%s::uuid[])){scope_sql}
+                """,
+                tuple(params),
+            )
+            next_frontier = []
+            for row in c.fetchall():
+                if row["id"] in seen_ids:
+                    continue
+                seen_ids.add(row["id"])
+                edges.append(
+                    {
+                        "id": row["id"],
+                        "src_id": str(row["src_id"]),
+                        "dst_id": str(row["dst_id"]),
+                        "predicate": row["predicate"],
+                        "weight": int(row["weight"]),
+                        "doc_id": row["doc_id"],
+                        "chunk_index": row["chunk_index"],
+                        "evidence": row["evidence"],
+                        "distance": distance,
+                    }
+                )
+                for endpoint in (str(row["src_id"]), str(row["dst_id"])):
+                    if endpoint not in visited:
+                        visited.add(endpoint)
+                        next_frontier.append(endpoint)
+            frontier = next_frontier
+    return edges
+
+
+def _delete_kg_rows(cursor, doc_id, user_id):
+    """Remove every graph row derived from one document, then orphan nodes.
+
+    Shared by ``delete_kg_document`` and ``delete_document`` so the cascade
+    runs inside the caller's transaction when there is one.
+    """
+    cursor.execute("DELETE FROM kg_occurrences WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_edges WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_doc_vectors WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute("DELETE FROM kg_build_state WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+    cursor.execute(
+        "DELETE FROM kg_doc_edges WHERE user_id = %s AND (src_doc_id = %s OR dst_doc_id = %s)",
+        (user_id, doc_id, doc_id),
+    )
+    cursor.execute(
+        "DELETE FROM kg_nodes n WHERE n.user_id = %s"
+        " AND NOT EXISTS (SELECT 1 FROM kg_occurrences o WHERE o.node_id = n.id)",
+        (user_id,),
+    )
+
+
+def delete_kg_document(doc_id, user_id):
+    """Drop every graph row derived from one document, then orphan nodes."""
+    with get_db() as conn:
+        _delete_kg_rows(conn.cursor(), doc_id, user_id)
+
+
+def get_kg_build_state(doc_id, user_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM kg_build_state WHERE doc_id = %s AND user_id = %s", (doc_id, user_id))
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def set_kg_build_state(doc_id, user_id, status, chunks_total=0, chunks_done=0, model="", error=""):
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_build_state (doc_id, user_id, status, chunks_total, chunks_done, model, error, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (doc_id) DO UPDATE
+            SET status = EXCLUDED.status, chunks_total = EXCLUDED.chunks_total,
+                chunks_done = EXCLUDED.chunks_done, model = EXCLUDED.model,
+                error = EXCLUDED.error, updated_at = CURRENT_TIMESTAMP
+            """,
+            (doc_id, user_id, status, chunks_total, chunks_done, model, error),
+        )
+
+
+def add_kg_extract_stats(doc_id, user_id, entities, relations_found, relations_kept):
+    """Accumulate what one chunk's extraction produced and what survived."""
+    with get_db() as conn:
+        conn.cursor().execute(
+            "UPDATE kg_build_state SET entities_found = entities_found + %s,"
+            " relations_found = relations_found + %s, relations_kept = relations_kept + %s"
+            " WHERE doc_id = %s AND user_id = %s",
+            (int(entities), int(relations_found), int(relations_kept), doc_id, user_id),
+        )
+
+
+def kg_extraction_stats(user_id):
+    """Aggregate extraction counters and graph shape for one account."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT coalesce(sum(entities_found), 0) AS entities,"
+            " coalesce(sum(relations_found), 0) AS found,"
+            " coalesce(sum(relations_kept), 0) AS kept,"
+            " coalesce(sum(chunks_done), 0) AS chunks"
+            " FROM kg_build_state WHERE user_id = %s",
+            (user_id,),
+        )
+        totals = dict(c.fetchone())
+        c.execute(
+            "SELECT count(*) AS nodes,"
+            " (SELECT count(*) FROM kg_nodes n2 WHERE n2.user_id = %s AND NOT EXISTS"
+            "  (SELECT 1 FROM kg_edges e WHERE e.user_id = %s AND (e.src_id = n2.id OR e.dst_id = n2.id))) AS isolated"
+            " FROM kg_nodes WHERE user_id = %s",
+            (user_id, user_id, user_id),
+        )
+        shape = dict(c.fetchone())
+        c.execute("SELECT count(*) AS edges FROM kg_edges WHERE user_id = %s", (user_id,))
+        edges = int(c.fetchone()["edges"])
+        c.execute(
+            "SELECT predicate, count(*) AS n FROM kg_edges WHERE user_id = %s"
+            " GROUP BY predicate ORDER BY n DESC LIMIT 8",
+            (user_id,),
+        )
+        predicates = [(row["predicate"], int(row["n"])) for row in c.fetchall()]
+    totals.update(shape)
+    totals["edges"] = edges
+    totals["predicates"] = predicates
+    return totals
+
+
+def kg_status(user_id):
+    """Counters the UI and the CLI print."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT
+                (SELECT count(*) FROM kg_build_state WHERE user_id = %s) AS documents,
+                (SELECT coalesce(sum(chunks_total), 0) FROM kg_build_state WHERE user_id = %s) AS chunks_total,
+                (SELECT coalesce(sum(chunks_done), 0) FROM kg_build_state WHERE user_id = %s) AS chunks_done,
+                (SELECT count(*) FROM kg_nodes WHERE user_id = %s) AS nodes,
+                (SELECT count(*) FROM kg_edges WHERE user_id = %s) AS edges
+            """,
+            (user_id,) * 5,
+        )
+        row = dict(c.fetchone())
+    row["ready"] = bool(row["nodes"] and row["chunks_done"] >= row["chunks_total"] > 0)
+    return row
+
+
+def replace_kg_doc_edges(user_id, edges):
+    """Swap the whole document layer of one account for ``edges``."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM kg_doc_edges WHERE user_id = %s", (user_id,))
+        if edges:
+            c.executemany(
+                "INSERT INTO kg_doc_edges (user_id, src_doc_id, dst_doc_id, score) VALUES (%s, %s, %s, %s)"
+                " ON CONFLICT DO NOTHING",
+                [(user_id, src, dst, float(score)) for src, dst, score in edges],
+            )
+    return len(edges)
+
+
+def get_kg_doc_edges(user_id, doc_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT dst_doc_id, score FROM kg_doc_edges WHERE user_id = %s AND src_doc_id = %s"
+            " ORDER BY score DESC",
+            (user_id, doc_id),
+        )
+        return [(row["dst_doc_id"], float(row["score"])) for row in c.fetchall()]
+
+
+def get_rag_chunk(user_id, doc_id, chunk_index):
+    """One indexed chunk of a document, or ``None`` when it does not exist."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT text FROM rag_chunks WHERE user_id = %s AND doc_id = %s AND chunk_index = %s",
+            (user_id, doc_id, chunk_index),
+        )
+        row = c.fetchone()
+        return row["text"] if row else None
+
+
+def get_rag_chunk_window(user_id, doc_id, chunk_index, chars=200):
+    """The chunk plus a slice of its neighbours, for relation context."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT chunk_index, text FROM rag_chunks WHERE user_id = %s AND doc_id = %s"
+            " AND chunk_index BETWEEN %s AND %s ORDER BY chunk_index",
+            (user_id, doc_id, int(chunk_index) - 1, int(chunk_index) + 1),
+        )
+        rows = {int(row["chunk_index"]): row["text"] or "" for row in c.fetchall()}
+    return (
+        rows.get(int(chunk_index)) or "",
+        (rows.get(int(chunk_index) - 1) or "")[-chars:],
+        (rows.get(int(chunk_index) + 1) or "")[:chars],
+    )
+
+
+def get_rag_chunks(user_id, refs):
+    """Chunk texts and file names for many ``(doc_id, chunk_index)`` at once.
+
+    The graph stage reads the chunks behind a dozen edges; one connection per
+    chunk was a dozen short-lived connections inside a single search.
+    """
+    if not refs:
+        return {}
+    wanted = {(str(doc_id), int(index)) for doc_id, index in refs}
+    doc_ids = sorted({doc_id for doc_id, _ in wanted})
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT doc_id, chunk_index, text, filename FROM rag_chunks"
+            " WHERE user_id = %s AND doc_id = ANY(%s::text[])",
+            (user_id, doc_ids),
+        )
+        return {
+            (row["doc_id"], int(row["chunk_index"])): (row["text"], row["filename"] or "")
+            for row in c.fetchall()
+            if (row["doc_id"], int(row["chunk_index"])) in wanted
+        }
+
+
+def count_rag_chunks(user_id, doc_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT count(*) AS n FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        return int(c.fetchone()["n"])
+
+
+def get_kg_node_names(user_id, node_ids):
+    """Display names of graph nodes, keyed by id."""
+    if not node_ids:
+        return {}
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, name FROM kg_nodes WHERE user_id = %s AND id = ANY(%s::uuid[])",
+            (user_id, [str(node_id) for node_id in node_ids]),
+        )
+        return {str(row["id"]): row["name"] for row in c.fetchall()}
+
+
+def get_document_filenames(user_id, doc_ids):
+    """File names of documents, keyed by id (used to cite graph evidence)."""
+    if not doc_ids:
+        return {}
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, filename FROM documents WHERE user_id = %s AND id = ANY(%s::text[])", (user_id, list(doc_ids)))
+        return {row["id"]: row["filename"] for row in c.fetchall()}
+
+
+def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
+    """Nodes and the edges among them, for the graph view."""
+    limit = max(1, int(limit))
+    params: list = [user_id]
+    filters = ""
+    if kind:
+        filters += " AND n.kind = %s"
+        params.append(kind)
+    if doc_id:
+        filters += (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = %s)"
+        )
+        params.append(doc_id)
+    elif doc_ids is not None:
+        filters += (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = ANY(%s::text[]))"
+        )
+        params.append(list(doc_ids))
+    params.append(limit)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"""
+            SELECT n.id, n.name, n.kind, n.description,
+                   (SELECT count(*) FROM kg_occurrences o WHERE o.node_id = n.id) AS mentions
+            FROM kg_nodes n
+            WHERE n.user_id = %s{filters}
+            ORDER BY mentions DESC, n.name
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        nodes = [
+            {
+                "id": str(row["id"]),
+                "label": row["name"],
+                "kind": row["kind"],
+                "description": row["description"] or "",
+                "mentions": int(row["mentions"] or 0),
+            }
+            for row in c.fetchall()
+        ]
+        if not nodes:
+            return {"nodes": [], "edges": []}
+        ids = [node["id"] for node in nodes]
+        # Nodes are capped by the caller; edges need a cap of their own or a
+        # dense account returns tens of thousands of links in one response.
+        c.execute(
+            "SELECT src_id, dst_id, predicate, weight, doc_id FROM kg_edges"
+            " WHERE user_id = %s AND src_id = ANY(%s::uuid[]) AND dst_id = ANY(%s::uuid[])"
+            " ORDER BY weight DESC LIMIT %s",
+            (user_id, ids, ids, max(1, limit * 4)),
+        )
+        edges = [
+            {
+                "source": str(row["src_id"]),
+                "target": str(row["dst_id"]),
+                "predicate": row["predicate"],
+                "weight": int(row["weight"] or 1),
+                "doc_id": row["doc_id"],
+            }
+            for row in c.fetchall()
+        ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def get_kg_counts(user_id, doc_ids=None):
+    """Total nodes and edges in scope, not just the ones a page returns."""
+    params: list = [user_id]
+    scope_sql = ""
+    if doc_ids is not None:
+        scope_sql = (
+            " AND EXISTS (SELECT 1 FROM kg_occurrences o"
+            " WHERE o.node_id = n.id AND o.user_id = n.user_id AND o.doc_id = ANY(%s::text[]))"
+        )
+        params.append(list(doc_ids))
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT count(*) AS n FROM kg_nodes n WHERE n.user_id = %s{scope_sql}", tuple(params))
+        nodes = int(c.fetchone()["n"])
+        c.execute("SELECT count(*) AS n FROM kg_edges WHERE user_id = %s", (user_id,))
+        edges = int(c.fetchone()["n"])
+    return {"nodes": nodes, "edges": edges}
+
+
+def get_kg_document_graph(user_id, limit=400, doc_ids=None):
+    """The document layer: indexed documents and their similarity edges."""
+    limit = max(1, int(limit))
+    params: list = [user_id]
+    scope_sql = ""
+    if doc_ids is not None:
+        scope_sql = " AND id = ANY(%s::text[])"
+        params.append(list(doc_ids))
+    params.append(limit)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, filename FROM documents WHERE user_id = %s AND index_status = 'indexed'"
+            f"{scope_sql} ORDER BY filename LIMIT %s",
+            tuple(params),
+        )
+        nodes = [
+            {"id": row["id"], "label": row["filename"], "kind": "document", "description": "", "mentions": 0}
+            for row in c.fetchall()
+        ]
+        if not nodes:
+            return {"nodes": [], "edges": []}
+        ids = [node["id"] for node in nodes]
+        c.execute(
+            "SELECT src_doc_id, dst_doc_id, score FROM kg_doc_edges"
+            " WHERE user_id = %s AND src_doc_id = ANY(%s::text[]) AND dst_doc_id = ANY(%s::text[])",
+            (user_id, ids, ids),
+        )
+        edges = [
+            {
+                "source": row["src_doc_id"],
+                "target": row["dst_doc_id"],
+                "predicate": "similar",
+                "weight": round(float(row["score"]), 3),
+                "doc_id": row["src_doc_id"],
+            }
+            for row in c.fetchall()
+        ]
+    return {"nodes": nodes, "edges": edges}

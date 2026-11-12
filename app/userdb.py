@@ -182,6 +182,20 @@ def delete_user(login):
 
         c.execute("DELETE FROM documents WHERE user_id = %s", (user_id,))
 
+        # The knowledge graph is derived from those documents and is keyed by
+        # the login, which can be created again: leaving it behind would show a
+        # new account the entities, descriptions and relations of the old one.
+        for table in (
+            "kg_edges",
+            "kg_occurrences",
+            "kg_nodes",
+            "kg_doc_edges",
+            "kg_doc_vectors",
+            "kg_build_state",
+            "kg_communities",
+        ):
+            c.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
+
         # Document folders (GDPR: folders are per-user metadata only)
         c.execute("DELETE FROM document_folders WHERE user_id = %s", (user_id,))
 

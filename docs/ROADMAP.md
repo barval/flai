@@ -10,6 +10,11 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Deeper graph extraction, and a corpus where the graph earns its place in retrieval** — v13.2 shipped the
+  graph as a reading instrument because measurements show no retrieval gain (see
+  [GRAPH.md](GRAPH.md#measurements)). Next: a second extraction pass over entity pairs inside one sentence, a
+  corpus whose bridging document is semantically unreachable from the question, and the same measurements again;
+  `GRAPH_RAG_ENABLED` stays off until a corpus shows a gain.
 - Plugin architecture for custom modules
 - Multi-GPU support
 - **Multi-platform GPU support** — first iteration shipped in v13.0: the compose stack is split into a

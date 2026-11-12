@@ -113,6 +113,19 @@ RAG_RRF_K=60                   # Константа RRF
 RAG_RERANK_ENABLED=false       # Реранкинг верхних кандидатов кросс-энкодером (CPU, без VRAM)
 RAG_RERANK_CANDIDATES=10       # Сколько верхних кандидатов переупорядочивает реранкер
 RAG_RERANK_TIMEOUT=10          # Секунды до отказа от реранкинга с сохранением исходного порядка
+
+# Граф знаний (см. docs/GRAPH-ru.md)
+GRAPH_RAG_ENABLED=false        # Использовать граф в поиске; выключено по замерам, см. документ
+GRAPH_AUTO_EXTRACT=auto        # auto = извлечение на хосте с GPU, выключено на хосте только с CPU; on | off
+GRAPH_EXTRACT_MODEL=multimodal # Модель, выполняющая извлечение
+GRAPH_HOPS=2                   # Глубина обхода от семени
+GRAPH_MAX_SEEDS=8              # Семян на вопрос
+GRAPH_MAX_EDGES=12             # Связей на вопрос
+GRAPH_SHARE=0.15               # Потолок графовых фрагментов как доля бюджета доказательств (0 — нет)
+GRAPH_SECTION_TOKENS=600       # Лимит токенов блока связей в промпте
+GRAPH_MAX_NODES=1000           # Узлов, которые рисует вид
+GRAPH_DOC_SIMILARITY=0.75      # Порог косинуса для связи в слое документов
+GRAPH_DOC_NEIGHBOURS=8         # Соседей на документ в слое документов
 TAVILY_ENABLED=true               # Необязательные личные ключи Tavily; без ключа используется локальный SearXNG
 TAVILY_API_URL=https://api.tavily.com
 TAVILY_TIMEOUT=20

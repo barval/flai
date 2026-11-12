@@ -4017,6 +4017,246 @@ video {
     border-radius: 3px;
     border: 1px solid #ddd;
 }</style>
+    <style>/* app/static/css/chat-graph.css */
+/* Knowledge-graph view (v13.2): a full-window 3D canvas with a side panel. */
+
+/* The overlay lives outside the chat column: on a phone that column is hidden
+   while the documents list is open, and a child of it would never appear. On a
+   desktop it starts after the sidebar, so the tabs stay reachable. */
+.graph-view {
+    /* Geometry is set in JS: on a desktop the graph covers the main column and
+       leaves the sidebar tabs alone; on a phone it takes the area below the tab
+       row, exactly where the documents list sits. */
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* The project themes with a body class and plain colours, not variables:
+       var(--bg-primary) does not exist, which is why the view stayed black in
+       the light theme. */
+    background: #ffffff;
+    color: #1e1e1e;
+}
+
+.dark-theme .graph-view {
+    background: #1e1e1e;
+    color: #e0e0e0;
+}
+
+.graph-view.hidden {
+    display: none;
+}
+
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #d0d0d0;
+    flex-wrap: wrap;
+}
+
+.graph-title {
+    font-weight: 600;
+}
+
+.graph-layer-btn {
+    border: 1px solid #c8c8c8;
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.graph-search {
+    min-width: 10rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #c8c8c8;
+    background: transparent;
+    color: inherit;
+}
+
+.graph-status {
+    margin-left: auto;
+    padding-left: 0.75rem;
+    border-left: 1px solid #d0d0d0;
+    font-size: 0.8rem;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.dark-theme .graph-status,
+.dark-theme .graph-side-panel,
+.dark-theme .graph-toolbar {
+    border-color: #3a3a3a;
+}
+
+.graph-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.graph-canvas {
+    flex: 1;
+    min-width: 0;
+    /* The renderer sizes its own canvas; clipping here keeps a stale, wider
+       surface from pushing the cloud to one side. */
+    overflow: hidden;
+    cursor: grab;
+    /* Panning the cloud must not scroll the page on a touch screen. */
+    touch-action: none;
+}
+
+.graph-canvas:active {
+    cursor: grabbing;
+}
+
+.graph-side-panel {
+    width: 18rem;
+    border-left: 1px solid #d0d0d0;
+    padding: 0.75rem;
+    overflow-y: auto;
+    font-size: 0.9rem;
+}
+
+.graph-side-panel h4 {
+    margin: 0 0 0.25rem;
+}
+
+.graph-node-kind {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.graph-node-shared {
+    font-size: 0.8rem;
+    color: #e69138;
+    margin-bottom: 0.5rem;
+}
+
+.graph-neighbours {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.graph-neighbours li {
+    padding: 0.2rem 0;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+.graph-hint,
+.graph-mentions {
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+/* A phone keeps the canvas usable: the panel becomes a strip below it. */
+@media (max-width: 768px) {
+    .graph-body {
+        flex-direction: column;
+    }
+
+    .graph-side-panel {
+        width: auto;
+        max-height: 35%;
+        border-left: none;
+        border-top: 1px solid #d0d0d0;
+    }
+}
+
+/* Entry points in the Documents panel. */
+.documents-graph-bar {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0.6rem;
+}
+
+/* A labelled button, not a bare icon: the graph is a destination, and an emoji
+   alone gave no hint of where it leads. */
+.documents-graph-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.documents-graph-button:hover {
+    background: rgba(76, 139, 245, 0.1);
+    border-color: #4c8bf5;
+}
+
+.dark-theme .documents-graph-button {
+    border-color: #3a3a3a;
+}
+
+.documents-graph-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.documents-graph-button,
+.graph-document-button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+    opacity: 0.8;
+}
+
+.documents-graph-button:hover,
+.graph-document-button:hover {
+    opacity: 1;
+}
+
+.graph-build-btn {
+    margin-top: 0.5rem;
+    border: 1px solid #4c8bf5;
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+}
+
+/* The failure line is a diagnostic: it has to be selectable and copyable. */
+.graph-error-detail {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+    background: rgba(200, 60, 60, 0.08);
+    border-left: 3px solid #c83c3c;
+    padding: 0.4rem 0.6rem;
+}
+
+
+/* The 3D renderer prints its own English control hint in a corner. It is not
+   translatable from the bundle and duplicates what the panel says. */
+.graph-canvas .scene-nav-info {
+    display: none;
+}
+</style>
     <style>/* app/static/css/dark-theme.css */
 /* ===== DARK THEME OVERRIDES ===== */
 .dark-theme {
@@ -4834,7 +5074,7 @@ video {
     <link rel="shortcut icon" href="data:image/x-icon;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////8AAP///////wAA/+AAAAf/AAD/gAAAAf8AAP8AAAAA/wAA/wAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAPAAAAAAjwAA4AAAAAAPAADgAAAAAA8AAPAAAAAADwAA+AAAAAAfAAD8AAAAAD8AAP4AAAAAfwAA/wAAAAD/AAD/wAAAA/8AAP/gAAAD/wAA//AAAAP/AAD/+AAAA/8AAP/8AAAD/wAA//4AAAP/AAD//wAAA/8AAP//gAID/wAA///gBgP/AAD//+AOA/8AAP//+B4D/wAA///8P///AAD///5///8AAP///////wAA////////AAA=">
     <script>
         window.DEBUG_JS = false;
-        window.FLAI_VERSION = "13.1";
+        window.FLAI_VERSION = "13.2";
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     <\/script>
@@ -4895,7 +5135,7 @@ video {
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="О системе">
-            ПЛИИ v13.1
+            ПЛИИ v13.2
         </button>
     </footer>
 
@@ -4906,7 +5146,7 @@ video {
             <button type="button" class="about-modal-close" data-close-about aria-label="Закрыть">&times;</button>
             <img src="data:image/png;base64,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" alt="" class="about-logo">
             <h2 id="about-modal-title">Полностью Локальный ИИ (ПЛИИ)</h2>
-            <p class="about-version">v13.1</p>
+            <p class="about-version">v13.2</p>
             <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">(c) 2026 Барсуков Валерий</p>
         </div>
@@ -9128,6 +9368,246 @@ video {
     border-radius: 3px;
     border: 1px solid #ddd;
 }</style>
+    <style>/* app/static/css/chat-graph.css */
+/* Knowledge-graph view (v13.2): a full-window 3D canvas with a side panel. */
+
+/* The overlay lives outside the chat column: on a phone that column is hidden
+   while the documents list is open, and a child of it would never appear. On a
+   desktop it starts after the sidebar, so the tabs stay reachable. */
+.graph-view {
+    /* Geometry is set in JS: on a desktop the graph covers the main column and
+       leaves the sidebar tabs alone; on a phone it takes the area below the tab
+       row, exactly where the documents list sits. */
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* The project themes with a body class and plain colours, not variables:
+       var(--bg-primary) does not exist, which is why the view stayed black in
+       the light theme. */
+    background: #ffffff;
+    color: #1e1e1e;
+}
+
+.dark-theme .graph-view {
+    background: #1e1e1e;
+    color: #e0e0e0;
+}
+
+.graph-view.hidden {
+    display: none;
+}
+
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #d0d0d0;
+    flex-wrap: wrap;
+}
+
+.graph-title {
+    font-weight: 600;
+}
+
+.graph-layer-btn {
+    border: 1px solid #c8c8c8;
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.graph-search {
+    min-width: 10rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #c8c8c8;
+    background: transparent;
+    color: inherit;
+}
+
+.graph-status {
+    margin-left: auto;
+    padding-left: 0.75rem;
+    border-left: 1px solid #d0d0d0;
+    font-size: 0.8rem;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.dark-theme .graph-status,
+.dark-theme .graph-side-panel,
+.dark-theme .graph-toolbar {
+    border-color: #3a3a3a;
+}
+
+.graph-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.graph-canvas {
+    flex: 1;
+    min-width: 0;
+    /* The renderer sizes its own canvas; clipping here keeps a stale, wider
+       surface from pushing the cloud to one side. */
+    overflow: hidden;
+    cursor: grab;
+    /* Panning the cloud must not scroll the page on a touch screen. */
+    touch-action: none;
+}
+
+.graph-canvas:active {
+    cursor: grabbing;
+}
+
+.graph-side-panel {
+    width: 18rem;
+    border-left: 1px solid #d0d0d0;
+    padding: 0.75rem;
+    overflow-y: auto;
+    font-size: 0.9rem;
+}
+
+.graph-side-panel h4 {
+    margin: 0 0 0.25rem;
+}
+
+.graph-node-kind {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.graph-node-shared {
+    font-size: 0.8rem;
+    color: #e69138;
+    margin-bottom: 0.5rem;
+}
+
+.graph-neighbours {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.graph-neighbours li {
+    padding: 0.2rem 0;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+.graph-hint,
+.graph-mentions {
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+/* A phone keeps the canvas usable: the panel becomes a strip below it. */
+@media (max-width: 768px) {
+    .graph-body {
+        flex-direction: column;
+    }
+
+    .graph-side-panel {
+        width: auto;
+        max-height: 35%;
+        border-left: none;
+        border-top: 1px solid #d0d0d0;
+    }
+}
+
+/* Entry points in the Documents panel. */
+.documents-graph-bar {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0.6rem;
+}
+
+/* A labelled button, not a bare icon: the graph is a destination, and an emoji
+   alone gave no hint of where it leads. */
+.documents-graph-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.documents-graph-button:hover {
+    background: rgba(76, 139, 245, 0.1);
+    border-color: #4c8bf5;
+}
+
+.dark-theme .documents-graph-button {
+    border-color: #3a3a3a;
+}
+
+.documents-graph-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.documents-graph-button,
+.graph-document-button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+    opacity: 0.8;
+}
+
+.documents-graph-button:hover,
+.graph-document-button:hover {
+    opacity: 1;
+}
+
+.graph-build-btn {
+    margin-top: 0.5rem;
+    border: 1px solid #4c8bf5;
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+}
+
+/* The failure line is a diagnostic: it has to be selectable and copyable. */
+.graph-error-detail {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+    background: rgba(200, 60, 60, 0.08);
+    border-left: 3px solid #c83c3c;
+    padding: 0.4rem 0.6rem;
+}
+
+
+/* The 3D renderer prints its own English control hint in a corner. It is not
+   translatable from the bundle and duplicates what the panel says. */
+.graph-canvas .scene-nav-info {
+    display: none;
+}
+</style>
     <style>/* app/static/css/dark-theme.css */
 /* ===== DARK THEME OVERRIDES ===== */
 .dark-theme {
@@ -9945,7 +10425,7 @@ video {
     <link rel="shortcut icon" href="data:image/x-icon;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////8AAP///////wAA/+AAAAf/AAD/gAAAAf8AAP8AAAAA/wAA/wAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAP4AAAAA/wAA/gAAAAD/AAD+AAAAAP8AAPAAAAAAjwAA4AAAAAAPAADgAAAAAA8AAPAAAAAADwAA+AAAAAAfAAD8AAAAAD8AAP4AAAAAfwAA/wAAAAD/AAD/wAAAA/8AAP/gAAAD/wAA//AAAAP/AAD/+AAAA/8AAP/8AAAD/wAA//4AAAP/AAD//wAAA/8AAP//gAID/wAA///gBgP/AAD//+AOA/8AAP//+B4D/wAA///8P///AAD///5///8AAP///////wAA////////AAA=">
     <script>
         window.DEBUG_JS = false;
-        window.FLAI_VERSION = "13.1";
+        window.FLAI_VERSION = "13.2";
         function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
         function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
     <\/script>
@@ -10546,6 +11026,33 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_select_folder': "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0432\u0441\u0435 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0432 \u043f\u0430\u043f\u043a\u0435",
     'documents_select_for_move': "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0434\u043b\u044f \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f",
     'documents_select_for_analysis': "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0434\u043b\u044f \u0433\u043b\u0443\u0431\u043e\u043a\u043e\u0433\u043e \u0430\u043d\u0430\u043b\u0438\u0437\u0430",
+    'documents_view_in_graph': "\u041f\u043e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u0432 \u0433\u0440\u0430\u0444\u0435 \u0437\u043d\u0430\u043d\u0438\u0439",
+    'graph_title': "\u0413\u0440\u0430\u0444 \u0437\u043d\u0430\u043d\u0438\u0439",
+    'graph_hint_select': "\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u043d\u0430 \u0443\u0437\u0435\u043b, \u0447\u0442\u043e\u0431\u044b \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u0435\u0433\u043e",
+    'graph_mentions': "\u0423\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u0439",
+    'graph_shared_by': "\u0412\u043b\u0430\u0434\u0435\u043b\u0435\u0446",
+    'graph_loading': "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u0433\u0440\u0430\u0444",
+    'graph_error': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
+    'graph_empty': "\u0413\u0440\u0430\u0444 \u043f\u043e \u044d\u0442\u0438\u043c \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430\u043c \u0435\u0449\u0451 \u0441\u0442\u0440\u043e\u0438\u0442\u0441\u044f",
+    'graph_webgl_missing': "\u042d\u0442\u043e\u0442 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u043e\u0442\u043e\u0431\u0440\u0430\u0437\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
+    'graph_path_pick': "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0442\u043e\u0440\u043e\u0439 \u0443\u0437\u0435\u043b \u043f\u0443\u0442\u0438",
+    'graph_no_path': "\u041f\u0443\u0442\u044c \u0441\u0432\u044f\u0437\u0435\u0439 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
+    'graph_build_now': "\u041f\u043e\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
+    'graph_building': "\u0421\u0442\u0440\u043e\u0438\u0442\u0441\u044f",
+    'graph_build_queued': "\u0412 \u043e\u0447\u0435\u0440\u0435\u0434\u0438: \u0433\u0440\u0430\u0444 \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f, \u043f\u043e\u043a\u0430 \u0438\u043d\u0441\u0442\u0430\u043b\u043b\u044f\u0446\u0438\u044f \u043f\u0440\u043e\u0441\u0442\u0430\u0438\u0432\u0430\u0435\u0442",
+    'graph_focused': "\u0413\u0440\u0430\u0444 \u0437\u043d\u0430\u043d\u0438\u0439 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430",
+    'graph_counts': "\u043f\u043e\u043a\u0430\u0437\u0430\u043d\u043e {n} \u0438\u0437 {total} \u0443\u0437\u043b\u043e\u0432 \u00b7 {m} \u0441\u0432\u044f\u0437\u0435\u0439",
+    'graph_no_webgl': "\u042d\u0442\u043e\u0442 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u043f\u0440\u0435\u0434\u043e\u0441\u0442\u0430\u0432\u043b\u044f\u0435\u0442 WebGL \u2014 \u0440\u0435\u0436\u0438\u043c 2D",
+    'graph_3d_unavailable': "3D \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d: {reason}",
+    'graph_switch_kind': "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c 2D \u0438 3D",
+    'graph_switch_to_2d': "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0432 2D",
+    'graph_switch_to_3d': "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0432 3D",
+    'graph_layer_entities': "\u0421\u0443\u0449\u043d\u043e\u0441\u0442\u0438",
+    'graph_layer_documents': "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
+    'graph_switch_to_documents': "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043d\u0430 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
+    'graph_switch_to_entities': "\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043d\u0430 \u0441\u0443\u0449\u043d\u043e\u0441\u0442\u0438",
+    'graph_error_hint': "\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u043e\u0441\u0442\u0438 \u2014 \u0432 \u043a\u043e\u043d\u0441\u043e\u043b\u0438 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430; \u0441\u0442\u0440\u043e\u043a\u0443 \u0432\u044b\u0448\u0435 \u043c\u043e\u0436\u043d\u043e \u0432\u044b\u0434\u0435\u043b\u0438\u0442\u044c \u0438 \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c.",
+    'graph_similarity': "\u043f\u043e\u0445\u043e\u0436\u0435\u0441\u0442\u044c {v}",
     'documents_share': "\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f",
     'documents_shared_by': "\u0412\u043b\u0430\u0434\u0435\u043b\u0435\u0446",
     'documents_shared_with': "\u041e\u0442\u043a\u0440\u044b\u0442 \u0434\u043b\u044f",
@@ -11351,6 +11858,11 @@ function applyCurrentView() {
 }
 
 function switchView(view) {
+    // A tab is navigation: the graph is a destination, so opening a section
+    // must show that section instead of leaving the cloud on screen.
+    if (typeof window.isGraphViewActive === 'function' && window.isGraphViewActive()) {
+        window.closeGraphView();
+    }
     if (window.isMobileViewport && window.isMobileViewport()) {
         // Mobile: clicking a tab opens its list as a full-screen panel;
         // clicking the tab of the already-open panel returns to the chat.
@@ -11541,12 +12053,13 @@ function renderDocItem(doc) {
         : (shareCount > 0
             ? `<span class="document-shared-badge document-share-count" title="${t('documents_shared_with')}: ${escapeHtml((doc.shared_with || []).join(', '))}">👥 ${shareCount}</span>`
             : '');
-    const documentActions = sharedBy
-        ? ''
-        : `<div class="document-actions">
-                <button class="share-document-button" title="${t('documents_share')}">👥</button>
+    // The graph is readable for a shared document too, so its button sits
+    // outside the owner-only block.
+    const documentActions = `<div class="document-actions">
+                <button class="graph-document-button" data-graph-doc="${doc.id}" title="${t('documents_view_in_graph')}">🕸️</button>
+                ${sharedBy ? '' : `<button class="share-document-button" title="${t('documents_share')}">👥</button>
                 <button class="move-document-button" title="${t('folder_move')}">➤ 📂</button>
-                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
     return `
@@ -11633,6 +12146,11 @@ function updateDocumentsList(documents, folders = []) {
     const rootDocs = documents.filter(d => !d.folder_id);
 
     let html = `
+    <div class="documents-graph-bar">
+        <button type="button" id="documents-graph-button" class="documents-graph-button" title="${t('documents_view_in_graph')}">
+            <span class="documents-graph-icon">🕸️</span><span class="documents-graph-label">${t('graph_title')}</span>
+        </button>
+    </div>
     <div class="bulk-documents-bar hidden" id="bulk-documents-bar">
         <span id="bulk-selected-count" class="bulk-label"></span>
         <button id="bulk-move-button" class="bulk-move-button" title="${t('folder_move')}">➤ 📂</button>
@@ -12775,6 +13293,587 @@ function initDocumentsView() {
     // Apply the initial view (synchronizes UI with currentView)
     applyCurrentView();
 }
+<\/script>
+<script>// app/static/js/chat-graph.js
+// Knowledge-graph view (v13.2): a 3D cloud of entities or documents that can be
+// rotated, zoomed and explored. The renderer is vendored, loaded only when the
+// view opens, and never fetched from a CDN.
+
+(function () {
+    'use strict';
+
+    const VENDOR_3D = '/static/vendor/3d-force-graph.min.js';
+    const VENDOR_2D = '/static/vendor/force-graph.min.js';
+    let graphInstance = null;
+    let vendorPromise = null;
+    let rendererKind = '3d';
+    let currentLayer = 'entities';
+    let focusedDoc = '';
+    let selectedNode = null;
+    let pathSourceId = null;
+    // Why the last 3D attempt ended in 2D, kept until a 3D view succeeds.
+    let kindError = '';
+
+    function t(key, fallback) {
+        return (window.TRANSLATIONS && window.TRANSLATIONS[key]) || fallback;
+    }
+
+    function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = function () { reject(new Error('renderer unavailable')); };
+            document.head.appendChild(script);
+        });
+    }
+
+    // 3D needs WebGL; the 2D renderer draws on a plain canvas and works where
+    // the browser refuses a GL context, which is a common corporate setting.
+    function loadVendor(kind) {
+        if (vendorPromise && kind === rendererKind) return vendorPromise;
+        rendererKind = kind;
+        const source = kind === '3d' ? VENDOR_3D : VENDOR_2D;
+        vendorPromise = loadScript(source).catch(function (error) {
+            // A transient failure must not poison the view until a reload.
+            vendorPromise = null;
+            throw error;
+        });
+        return vendorPromise;
+    }
+
+    function preferredKind() {
+        return window.__graphKind === '2d' ? '2d' : '3d';
+    }
+
+    function disposeRenderer(canvas) {
+        try {
+            if (graphInstance && typeof graphInstance._destructor === 'function') graphInstance._destructor();
+        } catch (error) {
+            // the renderer is being replaced anyway
+        }
+        graphInstance = null;
+        if (canvas) canvas.innerHTML = '';
+    }
+
+    let fitTimer = null;
+    let pendingFit = false;
+
+    function fitGraph(delay) {
+        // One fit per data load: the engine reports a stop after every zoom and
+        // drag, and refitting there undid the user's own scaling.
+        if (!pendingFit) return;
+        if (fitTimer) clearTimeout(fitTimer);
+        fitTimer = setTimeout(function () {
+            fitTimer = null;
+            if (!pendingFit || !graphInstance || typeof graphInstance.zoomToFit !== 'function') return;
+            pendingFit = false;
+            // The renderer must know the real slot before it centres anything:
+            // with a stale, wider width the cloud is drawn off-centre.
+            resizeRenderer();
+            // Padding keeps the outermost nodes off the edge of the window.
+            graphInstance.zoomToFit(800, 60);
+        }, delay || 0);
+    }
+
+    function positionOverlay() {
+        const view = viewRoot();
+        if (!view) return;
+        const sidebar = document.querySelector('.sessions-sidebar');
+        const tabs = document.querySelector('.sessions-header');
+        const desktop = window.matchMedia('(min-width: 769px)').matches;
+
+        // The site header (language, theme, logout) stays above the graph.
+        const siteHeader = document.querySelector('header');
+        const headerBottom = siteHeader ? Math.max(0, Math.round(siteHeader.getBoundingClientRect().bottom)) : 0;
+
+        let top = headerBottom;
+        let left = 0;
+        let width = window.innerWidth;
+        let height = Math.max(240, Math.round(window.innerHeight - top));
+
+        if (desktop && sidebar) {
+            // The tabs and the lists keep their column; the graph takes the rest.
+            const rect = sidebar.getBoundingClientRect();
+            left = Math.max(0, Math.round(rect.right));
+            width = Math.max(320, Math.round(window.innerWidth - left));
+        } else if (tabs) {
+            // A phone shows the tab row on top and the active view below it; the
+            // graph is one more view in that space, not a full-screen cover.
+            const rect = tabs.getBoundingClientRect();
+            top = Math.max(headerBottom, Math.round(rect.bottom));
+            height = Math.max(240, Math.round(window.innerHeight - top));
+        }
+
+        view.style.top = top + 'px';
+        view.style.left = left + 'px';
+        view.style.width = width + 'px';
+        view.style.height = height + 'px';
+    }
+
+    function resizeRenderer() {
+        const canvas = document.getElementById('graph-canvas');
+        if (!graphInstance || !canvas) return;
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        if (width > 0 && height > 0 && typeof graphInstance.width === 'function') {
+            graphInstance.width(width).height(height);
+        }
+    }
+
+    function reportKind(kind) {
+        const button = document.getElementById('graph-kind-btn');
+        if (button) {
+            // The label names the action, not the current mode: in 3D it offers
+            // 2D, and the other way round.
+            button.textContent = kind === '3d' ? '2D' : '3D';
+            button.title = kind === '3d'
+                ? t('graph_switch_to_2d', 'Switch to 2D')
+                : t('graph_switch_to_3d', 'Switch to 3D');
+            button.disabled = false;
+        }
+        if (kind === '2d' && preferredKind() === '3d') {
+            // Only say it when the fallback was not the user's choice.
+            setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
+        }
+    }
+
+    async function createRenderer(kind, element, graph) {
+        await loadVendor(kind);
+        if (!element.clientHeight) {
+            element.style.height = Math.max(320, (viewRoot() || {}).clientHeight || 480) + 'px';
+        }
+        let instance = buildRenderer(kind, element)
+            .nodeLabel(function (node) { return escapeHtml(node.label); })
+            .nodeColor(function (node) { return colorFor(node.kind, node); })
+            .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
+            .linkLabel(function (link) {
+                // Document links carry a similarity score, not a verb.
+                if (link.predicate === 'similar') {
+                    return escapeHtml(
+                        t('graph_similarity', 'similarity {v}').replace('{v}', Number(link.weight || 0).toFixed(2))
+                    );
+                }
+                return escapeHtml(link.predicate || '');
+            })
+            .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
+            .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
+            .onNodeClick(function (node) {
+                if (pathSourceId && pathSourceId !== node.id) {
+                    showPath(pathSourceId, node.id);
+                    pathSourceId = null;
+                }
+                selectedNode = node;
+                focusNode(node);
+                renderSidePanel(node);
+            })
+            .onEngineStop(function () { fitGraph(0); })
+            .onNodeRightClick(function (node) {
+                pathSourceId = node.id;
+                setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+            });
+        if (kind === '3d' && typeof instance.backgroundColor === 'function') {
+            instance.backgroundColor(graphBackground());
+        }
+        instance = instance.graphData(graph);
+        if (kind === '3d' && typeof instance.cameraPosition === 'function') {
+            instance.cameraPosition({ z: 700 });
+        }
+        resizeRenderer();
+        return instance;
+    }
+
+    function buildRenderer(kind, element) {
+        if (kind === '3d' && typeof window.ForceGraph3D === 'function') {
+            return window.ForceGraph3D()(element);
+        }
+        if (typeof window.ForceGraph !== 'function') {
+            throw new Error('ForceGraph is missing from the vendored bundle');
+        }
+        return window.ForceGraph()(element);
+    }
+
+    function viewRoot() {
+        return document.getElementById('graph-view');
+    }
+
+    function apiBase(params) {
+        const query = new URLSearchParams();
+        if (params.doc) query.set('doc', params.doc);
+        if (params.layer) query.set('layer', params.layer);
+        if (params.kind) query.set('kind', params.kind);
+        // No limit from here: the server caps the scene with GRAPH_MAX_NODES, so
+        // the admin setting is the one place that decides how much is drawn.
+        if (params.limit) query.set('limit', String(params.limit));
+        return '/api/graph?' + query.toString();
+    }
+
+    async function fetchGraph(params) {
+        const response = await fetch(apiBase(params), { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('graph request failed');
+        return response.json();
+    }
+
+    function setStatus(text) {
+        const status = document.getElementById('graph-status-line');
+        if (status) status.textContent = text || '';
+    }
+
+    function renderSidePanel(node) {
+        const panel = document.getElementById('graph-side-panel');
+        if (!panel) return;
+        if (!node) {
+            panel.innerHTML = '<p class="graph-hint">' + t('graph_hint_select', 'Click a node to inspect it') + '</p>';
+            return;
+        }
+        const neighbours = (graphInstance && graphInstance.graphData().links || [])
+            .filter(function (link) {
+                const source = typeof link.source === 'object' ? link.source.id : link.source;
+                const target = typeof link.target === 'object' ? link.target.id : link.target;
+                return source === node.id || target === node.id;
+            })
+            .map(function (link) {
+                const source = typeof link.source === 'object' ? link.source : { id: link.source };
+                const target = typeof link.target === 'object' ? link.target : { id: link.target };
+                const other = source.id === node.id ? target : source;
+                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(link.predicate || '') + '</em></li>';
+            })
+            .join('');
+        panel.innerHTML =
+            '<h4>' + escapeHtml(node.label) + '</h4>' +
+            '<div class="graph-node-kind">' + escapeHtml(node.kind || '') + '</div>' +
+            (node.shared && node.owner
+                ? '<div class="graph-node-shared">👥 ' + escapeHtml(t('graph_shared_by', 'Shared by')) + ': ' +
+                  escapeHtml(node.owner) + '</div>'
+                : '') +
+            (node.description ? '<p>' + escapeHtml(node.description) + '</p>' : '') +
+            (neighbours ? '<ul class="graph-neighbours">' + neighbours + '</ul>' : '') +
+            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
+    }
+
+    function focusNode(node) {
+        if (!graphInstance || !node) return;
+        graphInstance.nodeColor(function (candidate) {
+            if (!selectedNode) return colorFor(candidate.kind, candidate);
+            if (candidate.id === selectedNode.id) return '#ffffff';
+            const linked = (graphInstance.graphData().links || []).some(function (link) {
+                const source = typeof link.source === 'object' ? link.source.id : link.source;
+                const target = typeof link.target === 'object' ? link.target.id : link.target;
+                return (source === selectedNode.id && target === candidate.id) ||
+                    (target === selectedNode.id && source === candidate.id);
+            });
+            return linked ? colorFor(candidate.kind, candidate) : 'rgba(120,120,120,0.15)';
+        });
+        // The 2D renderer has no camera; it flies by centring instead.
+        if (typeof graphInstance.cameraPosition === 'function') {
+            graphInstance.cameraPosition({ z: 220 }, node, 900);
+        } else if (typeof graphInstance.centerAt === 'function') {
+            graphInstance.centerAt(node.x, node.y, 900);
+            graphInstance.zoom(3, 900);
+        }
+    }
+
+    function graphBackground() {
+        return document.body.classList.contains('dark-theme') ? '#1e1e1e' : '#ffffff';
+    }
+
+    function colorFor(kind, node) {
+        // A document somebody else shared reads as a different kind of thing:
+        // it is visible, searchable, and not yours to rename or delete.
+        if (node && node.shared) return '#e69138';
+        return {
+            person: '#f6b26b',
+            organization: '#6fa8dc',
+            project: '#93c47d',
+            document: '#8e7cc3',
+            event: '#e06666',
+            place: '#76a5af',
+            term: '#b4a7d6',
+        }[kind] || '#9aa0a6';
+    }
+
+    function showFailure(error) {
+        // A blank canvas tells the user nothing: the reason goes to the panel
+        // and to the console, and the status line stays readable.
+        const message = (error && error.message) || String(error);
+        setStatus(t('graph_error', 'The graph could not be loaded'));
+        const panel = document.getElementById('graph-side-panel');
+        if (panel) {
+            panel.innerHTML =
+                '<p class="graph-hint">' + escapeHtml(t('graph_error', 'The graph could not be loaded')) + '</p>' +
+                '<p class="graph-error-detail">' + escapeHtml(message) + '</p>' +
+                '<p class="graph-hint">' + escapeHtml(t('graph_error_hint', 'Open the browser console for details, or copy the line above.')) + '</p>';
+        }
+        if (window.console) console.error('graph view:', error);
+    }
+
+    async function showEmptyState() {
+        setStatus(t('graph_empty', 'The graph is still being built for these documents'));
+        const panel = document.getElementById('graph-side-panel');
+        if (!panel) return;
+        let status = null;
+        try {
+            const response = await fetch('/api/graph/status', { credentials: 'same-origin' });
+            if (response.ok) status = await response.json();
+        } catch (error) {
+            status = null;
+        }
+        const progress = status && status.chunks_total
+            ? ' ' + status.chunks_done + '/' + status.chunks_total
+            : '';
+        panel.innerHTML =
+            '<p class="graph-hint">' + escapeHtml(t('graph_empty', 'The graph is still being built for these documents')) +
+            escapeHtml(progress) + '</p>' +
+            '<button type="button" class="graph-build-btn" id="graph-build-now">' +
+            escapeHtml(t('graph_build_now', 'Build the graph')) + '</button>';
+        const button = document.getElementById('graph-build-now');
+        if (button) button.addEventListener('click', startBuild);
+    }
+
+    async function startBuild() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        setStatus(t('graph_building', 'Building...'));
+        try {
+            const response = await fetch('/api/graph/build', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: meta ? { 'X-CSRFToken': meta.content } : {},
+            });
+            setStatus(response.ok
+                ? t('graph_build_queued', 'Queued; the graph fills while the instance is idle')
+                : t('graph_error', 'The graph could not be loaded'));
+        } catch (error) {
+            setStatus(t('graph_error', 'The graph could not be loaded'));
+        }
+    }
+
+    async function draw(params) {
+        const view = viewRoot();
+        const canvas = document.getElementById('graph-canvas');
+        if (!view || !canvas) return;
+        reportLayer((params && params.layer) || currentLayer);
+        setStatus(t('graph_loading', 'Loading the graph...'));
+        let data;
+        try {
+            data = await fetchGraph(params);
+        } catch (error) {
+            showFailure(error);
+            return;
+        }
+        if (!data.nodes || !data.nodes.length) {
+            await showEmptyState();
+            return;
+        }
+        selectedNode = null;
+        renderSidePanel(null);
+
+        // The renderers read `links`; the API names the array `edges`.
+        const graph = { nodes: data.nodes, links: data.edges || [] };
+        let kind = preferredKind();
+        reportKind(kind);
+        if (graphInstance && rendererKind !== kind) {
+            disposeRenderer(canvas);
+        }
+        if (graphInstance) {
+            graphInstance.graphData(graph);
+        } else {
+            try {
+                graphInstance = await createRenderer(kind, canvas, graph);
+            } catch (error) {
+                if (kind !== '3d') {
+                    showFailure(error);
+                    return;
+                }
+                // WebGL refused the context: fall back once, and say why. The
+                // attempt is real — a pre-flight probe rejects browsers that
+                // would have rendered fine.
+                const reason3d = error;
+                kindError = (reason3d && reason3d.message) || String(reason3d);
+                disposeRenderer(canvas);
+                try {
+                    kind = '2d';
+                    // Remembered for the session so the next open does not pay
+                    // for the same refusal; the 3D button retries on demand.
+                    window.__graphKind = '2d';
+                    reportKind(kind);
+                    graphInstance = await createRenderer('2d', canvas, graph);
+                    const message = (reason3d && reason3d.message) || String(reason3d);
+                    // Show what 3D actually said: calling every failure "no WebGL"
+                    // hides a bug behind an environment explanation.
+                    if (window.console) console.error('graph 3D failed:', reason3d);
+                } catch (fallbackError) {
+                    showFailure(fallbackError);
+                    return;
+                }
+            }
+        }
+        if (kind === '3d') {
+            kindError = '';
+        }
+        // The loading label has to be replaced by the actual size of the view.
+        // The reason a 3D attempt fell back to 2D rides along: writing the
+        // counts over it is why a browser without WebGL looked like a broken
+        // button instead of an explained fallback.
+        const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
+            .replace('{n}', data.nodes.length)
+            .replace('{total}', data.total_nodes || data.nodes.length)
+            .replace('{m}', (data.edges || []).length);
+        if (kind === '2d' && kindError) {
+            const reason = /webgl|context/i.test(kindError)
+                ? t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode')
+                : t('graph_3d_unavailable', '3D is unavailable: {reason}').replace('{reason}', kindError);
+            setStatus(counts + ' · ' + reason);
+        } else {
+            setStatus(counts);
+        }
+        // The whole cloud has to be visible on open: the engine reports a stop
+        // long before the layout settles, so the fit is repeated after it relaxes.
+        pendingFit = true;
+        fitGraph(1500);
+    }
+
+    async function showPath(sourceId, targetId) {
+        const response = await fetch('/api/graph/path?source=' + encodeURIComponent(sourceId) +
+            '&target=' + encodeURIComponent(targetId), { credentials: 'same-origin' });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.edges || !data.edges.length) {
+            setStatus(t('graph_no_path', 'No relation path was found'));
+            return;
+        }
+        const ids = new Set();
+        data.edges.forEach(function (edge) { ids.add(edge.source); ids.add(edge.target); });
+        graphInstance.nodeColor(function (node) {
+            return ids.has(node.id) ? '#ffffff' : 'rgba(120,120,120,0.12)';
+        });
+        graphInstance.linkColor(function (link) {
+            const source = typeof link.source === 'object' ? link.source.id : link.source;
+            const target = typeof link.target === 'object' ? link.target.id : link.target;
+            return ids.has(source) && ids.has(target) ? '#ffd166' : 'rgba(160,170,190,0.08)';
+        });
+        setStatus(data.edges.map(function (edge) { return edge.predicate; }).join(' → '));
+    }
+
+    // The label names the action, not the current layer: while entities are
+    // shown the button offers documents, and the other way round.
+    function reportLayer(layer) {
+        const button = document.getElementById('graph-layer-btn');
+        if (!button) return;
+        const other = layer === 'documents' ? 'entities' : 'documents';
+        button.dataset.layer = other;
+        button.textContent = other === 'documents'
+            ? t('graph_layer_documents', 'Documents')
+            : t('graph_layer_entities', 'Entities');
+        button.title = other === 'documents'
+            ? t('graph_switch_to_documents', 'Switch to documents')
+            : t('graph_switch_to_entities', 'Switch to entities');
+    }
+
+    function setLayer(layer) {
+        if (!layer) return;
+        currentLayer = layer;
+        reportLayer(layer);
+        draw({ doc: focusedDoc, layer: layer });
+    }
+
+    window.openGraphView = function (options) {
+        const view = viewRoot();
+        if (!view) return;
+        focusedDoc = (options && options.docId) || '';
+        positionOverlay();
+        view.classList.remove('hidden');
+        const title = document.getElementById('graph-title-text');
+        if (title) title.textContent = focusedDoc ? t('graph_focused', 'Knowledge graph of the document') : t('graph_title', 'Knowledge graph');
+        draw({ doc: focusedDoc, layer: currentLayer });
+    };
+
+    window.closeGraphView = function () {
+        const view = viewRoot();
+        if (view) view.classList.add('hidden');
+    };
+
+    window.isGraphViewActive = function () {
+        const view = viewRoot();
+        return !!view && !view.classList.contains('hidden');
+    };
+
+    window.loadGraph = function (params) {
+        draw(params || { doc: focusedDoc, layer: currentLayer });
+    };
+
+    // One document-level listener: it works on any layout and survives every
+    // re-render of the documents list.
+    document.addEventListener('click', function (event) {
+        if (!event.target || !event.target.closest) return;
+        const cardButton = event.target.closest('.graph-document-button');
+        const allButton = event.target.closest('#documents-graph-button');
+        if (!cardButton && !allButton) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof window.openGraphView === 'function') {
+            window.openGraphView(cardButton ? { docId: cardButton.dataset.graphDoc } : {});
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // The theme is a body class; the canvas has to be repainted, because its
+        // colour is set on the renderer, not in CSS.
+        new MutationObserver(function () {
+            if (graphInstance) graphInstance.backgroundColor(graphBackground());
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        const canvasBox = document.getElementById('graph-canvas');
+        if (canvasBox) {
+            ['wheel', 'pointerdown', 'touchstart'].forEach(function (eventName) {
+                canvasBox.addEventListener(eventName, function () {
+                    pendingFit = false;
+                    if (fitTimer) {
+                        clearTimeout(fitTimer);
+                        fitTimer = null;
+                    }
+                }, { passive: true });
+            });
+        }
+        if (canvasBox && typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () { resizeRenderer(); }).observe(canvasBox);
+        }
+        window.addEventListener('resize', function () { positionOverlay(); resizeRenderer(); });
+        const kindButton = document.getElementById('graph-kind-btn');
+        if (kindButton) {
+            kindButton.addEventListener('click', function () {
+                window.__graphKind = preferredKind() === '3d' ? '2d' : '3d';
+                draw({ doc: focusedDoc, layer: currentLayer });
+            });
+        }
+        // Only the layer buttons carry a layer; the 2D/3D switch shares the
+        // class and used to call setLayer(undefined), which deselected both.
+        const layerButton = document.getElementById('graph-layer-btn');
+        if (layerButton) {
+            layerButton.addEventListener('click', function () { setLayer(layerButton.dataset.layer); });
+        }
+        const search = document.getElementById('graph-search-input');
+        if (search) {
+            search.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' || !graphInstance) return;
+                const needle = search.value.trim().toLowerCase();
+                if (!needle) return;
+                const found = (graphInstance.graphData().nodes || []).find(function (node) {
+                    return (node.label || '').toLowerCase().indexOf(needle) !== -1;
+                });
+                if (found) {
+                    selectedNode = found;
+                    focusNode(found);
+                    renderSidePanel(found);
+                }
+            });
+        }
+    });
+})();
 <\/script>
 <script>// app/static/js/chat-tasks.js
 // Tasks panel and task conversation view (v12.6, spec §5).
@@ -19678,13 +20777,28 @@ window.relocateChatControls = relocateChatControls;
     loadFolders();
 })();
 <\/script>
+    <div class="graph-view hidden" id="graph-view">
+        <div class="graph-toolbar">
+            <span class="graph-title" id="graph-title-text">Граф знаний</span>
+            <button type="button" class="graph-layer-btn" id="graph-layer-btn" data-layer="documents"
+                    title="Переключить на документы">Документы</button>
+            <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="Переключить в 2D">2D</button>
+            <input type="search" id="graph-search-input" class="graph-search" placeholder="Найти узел">
+            <span class="graph-status" id="graph-status-line"></span>
+        </div>
+        <div class="graph-body">
+            <div class="graph-canvas" id="graph-canvas"></div>
+            <aside class="graph-side-panel" id="graph-side-panel"></aside>
+        </div>
+    </div>
+
 
     </main>
 
     <footer>
         <button type="button" class="footer-brand" id="footer-about-btn"
                 aria-haspopup="dialog" aria-controls="footer-about-modal" title="О системе">
-            ПЛИИ v13.1
+            ПЛИИ v13.2
         </button>
     </footer>
 
@@ -19695,7 +20809,7 @@ window.relocateChatControls = relocateChatControls;
             <button type="button" class="about-modal-close" data-close-about aria-label="Закрыть">&times;</button>
             <img src="data:image/png;base64,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" alt="" class="about-logo">
             <h2 id="about-modal-title">Полностью Локальный ИИ (ПЛИИ)</h2>
-            <p class="about-version">v13.1</p>
+            <p class="about-version">v13.2</p>
             <p class="about-github"><a href="https://github.com/barval/flai" target="_blank" rel="noopener noreferrer">https://github.com/barval/flai</a></p>
             <p class="about-copyright">(c) 2026 Барсуков Валерий</p>
         </div>

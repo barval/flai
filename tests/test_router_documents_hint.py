@@ -88,7 +88,7 @@ def test_attached_documents_are_named_for_this_message(monkeypatch):
     monkeypatch.setattr(app.db, "get_user_document_names", lambda user_id, limit=5: (96, ["latest.xlsx"]))
 
     context = _module().build_router_context(
-        "", "tester", "Сколько лет Валерию Барсукову?", "ru", attached_docs=["CV.pdf"]
+        "", "tester", "Сколько лет Ивану Соколову?", "ru", attached_docs=["CV.pdf"]
     )
 
     assert "К сообщению приложены документы: CV.pdf" in context

@@ -2,9 +2,9 @@
 
 Regression (2026-11-05): `splitIntoSentences()` in chat-tts.js ended a sentence at
 any dot, because the terminator was followed by `\\s*` instead of a real boundary.
-"Версия 1.2.3. Готово." reached the synthesizer as four fragments, "3.14 — это
-число." as two, "example.com — сайт." as two, and the closing quote of
-"«Привет!»" opened the next chunk — the answer was spoken chopped up.
+A version number reached the synthesizer as four fragments, a decimal as two, a
+domain as two, and a closing quote opened the next chunk — the answer was spoken
+chopped up.
 
 The function is checked in node, like `test_reasoning_strip_js.py`: the browser
 code is what runs, not a Python copy of it.
@@ -59,14 +59,15 @@ BOTH_PATHS = pytest.mark.parametrize("segmenter", [True, False], ids=["segmenter
         ("example.com — сайт.", ["example.com — сайт."]),
         # The closing quote belongs to the sentence that ended.
         ("«Привет!» Как дела?", ["«Привет!»", "Как дела?"]),
-        # "т.е." is one token: the old abbreviation list only knew "i.e.".
+        # A two-letter Russian abbreviation is one token: the old list only
+        # knew the Latin forms.
         ("т.е. это пример.", ["т.е. это пример."]),
         # A version number keeps its dots, and the real boundary still cuts.
         ("Версия 1.2.3. Готово.", ["Версия 1.2.3.", "Готово."]),
         # Ordinary text still splits.
         ("Первое. Второе! Третье?", ["Первое.", "Второе!", "Третье?"]),
-        # An ellipsis is a pause, not an end: ICU does not break there either, and
-        # splitting would cut "я подумал… и решил" in half.
+        # An ellipsis is a pause, not an end: ICU does not break there either,
+        # and splitting would cut a sentence in half at its pause.
         ("Это многоточие… И продолжение.", ["Это многоточие… И продолжение."]),
         # Nothing to split.
         ("", []),

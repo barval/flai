@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flai"
-version = "13.1.0"
+version = "13.2.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
@@ -43,6 +43,7 @@ dependencies = [
     "pymorphy3>=2.0.6",
     "pendulum>=3.0.0",
     "trafilatura>=2.0.0",
+    "networkx>=3.2",
     "flasgger==0.9.7.1",
 ]
 

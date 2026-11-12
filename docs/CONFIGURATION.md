@@ -112,6 +112,19 @@ RAG_RRF_K=60                   # RRF constant
 RAG_RERANK_ENABLED=false       # Cross-encoder reranking of the top candidates (CPU, no VRAM)
 RAG_RERANK_CANDIDATES=10       # How many top candidates the reranker reorders
 RAG_RERANK_TIMEOUT=10          # Seconds before reranking is skipped and the original order is kept
+
+# Knowledge graph (see docs/GRAPH.md)
+GRAPH_RAG_ENABLED=false        # Use the graph in retrieval; off by measurement, see the doc
+GRAPH_AUTO_EXTRACT=auto        # auto = extraction on a GPU host, off on a CPU-only host; on | off
+GRAPH_EXTRACT_MODEL=multimodal # Model that performs extraction
+GRAPH_HOPS=2                   # Traversal depth from a seed
+GRAPH_MAX_SEEDS=8              # Seeds per question
+GRAPH_MAX_EDGES=12             # Relations kept per question
+GRAPH_SHARE=0.15               # Ceiling on graph fragments as a share of the evidence budget (0 = none)
+GRAPH_SECTION_TOKENS=600       # Token cap for the relation block in the prompt
+GRAPH_MAX_NODES=1000           # Nodes the view draws
+GRAPH_DOC_SIMILARITY=0.75      # Cosine threshold for a document-layer link
+GRAPH_DOC_NEIGHBOURS=8         # Neighbours per document in the document layer
 TAVILY_ENABLED=true               # Optional per-user Tavily keys; without a key the local SearXNG path is used
 TAVILY_API_URL=https://api.tavily.com
 TAVILY_TIMEOUT=20

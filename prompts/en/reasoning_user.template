@@ -1,4 +1,4 @@
-{conversation_history}
+{conversation_history}{graph_section}
 
 # REQUEST
 {reasoning_query}

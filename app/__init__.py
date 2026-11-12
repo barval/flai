@@ -494,6 +494,7 @@ def create_app():
     app.cli.add_command(cli.backfill_document_blobs)
     app.cli.add_command(cli.rag_eval)
     app.cli.add_command(cli.rag_eval_generate)
+    app.cli.add_command(cli.rag_eval_judge)
     app.cli.add_command(cli.rag_backfill_chunks)
     app.cli.add_command(cli.rag_lemmatize_chunks)
     app.cli.add_command(cli.vram_probe)

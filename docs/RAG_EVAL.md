@@ -51,6 +51,23 @@ compares the result: numbers
 compare by number, free text by normalized containment, and an expected `0` also accepts an explicit
 "no data" answer. The report lists every mismatch with the expected and actual answer.
 
+### Graded answers (judge)
+
+Exact comparison fails on wording: a correct "проекторы и экраны" is a miss against "Проекторы и
+экраны.", so two runs can only be compared by their mistakes. `--judge` replaces the comparison with a
+verdict from the model itself — 2 for a complete and correct answer, 1 for partial, 0 for wrong,
+contradicting or invented — and the report then carries `judge_score` (mean, 0..1), `judge_full` (share
+of fully right answers) and `judge_failed` (verdicts that did not follow the schema, which are never
+counted as zeros). A dataset item without an `"answer"` field is graded against its `"reference"`.
+
+Grading runs in its own pass over a saved report, because interleaving it with retrieval alternates
+the embedding and the chat model on one small card and the chat model is evicted between two calls:
+
+```bash
+flask rag-eval --user alice --dataset q.jsonl --answers --label "graph off"
+flask rag-eval-judge --report data/rag_eval/<timestamp>.json
+```
+
 ## Metrics
 
 | Metric | Meaning |

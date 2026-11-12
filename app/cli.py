@@ -808,10 +808,14 @@ def rag_eval(
         if judge:
 
             def judge_fn(prompt: str) -> str:
+                # The run's own model, not always the reasoning one: a 35B model
+                # and the embedding model do not fit a 16 GB card together, so a
+                # run that alternates search and answers evicted it mid-way and
+                # twenty of thirty answers came back as a memory notice.
                 return str(
                     base.call_llamacpp(
                         [{"role": "user", "content": prompt}],
-                        model_type="reasoning",
+                        model_type=model,
                         lang="ru",
                         temperature=0,
                     )
@@ -829,6 +833,55 @@ def rag_eval(
     target = out or f"data/rag_eval/{datetime.now():%Y%m%d-%H%M%S}.json"
     saved = save_report(report, target)
     click.echo(f"\nReport saved: {saved}")
+
+
+@click.command("rag-eval-judge")
+@click.option("--report", required=True, type=click.Path(exists=True), help="A saved answers report to re-grade")
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--out", default="", help="Report path (default: overwrite the input report)")
+@with_appcontext
+def rag_eval_judge(report, model, out):
+    """Grade the answers of a saved report with the model.
+
+    Grading belongs in its own pass: interleaving it with retrieval made every
+    request alternate between the embedding and the chat model, and on a 16 GB
+    card the chat model was evicted between two calls, so most verdicts came
+    back empty.
+    """
+    import json
+    from pathlib import Path
+
+    from app.rag_eval import build_judge_prompt, parse_verdict, save_report
+
+    base = current_app.modules.get("base")
+    if base is None:
+        raise click.ClickException("LLM module is not available")
+    data = json.loads(Path(report).read_text(encoding="utf-8"))
+    rows = data.get("results") or []
+    if not rows or data.get("mode") != "answers":
+        raise click.ClickException("The report carries no answers to grade")
+
+    graded = 0
+    for row in rows:
+        reply = base.call_llamacpp(
+            [{"role": "user", "content": build_judge_prompt(row["question"], str(row["expected"]), str(row["actual"]))}],
+            model_type=model,
+            lang="ru",
+            temperature=0,
+        )
+        row["judge"] = parse_verdict(reply)
+        if row["judge"]["score"] >= 0:
+            graded += 1
+
+    scores = [row["judge"]["score"] for row in rows if row["judge"]["score"] >= 0]
+    data["metrics"]["judge_score"] = (sum(scores) / (2 * len(scores))) if scores else 0.0
+    data["metrics"]["judge_full"] = (sum(1 for score in scores if score == 2) / len(scores)) if scores else 0.0
+    data["metrics"]["judge_failed"] = len(rows) - graded
+    target = out or report
+    saved = save_report(data, target)
+    click.echo(f"graded {graded}/{len(rows)} answers")
+    click.echo(f"judge score: {data['metrics']['judge_score']:.3f}  (fully right {data['metrics']['judge_full']:.3f})")
+    click.echo(f"Report saved: {saved}")
 
 
 @click.command("rag-eval-generate")

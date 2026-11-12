@@ -311,9 +311,11 @@ def evaluate_answers(
     ``answer_fn(question, context)`` is the model call; the context is built
     from the retrieved chunks exactly like a chat request.
     """
-    judged = [item for item in items if item.answer]
+    # ``reference`` is the ground-truth fact too, and most sets carry only that,
+    # so a judged run works without a second field saying the same thing.
+    judged = [item for item in items if item.answer or item.reference]
     if not judged:
-        raise ValueError("No dataset item carries an 'answer' field")
+        raise ValueError("No dataset item carries an 'answer' or 'reference' field")
 
     rows = []
     for item in judged:
@@ -321,16 +323,17 @@ def evaluate_answers(
         context = "\n\n".join(
             f"[{chunk.get('filename') or '?'}] {chunk.get('text') or ''}" for chunk in chunks
         )
+        expected = str(item.answer or item.reference or "")
         actual = answer_fn(item.question, context)
         row = {
             "question": item.question,
-            "expected": item.answer,
+            "expected": expected,
             "actual": actual,
-            "match": answer_matches(str(item.answer), actual),
+            "match": answer_matches(expected, actual),
             "chunks": len(chunks),
         }
         if judge_fn is not None:
-            row["judge"] = parse_verdict(judge_fn(build_judge_prompt(item.question, str(item.answer), actual)))
+            row["judge"] = parse_verdict(judge_fn(build_judge_prompt(item.question, expected, actual)))
         rows.append(row)
 
     metrics: dict[str, Any] = {

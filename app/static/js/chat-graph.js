@@ -15,6 +15,8 @@
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // Why the last 3D attempt ended in 2D, kept until a 3D view succeeds.
+    let kindError = '';
 
     function t(key, fallback) {
         return (window.TRANSLATIONS && window.TRANSLATIONS[key]) || fallback;
@@ -147,7 +149,7 @@
         }
         let instance = buildRenderer(kind, element)
             .nodeLabel(function (node) { return escapeHtml(node.label); })
-            .nodeColor(function (node) { return colorFor(node.kind); })
+            .nodeColor(function (node) { return colorFor(node.kind, node); })
             .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
             .linkLabel(function (link) {
                 // Document links carry a similarity score, not a verb.
@@ -244,6 +246,10 @@
         panel.innerHTML =
             '<h4>' + escapeHtml(node.label) + '</h4>' +
             '<div class="graph-node-kind">' + escapeHtml(node.kind || '') + '</div>' +
+            (node.shared && node.owner
+                ? '<div class="graph-node-shared">👥 ' + escapeHtml(t('graph_shared_by', 'Shared by')) + ': ' +
+                  escapeHtml(node.owner) + '</div>'
+                : '') +
             (node.description ? '<p>' + escapeHtml(node.description) + '</p>' : '') +
             (neighbours ? '<ul class="graph-neighbours">' + neighbours + '</ul>' : '') +
             '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>';
@@ -258,7 +264,7 @@
     function focusNode(node) {
         if (!graphInstance || !node) return;
         graphInstance.nodeColor(function (candidate) {
-            if (!selectedNode) return colorFor(candidate.kind);
+            if (!selectedNode) return colorFor(candidate.kind, candidate);
             if (candidate.id === selectedNode.id) return '#ffffff';
             const linked = (graphInstance.graphData().links || []).some(function (link) {
                 const source = typeof link.source === 'object' ? link.source.id : link.source;
@@ -266,7 +272,7 @@
                 return (source === selectedNode.id && target === candidate.id) ||
                     (target === selectedNode.id && source === candidate.id);
             });
-            return linked ? colorFor(candidate.kind) : 'rgba(120,120,120,0.15)';
+            return linked ? colorFor(candidate.kind, candidate) : 'rgba(120,120,120,0.15)';
         });
         // The 2D renderer has no camera; it flies by centring instead.
         if (typeof graphInstance.cameraPosition === 'function') {
@@ -281,7 +287,10 @@
         return document.body.classList.contains('dark-theme') ? '#1e1e1e' : '#ffffff';
     }
 
-    function colorFor(kind) {
+    function colorFor(kind, node) {
+        // A document somebody else shared reads as a different kind of thing:
+        // it is visible, searchable, and not yours to rename or delete.
+        if (node && node.shared) return '#e69138';
         return {
             person: '#f6b26b',
             organization: '#6fa8dc',
@@ -352,6 +361,7 @@
         const view = viewRoot();
         const canvas = document.getElementById('graph-canvas');
         if (!view || !canvas) return;
+        reportLayer((params && params.layer) || currentLayer);
         setStatus(t('graph_loading', 'Loading the graph...'));
         let data;
         try {
@@ -388,6 +398,7 @@
                 // attempt is real — a pre-flight probe rejects browsers that
                 // would have rendered fine.
                 const reason3d = error;
+                kindError = (reason3d && reason3d.message) || String(reason3d);
                 disposeRenderer(canvas);
                 try {
                     kind = '2d';
@@ -399,11 +410,6 @@
                     const message = (reason3d && reason3d.message) || String(reason3d);
                     // Show what 3D actually said: calling every failure "no WebGL"
                     // hides a bug behind an environment explanation.
-                    if (/webgl|context/i.test(message)) {
-                        setStatus(t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode'));
-                    } else {
-                        setStatus(message);
-                    }
                     if (window.console) console.error('graph 3D failed:', reason3d);
                 } catch (fallbackError) {
                     showFailure(fallbackError);
@@ -411,13 +417,25 @@
                 }
             }
         }
+        if (kind === '3d') {
+            kindError = '';
+        }
         // The loading label has to be replaced by the actual size of the view.
-        setStatus(
-            t('graph_counts', 'shown {n} of {total} nodes · {m} links')
-                .replace('{n}', data.nodes.length)
-                .replace('{total}', data.total_nodes || data.nodes.length)
-                .replace('{m}', (data.edges || []).length)
-        );
+        // The reason a 3D attempt fell back to 2D rides along: writing the
+        // counts over it is why a browser without WebGL looked like a broken
+        // button instead of an explained fallback.
+        const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
+            .replace('{n}', data.nodes.length)
+            .replace('{total}', data.total_nodes || data.nodes.length)
+            .replace('{m}', (data.edges || []).length);
+        if (kind === '2d' && kindError) {
+            const reason = /webgl|context/i.test(kindError)
+                ? t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode')
+                : t('graph_3d_unavailable', '3D is unavailable: {reason}').replace('{reason}', kindError);
+            setStatus(counts + ' · ' + reason);
+        } else {
+            setStatus(counts);
+        }
         // The whole cloud has to be visible on open: the engine reports a stop
         // long before the layout settles, so the fit is repeated after it relaxes.
         pendingFit = true;
@@ -446,13 +464,26 @@
         setStatus(data.edges.map(function (edge) { return edge.predicate; }).join(' → '));
     }
 
+    // The label names the action, not the current layer: while entities are
+    // shown the button offers documents, and the other way round.
+    function reportLayer(layer) {
+        const button = document.getElementById('graph-layer-btn');
+        if (!button) return;
+        const other = layer === 'documents' ? 'entities' : 'documents';
+        button.dataset.layer = other;
+        button.textContent = other === 'documents'
+            ? t('graph_layer_documents', 'Documents')
+            : t('graph_layer_entities', 'Entities');
+        button.title = other === 'documents'
+            ? t('graph_switch_to_documents', 'Switch to documents')
+            : t('graph_switch_to_entities', 'Switch to entities');
+    }
+
     function setLayer(layer) {
         if (!layer) return;
         currentLayer = layer;
+        reportLayer(layer);
         draw({ doc: focusedDoc, layer: layer });
-        document.querySelectorAll('.graph-layer-btn').forEach(function (button) {
-            button.classList.toggle('active', button.dataset.layer === layer);
-        });
     }
 
     window.openGraphView = function (options) {
@@ -469,6 +500,11 @@
     window.closeGraphView = function () {
         const view = viewRoot();
         if (view) view.classList.add('hidden');
+    };
+
+    window.isGraphViewActive = function () {
+        const view = viewRoot();
+        return !!view && !view.classList.contains('hidden');
     };
 
     window.loadGraph = function (params) {
@@ -518,13 +554,12 @@
                 draw({ doc: focusedDoc, layer: currentLayer });
             });
         }
-        const back = document.getElementById('graph-back-btn');
-        if (back) back.addEventListener('click', window.closeGraphView);
         // Only the layer buttons carry a layer; the 2D/3D switch shares the
         // class and used to call setLayer(undefined), which deselected both.
-        document.querySelectorAll('.graph-layer-btn[data-layer]').forEach(function (button) {
-            button.addEventListener('click', function () { setLayer(button.dataset.layer); });
-        });
+        const layerButton = document.getElementById('graph-layer-btn');
+        if (layerButton) {
+            layerButton.addEventListener('click', function () { setLayer(layerButton.dataset.layer); });
+        }
         const search = document.getElementById('graph-search-input');
         if (search) {
             search.addEventListener('keydown', function (event) {

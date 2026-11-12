@@ -5419,3 +5419,15 @@ msgstr "Переключить в 3D"
 #: app/templates/chat.html
 msgid "similarity {v}"
 msgstr "похожесть {v}"
+
+#: app/templates/chat.html:343
+msgid "3D is unavailable: {reason}"
+msgstr "3D недоступен: {reason}"
+
+#: app/templates/chat.html:451
+msgid "Switch to documents"
+msgstr "Переключить на документы"
+
+#: app/templates/chat.html:451
+msgid "Switch to entities"
+msgstr "Переключить на сущности"

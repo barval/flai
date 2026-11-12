@@ -327,6 +327,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_title': {{ _('Knowledge graph')|tojson }},
     'graph_hint_select': {{ _('Click a node to inspect it')|tojson }},
     'graph_mentions': {{ _('Mentions')|tojson }},
+    'graph_shared_by': {{ _('Shared by')|tojson }},
     'graph_loading': {{ _('Loading the graph')|tojson }},
     'graph_error': {{ _('The graph could not be loaded')|tojson }},
     'graph_empty': {{ _('The graph is still being built for these documents')|tojson }},
@@ -339,9 +340,14 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_focused': {{ _('Knowledge graph of the document')|tojson }},
     'graph_counts': {{ _('shown {n} of {total} nodes · {m} links')|tojson }},
     'graph_no_webgl': {{ _('This browser does not provide WebGL — 2D mode')|tojson }},
+    'graph_3d_unavailable': {{ _('3D is unavailable: {reason}')|tojson }},
     'graph_switch_kind': {{ _('Switch between 2D and 3D')|tojson }},
     'graph_switch_to_2d': {{ _('Switch to 2D')|tojson }},
     'graph_switch_to_3d': {{ _('Switch to 3D')|tojson }},
+    'graph_layer_entities': {{ _('Entities')|tojson }},
+    'graph_layer_documents': {{ _('Documents')|tojson }},
+    'graph_switch_to_documents': {{ _('Switch to documents')|tojson }},
+    'graph_switch_to_entities': {{ _('Switch to entities')|tojson }},
     'graph_error_hint': {{ _('Open the browser console for details, or copy the line above.')|tojson }},
     'graph_similarity': {{ _('similarity {v}')|tojson }},
     'documents_share': {{ _('Share')|tojson }},
@@ -442,10 +448,9 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-scope.js', v=config.STATIC_VERSION) }}"></script>
     <div class="graph-view hidden" id="graph-view">
         <div class="graph-toolbar">
-            <button type="button" class="graph-back-btn" id="graph-back-btn" title="{{ _('Back') }}">←</button>
             <span class="graph-title" id="graph-title-text">{{ _('Knowledge graph') }}</span>
-            <button type="button" class="graph-layer-btn active" data-layer="entities">{{ _('Entities') }}</button>
-            <button type="button" class="graph-layer-btn" data-layer="documents">{{ _('Documents') }}</button>
+            <button type="button" class="graph-layer-btn" id="graph-layer-btn" data-layer="documents"
+                    title="{{ _('Switch to documents') }}">{{ _('Documents') }}</button>
             <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="{{ _('Switch to 2D') }}">2D</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="{{ _('Find a node') }}">
             <span class="graph-status" id="graph-status-line"></span>

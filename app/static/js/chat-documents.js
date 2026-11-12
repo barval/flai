@@ -93,6 +93,11 @@ function applyCurrentView() {
 }
 
 function switchView(view) {
+    // A tab is navigation: the graph is a destination, so opening a section
+    // must show that section instead of leaving the cloud on screen.
+    if (typeof window.isGraphViewActive === 'function' && window.isGraphViewActive()) {
+        window.closeGraphView();
+    }
     if (window.isMobileViewport && window.isMobileViewport()) {
         // Mobile: clicking a tab opens its list as a full-screen panel;
         // clicking the tab of the already-open panel returns to the chat.

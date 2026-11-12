@@ -5388,3 +5388,15 @@ msgstr "Switch to 3D"
 #: app/templates/chat.html
 msgid "similarity {v}"
 msgstr "similarity {v}"
+
+#: app/templates/chat.html:343
+msgid "3D is unavailable: {reason}"
+msgstr "3D is unavailable: {reason}"
+
+#: app/templates/chat.html:451
+msgid "Switch to documents"
+msgstr "Switch to documents"
+
+#: app/templates/chat.html:451
+msgid "Switch to entities"
+msgstr "Switch to entities"

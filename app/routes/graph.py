@@ -94,6 +94,10 @@ def graph_data():
             if node["id"] in seen or len(seen) >= limit:
                 continue
             seen.add(node["id"])
+            # The scope tells whose storage this node came from; a recipient's
+            # copy of the graph must show which documents are not their own.
+            node["owner"] = owner
+            node["shared"] = owner != login
             merged["nodes"].append(node)
         merged["edges"].extend(part["edges"])
     merged["edges"] = [

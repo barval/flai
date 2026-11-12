@@ -20,7 +20,7 @@ def _candidate_nodes(user_id: str, lemmas: list[str], doc_ids: list[str] | None,
     """Nodes sharing at least one lemma with the question, with their lemma sets.
 
     The lemma sets come back so the caller can weigh a match by how rare each
-    lemma is: "работа" appears everywhere, "Сокол" does not.
+    lemma is: an everyday word appears in many names, a proper noun in few.
     """
     if not lemmas:
         return []

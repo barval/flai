@@ -1423,14 +1423,16 @@ def merge_kg_nodes(user_id: str, keeper_id: str, victim_id: str) -> None:
 def upsert_kg_node(user_id, kind, name, normalized, lemmas, description="", source_kind="document"):
     """Insert or merge an entity, returning its id.
 
-    A node is identified by its normalised name and its kind, so "ООО
-    «Вектор-Тех»" and "Вектор-Тех" land on one node instead of two.
+    A node is identified by its normalised name and its kind, so a company
+    written with its legal form and the same company without it land on one
+    node instead of two.
     """
     with get_db() as conn:
         c = conn.cursor()
-        # "Барсуков Валерий" and "Барсуков Валерий Владимирович" are one person:
-        # an exact key split them. A name that is a word-prefix of a known one
-        # (at least two words) is the same entity, and the longer form wins.
+        # A short personal name and the same name with a patronymic are one
+        # person: an exact key split them. A name that is a word-prefix of a
+        # known one (at least two words) is the same entity, and the longer
+        # form wins.
         if len(str(normalized).split()) >= 2:
             c.execute(
                 """

@@ -71,9 +71,9 @@ def test_a_relation_whose_evidence_is_not_in_the_chunk_is_dropped(database):
 
     nodes, edges = merge_extraction(LOGIN, "doc-1", 0, "проект Сокол стартовал", data)
 
-    # "Сокол" is in the chunk and survives; "Луна" is not mentioned there at
-    # all, so it is dropped too — an invented entity would merge with a
-    # same-named node elsewhere and seed unrelated questions.
+    # The first entity is in the chunk and survives; the second is not
+    # mentioned there at all, so it is dropped too — an invented entity would
+    # merge with a same-named node elsewhere and seed unrelated questions.
     assert (nodes, edges) == (1, 0)
     assert [node for node, _ in find_kg_node_ids(LOGIN, ["сокол"], None, 8)]
 
@@ -143,12 +143,12 @@ def test_a_stray_closing_fence_does_not_void_the_answer():
 
     # Measured on the live build: the model closed a block it never opened, and
     # a valid entity list was retried four times before the chunk failed.
-    raw = '{"entities":[{"name":"mon.vezubr.ru","type":"place","description":""}],"relations":[]}```'
+    raw = '{"entities":[{"name":"mon.example.invalid","type":"place","description":""}],"relations":[]}```'
 
     parsed = parse_extraction(raw)
 
     assert parsed is not None
-    assert parsed["entities"][0]["name"] == "mon.vezubr.ru"
+    assert parsed["entities"][0]["name"] == "mon.example.invalid"
 
 def test_json_followed_by_prose_is_still_an_answer():
     from app.graph_extract import parse_extraction

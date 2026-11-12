@@ -152,7 +152,7 @@ function loadUsers() {
             storageCell.className = 'storage-cell';
             const storageUsedMb = (user.storage_used || 0) / (1024 * 1024);
             const storageLimitMb = user.storage_limit_mb || 500;
-            // Two lines, so the column stays narrow: "X из" above "Y МБ".
+            // Two lines, so the column stays narrow: the count above its unit.
             const storageUsedText = document.createElement('div');
             storageUsedText.className = 'storage-used';
             storageUsedText.textContent = `${storageUsedMb.toFixed(1)} ${t('of')}`;

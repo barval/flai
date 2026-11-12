@@ -24,8 +24,8 @@ def graph_lemmas(text: str) -> list[str]:
 ENTITY_KINDS = ("person", "organization", "project", "document", "event", "place", "term")
 
 # A closed vocabulary: measured on the live corpus, an open list produced
-# "происходит на", "созвон с" and "обновление" — ad-hoc phrases that never merge
-# across documents and cannot gain weight.
+# ad-hoc phrases such as "occurs at", "call with" and "update" — wording that
+# never merges across documents and cannot gain weight.
 PREDICATES = {
     "ru": (
         "поставляет",
@@ -58,8 +58,9 @@ PREDICATES = {
 }
 
 _PUNCTUATION = re.compile(r"[\"'«»„“”()\[\]{}.,;:!?]+")
-# Legal forms carry no identity: "ООО Вектор-Тех" and "Вектор-Тех" are one
-# company, and leaving the prefix in the key creates a second node.
+# Legal forms carry no identity: a company name with its legal form and the same
+# name without it are one company, and leaving the form in the key creates a
+# second node.
 _LEGAL_FORMS = {
     "ооо", "оао", "зао", "пао", "ао", "ип", "нко",
     "llc", "ltd", "inc", "gmbh", "corp", "corporation", "company", "co", "limited", "incorporated", "plc",
@@ -70,12 +71,14 @@ _WHITESPACE = re.compile(r"\s+")
 def normalise_entity(name: str) -> tuple[str, list[str]]:
     """Canonical key and lemma set of an entity name.
 
-    "ООО «Вектор-Тех»", "Вектор-Тех" and "Вектор-Теха" collapse onto one node
-    because the key is built from lemmas, not from the surface form.
+    A company written with its legal form, without it, and with an inflected
+    last word collapses onto one node because the key is built from lemmas, not
+    from the surface form.
     """
     cleaned = _PUNCTUATION.sub(" ", (name or "").strip().lower())
     words = [word for word in _WHITESPACE.sub(" ", cleaned).strip().split() if word]
-    # Both ends: "ООО Вектор-Тех" and "Acme Corp" carry the form on either side.
+    # Both ends: Russian and English company names carry the legal form on
+    # either side of the name.
     while len(words) > 1 and words[0] in _LEGAL_FORMS:
         words = words[1:]
     while len(words) > 1 and words[-1] in _LEGAL_FORMS:
@@ -84,8 +87,8 @@ def normalise_entity(name: str) -> tuple[str, list[str]]:
     lemma_list = graph_lemmas(cleaned)
     if not lemma_list:
         return cleaned, []
-    # Sorted: the order of a name carries nothing, and "Валерий Барсуков" must
-    # key the same as "Барсуков Валерий".
+    # Sorted: word order carries nothing, so a name written given-name-first
+    # keys the same as the same name written surname-first.
     return " ".join(sorted(set(lemma_list))), lemma_list
 
 
@@ -293,8 +296,9 @@ def _stem_key(lemma: str) -> str:
 def canonical_predicate(predicate: str) -> str:
     """Map a free-form predicate onto the closed list by lemma overlap.
 
-    "осуществляет поставку", "поставка" and "поставляет" become one predicate,
-    which is what lets two documents share an edge and give it weight.
+    A finite verb, its noun and a light-verb phrase ("delivers", "delivery",
+    "carries out delivery") become one predicate, which is what lets two
+    documents share an edge and give it weight.
 
     Both lists are matched. The call used to pin the Russian one, so every
     English predicate came back unchanged even though the English prompt offers
@@ -310,7 +314,7 @@ def canonical_predicate(predicate: str) -> str:
     if not wanted:
         return cleaned
     # Compare stems, not whole lemmas: the list is written in one surface form
-    # ("поставляет"), and "поставка" or "осуществляет поставку" must map onto it.
+    # (a finite verb), so the noun form and a light-verb phrase must map onto it.
     best, best_hits = cleaned, 0
     for candidate in allowed:
         stems = {_stem_key(lemma) for lemma in graph_lemmas(candidate)}

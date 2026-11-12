@@ -72,7 +72,7 @@ model chat is using. On the CPU tier that generation is ~30 s, so
 `on` forces it, `off` disables it; the explicit "remember this" path works either way.
 
 **Profile consolidation.** Individual facts accumulate duplicates and
-contradictions ("lives in Tver" next to an older "lives in Sarov"). The profile
+contradictions ("lives in city A" next to an older "lives in city B"). The profile
 block is the one place where that can be resolved once instead of on every
 request:
 

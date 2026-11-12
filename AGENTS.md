@@ -24,6 +24,7 @@ The README is a short overview plus quick start. Every topic below has a dedicat
 | Camera integration | `docs/CAMERA.md` | When touching `modules/cam.py` |
 | Long-term memory (SLM) | `docs/MEMORY.md` | When touching `app/slm_rules.py` or the SLM service |
 | RAG quality measurement (hit@k, MRR, nDCG, latency) | `docs/RAG_EVAL.md` | When changing retrieval, chunking, or adding hybrid search / reranking |
+| Knowledge graph: extraction, storage, retrieval stage, view, measured defaults | `docs/GRAPH.md` | When touching `app/graph_*.py`, the graph stage in `modules/rag.py`, or `chat-graph.js` |
 | Documents, RAG setup, PDF OCR | `docs/DOCUMENTS.md` | When touching `modules/rag.py` or document uploads |
 | Users, backups, Model Hub, branding | `docs/ADMINISTRATION.md` | When touching `app/routes/admin.py`, Model Hub, backups |
 | Health endpoint, Prometheus metrics | `docs/MONITORING.md` | When touching `/health`, `flai_web_info`, monitoring UI |

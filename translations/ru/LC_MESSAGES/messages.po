@@ -5353,8 +5353,6 @@ msgstr "Сущности"
 msgid "Find a node"
 msgstr "Найти узел"
 
-msgid "Back"
-msgstr "Назад"
 
 #: app/templates/chat.html
 msgid "Click a node to inspect it"

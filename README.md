@@ -77,6 +77,12 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **A knowledge graph of your documents, drawn as a cloud you can walk through.** 🕸️ on a document card opens that document's neighbourhood, the same icon in the Documents panel header opens the whole corpus: entities coloured by kind, typed relations, a path between any two nodes, and one click from a relation to the document that states it. The document layer links similar documents and marks the ones other accounts shared with you. → [GRAPH.md](docs/GRAPH.md)
+
+- **The graph stays out of answers by default, and that is a measured decision.** With the stage running, answers were neither better nor worse: MRR 0.770 and nDCG@10 0.848 with the graph on and off, graded answer quality 0.367 against 0.400, at about 65 ms more per query and 11 % more context. What it does well is make relations readable, so it ships as an instrument for studying a corpus rather than as an extra retriever — `GRAPH_RAG_ENABLED=true` opts in anyway. → [GRAPH.md](docs/GRAPH.md#measurements)
+
+- **Extraction became worth looking at.** The first version produced 0.19 relations per entity and left 77 % of entities unconnected; a closed predicate vocabulary, neighbouring text as context and a relation endpoint that is created instead of dropped brought the same corpus to 0.63 relations per node with 43 % isolated, and to 99 % of proposed relations kept. `flask graph-stats` now reports density, isolation and the dominant predicates after every build, and `flask graph-merge-entities` merges names that only looked like different entities. → [GRAPH.md](docs/GRAPH.md)
+
 ## 🖼 Demo
 
 Four self-contained pages show the interface without installing anything — download a file
@@ -114,6 +120,7 @@ on; every button answers with a notice instead of doing anything. → [DEMO.md](
 - **Document folders** — single-level folders in the Documents panel: create, rename and delete (deleting a folder also deletes the documents inside); move documents by button or drag-and-drop; select several at once to move or delete (the bar shows the total size); upload straight into a folder. The same checkboxes feed the Deep Analysis corpus when the 🔬 toggle is on, and the 🔍 search scope mirrors them live (folder, **Unfiled** root, upload dates) with no separate Apply step. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 - **Scanned PDF OCR** — pages with no extractable text are rendered and transcribed by the vision model before indexing.
 - **Site reading and deep study** — open one URL or crawl a whole site into a searchable document.
+- **Knowledge graph** — every indexed document is mined for entities and typed relations and drawn as a 3D cloud (2D without WebGL): a document's neighbourhood, the whole corpus, paths between entities, and the source document behind each relation. It is a reading instrument, not a retriever: retrieval use is opt-in because measurements show no gain. → [GRAPH.md](docs/GRAPH.md)
 
 ## 🔎 Working with document search
 

@@ -96,10 +96,10 @@ def test_erasing_an_account_removes_its_graph(test_app):
 def test_a_patronymic_does_not_create_a_second_node(database):
     from app.db import upsert_kg_node
 
-    short = upsert_kg_node(LOGIN, "person", "Барсуков Валерий", "барсуков валерий", ["барсуков", "валерий"], "")
+    short = upsert_kg_node(LOGIN, "person", "Соколов Игорь", "соколов игорь", ["соколов", "игорь"], "")
     long = upsert_kg_node(
-        LOGIN, "person", "Барсуков Валерий Владимирович", "барсуков валерий владимирович",
-        ["барсуков", "валерий", "владимирович"], "",
+        LOGIN, "person", "Соколов Игорь Петрович", "соколов игорь петрович",
+        ["соколов", "игорь", "петрович"], "",
     )
 
     assert short == long

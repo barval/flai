@@ -730,8 +730,9 @@ def rag_eval(
         raise click.ClickException("Qdrant is not reachable")
 
     if judge:
-        # Exact comparison counts "проекторы и экраны" against "Проекторы и
-        # экраны." as a miss, so a judged run always measures answers.
+        # Exact comparison counts an answer as a miss when only the capital
+        # letter and the full stop differ, so a judged run always measures
+        # answers.
         answers = True
     items = load_dataset(dataset)
     click.echo(f"Loaded {len(items)} questions from {dataset}")
@@ -1509,10 +1510,11 @@ def graph_status(login):
 def graph_merge_entities(login):
     """Merge graph nodes that name the same entity in different words.
 
-    Extraction produced "Барсуков Валерий", "Валерий Барсуков" and "Барсуков
-    Валерий Владимирович" as three nodes before the matcher ignored word order
-    and patronymics. Two passes: identical lemma sets, then a name that extends a
-    shorter one word by word. Occurrences and edges move to the longer name.
+    Extraction produced one person as three nodes while the matcher ignored word
+    order and patronymics: the surname first, the given name first, and the same
+    name with a patronymic. Two passes: identical lemma sets, then a name that
+    extends a shorter one word by word. Occurrences and edges move to the longer
+    name.
     """
     from app.database import get_db
     from app.db import merge_kg_nodes_sql

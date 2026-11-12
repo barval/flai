@@ -5429,3 +5429,47 @@ msgstr "Переключить на документы"
 #: app/templates/chat.html:451
 msgid "Switch to entities"
 msgstr "Переключить на сущности"
+
+#: app/templates/admin.html
+msgid "Use the knowledge graph in retrieval"
+msgstr "Использовать граф знаний в поиске"
+
+#: app/templates/admin.html
+msgid "Extract entities while idle (auto: on for a GPU host)"
+msgstr "Извлекать сущности в простое (auto: включено на хосте с GPU)"
+
+#: app/templates/admin.html
+msgid "Model that extracts entities (multimodal or reasoning)"
+msgstr "Модель, извлекающая сущности (multimodal или reasoning)"
+
+#: app/templates/admin.html
+msgid "Traversal depth around the seeds"
+msgstr "Глубина обхода вокруг семян"
+
+#: app/templates/admin.html
+msgid "Entities seeded per question"
+msgstr "Сущностей-семян на вопрос"
+
+#: app/templates/admin.html
+msgid "Relations turned into retrieval candidates"
+msgstr "Связей, превращаемых в кандидатов поиска"
+
+#: app/templates/admin.html
+msgid "Share of the evidence budget the graph may take"
+msgstr "Доля бюджета доказательств, которую может занять граф"
+
+#: app/templates/admin.html
+msgid "Cap for the graph block in the prompt"
+msgstr "Лимит блока графа в промпте"
+
+#: app/templates/admin.html
+msgid "Node cap of one graph API response"
+msgstr "Предел узлов в одном ответе API графа"
+
+#: app/templates/admin.html
+msgid "Cosine threshold for a document-to-document edge"
+msgstr "Порог косинуса для связи между документами"
+
+#: app/templates/admin.html
+msgid "Document edges kept per document"
+msgstr "Связей документа, сохраняемых на документ"

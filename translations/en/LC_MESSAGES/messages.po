@@ -5398,3 +5398,47 @@ msgstr "Switch to documents"
 #: app/templates/chat.html:451
 msgid "Switch to entities"
 msgstr "Switch to entities"
+
+#: app/templates/admin.html
+msgid "Use the knowledge graph in retrieval"
+msgstr "Use the knowledge graph in retrieval"
+
+#: app/templates/admin.html
+msgid "Extract entities while idle (auto: on for a GPU host)"
+msgstr "Extract entities while idle (auto: on for a GPU host)"
+
+#: app/templates/admin.html
+msgid "Model that extracts entities (multimodal or reasoning)"
+msgstr "Model that extracts entities (multimodal or reasoning)"
+
+#: app/templates/admin.html
+msgid "Traversal depth around the seeds"
+msgstr "Traversal depth around the seeds"
+
+#: app/templates/admin.html
+msgid "Entities seeded per question"
+msgstr "Entities seeded per question"
+
+#: app/templates/admin.html
+msgid "Relations turned into retrieval candidates"
+msgstr "Relations turned into retrieval candidates"
+
+#: app/templates/admin.html
+msgid "Share of the evidence budget the graph may take"
+msgstr "Share of the evidence budget the graph may take"
+
+#: app/templates/admin.html
+msgid "Cap for the graph block in the prompt"
+msgstr "Cap for the graph block in the prompt"
+
+#: app/templates/admin.html
+msgid "Node cap of one graph API response"
+msgstr "Node cap of one graph API response"
+
+#: app/templates/admin.html
+msgid "Cosine threshold for a document-to-document edge"
+msgstr "Cosine threshold for a document-to-document edge"
+
+#: app/templates/admin.html
+msgid "Document edges kept per document"
+msgstr "Document edges kept per document"

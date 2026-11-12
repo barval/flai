@@ -105,7 +105,7 @@ def test_the_allowance_bounds_the_candidates(database, test_app):
     assert [chunk["doc_id"] for chunk in chunks] == ["doc-1"]
 
 
-def test_the_budget_reserves_graph_room_only_when_enabled(test_app):
+def test_the_budget_grants_graph_room_only_when_enabled(test_app):
     from app.rag_budget import retrieval_budget
 
     test_app.config["GRAPH_RAG_ENABLED"] = False
@@ -115,7 +115,10 @@ def test_the_budget_reserves_graph_room_only_when_enabled(test_app):
 
     assert without.graph_fragments == 0
     assert with_graph.graph_fragments > 0
-    assert with_graph.top_k < without.top_k
+    # The share is a ceiling on what the graph may add, not a deduction from the
+    # dense half: measured, reserving the room shrank the context by 15 % while
+    # the graph returned only chunks dense search had already found.
+    assert with_graph.top_k == without.top_k
 
 
 def test_a_previous_section_cannot_leak_into_the_next_request(database, test_app):

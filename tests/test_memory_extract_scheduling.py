@@ -32,7 +32,9 @@ def test_a_chat_request_raises_the_interrupt_flag():
     with patch("app.tasks.gate.chat_activity_now"):
         queue._mark_chat_activity({"type": "text", "data": {"type": "text"}})
 
-    redis.set.assert_called_with(queue.MEMORY_EXTRACT_INTERRUPT_KEY, "1", ex=45)
+    redis.set.assert_any_call(queue.MEMORY_EXTRACT_INTERRUPT_KEY, "1", ex=45)
+    # Graph extraction is idle work too, so the same request stops it as well.
+    redis.set.assert_any_call(queue.GRAPH_EXTRACT_INTERRUPT_KEY, "1", ex=45)
 
 
 def test_idle_work_does_not_raise_the_interrupt_flag():

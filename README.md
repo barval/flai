@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.2](#-whats-new-in-v132)
+- [🆕 What's New in v13.3](#-whats-new-in-v133)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,15 +73,9 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.2
+## 🆕 What's New in v13.3
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
-
-- **A knowledge graph of your documents, drawn as a cloud you can walk through.** 🕸️ on a document card opens that document's neighbourhood, the same icon in the Documents panel header opens the whole corpus: entities coloured by kind, typed relations, a path between any two nodes, and one click from a relation to the document that states it. The document layer links similar documents and marks the ones other accounts shared with you. → [GRAPH.md](docs/GRAPH.md)
-
-- **The graph stays out of answers by default, and that is a measured decision.** With the stage running, answers were neither better nor worse: MRR 0.770 and nDCG@10 0.848 with the graph on and off, graded answer quality 0.367 against 0.400, at about 65 ms more per query and 11 % more context. What it does well is make relations readable, so it ships as an instrument for studying a corpus rather than as an extra retriever — `GRAPH_RAG_ENABLED=true` opts in anyway. → [GRAPH.md](docs/GRAPH.md#measurements)
-
-- **Extraction became worth looking at.** The first version produced 0.19 relations per entity and left 77 % of entities unconnected; a closed predicate vocabulary, neighbouring text as context and a relation endpoint that is created instead of dropped brought the same corpus to 0.63 relations per node with 43 % isolated, and to 99 % of proposed relations kept. `flask graph-stats` now reports density, isolation and the dominant predicates after every build, and `flask graph-merge-entities` merges names that only looked like different entities. → [GRAPH.md](docs/GRAPH.md)
 
 ## 🖼 Demo
 

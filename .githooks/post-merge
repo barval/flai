@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# graphify: no-LLM code-graph refresh (global git template hook).
+script="$HOME/.config/opencode/bin/graphify-auto-update.sh"
+[ -x "$script" ] || exit 0
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+nohup "$script" "$root" --init >/dev/null 2>&1 &
+exit 0

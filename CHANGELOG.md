@@ -1,5 +1,9 @@
 ## [v13.2] — Unreleased
 
+### Added
+
+- **A knowledge graph of the documents, used by retrieval and visible as a 3D cloud.** Entities and the typed relations between them are extracted from every indexed chunk by a background task that runs only while the instance is idle, one chunk per task, and stops mid-generation the moment a chat request arrives. The graph lives in PostgreSQL — nodes, occurrences, edges, document centroids, build state — and is traversed with NetworkX; Neo4j was rejected because Community Edition is GPLv3, and a graph of 1 000 chunks needs no graph database. At query time the graph seeds from the question's lemmas (weighted by how rare each lemma is) and from the entities mentioned in the chunks the dense half already retrieved, walks two hops inside the caller's scopes, and appends the source chunks of the strongest relations to the candidate pool — bounded by a 15 % share of the evidence budget, because a structural relation has no cosine score. The strongest relations, and the shortest path when two entities were found, reach the prompt as their own block with its own token cap. **The Documents panel gains the view**: 🕸️ on a card opens the graph focused on that document, the same icon in the panel header opens the whole cloud — rotate, zoom, click a node to see its neighbours and documents, right-click two nodes for the path between them, search to fly to one. The renderer (`3d-force-graph`, MIT, with three.js) is vendored and loaded only when the view opens. `GRAPH_RAG_ENABLED` is off by default: the graph is built and visible before it is ever consulted, `flask graph-build --user <login>` backfills existing documents, and `flask graph-status` shows what is done. Entities of a shared document are readable by the recipient through the same scopes the vectors use, and deleting a document removes its occurrences, edges and centroid in the same transaction.
+
 ## [v13.1] — 2026-11-09
 
 ### Added

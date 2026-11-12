@@ -686,6 +686,11 @@ def backfill_attachment_paths(dry_run):
 @click.option("--top-k", default=10, type=int, show_default=True)
 @click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
 @click.option("--answers", is_flag=True, help="End-to-end mode: answer each question, compare with its 'answer' field")
+@click.option(
+    "--judge",
+    is_flag=True,
+    help="Grade each answer with the reasoning model instead of an exact match (implies --answers)",
+)
 @click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
 @click.option("--scope-folder", default="", help="Restrict retrieval to one folder id")
 @click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
@@ -702,6 +707,7 @@ def rag_eval(
     top_k,
     coverage,
     answers,
+    judge,
     model,
     scope_folder,
     scope_docs,
@@ -723,6 +729,10 @@ def rag_eval(
     if not rag.check_availability():
         raise click.ClickException("Qdrant is not reachable")
 
+    if judge:
+        # Exact comparison counts "проекторы и экраны" against "Проекторы и
+        # экраны." as a miss, so a judged run always measures answers.
+        answers = True
     items = load_dataset(dataset)
     click.echo(f"Loaded {len(items)} questions from {dataset}")
 
@@ -794,7 +804,27 @@ def rag_eval(
             )
             return str(reply or "").strip()
 
-        report = evaluate_answers(items, answer_fn, search, top_k=top_k, label=run_label, config=config)
+        judge_fn = None
+        if judge:
+
+            def judge_fn(prompt: str) -> str:
+                # The run's own model, not always the reasoning one: a 35B model
+                # and the embedding model do not fit a 16 GB card together, so a
+                # run that alternates search and answers evicted it mid-way and
+                # twenty of thirty answers came back as a memory notice.
+                return str(
+                    base.call_llamacpp(
+                        [{"role": "user", "content": prompt}],
+                        model_type=model,
+                        lang="ru",
+                        temperature=0,
+                    )
+                    or ""
+                )
+
+        report = evaluate_answers(
+            items, answer_fn, search, top_k=top_k, label=run_label, config=config, judge_fn=judge_fn
+        )
     else:
         report = evaluate(items, search, top_k=top_k, label=run_label, config=config)
     click.echo("")
@@ -803,6 +833,55 @@ def rag_eval(
     target = out or f"data/rag_eval/{datetime.now():%Y%m%d-%H%M%S}.json"
     saved = save_report(report, target)
     click.echo(f"\nReport saved: {saved}")
+
+
+@click.command("rag-eval-judge")
+@click.option("--report", required=True, type=click.Path(exists=True), help="A saved answers report to re-grade")
+@click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
+@click.option("--out", default="", help="Report path (default: overwrite the input report)")
+@with_appcontext
+def rag_eval_judge(report, model, out):
+    """Grade the answers of a saved report with the model.
+
+    Grading belongs in its own pass: interleaving it with retrieval made every
+    request alternate between the embedding and the chat model, and on a 16 GB
+    card the chat model was evicted between two calls, so most verdicts came
+    back empty.
+    """
+    import json
+    from pathlib import Path
+
+    from app.rag_eval import build_judge_prompt, parse_verdict, save_report
+
+    base = current_app.modules.get("base")
+    if base is None:
+        raise click.ClickException("LLM module is not available")
+    data = json.loads(Path(report).read_text(encoding="utf-8"))
+    rows = data.get("results") or []
+    if not rows or data.get("mode") != "answers":
+        raise click.ClickException("The report carries no answers to grade")
+
+    graded = 0
+    for row in rows:
+        reply = base.call_llamacpp(
+            [{"role": "user", "content": build_judge_prompt(row["question"], str(row["expected"]), str(row["actual"]))}],
+            model_type=model,
+            lang="ru",
+            temperature=0,
+        )
+        row["judge"] = parse_verdict(reply)
+        if row["judge"]["score"] >= 0:
+            graded += 1
+
+    scores = [row["judge"]["score"] for row in rows if row["judge"]["score"] >= 0]
+    data["metrics"]["judge_score"] = (sum(scores) / (2 * len(scores))) if scores else 0.0
+    data["metrics"]["judge_full"] = (sum(1 for score in scores if score == 2) / len(scores)) if scores else 0.0
+    data["metrics"]["judge_failed"] = len(rows) - graded
+    target = out or report
+    saved = save_report(data, target)
+    click.echo(f"graded {graded}/{len(rows)} answers")
+    click.echo(f"judge score: {data['metrics']['judge_score']:.3f}  (fully right {data['metrics']['judge_full']:.3f})")
+    click.echo(f"Report saved: {saved}")
 
 
 @click.command("rag-eval-generate")
@@ -1332,3 +1411,180 @@ def kernel_eval(dataset, mode, out):
         with open(out, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         click.echo(f"\nwritten to {out}")
+
+
+def _follow_graph_build(login: str) -> None:
+    """Poll the build until no chunk is left. Ctrl-C stops following, not the build."""
+    import time
+
+    from app.db import kg_status
+
+    stalled = 0
+    previous = None
+    while True:
+        status = kg_status(login)
+        progress = (status["chunks_done"], status["chunks_total"])
+        stalled = stalled + 1 if progress == previous else 0
+        previous = progress
+        if stalled >= 120:
+            click.echo("No progress for ten minutes; stop following and check `flask graph-status`.")
+            return
+        click.echo(
+            f"chunks {status['chunks_done']}/{status['chunks_total']}  "
+            f"nodes {status['nodes']}  edges {status['edges']}"
+        )
+        if not status["chunks_total"] or status["chunks_done"] >= status["chunks_total"]:
+            return
+        time.sleep(5)
+
+
+@click.command("graph-build")
+@click.option("--user", "login", required=True, help="Login whose documents are extracted")
+@click.option("--doc", "doc_id", default="", help="Restrict the build to one document id")
+@click.option("--rebuild", is_flag=True, help="Drop the existing graph rows of those documents and start over")
+@click.option("--follow/--no-follow", default=True, show_default=True, help="Poll until every chunk is processed")
+@click.option("--cancel", is_flag=True, help="Raise the interrupt flag so a running build stops")
+@with_appcontext
+def graph_build(login, doc_id, rebuild, follow, cancel):
+    """Queue knowledge-graph extraction for a user's documents.
+
+    The command only enqueues work: a CLI process does not share the worker's
+    GPU lock, so calling the model here would run next to chat.
+    """
+    from app.graph_extract import queue_missing_documents
+
+    queue = current_app.request_queue
+    if cancel:
+        queue.redis.set(queue.GRAPH_EXTRACT_INTERRUPT_KEY, "1", ex=300)
+        click.echo("Graph extraction stopped; the running chunk returns to the queue.")
+        return
+
+    queued = queue_missing_documents(queue, login, doc_id=doc_id, rebuild=rebuild)
+    try:
+        from app.graph_docs import backfill_centroids, ensure_document_layer
+
+        if backfill_centroids(current_app, login):
+            click.echo("document centroids backfilled from the index")
+        ensure_document_layer(login)
+    except Exception as exc:  # noqa: BLE001 — the layer is a view, not the build
+        click.echo(f"document layer not refreshed: {exc}")
+    if not queued:
+        click.echo(f"Nothing to do for {login}.")
+    click.echo(f"queued {queued} document(s) for {login}")
+    if follow and queued:
+        _follow_graph_build(login)
+
+
+@click.command("graph-status")
+@click.option("--user", "login", required=True, help="Login whose build state is printed")
+@with_appcontext
+def graph_status(login):
+    """Print the per-document build state and the totals."""
+    from app.database import get_db
+    from app.db import kg_status
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT doc_id, status, chunks_done, chunks_total, error FROM kg_build_state"
+            " WHERE user_id = %s ORDER BY doc_id",
+            (login,),
+        )
+        rows = c.fetchall()
+
+    for row in rows:
+        error = f"  {row['error']}" if row["error"] else ""
+        click.echo(f"{row['doc_id']}  {row['status']}  {row['chunks_done']}/{row['chunks_total']}{error}")
+
+    status = kg_status(login)
+    click.echo(
+        f"{login}: documents {status['documents']}  chunks {status['chunks_done']}/{status['chunks_total']}  "
+        f"nodes {status['nodes']}  edges {status['edges']}  ready={status['ready']}"
+    )
+
+
+@click.command("graph-merge-entities")
+@click.option("--user", "login", required=True, help="Login whose duplicate nodes are merged")
+@with_appcontext
+def graph_merge_entities(login):
+    """Merge graph nodes that name the same entity in different words.
+
+    Extraction produced "Барсуков Валерий", "Валерий Барсуков" and "Барсуков
+    Валерий Владимирович" as three nodes before the matcher ignored word order
+    and patronymics. Two passes: identical lemma sets, then a name that extends a
+    shorter one word by word. Occurrences and edges move to the longer name.
+    """
+    from app.database import get_db
+    from app.db import merge_kg_nodes_sql
+
+    def absorb(cursor, keeper, victim):
+        merge_kg_nodes_sql(cursor, login, keeper["id"], victim["id"])
+
+    merged = 0
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, kind, name, normalized, lemmas FROM kg_nodes WHERE user_id = %s",
+            (login,),
+        )
+        nodes = [dict(row) for row in c.fetchall()]
+
+        by_key: dict[tuple[str, str], dict] = {}
+        for node in nodes:
+            key = (node["kind"], " ".join(sorted(set(node["lemmas"] or []))))
+            keeper = by_key.get(key)
+            if keeper is None:
+                by_key[key] = node
+                continue
+            longer = node if len(node["name"]) >= len(keeper["name"]) else keeper
+            absorb(c, longer, keeper if longer is node else node)
+            by_key[key] = longer
+            merged += 1
+
+        by_norm = {(node["kind"], node["normalized"]): node for node in by_key.values()}
+        for node in sorted(by_key.values(), key=lambda item: len(str(item["normalized"]))):
+            words = str(node["normalized"]).split()
+            for cut in range(2, len(words)):
+                parent = by_norm.get((node["kind"], " ".join(words[:cut])))
+                if not parent or parent["id"] == node["id"]:
+                    continue
+                absorb(c, node, parent)
+                node["lemmas"] = list(node["lemmas"] or []) + list(parent["lemmas"] or [])
+                by_norm.pop((parent["kind"], parent["normalized"]), None)
+                merged += 1
+
+    click.echo(f"merged {merged} duplicate node(s) for {login}")
+
+
+@click.command("graph-stats")
+@click.option("--user", "login", required=True, help="Login whose extraction quality is reported")
+@with_appcontext
+def graph_stats(login):
+    """Extraction quality without a labelled set.
+
+    The proxies: how many relations the model proposed and how many survived the
+    evidence check, how dense the graph is, how many entities stand alone, and
+    which predicates dominate. They catch a regression in extraction the moment a
+    build runs, with no human work.
+    """
+    from app.db import kg_extraction_stats
+
+    stats = kg_extraction_stats(login)
+    chunks = max(1, stats["chunks"])
+    nodes = stats["nodes"]
+    edges = stats["edges"]
+    found = stats["found"]
+    kept = stats["kept"]
+
+    click.echo(f"user            {login}")
+    click.echo(f"chunks          {stats['chunks']}")
+    click.echo(f"entities        {stats['entities']}  ({stats['entities'] / chunks:.2f} per chunk)")
+    click.echo(f"relations       {found} proposed, {kept} kept  ({100 * kept / found if found else 0:.0f} % survive)")
+    click.echo(f"nodes           {nodes}")
+    click.echo(f"edges           {edges}")
+    click.echo(f"density         {edges / nodes if nodes else 0:.2f} edges per node")
+    click.echo(f"isolated        {stats['isolated']}  ({100 * stats['isolated'] / nodes if nodes else 0:.0f} % of nodes)")
+    if stats["predicates"]:
+        click.echo("top predicates")
+        for predicate, count in stats["predicates"]:
+            click.echo(f"  {count:>4}  {predicate}")

@@ -247,6 +247,56 @@ def answer_matches(expected: str, actual: str) -> bool:
     return _normalize(expected) in _normalize(actual)
 
 
+JUDGE_INSTRUCTION = (
+    "You grade one answer against a reference answer for the same question. "
+    "Score 2 when the answer states the reference fact correctly and completely, "
+    "1 when it is partly right or vague, 0 when it is wrong, contradicts the "
+    "reference or invents a fact. The answer may be in any language: compare "
+    "meaning, not wording. Reply with JSON only: {\"score\": 0|1|2, \"reason\": \"...\"}"
+)
+
+
+def build_judge_prompt(question: str, expected: str, actual: str) -> str:
+    """One grading request for the judge model."""
+    return (
+        f"{JUDGE_INSTRUCTION}\n\n"
+        f"QUESTION: {question}\n"
+        f"REFERENCE ANSWER: {expected}\n"
+        f"ANSWER TO GRADE: {actual}"
+    )
+
+
+def parse_verdict(raw: str) -> dict:
+    """Read the judge's JSON, tolerating a fence or a sentence around it."""
+    text = str(raw or "").strip()
+    text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
+    text = re.sub(r"\s*```$", "", text).strip()
+    data: dict = {}
+    try:
+        loaded = json.loads(text)
+        if isinstance(loaded, dict):
+            data = loaded
+    except (ValueError, TypeError):
+        match = re.search(r"\{[^{}]*\}", text, re.S)
+        if match:
+            try:
+                loaded = json.loads(match.group(0))
+                if isinstance(loaded, dict):
+                    data = loaded
+            except (ValueError, TypeError):
+                data = {}
+    try:
+        score = int(data.get("score", -1))
+    except (TypeError, ValueError):
+        score = -1
+    if score not in (0, 1, 2):
+        # A judge that does not follow the schema is treated as "no verdict"
+        # rather than as a zero: a broken grader must not look like a wrong
+        # answer.
+        score = -1
+    return {"score": score, "reason": str(data.get("reason") or "")[:400]}
+
+
 def evaluate_answers(
     items: list[EvalItem],
     answer_fn: Callable[[str, str], str],
@@ -254,15 +304,18 @@ def evaluate_answers(
     top_k: int = 10,
     label: str = "",
     config: dict[str, Any] | None = None,
+    judge_fn: Callable[[str], str] | None = None,
 ) -> dict:
     """End-to-end check: retrieve, answer, compare with the expected answer.
 
     ``answer_fn(question, context)`` is the model call; the context is built
     from the retrieved chunks exactly like a chat request.
     """
-    judged = [item for item in items if item.answer]
+    # ``reference`` is the ground-truth fact too, and most sets carry only that,
+    # so a judged run works without a second field saying the same thing.
+    judged = [item for item in items if item.answer or item.reference]
     if not judged:
-        raise ValueError("No dataset item carries an 'answer' field")
+        raise ValueError("No dataset item carries an 'answer' or 'reference' field")
 
     rows = []
     for item in judged:
@@ -270,26 +323,34 @@ def evaluate_answers(
         context = "\n\n".join(
             f"[{chunk.get('filename') or '?'}] {chunk.get('text') or ''}" for chunk in chunks
         )
+        expected = str(item.answer or item.reference or "")
         actual = answer_fn(item.question, context)
-        rows.append(
-            {
-                "question": item.question,
-                "expected": item.answer,
-                "actual": actual,
-                "match": answer_matches(str(item.answer), actual),
-                "chunks": len(chunks),
-            }
-        )
+        row = {
+            "question": item.question,
+            "expected": expected,
+            "actual": actual,
+            "match": answer_matches(expected, actual),
+            "chunks": len(chunks),
+        }
+        if judge_fn is not None:
+            row["judge"] = parse_verdict(judge_fn(build_judge_prompt(item.question, expected, actual)))
+        rows.append(row)
 
+    metrics: dict[str, Any] = {
+        "answer_accuracy": sum(1 for row in rows if row["match"]) / len(rows),
+    }
+    if judge_fn is not None:
+        scores = [row["judge"]["score"] for row in rows if row["judge"]["score"] >= 0]
+        metrics["judge_score"] = (sum(scores) / (2 * len(scores))) if scores else 0.0
+        metrics["judge_full"] = (sum(1 for score in scores if score == 2) / len(scores)) if scores else 0.0
+        metrics["judge_failed"] = sum(1 for row in rows if row["judge"]["score"] < 0)
     return {
         "label": label,
         "mode": "answers",
         "top_k": top_k,
         "questions": len(rows),
         "config": config or {},
-        "metrics": {
-            "answer_accuracy": sum(1 for row in rows if row["match"]) / len(rows),
-        },
+        "metrics": metrics,
         "results": rows,
     }
 
@@ -303,6 +364,11 @@ def format_report(report: dict) -> str:
             f"questions: {report['questions']}   top_k: {report['top_k']}",
             f"answer accuracy: {metrics['answer_accuracy']:.3f}",
         ]
+        if "judge_score" in metrics:
+            lines.append(
+                f"judge score:     {metrics['judge_score']:.3f}  "
+                f"(fully right {metrics['judge_full']:.3f}, {metrics['judge_failed']} unjudged)"
+            )
         misses = [row for row in report["results"] if not row["match"]]
         for row in misses:
             lines.append(f"  MISS  {row['question']}  expected={row['expected']!r}  got={row['actual'][:80]!r}")

@@ -35,6 +35,32 @@ def setting(name: str, default: Any = None) -> Any:
     return os.getenv(name, default)
 
 
+def graph_auto_extract_enabled(app=None) -> bool:
+    """Whether a freshly indexed document is queued for graph extraction.
+
+    ``auto`` follows the platform: extraction is one call per chunk on the
+    resident model, which is affordable on a GPU host and would run for days on
+    a CPU-only one.
+    """
+    if app is not None and app.config.get("GRAPH_AUTO_EXTRACT") is not None:
+        mode = str(app.config.get("GRAPH_AUTO_EXTRACT")).strip().lower()
+    else:
+        mode = str(setting("GRAPH_AUTO_EXTRACT", "auto")).strip().lower()
+    if mode in ("on", "true", "1", "yes"):
+        return True
+    if mode in ("off", "false", "0", "no"):
+        return False
+    platform = ""
+    try:
+        if app is not None:
+            platform = str(app.config.get("FLAI_PLATFORM") or "")
+    except Exception:  # noqa: BLE001 — a missing config is not a failure here
+        platform = ""
+    if not platform:
+        platform = str(setting("FLAI_PLATFORM", "") or "")
+    return platform.strip().lower() != "cpu"
+
+
 def load_config(app):
     app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""
@@ -335,6 +361,21 @@ def load_config(app):
     # 0 = automatic: the share is derived from the window and the measured need
     # (app/context_budget.py). A positive value pins the documents' share.
     app.config["RAG_CONTEXT_PERCENT"] = int(os.getenv("RAG_CONTEXT_PERCENT", 0))
+
+    # Knowledge graph (v13.2). Retrieval stays off until the corpus is built;
+    # extraction is automatic only while the instance is idle, and on a CPU-only
+    # host it is off by default for the same reason SLM_AUTO_EXTRACT is.
+    app.config["GRAPH_RAG_ENABLED"] = os.getenv("GRAPH_RAG_ENABLED", "false").lower() in ("true", "1", "yes")
+    app.config["GRAPH_AUTO_EXTRACT"] = os.getenv("GRAPH_AUTO_EXTRACT", "auto").strip().lower()
+    app.config["GRAPH_EXTRACT_MODEL"] = os.getenv("GRAPH_EXTRACT_MODEL", "multimodal")
+    app.config["GRAPH_HOPS"] = int(os.getenv("GRAPH_HOPS", 2))
+    app.config["GRAPH_MAX_SEEDS"] = int(os.getenv("GRAPH_MAX_SEEDS", 8))
+    app.config["GRAPH_MAX_EDGES"] = int(os.getenv("GRAPH_MAX_EDGES", 12))
+    app.config["GRAPH_SHARE"] = float(os.getenv("GRAPH_SHARE", 0.15))
+    app.config["GRAPH_SECTION_TOKENS"] = int(os.getenv("GRAPH_SECTION_TOKENS", 600))
+    app.config["GRAPH_MAX_NODES"] = int(os.getenv("GRAPH_MAX_NODES", 1000))
+    app.config["GRAPH_DOC_SIMILARITY"] = float(os.getenv("GRAPH_DOC_SIMILARITY", 0.75))
+    app.config["GRAPH_DOC_NEIGHBOURS"] = int(os.getenv("GRAPH_DOC_NEIGHBOURS", 8))
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3

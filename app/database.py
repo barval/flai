@@ -271,6 +271,105 @@ def get_db():
             conn.close()
 
 
+def ensure_kg_schema(c):
+    """Knowledge-graph tables (v13.2).
+
+    The graph is derived data: it is rebuilt from documents, so these tables
+    carry no history of their own and every path that deletes a document
+    deletes its rows here as well.
+    """
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_nodes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            normalized TEXT NOT NULL,
+            lemmas TEXT[] NOT NULL DEFAULT '{}',
+            description TEXT DEFAULT '',
+            pagerank REAL DEFAULT 0,
+            community INTEGER,
+            source_kind TEXT NOT NULL DEFAULT 'document',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (user_id, normalized, kind)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_nodes_lemmas ON kg_nodes USING GIN (lemmas)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_occurrences (
+            node_id UUID NOT NULL,
+            user_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            mention_text TEXT DEFAULT '',
+            PRIMARY KEY (node_id, doc_id, chunk_index)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_occurrences_doc ON kg_occurrences (user_id, doc_id)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_edges (
+            id BIGSERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            src_id UUID NOT NULL,
+            dst_id UUID NOT NULL,
+            predicate TEXT NOT NULL,
+            weight INTEGER NOT NULL DEFAULT 1,
+            doc_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            evidence TEXT DEFAULT '',
+            source_kind TEXT NOT NULL DEFAULT 'document',
+            UNIQUE (user_id, src_id, dst_id, predicate)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_edges_src ON kg_edges (user_id, src_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_edges_dst ON kg_edges (user_id, dst_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_edges_doc ON kg_edges (user_id, doc_id)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_doc_vectors (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            vector REAL[] NOT NULL,
+            dim INTEGER NOT NULL,
+            embedding_model TEXT DEFAULT '',
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_doc_vectors_user ON kg_doc_vectors (user_id)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_doc_edges (
+            user_id TEXT NOT NULL,
+            src_doc_id TEXT NOT NULL,
+            dst_doc_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            PRIMARY KEY (user_id, src_doc_id, dst_doc_id)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_build_state (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            chunks_total INTEGER NOT NULL DEFAULT 0,
+            chunks_done INTEGER NOT NULL DEFAULT 0,
+            model TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_kg_build_state_user ON kg_build_state (user_id, status)")
+    # Extraction quality proxies: what the model proposed and what survived the
+    # evidence check, accumulated per document while a build runs.
+    for column in ("entities_found", "relations_found", "relations_kept"):
+        c.execute(f"ALTER TABLE kg_build_state ADD COLUMN IF NOT EXISTS {column} INTEGER NOT NULL DEFAULT 0")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS kg_doc_layer (
+            user_id TEXT PRIMARY KEY,
+            vectors INTEGER NOT NULL DEFAULT 0,
+            rebuilt_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+
 def init_db():
     """Initialize the PostgreSQL database (create tables)."""
     _init_postgresql()
@@ -570,6 +669,8 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
+
+    ensure_kg_schema(c)
 
     # Seed default model_configs if not present.
     # v11.4: CPU mode seeds lightweight models (Qwen3VL-4B + gpt-oss-20b-mxfp4)

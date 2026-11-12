@@ -61,6 +61,7 @@ class RetrievalBudget:
     tokens: int
     tokens_per_fragment: int
     history_tokens: int = 0
+    graph_fragments: int = 0
 
 
 def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = None) -> int:
@@ -74,6 +75,22 @@ def tokens_per_fragment(app=None, lang: str = "ru", chunk_chars: int | None = No
     sample = (_SAMPLE * (size // len(_SAMPLE) + 1))[: max(80, size)]
     text = ("Источник: документ.txt\n" if lang == "ru" else "Source: document.txt\n") + sample
     return max(1, estimate_tokens(text, "reasoning", lang))
+
+
+def _config_float(app, key: str, default: float) -> float:
+    # An explicit 0 is a value, not a missing setting: ``or default`` would turn
+    # "no graph evidence" into the shipped 15 %.
+    if app is not None:
+        value = app.config.get(key)
+        return float(default if value is None else value)
+    value = setting(key, None)
+    return float(default if value is None else value)
+
+
+def _graph_enabled(app) -> bool:
+    if app is not None:
+        return bool(app.config.get("GRAPH_RAG_ENABLED"))
+    return str(setting("GRAPH_RAG_ENABLED", "false")).lower() in ("true", "1", "yes")
 
 
 def _config_value(app, key: str, default: int) -> int:
@@ -136,6 +153,21 @@ def retrieval_budget(
     configured = _config_value(app, "RAG_TOP_K", 0)
     if configured > 0:
         top_k = min(top_k, configured)
+    # Graph evidence has no cosine score, so it takes a room of its own instead
+    # of competing with the dense half. Nothing is reserved while the graph is
+    # off, which keeps every existing budget identical.
+    graph_fragments = 0
+    if _graph_enabled(app):
+        share = _config_float(app, "GRAPH_SHARE", 0.15)
+        graph_fragments = max(1, int(fragments * share)) if share > 0 else 0
+        # A pinned RAG_TOP_K has already narrowed the relevance half; the graph
+        # must not take most of what is left, so its share is capped at a
+        # quarter of the fragments that survived that narrowing.
+        graph_fragments = min(graph_fragments, max(1, top_k // 4))
+        # The graph share is a ceiling for what it may add, not a deduction from
+        # the dense half: measured on the live corpus, reserving the room shrank
+        # the context by 15 % while the graph returned nothing new, because its
+        # candidates duplicated the dense hits.
     return RetrievalBudget(
         top_k=top_k,
         coverage_files=coverage,
@@ -143,4 +175,5 @@ def retrieval_budget(
         tokens=documents_tokens,
         tokens_per_fragment=per_fragment,
         history_tokens=history_tokens,
+        graph_fragments=graph_fragments,
     )

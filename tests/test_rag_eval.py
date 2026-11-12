@@ -9,10 +9,13 @@ import pytest
 from app.rag_eval import (
     EvalItem,
     answer_matches,
+    build_judge_prompt,
     evaluate,
+    evaluate_answers,
     evaluate_item,
     format_report,
     load_dataset,
+    parse_verdict,
     save_report,
 )
 
@@ -230,3 +233,39 @@ def test_passage_match_survives_a_chunk_boundary_shift():
 
     assert _passage_match(passage, shifted.lower())
     assert not _passage_match(passage, "совершенно другой текст про отпуск и погоду")
+
+def test_an_exact_match_rejects_a_differently_written_answer():
+    # The reason a judge exists: the answer is right and the comparison says no.
+    assert answer_matches("Проекторы и экраны.", "проекторы и экраны") is False
+
+
+def test_a_judge_verdict_is_read_through_a_fence_and_prose():
+    assert parse_verdict('```json\n{"score": 2, "reason": "exact"}\n```')["score"] == 2
+    assert parse_verdict('Verdict: {"score": 1, "reason": "partial"} done')["score"] == 1
+
+
+def test_a_judge_that_breaks_the_schema_is_not_a_zero():
+    verdict = parse_verdict("I think this answer is fine")
+
+    assert verdict["score"] == -1
+
+
+def test_judged_answers_report_a_score_alongside_the_exact_match():
+    item = EvalItem("q", ["d1"], answer="Проекторы и экраны.")
+    search = lambda _q, _k: [_chunk("d1")]  # noqa: E731
+    answer = lambda _q, _c: "проекторы и экраны"  # noqa: E731
+    judge = lambda _prompt: '{"score": 2, "reason": "same meaning"}'  # noqa: E731
+
+    report = evaluate_answers([item], answer, search, top_k=1, judge_fn=judge)
+
+    assert report["metrics"]["answer_accuracy"] == 0.0
+    assert report["metrics"]["judge_score"] == 1.0
+    assert report["results"][0]["judge"]["score"] == 2
+    assert "judge score" in format_report(report)
+
+
+def test_the_judge_prompt_carries_the_reference_and_the_answer():
+    prompt = build_judge_prompt("Who supplies laptops?", "Brightline Systems.", "Brightline")
+
+    assert "REFERENCE ANSWER: Brightline Systems." in prompt
+    assert "ANSWER TO GRADE: Brightline" in prompt

@@ -686,6 +686,11 @@ def backfill_attachment_paths(dry_run):
 @click.option("--top-k", default=10, type=int, show_default=True)
 @click.option("--coverage", is_flag=True, help="Enable the file-coverage pass during search")
 @click.option("--answers", is_flag=True, help="End-to-end mode: answer each question, compare with its 'answer' field")
+@click.option(
+    "--judge",
+    is_flag=True,
+    help="Grade each answer with the reasoning model instead of an exact match (implies --answers)",
+)
 @click.option("--model", type=click.Choice(["multimodal", "reasoning"]), default="multimodal", show_default=True)
 @click.option("--scope-folder", default="", help="Restrict retrieval to one folder id")
 @click.option("--scope-docs", default="", help="Comma-separated document ids to restrict retrieval to")
@@ -702,6 +707,7 @@ def rag_eval(
     top_k,
     coverage,
     answers,
+    judge,
     model,
     scope_folder,
     scope_docs,
@@ -723,6 +729,10 @@ def rag_eval(
     if not rag.check_availability():
         raise click.ClickException("Qdrant is not reachable")
 
+    if judge:
+        # Exact comparison counts "проекторы и экраны" against "Проекторы и
+        # экраны." as a miss, so a judged run always measures answers.
+        answers = True
     items = load_dataset(dataset)
     click.echo(f"Loaded {len(items)} questions from {dataset}")
 
@@ -794,7 +804,23 @@ def rag_eval(
             )
             return str(reply or "").strip()
 
-        report = evaluate_answers(items, answer_fn, search, top_k=top_k, label=run_label, config=config)
+        judge_fn = None
+        if judge:
+
+            def judge_fn(prompt: str) -> str:
+                return str(
+                    base.call_llamacpp(
+                        [{"role": "user", "content": prompt}],
+                        model_type="reasoning",
+                        lang="ru",
+                        temperature=0,
+                    )
+                    or ""
+                )
+
+        report = evaluate_answers(
+            items, answer_fn, search, top_k=top_k, label=run_label, config=config, judge_fn=judge_fn
+        )
     else:
         report = evaluate(items, search, top_k=top_k, label=run_label, config=config)
     click.echo("")

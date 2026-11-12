@@ -411,6 +411,11 @@ class BaseModule(TranslationMixin):
             source = fact.get("source") or meta.get("source")
             if source not in TRUSTED_FACT_SOURCES:
                 continue
+            # History is kept so a fact that stopped holding is not lost, but it
+            # is not evidence about the present: injecting it beside the current
+            # block asserts both "lives in Moscow" and "lives in Tbilisi".
+            if kind == "profile_history":
+                continue
             try:
                 score = float(fact.get("score") or 0.0)
             except (TypeError, ValueError):

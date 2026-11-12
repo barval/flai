@@ -71,7 +71,17 @@ class SlmModule(TranslationMixin):
             payload["profile"] = profile
         try:
             resp = requests.post(f"{self.url}/remember", json=payload, timeout=300)
-            return resp.status_code == 200
+            if resp.status_code != 200:
+                return False
+            # The wrapper answers 200 even when the daemon refused the write; the
+            # body is the only place that says so. Checking the status code alone
+            # reported every fact as saved while the daemon was down, and the
+            # store quietly stopped growing for days.
+            try:
+                body = resp.json()
+            except ValueError:
+                return True
+            return bool(body.get("success", True))
         except Exception as e:
             self.logger.warning(f"SLM remember failed: {e}")
             return False

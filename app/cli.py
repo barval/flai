@@ -1214,14 +1214,21 @@ def memory_profile(user, lang, limit, apply):
     material = [
         fact
         for fact in facts
-        if str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
+        # A previous block is an output, not evidence: consolidating it again
+        # re-words the same sentences instead of rebuilding them from the facts,
+        # and the model starts citing itself.
+        if fact.get("source") != "profile_consolidation"
+        and str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
         and (fact.get("content") or fact.get("text"))
     ]
     if len(material) < 3:
         click.echo(f"only {len(material)} usable facts — nothing to consolidate yet")
         return
 
-    lines = "\n".join(f"- {str(fact.get('content') or fact.get('text'))[:200]}" for fact in material)
+    lines = "\n".join(
+        f"- [{str(fact.get('created_at') or '')[:10]}] {str(fact.get('content') or fact.get('text'))[:200]}"
+        for fact in material
+    )
     prompt = format_prompt(
         "memory_profile.template",
         {"facts": lines, "response_language": response_language_name(lang)},
@@ -1236,21 +1243,67 @@ def memory_profile(user, lang, limit, apply):
         lang=lang,
         temperature=0.2,
     )
-    block = " ".join(str(raw).split())[:1200]
-    if not block or block.startswith("⚠"):
-        raise click.ClickException(f"profile consolidation failed: {block[:200]}")
+    answer = "\n".join(line.rstrip() for line in str(raw).splitlines() if line.strip())
+    if not answer or answer.startswith("⚠"):
+        raise click.ClickException(f"profile consolidation failed: {answer[:200]}")
 
-    click.echo(block)
-    click.echo(f"({len(block)} chars, from {len(material)} facts)")
+    from app.memory_facts import split_profile_block
+
+    current, closed = split_profile_block(answer)
+    current = current[:1200]
+    closed = closed[:1200]
+    if not current:
+        raise click.ClickException(f"profile consolidation returned no current part: {answer[:200]}")
+
+    click.echo("CURRENT:")
+    click.echo(current)
+    if closed:
+        click.echo("\nCLOSED:")
+        click.echo(closed)
+    click.echo(f"\n({len(current)} + {len(closed)} chars, from {len(material)} facts)")
     if not apply:
         click.echo("dry run — pass --apply to store it")
         return
+
+    # A fact moved to CLOSED must stop being recalled on its own, or the model
+    # gets "I live in Moscow" beside a block that says otherwise. The prompt
+    # quotes the source fact verbatim for exactly this match.
+    closed_lines = [line.lstrip("-• ").strip().lower() for line in closed.splitlines() if line.strip()]
+    for old_fact in facts:
+        text = str(old_fact.get("content") or old_fact.get("text") or "").strip().lower()
+        if len(text) < 8 or old_fact.get("source") == "profile_consolidation":
+            continue
+        if any(text in line for line in closed_lines):
+            fact_id = old_fact.get("fact_id")
+            if fact_id:
+                slm.delete_fact(fact_id, profile=user, reason="superseded")
+
+    # The block is one fact, not a log: a previous one is retired before the new
+    # one is written, otherwise every run leaves another block behind and recall
+    # prepends several contradictory profiles at once.
+    for old_fact in facts:
+        if old_fact.get("source") != "profile_consolidation":
+            continue
+        fact_id = old_fact.get("fact_id")
+        if fact_id:
+            slm.delete_fact(fact_id, profile=user, reason="superseded")
+
     stored = slm.remember(
-        block,
+        current,
         metadata={"kind": "profile", "confidence": 1.0, "source": "profile_consolidation"},
         profile=user,
     )
-    click.echo("stored" if stored else "store failed")
+    # History is a separate fact with its own kind: the always-injected block is
+    # built from kind='profile' only, so a fact that stopped holding is kept but
+    # is no longer asserted as current.
+    kept_history = True
+    if closed:
+        kept_history = slm.remember(
+            closed,
+            metadata={"kind": "profile_history", "confidence": 1.0, "source": "profile_consolidation"},
+            profile=user,
+        )
+    click.echo("stored" if stored and kept_history else "store failed")
 
 
 def _message_text(content: str) -> str:

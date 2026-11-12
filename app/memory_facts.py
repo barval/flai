@@ -151,3 +151,40 @@ def merge_into_profile(facts: list[dict[str, Any]], previous: str = "") -> str:
         if text and text not in lines:
             lines.append(text)
     return "\n".join(lines[-12:])
+
+
+_PROFILE_CURRENT = ("ТЕКУЩЕЕ:", "CURRENT:")
+_PROFILE_CLOSED = ("ЗАКРЫТОЕ:", "CLOSED:")
+
+
+def _section_start(text: str, markers: tuple[str, ...]) -> int:
+    lowered = text.lower()
+    found = [lowered.find(marker.lower()) for marker in markers]
+    found = [index for index in found if index != -1]
+    return min(found) if found else -1
+
+
+def split_profile_block(text: str) -> tuple[str, str]:
+    """Split a consolidation answer into the current profile and its history.
+
+    The current part is what recall always injects; the historical part is
+    stored as a separate fact, so something that stopped being true is no longer
+    asserted as if it still were. An answer without the section labels counts as
+    entirely current — the previous behaviour, and never a lost profile.
+    """
+    body = (text or "").strip()
+    current_at = _section_start(body, _PROFILE_CURRENT)
+    closed_at = _section_start(body, _PROFILE_CLOSED)
+    if current_at == -1 and closed_at == -1:
+        return body, ""
+    if closed_at == -1:
+        return body[current_at:].split(":", 1)[1].strip(), ""
+    if current_at == -1:
+        return "", body[closed_at:].split(":", 1)[1].strip()
+    if current_at < closed_at:
+        current = body[current_at:closed_at].split(":", 1)[1].strip()
+        closed = body[closed_at:].split(":", 1)[1].strip()
+    else:
+        current = body[current_at:].split(":", 1)[1].strip()
+        closed = body[closed_at:current_at].split(":", 1)[1].strip()
+    return current, closed

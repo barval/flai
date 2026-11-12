@@ -1253,6 +1253,114 @@ def memory_profile(user, lang, limit, apply):
     click.echo("stored" if stored else "store failed")
 
 
+def _message_text(content: str) -> str:
+    """Plain text of a stored message, whether it is a string or parts."""
+    import json
+
+    body = (content or "").strip()
+    if not body.startswith("["):
+        return body
+    try:
+        parts = json.loads(body)
+    except ValueError:
+        return body
+    return " ".join(
+        str(part.get("text") or "") for part in parts if isinstance(part, dict) and part.get("type") == "text"
+    ).strip()
+
+
+@click.command("memory-extract-backfill")
+@click.option("--user", required=True, help="Login whose messages are re-read")
+@click.option("--limit", default=30, show_default=True, help="Messages to consider")
+@click.option("--dry-run", is_flag=True, help="Report the yield without storing anything")
+@with_appcontext
+def memory_extract_backfill(user, limit, dry_run):
+    """Run fact extraction over messages stored before extraction existed.
+
+    The store fills from live messages only, so an installation whose history
+    predates extraction has nothing for ``memory-profile`` to consolidate. This
+    walks the most recent user messages and asks the extractor the same
+    question the live path asks, with the same gates: a personal-looking
+    message, the same strict parser, and a similarity check before storing.
+    """
+    from app.database import get_db
+    from app.memory_facts import detect_language, looks_personal, parse_memory_facts
+    from app.utils import format_prompt
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+    base = current_app.modules.get("base")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT m.content,
+                   (SELECT a.content FROM messages a
+                     WHERE a.session_id = m.session_id AND a.role = 'assistant' AND a.id > m.id
+                     ORDER BY a.id LIMIT 1) AS reply
+            FROM messages m
+            JOIN chat_sessions s ON s.id = m.session_id
+            WHERE s.user_id = %s AND m.role = 'user'
+            ORDER BY m.id DESC
+            LIMIT %s
+            """,
+            (user, limit),
+        )
+        rows = cursor.fetchall()
+
+    candidates = 0
+    stored = 0
+    for row in rows:
+        text = _message_text(row.get("content") or "")
+        if not text or not looks_personal(text):
+            continue
+        candidates += 1
+        lang = detect_language(text)
+        known = "\n".join(
+            f"- {str(item.get('text') or item.get('content') or '')[:200]}"
+            for item in slm.list_facts(limit=30, profile=user)[:30]
+        )
+        prompt = format_prompt(
+            "memory_extract.template",
+            {
+                "known_facts": known or "-",
+                "user_message": text,
+                "assistant_message": str(row.get("reply") or "")[:1500],
+            },
+            lang=lang,
+        )
+        if not prompt:
+            continue
+        raw = base.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0.1,
+        )
+        facts = parse_memory_facts(str(raw))
+        click.echo(f"  {text[:60]!r} -> {len(facts)} fact(s)")
+        for fact in facts:
+            try:
+                if slm.check_similarity(fact["fact"], profile=user) >= 0.85:
+                    continue
+            except Exception:
+                pass
+            if dry_run:
+                stored += 1
+                continue
+            if slm.remember(
+                fact["fact"],
+                metadata={"kind": fact["kind"], "confidence": fact["confidence"], "source": "llm_extract"},
+                profile=user,
+            ):
+                stored += 1
+
+    verdict = "would store" if dry_run else "stored"
+    click.echo(f"\nmessages {len(rows)}, candidates {candidates}, facts {verdict}: {stored}")
+
+
 @click.command("memory-eval")
 @click.option("--user", required=True, help="Login whose memory is evaluated")
 @click.option("--dataset", required=True, help="JSONL with {question, expected[]}")

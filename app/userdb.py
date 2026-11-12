@@ -192,7 +192,6 @@ def delete_user(login):
             "kg_doc_edges",
             "kg_doc_vectors",
             "kg_build_state",
-            "kg_communities",
         ):
             c.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
 

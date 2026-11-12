@@ -174,21 +174,33 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM facts-by-source failed: {e}")
         return []
 
-    def delete_fact(self, fact_id: str, profile: str | None = None) -> bool:
-        """Delete a specific fact by ID.
+    def delete_fact(
+        self,
+        fact_id: str,
+        profile: str | None = None,
+        reason: str | None = None,
+        merged_into: str | None = None,
+    ) -> bool:
+        """Retire a fact: the daemon archives it rather than dropping the row.
 
         Args:
-            fact_id: The ID of the fact to delete.
+            fact_id: The ID of the fact to retire.
             profile: User ID for per-user database isolation.
+            reason: Why it was retired (duplicate, decayed, model_response, superseded).
+            merged_into: The id of the fact that replaced it, when one did.
 
         Returns:
-            True if deleted successfully.
+            True if archived successfully.
         """
         if not self.available:
             return False
         payload: dict[str, Any] = {"id": fact_id}
         if profile:
             payload["profile"] = profile
+        if reason:
+            payload["reason"] = reason
+        if merged_into:
+            payload["merged_into"] = merged_into
         try:
             resp = requests.post(f"{self.url}/delete", json=payload, timeout=30)
             return resp.status_code == 200

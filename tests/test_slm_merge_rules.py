@@ -189,3 +189,43 @@ class TestTemporalDecay:
         ]
         to_delete = temporal_decay(facts, decay_days=90, min_confidence=0.5)
         assert "a" in to_delete
+
+
+class TestRetireReasons:
+    """A retired fact records why it was retired.
+
+    The store archives rather than deletes, but an archived row with no reason
+    is indistinguishable from a duplicate, a decayed entry and a fact replaced
+    by a newer one — and a consolidation cannot tell a closed fact from garbage
+    without that difference.
+    """
+
+    def test_merge_tells_the_store_why_a_fact_was_retired(self, test_app):
+        from app.slm_merge import merge_facts_for_user
+
+        calls = []
+
+        class FakeSlm:
+            available = False
+
+            def list_facts(self, limit=20, profile=None):
+                return [
+                    {"fact_id": "keep", "content": "Я люблю Python и пишу на нём каждый день",
+                     "created_at": "2026-11-10T10:00:00"},
+                    {"fact_id": "dup", "content": "Я люблю Python и пишу на нём каждый день!",
+                     "created_at": "2026-11-09T10:00:00"},
+                    {"fact_id": "other", "content": "Совсем другой факт про работу и коллег",
+                     "created_at": "2026-11-08T10:00:00"},
+                ]
+
+            def delete_fact(self, fact_id, profile=None, reason=None, merged_into=None):
+                calls.append((fact_id, reason))
+                return True
+
+        fake = FakeSlm()
+        with test_app.app_context():
+            test_app.modules["slm"] = fake
+            merge_facts_for_user(fake, "user", lang="ru")
+
+        assert calls, "the merge should retire the near-duplicate"
+        assert {reason for _fact_id, reason in calls} == {"duplicate"}

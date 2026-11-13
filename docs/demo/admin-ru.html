@@ -10485,6 +10485,8 @@ video {
 <div class="admin-container">
     <h2 class="admin-panel-title">Панель администратора</h2>
 
+    <div id="settings-conflicts" class="settings-conflicts" hidden></div>
+
     <\!-- Tab navigation -->
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="hardware">Оборудование</button>
@@ -13566,6 +13568,71 @@ body.dark-theme .settings-reset {
         flex: 1 1 100%;
     }
 }
+
+/* Settings source badge and the panel-versus-.env banner */
+.settings-conflicts {
+    margin: 0.75rem 0 1rem;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid #d97706;
+    background: rgba(217, 119, 6, 0.12);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.settings-conflicts p {
+    margin: 0.35rem 0;
+}
+
+.settings-conflicts ul {
+    margin: 0.25rem 0 0 1.1rem;
+    padding: 0;
+}
+
+.settings-source {
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.settings-source-panel {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.settings-source-env {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+.settings-source-default {
+    background: rgba(148, 163, 184, 0.25);
+}
+
+/* A value older than the one this version ships: one quiet line, no table. */
+.settings-version-default {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+}
+
+@media (max-width: 768px) {
+    .settings-conflicts {
+        max-height: 9rem;
+        overflow-y: auto;
+        font-size: 0.82rem;
+        padding: 0.6rem 0.7rem;
+    }
+
+    .settings-conflicts ul {
+        margin-left: 0.9rem;
+    }
+
+    .settings-source {
+        margin-left: 0.35rem;
+    }
+}
 </style>
 <script>
 window.ROOMS = [];
@@ -13635,6 +13702,12 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_load_error': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438",
     'settings_reset': "\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043a \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044e \u0438\u0437 .env",
     'settings_reset_done': "\u0421\u0431\u0440\u043e\u0448\u0435\u043d\u043e",
+    'Settings in the panel and in .env differ': "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0432 \u0430\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u0438 \u0438 \u0432 .env \u0440\u0430\u0437\u043b\u0438\u0447\u0430\u044e\u0442\u0441\u044f",
+    'The panel value is in effect for these parameters; the .env value is ignored': "\u0414\u043b\u044f \u044d\u0442\u0438\u0445 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u043e\u0432 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0442 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u0438\u0437 \u0430\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u0438; \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u0438\u0437 .env \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u044e\u0442\u0441\u044f",
+    'Source: panel': "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: \u043f\u0430\u043d\u0435\u043b\u044c",
+    'Source: .env': "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: .env",
+    'Source: default': "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u0435",
+    'This version ships': "\u0412 \u044d\u0442\u043e\u0439 \u0432\u0435\u0440\u0441\u0438\u0438",
     'settings_saved': "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e",
     'settings_saving': "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435\u2026",
     'settings_secret_empty': "\u041d\u0435 \u0437\u0430\u0434\u0430\u043d\u043e",
@@ -18506,6 +18579,20 @@ document.addEventListener('DOMContentLoaded', function() {
             markDirty();
         });
         valueCell.appendChild(input);
+        if (field.source) {
+            const badge = document.createElement('span');
+            badge.className = 'settings-source settings-source-' + field.source;
+            badge.textContent = t(field.source === 'panel' ? 'Source: panel'
+                : field.source === 'env' ? 'Source: .env' : 'Source: default');
+            valueCell.appendChild(badge);
+        }
+        const shipped = field.version_default;
+        if (field.version_differs) {
+            const hint = document.createElement('span');
+            hint.className = 'settings-version-default';
+            hint.textContent = t('This version ships') + ': ' + shipped;
+            valueCell.appendChild(hint);
+        }
         row.appendChild(valueCell);
 
         const defaultCell = document.createElement('td');
@@ -18638,7 +18725,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabButton = document.querySelector('.admin-tab[data-tab="settings"]');
     if (tabButton) tabButton.addEventListener('click', load);
 
+    async function loadConflicts() {
+        const box = document.getElementById('settings-conflicts');
+        if (!box) return;
+        try {
+            const response = await fetchWithCSRF('/admin/api/settings/conflicts');
+            const data = await response.json();
+            const conflicts = data.conflicts || [];
+            if (!conflicts.length) {
+                box.hidden = true;
+                return;
+            }
+            box.innerHTML = '';
+            const title = document.createElement('strong');
+            title.textContent = t('Settings in the panel and in .env differ');
+            box.appendChild(title);
+            const note = document.createElement('p');
+            note.textContent = t('The panel value is in effect for these parameters; the .env value is ignored');
+            box.appendChild(note);
+            const list = document.createElement('ul');
+            for (const item of conflicts) {
+                const row = document.createElement('li');
+                row.textContent = item.key + ' — ' + t('Source: panel') + ': ' + item.panel + ' · .env: ' + item.env;
+                list.appendChild(row);
+            }
+            box.appendChild(list);
+            box.hidden = false;
+        } catch (error) {
+            box.hidden = true;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        loadConflicts();
         const tab = document.getElementById('settings-tab');
         if (tab && tab.classList.contains('active')) load();
     });

@@ -13192,6 +13192,16 @@ const DOCUMENT_ACCEPT = [
     '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.eml', 'image/*'
 ].join(',');
 
+// The server states why it refused an upload: quota, size cap, unsupported
+// format, an unreadable or password-protected file, the folder limit. Dropping
+// that reason left every refusal reading as the same generic sentence. Its text
+// already carries the warning marker, which turns into a stutter inside an
+// alert that has just named the failure.
+function uploadReason(message) {
+    const text = typeof message === 'string' ? message.replace(/^\s*⚠️\s*/, '').trim() : '';
+    return text || t('unknown_error');
+}
+
 // Upload files one after another: a bulk pick must not open N parallel requests
 // that each re-read the quota, and the list reloads once at the end.
 function uploadDocuments(files, folderId) {
@@ -13209,7 +13219,7 @@ function uploadDocuments(files, folderId) {
             if (button && original) button.textContent = original;
             loadDocuments();
             if (failed.length) {
-                alert(t('error') + ': ' + t('document_upload_failed') + ' — ' + failed.join(', '));
+                alert(t('error') + ': ' + t('document_upload_failed') + '\n' + failed.join('\n'));
             }
             return;
         }
@@ -13220,9 +13230,9 @@ function uploadDocuments(files, folderId) {
         fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
-                if (data.status !== 'ok') failed.push(file.name);
+                if (data.status !== 'ok') failed.push(file.name + ': ' + uploadReason(data.error));
             })
-            .catch(() => failed.push(file.name))
+            .catch(() => failed.push(file.name + ': ' + t('unknown_error')))
             .finally(() => {
                 done++;
                 next();

@@ -10485,6 +10485,8 @@ video {
 <div class="admin-container">
     <h2 class="admin-panel-title">Admin Panel</h2>
 
+    <div id="settings-conflicts" class="settings-conflicts" hidden></div>
+
     <\!-- Tab navigation -->
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="hardware">Hardware</button>
@@ -13566,6 +13568,71 @@ body.dark-theme .settings-reset {
         flex: 1 1 100%;
     }
 }
+
+/* Settings source badge and the panel-versus-.env banner */
+.settings-conflicts {
+    margin: 0.75rem 0 1rem;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid #d97706;
+    background: rgba(217, 119, 6, 0.12);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.settings-conflicts p {
+    margin: 0.35rem 0;
+}
+
+.settings-conflicts ul {
+    margin: 0.25rem 0 0 1.1rem;
+    padding: 0;
+}
+
+.settings-source {
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.settings-source-panel {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.settings-source-env {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+.settings-source-default {
+    background: rgba(148, 163, 184, 0.25);
+}
+
+/* A value older than the one this version ships: one quiet line, no table. */
+.settings-version-default {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+}
+
+@media (max-width: 768px) {
+    .settings-conflicts {
+        max-height: 9rem;
+        overflow-y: auto;
+        font-size: 0.82rem;
+        padding: 0.6rem 0.7rem;
+    }
+
+    .settings-conflicts ul {
+        margin-left: 0.9rem;
+    }
+
+    .settings-source {
+        margin-left: 0.35rem;
+    }
+}
 </style>
 <script>
 window.ROOMS = [];
@@ -13635,6 +13702,12 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_load_error': "Failed to load settings",
     'settings_reset': "Reset to the .env value",
     'settings_reset_done': "Reset",
+    'Settings in the panel and in .env differ': "Settings in the panel and in .env differ",
+    'The panel value is in effect for these parameters; the .env value is ignored': "The panel value is in effect for these parameters; the .env value is ignored",
+    'Source: panel': "Source: panel",
+    'Source: .env': "Source: .env",
+    'Source: default': "Source: default",
+    'This version ships': "This version ships",
     'settings_saved': "Saved",
     'settings_saving': "Saving\u2026",
     'settings_secret_empty': "Not set",
@@ -18506,6 +18579,20 @@ document.addEventListener('DOMContentLoaded', function() {
             markDirty();
         });
         valueCell.appendChild(input);
+        if (field.source) {
+            const badge = document.createElement('span');
+            badge.className = 'settings-source settings-source-' + field.source;
+            badge.textContent = t(field.source === 'panel' ? 'Source: panel'
+                : field.source === 'env' ? 'Source: .env' : 'Source: default');
+            valueCell.appendChild(badge);
+        }
+        const shipped = field.version_default;
+        if (field.version_differs) {
+            const hint = document.createElement('span');
+            hint.className = 'settings-version-default';
+            hint.textContent = t('This version ships') + ': ' + shipped;
+            valueCell.appendChild(hint);
+        }
         row.appendChild(valueCell);
 
         const defaultCell = document.createElement('td');
@@ -18638,7 +18725,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabButton = document.querySelector('.admin-tab[data-tab="settings"]');
     if (tabButton) tabButton.addEventListener('click', load);
 
+    async function loadConflicts() {
+        const box = document.getElementById('settings-conflicts');
+        if (!box) return;
+        try {
+            const response = await fetchWithCSRF('/admin/api/settings/conflicts');
+            const data = await response.json();
+            const conflicts = data.conflicts || [];
+            if (!conflicts.length) {
+                box.hidden = true;
+                return;
+            }
+            box.innerHTML = '';
+            const title = document.createElement('strong');
+            title.textContent = t('Settings in the panel and in .env differ');
+            box.appendChild(title);
+            const note = document.createElement('p');
+            note.textContent = t('The panel value is in effect for these parameters; the .env value is ignored');
+            box.appendChild(note);
+            const list = document.createElement('ul');
+            for (const item of conflicts) {
+                const row = document.createElement('li');
+                row.textContent = item.key + ' — ' + t('Source: panel') + ': ' + item.panel + ' · .env: ' + item.env;
+                list.appendChild(row);
+            }
+            box.appendChild(list);
+            box.hidden = false;
+        } catch (error) {
+            box.hidden = true;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        loadConflicts();
         const tab = document.getElementById('settings-tab');
         if (tab && tab.classList.contains('active')) load();
     });

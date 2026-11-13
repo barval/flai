@@ -10,6 +10,17 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Long-term memory with facts in it** — v13.3 gave facts a typed schema, validity
+  intervals and a deterministic supersede, but a measured 44 real user messages
+  produced none: the extractor is not the bottleneck, the material is. Next:
+  extraction quality on real conversations, a labelled set for `memory-eval`, and
+  the profile consolidation run on something worth consolidating.
+- **A classifier that could replace the request kernel** — the zero-shot probe is
+  measured and parked: `laya-multilingual` scored 0.31–0.39 on the intent set
+  against the kernel's 0.89–1.00, and the vendor's own fine-tune reaches 0.766 on
+  its benchmark. Next: a few hundred labelled queries, a trained head or a
+  fine-tune, and the hybrid rule (confident → fast path, unsure → kernel) only if
+  it clears the kernel on our own cases.
 - **Deeper graph extraction, and a corpus where the graph earns its place in retrieval** — v13.2 shipped the
   graph as a reading instrument because measurements show no retrieval gain (see
   [GRAPH.md](GRAPH.md#measurements)). Next: a second extraction pass over entity pairs inside one sentence, a

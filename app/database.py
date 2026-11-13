@@ -370,6 +370,41 @@ def ensure_kg_schema(c):
     """)
 
 
+def ensure_memory_schema(c):
+    """Typed personal facts (v13.3).
+
+    Separate from the knowledge graph on purpose: the graph is rebuilt from
+    documents and can be thrown away, while these facts are the only record of
+    what the user said about themselves and are erased with the account.
+    """
+    # Typed personal facts. The triple makes a contradiction a lookup instead of
+    # a judgement, and the interval is what answers a question about the past —
+    # "where did I live in 2024" cannot be answered from a creation timestamp.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS memory_facts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT 'user',
+            predicate TEXT NOT NULL,
+            value TEXT NOT NULL,
+            value_norm TEXT NOT NULL,
+            sentence TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'profile',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            source TEXT NOT NULL DEFAULT 'llm_extract',
+            valid_from TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            valid_until TIMESTAMPTZ,
+            superseded_by UUID,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (user_id, subject, predicate, value_norm)
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_facts_active ON memory_facts (user_id, predicate) "
+        "WHERE valid_until IS NULL"
+    )
+
+
 def init_db():
     """Initialize the PostgreSQL database (create tables)."""
     _init_postgresql()
@@ -671,6 +706,7 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
     ensure_kg_schema(c)
+    ensure_memory_schema(c)
 
     # Seed default model_configs if not present.
     # v11.4: CPU mode seeds lightweight models (Qwen3VL-4B + gpt-oss-20b-mxfp4)

@@ -20,6 +20,7 @@
 
 - **The published demo could not draw the 3D graph, and a failed 3D attempt explained itself only once.** The demo inliner replaced CSS, JS and image references, but the graph loads its renderer lazily from a JS constant: the page asked `file:///static/vendor/…`, never loaded it, and every published page fell back to the 2D renderer. The bundle is now inlined and the guard rejects a surviving vendor reference. In the running app the reason a 3D attempt failed lived only in a status line the next message overwrote — it now stays on the button, so "it opened in 2D again" can be answered.
 
+- **A question about a named person went to a web search instead of the user's documents.** The marker router has always held the rule that a first-and-last-name question belongs to document search, and the request kernel's prompt omitted it — so with the kernel enabled (the default) "how old is <name>?" reached strangers' pages while the answer sat in the user's files, and the same question with "in my documents" routed correctly. The rule is in the kernel prompt now; two seed cases pin it, and the evaluation set still scores 1.000 with weather and rate questions still going to search.
 - **A retired fact recorded no reason.** `/delete` and `/forget` archive the row rather than dropping it, but `archive_reason` stayed empty for all 226 facts, so a duplicate, a decayed entry and a superseded fact were indistinguishable. The merge pipeline now passes `duplicate` / `decayed` / `model_response`, and consolidation passes `superseded`.
 
 ## [v13.2] — 2026-11-12

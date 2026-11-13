@@ -21,6 +21,10 @@ Choose exactly one:
 - Past tense about the conversation itself is history, not the action it mentions. Past tense about the world —
   yesterday's news, last week's events — is search.
 - A request to extract facts that live in the user's documents is rag, even when it describes past events.
+- A question about a specific person by first and last name — age, biography, résumé, dates, a family
+  detail — is rag, not search: those records live in the user's own files. The marker router has always
+  stated this rule and the kernel omitted it, so the same question routed to a web search on one path
+  and to document search on the other.
 - When the context says documents are attached to this message, a question whose answer may be in them is rag,
   even when the message does not mention documents and reads like a general fact about a person or an event.
 - In "query" keep proper names exactly as the user wrote them: never change their case or their gender form.

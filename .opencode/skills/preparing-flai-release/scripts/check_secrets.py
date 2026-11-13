@@ -42,6 +42,13 @@ PATTERNS = {
 
 BASE64_PAYLOAD_RE = re.compile(r"data:[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+")
 
+#: The project author's own name belongs in the copyright and nowhere else. A router
+#: test once quoted a real question containing it until a release audit replaced the
+#: subject with a fictional name — and nothing stopped the next one from being
+#: written. This guard file itself is exempt (its pattern is the name).
+AUTHOR_NAME_RE = re.compile(r"(барсуков|валери[йяюе])", re.IGNORECASE)
+COPYRIGHT_RE = re.compile(r"(copyright|©|\(c\)\s*\d{4})", re.IGNORECASE)
+
 # Documentation and fixtures carry deliberate placeholders; they are not leaks.
 PLACEHOLDER_RE = re.compile(
     r"(x{6,}|0{6,}|abcdefgh|12345678|9876543210|example|placeholder|fake|dummy|changeme|your[_-]?key)",
@@ -114,6 +121,17 @@ def scan(root: Path) -> list[dict[str, str]]:
                     }
                 )
                 break
+            else:
+                name = AUTHOR_NAME_RE.search(line)
+                if name and not COPYRIGHT_RE.search(line) and path.name != Path(__file__).name:
+                    findings.append(
+                        {
+                            "file": str(path.relative_to(root)),
+                            "line": str(number),
+                            "kind": "author name outside a copyright line",
+                            "preview": line.strip()[:60],
+                        }
+                    )
     return findings
 
 

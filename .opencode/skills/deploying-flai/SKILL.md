@@ -120,13 +120,36 @@ code inside it; only the checks above do.
 
 ## Phase 5 — Update an existing installation
 
+**The supported update is the install command itself, with the same flags**:
+
 ```bash
 docker exec flai-postgres pg_dump -U flai -d flai > backups/pre-update_$(date +%F_%H-%M-%S).sql
 git checkout <release branch or tag> && git pull --ff-only
+./deploy.sh --download-models <the same flags as the install>
+```
+
+It keeps the existing `.env`, runs `docker compose build` for **every service in those
+profiles**, then `up -d` — which is what rebuilds `web` and `services/*`, whose code
+lives in an image. `docker compose up -d` alone restarts the old images and is not an
+update. The script prints the compose command it used; take the file and profiles from
+that output, never from memory.
+
+Without the script, the equivalent sequence — note `build` with no service list:
+
+```bash
 docker compose -f <file> config >/dev/null        # catches a broken merge before it starts
-docker compose -f <file> build web <baked services>
+docker compose -f <file> build
 docker compose -f <file> up -d
 ```
+
+Then check that what runs is what the install command names:
+
+```bash
+docker compose -f <file> ps --services            # compare with the profiles in use
+```
+
+A service missing from that list means `.env` advertises a feature that is not running
+(search without `searxng`, memory without `superlocalmemory`, no TTS container).
 
 - `./app`, `./modules`, `./prompts` are bind-mounted: a restart is enough.
 - **`services/*` is baked into images.** A fixed bug there keeps running until the
@@ -138,6 +161,9 @@ docker compose -f <file> up -d
   Settings (the panel value overrides `.env`, and the panel marks each field's
   source and the value this version ships).
 - Never overwrite `.env` from `.env.example`: it carries their secrets and choices.
+  Since v13.3 a run without the original flags does not switch optional services off
+  either — it keeps them and says so (`--strict-stack` opts into switching them off).
+  Repeat the flags anyway: they decide which profiles are built and started.
 - After the update, repeat Phase 4.
 
 ## Phase 6 — Rollback

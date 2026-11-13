@@ -233,7 +233,7 @@ SD и LTX-Video используют отдельные GPU-контексты. 
 
 ### SSE-события инструментов
 
-SSE-события `tool_call` и `tool_result` в `events.js`. `TOOL_LABELS` сопоставляет имена инструментов с подписями в интерфейсе. `onToolCall(data)` показывает подпись прогресса, `onToolResult(data)` удаляет её.
+SSE-события `tool_call` и `tool_result` в `events.js`. `TOOL_META` сопоставляет имена инструментов с подписями в интерфейсе. `onToolCall(data)` показывает подпись прогресса, `onToolResult(data)` удаляет её.
 
 ## Агентский движок (v12.9)
 

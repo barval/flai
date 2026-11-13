@@ -238,7 +238,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 ### SSE Tool Events
 
-`tool_call` and `tool_result` SSE events in `events.js`. `TOOL_LABELS` maps tool names to UI labels. `onToolCall(data)` shows progress label, `onToolResult(data)` removes it.
+`tool_call` and `tool_result` SSE events in `events.js`. `TOOL_META` maps tool names to UI labels. `onToolCall(data)` shows progress label, `onToolResult(data)` removes it.
 
 ## Agentic Engine (v12.9)
 

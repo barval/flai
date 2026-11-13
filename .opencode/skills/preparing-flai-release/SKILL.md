@@ -29,6 +29,7 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 ```
 
 `check_dead_paths.py` reads every backticked path in `AGENTS.md` and `docs/*.md`
@@ -36,7 +37,11 @@ and fails on one that no longer exists — documentation drifts by path, and no 
 reads prose. Measured: the architecture summary still described
 `memory_extract.template` after the live path moved to `memory_triples.template`.
 
-The branch, translation, catalog-drift, API, TOC, secrets and dead-path scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+`check_doc_claims.py` resolves three kinds of claim mechanically: a `flask <command>`
+that no longer exists, an environment key named in backticks that nothing outside
+the documentation mentions, and a `with-…` compose profile no compose file defines.
+
+The branch, translation, catalog-drift, API, TOC, secrets, dead-path and doc-claim scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -291,6 +296,47 @@ Update:
 - `docs/CONFIGURATION.md` and `-ru`, `.env`, `.env.example` for every environment change; key order and sections match.
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/MODELS.md`, `docs/BENCHMARKS.md`, `docs/MONITORING.md` as touched.
 
+### Documentation accuracy audit
+
+Paths and named things are checked by the two scripts above. The rest is a
+reading job, and it is not optional: a release ships documentation that describes
+the interface, the limits and the defaults, and a wrong sentence costs a user more
+than a missing one.
+
+Read `README.md`/`README-ru.md`, `AGENTS.md` and every `docs/*.md` the release
+touched against the code, and check each claim type at its source:
+
+| Claim | Where the truth is |
+|---|---|
+| A limit, quota or default (size, pages, images, documents) | `app/config.py`, `app/settings_registry.py`, the route that enforces it |
+| A format, extension or MIME list | the validator (`validate_file`, `DOCUMENT_ACCEPT`), not the prose |
+| A settings key and its meaning | `DESCRIPTIONS` in `app/settings_registry.py` |
+| A CLI command and its flags | `@click.command` in `app/cli.py` and the option decorators |
+| An endpoint, method or payload | `app/routes/`, `docs/openapi-v1.yaml`, `docs/API.md` |
+| A compose profile or service | `docker-compose*.yml` |
+| A model name, size or hardware tier | `docs/MODELS.md`, `docs/BENCHMARKS.md`, the GGUF files on disk |
+| "One command", "no cloud", "everything local" | the code path that would contradict it |
+
+Then look for the failures a script cannot see:
+
+- **Two documents disagree.** The code decides; both documents get the same
+  sentence in the same commit. A README that promises what `TROUBLESHOOTING`
+  denies is worse than either alone.
+- **A name that no longer exists.** Measured: `TOOL_LABELS` in `ARCHITECTURE.md`
+  and its twin, where the code has `TOOL_META`; `FLM_SESSION_LIFETIME_SECONDS`
+  cited as a real setting in `TROUBLESHOOTING` and defined nowhere. Both read
+  perfectly and send a reader to something that is not there.
+- **A behaviour described in the present tense after it changed.** The architecture
+  summary described the old extraction template months after the live path moved.
+- **A default presented as "the" value.** A deployment keeps the `.env` of its
+  first install; a changed default reaches nobody automatically. If the release
+  changes one, the documents say so and name both ways to adopt it.
+- **A count.** "Eleven categories", "13 predicates", "five styles" — recount it
+  from the code, do not carry the number over.
+
+The audit ends with a written verdict per document: current, updated in this
+release, or stale with a named owner. "Looks fine" is not a verdict.
+
 **A list in the documentation is a claim about the code.** An accepted-format list, a settings table, a
 limit or a default must match `app/routes/documents.py`, `app/settings_registry.py` and `app/config.py`.
 When the release changes one of them, grep the whole tree for the old values — the same list is usually
@@ -491,6 +537,8 @@ Check and record evidence:
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
 | Documented paths exist | `check_dead_paths.py` | PASS / FAIL |
+| Documented commands, keys, profiles resolve | `check_doc_claims.py` | PASS / FAIL |
+| Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
 | Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
 | Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |
 | Demo pages current | `python -m demo.build --check`, `tests/test_demo_pages.py` | PASS / FAIL |
@@ -539,4 +587,5 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "I'll delete old dead code while I'm here." | Report it; delete only with approval, including old code. |
 | "A restart picked up the fix." | `services/*` code lives in the image; rebuild the service, then observe the fix — a healthy container proves nothing about the code inside. |
 | "The default changed, so installations get it." | Their `.env` keeps the old value and beats the code fallback; write the migration note and the What's New bullet. |
-| "The docs read correctly, so they are current." | Paths drift silently — `memory_extract.template` stayed documented after it stopped being used. Run `check_dead_paths.py`. |
+| "The docs read correctly, so they are current." | Paths and names drift silently — `memory_extract.template` and `TOOL_LABELS` both stayed documented after the code moved on. Run both scripts, then read. |
+| "The README says it, so it is the product truth." | The README is a document like any other. When it contradicts `docs/` or the code, the code wins and both documents are fixed together. |

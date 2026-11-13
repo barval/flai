@@ -33,3 +33,5 @@
 {"message": "what time is it now?", "lang": "en", "expected_intent": "none", "expected_tools": ["get_current_time"]}
 {"message": "сколько будет 2 + 2 * 2?", "lang": "ru", "expected_intent": "none", "expected_tools": ["calculator"]}
 {"message": "what is 2 + 2 * 2?", "lang": "en", "expected_intent": "none", "expected_tools": ["calculator"]}
+{"message": "сколько лет Игорю Соколову?", "lang": "ru", "expected_intent": "rag", "note": "a named private person lives in the library, not on the web"}
+{"message": "how old is Igor Sokolov?", "lang": "en", "expected_intent": "rag", "note": "the kernel omitted the marker router's named-person rule"}

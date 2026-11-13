@@ -36,8 +36,18 @@ def test_pages_are_self_contained(name):
     html = (PAGES / name).read_text("utf-8")
     assert "<script src=" not in html
     assert 'href="/static/' not in html
+    # The graph loads its renderer lazily from a JS constant, which an attribute
+    # pass cannot see: every published page asked file:///static/vendor/… and fell
+    # back to the 2D renderer.
+    assert "/static/vendor/" not in html
     assert "@import" not in html
     assert "url(http" not in html
+
+
+@pytest.mark.parametrize("name", ["chat-en.html", "chat-ru.html"])
+def test_the_3d_renderer_is_inlined_into_chat_pages(name):
+    html = (PAGES / name).read_text("utf-8")
+    assert "generateCreateBodyFunctionBody" in html, "the 3D bundle is missing from the page"
 
 
 @pytest.mark.parametrize("name", NAMES)

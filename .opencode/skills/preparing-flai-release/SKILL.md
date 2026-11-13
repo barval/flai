@@ -209,7 +209,10 @@ backup file or private path may reach a tracked file** — the demonstration and
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 ```
 
-The script reads tracked files. A real camera configuration (`services/room-snapshot-api/room-snapshot-api/config/cameras.conf`) is therefore invisible to it — and must stay that way: that whole tree is a nested clone listed in `.gitignore`. Confirm the ignore rule rather than the absence of the hit:
+The script reads tracked files. It also flags the project author's own name outside
+a copyright line: a fixture that quotes a real question containing a real name is
+the same class of artefact as a key — a router test carried one until a release
+audit replaced the subject with a fictional name. A real camera configuration (`services/room-snapshot-api/room-snapshot-api/config/cameras.conf`) is therefore invisible to it — and must stay that way: that whole tree is a nested clone listed in `.gitignore`. Confirm the ignore rule rather than the absence of the hit:
 
 ```bash
 git check-ignore -v services/room-snapshot-api/room-snapshot-api   # must print a .gitignore rule

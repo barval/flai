@@ -424,7 +424,7 @@ class BaseModule(TranslationMixin):
                 scored.append(fact)
         return (profile[:3] + scored)[:limit]
 
-    def _active_facts_block(self, user_id: str | None, lang: str = "ru") -> str:
+    def _active_facts_block(self, user_id: str | None, lang: str = "ru", query: str = "") -> str:
         """The typed facts that hold right now, as a short block.
 
         These supersede each other by rule, so this is the one place in the
@@ -436,20 +436,31 @@ class BaseModule(TranslationMixin):
             return ""
         try:
             from app.database import get_db
-            from app.memory_triples import active_triples
+            from app.memory_triples import active_triples, history_triples, period_years
 
             with get_db() as conn:
                 rows = active_triples(conn, user_id, limit=10)
+                years = period_years(query)
+                past = history_triples(conn, user_id, years[0], limit=5) if years else []
         except Exception:
             return ""
-        if not rows:
+        if not rows and not past:
             return ""
+        lines = [f"- {row['sentence']}" for row in rows]
+        # A question that names a year is answered from the interval the fact
+        # held, not from what happens to be true today.
+        known = {(row["predicate"], row["value"]) for row in rows}
+        for row in past:
+            if (row["predicate"], row["value"]) in known:
+                continue
+            label = f"в {years[0]}" if lang == "ru" else f"in {years[0]}"
+            lines.append(f"- {label}: {row['sentence']}")
         header = (
             "Что известно о пользователе (действующие факты):"
             if lang == "ru"
             else "What is known about the user (facts that hold now):"
         )
-        return "\n" + "\n".join([header] + [f"- {row['sentence']}" for row in rows])
+        return "\n" + "\n".join([header] + lines)
 
     def _get_context_for_model(
         self,
@@ -527,7 +538,7 @@ class BaseModule(TranslationMixin):
         # Step 3: Build the memory string and measure its real token cost.
         # Typed facts go first: they are the ones that cannot contradict each
         # other, and a recalled free-text note may still be stale.
-        slm_facts_str = self._active_facts_block(user_id, lang)
+        slm_facts_str = self._active_facts_block(user_id, lang, current_query)
         if all_facts:
             header = (
                 "Дополнительная информация из долговременной памяти:"

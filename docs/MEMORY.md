@@ -100,6 +100,45 @@ live profile: hit@5 0.8, MRR 0.7, 1.6 facts per question, p50 4.5 ms — the one
 miss was a Russian question against an English fact, which is the lexical
 recall's real limit, not a threshold problem.
 
+## Typed facts and their intervals
+
+A free-text fact makes every contradiction a judgement call: "I moved to Tbilisi"
+and "I live in Moscow" are different sentences. Measured on a synthetic profile,
+four consolidation runs over the same six facts produced four different splits,
+one of them inverting a preference. A typed fact turns the same question into a
+lookup.
+
+`memory_facts` stores `(subject, predicate, value)` with a validity interval. The
+predicate list is closed on purpose — with an open one a typo becomes a second
+predicate, and two predicates that mean the same thing never supersede each other:
+
+```
+lives_in, works_at, works_as, studied_at, born_in, born_on,
+has_pet, likes, dislikes, speaks, owns, lives_with, married_to
+```
+
+Storing a new value for the same `(subject, predicate)` closes the old row with
+`valid_until` set to the new fact's `valid_from`; returning to an earlier value
+reopens that row instead of failing on the unique constraint. Nothing is deleted,
+which is what answers "where did I live in 2024" from the interval the old fact
+held rather than from a creation timestamp.
+
+Whatever the closed schema cannot express goes into `notes` and is stored as a
+free-text fact, so the typed path does not narrow what memory hears.
+
+Recall injects the facts that hold now. A question that names a year also pulls
+the closed facts valid in that year, labelled with the year.
+
+```bash
+flask memory-extract-backfill --user <login>   # what extraction would produce from stored messages
+flask memory-triples-backfill --user <login>   # convert stored free-text facts into triples
+```
+
+A stated date is trusted only when its year appears in the message: with the
+schema example in the prompt, the model copied the example's date onto a message
+that named no time at all, and once the sample lost its date it ignored real
+ones. The year is the deterministic anchor for both failures.
+
 ## Configuration
 
 ```bash

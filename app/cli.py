@@ -1422,6 +1422,81 @@ def memory_extract_backfill(user, limit, dry_run):
     click.echo(f"\nmessages {len(rows)}, candidates {candidates}, facts {verdict}: {stored}")
 
 
+@click.command("memory-triples-backfill")
+@click.option("--user", required=True, help="Login whose stored facts are converted")
+@click.option("--limit", default=50, show_default=True, help="Facts to consider")
+@click.option("--dry-run", is_flag=True, help="Report the conversion without writing")
+@with_appcontext
+def memory_triples_backfill(user, limit, dry_run):
+    """Convert existing free-text facts into typed triples.
+
+    The typed store starts empty on an installation that already has facts. Each
+    stored fact is asked the same question the live extractor asks; when the
+    answer covers it, the free-text row is retired so recall does not see the
+    same statement twice. A fact the closed schema cannot express is left alone.
+    """
+    from app.database import get_db
+    from app.memory_facts import detect_language
+    from app.memory_triples import active_triples, parse_answer, store_triple
+    from app.utils import format_prompt
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+    base = current_app.modules.get("base")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    material = [
+        fact
+        for fact in facts
+        if fact.get("source") != "profile_consolidation"
+        and str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project", "note")
+        and (fact.get("content") or fact.get("text"))
+    ]
+
+    converted = 0
+    retired = 0
+    for fact in material:
+        text = str(fact.get("content") or fact.get("text"))[:400]
+        lang = detect_language(text)
+        with get_db() as conn:
+            known = "\n".join(f"- {row['sentence']}" for row in active_triples(conn, user, limit=10))
+        prompt = format_prompt(
+            "memory_triples.template",
+            {"known_facts": known or "-", "user_message": text, "assistant_message": ""},
+            lang=lang,
+        )
+        if not prompt:
+            continue
+        raw = base.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0.1,
+        )
+        triples, _notes = parse_answer(str(raw), source=text)
+        click.echo(f"  {text[:60]!r} -> {len(triples)} triple(s)")
+        stored = 0
+        for triple in triples:
+            if dry_run:
+                stored += 1
+                continue
+            with get_db() as conn:
+                if store_triple(conn, user, triple) in ("added", "superseded"):
+                    stored += 1
+        if (
+            stored
+            and not dry_run
+            and fact.get("fact_id")
+            and slm.delete_fact(fact["fact_id"], profile=user, reason="superseded")
+        ):
+            retired += 1
+        converted += stored
+
+    verdict = "would store" if dry_run else "stored"
+    click.echo(f"\nfacts {len(material)}, triples {verdict} {converted}, retired {retired}")
+
+
 @click.command("memory-eval")
 @click.option("--user", required=True, help="Login whose memory is evaluated")
 @click.option("--dataset", required=True, help="JSONL with {question, expected[]}")

@@ -245,3 +245,34 @@ def parse_answer(answer: str, source: str = "") -> tuple[list[dict[str, Any]], l
                 if len(text) >= 5 and text not in notes:
                     notes.append(text)
     return facts, notes[:5]
+
+
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def period_years(text: str) -> list[int]:
+    """Years named in a question, at most two."""
+    years: list[int] = []
+    for match in _YEAR.finditer(text or ""):
+        year = int(match.group(0))
+        if year not in years:
+            years.append(year)
+    return years[:2]
+
+
+def history_triples(conn, user_id: str, year: int, limit: int = 5) -> list[dict[str, Any]]:
+    """Facts that held at some point during a named year.
+
+    This is what a closed interval is for: "where did I live in 2024" cannot be
+    answered from a creation timestamp, only from the period the fact was true.
+    """
+    start = datetime(year, 1, 1, tzinfo=UTC)
+    end = datetime(year + 1, 1, 1, tzinfo=UTC)
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT predicate, value, sentence, valid_from, valid_until FROM memory_facts "
+            "WHERE user_id = %s AND valid_from < %s AND (valid_until IS NULL OR valid_until > %s) "
+            "ORDER BY valid_from DESC LIMIT %s",
+            (user_id, end, start, limit),
+        )
+        return list(cursor.fetchall())

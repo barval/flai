@@ -73,9 +73,10 @@ def _grounded_valid_from(fact: dict[str, Any], source: str) -> datetime:
     lost its date it started ignoring real ones. The year is the anchor — a
     month without its year in the message is not a date the user stated.
     """
-    year = fact["valid_from"].strftime("%Y")
-    if year and year in (source or ""):
-        return fact["valid_from"]
+    value = fact.get("valid_from")
+    year = value.strftime("%Y") if isinstance(value, datetime) else ""
+    if year and isinstance(value, datetime) and year in (source or ""):
+        return value
     return datetime.now(UTC)
 
 

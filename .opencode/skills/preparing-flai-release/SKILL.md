@@ -28,9 +28,15 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_api_docs.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
 ```
 
-The branch, translation, catalog-drift, API, TOC and secrets scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+`check_dead_paths.py` reads every backticked path in `AGENTS.md` and `docs/*.md`
+and fails on one that no longer exists — documentation drifts by path, and no test
+reads prose. Measured: the architecture summary still described
+`memory_extract.template` after the live path moved to `memory_triples.template`.
+
+The branch, translation, catalog-drift, API, TOC, secrets and dead-path scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -145,6 +151,11 @@ Classify every remaining hit:
 - Every new user-facing string is wrapped in `_()`, `_tr()` or `gettext()`.
 - Errors go through `_build_error_response()` or start with `⚠️ `; raw `str(e)` is never returned.
 - New JS `TRANSLATIONS` keys exist in both languages and in the fallback layer.
+- Adding a settings key is four edits, not one: `DESCRIPTIONS` in
+  `app/settings_registry.py`, the `msgid` in both catalogues, and the string in the
+  `TRANSLATIONS` map in `app/templates/admin.html`. `tests/test_settings.py` fails
+  on a missing one, so a release that skips it fails CI instead of shipping raw
+  English to the panel.
 
 ### Translations
 
@@ -356,8 +367,46 @@ check `git status --short demo/` and `git diff --stat docs/demo/` before committ
 content (`python -m demo.capture`: requests, answers, images, videos) happens **only on an explicit
 user request**; a UI change never re-captures.
 
-Environment sync (`.env.example` deliberately comments out optional keys, so the comparison must
-include them; a plain `^KEY=` grep reports every optional key as missing):
+### Deployment scripts and baked-in services
+
+`deploy.sh` and `deploy-ru.sh` are code that ships: they choose the compose file,
+the profiles and the `.env` a fresh installation starts with. Opening the line
+changes only their four version strings; whether the rest still matches the
+release is a separate question, and no test answers it:
+
+- every environment key the release adds, renames or drops appears in
+  `.env.example` **and** in the deploy script's `.env` writer — the parity diff
+  below finds the first half, not the second;
+- every new service or profile is reachable from the documented command, and the
+  profiles in `AGENTS.md` and the READMEs name it;
+- `docker compose -f <file> config` exits `0` for each compose entry a script
+  names. It costs nothing and catches the broken merge before a user does.
+
+**A restart is not a deploy for a baked-in service.** `./app`, `./modules` and
+`./prompts` are bind-mounted; `services/*` and the wrapper beside them are not.
+`superlocalmemory` is the measured case: its code lives in the image, so a fixed
+bug keeps running until `docker compose build superlocalmemory`. For every service
+whose code changed, rebuild it, restart it and confirm the change is live
+(`/health`, a log line, the field that was fixed) — a container that reports
+healthy says nothing about the code inside it.
+
+**Liveness is part of the feature.** A release that adds or changes a background
+service owes something that reports its death: a `/health` field, a log warning or
+a metric. The SLM daemon was down for four days while the wrapper answered `200`
+and every write reported success; what closed it was a body check plus
+`services.slm` in `/health`.
+
+A changed default does **not** reach an existing installation: the deployment
+keeps the `.env` of its first install, and the environment value beats the code
+fallback. Such a release needs a migration note in `CHANGELOG.md` and, when a user
+would notice, a What's New bullet naming the new value and both ways to get it —
+edit `.env`, or save it in the panel, which overrides `.env`. The panel marks each
+field's source and the value this version ships, so the note can point at it.
+
+### Environment sync
+
+`.env.example` deliberately comments out optional keys, so the comparison must
+include them; a plain `^KEY=` grep reports every optional key as missing:
 
 ```bash
 diff -u <(grep -oE '^#? *[A-Z0-9_]+=' .env.example | sed -E 's/^#? *//' | sort -u) \
@@ -441,6 +490,9 @@ Check and record evidence:
 | No secrets or real data | `check_secrets.py` + classification | PASS / FAIL |
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
+| Documented paths exist | `check_dead_paths.py` | PASS / FAIL |
+| Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
+| Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |
 | Demo pages current | `python -m demo.build --check`, `tests/test_demo_pages.py` | PASS / FAIL |
 | Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
@@ -485,3 +537,6 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "Full pytest is the only proof." | Narrow runs are the default; the full suite needs explicit approval and a RAM budget. |
 | "I'll merge master into the release branch." | No. Promote the release branch to master after approval. |
 | "I'll delete old dead code while I'm here." | Report it; delete only with approval, including old code. |
+| "A restart picked up the fix." | `services/*` code lives in the image; rebuild the service, then observe the fix — a healthy container proves nothing about the code inside. |
+| "The default changed, so installations get it." | Their `.env` keeps the old value and beats the code fallback; write the migration note and the What's New bullet. |
+| "The docs read correctly, so they are current." | Paths drift silently — `memory_extract.template` stayed documented after it stopped being used. Run `check_dead_paths.py`. |

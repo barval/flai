@@ -28,6 +28,10 @@ RUN pip install --no-cache-dir -r requirements.lock
 # Copying the code
 COPY . .
 
+# The defaults this version declares: the admin panel compares a live .env
+# against this file, because a value frozen in .env never picks up a new default.
+COPY .env.example /app/.env.example
+
 RUN pybabel compile -d translations && \
     addgroup --system --gid 1000 appuser && \
     adduser --system --uid 1000 --gid 1000 appuser && \

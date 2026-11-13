@@ -1,3 +1,25 @@
+## [v13.3] — 2026-11-13
+
+### Added
+
+- **Typed personal facts with validity intervals.** Long-term memory stores `(subject, predicate, value)` in the PostgreSQL `memory_facts` table together with a `[valid_from, valid_until]` interval, instead of free text alone. Storing a newer value for the same `(subject, predicate)` closes the old row with `valid_until` set to the new fact's start, and returning to an earlier value reopens it, so nothing is deleted. The predicate list is closed (13 predicates): measured on a synthetic profile, four consolidation runs over the same six free-text facts produced four different splits, one of them inverting a preference, and an open vocabulary would let a typo become a predicate that can never supersede anything. Whatever the schema cannot express is kept as a note, so the typed path does not narrow what memory hears. → [MEMORY.md](docs/MEMORY.md)
+
+- **The profile separates what holds from what no longer does.** Consolidation returns two parts: `CURRENT` is the always-injected block, `CLOSED` is stored under `kind=profile_history` and is never injected; a fact named in `CLOSED` is quoted verbatim and its source row is retired. Before this, "lives in Moscow" and "lives in Tbilisi" reached the context at the same time.
+
+- **A question that names a past year is answered from the interval a fact held.** "Where did I live in 2024" pulls the facts valid in that year, labelled with the year, instead of what happens to be true today.
+
+- **`flask memory-extract-backfill` and `flask memory-triples-backfill`.** The first reports what extraction would produce from stored messages (dry run or write), the second converts existing free-text facts into triples and retires the source row. Both exist because the store fills from live messages only, and an empty store could not be told apart from a dead extractor.
+
+### Fixed
+
+- **The document panel states why an upload was refused.** The route answers `{error: …}` — quota, size cap, unsupported format, an unreadable or password-protected document, the folder limit — and the panel kept only the file name, so every refusal read as the same sentence with no cause.
+
+- **A failed write to long-term memory was reported as saved.** `remember()` checked only the HTTP status, while the wrapper answers `200` with `{"success": false}` when the daemon refuses. The daemon had been down since 9 November: the store silently stopped growing while every call looked successful.
+
+- **Fact metadata survived neither a daemon id change nor a rebuild.** The side store was keyed by fact id alone, and 113 of 226 ids did not match the fact table, so `kind`, `source` and `confidence` became unreadable and every fact looked unclassified. The store now carries a hash of the normalized text, recall falls back to it and repairs the link in place.
+
+- **A retired fact recorded no reason.** `/delete` and `/forget` archive the row rather than dropping it, but `archive_reason` stayed empty for all 226 facts, so a duplicate, a decayed entry and a superseded fact were indistinguishable. The merge pipeline now passes `duplicate` / `decayed` / `model_response`, and consolidation passes `superseded`.
+
 ## [v13.2] — 2026-11-12
 
 ### Added

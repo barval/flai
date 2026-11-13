@@ -44,7 +44,12 @@ it instead of guessing.
 - **No blind search-and-replace.** `sed -i 's/12.6/12.7/'` corrupts
   `CUDA_VERSION_SD="12.6.3"` and every historical `(v12.6)` annotation.
   Edit the listed markers by hand and leave everything else to the report.
-- The mandatory set is exactly what the reference commit touched. Anything
+- **Order.** Opening is the first action of a release cycle. A `fix/` or `features/`
+branch for the new line is cut from `TARGET` **after** Phase 1; a branch cut from
+`SOURCE` belongs to the line that is already released, and its work silently misses
+the new line until someone notices.
+
+The mandatory set is exactly what the reference commit touched. Anything
   else that still says `PREV` is **reported**, never silently rewritten.
 - `What's New` is empty when the line opens. Filling it is
   `preparing-flai-release` Phase 4.
@@ -66,6 +71,13 @@ git log -1 --format='%ad %s' --date=short "$SOURCE"
 
 Record the `SOURCE` head date: it becomes the date of the previous CHANGELOG
 section.
+
+A dirty tree blocks the cut. Separate what is yours from what a tool wrote: files
+such as `.githooks/post-checkout` are installed per machine by graphify and belong
+in `.gitignore` — the exact rule is `.githooks/post-*`, never `.githooks/`, because
+the repository's own `commit-msg` hook must stay tracked. Ignoring does not disable
+them: `core.hooksPath` runs them wherever they live. Never delete a file you did
+not create, and never commit it as part of the opening.
 
 ## Phase 1 — Cut the branch
 
@@ -133,6 +145,11 @@ Two edits, both in `CHANGELOG.md`:
 2. Insert above it: `## [v12.7] — Unreleased`, followed by no subsections.
    Subsection headings (`### Added`, `### Fixed`, …) are added when they have
    content, never empty.
+
+The section may already carry entries: work written during the cycle belongs
+there, and writing each change as it lands beats reconstructing the list from
+`git log` at the gate. What is fixed is the gate, not the moment of writing — the
+section is complete before the release.
 
 The new section stays `Unreleased` for the whole cycle; `preparing-flai-release`
 dates it at release time. A release line without a CHANGELOG section is not

@@ -179,7 +179,7 @@ docker inspect --format '{{.RestartCount}} {{.State.Health.Status}}' flai-web
 docker logs flai-web --tail 200
 ```
 
-A crash loop usually means a configuration error rather than a code bug. The most common cause is a malformed `.env` value. `FLM_SESSION_LIFETIME_SECONDS` and similar lifetime settings are fixed in code and have no env override — setting them does nothing.
+A crash loop usually means a configuration error rather than a code bug. The most common cause is a malformed `.env` value. Some values are fixed in code and have no environment override at all — the 8-hour session lifetime is one — so setting a variable for them does nothing.
 
 ### Requests feel slow but no model is loaded
 

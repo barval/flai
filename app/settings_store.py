@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from app.database import get_db
@@ -26,6 +27,102 @@ logger = logging.getLogger(__name__)
 
 AUDIT_RETENTION_DAYS = 45
 REDACTED = "••••"
+_MASK = "••••"
+
+
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
+
+def comparable(value: Any) -> str:
+    """Canonical text for comparing a stored value with a template value.
+
+    Booleans arrive as ``True`` from the database and as ``1`` from a template;
+    comparing their text would report every enabled feature as a drift.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value).strip().lower()
+    if text in _TRUE:
+        return "true"
+    if text in _FALSE:
+        return "false"
+    return text
+
+
+def _as_text(value: Any) -> str:
+    """Comparable text for a stored value and an environment string."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value).strip()
+
+
+def settings_conflicts() -> list[dict[str, str]]:
+    """Saved settings that differ from .env, and which value is actually running.
+
+    Precedence is database > environment, so a saved override always wins. The
+    disagreement still matters: an administrator who edits .env expects it to
+    apply, and the panel keeps showing its own value without saying that the
+    environment one is ignored — measured on this installation, the panel and
+    .env disagreed about model choice and several limits.
+    """
+    overrides = load_overrides()
+    conflicts: list[dict[str, str]] = []
+    for key in movable_keys():
+        if key not in overrides:
+            continue
+        env_value = os.getenv(key)
+        if env_value is None:
+            continue
+        panel_text = _as_text(overrides[key])
+        env_text = _as_text(env_value)
+        if panel_text.lower() == env_text.lower():
+            continue
+        masked = key in SECRET_KEYS
+        conflicts.append(
+            {
+                "key": key,
+                "panel": _MASK if masked else panel_text,
+                "env": _MASK if masked else env_text,
+                "effective": "panel",
+            }
+        )
+    return conflicts
+
+
+TEMPLATE_PATH = os.environ.get("ENV_TEMPLATE_PATH", "/app/.env.example")
+_VERSION_DEFAULTS: dict[str, str] = {}
+_VERSION_DEFAULTS_AT = 0.0
+
+
+def version_defaults() -> dict[str, str]:
+    """Values declared by the ``.env.example`` shipped with this version.
+
+    A deployment keeps its ``.env`` from the first install, so a default changed
+    in a later release never reaches it: the environment value wins over the
+    code fallback. Showing the shipped value next to the live one is the only
+    way an administrator can see that their value is older than the version.
+    """
+    global _VERSION_DEFAULTS, _VERSION_DEFAULTS_AT
+    try:
+        mtime = os.path.getmtime(TEMPLATE_PATH)
+    except OSError:
+        return {}
+    if _VERSION_DEFAULTS and mtime <= _VERSION_DEFAULTS_AT:
+        return _VERSION_DEFAULTS
+    values: dict[str, str] = {}
+    try:
+        with open(TEMPLATE_PATH, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        return {}
+    _VERSION_DEFAULTS, _VERSION_DEFAULTS_AT = values, mtime
+    return values
 
 
 def load_overrides() -> dict[str, Any]:

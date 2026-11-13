@@ -126,3 +126,7 @@ __pycache__/
 # Pip build artifacts
 
 backups/
+
+# Graphify installs its refresh hooks into .githooks on each machine; only the
+# repository's own commit-msg hook belongs in the tree.
+.githooks/post-*

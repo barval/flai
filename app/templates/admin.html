@@ -3,6 +3,8 @@
 {% block content %}
 <div class="admin-container">
     <h2 class="admin-panel-title">{{ _('Admin Panel') }}</h2>
+
+    <div id="settings-conflicts" class="settings-conflicts" hidden></div>
     
     <!-- Tab navigation -->
     <div class="admin-tabs">
@@ -597,6 +599,12 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'settings_load_error': {{ _('Failed to load settings')|tojson }},
     'settings_reset': {{ _('Reset to the .env value')|tojson }},
     'settings_reset_done': {{ _('Reset')|tojson }},
+    'Settings in the panel and in .env differ': {{ _('Settings in the panel and in .env differ')|tojson }},
+    'The panel value is in effect for these parameters; the .env value is ignored': {{ _('The panel value is in effect for these parameters; the .env value is ignored')|tojson }},
+    'Source: panel': {{ _('Source: panel')|tojson }},
+    'Source: .env': {{ _('Source: .env')|tojson }},
+    'Source: default': {{ _('Source: default')|tojson }},
+    'This version ships': {{ _('This version ships')|tojson }},
     'settings_saved': {{ _('Saved')|tojson }},
     'settings_saving': {{ _('Saving…')|tojson }},
     'settings_secret_empty': {{ _('Not set')|tojson }},

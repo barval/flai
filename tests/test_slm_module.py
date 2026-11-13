@@ -185,3 +185,45 @@ class TestSlmModuleOperations:
             assert results == []
             call_kwargs = mock_post.call_args[1]
             assert call_kwargs["json"]["profile"] == "dave"
+
+
+class TestRememberReadsTheBody:
+    """The wrapper answers 200 with {"success": false} when the daemon refused.
+
+    A status-code check alone reported every write as saved while the daemon was
+    down: the store quietly stopped growing and nothing failed loudly.
+    """
+
+    def _module(self):
+        from modules.slm import SlmModule
+
+        module = SlmModule()
+        module.url = "http://slm.test"
+        module.available = True
+        return module
+
+    def test_a_refused_write_is_not_reported_as_saved(self, monkeypatch):
+        import requests
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"success": False, "error": "daemon down"}
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: Response())
+        assert self._module().remember("Я живу в Тбилиси", profile="user") is False
+
+    def test_an_accepted_write_is_saved(self, monkeypatch):
+        import requests
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"success": True, "fact_ids": ["abc"]}
+
+        monkeypatch.setattr(requests, "post", lambda *a, **k: Response())
+        assert self._module().remember("Я живу в Тбилиси", profile="user") is True

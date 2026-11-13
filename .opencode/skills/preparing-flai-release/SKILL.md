@@ -28,9 +28,20 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_api_docs.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 ```
 
-The branch, translation, catalog-drift, API, TOC and secrets scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
+`check_dead_paths.py` reads every backticked path in `AGENTS.md` and `docs/*.md`
+and fails on one that no longer exists — documentation drifts by path, and no test
+reads prose. Measured: the architecture summary still described
+`memory_extract.template` after the live path moved to `memory_triples.template`.
+
+`check_doc_claims.py` resolves three kinds of claim mechanically: a `flask <command>`
+that no longer exists, an environment key named in backticks that nothing outside
+the documentation mentions, and a `with-…` compose profile no compose file defines.
+
+The branch, translation, catalog-drift, API, TOC, secrets, dead-path and doc-claim scripts accept `--json`; run any script with `--help` for details. A non-zero exit is evidence, not a reason to bypass the check.
 
 ## Hard rules
 
@@ -145,6 +156,11 @@ Classify every remaining hit:
 - Every new user-facing string is wrapped in `_()`, `_tr()` or `gettext()`.
 - Errors go through `_build_error_response()` or start with `⚠️ `; raw `str(e)` is never returned.
 - New JS `TRANSLATIONS` keys exist in both languages and in the fallback layer.
+- Adding a settings key is four edits, not one: `DESCRIPTIONS` in
+  `app/settings_registry.py`, the `msgid` in both catalogues, and the string in the
+  `TRANSLATIONS` map in `app/templates/admin.html`. `tests/test_settings.py` fails
+  on a missing one, so a release that skips it fails CI instead of shipping raw
+  English to the panel.
 
 ### Translations
 
@@ -280,6 +296,47 @@ Update:
 - `docs/CONFIGURATION.md` and `-ru`, `.env`, `.env.example` for every environment change; key order and sections match.
 - `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/MODELS.md`, `docs/BENCHMARKS.md`, `docs/MONITORING.md` as touched.
 
+### Documentation accuracy audit
+
+Paths and named things are checked by the two scripts above. The rest is a
+reading job, and it is not optional: a release ships documentation that describes
+the interface, the limits and the defaults, and a wrong sentence costs a user more
+than a missing one.
+
+Read `README.md`/`README-ru.md`, `AGENTS.md` and every `docs/*.md` the release
+touched against the code, and check each claim type at its source:
+
+| Claim | Where the truth is |
+|---|---|
+| A limit, quota or default (size, pages, images, documents) | `app/config.py`, `app/settings_registry.py`, the route that enforces it |
+| A format, extension or MIME list | the validator (`validate_file`, `DOCUMENT_ACCEPT`), not the prose |
+| A settings key and its meaning | `DESCRIPTIONS` in `app/settings_registry.py` |
+| A CLI command and its flags | `@click.command` in `app/cli.py` and the option decorators |
+| An endpoint, method or payload | `app/routes/`, `docs/openapi-v1.yaml`, `docs/API.md` |
+| A compose profile or service | `docker-compose*.yml` |
+| A model name, size or hardware tier | `docs/MODELS.md`, `docs/BENCHMARKS.md`, the GGUF files on disk |
+| "One command", "no cloud", "everything local" | the code path that would contradict it |
+
+Then look for the failures a script cannot see:
+
+- **Two documents disagree.** The code decides; both documents get the same
+  sentence in the same commit. A README that promises what `TROUBLESHOOTING`
+  denies is worse than either alone.
+- **A name that no longer exists.** Measured: `TOOL_LABELS` in `ARCHITECTURE.md`
+  and its twin, where the code has `TOOL_META`; `FLM_SESSION_LIFETIME_SECONDS`
+  cited as a real setting in `TROUBLESHOOTING` and defined nowhere. Both read
+  perfectly and send a reader to something that is not there.
+- **A behaviour described in the present tense after it changed.** The architecture
+  summary described the old extraction template months after the live path moved.
+- **A default presented as "the" value.** A deployment keeps the `.env` of its
+  first install; a changed default reaches nobody automatically. If the release
+  changes one, the documents say so and name both ways to adopt it.
+- **A count.** "Eleven categories", "13 predicates", "five styles" — recount it
+  from the code, do not carry the number over.
+
+The audit ends with a written verdict per document: current, updated in this
+release, or stale with a named owner. "Looks fine" is not a verdict.
+
 **A list in the documentation is a claim about the code.** An accepted-format list, a settings table, a
 limit or a default must match `app/routes/documents.py`, `app/settings_registry.py` and `app/config.py`.
 When the release changes one of them, grep the whole tree for the old values — the same list is usually
@@ -356,8 +413,46 @@ check `git status --short demo/` and `git diff --stat docs/demo/` before committ
 content (`python -m demo.capture`: requests, answers, images, videos) happens **only on an explicit
 user request**; a UI change never re-captures.
 
-Environment sync (`.env.example` deliberately comments out optional keys, so the comparison must
-include them; a plain `^KEY=` grep reports every optional key as missing):
+### Deployment scripts and baked-in services
+
+`deploy.sh` and `deploy-ru.sh` are code that ships: they choose the compose file,
+the profiles and the `.env` a fresh installation starts with. Opening the line
+changes only their four version strings; whether the rest still matches the
+release is a separate question, and no test answers it:
+
+- every environment key the release adds, renames or drops appears in
+  `.env.example` **and** in the deploy script's `.env` writer — the parity diff
+  below finds the first half, not the second;
+- every new service or profile is reachable from the documented command, and the
+  profiles in `AGENTS.md` and the READMEs name it;
+- `docker compose -f <file> config` exits `0` for each compose entry a script
+  names. It costs nothing and catches the broken merge before a user does.
+
+**A restart is not a deploy for a baked-in service.** `./app`, `./modules` and
+`./prompts` are bind-mounted; `services/*` and the wrapper beside them are not.
+`superlocalmemory` is the measured case: its code lives in the image, so a fixed
+bug keeps running until `docker compose build superlocalmemory`. For every service
+whose code changed, rebuild it, restart it and confirm the change is live
+(`/health`, a log line, the field that was fixed) — a container that reports
+healthy says nothing about the code inside it.
+
+**Liveness is part of the feature.** A release that adds or changes a background
+service owes something that reports its death: a `/health` field, a log warning or
+a metric. The SLM daemon was down for four days while the wrapper answered `200`
+and every write reported success; what closed it was a body check plus
+`services.slm` in `/health`.
+
+A changed default does **not** reach an existing installation: the deployment
+keeps the `.env` of its first install, and the environment value beats the code
+fallback. Such a release needs a migration note in `CHANGELOG.md` and, when a user
+would notice, a What's New bullet naming the new value and both ways to get it —
+edit `.env`, or save it in the panel, which overrides `.env`. The panel marks each
+field's source and the value this version ships, so the note can point at it.
+
+### Environment sync
+
+`.env.example` deliberately comments out optional keys, so the comparison must
+include them; a plain `^KEY=` grep reports every optional key as missing:
 
 ```bash
 diff -u <(grep -oE '^#? *[A-Z0-9_]+=' .env.example | sed -E 's/^#? *//' | sort -u) \
@@ -441,6 +536,11 @@ Check and record evidence:
 | No secrets or real data | `check_secrets.py` + classification | PASS / FAIL |
 | Dead code | `ruff --select F...`, diff review | PASS / FAIL |
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
+| Documented paths exist | `check_dead_paths.py` | PASS / FAIL |
+| Documented commands, keys, profiles resolve | `check_doc_claims.py` | PASS / FAIL |
+| Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
+| Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
+| Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |
 | Demo pages current | `python -m demo.build --check`, `tests/test_demo_pages.py` | PASS / FAIL |
 | Roadmap reconciled | delivered items removed, next cycle listed | PASS / FAIL |
 | README TOC resolves | `check_readme_toc.py` | PASS / FAIL |
@@ -485,3 +585,7 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "Full pytest is the only proof." | Narrow runs are the default; the full suite needs explicit approval and a RAM budget. |
 | "I'll merge master into the release branch." | No. Promote the release branch to master after approval. |
 | "I'll delete old dead code while I'm here." | Report it; delete only with approval, including old code. |
+| "A restart picked up the fix." | `services/*` code lives in the image; rebuild the service, then observe the fix — a healthy container proves nothing about the code inside. |
+| "The default changed, so installations get it." | Their `.env` keeps the old value and beats the code fallback; write the migration note and the What's New bullet. |
+| "The docs read correctly, so they are current." | Paths and names drift silently — `memory_extract.template` and `TOOL_LABELS` both stayed documented after the code moved on. Run both scripts, then read. |
+| "The README says it, so it is the product truth." | The README is a document like any other. When it contradicts `docs/` or the code, the code wins and both documents are fixed together. |

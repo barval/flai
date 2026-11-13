@@ -24,7 +24,12 @@ IMAGE_RE = re.compile(
     r'(?P<attr>src|href)="(?P<url>/static/[^"?]+\.(?:png|ico|jpg|jpeg|webp|gif|svg))(?:\?[^"]*)?"'
 )
 
-FORBIDDEN = ('="/static/', "<script src=", "@import", "url(http")
+#: A vendor bundle is loaded lazily by URL from a JS constant, so an attribute
+#: pass cannot see it: the demo page asked file:///static/vendor/... and fell back
+#: to the 2D renderer every time. Matched by the string constant instead.
+VENDOR_REF = re.compile(r"""(['"])/static/vendor/(?P<name>[^'"]+\.js)\1""")
+
+FORBIDDEN = ('="/static/', "/static/vendor/", "<script src=", "@import", "url(http")
 
 
 class MissingAssetError(RuntimeError):
@@ -61,6 +66,25 @@ def _data_url(root: Path, url: str) -> str:
     return f"data:{MIME_BY_SUFFIX[suffix]};base64,{payload}"
 
 
+def _inline_vendor(html: str, root: Path) -> str:
+    """Preload every lazily-fetched vendor bundle and drop its URL.
+
+    The bundle is a library, never data: it is injected as a plain script, and the
+    constant that pointed at the server becomes empty. The graph then finds the
+    global instead of a URL.
+    """
+    urls: list[str] = []
+    for match in VENDOR_REF.finditer(html):
+        url = "/static/vendor/" + match.group("name")
+        if url not in urls:
+            urls.append(url)
+    if not urls:
+        return html
+    blocks = "".join(_script_block(root, url) for url in urls)
+    html = VENDOR_REF.sub("''", html)
+    return html.replace("</body>", blocks + "</body>", 1)
+
+
 def inline_page(html: str, root: Path = ROOT) -> str:
     """Replace every CSS, JS and image reference with its inline equivalent."""
     html = LINK_RE.sub(lambda match: _style_block(root, match.group("url")), html)
@@ -69,6 +93,7 @@ def inline_page(html: str, root: Path = ROOT) -> str:
         lambda match: f'{match.group("attr")}="{_data_url(root, match.group("url"))}"',
         html,
     )
+    html = _inline_vendor(html, root)
     for fragment in FORBIDDEN:
         if fragment in html:
             raise ScrubError(f"Server reference survived the inlining pass: {fragment}")

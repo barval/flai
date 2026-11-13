@@ -69,3 +69,20 @@ def test_a_webgl_free_renderer_is_vendored():
     # 3D is attempted for real and only then replaced by the 2D canvas.
     assert "createRenderer" in script and "window.__graphKind = '2d'" in script
     assert "graph-kind-btn" in Path("app/templates/chat.html").read_text(encoding="utf-8")
+
+
+def test_a_bundle_already_present_is_not_fetched_again():
+    """The published demo inlines the renderer; a lazy fetch of a file:// URL fails."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "typeof window[globalName] === 'function'" in script
+    assert "globalName = kind === '3d' ? 'ForceGraph3D' : 'ForceGraph'" in script
+
+
+def test_the_fallback_reason_stays_on_the_button():
+    """The status line is replaced by the next message; the cause must survive."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "graph_3d_unavailable" in script
+    assert "button.title = (kind === '3d'" in script
+    assert "kind === '2d' && kindError" in script

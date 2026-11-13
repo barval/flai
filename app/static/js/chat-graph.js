@@ -35,6 +35,11 @@
     // 3D needs WebGL; the 2D renderer draws on a plain canvas and works where
     // the browser refuses a GL context, which is a common corporate setting.
     function loadVendor(kind) {
+        // A page that already carries the bundle (the published demo inlines it)
+        // must not fetch a URL that cannot resolve from disk. In the served app
+        // this is the same no-op: the global is defined once and stays.
+        const globalName = kind === '3d' ? 'ForceGraph3D' : 'ForceGraph';
+        if (typeof window[globalName] === 'function') return Promise.resolve();
         if (vendorPromise && kind === rendererKind) return vendorPromise;
         rendererKind = kind;
         const source = kind === '3d' ? VENDOR_3D : VENDOR_2D;
@@ -131,9 +136,15 @@
             // The label names the action, not the current mode: in 3D it offers
             // 2D, and the other way round.
             button.textContent = kind === '3d' ? '2D' : '3D';
-            button.title = kind === '3d'
+            // The reason a 3D attempt failed stays on the button: the status line
+            // is replaced by the next message, and "it opened in 2D again" without
+            // the cause is a report nobody can act on.
+            const reason = kind === '2d' && kindError
+                ? ' · ' + t('graph_3d_unavailable', '3D is unavailable: {reason}').replace('{reason}', kindError)
+                : '';
+            button.title = (kind === '3d'
                 ? t('graph_switch_to_2d', 'Switch to 2D')
-                : t('graph_switch_to_3d', 'Switch to 3D');
+                : t('graph_switch_to_3d', 'Switch to 3D')) + reason;
             button.disabled = false;
         }
         if (kind === '2d' && preferredKind() === '3d') {

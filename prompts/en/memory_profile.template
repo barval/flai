@@ -1,13 +1,23 @@
 # TASK
-Below are facts the system has remembered about the user. Write a short profile from them: who they are, where they live, what they do, what they prefer and what to avoid. This block is always visible to the model, so what matters must survive and repetitions must disappear.
+Below are the facts the system remembers about the user, each with the date it was recorded. Build a profile in two parts: what holds now, and what no longer holds.
 
 # RULES
 - Do not invent anything that is not in the facts.
-- Remove duplicates and contradictions: when facts disagree, keep the newer one.
-- At most 900 characters, plain text, no markdown, no lists, no headings.
+- When two facts contradict each other (a move, a change of job, a changed preference), the newer one goes into
+  CURRENT and the older one into CLOSED. The period of the closed fact ends at the date of the replacing fact,
+  not at its own ("until March 2026" when the move happened in March 2026). If there are no dates, write "earlier".
+- Only what stopped being true goes into CLOSED. A fact that still holds — including a stable
+  preference or habit — stays in CURRENT, however old it is.
+- Remove duplicates.
+- At most 600 characters per part, plain text, no markdown, no headings inside the parts.
 - Write in the response language: {response_language}.
 
 # FACTS
 {facts}
 
-# PROFILE
+# ANSWER
+CURRENT:
+- <what holds now>
+
+CLOSED:
+- until <period>: <the old fact VERBATIM, without paraphrasing or changing its words>

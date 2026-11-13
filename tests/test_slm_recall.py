@@ -428,3 +428,41 @@ class TestHybridRecall:
             results = _hybrid_recall_from_profile("anything", 5, "no_such_user")
             mock_latest.assert_called_once()
             assert results == fake_result
+
+
+# ── fact metadata that survives an id change ───────────────────────────
+
+
+class TestFactMetaRelink:
+    """The daemon regenerates fact ids when it rebuilds or merges its database.
+
+    A side store keyed only by id lost the link for half of this installation's
+    facts: kind, confidence and source became unreadable, and every fact looked
+    unclassified. The text is stable, so its hash finds the metadata again.
+    """
+
+    def test_meta_is_found_by_content_when_the_id_changed(self, tmp_path, monkeypatch):
+        import slm_http
+
+        monkeypatch.setattr(slm_http, "META_DB_PATH", str(tmp_path / "meta.db"))
+        with slm_http._meta_conn() as conn:
+            conn.execute(
+                "INSERT INTO fact_meta (fact_id, profile, kind, confidence, source, created_at, content_hash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("old-id", "user", "profile", 0.9, "llm_extract", "2026-11-01T00:00:00",
+                 slm_http._content_hash("  Я живу в Тбилиси ")),
+            )
+
+        results = [{"fact_id": "new-id", "content": "Я живу в Тбилиси"}]
+        slm_http._attach_fact_meta(results)
+
+        assert results[0]["kind"] == "profile"
+        assert results[0]["source"] == "llm_extract"
+        with slm_http._meta_conn() as conn:
+            repaired = conn.execute("SELECT fact_id FROM fact_meta").fetchall()
+        assert repaired == [("new-id",)], "the link is repaired, not lost again"
+
+    def test_hash_ignores_case_and_spacing(self):
+        from slm_http import _content_hash
+
+        assert _content_hash("Я  живу\nв Тбилиси") == _content_hash("я живу в тбилиси")

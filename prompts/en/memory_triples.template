@@ -1,0 +1,39 @@
+# TASK
+Extract durable facts about the user from one message.
+
+# RULES
+- Only what the user said about themselves. Do not invent or infer.
+- A question, a request, a discussion or task text is not a fact.
+- When the message names a time ("moved in March 2026"), add a "valid_from" field with that time as
+  "2026-03" or "2026-03-01". When no time is named, there must be no "valid_from" field.
+- A fact that fits none of the predicates goes into notes as one short phrase.
+- The subject is almost always "user".
+- At most three facts per message.
+- Write value and sentence in the language of the message.
+
+# PREDICATES
+lives_in — where the user lives
+works_at — the employer
+works_as — the job title
+studied_at — where the user studied
+born_in — the place of birth
+born_on — the date of birth
+has_pet — a pet
+likes — something the user likes
+dislikes — something the user avoids
+speaks — a language the user speaks
+owns — a durable thing the user owns
+lives_with — who the user lives with
+married_to — the spouse
+
+# ALREADY KNOWN
+{known_facts}
+
+# MESSAGE
+User: {user_message}
+Assistant: {assistant_message}
+
+# ANSWER
+Return ONE JSON object, no prose and no markdown:
+{{"facts": [{{"subject": "user", "predicate": "lives_in", "value": "Tbilisi", "sentence": "Lives in Tbilisi", "valid_from": "2026-03", "confidence": 0.9}}], "notes": []}}
+When there is nothing, return {{"facts": [], "notes": []}}.

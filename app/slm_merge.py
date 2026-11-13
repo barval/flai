@@ -350,7 +350,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         for f in model_junk:
             fid = f.get("fact_id") or f.get("id")
             if fid:
-                slm.archive_fact(fid, user_id) if hasattr(slm, "archive_fact") else slm.delete_fact(fid, user_id)
+                slm.delete_fact(fid, user_id, reason="model_response")
                 stats["fast_deleted"] += 1
         remaining = [f for f in facts if f not in model_junk]
         if model_junk:
@@ -363,7 +363,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         # Step 1: Fast cleanup (exact duplicates, fragments, garbage)
         fast_deleted, remaining = fast_cleanup(facts)
         for fid in fast_deleted:
-            slm.delete_fact(fid, user_id)
+            slm.delete_fact(fid, user_id, reason="duplicate")
             stats["fast_deleted"] += 1
         logger.info(f"Merge for {user_id}: fast_cleanup removed {len(fast_deleted)} facts")
 
@@ -373,7 +373,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         # Step 2: Edit distance merge (Levenshtein near-duplicates)
         edit_dups = edit_distance_merge(remaining)
         for fid in edit_dups:
-            slm.delete_fact(fid, user_id)
+            slm.delete_fact(fid, user_id, reason="duplicate")
             stats["edit_deleted"] += 1
         if edit_dups:
             logger.info(f"Merge for {user_id}: edit_distance removed {len(edit_dups)} facts")
@@ -381,7 +381,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         # Step 3: Fragment merge (stricter substring detection)
         frag_dups = fragment_merge(remaining)
         for fid in frag_dups:
-            slm.delete_fact(fid, user_id)
+            slm.delete_fact(fid, user_id, reason="duplicate")
             stats["fragment_deleted"] += 1
         if frag_dups:
             logger.info(f"Merge for {user_id}: fragment_merge removed {len(frag_dups)} facts")
@@ -400,7 +400,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         if facts_after and len(facts_after) >= 3:
             sem_dups = semantic_merge(facts_after, similarity_threshold=sim_threshold)
             for fid in sem_dups:
-                slm.delete_fact(fid, user_id)
+                slm.delete_fact(fid, user_id, reason="duplicate")
                 stats["semantic_deleted"] += 1
             if sem_dups:
                 logger.info(f"Merge for {user_id}: semantic_merge removed {len(sem_dups)} facts")
@@ -419,7 +419,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         if facts_final:
             decay_dups = temporal_decay(facts_final, decay_days=decay_days, min_confidence=min_conf)
             for fid in decay_dups:
-                slm.delete_fact(fid, user_id)
+                slm.delete_fact(fid, user_id, reason="decayed")
                 stats["decay_deleted"] += 1
             if decay_dups:
                 logger.info(f"Merge for {user_id}: temporal_decay removed {len(decay_dups)} facts")

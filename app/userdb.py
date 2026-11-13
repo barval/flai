@@ -186,6 +186,7 @@ def delete_user(login):
         # the login, which can be created again: leaving it behind would show a
         # new account the entities, descriptions and relations of the old one.
         for table in (
+            "memory_facts",
             "kg_edges",
             "kg_occurrences",
             "kg_nodes",

@@ -1214,14 +1214,21 @@ def memory_profile(user, lang, limit, apply):
     material = [
         fact
         for fact in facts
-        if str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
+        # A previous block is an output, not evidence: consolidating it again
+        # re-words the same sentences instead of rebuilding them from the facts,
+        # and the model starts citing itself.
+        if fact.get("source") != "profile_consolidation"
+        and str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project")
         and (fact.get("content") or fact.get("text"))
     ]
     if len(material) < 3:
         click.echo(f"only {len(material)} usable facts — nothing to consolidate yet")
         return
 
-    lines = "\n".join(f"- {str(fact.get('content') or fact.get('text'))[:200]}" for fact in material)
+    lines = "\n".join(
+        f"- [{str(fact.get('created_at') or '')[:10]}] {str(fact.get('content') or fact.get('text'))[:200]}"
+        for fact in material
+    )
     prompt = format_prompt(
         "memory_profile.template",
         {"facts": lines, "response_language": response_language_name(lang)},
@@ -1236,21 +1243,258 @@ def memory_profile(user, lang, limit, apply):
         lang=lang,
         temperature=0.2,
     )
-    block = " ".join(str(raw).split())[:1200]
-    if not block or block.startswith("⚠"):
-        raise click.ClickException(f"profile consolidation failed: {block[:200]}")
+    answer = "\n".join(line.rstrip() for line in str(raw).splitlines() if line.strip())
+    if not answer or answer.startswith("⚠"):
+        raise click.ClickException(f"profile consolidation failed: {answer[:200]}")
 
-    click.echo(block)
-    click.echo(f"({len(block)} chars, from {len(material)} facts)")
+    from app.memory_facts import split_profile_block
+
+    current, closed = split_profile_block(answer)
+    current = current[:1200]
+    closed = closed[:1200]
+    if not current:
+        raise click.ClickException(f"profile consolidation returned no current part: {answer[:200]}")
+
+    click.echo("CURRENT:")
+    click.echo(current)
+    if closed:
+        click.echo("\nCLOSED:")
+        click.echo(closed)
+    click.echo(f"\n({len(current)} + {len(closed)} chars, from {len(material)} facts)")
     if not apply:
         click.echo("dry run — pass --apply to store it")
         return
+
+    # A fact moved to CLOSED must stop being recalled on its own, or the model
+    # gets "I live in Moscow" beside a block that says otherwise. The prompt
+    # quotes the source fact verbatim for exactly this match.
+    closed_lines = [line.lstrip("-• ").strip().lower() for line in closed.splitlines() if line.strip()]
+    for old_fact in facts:
+        text = str(old_fact.get("content") or old_fact.get("text") or "").strip().lower()
+        if len(text) < 8 or old_fact.get("source") == "profile_consolidation":
+            continue
+        if any(text in line for line in closed_lines):
+            fact_id = old_fact.get("fact_id")
+            if fact_id:
+                slm.delete_fact(fact_id, profile=user, reason="superseded")
+
+    # The block is one fact, not a log: a previous one is retired before the new
+    # one is written, otherwise every run leaves another block behind and recall
+    # prepends several contradictory profiles at once.
+    for old_fact in facts:
+        if old_fact.get("source") != "profile_consolidation":
+            continue
+        fact_id = old_fact.get("fact_id")
+        if fact_id:
+            slm.delete_fact(fact_id, profile=user, reason="superseded")
+
     stored = slm.remember(
-        block,
+        current,
         metadata={"kind": "profile", "confidence": 1.0, "source": "profile_consolidation"},
         profile=user,
     )
-    click.echo("stored" if stored else "store failed")
+    # History is a separate fact with its own kind: the always-injected block is
+    # built from kind='profile' only, so a fact that stopped holding is kept but
+    # is no longer asserted as current.
+    kept_history = True
+    if closed:
+        kept_history = slm.remember(
+            closed,
+            metadata={"kind": "profile_history", "confidence": 1.0, "source": "profile_consolidation"},
+            profile=user,
+        )
+    click.echo("stored" if stored and kept_history else "store failed")
+
+
+def _message_text(content: str) -> str:
+    """Plain text of a stored message, whether it is a string or parts."""
+    import json
+
+    body = (content or "").strip()
+    if not body.startswith("["):
+        return body
+    try:
+        parts = json.loads(body)
+    except ValueError:
+        return body
+    return " ".join(
+        str(part.get("text") or "") for part in parts if isinstance(part, dict) and part.get("type") == "text"
+    ).strip()
+
+
+@click.command("memory-extract-backfill")
+@click.option("--user", required=True, help="Login whose messages are re-read")
+@click.option("--limit", default=30, show_default=True, help="Messages to consider")
+@click.option("--dry-run", is_flag=True, help="Report the yield without storing anything")
+@with_appcontext
+def memory_extract_backfill(user, limit, dry_run):
+    """Run fact extraction over messages stored before extraction existed.
+
+    The store fills from live messages only, so an installation whose history
+    predates extraction has nothing for ``memory-profile`` to consolidate. This
+    walks the most recent user messages and asks the extractor the same
+    question the live path asks, with the same gates: a personal-looking
+    message, the same strict parser, and a similarity check before storing.
+    """
+    from app.database import get_db
+    from app.memory_facts import detect_language, looks_personal
+    from app.memory_triples import parse_answer, store_triple
+    from app.utils import format_prompt
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+    base = current_app.modules.get("base")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT m.content,
+                   (SELECT a.content FROM messages a
+                     WHERE a.session_id = m.session_id AND a.role = 'assistant' AND a.id > m.id
+                     ORDER BY a.id LIMIT 1) AS reply
+            FROM messages m
+            JOIN chat_sessions s ON s.id = m.session_id
+            WHERE s.user_id = %s AND m.role = 'user'
+            ORDER BY m.id DESC
+            LIMIT %s
+            """,
+            (user, limit),
+        )
+        rows = cursor.fetchall()
+
+    candidates = 0
+    stored = 0
+    for row in rows:
+        text = _message_text(row.get("content") or "")
+        if not text or not looks_personal(text):
+            continue
+        candidates += 1
+        lang = detect_language(text)
+        known = "\n".join(
+            f"- {str(item.get('text') or item.get('content') or '')[:200]}"
+            for item in slm.list_facts(limit=30, profile=user)[:30]
+        )
+        prompt = format_prompt(
+            "memory_triples.template",
+            {
+                "known_facts": known or "-",
+                "user_message": text,
+                "assistant_message": str(row.get("reply") or "")[:1500],
+            },
+            lang=lang,
+        )
+        if not prompt:
+            continue
+        raw = base.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0.1,
+        )
+        facts, notes = parse_answer(str(raw), source=text)
+        click.echo(f"  {text[:60]!r} -> {len(facts)} fact(s), {len(notes)} note(s)")
+        for fact in facts:
+            if dry_run:
+                stored += 1
+                continue
+            with get_db() as conn:
+                if store_triple(conn, user, fact) in ("added", "superseded"):
+                    stored += 1
+        for note in notes:
+            try:
+                if slm.check_similarity(note, profile=user) >= 0.85:
+                    continue
+            except Exception:
+                pass
+            if dry_run:
+                stored += 1
+                continue
+            if slm.remember(
+                note,
+                metadata={"kind": "note", "confidence": 0.7, "source": "llm_extract"},
+                profile=user,
+            ):
+                stored += 1
+
+    verdict = "would store" if dry_run else "stored"
+    click.echo(f"\nmessages {len(rows)}, candidates {candidates}, facts {verdict}: {stored}")
+
+
+@click.command("memory-triples-backfill")
+@click.option("--user", required=True, help="Login whose stored facts are converted")
+@click.option("--limit", default=50, show_default=True, help="Facts to consider")
+@click.option("--dry-run", is_flag=True, help="Report the conversion without writing")
+@with_appcontext
+def memory_triples_backfill(user, limit, dry_run):
+    """Convert existing free-text facts into typed triples.
+
+    The typed store starts empty on an installation that already has facts. Each
+    stored fact is asked the same question the live extractor asks; when the
+    answer covers it, the free-text row is retired so recall does not see the
+    same statement twice. A fact the closed schema cannot express is left alone.
+    """
+    from app.database import get_db
+    from app.memory_facts import detect_language
+    from app.memory_triples import active_triples, parse_answer, store_triple
+    from app.utils import format_prompt
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        raise click.ClickException("SLM module is not available")
+    base = current_app.modules.get("base")
+
+    facts = slm.list_facts(limit=limit, profile=user)
+    material = [
+        fact
+        for fact in facts
+        if fact.get("source") != "profile_consolidation"
+        and str(fact.get("kind") or "") in ("profile", "preference", "instruction", "project", "note")
+        and (fact.get("content") or fact.get("text"))
+    ]
+
+    converted = 0
+    retired = 0
+    for fact in material:
+        text = str(fact.get("content") or fact.get("text"))[:400]
+        lang = detect_language(text)
+        with get_db() as conn:
+            known = "\n".join(f"- {row['sentence']}" for row in active_triples(conn, user, limit=10))
+        prompt = format_prompt(
+            "memory_triples.template",
+            {"known_facts": known or "-", "user_message": text, "assistant_message": ""},
+            lang=lang,
+        )
+        if not prompt:
+            continue
+        raw = base.call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="multimodal",
+            lang=lang,
+            temperature=0.1,
+        )
+        triples, _notes = parse_answer(str(raw), source=text)
+        click.echo(f"  {text[:60]!r} -> {len(triples)} triple(s)")
+        stored = 0
+        for triple in triples:
+            if dry_run:
+                stored += 1
+                continue
+            with get_db() as conn:
+                if store_triple(conn, user, triple) in ("added", "superseded"):
+                    stored += 1
+        if (
+            stored
+            and not dry_run
+            and fact.get("fact_id")
+            and slm.delete_fact(fact["fact_id"], profile=user, reason="superseded")
+        ):
+            retired += 1
+        converted += stored
+
+    verdict = "would store" if dry_run else "stored"
+    click.echo(f"\nfacts {len(material)}, triples {verdict} {converted}, retired {retired}")
 
 
 @click.command("memory-eval")

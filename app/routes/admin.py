@@ -452,9 +452,43 @@ def get_users_tavily_usage():
 @admin_required
 def get_settings():
     """Schema and current values for the Settings tab (secrets are masked)."""
-    from app.settings_registry import build_schema
+    from app.settings_registry import SECRET_KEYS, build_schema
+    from app.settings_store import comparable, load_overrides, version_defaults
 
-    return jsonify({"groups": build_schema(current_app)})
+    overrides = load_overrides()
+    template = version_defaults()
+    groups = build_schema(current_app)
+    for group in groups:
+        for field in group["fields"]:
+            key = field["key"]
+            # Where the running value comes from. "default" means neither the
+            # panel nor the environment set it, so the code fallback applies —
+            # the one case a changed default silently reaches an installation.
+            if key in overrides:
+                field["source"] = "panel"
+            elif os.getenv(key) is not None:
+                field["source"] = "env"
+            else:
+                field["source"] = "default"
+            # A secret's template value is a placeholder, not a default: showing
+            # "your_secret_key_here" beside a real key would be noise, and an
+            # empty one says nothing at all.
+            shipped = template.get(key)
+            field["version_default"] = None if key in SECRET_KEYS or not shipped else shipped
+            field["version_differs"] = bool(
+                field["version_default"] is not None and comparable(shipped) != comparable(field.get("value"))
+            )
+    return jsonify({"groups": groups})
+
+
+@bp.route("/api/settings/conflicts", methods=["GET"])
+@admin_required
+def settings_conflicts_api():
+    """Where the saved settings and .env disagree, and whose value runs."""
+    from app.settings_store import settings_conflicts
+
+    conflicts = settings_conflicts()
+    return jsonify({"conflicts": conflicts, "count": len(conflicts)})
 
 
 @bp.route("/api/settings", methods=["POST"])

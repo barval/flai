@@ -83,6 +83,20 @@
             markDirty();
         });
         valueCell.appendChild(input);
+        if (field.source) {
+            const badge = document.createElement('span');
+            badge.className = 'settings-source settings-source-' + field.source;
+            badge.textContent = t(field.source === 'panel' ? 'Source: panel'
+                : field.source === 'env' ? 'Source: .env' : 'Source: default');
+            valueCell.appendChild(badge);
+        }
+        const shipped = field.version_default;
+        if (field.version_differs) {
+            const hint = document.createElement('span');
+            hint.className = 'settings-version-default';
+            hint.textContent = t('This version ships') + ': ' + shipped;
+            valueCell.appendChild(hint);
+        }
         row.appendChild(valueCell);
 
         const defaultCell = document.createElement('td');
@@ -215,7 +229,39 @@
     const tabButton = document.querySelector('.admin-tab[data-tab="settings"]');
     if (tabButton) tabButton.addEventListener('click', load);
 
+    async function loadConflicts() {
+        const box = document.getElementById('settings-conflicts');
+        if (!box) return;
+        try {
+            const response = await fetchWithCSRF('/admin/api/settings/conflicts');
+            const data = await response.json();
+            const conflicts = data.conflicts || [];
+            if (!conflicts.length) {
+                box.hidden = true;
+                return;
+            }
+            box.innerHTML = '';
+            const title = document.createElement('strong');
+            title.textContent = t('Settings in the panel and in .env differ');
+            box.appendChild(title);
+            const note = document.createElement('p');
+            note.textContent = t('The panel value is in effect for these parameters; the .env value is ignored');
+            box.appendChild(note);
+            const list = document.createElement('ul');
+            for (const item of conflicts) {
+                const row = document.createElement('li');
+                row.textContent = item.key + ' — ' + t('Source: panel') + ': ' + item.panel + ' · .env: ' + item.env;
+                list.appendChild(row);
+            }
+            box.appendChild(list);
+            box.hidden = false;
+        } catch (error) {
+            box.hidden = true;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        loadConflicts();
         const tab = document.getElementById('settings-tab');
         if (tab && tab.classList.contains('active')) load();
     });

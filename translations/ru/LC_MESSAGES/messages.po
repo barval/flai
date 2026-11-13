@@ -5473,3 +5473,27 @@ msgstr "Порог косинуса для связи между докумен�
 #: app/templates/admin.html
 msgid "Document edges kept per document"
 msgstr "Связей документа, сохраняемых на документ"
+
+#: app/templates/admin.html
+msgid "Settings in the panel and in .env differ"
+msgstr "Настройки в админ-панели и в .env различаются"
+
+#: app/templates/admin.html
+msgid "The panel value is in effect for these parameters; the .env value is ignored"
+msgstr "Для этих параметров действуют значения из админ-панели; значения из .env игнорируются"
+
+#: app/templates/admin.html
+msgid "Source: panel"
+msgstr "Источник: панель"
+
+#: app/templates/admin.html
+msgid "Source: .env"
+msgstr "Источник: .env"
+
+#: app/templates/admin.html
+msgid "Source: default"
+msgstr "Источник: умолчание"
+
+#: app/templates/admin.html
+msgid "This version ships"
+msgstr "В этой версии"

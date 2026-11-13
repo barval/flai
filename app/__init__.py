@@ -652,6 +652,7 @@ def create_app():
                 "database": "unknown",
                 "redis": "unknown",
                 "llamacpp": "unknown",
+                "slm": "unknown",
             },
         }
         http_status = 200
@@ -666,6 +667,32 @@ def create_app():
             status["services"]["database"] = "error"
             app.logger.error(f"Health check - Database error: {e}")
             http_status = 503
+
+        # Long-term memory writes go through the wrapper, and the wrapper keeps
+        # answering while its daemon is dead — the store then stops growing and
+        # nothing says so. Probed separately, with a cache: a dead daemon must
+        # not add its timeout to every scrape.
+        import time as _time
+
+        cached = app.config.get("SLM_WRITE_HEALTH") or {}
+        if cached and _time.time() - cached.get("at", 0) < 30:
+            slm_state = cached.get("state", "unknown")
+        else:
+            slm_state = "unreachable"
+            base_url = (app.config.get("SLM_URL") or "").rstrip("/")
+            if base_url:
+                try:
+                    payload = requests.get(f"{base_url}/health", timeout=1.5).json()
+                    slm_state = "ok" if str(payload.get("daemon", "")).lower() in ("ok", "running", "healthy") else "daemon unreachable"
+                except Exception:
+                    slm_state = "unreachable"
+            app.config["SLM_WRITE_HEALTH"] = {"state": slm_state, "at": _time.time()}
+        status["services"]["slm"] = slm_state
+        if slm_state != "ok":
+            logged_at = app.config.get("SLM_WRITE_HEALTH_LOGGED", 0)
+            if _time.time() - logged_at > 600:
+                app.logger.warning(f"Long-term memory write path is degraded: {slm_state}")
+                app.config["SLM_WRITE_HEALTH_LOGGED"] = _time.time()
 
         # Check Redis
         try:

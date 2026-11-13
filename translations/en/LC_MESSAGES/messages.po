@@ -5442,3 +5442,27 @@ msgstr "Cosine threshold for a document-to-document edge"
 #: app/templates/admin.html
 msgid "Document edges kept per document"
 msgstr "Document edges kept per document"
+
+#: app/templates/admin.html
+msgid "Settings in the panel and in .env differ"
+msgstr "Settings in the panel and in .env differ"
+
+#: app/templates/admin.html
+msgid "The panel value is in effect for these parameters; the .env value is ignored"
+msgstr "The panel value is in effect for these parameters; the .env value is ignored"
+
+#: app/templates/admin.html
+msgid "Source: panel"
+msgstr "Source: panel"
+
+#: app/templates/admin.html
+msgid "Source: .env"
+msgstr "Source: .env"
+
+#: app/templates/admin.html
+msgid "Source: default"
+msgstr "Source: default"
+
+#: app/templates/admin.html
+msgid "This version ships"
+msgstr "This version ships"

@@ -2571,3 +2571,68 @@ body.dark-theme .settings-reset {
         flex: 1 1 100%;
     }
 }
+
+/* Settings source badge and the panel-versus-.env banner */
+.settings-conflicts {
+    margin: 0.75rem 0 1rem;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid #d97706;
+    background: rgba(217, 119, 6, 0.12);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.settings-conflicts p {
+    margin: 0.35rem 0;
+}
+
+.settings-conflicts ul {
+    margin: 0.25rem 0 0 1.1rem;
+    padding: 0;
+}
+
+.settings-source {
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.settings-source-panel {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.settings-source-env {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+.settings-source-default {
+    background: rgba(148, 163, 184, 0.25);
+}
+
+/* A value older than the one this version ships: one quiet line, no table. */
+.settings-version-default {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+}
+
+@media (max-width: 768px) {
+    .settings-conflicts {
+        max-height: 9rem;
+        overflow-y: auto;
+        font-size: 0.82rem;
+        padding: 0.6rem 0.7rem;
+    }
+
+    .settings-conflicts ul {
+        margin-left: 0.9rem;
+    }
+
+    .settings-source {
+        margin-left: 0.35rem;
+    }
+}

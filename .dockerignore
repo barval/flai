@@ -59,6 +59,7 @@ htmlcov/
 # Environment files (secrets!)
 .env
 .env.*
+!.env.example
 
 # Log and temp files
 *.log

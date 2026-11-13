@@ -18,6 +18,8 @@
 
 - **Fact metadata survived neither a daemon id change nor a rebuild.** The side store was keyed by fact id alone, and 113 of 226 ids did not match the fact table, so `kind`, `source` and `confidence` became unreadable and every fact looked unclassified. The store now carries a hash of the normalized text, recall falls back to it and repairs the link in place.
 
+- **The published demo could not draw the 3D graph, and a failed 3D attempt explained itself only once.** The demo inliner replaced CSS, JS and image references, but the graph loads its renderer lazily from a JS constant: the page asked `file:///static/vendor/…`, never loaded it, and every published page fell back to the 2D renderer. The bundle is now inlined and the guard rejects a surviving vendor reference. In the running app the reason a 3D attempt failed lived only in a status line the next message overwrote — it now stays on the button, so "it opened in 2D again" can be answered.
+
 - **A retired fact recorded no reason.** `/delete` and `/forget` archive the row rather than dropping it, but `archive_reason` stayed empty for all 226 facts, so a duplicate, a decayed entry and a superseded fact were indistinguishable. The merge pipeline now passes `duplicate` / `decayed` / `model_response`, and consolidation passes `superseded`.
 
 ## [v13.2] — 2026-11-12

@@ -172,3 +172,36 @@ class TestDateGrounding:
         )
 
         assert facts[0]["valid_from"].year == datetime.now(UTC).year
+
+
+class TestPastPeriods:
+    def test_years_are_read_from_the_question(self):
+        from app.memory_triples import period_years
+
+        assert period_years("где я жил в 2024 году?") == [2024]
+        assert period_years("что было в 2023 и в 2024") == [2023, 2024]
+        assert period_years("где я живу") == []
+
+    def test_a_closed_fact_is_found_for_the_year_it_held(self, database):
+        from app.memory_triples import history_triples, store_triple
+
+        store_triple(database, LOGIN, _triple(value="Москва", date="2024-05-01"))
+        store_triple(database, LOGIN, _triple(value="Тбилиси", date="2026-03-01"))
+        database.commit()
+
+        assert [row["value"] for row in history_triples(database, LOGIN, 2024)] == ["Москва"]
+        assert history_triples(database, LOGIN, 2023) == []
+
+    def test_a_question_about_a_year_adds_the_past_fact(self, test_app, database):
+        from app.memory_triples import store_triple
+
+        store_triple(database, LOGIN, _triple(value="Москва", date="2024-05-01"))
+        store_triple(database, LOGIN, _triple(value="Тбилиси", date="2026-03-01"))
+        database.commit()
+        base = test_app.modules["base"]
+
+        with test_app.app_context():
+            block = base._active_facts_block(LOGIN, "ru", "где я жил в 2024 году?")
+
+        assert "Тбилиси" in block
+        assert "2024" in block and "Москва" in block

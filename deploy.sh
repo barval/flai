@@ -38,6 +38,7 @@ check_prereqs() {
 setup_env() {
     if [[ -f .env ]]; then
         warn ".env already exists — skipping configuration."
+        ENV_EXISTED=true
         return
     fi
     info "Creating .env from .env.example..."
@@ -145,31 +146,46 @@ disable_env_key() {
 }
 
 # ── Enable features in .env ──
+# A key that this run would switch off, kept because .env predates the run.
+# Turning a service off is a decision about the user's stack, not a side effect of
+# running an update without flags — measured: a bare ./deploy.sh commented out
+# SEARXNG_URL, CRAWL_ENABLED, SLM_URL and the TTS URL on an existing install.
+keep_env_key() {
+    local key="$1"
+    grep -qE "^${key}=" .env 2>/dev/null || return 0
+    info "Keeping ${key}: an existing .env is not rewritten (pass --strict-stack to switch unused services off)."
+}
+
 enable_env_features() {
+    local disable=disable_env_key
+    if [[ "$ENV_EXISTED" == "true" && "$STRICT_STACK" != "true" ]]; then
+        disable=keep_env_key
+        warn "Existing .env: optional services stay as they are. Repeat the install command to keep the same stack."
+    fi
     if [[ "$WITH_SEARCH" == "true" ]]; then
         enable_env_key SEARXNG_URL "Enabling web search (SearXNG) in .env..."
     else
-        disable_env_key SEARXNG_URL "Disabling web search (SearXNG) in .env..."
+        "$disable" SEARXNG_URL "Disabling web search (SearXNG) in .env..."
     fi
     if [[ "$WITH_CRAWLER" == "true" ]]; then
         enable_env_key CRAWL_ENABLED "Enabling deep web crawl (Crawl4AI) in .env..." true
     else
-        disable_env_key CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
+        "$disable" CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
     else
-        disable_env_key SLM_URL "Disabling long-term memory (SLM) in .env..."
+        "$disable" SLM_URL "Disabling long-term memory (SLM) in .env..."
     fi
     if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
         enable_env_key KOKORO_URL "Enabling TTS (Kokoro) in .env..."
-        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
+        "$disable" PIPER_URL "Disabling TTS (Piper) in .env..."
     elif [[ "$VOICE_BACKEND" == "piper" ]]; then
         enable_env_key PIPER_URL "Enabling TTS (Piper) in .env..."
-        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
+        "$disable" KOKORO_URL "Disabling TTS (Kokoro) in .env..."
     else
-        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
-        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
+        "$disable" KOKORO_URL "Disabling TTS (Kokoro) in .env..."
+        "$disable" PIPER_URL "Disabling TTS (Piper) in .env..."
     fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then
@@ -905,6 +921,9 @@ backend (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) and coexist locally.
 Simply re-run ./deploy.sh (GPU) or ./deploy.sh --cpu (CPU) to switch.
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
+  --strict-stack      On an existing .env, switch off the optional services this
+                      run does not ask for (default: keep them as they are, so an
+                      update without the original flags cannot disable features)
   --help, -h          Show this help message
 
 Model Download Sizes (approximate):
@@ -941,6 +960,8 @@ WITH_SEARCH=false
 WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
+STRICT_STACK=false
+ENV_EXISTED=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
 PROFILES=""
 
@@ -962,6 +983,7 @@ for arg in "$@"; do
         --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
+        --strict-stack)                  STRICT_STACK=true ;;
         --help|-h)                       usage; exit 0 ;;
     esac
 done

@@ -381,6 +381,17 @@ cd flai
 
 No NVIDIA GPU? Add `--cpu`; `docker-compose.cpu.yml` is then selected automatically. Switching between GPU and CPU needs no rebuild — the images are tagged per backend and coexist locally.
 
+### Updating an installation
+
+Repeat the command you installed with — the same flags. `deploy.sh` keeps your `.env`,
+runs `docker compose build` for every service in those profiles and then `up -d`, so
+services whose code lives in an image (long-term memory, the web app) are rebuilt.
+`docker compose up -d` alone is not an update: it restarts the old images.
+
+An existing `.env` is never rewritten, and a run without the original flags no longer
+switches the optional services off — pass `--strict-stack` when turning services off
+is what you mean.
+
 ### Option B — manual
 
 ```bash

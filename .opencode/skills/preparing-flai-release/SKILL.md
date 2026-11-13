@@ -429,7 +429,11 @@ release is a separate question, and no test answers it:
 - every new service or profile is reachable from the documented command, and the
   profiles in `AGENTS.md` and the READMEs name it;
 - `docker compose -f <file> config` exits `0` for each compose entry a script
-  names. It costs nothing and catches the broken merge before a user does.
+  names. It costs nothing and catches the broken merge before a user does;
+- an update must leave the install command's stack running: compare
+  `docker compose -f <file> ps --services` with the profiles that command names. A
+  service missing from that list means `.env` advertises search, memory or voice that
+  is not running — the install looks healthy while half of it is absent.
 
 **A restart is not a deploy for a baked-in service.** `./app`, `./modules` and
 `./prompts` are bind-mounted; `services/*` and the wrapper beside them are not.

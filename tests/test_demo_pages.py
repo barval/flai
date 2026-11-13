@@ -50,9 +50,16 @@ def test_the_3d_renderer_is_inlined_into_chat_pages(name):
     assert "generateCreateBodyFunctionBody" in html, "the 3D bundle is missing from the page"
 
 
+#: A demo page is published as a single downloadable file, so the weight matters.
+#: The chat pages carry the 3D renderer inline (~1.4 MB) because a file:// page
+#: cannot fetch it; the admin pages do not draw a graph and keep the lower bound.
+BUDGET_MB = {"chat-en.html": 20, "chat-ru.html": 20}
+DEFAULT_BUDGET_MB = 16
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_pages_stay_under_the_budget(name):
-    assert (PAGES / name).stat().st_size <= 16 * 1024 * 1024
+    assert (PAGES / name).stat().st_size <= BUDGET_MB.get(name, DEFAULT_BUDGET_MB) * 1024 * 1024
 
 
 @pytest.mark.parametrize("name", ["chat-en.html", "admin-en.html"])

@@ -330,6 +330,14 @@ Deployment problems: [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) · auto-fit d
 
 > 💡 GPU deployment requires the **NVIDIA drivers** and the **NVIDIA Container Toolkit**.
 
+### 🤖 Deploy with an AI agent
+
+Point an agent that can read files and run shell commands at this repository and at
+your server: it detects the hardware, asks about the optional services, runs
+`./deploy.sh`, downloads the models and verifies the result. The procedure is kept
+in this repository — [`.opencode/skills/deploying-flai/SKILL.md`](.opencode/skills/deploying-flai/SKILL.md) —
+so the same steps work for any agent, not one particular tool.
+
 ### Option A — automated (recommended)
 
 One script generates `.env` with secure secrets, downloads the models, builds the images and starts everything.

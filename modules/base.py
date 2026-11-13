@@ -424,6 +424,33 @@ class BaseModule(TranslationMixin):
                 scored.append(fact)
         return (profile[:3] + scored)[:limit]
 
+    def _active_facts_block(self, user_id: str | None, lang: str = "ru") -> str:
+        """The typed facts that hold right now, as a short block.
+
+        These supersede each other by rule, so this is the one place in the
+        context where "lives in Moscow" and "lives in Tbilisi" cannot appear
+        together. A failure here must never break the answer: the block is
+        context, not a requirement.
+        """
+        if not user_id:
+            return ""
+        try:
+            from app.database import get_db
+            from app.memory_triples import active_triples
+
+            with get_db() as conn:
+                rows = active_triples(conn, user_id, limit=10)
+        except Exception:
+            return ""
+        if not rows:
+            return ""
+        header = (
+            "Что известно о пользователе (действующие факты):"
+            if lang == "ru"
+            else "What is known about the user (facts that hold now):"
+        )
+        return "\n" + "\n".join([header] + [f"- {row['sentence']}" for row in rows])
+
     def _get_context_for_model(
         self,
         session_id: str,
@@ -497,9 +524,10 @@ class BaseModule(TranslationMixin):
                     min_score=float(self.app.config.get("SLM_MIN_RECALL_SCORE", 0.5)),
                 )
 
-        # Step 3: Build SLM string and measure its real token cost
-        slm_facts_str = ""
-        slm_tokens = 0
+        # Step 3: Build the memory string and measure its real token cost.
+        # Typed facts go first: they are the ones that cannot contradict each
+        # other, and a recalled free-text note may still be stale.
+        slm_facts_str = self._active_facts_block(user_id, lang)
         if all_facts:
             header = (
                 "Дополнительная информация из долговременной памяти:"
@@ -509,8 +537,8 @@ class BaseModule(TranslationMixin):
             lines = [header]
             for f in all_facts[:slm_recall_limit]:
                 lines.append(f"- {f.get('content', f.get('text', ''))}")
-            slm_facts_str = "\n" + "\n".join(lines)
-            slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
+            slm_facts_str += "\n" + "\n".join(lines)
+        slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang) if slm_facts_str else 0
 
         # Who the assistant is talking to. The web UI knows the account's own
         # name; API callers pass nothing, because a service account speaks for

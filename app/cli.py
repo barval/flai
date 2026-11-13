@@ -1337,7 +1337,8 @@ def memory_extract_backfill(user, limit, dry_run):
     message, the same strict parser, and a similarity check before storing.
     """
     from app.database import get_db
-    from app.memory_facts import detect_language, looks_personal, parse_memory_facts
+    from app.memory_facts import detect_language, looks_personal
+    from app.memory_triples import parse_answer, store_triple
     from app.utils import format_prompt
 
     slm = current_app.modules.get("slm")
@@ -1376,7 +1377,7 @@ def memory_extract_backfill(user, limit, dry_run):
             for item in slm.list_facts(limit=30, profile=user)[:30]
         )
         prompt = format_prompt(
-            "memory_extract.template",
+            "memory_triples.template",
             {
                 "known_facts": known or "-",
                 "user_message": text,
@@ -1392,11 +1393,18 @@ def memory_extract_backfill(user, limit, dry_run):
             lang=lang,
             temperature=0.1,
         )
-        facts = parse_memory_facts(str(raw))
-        click.echo(f"  {text[:60]!r} -> {len(facts)} fact(s)")
+        facts, notes = parse_answer(str(raw), source=text)
+        click.echo(f"  {text[:60]!r} -> {len(facts)} fact(s), {len(notes)} note(s)")
         for fact in facts:
+            if dry_run:
+                stored += 1
+                continue
+            with get_db() as conn:
+                if store_triple(conn, user, fact) in ("added", "superseded"):
+                    stored += 1
+        for note in notes:
             try:
-                if slm.check_similarity(fact["fact"], profile=user) >= 0.85:
+                if slm.check_similarity(note, profile=user) >= 0.85:
                     continue
             except Exception:
                 pass
@@ -1404,8 +1412,8 @@ def memory_extract_backfill(user, limit, dry_run):
                 stored += 1
                 continue
             if slm.remember(
-                fact["fact"],
-                metadata={"kind": fact["kind"], "confidence": fact["confidence"], "source": "llm_extract"},
+                note,
+                metadata={"kind": "note", "confidence": 0.7, "source": "llm_extract"},
                 profile=user,
             ):
                 stored += 1

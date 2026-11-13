@@ -65,7 +65,21 @@ def _valid_from(raw: Any) -> datetime:
     return datetime.now(UTC)
 
 
-def parse_triples(answer: str) -> list[dict[str, Any]]:
+def _grounded_valid_from(fact: dict[str, Any], source: str) -> datetime:
+    """Keep a stated date only when the message supports it.
+
+    Measured: with the schema example in the prompt, the model copied the
+    example's date onto a message that named no time at all, and once the sample
+    lost its date it started ignoring real ones. The year is the anchor — a
+    month without its year in the message is not a date the user stated.
+    """
+    year = fact["valid_from"].strftime("%Y")
+    if year and year in (source or ""):
+        return fact["valid_from"]
+    return datetime.now(UTC)
+
+
+def parse_triples(answer: str, source: str = "") -> list[dict[str, Any]]:
     """Validate a model answer into storable triples.
 
     Strict on purpose: an unknown predicate is dropped rather than stored, since
@@ -116,7 +130,9 @@ def parse_triples(answer: str) -> list[dict[str, Any]]:
                 "sentence": sentence or value,
                 "kind": str(item.get("kind") or "profile").strip().lower(),
                 "confidence": round(min(confidence, 1.0), 2),
-                "valid_from": _valid_from(item.get("valid_from")),
+                "valid_from": _grounded_valid_from(
+                    {"valid_from": _valid_from(item.get("valid_from"))}, source
+                ),
                 "source": str(item.get("source") or "llm_extract").strip()[:40],
             }
         )
@@ -204,3 +220,28 @@ def closed_triples(conn, user_id: str, limit: int = 20) -> list[dict[str, Any]]:
             (user_id, limit),
         )
         return list(cursor.fetchall())
+
+
+def parse_answer(answer: str, source: str = "") -> tuple[list[dict[str, Any]], list[str]]:
+    """Triples and free-text notes from one extractor answer.
+
+    A closed predicate list earns determinism but cannot hold everything a
+    person says about themselves ("I have two children" is not a pet). The notes
+    keep those, so the typed path does not silently narrow what memory hears.
+    """
+    facts = parse_triples(answer, source=source)
+    notes: list[str] = []
+    body = (answer or "").strip()
+    start, end = body.find("{"), body.rfind("}")
+    if start != -1 and end > start:
+        try:
+            payload = json.loads(body[start : end + 1])
+        except ValueError:
+            payload = {}
+        raw = payload.get("notes") if isinstance(payload, dict) else None
+        if isinstance(raw, list):
+            for item in raw:
+                text = _WHITESPACE.sub(" ", str(item or "").strip())[:MAX_SENTENCE_CHARS]
+                if len(text) >= 5 and text not in notes:
+                    notes.append(text)
+    return facts, notes[:5]

@@ -5821,7 +5821,8 @@ class RedisRequestQueue:
             if not slm or not slm.available:
                 return {"status": "ok"}
 
-            from app.memory_facts import detect_language, looks_personal, parse_memory_facts
+            from app.memory_facts import detect_language, looks_personal
+            from app.memory_triples import parse_answer, store_triple
 
             if not looks_personal(query):
                 return {"status": "ok", "skipped": "not personal"}
@@ -5832,7 +5833,7 @@ class RedisRequestQueue:
             existing = slm.list_facts(limit=50, profile=user_id)
             known = "\n".join(f"- {str(f.get('text') or f.get('content') or '')[:200]}" for f in existing[:30])
             prompt = format_prompt(
-                "memory_extract.template",
+                "memory_triples.template",
                 {
                     "known_facts": known or "-",
                     "user_message": query,
@@ -5872,23 +5873,33 @@ class RedisRequestQueue:
                     return {"status": "interrupted"}
 
             answer = "".join(chunks)
-            facts = parse_memory_facts(answer)
-            if not facts:
-                self.app.logger.info(f"Memory extraction: no facts (answer: {answer[:160]!r})")
+            facts, notes = parse_answer(answer, source=query)
+            if not facts and not notes:
+                self.app.logger.info(f"Memory extraction: nothing (answer: {answer[:160]!r})")
 
             stored = 0
-            for fact in facts:
+            # A typed fact belongs where its interval can be queried; the notes
+            # keep whatever the closed predicate list cannot hold.
+            if facts:
+                from app.database import get_db
+
+                with get_db() as conn:
+                    for fact in facts:
+                        if store_triple(conn, user_id, fact) in ("added", "superseded"):
+                            stored += 1
+
+            for note in notes:
                 try:
-                    if slm.check_similarity(fact["fact"], profile=user_id) >= 0.85:
+                    if slm.check_similarity(note, profile=user_id) >= 0.85:
                         continue
                 except Exception:
                     pass
                 if slm.remember(
-                    fact["fact"],
+                    note,
                     metadata={
                         "session_id": session_id,
-                        "kind": fact["kind"],
-                        "confidence": fact["confidence"],
+                        "kind": "note",
+                        "confidence": 0.7,
                         "source": "llm_extract",
                     },
                     profile=user_id,

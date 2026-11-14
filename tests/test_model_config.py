@@ -15,11 +15,19 @@ class TestModelConfig:
     """Test cases for model_config module."""
 
     @pytest.fixture(autouse=True)
-    def setup_method(self):
-        """Clear cache before each test."""
+    def setup_method(self, monkeypatch):
+        """Clear cache before each test.
+
+        The universal-model hint is pinned to "mode is off" here: these tests
+        measure the per-module cache, and the role redirect has its own suite in
+        ``tests/test_universal_mode.py``.
+        """
         model_config._MODEL_CONFIG_CACHE.clear()
+        model_config._UNIVERSAL_HINT.update(at=0.0, row=None)
+        monkeypatch.setattr(model_config, "_universal_hint", lambda: None)
         yield
         model_config._MODEL_CONFIG_CACHE.clear()
+        model_config._UNIVERSAL_HINT.update(at=0.0, row=None)
 
     def test_get_model_config_returns_cached(self):
         """Should return cached data when updated_at matches DB."""

@@ -13,6 +13,13 @@ _MODEL_CONFIG_CACHE: dict = {}
 # Modules that a universal model serves instead of a model of their own.
 _UNIVERSAL_ROLES = ("multimodal", "reasoning")
 
+# The mode is read on every role lookup, so its row is remembered for a few
+# seconds instead of costing a primary-key query on each call. Any config
+# invalidation drops it, which is what makes the admin switch take effect at
+# once.
+_UNIVERSAL_HINT: dict = {"at": 0.0, "row": None}
+_UNIVERSAL_HINT_TTL_S = 5.0
+
 
 def _read_row(module):
     """Read one module row, using the updated_at cache."""
@@ -73,8 +80,21 @@ def get_model_config(module, _raw=False):
     return _served_by_universal(module, data)
 
 
+def _universal_hint():
+    """The universal row, re-read at most once per ``_UNIVERSAL_HINT_TTL_S``."""
+    import time
+
+    now = time.monotonic()
+    if _UNIVERSAL_HINT["at"] and now - _UNIVERSAL_HINT["at"] < _UNIVERSAL_HINT_TTL_S:
+        return _UNIVERSAL_HINT["row"]
+    row = _read_row("universal")
+    _UNIVERSAL_HINT["at"] = now
+    _UNIVERSAL_HINT["row"] = row
+    return row
+
+
 def _served_by_universal(module, data):
-    universal = _read_row("universal")
+    universal = _universal_hint()
     if not universal or not (universal.get("model_name") or "").strip():
         return data
     merged = dict(universal)
@@ -90,6 +110,8 @@ def _served_by_universal(module, data):
 def invalidate_model_config_cache(module=None):
     """Invalidate the model config cache."""
     global _MODEL_CONFIG_CACHE
+    _UNIVERSAL_HINT["at"] = 0.0
+    _UNIVERSAL_HINT["row"] = None
     if module:
         _MODEL_CONFIG_CACHE.pop(module, None)
     else:
@@ -100,6 +122,8 @@ def reload_all_model_configs():
     """Reload all model configurations from database into cache."""
     global _MODEL_CONFIG_CACHE
     _MODEL_CONFIG_CACHE.clear()
+    _UNIVERSAL_HINT["at"] = 0.0
+    _UNIVERSAL_HINT["row"] = None
 
     try:
         with get_db() as conn:

@@ -13,6 +13,16 @@ import pytest
 from app import model_config, universal_mode
 
 
+@pytest.fixture(autouse=True)
+def _reset_config_caches():
+    """The mode row is cached per process; a test must not inherit it."""
+    model_config._MODEL_CONFIG_CACHE.clear()
+    model_config._UNIVERSAL_HINT.update(at=0.0, row=None)
+    yield
+    model_config._MODEL_CONFIG_CACHE.clear()
+    model_config._UNIVERSAL_HINT.update(at=0.0, row=None)
+
+
 def _touch(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"x" * 16)

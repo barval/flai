@@ -109,6 +109,7 @@ class DownloadFailed(RuntimeError):  # noqa: N818 - public contract name, not a 
 _arch_cache: dict[str, dict | None] = {}
 _gguf_arch_cache: dict[tuple[str, str | None], dict | None] = {}
 _files_cache: dict[str, list[dict]] = {}
+_tree_cache: dict[str, list[dict]] = {}
 _cache_lock = threading.Lock()
 _gguf_arch_cache_lock = threading.Lock()
 
@@ -238,30 +239,48 @@ def _redis() -> redis.Redis:
 _MIN_MODEL_MB = 5.0
 
 
-def _repo_files(repo: str, limit: int | None = 50) -> list[dict]:
-    """GGUF files of a repo: [{path, size_mb, sha256}], cached per repo."""
+def _repo_tree(repo: str, limit: int | None = None) -> list[dict]:
+    """Every ``.gguf`` file in a repo, projectors included: [{path, size_mb, sha256}].
+
+    ``_repo_files`` deliberately drops projectors — a vision encoder is not a
+    model and must not appear in the picker — but ``_companion_files`` needs
+    exactly those files, otherwise a multimodal repo downloads as a text model.
+    """
     with _cache_lock:
-        if repo in _files_cache:
-            files = list(_files_cache[repo])
-            return files if limit is None else files[:limit]
+        if repo in _tree_cache:
+            tree = list(_tree_cache[repo])
+            return tree if limit is None else tree[:limit]
     resp = _hf_get(f"{HF_API}/{repo}", params={"full": "true", "blobs": "true"}, timeout=30)
-    data = resp.json()
-    files = []
-    for sib in data.get("siblings", []):
+    tree = []
+    for sib in resp.json().get("siblings", []):
         path = sib.get("rfilename", "")
-        if not path.endswith(".gguf") or "mmproj" in path.lower():
+        if not path.endswith(".gguf"):
             continue
         size = sib.get("size") or 0
-        if size < _MIN_MODEL_MB * 1024 * 1024:
-            continue
         oid = (sib.get("lfs") or {}).get("oid", "")
-        files.append(
+        tree.append(
             {
                 "path": path,
                 "size_mb": round(size / (1024 * 1024), 1),
                 "sha256": (oid or "").lower(),
             }
         )
+    with _cache_lock:
+        _tree_cache[repo] = tree
+    return tree if limit is None else list(tree[:limit])
+
+
+def _repo_files(repo: str, limit: int | None = 50) -> list[dict]:
+    """GGUF models of a repo (no projectors), cached per repo."""
+    with _cache_lock:
+        if repo in _files_cache:
+            files = list(_files_cache[repo])
+            return files if limit is None else files[:limit]
+    files = [
+        fi
+        for fi in _repo_tree(repo)
+        if "mmproj" not in fi["path"].lower() and fi["size_mb"] >= _MIN_MODEL_MB
+    ]
     with _cache_lock:
         _files_cache[repo] = files
     return files if limit is None else list(files[:limit])
@@ -348,6 +367,38 @@ def _companion_files(repo: str, model_path: str) -> list[dict]:
     head = _mtp_head(repo, model_path)
     if head:
         out.append(head)
+
+    # A multimodal repository ships its vision encoder as a separate projector.
+    # Without that file the model is text-only in llama.cpp — no router images,
+    # no camera, no document scans — so it must travel with the model. It is
+    # stored under the model's own name: a bare mmproj-F16.gguf in a shared
+    # /models directory cannot be attributed to one model, and the universal
+    # model picker refuses a model it cannot pair with a projector.
+    model_dir = os.path.dirname(model_path)
+    projectors = [
+        fi
+        for fi in _repo_tree(repo)
+        if os.path.basename(fi["path"]).lower().startswith("mmproj")
+        and os.path.dirname(fi["path"]) == model_dir
+    ]
+    if projectors:
+        # F16 is the projector every model in this project ships with; BF16 is
+        # the same weights in another container. Match the suffix after a dash —
+        # a bare "f16.gguf" test also matches "bf16.gguf".
+        def _rank(fi: dict) -> int:
+            name = fi["path"].lower()
+            if name.endswith("-f16.gguf"):
+                return 0
+            if name.endswith("-bf16.gguf"):
+                return 1
+            return 2
+
+        projector = min(projectors, key=_rank)
+        item = dict(projector)
+        suffix = os.path.basename(item["path"])[len("mmproj-"):] if "-" in os.path.basename(item["path"]) else "F16.gguf"
+        item["local_name"] = f"mmproj-{main_stem}-{suffix}"
+        item["role"] = "mmproj"
+        out.append(item)
     return out
 
 
@@ -895,7 +946,7 @@ def start_download(
         companions = []
         chosen_companions = _select_companion_files(_companion_files(repo, file_path), companion_paths)
         for c in chosen_companions:
-            if not os.path.exists(os.path.join(models_dir, os.path.basename(c["path"]))):
+            if not os.path.exists(os.path.join(models_dir, c.get("local_name") or os.path.basename(c["path"]))):
                 companions.append(c)
         companion_mb = sum(c["size_mb"] for c in companions)
         try:
@@ -934,7 +985,7 @@ def _hubmeta_path(models_dir: str, main_filename: str) -> str:
 def _write_hubmeta(job: _Job) -> None:
     """Persist ``<main>.hubmeta`` after a successful download so the Models
     tab can delete the model together with its companions later."""
-    names = [os.path.basename(p["path"]) for p in (job.parts or [{"path": job.path}])]
+    names = [p.get("local_name") or os.path.basename(p["path"]) for p in (job.parts or [{"path": job.path}])]
     meta = {
         "repo": job.repo,
         "file": job.path,
@@ -953,7 +1004,7 @@ def _remove_job_files(job: _Job) -> None:
     files, the current .part stream and its sidecar. Leaves no model-related
     file behind after a cancellation."""
     for p in job.parts or [{"path": job.path}]:
-        dest = os.path.join(job.models_dir, os.path.basename(p["path"]))
+        dest = os.path.join(job.models_dir, p.get("local_name") or os.path.basename(p["path"]))
         for path in (dest, dest + ".part", dest + ".part.meta"):
             with contextlib.suppress(OSError):
                 os.remove(path)
@@ -992,7 +1043,7 @@ def _download_thread(job: _Job) -> None:
 
 
 def _download_part(job: _Job, part: dict) -> None:
-    model_name = os.path.basename(part["path"])
+    model_name = part.get("local_name") or os.path.basename(part["path"])
     dest = os.path.join(job.models_dir, model_name)
     part_path = dest + ".part"
     meta_path = dest + ".part.meta"

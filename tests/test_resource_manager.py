@@ -446,7 +446,13 @@ class TestMmprojAccounting:
         mock_mmproj.return_value = 0
         cfg_without_mmproj = rm.compute_llamacpp_config("multimodal")
 
-        assert cfg_with_mmproj["n_gpu_layers"] < cfg_without_mmproj["n_gpu_layers"]
+        # -1 means "all layers": compare the effective counts, not the sentinel.
+        def layers(cfg):
+            ngl = cfg["n_gpu_layers"]
+            return 40 if ngl == -1 else ngl
+
+        assert cfg_without_mmproj["n_gpu_layers"] == -1, "without the projector the whole model fits"
+        assert layers(cfg_with_mmproj) < layers(cfg_without_mmproj)
         self._rm_teardown(rm)
 
     @patch("os.cpu_count", return_value=8)

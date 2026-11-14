@@ -1325,6 +1325,20 @@ def _results_match(final_text: str, step_result: str) -> bool:
     return ratio >= 0.9
 
 
+def _model_ready(module: str) -> bool:
+    """True when llama-swap already serves this role (no load to announce)."""
+    from app.model_status import model_is_ready
+
+    return model_is_ready(module)
+
+
+def _load_stage() -> str:
+    """Stage name for a real load: one model means one wording."""
+    from app.model_status import universal_mode_active
+
+    return "loading_model" if universal_mode_active() else "loading_reasoning_model"
+
+
 def write_plan_tool() -> dict[str, Any]:
     """The plan as a native tool call.
 
@@ -2576,7 +2590,8 @@ class TaskExecutor:
                 publish_task_stage(self.app, task, "making_plan")
 
         cancel_check = lambda: self._redis_flag(f"task:cancelled:{task_id}")  # noqa: E731
-        publish_task_stage(self.app, task, "loading_reasoning_model")
+        if not _model_ready("reasoning"):
+            publish_task_stage(self.app, task, _load_stage())
         start = time.monotonic()
         try:
             plan = None
@@ -2952,7 +2967,8 @@ class TaskExecutor:
                 publish_task_stage(self.app, task, "making_plan")
 
         cancel_check = lambda: self._redis_flag(f"task:cancelled:{task_id}")  # noqa: E731
-        publish_task_stage(self.app, task, "loading_reasoning_model")
+        if not _model_ready("reasoning"):
+            publish_task_stage(self.app, task, _load_stage())
         start = time.monotonic()
         try:
             raw = _run_replan(self.app, prompt, cancel_check, lang, status_callback=_on_model_loaded)

@@ -281,6 +281,7 @@ const STAGE_LABEL_KEYS = {
     generating_image: 'stage_generating_image',
     editing_image: 'stage_editing_image',
     loading_reasoning_model: 'stage_loading_reasoning',
+    loading_model: 'stage_loading_model',
     reasoning_thinking: 'stage_thinking',
     searching_documents: 'stage_searching_documents',
     searching_web: 'stage_searching_web',

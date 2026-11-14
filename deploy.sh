@@ -395,7 +395,64 @@ download_llamacpp_models() {
     else
         warn "bge-reranker-v2-m3-Q4_K_M.gguf already exists — skipping."
     fi
+
+    download_universal_model
 }
+# ── Universal model (single-model mode) ──
+# A fresh install runs one model for chat, vision and reasoning wherever it fits:
+# it removes the measured 14 s model swap the pair pays on a 16 GB card. The tier
+# matches the app's seed — 24 GB+ Q4, 16 GB Q2, 12 GB gemma-4-26B, CPU 35B Q2 when
+# the RAM holds it. Below that the pair stays, because there the universal model
+# is 2.3x slower than the small multimodal one it would replace.
+download_universal_model() {
+    if [[ "$TWO_MODELS" == "true" ]]; then
+        info "Two-model mode requested — skipping the universal model."
+        return 0
+    fi
+    local MODEL_DIR="services/llamacpp/models"
+    local VRAM_MB=0 RAM_MB=0 MODEL="" REPO=""
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    fi
+    RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+
+    if [[ "$COMPOSE_FILE" == "docker-compose.cpu.yml" ]]; then
+        if (( RAM_MB >= 16384 )); then
+            MODEL="Qwen3.6-35B-A3B-UD-Q2_K_XL"
+        else
+            info "RAM ${RAM_MB}MB: two-model mode (a universal model does not fit)."
+            return 0
+        fi
+    elif (( VRAM_MB >= 24000 )); then
+        MODEL="Qwen3.6-35B-A3B-UD-Q4_K_M"
+    elif (( VRAM_MB >= 14000 )); then
+        MODEL="Qwen3.6-35B-A3B-UD-Q2_K_XL"
+    elif (( VRAM_MB >= 11000 )); then
+        MODEL="gemma-4-26B-A4B-it-UD-Q2_K_XL"
+    else
+        info "VRAM ${VRAM_MB}MB: two-model mode (a universal model does not fit)."
+        return 0
+    fi
+
+    case "$MODEL" in
+        *gemma*) REPO="unsloth/gemma-4-26B-A4B-it-GGUF" ;;
+        *)       REPO="unsloth/Qwen3.6-35B-A3B-GGUF" ;;
+    esac
+
+    if [[ -f "$MODEL_DIR/$MODEL.gguf" && -f "$MODEL_DIR/mmproj-$MODEL-F16.gguf" ]]; then
+        warn "$MODEL (universal) already exists — skipping."
+        return 0
+    fi
+
+    info "Universal model: $MODEL (chat, vision and reasoning in one model)."
+    if [[ ! -f "$MODEL_DIR/$MODEL.gguf" ]]; then
+        HF_DOWNLOAD "$REPO" "$MODEL.gguf" "$MODEL_DIR/$MODEL.gguf"
+    fi
+    if [[ ! -f "$MODEL_DIR/mmproj-$MODEL-F16.gguf" ]]; then
+        HF_DOWNLOAD "$REPO" "mmproj-F16.gguf" "$MODEL_DIR/mmproj-$MODEL-F16.gguf"
+    fi
+}
+
 
 # ── Stable Diffusion models ──
 download_sd_cpp_models() {
@@ -921,6 +978,8 @@ backend (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) and coexist locally.
 Simply re-run ./deploy.sh (GPU) or ./deploy.sh --cpu (CPU) to switch.
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
+  --two-models        Keep the two-model stack (multimodal + reasoning) instead
+                      of the single universal model, even where one would fit
   --strict-stack      On an existing .env, switch off the optional services this
                       run does not ask for (default: keep them as they are, so an
                       update without the original flags cannot disable features)
@@ -960,6 +1019,7 @@ WITH_SEARCH=false
 WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
+TWO_MODELS=false
 STRICT_STACK=false
 ENV_EXISTED=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
@@ -983,6 +1043,7 @@ for arg in "$@"; do
         --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
+        --two-models)                    TWO_MODELS=true ;;
         --strict-stack)                  STRICT_STACK=true ;;
         --help|-h)                       usage; exit 0 ;;
     esac

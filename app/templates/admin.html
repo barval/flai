@@ -217,6 +217,19 @@
 
     <!-- Models tab content -->
     <div id="models-tab" class="admin-tab-content">
+        <div class="model-card" id="operating-mode-card">
+            <h3><span class="module-name">{{ _('Operating mode') }}</span></h3>
+            <div class="operating-mode-options">
+                <label class="mode-option">
+                    <input type="radio" name="operating-mode" value="one">
+                    <span>{{ _('One universal model') }}</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="operating-mode" value="pair">
+                    <span>{{ _('Two models: multimodal and reasoning') }}</span>
+                </label>
+            </div>
+        </div>
         <div class="models-container">
             <div class="models-header">
                 <button id="refresh-gguf-btn" class="add-user-button" title="{{ _('Refresh models from llama-server') }}">🔄 {{ _('Update model list') }}</button>
@@ -996,6 +1009,13 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'hub_downloading': {{ _('Downloading {pct}% — {total} MB')|tojson }},
     'hub_verifying': {{ _('Verifying checksum…')|tojson }},
     'hub_done': {{ _('Downloaded — refresh the Models tab')|tojson }},
+    'Universal': {{ _('Universal')|tojson }},
+    'universal_pair_option': {{ _('Two models: multimodal and reasoning')|tojson }},
+    'universal_pick_first': {{ _('Choose a universal model in the card below first.')|tojson }},
+    'universal_none': {{ _('No model with both reasoning and a vision projector was found. Download one in Model Hub.')|tojson }},
+    'universal_note_on': {{ _('Single-model mode is on: the multimodal and reasoning cards below are not used.')|tojson }},
+    'universal_note_off': {{ _('Two-model mode: a small multimodal model plus a large reasoning model.')|tojson }},
+    'universal_saved': {{ _('Mode saved. The model list reloads within a few seconds.')|tojson }},
     'hub_failed': {{ _('Download failed')|tojson }},
     'hub_cancelled': {{ _('Download cancelled')|tojson }},
     'hub_cancel': {{ _('Cancel')|tojson }},

@@ -27,12 +27,16 @@ DEFAULT_TTL = {
     "embedding": 1,  # unload 1 second after response (fast: ~500 MB, reload is instant)
     "reasoning": 10,  # unload 10 seconds after response (long enough to survive VRAM check → gen race)
     "multimodal": 0,  # never unload — always resident (router + chat + vision)
+    # Single-model mode: one model serves every LLM role, so it must stay warm —
+    # evicting it costs a 11-14 GB reload on the next message of any kind.
+    "universal": 0,
 }
 
 GROUP_SETTINGS = {
     "embedding": {"group": "llm_fast"},
     "reasoning": {"group": "llm_fast"},
     "multimodal": {"group": "llm_fast"},
+    "universal": {"group": "llm_fast"},
     "merge_cpu": {"group": "cpu_only"},
 }
 
@@ -143,26 +147,19 @@ class LlamaSwapConfigGenerator:
 
         return None
 
-    def get_mmproj_path(self, module: str, model_path: str) -> str | None:
-        """Get mmproj path for multimodal models."""
-        if not model_path or module != "multimodal":
+    def get_mmproj_path(self, module: str, model_path: str, model_name: str | None = None) -> str | None:
+        """Vision projector for a multimodal or universal model, if it has one."""
+        if not model_path or module not in ("multimodal", "universal"):
             return None
 
-        base_dir = os.path.dirname(model_path)
-        if not base_dir:
-            base_dir = os.path.join(MODELS_DIR, model_path)
+        from app.universal_mode import find_mmproj
 
-        self.logger.info(f"Searching mmproj in base_dir: {base_dir}")
+        found = find_mmproj(model_path, model_name)
+        if found:
+            self.logger.info(f"Found mmproj for {module}: {found}")
+            return found
 
-        import glob
-
-        pattern = os.path.join(base_dir, "mmproj*.gguf")
-        matches = glob.glob(pattern)
-        if matches:
-            self.logger.info(f"Found mmproj for {module}: {matches[0]}")
-            return matches[0]
-
-        self.logger.warning(f"No mmproj found in {base_dir}")
+        self.logger.warning(f"No mmproj found for {model_path}")
         return None
 
     def _cpu_swap_enabled(self) -> bool:
@@ -208,6 +205,23 @@ class LlamaSwapConfigGenerator:
         except Exception:
             return 0
 
+    def _single_model_mode(self) -> bool:
+        """One universal model serves chat, vision and reasoning."""
+        from app.universal_mode import is_enabled
+
+        return is_enabled()
+
+    def _llm_modules(self) -> list[str]:
+        """LLM entries llama-swap must manage, in the order they are emitted.
+
+        Two-model mode keeps the historical order so the generated file does not
+        churn when nothing changed; single-model mode replaces the pair with one
+        entry and leaves the embedding model where it was.
+        """
+        if self._single_model_mode():
+            return ["embedding", "universal"]
+        return ["embedding", "reasoning", "multimodal"]
+
     def _gpu_models_coexist(self) -> bool:
         """True when the card can hold all three models at once.
 
@@ -223,7 +237,7 @@ class LlamaSwapConfigGenerator:
             total_vram = int(rm.hardware.total_vram_mb or 0)
             if total_vram <= 0:
                 return False
-            needed = sum(rm.get_vram_needed_mb(module) for module in ("multimodal", "reasoning", "embedding"))
+            needed = sum(rm.get_vram_needed_mb(module) for module in self._llm_modules())
             headroom = int(setting("VRAM_HEADROOM_MB", 1200))
             return bool(needed and needed + headroom <= total_vram)
         except Exception:
@@ -237,6 +251,10 @@ class LlamaSwapConfigGenerator:
         reserve covers the services that are always resident (Whisper, SLM,
         Postgres, Qdrant, Redis) plus the OS.
         """
+        if self._single_model_mode():
+            # One model serves every role; nothing to hold next to it but the
+            # embedding model, which is small.
+            return True
         total_ram = self._total_ram_mb()
         multimodal_mb = self._model_file_mb("multimodal")
         reasoning_mb = self._model_file_mb("reasoning")
@@ -252,7 +270,7 @@ class LlamaSwapConfigGenerator:
         hold it next to the chat model with room for the OS — otherwise it waits
         ``CPU_REASONING_TTL`` seconds (10 minutes) before giving its RAM back.
         """
-        if module in ("multimodal", "embedding"):
+        if module in ("multimodal", "universal", "embedding"):
             return 0
         if module != "reasoning":
             return DEFAULT_TTL.get(module, 300)
@@ -449,7 +467,11 @@ class LlamaSwapConfigGenerator:
             self.logger.warning(f"No model_path for {module} ({model_name})")
             return None
 
-        mmproj = self.get_mmproj_path(module, model_path) if module == "multimodal" else None
+        mmproj = (
+            self.get_mmproj_path(module, model_path, model_name)
+            if module in ("multimodal", "universal")
+            else None
+        )
 
         # Use module type as name for proper routing in llama-swap
         # This ensures requests with model=<module_type> are routed correctly
@@ -605,7 +627,7 @@ class LlamaSwapConfigGenerator:
             "llm_fast": {
                 "swap": self._cpu_swap_enabled(),
                 "exclusive": False,
-                "models": ["embedding", "reasoning", "multimodal"],
+                "models": self._llm_modules(),
             },
             "cpu_only": {
                 "swap": False,
@@ -640,7 +662,7 @@ class LlamaSwapConfigGenerator:
         lines.append("models:")
 
         seen_aliases: set[str] = set()
-        for module in ["embedding", "reasoning", "multimodal"]:
+        for module in self._llm_modules():
             ngl_override = ngl_overrides.get(module)
             entry = self.build_model_entry(module, ngl_override=ngl_override)
             if not entry:

@@ -91,12 +91,34 @@ The script checks prerequisites, creates directories, writes `.env` from
 `.env.example` with a generated `SECRET_KEY`, resolves the compose file and
 profiles, generates the llama-swap config, downloads models and builds.
 
-## Phase 3 — Models
+## Phase 3 — Models and the operating mode
 
 Sizes come from `./deploy.sh --help`; quote them instead of estimating. Check the
 disk **before** the download and say what remains after it. A model download can be
 deferred: the stack starts, `/health` is green, and the first message then takes a
 model load. Tell the user which of the two they are choosing.
+
+**The deployment picks the operating mode from the hardware, and the mode decides
+what to download.** One universal model (chat + vision + reasoning) where it fits,
+the multimodal+reasoning pair below that:
+
+| Hardware | Mode | Model to download (+ projector) |
+|---|---|---|
+| 24+ GB VRAM | one model | `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` + `mmproj-…-F16.gguf` |
+| 16 GB VRAM | one model | `Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf` + projector |
+| 12 GB VRAM | one model | `gemma-4-26B-A4B-it-UD-Q2_K_XL.gguf` + projector |
+| 8 GB VRAM | pair | Qwen3VL-4B + Qwen3.6-35B-A3B Q2 |
+| CPU 16+ GB RAM | one model | `Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf` + projector |
+| CPU < 16 GB RAM | pair | Qwen3VL-4B + gpt-oss-20b-mxfp4 |
+
+`./deploy.sh --download-models` does this itself; `--two-models` keeps the pair on a
+fresh install even where one model would fit. **The projector name must contain the
+model's own name** (`mmproj-<model>-F16.gguf`) unless it sits alone inside the
+model's own subdirectory — the app matches it that way and will not offer a model
+without one.
+
+Do not switch the mode by editing the database or the generated llama-swap config:
+the admin panel is the supported switch, and it also fits the context window.
 
 ## Phase 4 — Verify (always, even when the script says "complete")
 
@@ -113,6 +135,7 @@ docker exec flai-web flask admin-password '<password>'
 | Memory service | `services.slm` is `ok` when SLM is deployed — `daemon unreachable` means the daemon died, not that the install succeeded |
 | Login page | `GET /` answers `200` |
 | Admin | the password command returns success; it is set, not printed |
+| Operating mode | `curl -s -b <admin-cookie> /admin/api/models/universal` lists the mode the hardware should have; a model entry means single-model mode |
 | First answer | one real message through the UI or `/v1/chat/completions` returns text |
 
 Report each row as PASS or NOT VERIFIED. A green container says nothing about the

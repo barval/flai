@@ -1942,6 +1942,17 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
     return cached
 
 
+def _invalidate_universal_candidates() -> None:
+    """The universal-model list depends on the files on disk, not only on the
+    GGUF cache: a downloaded or deleted projector changes it."""
+    try:
+        from app.universal_mode import invalidate_available_cache
+
+        invalidate_available_cache()
+    except Exception:
+        pass
+
+
 def remove_gguf_cache_entries(model_names) -> None:
     """Drop deleted model files from the gguf_models_cache, both in-memory and
     in the database table. Known no-ops are tolerated (files already gone)."""
@@ -1966,6 +1977,7 @@ def remove_gguf_cache_entries(model_names) -> None:
             conn.commit()
     except Exception:
         pass
+    _invalidate_universal_candidates()
 
 
 def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:
@@ -2035,7 +2047,7 @@ def get_mmproj_size_mb(model_name: str) -> int:
         gen = LlamaSwapConfigGenerator()
         model_path = gen.get_model_path("multimodal", model_name)
         if model_path:
-            mmproj_path = gen.get_mmproj_path("multimodal", model_path)
+            mmproj_path = gen.get_mmproj_path("multimodal", model_path, key)
             if mmproj_path and os.path.exists(mmproj_path):
                 size_mb = int(os.path.getsize(mmproj_path) / (1024 * 1024))
     except Exception:

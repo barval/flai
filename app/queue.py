@@ -867,6 +867,22 @@ class RedisRequestQueue:
         except Exception:
             return False
 
+    def _reasoning_model_is_resident(self) -> bool:
+        """True when the model that answers reasoning is loaded and ready."""
+        from app.model_status import model_is_ready
+
+        return model_is_ready("reasoning")
+
+    def _model_load_stage(self) -> str:
+        """Stage name for a model that is actually being loaded.
+
+        Single-model mode loads the same weights for every role, so "loading the
+        reasoning model" would name a role that does not exist separately there.
+        """
+        from app.model_status import universal_mode_active
+
+        return "loading_model" if universal_mode_active() else "loading_reasoning_model"
+
     def _preload_multimodal_sync(self, timeout: int = 60) -> None:
         """Synchronously ensure the multimodal model is resident in VRAM.
 
@@ -1861,7 +1877,11 @@ class RedisRequestQueue:
 
         mm_start = time.time()
         if task:
-            self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
+            from app.model_status import model_is_ready
+
+        if not model_is_ready("multimodal"):
+            self._publish_stream_event(task, "task_progress", {"stage": "loading_model"})
+        self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
         # Corrective retry: append the verifier's reason to the edit prompt only,
         # never to `message_text` itself (the media envelope below echoes it).
         edit_prompt = message_text
@@ -2541,7 +2561,8 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("No documents selected for analysis", lang), 0, lang
             )
 
-        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+        if not self._reasoning_model_is_resident():
+            self._publish_stream_event(task, "task_progress", {"stage": self._model_load_stage()})
         # Publish task_stage events for the task view when RLM runs as a subtask.
         from app.tasks.events import publish_task_stage
 
@@ -2913,7 +2934,8 @@ class RedisRequestQueue:
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
 
-        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+        if not self._reasoning_model_is_resident():
+            self._publish_stream_event(task, "task_progress", {"stage": self._model_load_stage()})
 
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")

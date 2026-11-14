@@ -95,6 +95,47 @@ wget -O "$SD/text_encoders/umt5-xxl-encoder-Q8_0.gguf" \
   "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q8_0.gguf"
 ```
 
+## Operating modes and the model per tier
+
+FLAI has two operating modes, and the mode decides how many LLM entries llama-swap runs:
+
+- **Single-model (default where it fits)** — one universal model answers chat, vision, routing and
+  reasoning. It never swaps, so an answer does not wait for 11.7 GB to reload.
+- **Two-model** — the historical pair: a small multimodal model for the router and vision, a large
+  reasoning model loaded just in time.
+
+The switch lives in **Admin → Models → Universal model**: choose a model to enter single-model mode,
+choose “Two models (multimodal + reasoning)” to leave it. Nothing else changes — no deployment flag,
+no second compose file, no restart. The list offers only models that both reason and carry a vision projector (`mmproj`) next to them.
+The projector *is* multimodality in llama.cpp, and the thinking phase in the chat template is what
+separates a reasoning model from a chat model — measured on Qwen3-VL-8B, which has a projector but
+no thinking phase and is therefore not offered.
+
+A fresh install seeds the mode its hardware can hold, and `deploy.sh` downloads exactly that model
+plus the projector:
+
+| Hardware | Mode | Model | Projector file | Measured |
+|---|---|---|---|---|
+| 24+ GB VRAM | single | Qwen3.6-35B-A3B-UD-Q4_K_M | `mmproj-Qwen3.6-35B-A3B-UD-Q4_K_M-F16.gguf` | ~21 GB weights |
+| 16 GB VRAM | single | Qwen3.6-35B-A3B-UD-Q2_K_XL | `mmproj-Qwen3.6-35B-A3B-UD-Q2_K_XL-F16.gguf` | 13 459 MiB VRAM, 105–119 t/s |
+| 12 GB VRAM | single | gemma-4-26B-A4B-it-UD-Q2_K_XL | `mmproj-gemma-4-26B-A4B-it-UD-Q2_K_XL-F16.gguf` | 11 124 MiB at ctx 4k, 108–120 t/s |
+| 8 GB VRAM | pair | Qwen3VL-4B + Qwen3.6-35B-A3B Q2 | — | 72.6 t/s (small) / 31 t/s (unified) |
+| CPU, 16+ GB RAM | single | Qwen3.6-35B-A3B-UD-Q2_K_XL | `mmproj-Qwen3.6-35B-A3B-UD-Q2_K_XL-F16.gguf` | 17.6 t/s, 11.3 GB RAM |
+| CPU, under 16 GB RAM | pair | Qwen3VL-4B + gpt-oss-20b-mxfp4 | — | 15.4 t/s (reasoning) |
+
+The projector file name must contain the model's own name — `mmproj-<model>-F16.gguf` — or sit alone
+in the model's subdirectory as `<model>/mmproj-F16.gguf`. A projector in a shared flat directory is
+only matched by that name: without it, one model's encoder would silently be attached to another.
+
+**The Model Hub downloads the projector with the model.** A multimodal GGUF repository ships its vision encoder as a separate file; the Hub attaches the best available one (F16, then BF16) and stores it as `mmproj-<model>-F16.gguf`, so the projectors of several models can share one models directory. A model downloaded before this rule has no projector and will not appear in the universal-model list until one is placed next to it.
+
+Alternatives offered by the panel: Qwen3-VL 8B/32B, Qwen3.8-27B, gemma-4. Measured throughput on a
+16 GB card: Qwen3.6-35B-A3B 105–119 t/s, gemma-4-26B-A4B 108–120 t/s, Qwen3.8-27B (dense) 32 t/s.
+On CPU the dense 27B collapses to 2.8 t/s and is not usable.
+
+`--two-models` keeps the pair on a fresh install even where one model would fit. An upgraded
+installation keeps whatever mode it already had; the universal row is created empty.
+
 ## Models, licenses and sizes
 
 

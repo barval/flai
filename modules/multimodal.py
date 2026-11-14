@@ -174,10 +174,34 @@ class MultimodalModule(TranslationMixin):
         lang: str,
         session_id: str | None,
         response_style: str,
+        mode: str = "chat",
     ) -> str | None:
-        """Build the prompt text for image processing. Returns None on error."""
+        """Build the prompt text for image processing. Returns None on error.
+
+        ``mode="camera"`` answers a question about a surveillance snapshot and is
+        deliberately not the image-chat classifier: that template asks the model
+        to choose between describing and editing, so a vague question ("how are
+        things in the office") came back as ``[-IMAGE-EDIT-] <question>`` and the
+        camera path saved the marker as the answer. The camera never edits or
+        generates anything.
+        """
         response_language = response_language_name(lang)
         style_instruction = get_style_instruction(lang, response_style)
+
+        if mode == "camera":
+            prompt = format_prompt(
+                "camera_question.template",
+                {
+                    "current_time_str": current_time_str,
+                    "user_query": user_text,
+                    "response_language": response_language,
+                    "response_style": style_instruction,
+                },
+                lang=lang,
+            )
+            if not prompt:
+                self.logger.error("Failed to load the camera question template")
+            return prompt
 
         context_str = self._get_context_for_model(session_id, user_text, lang)  # type: ignore[arg-type]
 
@@ -217,12 +241,19 @@ class MultimodalModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        mode: str = "chat",
     ) -> tuple[str | None, str | None]:
-        """Process image with text, including conversation history."""
+        """Process image with text, including conversation history.
+
+        ``mode="camera"`` answers about a snapshot instead of classifying an
+        image-chat request; see ``_prepare_image_prompt``.
+        """
         if not self.check_availability():
             return None, self._("Multimodal model unavailable", lang)
 
-        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        prompt = self._prepare_image_prompt(
+            user_text, current_time_str, lang, session_id, response_style, mode=mode
+        )
         if not prompt:
             return None, self._("Error loading prompt template", lang)
 
@@ -326,13 +357,20 @@ class MultimodalModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        mode: str = "chat",
     ) -> Generator[str, None, None]:
-        """Stream multimodal response for image+text, token by token."""
+        """Stream multimodal response for image+text, token by token.
+
+        ``mode="camera"`` streams an answer about a snapshot; see
+        ``_prepare_image_prompt``.
+        """
         if not self.check_availability():
             yield "⚠️ " + self._("Multimodal model unavailable", lang)
             return
 
-        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        prompt = self._prepare_image_prompt(
+            user_text, current_time_str, lang, session_id, response_style, mode=mode
+        )
         if not prompt:
             yield "⚠️ " + self._("Error loading prompt template", lang)
             return

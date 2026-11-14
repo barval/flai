@@ -3652,6 +3652,9 @@ class RedisRequestQueue:
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
             # Multimodal model is always resident (router + chat + vision) — no
             # VRAM unload/wait needed; it directly answers on the camera snapshot.
+            # The camera asks a question, it never edits: mode="camera" keeps the
+            # image-chat classifier (which answers with [-IMAGE-EDIT-] and
+            # friends) out of this path.
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                 camera_result["image_data"],
@@ -3660,10 +3663,45 @@ class RedisRequestQueue:
                 lang=lang,
                 session_id=None,
                 response_style=response_style,
+                mode="camera",
             )
+            # Safety net: a marker here would be saved as the answer, which is
+            # exactly what shipped to a user once. Ask again for a plain
+            # description; if that also comes back as a marker, report an error.
+            if bot_reply and str(bot_reply).strip().startswith(("[-IMAGE-EDIT-]", "[-IMAGE-]", "[-VIDEO-]")):
+                base = self.app.modules.get("base")
+                describe = (
+                    str(base._("Describe what the camera snapshot of {room_name} shows.", lang)).format(
+                        room_name=query or message_text
+                    )
+                    if base
+                    else f"Describe what the camera snapshot of {query} shows."
+                )
+                bot_reply, retry_error = self.app.modules["multimodal"].process_image_with_text(
+                    camera_result["image_data"],
+                    describe,
+                    current_time_str,
+                    lang=lang,
+                    session_id=None,
+                    response_style=response_style,
+                    mode="camera",
+                )
+                error = retry_error or error
+                if bot_reply and str(bot_reply).strip().startswith(("[-IMAGE-EDIT-]", "[-IMAGE-]", "[-VIDEO-]")):
+                    bot_reply = None
             mm_time = round(time.time() - mm_start, 1)
             if error:
                 bot_reply = f"⚠️ {error}"
+            if not bot_reply or not str(bot_reply).strip():
+                # The guard above refused a marker and the retry produced
+                # nothing: say so instead of saving an empty answer.
+                base = self.app.modules.get("base")
+                bot_reply = "⚠️ " + (
+                    str(base._("Failed to process image request. Please try again.", lang))
+                    if base
+                    else "Failed to process image request. Please try again."
+                )
+                error = error or "camera answer failed"
             mm_model = self._get_model_name("multimodal") or "unknown"
             second = self._save_and_respond(
                 session_id,
@@ -3871,6 +3909,7 @@ class RedisRequestQueue:
                     lang=lang,
                     session_id=None,
                     response_style=response_style,
+                    mode="camera",
                 )
                 text = str(room_answer or "").strip()
                 if room_error or not text:
@@ -3962,6 +4001,7 @@ class RedisRequestQueue:
                 lang=lang,
                 session_id=None,
                 response_style=str(data.get("response_style") or "neutral"),
+                mode="camera",
             )
 
         # Analysis framing, never the raw planner goal ("Take a snapshot…"
@@ -4248,6 +4288,7 @@ class RedisRequestQueue:
             lang=lang,
             session_id=None,
             response_style=response_style,
+            mode="camera",
         ):
             full_response += token
             if not error_detected:
@@ -4265,6 +4306,16 @@ class RedisRequestQueue:
             self._publish_stream_event(task, "stream_cancelled")
         if self._is_llm_error_string(full_response):
             return self._build_error_response(session_id, full_response, mm_time, lang)
+        if str(full_response).strip().startswith(("[-IMAGE-EDIT-]", "[-IMAGE-]", "[-VIDEO-]")):
+            # The stream already showed it, but the stored answer and the API
+            # response must not carry the image-chat classifier's marker.
+            base = self.app.modules.get("base")
+            self.app.logger.warning(f"camera stream returned an image marker: {full_response[:80]}")
+            full_response = "⚠️ " + (
+                str(base._("Failed to process image request. Please try again.", lang))
+                if base
+                else "Failed to process image request. Please try again."
+            )
         return self._save_and_respond(
             session_id,
             full_response,

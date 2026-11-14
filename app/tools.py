@@ -655,7 +655,7 @@ def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
         with force_locale(lang):
             question = str(_("What is visible in this room right now? Name people, animals, objects and activity."))
         description, error = multimodal.process_image_with_text(
-            image_data, question, "", lang=lang, session_id=None, response_style="neutral"
+            image_data, question, "", lang=lang, session_id=None, response_style="neutral", mode="camera"
         )
         if error or not description:
             return {"success": False, "error": str(error or "description failed")}

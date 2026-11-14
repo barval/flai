@@ -272,7 +272,7 @@ def available_models() -> list[dict[str, Any]]:
     """
     from app.utils import get_gguf_models_cached
 
-    now = time.monotonic()
+    now = time.time()
     cached_list = _AVAILABLE_CACHE.get(MODELS_DIR)
     if cached_list and now - cached_list[0] < _AVAILABLE_TTL_S:
         return list(cached_list[1])

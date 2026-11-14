@@ -84,7 +84,9 @@ def _universal_hint():
     """The universal row, re-read at most once per ``_UNIVERSAL_HINT_TTL_S``."""
     import time
 
-    now = time.monotonic()
+    # Wall clock, not monotonic: the RLM tests patch time.monotonic globally to
+    # drive their deadline, and a cache read there consumed the scripted values.
+    now = time.time()
     if _UNIVERSAL_HINT["at"] and now - _UNIVERSAL_HINT["at"] < _UNIVERSAL_HINT_TTL_S:
         return _UNIVERSAL_HINT["row"]
     row = _read_row("universal")

@@ -77,6 +77,8 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **One universal model or the classic pair — switchable in the admin panel.** From 12 GB of VRAM a fresh install runs a single model that answers chat, vision, routing and reasoning, so an answer never waits for the 11.7 GB reload the pair pays (measured: 14 s per reasoning answer on a 16 GB card, and the pair cannot be resident together at all). Below that the pair stays, because there the single model is slower. The mode is a choice in Admin → Models and needs no deployment flag. → [MODELS.md](docs/MODELS.md)
+
 - **Long-term memory keeps facts with their time, and resolves contradictions.** A fact is stored as a typed `(subject, predicate, value)` with a validity interval: when a newer fact contradicts an older one, the older row is closed instead of deleted, and a question that names a year — "where did I live in 2024" — is answered from the interval it held. The always-injected profile now separates what holds from what no longer does. → [MEMORY.md](docs/MEMORY.md)
 
 - **The document panel says why an upload was refused.** Quota, size cap, unsupported format, an unreadable or password-protected file, the folder limit — the reason appears next to the file name instead of one generic sentence. → [DOCUMENTS.md](docs/DOCUMENTS.md)

@@ -90,3 +90,44 @@ def test_an_anonymous_request_is_refused(database, test_app):
     response = test_app.test_client().get("/api/graph")
 
     assert response.status_code in (302, 401, 403)
+
+
+def test_a_shared_path_never_leaves_the_shared_documents(database, client, monkeypatch):
+    """A recipient of one document must not see relations from the others."""
+    from app.database import get_db
+    from app.routes import graph as graph_routes
+
+    a = _node(OTHER, "A", doc_id="shared-doc")
+    b = _node(OTHER, "B", doc_id="shared-doc")
+    c = _node(OTHER, "C", doc_id="shared-doc")
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        rows = [
+            (a, b, "secret-relation", "secret-doc", "SECRET EVIDENCE"),
+            (a, c, "shared-first", "shared-doc", "shared one"),
+            (c, b, "shared-second", "shared-doc", "shared two"),
+        ]
+        for src, dst, predicate, doc_id, evidence in rows:
+            cur.execute(
+                "INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
+                " VALUES (%s, %s, %s, %s, 1, %s, 0, %s)",
+                (OTHER, src, dst, predicate, doc_id, evidence),
+            )
+        conn.commit()
+
+    # The caller is a recipient of exactly one of the owner's documents.
+    monkeypatch.setattr(
+        graph_routes,
+        "_graph_scopes",
+        lambda login, doc_id="": [(LOGIN, None), (OTHER, ["shared-doc"])],
+    )
+
+    response = client.get(f"/api/graph/path?source={a}&target={b}")
+
+    assert response.status_code == 200
+    edges = response.get_json()["edges"]
+    predicates = [edge["predicate"] for edge in edges]
+    assert "secret-relation" not in predicates
+    assert predicates == ["shared-first", "shared-second"]
+    assert all("SECRET" not in (edge.get("evidence") or "") for edge in edges)

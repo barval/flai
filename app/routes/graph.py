@@ -130,8 +130,12 @@ def graph_path():
     target = request.args.get("target", "")
     edges: list[dict] = []
     owner = login
-    for candidate, _scope in _graph_scopes(login):
-        edges = shortest_path_edges(candidate, source, target, None)
+    for candidate, scope in _graph_scopes(login):
+        # The scope is the access boundary, not a hint: a recipient's copy of a
+        # shared graph must only ever answer from the documents that were shared.
+        # Passing None searched the owner's whole graph and returned predicates,
+        # evidence quotes and node names from documents the caller cannot open.
+        edges = shortest_path_edges(candidate, source, target, scope)
         if edges:
             owner = candidate
             break

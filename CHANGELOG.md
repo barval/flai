@@ -2,6 +2,10 @@
 
 ### Fixed
 
+- **A shared graph answered with relations from documents the caller cannot open.** `/api/graph/path` walked the caller's scopes but passed `None` as the scope into `shortest_path_edges`, which means "the owner's whole graph": a recipient of one shared document could right-click two nodes and receive the shortest path across every unshared document of that owner — predicates, verbatim evidence quotes and the names of both endpoints. The scope is forwarded now. The regression test builds a direct relation in an unshared document and a two-hop path in the shared one and asserts that only the shared path is returned.
+
+### Fixed
+
 - **A camera question could be answered with an image-chat marker.** The single-room snapshot path fed the user's message to the image-chat classifier prompt, whose contract is to choose between describing and *editing* and to answer `[-IMAGE-EDIT-] <request>` in the second case. "How are things in the office" was classified as an edit, and the marker itself was saved as the answer and returned over the API. The camera now has its own prompt (`prompts/{ru,en}/camera_question.template`, `mode="camera"`) that answers from the snapshot and offers no marker, used by the single-room path, the per-room fan-out, the streaming fan-out and the `camera_snapshot` tool; a marker from the model is retried once as a plain description and otherwise reported as an error instead of being saved, and the streamed answer drops it before it is stored. Tests: `tests/test_camera_prompt.py`, `tests/test_camera_answer.py`.
 
 ### Fixed

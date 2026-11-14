@@ -58,3 +58,16 @@ def universal_mode_active() -> bool:
         return is_enabled()
     except Exception:
         return False
+
+
+def answer_model_type(model_type: str | None) -> str | None:
+    """The type shown next to an answer.
+
+    One universal model serves both roles, so labelling its answers "multimodal"
+    (a picture icon in the chat header) hid half of what answered. Media types
+    are left alone — an image generation is an image generation whatever model
+    planned it.
+    """
+    if model_type in ("multimodal", "reasoning") and universal_mode_active():
+        return "universal"
+    return model_type

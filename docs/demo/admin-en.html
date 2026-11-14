@@ -16795,7 +16795,10 @@ async function onModelSelect(event) {
     }
 
     if (info.model_type) {
-        detailsHtml += `<p><strong>${t('Type:')}</strong> ${info.model_type}</p>`;
+        // The universal card is one model serving both roles; the file
+        // classifier still calls it multimodal, which reads as "only vision".
+        const shownType = module === 'universal' ? 'universal' : info.model_type;
+        detailsHtml += `<p><strong>${t('Type:')}</strong> ${shownType}</p>`;
     }
 
     detailsGrid.innerHTML = detailsHtml;

@@ -2,6 +2,11 @@
 
 ### Fixed
 
+- **"What can you do" was answered with internal tool names.** The chat prompt names the time tools to make the model call them, and the model copied those identifiers into its user-facing summary: the answer listed "time and dates (get_current_time, time_calc)" instead of describing the ability. The prompt now says that an answer must not contain tool names, paths or other internal identifiers.
+- **A universal model's answers were labelled with the vision icon only.** The chat header picks the emoji from `model_type`, and every answer from the single universal model was stored as `multimodal` — a picture, while the model also reasons. Answers now carry the type `universal` with a combined icon (brain + picture); media types (`image_gen`, `image_edit`, `video`) keep their own, and the admin card shows the same type instead of the file classifier's "multimodal".
+
+### Fixed
+
 - **A shared graph answered with relations from documents the caller cannot open.** `/api/graph/path` walked the caller's scopes but passed `None` as the scope into `shortest_path_edges`, which means "the owner's whole graph": a recipient of one shared document could right-click two nodes and receive the shortest path across every unshared document of that owner — predicates, verbatim evidence quotes and the names of both endpoints. The scope is forwarded now. The regression test builds a direct relation in an unshared document and a two-hop path in the shared one and asserts that only the shared path is returned.
 
 ### Fixed

@@ -44,3 +44,18 @@ def test_the_placeholder_renders_without_skills(app):
         prompt = format_prompt("chat.template", dict(_VARIABLES), lang="en")
     assert "{skill_catalog}" not in prompt
     assert "Matching skills" not in prompt
+
+
+@pytest.mark.parametrize(
+    ("lang", "phrase"),
+    [
+        ("ru", "не должно быть имён инструментов"),
+        ("en", "must not contain tool names"),
+    ],
+)
+def test_the_chat_prompt_forbids_internal_ids_in_a_user_answer(app, lang, phrase):
+    """A model that lists its tools by name answers "what can you do" with ids."""
+    with app.app_context():
+        prompt = format_prompt("chat.template", dict(_VARIABLES), lang=lang)
+
+    assert phrase in prompt

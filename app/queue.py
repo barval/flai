@@ -35,6 +35,7 @@ from .engine.session import ChatSession
 from .events import get_events_publisher
 from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
+from .model_status import answer_model_type
 from .tools import (
     MAX_TOOL_ITERATIONS,
     ToolCallLoopGuard,
@@ -1515,7 +1516,7 @@ class RedisRequestQueue:
             user_id=user_id,
             completion_tokens=completion_tokens,
             prompt_tokens=prompt_tokens,
-            model_type=(extra or {}).get("model_type"),
+            model_type=answer_model_type((extra or {}).get("model_type")),
         )
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra

@@ -306,6 +306,8 @@ var MODEL_EMOJI = {
     image_edit: '\u{1F3A8}',
     video: '\u{1F3A5}',
     multimodal: '\u{1F5BC}\u{FE0F}',
+    // One model for both roles: the picture alone hid the reasoning half.
+    universal: '\u{1F9E0}\u{1F5BC}\u{FE0F}',
     camera: '\u{1F4F9}',
     system: '\u26A0\u{FE0F}',
     whisper: '\u{1F3A4}',

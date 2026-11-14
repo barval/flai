@@ -805,3 +805,13 @@ def test_the_users_tab_action_buttons_darken_on_hover():
     admin_css = (JS_DIR.parent / "css" / "admin.css").read_text(encoding="utf-8")
     assert ".delete-user-btn:hover {\n    background-color: #c0392b;\n}" in admin_css
     assert ".change-password-btn:hover {\n    background-color: #e67e22;\n}" in admin_css
+
+
+def test_the_universal_answer_has_its_own_icon():
+    """The picture alone said "vision only" while one model served both roles."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "chat-messages.js").read_text(
+        encoding="utf-8"
+    )
+    assert "universal: '\\u{1F9E0}\\u{1F5BC}\\u{FE0F}'" in source

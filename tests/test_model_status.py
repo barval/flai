@@ -79,3 +79,20 @@ def test_the_stage_wording_follows_the_mode(monkeypatch, enabled, expected):
     monkeypatch.setattr("app.model_status.universal_mode_active", lambda: enabled)
 
     assert executor._load_stage() == expected
+
+
+@pytest.mark.parametrize(
+    ("enabled", "given", "expected"),
+    [
+        (True, "multimodal", "universal"),
+        (True, "reasoning", "universal"),
+        (True, "image_gen", "image_gen"),
+        (True, "system", "system"),
+        (False, "multimodal", "multimodal"),
+        (False, "reasoning", "reasoning"),
+    ],
+)
+def test_an_answer_is_labelled_universal_only_where_one_model_served_it(monkeypatch, enabled, given, expected):
+    monkeypatch.setattr("app.model_status.universal_mode_active", lambda: enabled)
+
+    assert model_status.answer_model_type(given) == expected

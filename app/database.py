@@ -41,6 +41,46 @@ _GPU_CTX_FALLBACK = (32768, 24576)
 _GPU_CTX_STEPS = (32768, 24576, 16384, 8192)
 
 
+# ── Single-model ("universal") mode ──────────────────────────────────────
+# A fresh install runs one model for chat, vision and reasoning when the
+# hardware can hold one (measured: 13 459 MB for Qwen3.6-35B at 24k, 12 369 MB
+# for gemma-4-26B on a 12 GB card, 11.3 GB RAM on CPU). Below that the pair
+# stays: on 8 GB the unified model is 2.3x slower than the 8B it replaces.
+_UNIVERSAL_SEED = {
+    24000: "Qwen3.6-35B-A3B-UD-Q4_K_M",
+    14000: "Qwen3.6-35B-A3B-UD-Q2_K_XL",
+    11000: "gemma-4-26B-A4B-it-UD-Q2_K_XL",
+}
+_CPU_UNIVERSAL_SEED = "Qwen3.6-35B-A3B-UD-Q2_K_XL"
+_CPU_UNIVERSAL_MIN_RAM_MB = 16384
+
+
+def _universal_seed_model(is_cpu: bool) -> str | None:
+    """Model a fresh install should run in single-model mode, if any.
+
+    The file and its projector must already be on disk — enabling a mode whose
+    weights are missing would leave llama-swap with nothing to start. Hardware
+    decides the tier; the deployment script downloads exactly that pair.
+    """
+    from app.universal_mode import find_mmproj
+
+    if is_cpu:
+        if _total_ram_mb() < _CPU_UNIVERSAL_MIN_RAM_MB:
+            return None
+        candidates = [_CPU_UNIVERSAL_SEED]
+    else:
+        vram = _gpu_total_vram_mb()
+        candidates = [
+            name for min_vram, name in sorted(_UNIVERSAL_SEED.items(), reverse=True) if vram >= min_vram
+        ]
+
+    for name in candidates:
+        path = _find_gguf_file(name)
+        if path and find_mmproj(path, name):
+            return name
+    return None
+
+
 def _total_ram_mb() -> int:
     """Total system RAM in MB from /proc/meminfo (Linux) or psutil fallback."""
     try:
@@ -767,9 +807,41 @@ def _init_postgresql():
                 (multimodal_model, mm_ctx, reasoning_model, rz_ctx),
             )
 
+        # Single-model mode is the default wherever one model fits: it removes
+        # the measured 14 s swap between the pair on a 16 GB card. The pair rows
+        # above stay seeded so switching back in the admin panel needs no setup.
+        universal_model = _universal_seed_model(is_cpu)
+        if universal_model:
+            universal_goal = 8192 if is_cpu else rz_goal
+            u_ctx = _autofit_context(
+                "universal",
+                universal_model,
+                universal_goal,
+                _gpu_total_vram_mb() if not is_cpu else 0,
+                _total_ram_mb(),
+                _read_gguf_meta(universal_model),
+            )
+            c.execute(
+                """
+                INSERT INTO model_configs
+                    (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
+                VALUES ('universal', %s, %s, 0.7, 0.9, 300, 'http://flai-llamacpp:8033', 1.15)
+                ON CONFLICT (module) DO NOTHING
+                """,
+                (universal_model, u_ctx),
+            )
+
     # Reranker (v12.7): a CPU-only cross-encoder whose GGUF is selectable like any
     # other module. Seeded on every start so upgrades get the row too; a NULL
     # model_name keeps the entry out of llama-swap until a file is chosen.
+    c.execute(
+        """
+        INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
+        VALUES ('universal', NULL, 24576, 0.7, 0.9, 300, 'http://flai-llamacpp:8033', 1.15)
+        ON CONFLICT (module) DO NOTHING
+        """
+    )
+
     c.execute(
         """
         INSERT INTO model_configs (module, model_name, context_length, timeout, service_url)

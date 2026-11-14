@@ -10,15 +10,12 @@ logger = logging.getLogger(__name__)
 # This ensures all gunicorn workers see consistent config after a save.
 _MODEL_CONFIG_CACHE: dict = {}
 
+# Modules that a universal model serves instead of a model of their own.
+_UNIVERSAL_ROLES = ("multimodal", "reasoning")
 
-def get_model_config(module):
-    """Retrieve model configuration for a module from the database.
 
-    Uses a versioned cache: stores the last seen updated_at from DB.
-    On each call, queries only updated_at (lightweight) and re-reads
-    full row only when it changes. This keeps all workers in sync after
-    a config save in any worker process.
-    """
+def _read_row(module):
+    """Read one module row, using the updated_at cache."""
     entry = _MODEL_CONFIG_CACHE.get(module)
 
     try:
@@ -54,6 +51,40 @@ def get_model_config(module):
         if entry:
             return entry["data"]
         return None
+
+
+def get_model_config(module, _raw=False):
+    """Retrieve model configuration for a module from the database.
+
+    Uses a versioned cache: stores the last seen updated_at from DB.
+    On each call, queries only updated_at (lightweight) and re-reads
+    full row only when it changes. This keeps all workers in sync after
+    a config save in any worker process.
+
+    In single-model mode (a non-empty ``universal`` row) the multimodal and
+    reasoning roles are served by that one model: both return the universal
+    row, keeping their own sampling knobs. Callers therefore ask for the model
+    they mean and get the weights that will actually answer, and llama-swap
+    receives one entry name from every path instead of two.
+    """
+    data = _read_row(module)
+    if _raw or module not in _UNIVERSAL_ROLES:
+        return data
+    return _served_by_universal(module, data)
+
+
+def _served_by_universal(module, data):
+    universal = _read_row("universal")
+    if not universal or not (universal.get("model_name") or "").strip():
+        return data
+    merged = dict(universal)
+    if data:
+        for key in ("temperature", "top_p", "timeout", "repeat_penalty"):
+            if data.get(key) is not None:
+                merged[key] = data[key]
+    merged["module"] = module
+    merged["universal"] = True
+    return merged
 
 
 def invalidate_model_config_cache(module=None):

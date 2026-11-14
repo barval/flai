@@ -415,12 +415,17 @@ class ResourceManager:
         from app.vram_probe import DEFAULT_HEADROOM_MB, plan_unloads
 
         headroom = int(setting("VRAM_HEADROOM_MB", DEFAULT_HEADROOM_MB))
+        from app.universal_mode import entry_name
+
         return plan_unloads(
             loaded,
             needed_mb=needed_mb,
             total_mb=self.hardware.total_vram_mb,
             headroom_mb=headroom,
-            protect={model_type},
+            # ``loaded`` carries llama-swap entry names, and in single-model mode
+            # both roles are served by the ``universal`` entry — protecting the
+            # module name instead would schedule a reload before every message.
+            protect={entry_name(model_type)},
         )
 
     def measured_total_mb(self, model_type: str) -> int | None:
@@ -532,10 +537,30 @@ class ResourceManager:
         # for the multimodal module.
         from app.utils import get_mmproj_size_mb
 
-        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type in ("multimodal", "universal") and model_name) else 0
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
+
+        # What the model actually occupies: the weights (scaled by the share of
+        # layers kept on the GPU), the KV cache at this window and the compute
+        # buffers. The vision encoder is fixed and is already subtracted from
+        # ``available_for_model``.
+        #
+        # The old placement divided the budget by ``file_size * 1.2`` and then
+        # added the KV cache, the buffers and the projector to that same number
+        # — a footprint counted twice, so a model that fits was trimmed anyway.
+        # Measured on Qwen3.6-35B at a 24 576 window: the card held 12 611 MB of
+        # 16 311 and the estimator still moved 2 of 40 layers and 12 of 256
+        # experts to the CPU, which cost half the throughput (51.8 t/s against
+        # 105–119 with every layer on the card).
+        moe_factor = 0.95 if expert_count > 0 else 1.0
+        mtp_factor = 1.15 if supports_mtp else 1.0
+        weights_full_mb = float(file_size_mb or 0) * moe_factor * mtp_factor
+        kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
+        kv_mb = ctx_size * kv_per_token
+        overhead_mb = max(400, int((file_size_mb or 0) * 0.05 + ctx_size * 0.002))
+        model_total_mb = weights_full_mb + kv_mb + overhead_mb
 
         flash_attn_default = hw.cuda_detected
 
@@ -562,19 +587,19 @@ class ResourceManager:
         # mmproj always occupies VRAM (independent of n_gpu_layers), so it shrinks
         # the budget available for the main model layers.
         available_for_model = max(0, total_vram - reserve - mmproj_mb)
-        if block_count is not None and block_count > 0:
-            # Distribute layers proportionally based on available VRAM
-            if needed > 0 and available_for_model > 0:
-                layer_ratio = min(1.0, available_for_model / needed)
+        if block_count is not None and block_count > 0 and weights_full_mb > 0:
+            if model_total_mb <= available_for_model:
+                result["n_gpu_layers"] = -1  # the whole model fits, KV and buffers included
+            else:
+                # Only the weights scale with the layer count; KV and buffers stay.
+                room_mb = max(0.0, available_for_model - kv_mb - overhead_mb)
+                layer_ratio = min(1.0, room_mb / weights_full_mb)
                 result["n_gpu_layers"] = max(1, int(block_count * layer_ratio))
-                if result["n_gpu_layers"] >= block_count:
-                    result["n_gpu_layers"] = -1  # All layers fit
-                else:
-                    result["offload_kqv"] = True
-                    result["warning"] = (
-                        f"Model partially offloaded ({result['n_gpu_layers']}/{block_count} layers on GPU)"
-                    )
-        elif needed + reserve + mmproj_mb > total_vram:
+                result["offload_kqv"] = True
+                result["warning"] = (
+                    f"Model partially offloaded ({result['n_gpu_layers']}/{block_count} layers on GPU)"
+                )
+        elif model_total_mb + reserve + mmproj_mb > total_vram:
             # Model doesn't fit fully — reduce layers based on estimate
             result["n_gpu_layers"] = max(10, int(available_for_model / needed * 32))
             result["offload_kqv"] = True
@@ -588,9 +613,9 @@ class ResourceManager:
             result["cache_capacity"] = 8192
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
-            if result["n_gpu_layers"] == -1 and needed + reserve + mmproj_mb > total_vram:
+            if result["n_gpu_layers"] == -1 and model_total_mb > available_for_model:
                 # Override if we didn't catch it above
-                result["n_gpu_layers"] = max(10, int(available_for_model / needed * 32))
+                result["n_gpu_layers"] = max(10, int(available_for_model / max(model_total_mb, 1) * 32))
                 result["offload_kqv"] = True
                 result["cache_capacity"] = 2048
         elif total_vram >= 8000:
@@ -614,16 +639,7 @@ class ResourceManager:
                 effective_ngl = block_count
             while effective_ngl > 0:
                 ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
-                est_weights = (
-                    max(file_size_mb or needed, 100)
-                    * ratio
-                    * (0.95 if expert_count > 0 else 1.0)
-                    * (1.15 if supports_mtp else 1.0)
-                )
-                kv_per_token = self.kv_per_token_for(model_type) or KV_PER_TOKEN_MB.get(model_type, 0.12)
-                est_kv = ctx_size * kv_per_token  # matches get_vram_needed_mb
-                est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
-                est_total = est_weights + est_kv + est_overhead + mmproj_mb
+                est_total = weights_full_mb * ratio + kv_mb + overhead_mb
                 if est_total <= available_for_model or effective_ngl == 0:
                     break
                 effective_ngl = max(0, effective_ngl - max(1, block_count // 8))
@@ -635,7 +651,8 @@ class ResourceManager:
                     result["offload_kqv"] = True
                     result["warning"] = (
                         f"Auto-degraded: n_gpu_layers={result['n_gpu_layers']}/{block_count} "
-                        f"to fit VRAM ({est_total:.0f}MB > {available_for_model}MB)"
+                        f"to fit VRAM ({est_total + mmproj_mb:.0f}MB model + {reserve}MB reserve "
+                        f"> {total_vram}MB)"
                     )
 
         # n_cpu_moe: for MoE models that don't fully fit — offload experts proportionally
@@ -713,7 +730,7 @@ class ResourceManager:
         weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
         # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
-        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type in ("multimodal", "universal") and model_name) else 0
         return weights_mb, mmproj_mb, file_size_mb
 
     def model_weights_mb(self, model_type: str) -> int:

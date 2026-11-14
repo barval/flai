@@ -67,6 +67,7 @@ function renderModelCards() {
     }
 
     const modules = [
+        { id: 'universal', name: 'Universal', config: currentModelConfigs.universal || {} },
         { id: 'reasoning', name: 'Reasoning', config: currentModelConfigs.reasoning || {} },
         { id: 'multimodal', name: 'Multimodal', config: currentModelConfigs.multimodal || {} },
         { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} },
@@ -158,9 +159,15 @@ function renderModelCards() {
         btn.addEventListener('click', onSaveConfig);
     });
 
-    // Load models for each module
+    // Load models for each module. The universal card is filled from the
+    // multimodal-capable list, which the generic catalogue cannot express: the
+    // deciding property is a projector file next to the model, not its name.
     modules.forEach(mod => {
-        refreshModelsForModule(mod.id, true);
+        if (mod.id === 'universal') {
+            loadUniversalCard();
+        } else {
+            refreshModelsForModule(mod.id, true);
+        }
     });
 }
 
@@ -715,6 +722,11 @@ function onSaveConfig(event) {
     const module = btn.dataset.module;
     const card = document.querySelector(`.model-card[data-module="${module}"]`);
 
+    if (module === 'universal') {
+        saveUniversalCard(card);
+        return;
+    }
+
     if (!validateModelConfig(module, card)) return;
 
     const modelName = card.querySelector('.model-dropdown').value;
@@ -974,11 +986,154 @@ async function deleteInstalledFile(filename, btn) {
     }
 }
 
+const UNIVERSAL_LAST_KEY = 'flai_universal_last_model';
+
+function universalCard() {
+    return document.querySelector('.model-card[data-module="universal"]');
+}
+
+function updateModeRadios(mode) {
+    document.querySelectorAll('input[name="operating-mode"]').forEach(radio => {
+        radio.checked = radio.value === mode;
+    });
+}
+
+async function initOperatingMode() {
+    // The mode must be shown even when the model cards cannot load: the radio
+    // group is the control, and an empty group reads as "no mode at all".
+    try {
+        const resp = await fetch('/admin/api/models/universal', { credentials: 'same-origin' });
+        const data = await safeJson(resp);
+        updateModeRadios(data.model ? 'one' : 'pair');
+    } catch (err) {
+        updateModeRadios('pair');
+    }
+}
+
+async function loadUniversalCard() {
+    const card = universalCard();
+    if (!card) return;
+    const select = card.querySelector('.model-dropdown');
+    let data = { model: '', options: [], params: {} };
+    try {
+        const resp = await fetch('/admin/api/models/universal', { credentials: 'same-origin' });
+        data = await safeJson(resp);
+    } catch (err) {
+        console.error('Universal model list error:', err);
+    }
+
+    const stored = data.model || localStorage.getItem(UNIVERSAL_LAST_KEY) || '';
+    select.innerHTML = `<option value="">${t('-- Select model --')}</option>`;
+    (data.options || []).forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.name;
+        option.textContent = item.name + ' — ' + item.size_gb + ' GB' +
+            (item.architecture ? ' · ' + item.architecture : '');
+        select.appendChild(option);
+    });
+    if (!(data.options || []).length) {
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.disabled = true;
+        empty.textContent = t('universal_none');
+        select.appendChild(empty);
+    }
+    if (stored) select.value = stored;
+
+    const params = data.params || {};
+    const set = (selector, value) => {
+        const input = card.querySelector(selector);
+        if (input && value !== undefined && value !== null) input.value = value;
+    };
+    set('.context-length', params.context_length);
+    set('.temperature', params.temperature);
+    set('.top-p', params.top_p);
+    set('.timeout', params.timeout);
+    set('.repeat-penalty', params.repeat_penalty);
+
+    updateModeRadios(data.model ? 'one' : 'pair');
+    // A value assigned by script fires no change event, so the details panel
+    // stayed empty until the user re-picked the same model.
+    if (stored) onModelSelect({ target: select });
+}
+
+async function applyOperatingMode(mode) {
+    const card = universalCard();
+    const select = card ? card.querySelector('.model-dropdown') : null;
+    const model = mode === 'one'
+        ? (select?.value || localStorage.getItem(UNIVERSAL_LAST_KEY) || '')
+        : '';
+    if (mode === 'one' && !model) {
+        alert(t('universal_pick_first'));
+        updateModeRadios('pair');
+        return;
+    }
+    try {
+        const resp = await fetchWithCSRF('/admin/api/models/universal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: model }),
+        });
+        const data = await safeJson(resp);
+        if (data.status !== 'ok') {
+            alert((data && data.error) || t('error'));
+            return;
+        }
+        if (model) localStorage.setItem(UNIVERSAL_LAST_KEY, model);
+        updateModeRadios(data.model ? 'one' : 'pair');
+        alert(t('universal_saved'));
+        loadModelConfigs();
+    } catch (err) {
+        alert(t('error') + ': ' + err.message);
+    }
+}
+
+async function saveUniversalCard(card) {
+    const select = card.querySelector('.model-dropdown');
+    const value = (selector) => {
+        const input = card.querySelector(selector);
+        return input && input.value !== '' ? input.value : null;
+    };
+    const payload = {
+        model: select.value,
+        context_length: value('.context-length') ? parseInt(value('.context-length'), 10) : null,
+        temperature: value('.temperature') ? parseFloat(value('.temperature')) : null,
+        top_p: value('.top-p') ? parseFloat(value('.top-p')) : null,
+        timeout: value('.timeout') ? parseInt(value('.timeout'), 10) : null,
+        repeat_penalty: value('.repeat-penalty') ? parseFloat(value('.repeat-penalty')) : 1.15,
+    };
+    if (payload.model) localStorage.setItem(UNIVERSAL_LAST_KEY, payload.model);
+    try {
+        const resp = await fetchWithCSRF('/admin/api/models/universal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await safeJson(resp);
+        if (data.status !== 'ok') {
+            alert((data && data.error) || t('error'));
+            return;
+        }
+        updateModeRadios(data.model ? 'one' : 'pair');
+        alert(t('universal_saved'));
+        // The card and the mode badge must show what the server now holds.
+        loadModelConfigs();
+    } catch (err) {
+        alert(t('error') + ': ' + err.message);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     dlog('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
     initAdminTabs();
     if (document.getElementById('models-tab')) {
         loadModelConfigs();
+        initOperatingMode();
+        document.querySelectorAll('input[name="operating-mode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) applyOperatingMode(this.value);
+            });
+        });
     }
 
     const refreshBtn = document.getElementById('refresh-gguf-btn');

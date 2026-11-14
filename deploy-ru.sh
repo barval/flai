@@ -380,7 +380,64 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf уже есть — пропускаю."
     fi
+
+    download_universal_model
 }
+# ── Универсальная модель (одномодельный режим) ──
+# Свежая установка запускает одну модель для чата, зрения и рассуждений там, где
+# она помещается: это убирает замеренный своп в 14 с, который пара платит на карте
+# 16 ГБ. Тариф совпадает с сидом приложения — 24 ГБ+ Q4, 16 ГБ Q2, 12 ГБ
+# gemma-4-26B, CPU 35B Q2 при достаточной RAM. Ниже остаётся пара: там единая
+# модель в 2.3 раза медленнее малой мультимодальной, которую она заменила бы.
+download_universal_model() {
+    if [[ "$TWO_MODELS" == "true" ]]; then
+        info "Запрошен двухмодельный режим — универсальную модель не скачиваю."
+        return 0
+    fi
+    local MODEL_DIR="services/llamacpp/models"
+    local VRAM_MB=0 RAM_MB=0 MODEL="" REPO=""
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    fi
+    RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+
+    if [[ "$COMPOSE_FILE" == "docker-compose.cpu.yml" ]]; then
+        if (( RAM_MB >= 16384 )); then
+            MODEL="Qwen3.6-35B-A3B-UD-Q2_K_XL"
+        else
+            info "RAM ${RAM_MB}MB: двухмодельный режим (универсальная модель не помещается)."
+            return 0
+        fi
+    elif (( VRAM_MB >= 24000 )); then
+        MODEL="Qwen3.6-35B-A3B-UD-Q4_K_M"
+    elif (( VRAM_MB >= 14000 )); then
+        MODEL="Qwen3.6-35B-A3B-UD-Q2_K_XL"
+    elif (( VRAM_MB >= 11000 )); then
+        MODEL="gemma-4-26B-A4B-it-UD-Q2_K_XL"
+    else
+        info "VRAM ${VRAM_MB}MB: двухмодельный режим (универсальная модель не помещается)."
+        return 0
+    fi
+
+    case "$MODEL" in
+        *gemma*) REPO="unsloth/gemma-4-26B-A4B-it-GGUF" ;;
+        *)       REPO="unsloth/Qwen3.6-35B-A3B-GGUF" ;;
+    esac
+
+    if [[ -f "$MODEL_DIR/$MODEL.gguf" && -f "$MODEL_DIR/mmproj-$MODEL-F16.gguf" ]]; then
+        warn "$MODEL (универсальная) уже есть — пропускаю."
+        return 0
+    fi
+
+    info "Универсальная модель: $MODEL (чат, зрение и рассуждения одной моделью)."
+    if [[ ! -f "$MODEL_DIR/$MODEL.gguf" ]]; then
+        HF_DOWNLOAD "$REPO" "$MODEL.gguf" "$MODEL_DIR/$MODEL.gguf"
+    fi
+    if [[ ! -f "$MODEL_DIR/mmproj-$MODEL-F16.gguf" ]]; then
+        HF_DOWNLOAD "$REPO" "mmproj-F16.gguf" "$MODEL_DIR/mmproj-$MODEL-F16.gguf"
+    fi
+}
+
 
 # ── Модели Stable Diffusion ──
 download_sd_cpp_models() {
@@ -915,6 +972,8 @@ FLAI v13.3 — Скрипт развёртывания
 ./deploy-ru.sh --cpu (CPU) для переключения.
   --download-models   Скачать GGUF/safetensors модели из HuggingFace
   --run-tests         Запустить тесты после развёртывания
+  --two-models        Оставить две модели (мультимодальная + рассуждающая) вместо
+                      одной универсальной, даже там, где одна помещается
   --strict-stack      При существующем .env выключить необязательные сервисы, которых
                       нет в этом запуске (по умолчанию они остаются включёнными, чтобы
                       обновление без исходных флагов не отключало функции)
@@ -949,6 +1008,7 @@ WITH_SEARCH=false
 WITH_CRAWLER=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
+TWO_MODELS=false
 STRICT_STACK=false
 ENV_EXISTED=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
@@ -972,6 +1032,7 @@ for arg in "$@"; do
         --platform=*)                    FLAI_PLATFORM="${arg#*=}" ;;
         --download-models)               DOWNLOAD_MODELS=true ;;
         --run-tests)                     RUN_TESTS=true ;;
+        --two-models)                    TWO_MODELS=true ;;
         --strict-stack)                  STRICT_STACK=true ;;
         --help|-h)                       usage; exit 0 ;;
     esac

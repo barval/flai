@@ -8,6 +8,17 @@ import pytest
 from app import model_hub
 
 
+def _stub_repo(monkeypatch, files):
+    """Stub both views of a repo: the model list and the full tree (projectors)."""
+    items = list(files)
+
+    def repo_files(repo, limit=None):
+        return items if limit is None else items[:limit]
+
+    monkeypatch.setattr(model_hub, "_repo_files", repo_files)
+    monkeypatch.setattr(model_hub, "_repo_tree", repo_files)
+
+
 class _Resp:
     def __init__(self, payload, headers=None, status_code=200):
         self._payload = payload
@@ -64,6 +75,7 @@ def test_search_hf_filters_gguf_and_private(monkeypatch):
         "repo": {"id": "secret/repo", "siblings": [{"rfilename": "x.gguf", "size": 10}]},
     }
     model_hub._files_cache.clear()
+    model_hub._tree_cache.clear()
     fake, state = _router_fake_hf_get(full)
     monkeypatch.setattr(model_hub, "_hf_get", fake)
     items = model_hub.search_hf("q", 5)
@@ -115,9 +127,7 @@ def test_get_repo_arch_none_when_missing(monkeypatch):
 
 
 def test_estimate_fit_uses_classifier(monkeypatch):
-    monkeypatch.setattr(
-        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": "a" * 64}]
-    )
+    _stub_repo(monkeypatch, [{"path": "model.gguf", "size_mb": 2400, "sha256": "a" * 64}])
     monkeypatch.setattr(
         model_hub, "get_repo_arch", lambda repo: {"block_count": 36, "expert_count": 8, "arch": ["Qwen3ForCausalLM"]}
     )
@@ -181,7 +191,7 @@ def test_estimate_fit_uses_gguf_metadata_when_config_is_missing(monkeypatch):
         range_requests.append((url, extra_headers))
         return _RangeResp()
 
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
     monkeypatch.setattr(
@@ -225,14 +235,10 @@ def test_estimate_fit_aux_file_does_not_poison_repo_arch(monkeypatch):
         requested.append(url)
         return _Resp(payloads[url.rstrip("/").rsplit("/", 1)[-1]])
 
-    monkeypatch.setattr(
-        model_hub,
-        "_repo_files",
-        lambda repo, limit=50: [
+    _stub_repo(monkeypatch, [
             {"path": "aux.gguf", "size_mb": 13, "sha256": "a" * 64},
             {"path": "Q4_K_M.gguf", "size_mb": 2400, "sha256": "b" * 64},
-        ],
-    )
+        ])
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
     monkeypatch.setattr(
@@ -286,7 +292,7 @@ def test_companion_files_shard_tail_and_mtp(monkeypatch):
         {"path": "MTP/mtp-My-BF16.gguf", "size_mb": 1.0, "sha256": "d" * 64},
         {"path": "MTP/mtp-My-Q4_K_M.gguf", "size_mb": 1.0, "sha256": "e" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
 
     comps = model_hub._companion_files("org/My", "BF16/My-BF16-00001-of-00002.gguf")
     assert [c["path"] for c in comps] == ["BF16/My-BF16-00002-of-00002.gguf", "MTP/mtp-My-BF16.gguf"]
@@ -304,7 +310,7 @@ def test_no_mtp_model_offers_alternative_draft_quants(monkeypatch):
         {"path": "Qwen3.8-27B-Uncensored-draft-Q4_0.gguf", "size_mb": 1602.4, "sha256": "b" * 64},
         {"path": "Qwen3.8-27B-Uncensored-draft-Q8_0.gguf", "size_mb": 3017.4, "sha256": "c" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
 
     companions = model_hub._companion_files(
         "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF", "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf"
@@ -327,7 +333,7 @@ def test_fastmtp_is_companion_not_a_model(monkeypatch):
         {"path": "Qwen3.8-27B-Uncensored-Aggressive-Q4_K_P.gguf", "size_mb": 17000.0, "sha256": "a" * 64},
         {"path": "Qwen3.8-27B-Uncensored-Aggressive-FastMTP-32K.gguf", "size_mb": 862.0, "sha256": "b" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
 
     assert model_hub.is_aux_file(files[1]["path"])
     assert model_hub._companion_files("brandonbondig/repo", files[0]["path"]) == [files[1]]
@@ -360,7 +366,7 @@ def test_runtime_size_mb_sums_shards_only(monkeypatch):
         {"path": "My.Q8_0.gguf", "size_mb": 9.0, "sha256": "d" * 64},
         {"path": "MTP/mtp-My-Q8_0.gguf", "size_mb": 4.0, "sha256": "e" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
 
     assert model_hub._runtime_size_mb("org/My", "BF16/My-00001-of-00003.gguf") == 24.0
     assert model_hub._runtime_size_mb("org/My", "My.Q8_0.gguf") == 9.0
@@ -379,7 +385,7 @@ def test_search_hf_keeps_only_model_files(monkeypatch):
         {"path": "Qwen3.8-27B-BF16-00001-of-00002.gguf", "size_mb": 22732.0, "sha256": "d" * 64},
         {"path": "Qwen3.8-27B-BF16-00002-of-00002.gguf", "size_mb": 22732.0, "sha256": "e" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
     search_payload = [{"id": "org/Repo", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0"}]
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(search_payload))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
@@ -413,6 +419,7 @@ def test_search_repo_sums_shards_beyond_primary_file_limit(monkeypatch):
     monkeypatch.setattr(model_hub, "_hf_get", lambda *args, **kwargs: _Resp({"siblings": siblings}))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     model_hub._files_cache.clear()
+    model_hub._tree_cache.clear()
 
     result = model_hub._search_repo({"id": "org/Qwen"})
 
@@ -429,9 +436,7 @@ def test_search_hf_parallel_keeps_order(monkeypatch):
         {"id": f"org/R{i}", "downloads": i, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}
         for i in range(3)
     ]
-    monkeypatch.setattr(
-        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
-    )
+    _stub_repo(monkeypatch, [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}])
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: {"block_count": 64})
@@ -443,9 +448,7 @@ def test_search_hf_computes_fit_when_context_given(monkeypatch):
     """With a context argument every model file carries a ready fit, and
     estimate_fit receives that context and the module derived from the type."""
     repos = [{"id": "org/A", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}]
-    monkeypatch.setattr(
-        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
-    )
+    _stub_repo(monkeypatch, [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}])
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: {"block_count": 64})
     captured = {}
@@ -466,9 +469,7 @@ def test_search_hf_computes_fit_when_context_given(monkeypatch):
 def test_search_hf_without_context_skips_fit(monkeypatch):
     """Without a context argument no fit is attached (legacy/render-only path)."""
     repos = [{"id": "org/A", "downloads": 1, "likes": 0, "gated": False, "license": "apache-2.0", "private": False}]
-    monkeypatch.setattr(
-        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}]
-    )
+    _stub_repo(monkeypatch, [{"path": "m.gguf", "size_mb": 10.0, "sha256": "a" * 64}])
     monkeypatch.setattr(model_hub, "_hf_get", lambda *a, **k: _Resp(repos))
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: {"block_count": 64})
     monkeypatch.setattr(
@@ -520,7 +521,7 @@ def test_estimate_fits_skips_aux_and_maps_errors(monkeypatch):
         {"path": "imatrix_unsloth.gguf", "size_mb": 1.0, "sha256": "c" * 64},
         {"path": "mtp-Q4_0.gguf", "size_mb": 2.0, "sha256": "d" * 64},
     ]
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
 
     def fake_estimate(repo, file_path, module="multimodal", context_length=8192):
         if file_path == "Q2_K.gguf":
@@ -571,7 +572,7 @@ def test_estimate_fit_grows_gguf_head_past_4mb(monkeypatch):
         range_ends.append(end)
         return _WideResp(end)
 
-    monkeypatch.setattr(model_hub, "_repo_files", lambda repo, limit=50: files)
+    _stub_repo(monkeypatch, files)
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     monkeypatch.setattr(model_hub, "_hf_get", fake_hf_get)
     monkeypatch.setattr(
@@ -588,9 +589,7 @@ def test_estimate_fit_grows_gguf_head_past_4mb(monkeypatch):
 
 
 def test_estimate_fit_blocked_without_arch(monkeypatch):
-    monkeypatch.setattr(
-        model_hub, "_repo_files", lambda repo, limit=50: [{"path": "model.gguf", "size_mb": 2400, "sha256": ""}]
-    )
+    _stub_repo(monkeypatch, [{"path": "model.gguf", "size_mb": 2400, "sha256": ""}])
     monkeypatch.setattr(model_hub, "get_repo_arch", lambda repo: None)
     monkeypatch.setattr(model_hub, "_gguf_arch", lambda repo, path: None)
     with pytest.raises(model_hub.DownloadBlocked) as exc:
@@ -680,6 +679,7 @@ def test_search_hf_items_include_type_and_max_ctx(monkeypatch):
         },
     }
     model_hub._files_cache.clear()
+    model_hub._tree_cache.clear()
     model_hub._arch_cache.clear()
     fake, _state = _router_fake_hf_get(full)
     monkeypatch.setattr(model_hub, "_hf_get", fake)
@@ -790,3 +790,47 @@ def test_list_installed_returns_type_and_sorts(tmp_path):
     ]
     assert [f["type"] for f in out] == ["reasoning", "reasoning", "multimodal", "embedding"]
     assert [f["size_mb"] for f in out] == [1.5, 7.0, 2.5, 1.0]
+
+
+def test_a_multimodal_repo_ships_its_projector_under_the_model_name(monkeypatch):
+    """The vision encoder travels with the model and gets an attributable name."""
+    files = [
+        {"path": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf", "size_mb": 11721.0, "sha256": "a" * 64},
+        {"path": "mmproj-BF16.gguf", "size_mb": 900.0, "sha256": "b" * 64},
+        {"path": "mmproj-F16.gguf", "size_mb": 858.0, "sha256": "c" * 64},
+        {"path": "mmproj-F32.gguf", "size_mb": 1704.0, "sha256": "d" * 64},
+    ]
+    _stub_repo(monkeypatch, files)
+    monkeypatch.setattr(model_hub, "_mtp_head", lambda repo, path: None)
+
+    companions = model_hub._companion_files("org/Qwen3.6", "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf")
+
+    assert len(companions) == 1
+    projector = companions[0]
+    assert projector["role"] == "mmproj"
+    assert projector["path"] == "mmproj-F16.gguf"
+    assert projector["local_name"] == "mmproj-Qwen3.6-35B-A3B-UD-Q2_K_XL-F16.gguf"
+
+
+def test_a_projector_from_another_folder_is_not_attached(monkeypatch):
+    files = [
+        {"path": "Q4/Qwen3VL-8B-Q4_K_M.gguf", "size_mb": 4794.0, "sha256": "a" * 64},
+        {"path": "BF16/mmproj-F16.gguf", "size_mb": 1105.0, "sha256": "b" * 64},
+    ]
+    _stub_repo(monkeypatch, files)
+    monkeypatch.setattr(model_hub, "_mtp_head", lambda repo, path: None)
+
+    assert model_hub._companion_files("org/My", "Q4/Qwen3VL-8B-Q4_K_M.gguf") == []
+
+
+def test_repo_tree_keeps_projectors_but_the_model_list_does_not(monkeypatch):
+    """The picker must not offer a projector; the downloader must fetch it."""
+    files = [
+        {"path": "X.gguf", "size_mb": 11721.0, "sha256": "a" * 64},
+        {"path": "mmproj-F16.gguf", "size_mb": 858.0, "sha256": "b" * 64},
+    ]
+    monkeypatch.setattr(model_hub, "_repo_tree", lambda repo, limit=None: files)
+    model_hub._files_cache.clear()
+
+    assert [f["path"] for f in model_hub._repo_files("org/X")] == ["X.gguf"]
+    assert [f["path"] for f in model_hub._repo_tree("org/X")] == ["X.gguf", "mmproj-F16.gguf"]

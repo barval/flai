@@ -26,6 +26,30 @@ from app.model_config import get_model_config
 from app.utils import estimate_tokens, record_token_calibration, record_usage_for_current
 
 
+def _thinking_kwargs_needed(model_type: str) -> bool:
+    """Whether this call must run with the model's thinking phase disabled.
+
+    In single-model mode the same weights answer the router, describe images and
+    hold the conversation, and those calls are small and latency-bound. Measured
+    on Qwen3.6-35B: with thinking on, a trivial question spent 294 tokens before
+    the first answer token, and the request kernel's JSON reply never appeared at
+    all inside its token budget (37 of 37 cases fell back to "none"). The
+    reasoning role keeps thinking — that is what it is for.
+
+    ``chat_template_kwargs`` is understood by llama-server (build b11889) and
+    ignored by templates that do not define the flag, so sending it is safe for
+    models that do not think.
+    """
+    if model_type == "reasoning":
+        return False
+    try:
+        from app.universal_mode import is_enabled
+
+        return is_enabled()
+    except Exception:  # noqa: BLE001 — a mode lookup must never break a request
+        return False
+
+
 def _record_prompt_tokens(
     result: dict[str, Any], model_type: str, lang: str, messages: list[dict], tools: Any = None
 ) -> None:
@@ -652,6 +676,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if _thinking_kwargs_needed(model_type):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         if tools:
             payload["tools"] = tools
         if response_format:
@@ -748,6 +774,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if _thinking_kwargs_needed(model_type):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         if tools:
             payload["tools"] = tools
         if tool_choice:
@@ -1052,6 +1080,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if _thinking_kwargs_needed(model_type):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         if tools:
             payload["tools"] = tools
         if response_format:
@@ -1196,6 +1226,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if _thinking_kwargs_needed(model_type):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         if tools:
             payload["tools"] = tools
         if tool_choice:

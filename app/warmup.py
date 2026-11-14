@@ -64,10 +64,19 @@ def load_chat_model(timeout: int = WARMUP_TIMEOUT_S) -> bool:
     from app.model_config import get_model_config
 
     url = _llama_swap_url()
+    # In single-model mode there is no "multimodal" entry: asking for it answered
+    # 404 and the model was never warmed, so the first message after a restart
+    # paid the full 14 GB load.
+    from app.universal_mode import entry_name
+
     try:
         response = requests.post(
             f"{url}/v1/chat/completions",
-            json={"model": "multimodal", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+            json={
+                "model": entry_name("multimodal"),
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            },
             timeout=timeout,
         )
         if response.status_code != 200:

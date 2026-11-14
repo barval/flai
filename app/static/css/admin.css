@@ -2636,3 +2636,27 @@ body.dark-theme .settings-reset {
         margin-left: 0.35rem;
     }
 }
+
+/* Operating mode: two mutually exclusive choices, one per row. */
+.operating-mode-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 6px 0 10px;
+}
+.mode-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.mode-option input[type="radio"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+body.dark-theme .mode-option {
+    color: #ecf0f1;
+}

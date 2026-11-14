@@ -77,6 +77,8 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **One universal model or the classic pair — switchable in the admin panel.** From 12 GB of VRAM a fresh install runs a single model that answers chat, vision, routing and reasoning, so an answer never waits for the 11.7 GB reload the pair pays (measured: 14 s per reasoning answer on a 16 GB card, and the pair cannot be resident together at all). Below that the pair stays, because there the single model is slower. The mode is a choice in Admin → Models and needs no deployment flag. → [MODELS.md](docs/MODELS.md)
+
 - **Long-term memory keeps facts with their time, and resolves contradictions.** A fact is stored as a typed `(subject, predicate, value)` with a validity interval: when a newer fact contradicts an older one, the older row is closed instead of deleted, and a question that names a year — "where did I live in 2024" — is answered from the interval it held. The always-injected profile now separates what holds from what no longer does. → [MEMORY.md](docs/MEMORY.md)
 
 - **The document panel says why an upload was refused.** Quota, size cap, unsupported format, an unreadable or password-protected file, the folder limit — the reason appears next to the file name instead of one generic sentence. → [DOCUMENTS.md](docs/DOCUMENTS.md)
@@ -264,6 +266,36 @@ Full routing prompt and stage labels: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | **RAM (recommended)** | 24 GB | 32 GB | 32 GB | 48 GB |
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
+
+### Operating modes: one model or two
+
+FLAI runs either the historical pair — a small multimodal model plus a large reasoning model — or a
+single **universal model** that answers chat, vision and reasoning itself. The mode is a database
+setting: **Admin → Models → Universal model**. Switching it needs no deploy flag, no extra compose
+file and no restart of anything else; the model list reloads in a few seconds.
+
+A fresh install picks the mode its hardware can run, and the deployment script downloads exactly
+that model (the projector included):
+
+| Hardware | Default mode | Model | Measured |
+|---|---|---|---|
+| 24+ GB VRAM | one model | Qwen3.6-35B-A3B UD-Q4_K_M + mmproj | ~21 GB weights, fits with ~1 GB spare |
+| 16 GB VRAM | one model | Qwen3.6-35B-A3B UD-Q2_K_XL + mmproj | 13 459 MiB, 105–119 t/s |
+| 12 GB VRAM | one model | gemma-4-26B-A4B-it UD-Q2_K_XL + mmproj | 11 124 MiB at 4k ctx, 108–120 t/s |
+| 8 GB VRAM | two models | Qwen3VL-4B + Qwen3.6-35B-A3B Q2 | small model alone: 72.6 t/s; unified 31 t/s |
+| CPU, 16+ GB RAM | one model | Qwen3.6-35B-A3B UD-Q2_K_XL + mmproj | 17.6 t/s, 11.3 GB RAM |
+| CPU, under 16 GB RAM | two models | Qwen3VL-4B + gpt-oss-20b-mxfp4 | 15.4 t/s for the reasoning model |
+
+**Why the split.** A single model removes the swap the pair pays on 16 GB: the two models cannot be
+resident together (8 642 + 13 048 MB on a 16 311 MB card), so every reasoning answer reloads 11.7 GB
+— measured at 14 s. On 8 GB the unified model has to keep part of its weights in RAM and runs at
+31 t/s against 72.6 t/s for the small model, which is why the pair stays there. On CPU the single
+35B is faster than both models of the pair (17.6 t/s against 15.4) and uses less RAM (11.3 GB
+against 12.9 GB).
+
+**Alternatives.** The panel offers models that both reason and carry a vision projector (`mmproj`):
+Qwen3.6/Qwen3.8, gemma-4, and a Qwen3-VL build whose template has a thinking phase. A dense 27B is the slowest of them (32 t/s on GPU, 2.8 t/s on CPU) and
+is not recommended. `--two-models` keeps the pair during deployment even where one model would fit.
 
 ### What each optional profile costs
 

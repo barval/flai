@@ -433,7 +433,13 @@ release is a separate question, and no test answers it:
 - an update must leave the install command's stack running: compare
   `docker compose -f <file> ps --services` with the profiles that command names. A
   service missing from that list means `.env` advertises search, memory or voice that
-  is not running — the install looks healthy while half of it is absent.
+  is not running — the install looks healthy while half of it is absent;
+- **both operating modes must generate a valid llama-swap config.** The mode is a
+  `model_configs` row (`module='universal'`): non-empty runs one model, empty runs the
+  pair. `tests/test_llama_swap_config_mode.py` pins one entry against two, and
+  `tests/test_universal_mode.py` pins the projector filter and the role redirect. A
+  release that touches model selection, the projector search or the config generator
+  runs both files.
 
 **A restart is not a deploy for a baked-in service.** `./app`, `./modules` and
 `./prompts` are bind-mounted; `services/*` and the wrapper beside them are not.

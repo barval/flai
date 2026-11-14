@@ -1345,6 +1345,9 @@ def refresh_gguf_cache():
 
     utils_module._gguf_models_cache = None
     result = sync_gguf_models_cache("/models")
+    # The universal-model list also depends on projector files, which the GGUF
+    # cache does not describe; a refresh must not keep serving the old list.
+    utils_module._invalidate_universal_candidates()
     logger.info(f"GGUF cache refreshed: {len(result)} models found")
     return jsonify({"status": "ok", "model_count": len(result)})
 
@@ -1362,6 +1365,18 @@ def llamacpp_model_info(name):
     # Use llama-swap URL if configured
     if backend == "llama-swap" or "llamaswap" in (service_url or ""):
         service_url = "http://flai-llamaswap:8080"
+
+    # A bare model name that exists on disk is a GGUF just as much as one with
+    # the extension: the universal-model card stores the file stem, and sending
+    # it down the llama-swap path answered 400 for a model that is not loaded
+    # yet. The card must describe a model the same way the other cards do, so
+    # resolve the file and keep one code path.
+    if use_gguf and not name.endswith(".gguf"):
+        from app.database import _find_gguf_file
+
+        resolved = _find_gguf_file(name, "/models")
+        if resolved:
+            name = resolved.rsplit("/", 1)[-1]
 
     # For GGUF files - use cached metadata first (instant), fallback to reading
     if name.endswith(".gguf"):
@@ -1972,6 +1987,105 @@ def update_model_config(module):
                 current_app.logger.warning(f"Failed to schedule dry_load: {e}")
 
     return jsonify(result)
+
+
+@bp.route("/api/models/universal", methods=["GET"])
+@admin_required
+def get_universal_model():
+    """Current mode and the models that can serve as the universal model."""
+    from app.universal_mode import active_model_name, available_models, universal_row
+
+    try:
+        options = available_models()
+    except Exception as exc:  # noqa: BLE001 — an unreadable models dir must not break the tab
+        current_app.logger.warning(f"universal: cannot list models: {exc}")
+        options = []
+    row = universal_row() or {}
+    params = {
+        key: row.get(key)
+        for key in ("context_length", "temperature", "top_p", "timeout", "repeat_penalty")
+    }
+    return jsonify({"model": active_model_name() or "", "options": options, "params": params})
+
+
+@bp.route("/api/models/universal", methods=["POST"])
+@admin_required
+def set_universal_model():
+    """Switch between one universal model and the multimodal+reasoning pair.
+
+    This is the whole switch: no deployment flag, no compose file. The chosen
+    model must carry a vision projector — without it the router, image chat and
+    the camera path would silently lose their vision — and the context window is
+    fitted to the card the same way the seed does it.
+    """
+    from app.database import _autofit_context, _gpu_total_vram_mb, _read_gguf_meta, _total_ram_mb, get_db
+    from app.model_config import invalidate_model_config_cache
+    from app.universal_mode import available_models, set_model
+
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("model") or "").strip()
+    if name.endswith(".gguf"):
+        name = name[: -len(".gguf")]
+
+    knobs: dict[str, float | int] = {}
+    for key in ("temperature", "top_p", "repeat_penalty"):
+        value = data.get(key)
+        if value is not None:
+            knobs[key] = float(value)
+    for key in ("context_length", "timeout"):
+        value = data.get(key)
+        if value is not None:
+            knobs[key] = int(value)
+
+    if name:
+        if name not in {item["name"] for item in available_models()}:
+            return jsonify({"error": _("This model has no vision projector (mmproj), so it cannot answer images.")}), 400
+
+        set_model(name)
+        invalidate_model_config_cache()
+
+        from app.resource_manager import get_resource_manager
+
+        is_cpu = not get_resource_manager().hardware.cuda_detected
+        vram_mb = 0 if is_cpu else _gpu_total_vram_mb()
+        if is_cpu:
+            goal = 8192
+        elif vram_mb >= 24000:
+            goal = 32768
+        elif vram_mb >= 16000:
+            goal = 24576
+        else:
+            goal = 16384
+        ctx = int(knobs.get("context_length") or 0) or _autofit_context(
+            "universal", name, goal, vram_mb, _total_ram_mb(), _read_gguf_meta(name)
+        )
+        columns = {"context_length": ctx, **knobs}
+        assignments = ", ".join(f"{column} = %s" for column in columns)
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                f"UPDATE model_configs SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE module = 'universal'",
+                tuple(columns.values()),
+            )
+            conn.commit()
+        current_app.logger.info(f"universal mode enabled: {name} at ctx {ctx}")
+    else:
+        set_model(None)
+        current_app.logger.info("universal mode disabled: multimodal + reasoning pair")
+
+    for module in ("universal", "multimodal", "reasoning"):
+        invalidate_model_config_cache(module)
+
+    if current_app.config.get("LLAMACP_BACKEND") == "llama-swap":
+        try:
+            from app.llama_swap_config import LlamaSwapConfigGenerator, generate_and_write
+
+            if generate_and_write(current_app):
+                LlamaSwapConfigGenerator(current_app).signal_reload()
+        except Exception as exc:  # noqa: BLE001 — a reload failure is reported, not fatal
+            current_app.logger.warning(f"universal: config reload failed: {exc}")
+
+    return jsonify({"status": "ok", "model": name, "mode": "universal" if name else "pair"})
 
 
 @bp.route("/api/admin/reindex-all", methods=["POST"])

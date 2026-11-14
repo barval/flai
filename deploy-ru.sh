@@ -137,8 +137,17 @@ set_env_key_value() {
     fi
 }
 
+# Существующий .env аддитивен, если не передан --strict-stack: выключение
+# сервиса — решение о конфигурации, а не побочный эффект обновления без флагов.
+KEEP_ENV_KEYS=false
+
 disable_env_key() {
     local key="$1" message="$2"
+    if [[ "$KEEP_ENV_KEYS" == "true" ]]; then
+        grep -qE "^${key}=" .env 2>/dev/null || return 0
+        info "Оставляю ${key}: существующий .env не перезаписываю (--strict-stack выключит неиспользуемые сервисы)."
+        return 0
+    fi
     if settings_override_exists "$key"; then
         warn_env_override "$key"
         return 0
@@ -149,46 +158,35 @@ disable_env_key() {
 }
 
 # ── Включение/отключение опций в .env ──
-# Ключ, который этот запуск выключил бы, остаётся включённым, если .env старше
-# запуска: выключение сервиса — решение о конфигурации, а не побочный эффект
-# обновления без флагов. Замерено: голый ./deploy-ru.sh закомментировал
-# SEARXNG_URL, CRAWL_ENABLED, SLM_URL и адрес TTS на уже установленной системе.
-keep_env_key() {
-    local key="$1"
-    grep -qE "^${key}=" .env 2>/dev/null || return 0
-    info "Оставляю ${key}: существующий .env не перезаписываю (--strict-stack выключит неиспользуемые сервисы)."
-}
-
 enable_env_features() {
-    local disable=disable_env_key
     if [[ "$ENV_EXISTED" == "true" && "$STRICT_STACK" != "true" ]]; then
-        disable=keep_env_key
+        KEEP_ENV_KEYS=true
         warn "Существующий .env: необязательные сервисы остаются как есть. Повторите команду установки, чтобы сохранить тот же стек."
     fi
     if [[ "$WITH_SEARCH" == "true" ]]; then
         enable_env_key SEARXNG_URL "Включаю веб-поиск (SearXNG) в .env..."
     else
-        "$disable" SEARXNG_URL "Отключаю веб-поиск (SearXNG) в .env..."
+        disable_env_key SEARXNG_URL "Отключаю веб-поиск (SearXNG) в .env..."
     fi
     if [[ "$WITH_CRAWLER" == "true" ]]; then
         enable_env_key CRAWL_ENABLED "Включаю глубокий обход веба (Crawl4AI) в .env..." true
     else
-        "$disable" CRAWL_ENABLED "Отключаю глубокий обход веба (Crawl4AI) в .env..."
+        disable_env_key CRAWL_ENABLED "Отключаю глубокий обход веба (Crawl4AI) в .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Включаю долговременную память (SLM) в .env..."
     else
-        "$disable" SLM_URL "Отключаю долговременную память (SLM) в .env..."
+        disable_env_key SLM_URL "Отключаю долговременную память (SLM) в .env..."
     fi
     if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
         enable_env_key KOKORO_URL "Включаю TTS (Kokoro) в .env..."
-        "$disable" PIPER_URL "Отключаю TTS (Piper) в .env..."
+        disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
     elif [[ "$VOICE_BACKEND" == "piper" ]]; then
         enable_env_key PIPER_URL "Включаю TTS (Piper) в .env..."
-        "$disable" KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
+        disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
     else
-        "$disable" KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
-        "$disable" PIPER_URL "Отключаю TTS (Piper) в .env..."
+        disable_env_key KOKORO_URL "Отключаю TTS (Kokoro) в .env..."
+        disable_env_key PIPER_URL "Отключаю TTS (Piper) в .env..."
     fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then

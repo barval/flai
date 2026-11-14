@@ -134,8 +134,17 @@ set_env_key_value() {
     fi
 }
 
+# An existing .env is additive unless --strict-stack: disabling a service is a
+# decision about the user's stack, not a side effect of an update without flags.
+KEEP_ENV_KEYS=false
+
 disable_env_key() {
     local key="$1" message="$2"
+    if [[ "$KEEP_ENV_KEYS" == "true" ]]; then
+        grep -qE "^${key}=" .env 2>/dev/null || return 0
+        info "Keeping ${key}: an existing .env is not rewritten (pass --strict-stack to switch unused services off)."
+        return 0
+    fi
     if settings_override_exists "$key"; then
         warn_env_override "$key"
         return 0
@@ -146,46 +155,35 @@ disable_env_key() {
 }
 
 # ── Enable features in .env ──
-# A key that this run would switch off, kept because .env predates the run.
-# Turning a service off is a decision about the user's stack, not a side effect of
-# running an update without flags — measured: a bare ./deploy.sh commented out
-# SEARXNG_URL, CRAWL_ENABLED, SLM_URL and the TTS URL on an existing install.
-keep_env_key() {
-    local key="$1"
-    grep -qE "^${key}=" .env 2>/dev/null || return 0
-    info "Keeping ${key}: an existing .env is not rewritten (pass --strict-stack to switch unused services off)."
-}
-
 enable_env_features() {
-    local disable=disable_env_key
     if [[ "$ENV_EXISTED" == "true" && "$STRICT_STACK" != "true" ]]; then
-        disable=keep_env_key
+        KEEP_ENV_KEYS=true
         warn "Existing .env: optional services stay as they are. Repeat the install command to keep the same stack."
     fi
     if [[ "$WITH_SEARCH" == "true" ]]; then
         enable_env_key SEARXNG_URL "Enabling web search (SearXNG) in .env..."
     else
-        "$disable" SEARXNG_URL "Disabling web search (SearXNG) in .env..."
+        disable_env_key SEARXNG_URL "Disabling web search (SearXNG) in .env..."
     fi
     if [[ "$WITH_CRAWLER" == "true" ]]; then
         enable_env_key CRAWL_ENABLED "Enabling deep web crawl (Crawl4AI) in .env..." true
     else
-        "$disable" CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
+        disable_env_key CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
     fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
     else
-        "$disable" SLM_URL "Disabling long-term memory (SLM) in .env..."
+        disable_env_key SLM_URL "Disabling long-term memory (SLM) in .env..."
     fi
     if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
         enable_env_key KOKORO_URL "Enabling TTS (Kokoro) in .env..."
-        "$disable" PIPER_URL "Disabling TTS (Piper) in .env..."
+        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
     elif [[ "$VOICE_BACKEND" == "piper" ]]; then
         enable_env_key PIPER_URL "Enabling TTS (Piper) in .env..."
-        "$disable" KOKORO_URL "Disabling TTS (Kokoro) in .env..."
+        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
     else
-        "$disable" KOKORO_URL "Disabling TTS (Kokoro) in .env..."
-        "$disable" PIPER_URL "Disabling TTS (Piper) in .env..."
+        disable_env_key KOKORO_URL "Disabling TTS (Kokoro) in .env..."
+        disable_env_key PIPER_URL "Disabling TTS (Piper) in .env..."
     fi
     if [[ "$WITH_VIDEO" == "true" ]]; then
         if [[ "$VIDEO_BACKEND" == "wan" ]]; then

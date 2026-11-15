@@ -578,6 +578,34 @@ class RagModule:
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
 
+    def _live_lexical_stats(self, user_id: str, terms: list[str]) -> tuple[int, float, dict[str, int]]:
+        """Count the BM25 corpus statistics straight from ``rag_chunks``.
+
+        The fallback for a user with no cache row. Linear in the corpus, which
+        is why the caller heals the cache after one such count.
+        """
+        from app.database import get_db
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT count(*) AS n, coalesce(avg(cardinality(lemmas)), 0) AS avgdl "
+                "FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL",
+                (user_id,),
+            )
+            stats = cursor.fetchone() or {}
+            n_chunks = int(stats.get("n") or 0)
+            average_length = float(stats.get("avgdl") or 0)
+            if not n_chunks or average_length <= 0:
+                return 0, 0.0, {}
+            cursor.execute(
+                "SELECT term, count(*) AS df FROM rag_chunks rc, unnest(rc.lemmas) AS term "
+                "WHERE rc.user_id = %s AND term = ANY(%s) GROUP BY term",
+                (user_id, terms),
+            )
+            document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
+        return n_chunks, average_length, document_frequency
+
     def _lexical_search(
         self,
         user_id: str,
@@ -594,30 +622,32 @@ class RagModule:
         the query is scored against the candidates that contain at least one.
         """
         from app.database import get_db
+        from app.db import read_lexical_stats, rebuild_lexical_stats
 
         terms = list(dict.fromkeys(lemmatize(query)))
         if not terms:
             return []
 
+        stats = read_lexical_stats(user_id, terms)
+        if stats is None:
+            # No cache row: an installation that has not been backfilled. Count
+            # live, then heal the cache so the next query is a lookup.
+            n_chunks, average_length, document_frequency = self._live_lexical_stats(user_id, terms)
+            if n_chunks and average_length > 0:
+                try:
+                    rebuild_lexical_stats(user_id)
+                except Exception as exc:  # noqa: BLE001 — a broken cache must not fail a search
+                    self.logger.warning(f"rag stats heal failed for {user_id}: {exc}")
+        else:
+            n_chunks = stats["n_chunks"]
+            average_length = stats["avgdl"]
+            document_frequency = stats["df"]
+
+        if not n_chunks or average_length <= 0:
+            return []
+
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT count(*) AS n, coalesce(avg(cardinality(lemmas)), 0) AS avgdl "
-                "FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL",
-                (user_id,),
-            )
-            stats = cursor.fetchone() or {}
-            n_chunks = int(stats.get("n") or 0)
-            average_length = float(stats.get("avgdl") or 0)
-            if not n_chunks or average_length <= 0:
-                return []
-            cursor.execute(
-                "SELECT term, count(*) AS df FROM rag_chunks rc, unnest(rc.lemmas) AS term "
-                "WHERE rc.user_id = %s AND term = ANY(%s) GROUP BY term",
-                (user_id, terms),
-            )
-            document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
-
             sql = (
                 "SELECT user_id, doc_id, chunk_index, filename, text, lemmas FROM rag_chunks "
                 "WHERE user_id = %s AND lemmas && %s"

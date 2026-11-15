@@ -75,3 +75,23 @@ def test_deleting_the_last_document_clears_the_statistics(test_app):
         assert cached["n_chunks"] == 0
         assert cached["df"] == {}
         _cleanup()
+
+
+def test_a_user_without_a_cache_row_gets_the_same_rows_and_a_new_row(test_app):
+    from app.database import get_db
+    from app.db import read_lexical_stats
+    from modules.rag import RagModule
+
+    with test_app.app_context():
+        _cleanup()
+        _store(["Работал в Твери", "Отпуск в Сочи"])
+        cached = RagModule()._lexical_search(USER, "Твери", 10)
+
+        with get_db() as conn:
+            conn.cursor().execute("DELETE FROM rag_stats WHERE user_id = %s", (USER,))
+
+        healed = RagModule()._lexical_search(USER, "Твери", 10)
+
+        assert [row["doc_id"] for row in healed] == [row["doc_id"] for row in cached]
+        assert read_lexical_stats(USER, ["тверь"]) is not None
+        _cleanup()

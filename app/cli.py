@@ -680,6 +680,25 @@ def backfill_attachment_paths(dry_run):
     click.echo(f"\nUpdated: {updated}, Skipped: {skipped}")
 
 
+@click.command("doctor")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable report")
+@with_appcontext
+def doctor(as_json):
+    """Check that every dependency this version expects is actually up."""
+    import json as json_module
+    import sys
+
+    from app import doctor as doctor_module
+
+    report = doctor_module.run_checks(current_app)
+    if as_json:
+        click.echo(json_module.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+    else:
+        click.echo(doctor_module.render(report))
+    if report.failures:
+        sys.exit(1)
+
+
 @click.command("rag-eval")
 @click.option("--user", required=True, help="Login whose indexed documents are searched")
 @click.option("--dataset", required=True, type=click.Path(exists=True), help="JSONL question set")

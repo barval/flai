@@ -4,13 +4,16 @@ Common deployment and runtime problems. If you hit something not listed here, ch
 
 Every user-facing FLAI error starts with `⚠️ `. Messages in the chat that do not are coming from the browser or a proxy, not from FLAI.
 
-## First three commands
+## First commands
 
 ```bash
+docker exec flai-web flask doctor      # every dependency, one line each
 docker compose ps                      # which containers are up and healthy
 docker logs flai-web --tail 100        # the web app
 curl -s localhost:5000/health | python3 -m json.tool
 ```
+
+`flask doctor` checks PostgreSQL (is every table there), Redis, llama-swap, the configured model files and their vision projector, the VRAM budget against the card, the document folders and the optional services, then prints a hint for every failure. It is read-only and exits non-zero when something is broken, so it also works as a smoke test in a script; `--json` gives the same report machine-readable.
 
 `/health` reports database connectivity, Redis, Qdrant and the loaded model state. It is the fastest way to tell "FLAI is down" from "one subsystem is down".
 

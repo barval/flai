@@ -5712,3 +5712,46 @@ msgstr "Не удалось слить узлы"
 #: app/templates/chat.html
 msgid "Merge cancelled"
 msgstr "Слияние отменено"
+
+#: app/templates/chat.html
+msgid "In one chunk"
+msgstr "В одном фрагменте"
+#: app/templates/chat.html
+msgid "Similar document"
+msgstr "Похожий документ"
+#: app/templates/chat.html
+msgid "Supplies"
+msgstr "Поставляет"
+#: app/templates/chat.html
+msgid "Part of"
+msgstr "Входит в"
+#: app/templates/chat.html
+msgid "Works for"
+msgstr "Работает в"
+#: app/templates/chat.html
+msgid "Leads"
+msgstr "Руководит"
+#: app/templates/chat.html
+msgid "Signed"
+msgstr "Подписал"
+#: app/templates/chat.html
+msgid "Rents"
+msgstr "Арендует"
+#: app/templates/chat.html
+msgid "Maintains"
+msgstr "Обслуживает"
+#: app/templates/chat.html
+msgid "Performs"
+msgstr "Выполняет"
+#: app/templates/chat.html
+msgid "Forbids"
+msgstr "Запрещает"
+#: app/templates/chat.html
+msgid "Allows"
+msgstr "Разрешает"
+#: app/templates/chat.html
+msgid "Located in"
+msgstr "Расположен в"
+#: app/templates/chat.html
+msgid "Related to"
+msgstr "Связан с"

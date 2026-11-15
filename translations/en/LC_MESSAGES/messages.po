@@ -5681,3 +5681,46 @@ msgstr "The nodes could not be merged"
 #: app/templates/chat.html
 msgid "Merge cancelled"
 msgstr "Merge cancelled"
+
+#: app/templates/chat.html
+msgid "In one chunk"
+msgstr "In one chunk"
+#: app/templates/chat.html
+msgid "Similar document"
+msgstr "Similar document"
+#: app/templates/chat.html
+msgid "Supplies"
+msgstr "Supplies"
+#: app/templates/chat.html
+msgid "Part of"
+msgstr "Part of"
+#: app/templates/chat.html
+msgid "Works for"
+msgstr "Works for"
+#: app/templates/chat.html
+msgid "Leads"
+msgstr "Leads"
+#: app/templates/chat.html
+msgid "Signed"
+msgstr "Signed"
+#: app/templates/chat.html
+msgid "Rents"
+msgstr "Rents"
+#: app/templates/chat.html
+msgid "Maintains"
+msgstr "Maintains"
+#: app/templates/chat.html
+msgid "Performs"
+msgstr "Performs"
+#: app/templates/chat.html
+msgid "Forbids"
+msgstr "Forbids"
+#: app/templates/chat.html
+msgid "Allows"
+msgstr "Allows"
+#: app/templates/chat.html
+msgid "Located in"
+msgstr "Located in"
+#: app/templates/chat.html
+msgid "Related to"
+msgstr "Related to"

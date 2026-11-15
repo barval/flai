@@ -23,6 +23,52 @@
     let lastTotalNodes = 0;
 
     const HIDDEN_PREDICATES_KEY = 'flai.graph.hiddenPredicates';
+    const FILTER_DEFAULTS_KEY = 'flai.graph.filterDefaults';
+    // The default is a version, not a value: a stored list from an older view
+    // must still gain the new default once, and a reader who switches a type
+    // back on keeps it on.
+    const FILTER_DEFAULTS_VERSION = '2';
+    // Structured noise: every pair of entities in one chunk is linked, which is
+    // what pulled isolation from 43 % to 18 %. It is not a stated relation, so
+    // the first view shows what the model actually claimed and this is one
+    // click away.
+    const HIDDEN_BY_DEFAULT = ['co-occurs'];
+
+    // The extractor writes both language forms of its closed predicate list, so
+    // these are data values, not identifiers.
+    const PREDICATE_LABEL_KEYS = {
+        'co-occurs': 'graph_pred_co_occurs',
+        'similar': 'graph_pred_similar',
+        'supplies': 'graph_pred_supplies',
+        'поставляет': 'graph_pred_supplies',
+        'belongs to': 'graph_pred_part_of',
+        'входит в': 'graph_pred_part_of',
+        'works for': 'graph_pred_works_for',
+        'работает в': 'graph_pred_works_for',
+        'leads': 'graph_pred_leads',
+        'руководит': 'graph_pred_leads',
+        'signed': 'graph_pred_signed',
+        'подписал': 'graph_pred_signed',
+        'rents': 'graph_pred_rents',
+        'арендует': 'graph_pred_rents',
+        'maintains': 'graph_pred_maintains',
+        'обслуживает': 'graph_pred_maintains',
+        'performs': 'graph_pred_performs',
+        'выполняет': 'graph_pred_performs',
+        'forbids': 'graph_pred_forbids',
+        'запрещает': 'graph_pred_forbids',
+        'allows': 'graph_pred_allows',
+        'разрешает': 'graph_pred_allows',
+        'located in': 'graph_pred_located_in',
+        'расположен в': 'graph_pred_located_in',
+        'related to': 'graph_pred_related_to',
+        'связан с': 'graph_pred_related_to'
+    };
+
+    function predicateLabel(predicate) {
+        const key = PREDICATE_LABEL_KEYS[predicate];
+        return key ? t(key, predicate) : predicate;
+    }
     // Read once at start-up, before any draw: the loader reads the key above,
     // and a const declared after this line would be in its temporal dead zone.
     let hiddenPredicates = new Set(loadHiddenPredicates());
@@ -267,9 +313,15 @@
     function loadHiddenPredicates() {
         try {
             const stored = JSON.parse(window.localStorage.getItem(HIDDEN_PREDICATES_KEY) || '[]');
-            return Array.isArray(stored) ? stored.map(String) : [];
+            const hidden = new Set(Array.isArray(stored) ? stored.map(String) : []);
+            if (window.localStorage.getItem(FILTER_DEFAULTS_KEY) !== FILTER_DEFAULTS_VERSION) {
+                HIDDEN_BY_DEFAULT.forEach(function (predicate) { hidden.add(predicate); });
+                window.localStorage.setItem(FILTER_DEFAULTS_KEY, FILTER_DEFAULTS_VERSION);
+                window.localStorage.setItem(HIDDEN_PREDICATES_KEY, JSON.stringify([...hidden]));
+            }
+            return [...hidden];
         } catch (error) {
-            return [];
+            return HIDDEN_BY_DEFAULT.slice();
         }
     }
 
@@ -321,7 +373,7 @@
                 const predicate = entry[0];
                 const shown = hiddenPredicates.has(predicate) ? '' : ' checked';
                 return '<label class="graph-filter-row"><input type="checkbox" class="graph-filter-check" value="' +
-                    escapeHtml(predicate) + '"' + shown + '> <span>' + escapeHtml(predicate || '—') +
+                    escapeHtml(predicate) + '"' + shown + '> <span>' + escapeHtml(predicateLabel(predicate) || '—') +
                     '</span> <em>' + entry[1] + '</em></label>';
             })
             .join('');
@@ -408,7 +460,7 @@
                 const source = typeof link.source === 'object' ? link.source : { id: link.source };
                 const target = typeof link.target === 'object' ? link.target : { id: link.target };
                 const other = source.id === node.id ? target : source;
-                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(link.predicate || '') + '</em></li>';
+                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(predicateLabel(link.predicate)) + '</em></li>';
             })
             .join('');
         panel.innerHTML =
@@ -640,7 +692,7 @@
         });
         const clear = document.getElementById('graph-clear-path');
         if (clear) clear.hidden = false;
-        setStatus(data.edges.map(function (edge) { return edge.predicate; }).join(' → '));
+        setStatus(data.edges.map(function (edge) { return predicateLabel(edge.predicate); }).join(' → '));
     }
 
     // The label names the action, not the current layer: while entities are

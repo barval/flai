@@ -134,3 +134,23 @@ def test_the_merge_route_refuses_a_foreign_node():
     assert "kg_nodes WHERE user_id = %s" in block
     assert "merge_kg_nodes(login, target, source)" in block
     assert '"error"' in block
+
+
+def test_relation_types_are_named_for_a_reader_not_for_the_database():
+    """`co-occurs`, `works for` and their Russian forms read as labels."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    html = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "function predicateLabel(" in script
+    assert "graph_pred_co_occurs" in script and "graph_pred_works_for" in script
+    assert "'graph_pred_co_occurs'" in html
+
+
+def test_co_occurrence_is_hidden_until_the_reader_asks_for_it():
+    """It is structural noise, not a stated relation, so it starts off."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "HIDDEN_BY_DEFAULT = ['co-occurs']" in script
+    assert "FILTER_DEFAULTS_VERSION" in script
+    # The stored list is honoured after the default has been applied once.
+    assert "flai.graph.filterDefaults" in script

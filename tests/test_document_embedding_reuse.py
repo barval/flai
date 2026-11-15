@@ -62,7 +62,7 @@ class TestEmbeddingReuse:
         assert len({c.id for c in copies}) == 3
         assert "point-0" not in {c.id for c in copies}
         module._store_chunks.assert_called_once_with(
-            "bob", "target", filename="new.txt", chunks=["first", "second", "third"]
+            "bob", "target", filename="new.txt", chunks=["first", "second", "third"], refresh=True
         )
         # The source is never embedded or deleted.
         assert not module.qdrant_client.delete.called
@@ -148,6 +148,6 @@ def test_index_document_uses_reuse_before_extracting_text():
         result = module.index_document("bob", "target", "/documents/new.txt")
 
     assert result == (True, "Indexed 3 chunks (reused embeddings)")
-    module._reuse_indexed_content.assert_called_once_with("bob", "target", doc_info)
+    module._reuse_indexed_content.assert_called_once_with("bob", "target", doc_info, refresh_stats=True)
     extract.assert_not_called()
     chunk.assert_not_called()

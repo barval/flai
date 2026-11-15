@@ -42,8 +42,7 @@ def _insert(rows: list[tuple]) -> None:
     from app.database import get_db
 
     with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.executemany(
+        conn.cursor().executemany(
             "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas)"
             " VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
             rows,
@@ -60,7 +59,9 @@ def _cleanup(user: str) -> None:
 
 
 def _ms(values: list[float]) -> tuple[float, float]:
-    return statistics.median(values), statistics.quantiles(values, n=20)[18] if len(values) > 5 else max(values)
+    p50 = statistics.median(values)
+    p95 = statistics.quantiles(values, n=20)[18] if len(values) > 5 else max(values)
+    return p50, p95
 
 
 def cmd_stats(chunks: int, runs: int) -> None:
@@ -77,6 +78,7 @@ def cmd_stats(chunks: int, runs: int) -> None:
         module = RagModule()
         live: list[float] = []
         cached: list[float] = []
+        search: list[float] = []
         for _ in range(runs):
             started = time.perf_counter()
             module._live_lexical_stats(user, terms)
@@ -84,18 +86,25 @@ def cmd_stats(chunks: int, runs: int) -> None:
             started = time.perf_counter()
             read_lexical_stats(user, terms)
             cached.append((time.perf_counter() - started) * 1000)
+            started = time.perf_counter()
+            module._lexical_search(user, "закон ремонт тишина", 20)
+            search.append((time.perf_counter() - started) * 1000)
 
-        live_p50, live_p95 = _ms(live)
-        cached_p50, cached_p95 = _ms(cached)
-        print(f"chunks: {chunks}")
-        print(f"  live count (the old query path): p50 {live_p50:.2f} ms  p95 {live_p95:.2f} ms")
-        print(f"  cached lookup (the new path):    p50 {cached_p50:.2f} ms  p95 {cached_p95:.2f} ms")
+        for label, values in (
+            ("live count (what the query did before)", live),
+            ("cached statistics (two primary-key reads)", cached),
+            ("_lexical_search end to end (as shipped)", search),
+        ):
+            p50, p95 = _ms(values)
+            print(f"chunks: {chunks}")
+            print(f"  {label:<42} p50 {p50:7.2f} ms  p95 {p95:7.2f} ms")
     finally:
         _cleanup(user)
 
 
 def cmd_store(chunks: int) -> None:
     from app.database import get_db
+    from app.db import store_rag_chunks
     from app.lemmatizer import lemmas as lemmatize
 
     user = _user()
@@ -118,14 +127,15 @@ def cmd_store(chunks: int) -> None:
         one_by_one = time.perf_counter() - one_by_one
 
         _cleanup(user)
-        in_one_batch = time.perf_counter()
-        _insert(rows)
-        in_one_batch = time.perf_counter() - in_one_batch
+        shipped = time.perf_counter()
+        store_rag_chunks(user, "doc-1", "bench.txt", texts)
+        shipped = time.perf_counter() - shipped
 
         print(f"chunks: {chunks}")
-        print(f"  lemmatization:        {lemmatized * 1000:.0f} ms")
-        print(f"  one INSERT per chunk: {one_by_one * 1000:.0f} ms")
-        print(f"  one executemany:      {in_one_batch * 1000:.0f} ms")
+        print(f"  lemmatization only:            {lemmatized * 1000:7.1f} ms")
+        print(f"  one INSERT per chunk:          {one_by_one * 1000:7.1f} ms")
+        print(f"  store_rag_chunks (as shipped): {shipped * 1000:7.1f} ms  "
+              f"({shipped / max(1, chunks) * 1000:.2f} ms/chunk)")
     finally:
         _cleanup(user)
 
@@ -133,10 +143,10 @@ def cmd_store(chunks: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    stats = sub.add_parser("stats", help="BM25 corpus statistics: live count vs cache")
+    stats = sub.add_parser("stats", help="BM25 statistics: live count, cache and the shipped query")
     stats.add_argument("--chunks", type=int, default=1000)
     stats.add_argument("--runs", type=int, default=20)
-    store = sub.add_parser("store", help="chunk mirroring: per-row insert vs one batch")
+    store = sub.add_parser("store", help="chunk mirroring: per-row insert against the shipped writer")
     store.add_argument("--chunks", type=int, default=300)
     args = parser.parse_args(argv)
 

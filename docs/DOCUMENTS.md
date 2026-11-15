@@ -192,9 +192,18 @@ fused MRR rose from 0.688/0.653 to 0.802/0.811 and nDCG@20 from 0.765/0.742 to 0
 already scored better than the old fusion (MRR 0.787/0.786), which is what pointed at the lexical half;
 a BM25 without lemmatization (what Qdrant's native BM25 would give) was worse than both (0.569/0.500).
 
+BM25 needs three corpus-wide numbers per query — how many chunks the user has, their average lemma
+count, and how many chunks contain each query term. Counting them from `rag_chunks` on every search is
+linear in the corpus (measured: 16 ms at 1 000 chunks, 97 ms at 10 000), so they live in `rag_stats`
+and `rag_term_df` and are rebuilt when a document is stored or removed — the same transaction as the
+write. The query reads them by primary key and falls back to counting live for a user with no row,
+which also rebuilds it.
+
 Existing documents are lemmatized with `flask rag-lemmatize-chunks --user <login>` (or re-mirrored
-with `flask rag-backfill-chunks --user <login>`); new uploads are mirrored automatically and deleted
-together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
+with `flask rag-backfill-chunks --user <login>`); both refresh the statistics. `flask
+rag-stats-rebuild [--user <login>]` recomputes them for one user or for everyone — the repair path
+after restoring an older dump or editing `rag_chunks` by hand. New uploads are mirrored automatically
+and deleted together with their vectors. Configuration: `RAG_HYBRID_ENABLED`,
 `RAG_HYBRID_CANDIDATES` (per-retriever candidate pool, default 30), `RAG_RRF_K`; all three are also in
 Admin Panel → Settings. Measure the effect with `docs/RAG_EVAL.md` before enabling it everywhere.
 

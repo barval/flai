@@ -975,8 +975,6 @@ def rag_eval_generate(user, count, lang, model, doc, out):
 @with_appcontext
 def rag_backfill_chunks(user):
     """Mirror already-indexed chunks into PostgreSQL for hybrid search."""
-    from app.database import get_db
-    from app.lemmatizer import lemmas as lemmatize
 
     rag = current_app.modules.get("rag")
     if rag is None or not rag.check_availability():
@@ -1004,20 +1002,25 @@ def rag_backfill_chunks(user):
         if offset is None:
             break
 
+    from app.db import rebuild_lexical_stats, store_rag_chunks
+
     written = 0
-    with get_db() as conn:
-        cursor = conn.cursor()
-        for doc_id, rows in by_doc.items():
-            rows.sort()
-            filename = rows[0][2]
-            cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user, doc_id))
-            for index, text, _name in rows:
-                cursor.execute(
-                    "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                    (user, doc_id, index, filename, text, lemmatize(text)),
-                )
-                written += 1
+    for doc_id, rows in by_doc.items():
+        rows.sort()
+        filename = rows[0][2]
+        # The mirror keeps one writer, so a backfill cannot leave the BM25 cache
+        # describing rows it never saw; the corpus pass runs once at the end.
+        store_rag_chunks(
+            user,
+            doc_id,
+            filename,
+            [text for _index, text, _name in rows],
+            refresh=False,
+            indices=[index for index, _text, _name in rows],
+        )
+        written += len(rows)
+    if written:
+        rebuild_lexical_stats(user)
 
     click.echo(f"Mirrored {written} chunks from {len(by_doc)} documents for {user}")
 
@@ -1578,10 +1581,36 @@ def rag_lemmatize_chunks(user, batch):
                     (lemmatize(row["text"] or ""), row["id"]),
                 )
                 updated += 1
+    if updated:
+        from app.db import rebuild_lexical_stats
+
+        rebuild_lexical_stats(user)
+    click.echo(f"Lemmatized {updated} chunks for {user}")
+
+
+@click.command("rag-stats-rebuild")
+@click.option("--user", default="", help="Login to rebuild; omit for every user with mirrored chunks")
+@with_appcontext
+def rag_stats_rebuild(user):
+    """Recompute the BM25 corpus statistics from ``rag_chunks``.
+
+    The cache is written by every path that stores or removes chunks; this is
+    the repair path for a row that drifted (a restore from an older dump, a
+    manual SQL edit) and the backfill for a database upgraded from a version
+    without the cache.
+    """
+    from app.database import get_db
     from app.db import rebuild_lexical_stats
 
-    rebuild_lexical_stats(user)
-    click.echo(f"Lemmatized {updated} chunks for {user}")
+    if user:
+        logins = [user]
+    else:
+        with get_db() as conn:
+            conn.cursor().execute("SELECT DISTINCT user_id FROM rag_chunks")
+            logins = [row["user_id"] for row in conn.cursor().fetchall()]
+    for login in logins:
+        rebuild_lexical_stats(login)
+    click.echo(f"Rebuilt BM25 statistics for {len(logins)} user(s)")
 
 
 @click.command("rag-reindex")
@@ -1606,13 +1635,17 @@ def rag_reindex(user, doc):
     done = failed = 0
     for row in documents:
         path = f"{folder}/{row.get('file_path')}"
-        ok, message = rag.index_document(user, str(row["id"]), path)
+        ok, message = rag.index_document(user, str(row["id"]), path, refresh_stats=False)
         if ok:
             done += 1
             click.echo(f"  ok   {row.get('filename')} — {message}")
         else:
             failed += 1
             click.echo(f"  FAIL {row.get('filename')} — {message}")
+    if done:
+        from app.db import rebuild_lexical_stats
+
+        rebuild_lexical_stats(user)
     click.echo(f"\nRe-indexed {done} documents, {failed} failed")
 
 

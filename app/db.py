@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from flask import current_app
 from flask_babel import gettext as _
+from psycopg2.extras import execute_values
 
 from app.database import get_db
 from app.monitoring.archive import archive_documents, archive_messages, archive_session
@@ -855,16 +856,18 @@ def document_blob_savings_bytes():
         return int((row["saved"] if row else 0) or 0)
 
 
-def delete_document_resources(doc, login):
+def delete_document_resources(doc, login, refresh_stats=True):
     """Delete one document: index entry, blob reference, file and DB row.
 
     The single deletion path for every caller (web route, folder delete, API):
     the file is unlinked only when this was the last document using it.
+    ``refresh_stats=False`` lets a caller deleting many documents rebuild the
+    BM25 statistics once instead of after every one.
     """
     rag = current_app.modules.get("rag")
     if rag and rag.available:
         try:
-            rag.delete_document(doc["id"], login)
+            rag.delete_document(doc["id"], login, refresh_stats=refresh_stats)
         except Exception as e:
             current_app.logger.error(f"Failed to delete document from index: {e}")
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
@@ -1916,35 +1919,52 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
     return {"nodes": nodes, "edges": edges}
 
 
-def store_rag_chunks(user_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
-    """Mirror a document's chunks for the lexical half, in one round trip.
+def store_rag_chunks(
+    user_id: str,
+    doc_id: str,
+    filename: str,
+    chunks: list[str],
+    refresh: bool = True,
+    indices: list[int] | None = None,
+) -> None:
+    """Mirror a document's chunks for the lexical half, in one statement.
 
-    One ``executemany`` per document instead of one statement per chunk; the
-    BM25 statistics are refreshed in the same transaction.
+    ``execute_values`` joins the rows into one ``INSERT`` (psycopg2's
+    ``executemany`` still sends one statement per row), so a document costs one
+    statement per 500-row page instead of one per chunk.
+
+    ``refresh=False`` skips the statistics rebuild: a caller that stores many
+    documents in a row rebuilds once at the end instead of paying a full pass
+    over the corpus per document.
     """
     from app.lemmatizer import lemmas as lemmatize
 
+    order = indices if indices is not None else list(range(len(chunks)))
     rows = [
-        (user_id, doc_id, index, filename, chunk, lemmatize(chunk))
-        for index, chunk in enumerate(chunks)
+        (user_id, doc_id, int(index), filename, chunk, lemmatize(chunk))
+        for index, chunk in zip(order, chunks, strict=False)
     ]
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
         if rows:
-            cursor.executemany(
-                "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
-                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            execute_values(
+                cursor,
+                "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas)"
+                " VALUES %s ON CONFLICT DO NOTHING",
                 rows,
+                page_size=500,
             )
-        rebuild_lexical_stats(user_id, conn)
+        if refresh:
+            rebuild_lexical_stats(user_id, conn)
 
 
-def delete_rag_chunks(user_id: str, doc_id: str) -> None:
+def delete_rag_chunks(user_id: str, doc_id: str, refresh: bool = True) -> None:
     """Remove one document's mirrored chunks and refresh the statistics."""
     with get_db() as conn:
         conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
-        rebuild_lexical_stats(user_id, conn)
+        if refresh:
+            rebuild_lexical_stats(user_id, conn)
 
 
 def _rebuild_lexical_stats(cursor, user_id: str) -> None:
@@ -1985,26 +2005,35 @@ def rebuild_lexical_stats(user_id: str, conn: Any | None = None) -> None:
         _rebuild_lexical_stats(own.cursor(), user_id)
 
 
-def read_lexical_stats(user_id: str, terms: list[str]) -> dict[str, Any] | None:
+def read_lexical_stats(
+    user_id: str, terms: list[str], conn: Any | None = None
+) -> dict[str, Any] | None:
     """The cached BM25 statistics, or ``None`` when the user has no row.
 
     Two primary-key lookups replace the per-query scan of ``rag_chunks``; the
-    caller falls back to counting live when this returns ``None``.
+    caller falls back to counting live when this returns ``None``. Pass ``conn``
+    to read inside the caller's transaction, so the numbers and the rows they
+    score come from the same snapshot.
     """
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT n_chunks, avgdl FROM rag_stats WHERE user_id = %s", (user_id,))
-        row = c.fetchone()
+
+    def _read(cursor) -> dict[str, Any] | None:
+        cursor.execute("SELECT n_chunks, avgdl FROM rag_stats WHERE user_id = %s", (user_id,))
+        row = cursor.fetchone()
         if not row:
             return None
         df: dict[str, int] = {}
         if terms:
-            c.execute(
+            cursor.execute(
                 "SELECT term, df FROM rag_term_df WHERE user_id = %s AND term = ANY(%s)",
                 (user_id, list(terms)),
             )
-            df = {item["term"]: int(item["df"]) for item in c.fetchall()}
-    return {"n_chunks": int(row["n_chunks"]), "avgdl": float(row["avgdl"]), "df": df}
+            df = {item["term"]: int(item["df"]) for item in cursor.fetchall()}
+        return {"n_chunks": int(row["n_chunks"]), "avgdl": float(row["avgdl"]), "df": df}
+
+    if conn is not None:
+        return _read(conn.cursor())
+    with get_db() as own:
+        return _read(own.cursor())
 
 
 def get_kg_counts(user_id, doc_ids=None):

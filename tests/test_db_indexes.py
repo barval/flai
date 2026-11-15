@@ -14,5 +14,5 @@ def test_the_task_queue_poll_has_an_index(test_app):
         row = c.fetchone()
 
     assert row is not None
-    assert "status" in row["indexdef"]
-    assert "task_class" in row["indexdef"]
+    # Column order is the point: equality on status, then the selection's order.
+    assert "(status, task_class, created_at)" in row["indexdef"]

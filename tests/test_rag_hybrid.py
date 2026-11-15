@@ -137,15 +137,19 @@ def test_reranker_is_manageable_from_the_models_tab():
     assert "bge-reranker-v2-m3-Q4_K_M.gguf" in deploy
 
 
-def test_a_document_is_handed_to_the_writer_once(test_app, monkeypatch):
-    """The mirror is one statement per document, not one per chunk."""
+def test_a_document_is_written_in_one_statement(test_app, monkeypatch):
+    """The mirror is one INSERT per document, not one per chunk.
+
+    psycopg2's ``executemany`` still sends one statement per row; only
+    ``execute_values`` joins them, which is what this asserts.
+    """
     import app.db as db
     from modules.rag import RagModule
 
-    written = []
-    monkeypatch.setattr(db, "store_rag_chunks", lambda user, doc, name, chunks: written.append(len(chunks)))
+    calls = []
+    monkeypatch.setattr(db, "execute_values", lambda cursor, sql, rows, page_size=None: calls.append(len(rows)))
 
     with test_app.app_context():
         RagModule()._store_chunks("batchuser", "doc-1", "cv.pdf", ["чанк"] * 40)
 
-    assert written == [40]
+    assert calls == [40]

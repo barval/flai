@@ -176,7 +176,10 @@ def delete_user(login):
 
             rag = RagModule(current_app)
             for doc in docs:
-                rag.delete_document(doc["id"], user_id)
+                rag.delete_document(doc["id"], user_id, refresh_stats=False)
+            from app.db import rebuild_lexical_stats
+
+            rebuild_lexical_stats(user_id)
         except Exception:
             pass
 

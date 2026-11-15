@@ -62,7 +62,12 @@ class TestEmbeddingReuse:
         assert len({c.id for c in copies}) == 3
         assert "point-0" not in {c.id for c in copies}
         module._store_chunks.assert_called_once_with(
-            "bob", "target", filename="new.txt", chunks=["first", "second", "third"], refresh=True
+            "bob",
+            "target",
+            filename="new.txt",
+            chunks=["first", "second", "third"],
+            refresh=True,
+            lemma_source=("alice", "source"),
         )
         # The source is never embedded or deleted.
         assert not module.qdrant_client.delete.called

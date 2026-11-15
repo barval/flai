@@ -228,3 +228,28 @@ def test_the_cached_path_ranks_exactly_like_the_live_one(test_app):
             (r["doc_id"], r["chunk_index"], round(r["rank"], 12)) for r in live
         ]
         _cleanup()
+
+
+def test_reusing_a_document_copy_keeps_the_lemmas_it_already_has(test_app, monkeypatch):
+    """The source document's mirror already holds its lemmas; copying them again
+    would spend the analyser on text that was analysed once already."""
+    from modules.rag import RagModule
+
+    with test_app.app_context():
+        _cleanup()
+        module = RagModule()
+        texts = ["Работал в Твери", "Отпуск в Сочи"]
+        module._store_chunks(USER, "doc-1", "cv.pdf", texts)
+
+        def _boom(*_args, **_kwargs):
+            raise AssertionError("lemmatization must not run for a copy")
+
+        monkeypatch.setattr("app.lemmatizer.lemmas", _boom)
+
+        from app.db import store_rag_chunks
+
+        store_rag_chunks(USER, "doc-2", "copy.pdf", texts, lemma_source=(USER, "doc-1"))
+
+        rows = module._lexical_search(USER, "Твери", 10)
+        assert {row["doc_id"] for row in rows} == {"doc-1", "doc-2"}
+        _cleanup()

@@ -1926,6 +1926,7 @@ def store_rag_chunks(
     chunks: list[str],
     refresh: bool = True,
     indices: list[int] | None = None,
+    lemma_source: tuple[str, str] | None = None,
 ) -> None:
     """Mirror a document's chunks for the lexical half, in one statement.
 
@@ -1936,16 +1937,30 @@ def store_rag_chunks(
     ``refresh=False`` skips the statistics rebuild: a caller that stores many
     documents in a row rebuilds once at the end instead of paying a full pass
     over the corpus per document.
+
+    ``lemma_source`` names a mirrored document whose chunks hold the same text
+    (the embedding-reuse copy): their lemmas are reused by chunk index instead
+    of running the analyzer again.
     """
     from app.lemmatizer import lemmas as lemmatize
 
     order = indices if indices is not None else list(range(len(chunks)))
-    rows = [
-        (user_id, doc_id, int(index), filename, chunk, lemmatize(chunk))
-        for index, chunk in zip(order, chunks, strict=False)
-    ]
     with get_db() as conn:
         cursor = conn.cursor()
+        reused: dict[int, list[str]] = {}
+        if lemma_source is not None:
+            cursor.execute(
+                "SELECT chunk_index, lemmas FROM rag_chunks"
+                " WHERE user_id = %s AND doc_id = %s AND lemmas IS NOT NULL",
+                lemma_source,
+            )
+            reused = {int(row["chunk_index"]): list(row["lemmas"]) for row in cursor.fetchall()}
+        rows = []
+        for index, chunk in zip(order, chunks, strict=False):
+            lemmas = reused.get(int(index))
+            rows.append(
+                (user_id, doc_id, int(index), filename, chunk, lemmas if lemmas is not None else lemmatize(chunk))
+            )
         cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
         if rows:
             execute_values(

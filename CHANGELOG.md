@@ -10,6 +10,10 @@
 - **A document's chunks reach PostgreSQL in one statement.** psycopg2's `executemany` still sends one statement per row, so the mirror now uses `execute_values`: one `INSERT` per 500-row page. Measured for 300 chunks: lemmatization alone 32.7 ms, one `INSERT` per chunk 86.9 ms, `store_rag_chunks` as shipped 72.0 ms (0.24 ms per chunk) — the shipped number includes deleting the previous mirror and rebuilding the statistics, which is why the gap is smaller than the insert alone. Callers that store or delete many documents in a row (`flask rag-reindex`, `flask rag-backfill-chunks`, deleting a user's account) defer the statistic rebuild to one pass at the end instead of paying a full corpus pass per document.
 - **The task queue poll is indexed.** The executor asks for the next queued task once a second with a predicate no index covered (`status`, then `task_class`, `created_at`); `pg_stat_user_tables` showed 2.26 M sequential scans on `tasks`. The new index matches the predicate's column order. It is not a covering index and the planner still scans a two-row table, so this is a guard for a grown queue rather than a measured speedup.
 
+### Changed
+
+- **A document deduplicated by content no longer runs the analyzer again.** When the vectors of an identical document are copied, the chunks are the same text and their lemmas already sit in the source's mirror; `store_rag_chunks(lemma_source=…)` reuses them by chunk index instead of lemmatizing again — measured 33 ms per 300 chunks, and it is the whole lemmatization cost of a re-upload of the same file.
+
 ### Fixed
 
 - **A live answer still showed the vision icon in single-model mode.** The label fix reached the stored row but not the response dict: `_build_success_response()` copied `extra["model_type"]` unchanged, and the chat header is painted from that dict the moment the stream ends — so the answer appeared as `multimodal` (🖼️) until the page was reloaded, when the stored `universal` label took over. The dict is normalised now, on the same rule as the row, and the task view's chat-style header (`/api/tasks`) follows it. Answers stored before the fix keep whatever type they were saved with.

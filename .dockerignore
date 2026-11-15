@@ -36,8 +36,10 @@ services/sd_cpp/outputs/
 *.safetensors
 *.onnx
 
-# Tests and coverage (not needed in production)
+# Tests, benchmarks and working notes (not needed in production)
 tests/
+bench/
+docs/superpowers/
 .pytest_cache/
 .coverage
 htmlcov/

@@ -480,7 +480,13 @@ class RagModule:
             return None
 
         self._store_chunks(
-            user_id, doc_id, filename=doc_info["filename"], chunks=chunks, refresh=refresh_stats
+            user_id,
+            doc_id,
+            filename=doc_info["filename"],
+            chunks=chunks,
+            refresh=refresh_stats,
+            # The source mirror already lemmatized exactly these texts.
+            lemma_source=(source["user_id"], source["id"]),
         )
         self._record_centroid(user_id, doc_id, ordered)
         self.logger.info(
@@ -553,13 +559,19 @@ class RagModule:
             return False
 
     def _store_chunks(
-        self, user_id: str, doc_id: str, filename: str, chunks: list[str], refresh: bool = True
+        self,
+        user_id: str,
+        doc_id: str,
+        filename: str,
+        chunks: list[str],
+        refresh: bool = True,
+        lemma_source: tuple[str, str] | None = None,
     ) -> None:
         """Mirror the chunks into PostgreSQL for the lexical half of hybrid search."""
         try:
             from app.db import store_rag_chunks
 
-            store_rag_chunks(user_id, doc_id, filename, chunks, refresh=refresh)
+            store_rag_chunks(user_id, doc_id, filename, chunks, refresh=refresh, lemma_source=lemma_source)
         except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
             self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
 

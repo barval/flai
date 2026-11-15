@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.3](#-whats-new-in-v133)
+- [🆕 What's New in v13.4](#-whats-new-in-v134)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,17 +73,9 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.3
+## 🆕 What's New in v13.4
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
-
-- **One universal model or the classic pair — switchable in the admin panel.** From 12 GB of VRAM a fresh install runs a single model that answers chat, vision, routing and reasoning, so an answer never waits for the 11.7 GB reload the pair pays (measured: 14 s per reasoning answer on a 16 GB card, and the pair cannot be resident together at all). Below that the pair stays, because there the single model is slower. The mode is a choice in Admin → Models and needs no deployment flag. → [MODELS.md](docs/MODELS.md)
-
-- **Long-term memory keeps facts with their time, and resolves contradictions.** A fact is stored as a typed `(subject, predicate, value)` with a validity interval: when a newer fact contradicts an older one, the older row is closed instead of deleted, and a question that names a year — "where did I live in 2024" — is answered from the interval it held. The always-injected profile now separates what holds from what no longer does. → [MEMORY.md](docs/MEMORY.md)
-
-- **The document panel says why an upload was refused.** Quota, size cap, unsupported format, an unreadable or password-protected file, the folder limit — the reason appears next to the file name instead of one generic sentence. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-
-- **Admin settings show where every value comes from.** Each field is marked `panel`, `.env` or `default`; a banner lists the fields where the panel and `.env` disagree and names the one in effect, and a field shows the value this version ships when the live one differs — the case where a limit stayed at 5 MB through an upgrade that shipped 25. → [CONFIGURATION.md](docs/CONFIGURATION.md)
 
 ## 🖼 Demo
 

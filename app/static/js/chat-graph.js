@@ -214,8 +214,33 @@
         return colorFor(node.kind, node);
     }
 
-    function linkColorFor() {
-        return 'rgba(160,170,190,0.45)';
+    // A link the extractor asserted (with a quote) and a link the graph adds
+    // because two names share a chunk are different claims, so they never look
+    // the same. Amber reads on white and on the dark background.
+    const STRUCTURAL_PREDICATES = ['co-occurs'];
+
+    function isStructural(predicate) {
+        return STRUCTURAL_PREDICATES.indexOf(String(predicate || '')) !== -1;
+    }
+
+    function structuralLinkColor() {
+        return document.body.classList.contains('dark-theme')
+            ? 'rgba(240, 180, 91, 0.75)'
+            : 'rgba(186, 118, 12, 0.6)';
+    }
+
+    function linkColorFor(link) {
+        return link && isStructural(link.predicate) ? structuralLinkColor() : 'rgba(160,170,190,0.45)';
+    }
+
+    function linkWidthFor(link) {
+        return link && isStructural(link.predicate)
+            ? 0.8
+            : 1.2 + Math.log(1 + ((link && link.weight) || 1)) * 1.6;
+    }
+
+    function linkDashFor(link) {
+        return link && isStructural(link.predicate) ? [3, 3] : null;
     }
 
     async function createRenderer(kind, element, graph) {
@@ -237,7 +262,7 @@
                 return escapeHtml(link.predicate || '');
             })
             .linkColor(linkColorFor)
-            .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
+            .linkWidth(linkWidthFor)
             .onNodeClick(function (node) {
                 if (mergeSourceId && mergeSourceId !== node.id) {
                     mergeInto(node);
@@ -263,6 +288,10 @@
                 pathSourceId = node.id;
                 setStatus(t('graph_path_pick', 'Pick the second node of the path'));
             });
+        if (typeof instance.linkLineDash === 'function') {
+            // Dashes say "this is not a stated relation" without reading the menu.
+            instance.linkLineDash(linkDashFor);
+        }
         if (kind === '3d' && typeof instance.backgroundColor === 'function') {
             instance.backgroundColor(graphBackground());
         }
@@ -367,17 +396,37 @@
             const key = String(link.predicate || '');
             counts.set(key, (counts.get(key) || 0) + 1);
         });
-        const rows = [...counts.entries()]
-            .sort(function (a, b) { return b[1] - a[1]; })
-            .map(function (entry) {
-                const predicate = entry[0];
-                const shown = hiddenPredicates.has(predicate) ? '' : ' checked';
-                return '<label class="graph-filter-row"><input type="checkbox" class="graph-filter-check" value="' +
-                    escapeHtml(predicate) + '"' + shown + '> <span>' + escapeHtml(predicateLabel(predicate) || '—') +
-                    '</span> <em>' + entry[1] + '</em></label>';
-            })
-            .join('');
-        list.innerHTML = rows || '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
+
+        function rowFor(predicate, count) {
+            const shown = hiddenPredicates.has(predicate) ? '' : ' checked';
+            const dot = isStructural(predicate)
+                ? '<span class="graph-filter-dot graph-filter-dot-structural"></span>'
+                : '';
+            return '<label class="graph-filter-row"><input type="checkbox" class="graph-filter-check" value="' +
+                escapeHtml(predicate) + '"' + shown + '>' + dot + '<span>' +
+                escapeHtml(predicateLabel(predicate) || '—') + '</span> <em>' + count + '</em></label>';
+        }
+
+        // Two groups, not one list: a link a model asserted with a quote and a
+        // link that only says "these names share a chunk" are different claims,
+        // and the count alone does not show which is which.
+        const entries = [...counts.entries()].sort(function (a, b) { return b[1] - a[1]; });
+        const stated = entries.filter(function (entry) { return !isStructural(entry[0]); });
+        const structural = entries.filter(function (entry) { return isStructural(entry[0]); });
+
+        function group(titleKey, titleFallback, items) {
+            if (!items.length) return '';
+            return '<div class="graph-filter-section"><div class="graph-filter-title">' +
+                escapeHtml(t(titleKey, titleFallback)) + '</div>' +
+                items.map(function (entry) { return rowFor(entry[0], entry[1]); }).join('') +
+                '</div>';
+        }
+
+        list.innerHTML =
+            group('graph_relations_stated', 'Stated relations', stated) +
+            group('graph_relations_structural', 'Structural, no quote', structural) ||
+            '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
+
         list.querySelectorAll('.graph-filter-check').forEach(function (box) {
             box.addEventListener('change', function () {
                 if (box.checked) hiddenPredicates.delete(box.value);
@@ -460,7 +509,8 @@
                 const source = typeof link.source === 'object' ? link.source : { id: link.source };
                 const target = typeof link.target === 'object' ? link.target : { id: link.target };
                 const other = source.id === node.id ? target : source;
-                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(predicateLabel(link.predicate)) + '</em></li>';
+                const cls = isStructural(link.predicate) ? ' class="graph-pred-structural"' : '';
+                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em' + cls + '>' + escapeHtml(predicateLabel(link.predicate)) + '</em></li>';
             })
             .join('');
         panel.innerHTML =

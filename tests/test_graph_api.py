@@ -131,3 +131,37 @@ def test_a_shared_path_never_leaves_the_shared_documents(database, client, monke
     assert "secret-relation" not in predicates
     assert predicates == ["shared-first", "shared-second"]
     assert all("SECRET" not in (edge.get("evidence") or "") for edge in edges)
+
+
+def test_a_path_is_made_of_stated_relations_not_shared_chunks(database, client, monkeypatch):
+    """co-occurs says two names share a chunk; that is not a relation."""
+    from app.database import get_db
+    from app.routes import graph as graph_routes
+
+    a = _node(LOGIN, "А")
+    b = _node(LOGIN, "Б")
+    c = _node(LOGIN, "В")
+    with get_db() as conn:
+        cur = conn.cursor()
+        rows = [
+            (a, b, "co-occurs", "", 1),
+            (b, c, "co-occurs", "", 1),
+            (a, c, "работает в", "цитата из документа", 2),
+        ]
+        for src, dst, predicate, evidence, weight in rows:
+            cur.execute(
+                "INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence)"
+                " VALUES (%s, %s, %s, %s, %s, 'doc-1', 0, %s)",
+                (LOGIN, src, dst, predicate, weight, evidence),
+            )
+        conn.commit()
+
+        monkeypatch.setattr(
+            graph_routes, "_graph_scopes", lambda login, doc_id="": [(LOGIN, None)]
+        )
+
+        response = client.get(f"/api/graph/path?source={a}&target={c}")
+
+    assert response.status_code == 200
+    edges = response.get_json()["edges"]
+    assert [edge["predicate"] for edge in edges] == ["работает в"]

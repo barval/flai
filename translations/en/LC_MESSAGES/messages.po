@@ -5746,3 +5746,11 @@ msgstr "Located in"
 #: app/templates/chat.html
 msgid "Related to"
 msgstr "Related to"
+
+#: app/templates/chat.html
+msgid "Stated relations"
+msgstr "Stated relations"
+
+#: app/templates/chat.html
+msgid "Structural, no quote"
+msgstr "Structural, no quote"

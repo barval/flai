@@ -1916,6 +1916,66 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
     return {"nodes": nodes, "edges": edges}
 
 
+def _rebuild_lexical_stats(cursor, user_id: str) -> None:
+    """Rewrite one user's BM25 statistics through ``cursor``."""
+    cursor.execute(
+        """
+        INSERT INTO rag_stats (user_id, n_chunks, avgdl)
+        SELECT %s, count(*), coalesce(avg(cardinality(lemmas)), 0)
+        FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL
+        ON CONFLICT (user_id) DO UPDATE
+        SET n_chunks = EXCLUDED.n_chunks, avgdl = EXCLUDED.avgdl, updated_at = now()
+        """,
+        (user_id, user_id),
+    )
+    cursor.execute("DELETE FROM rag_term_df WHERE user_id = %s", (user_id,))
+    cursor.execute(
+        """
+        INSERT INTO rag_term_df (user_id, term, df)
+        SELECT %s, term, count(*)
+        FROM rag_chunks rc, unnest(rc.lemmas) AS term
+        WHERE rc.user_id = %s AND rc.lemmas IS NOT NULL
+        GROUP BY term
+        """,
+        (user_id, user_id),
+    )
+
+
+def rebuild_lexical_stats(user_id: str, conn: Any | None = None) -> None:
+    """Recompute the BM25 corpus statistics of one user.
+
+    Pass ``conn`` to stay inside the caller's transaction (the chunk write that
+    just happened is not visible to another connection yet).
+    """
+    if conn is not None:
+        _rebuild_lexical_stats(conn.cursor(), user_id)
+        return
+    with get_db() as own:
+        _rebuild_lexical_stats(own.cursor(), user_id)
+
+
+def read_lexical_stats(user_id: str, terms: list[str]) -> dict[str, Any] | None:
+    """The cached BM25 statistics, or ``None`` when the user has no row.
+
+    Two primary-key lookups replace the per-query scan of ``rag_chunks``; the
+    caller falls back to counting live when this returns ``None``.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT n_chunks, avgdl FROM rag_stats WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+        if not row:
+            return None
+        df: dict[str, int] = {}
+        if terms:
+            c.execute(
+                "SELECT term, df FROM rag_term_df WHERE user_id = %s AND term = ANY(%s)",
+                (user_id, list(terms)),
+            )
+            df = {item["term"]: int(item["df"]) for item in c.fetchall()}
+    return {"n_chunks": int(row["n_chunks"]), "avgdl": float(row["avgdl"]), "df": df}
+
+
 def get_kg_counts(user_id, doc_ids=None):
     """Total nodes and edges in scope, not just the ones a page returns."""
     params: list = [user_id]

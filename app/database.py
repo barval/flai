@@ -705,6 +705,26 @@ def _init_postgresql():
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_rag_chunks_lemmas ON rag_chunks USING GIN (lemmas)
     """)
+    # BM25 needs three corpus-wide numbers per query (chunk count, average
+    # lemma count, per-term document frequency). Counting them over
+    # rag_chunks on every search is linear in the corpus; these two tables hold
+    # the same numbers, refreshed when a document's chunks change.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_stats (
+            user_id TEXT PRIMARY KEY,
+            n_chunks INTEGER NOT NULL,
+            avgdl DOUBLE PRECISION NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_term_df (
+            user_id TEXT NOT NULL,
+            term TEXT NOT NULL,
+            df INTEGER NOT NULL,
+            PRIMARY KEY (user_id, term)
+        )
+    """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,

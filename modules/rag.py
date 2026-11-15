@@ -560,15 +560,21 @@ class RagModule:
                         "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
                         (user_id, doc_id, index, filename, chunk, lemmatize(chunk)),
                     )
+                # Same transaction: the cache describes what this write just did.
+                from app.db import rebuild_lexical_stats
+
+                rebuild_lexical_stats(user_id, conn)
         except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
             self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
 
     def _delete_chunks(self, doc_id: str, user_id: str) -> None:
         try:
             from app.database import get_db
+            from app.db import rebuild_lexical_stats
 
             with get_db() as conn:
                 conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+                rebuild_lexical_stats(user_id, conn)
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
 

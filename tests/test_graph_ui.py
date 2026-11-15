@@ -114,3 +114,23 @@ def test_the_storage_key_is_declared_before_the_first_read():
     script = SCRIPT.read_text(encoding="utf-8")
 
     assert script.index("const HIDDEN_PREDICATES_KEY") < script.index("new Set(loadHiddenPredicates())")
+
+
+def test_a_node_can_be_merged_into_another_from_the_panel():
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "graph_merge_start" in script and "graph-merge-btn" in script
+    assert "mergeSourceId" in script
+    assert "/api/graph/merge" in script
+    # The merge never starts for a document somebody else shared.
+    assert "node.shared" in script
+
+
+def test_the_merge_route_refuses_a_foreign_node():
+    routes = Path("app/routes/graph.py").read_text(encoding="utf-8")
+    block = routes[routes.index('def graph_merge(') :]
+    block = block[: block.index("@bp.route", 10)]
+
+    assert "kg_nodes WHERE user_id = %s" in block
+    assert "merge_kg_nodes(login, target, source)" in block
+    assert '"error"' in block

@@ -4071,6 +4071,22 @@ video {
     font-size: 0.85rem;
 }
 
+.graph-merge-btn {
+    margin-top: 0.6rem;
+    width: 100%;
+    border: 1px dashed #c8c8c8;
+    background: transparent;
+    color: inherit;
+    border-radius: 8px;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.graph-merge-btn:hover {
+    border-style: solid;
+}
+
 .graph-filters {
     position: relative;
 }
@@ -9474,6 +9490,22 @@ video {
     font-size: 0.85rem;
 }
 
+.graph-merge-btn {
+    margin-top: 0.6rem;
+    width: 100%;
+    border: 1px dashed #c8c8c8;
+    background: transparent;
+    color: inherit;
+    border-radius: 8px;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.graph-merge-btn:hover {
+    border-style: solid;
+}
+
 .graph-filters {
     position: relative;
 }
@@ -11153,6 +11185,12 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_clear_path': "\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u0443\u0442\u044c",
     'graph_no_relations': "\u041d\u0435\u0442 \u0441\u0432\u044f\u0437\u0435\u0439",
     'graph_path_cleared': "\u041f\u043e\u0434\u0441\u0432\u0435\u0442\u043a\u0430 \u043f\u0443\u0442\u0438 \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u0430",
+    'graph_merge_start': "\u0421\u043b\u0438\u0442\u044c \u0441 \u0434\u0440\u0443\u0433\u0438\u043c \u0443\u0437\u043b\u043e\u043c\u2026",
+    'graph_merge_cancel': "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u043b\u0438\u044f\u043d\u0438\u0435",
+    'graph_merge_pick': "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0443\u0437\u0435\u043b, \u0432 \u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u043d\u0443\u0436\u043d\u043e \u0441\u043b\u0438\u0442\u044c",
+    'graph_merge_confirm': "\u0421\u043b\u0438\u0442\u044c \u00ab{source}\u00bb \u0432 \u00ab{target}\u00bb? \u041f\u0435\u0440\u0432\u044b\u0439 \u0443\u0437\u0435\u043b \u0438\u0441\u0447\u0435\u0437\u043d\u0435\u0442.",
+    'graph_merge_failed': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043b\u0438\u0442\u044c \u0443\u0437\u043b\u044b",
+    'graph_merge_cancelled': "\u0421\u043b\u0438\u044f\u043d\u0438\u0435 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u043e",
     'graph_no_path': "\u041f\u0443\u0442\u044c \u0441\u0432\u044f\u0437\u0435\u0439 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
     'graph_build_now': "\u041f\u043e\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
     'graph_building': "\u0421\u0442\u0440\u043e\u0438\u0442\u0441\u044f",
@@ -13439,6 +13477,8 @@ function initDocumentsView() {
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // The node waiting to be merged into another one (two clicks, no modal).
+    let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
     // view of it, so hiding a relation type never costs another request.
     let baseGraph = { nodes: [], links: [] };
@@ -13615,6 +13655,17 @@ function initDocumentsView() {
             .linkColor(linkColorFor)
             .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
             .onNodeClick(function (node) {
+                if (mergeSourceId && mergeSourceId !== node.id) {
+                    mergeInto(node);
+                    return;
+                }
+                if (mergeSourceId === node.id) {
+                    mergeSourceId = null;
+                    setStatus(t('graph_merge_cancelled', 'Merge cancelled'));
+                    selectedNode = node;
+                    renderSidePanel(node);
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
                     showPath(pathSourceId, node.id);
                     pathSourceId = null;
@@ -13755,6 +13806,53 @@ function initDocumentsView() {
         if (clear) clear.hidden = true;
     }
 
+    function mergeButtonHTML(node) {
+        if (!node || node.shared) return '';
+        const label = mergeSourceId === node.id
+            ? t('graph_merge_cancel', 'Cancel merge')
+            : t('graph_merge_start', 'Merge into another node…');
+        return '<button type="button" class="graph-merge-btn" id="graph-merge-start">' + escapeHtml(label) + '</button>';
+    }
+
+    function startMerge(node) {
+        if (!node || node.shared) return;
+        mergeSourceId = node.id;
+        setStatus(t('graph_merge_pick', 'Pick the node it should be merged into'));
+        renderSidePanel(node);
+    }
+
+    async function mergeInto(target) {
+        const source = mergeSourceId;
+        mergeSourceId = null;
+        const sourceLabel = (selectedNode && selectedNode.label) || source;
+        const question = t('graph_merge_confirm', 'Merge “{source}” into “{target}”? The first node disappears.')
+            .replace('{source}', sourceLabel)
+            .replace('{target}', (target && target.label) || '');
+        if (!window.confirm(question)) {
+            draw({ doc: focusedDoc, layer: currentLayer });
+            return;
+        }
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        const headers = { 'Content-Type': 'application/json' };
+        if (meta) headers['X-CSRFToken'] = meta.content;
+        try {
+            const response = await fetch('/api/graph/merge', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers,
+                body: JSON.stringify({ source: source, target: target.id })
+            });
+            if (!response.ok) {
+                setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+                return;
+            }
+        } catch (error) {
+            setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+            return;
+        }
+        await draw({ doc: focusedDoc, layer: currentLayer });
+    }
+
     function renderSidePanel(node) {
         const panel = document.getElementById('graph-side-panel');
         if (!panel) return;
@@ -13784,7 +13882,8 @@ function initDocumentsView() {
                 : '') +
             (node.description ? '<p>' + escapeHtml(node.description) + '</p>' : '') +
             (neighbours ? '<ul class="graph-neighbours">' + neighbours + '</ul>' : '') +
-            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>';
+            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>' +
+            mergeButtonHTML(node);
     }
 
     function escapeHtml(text) {
@@ -13907,6 +14006,7 @@ function initDocumentsView() {
             return;
         }
         selectedNode = null;
+        mergeSourceId = null;
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -14056,6 +14156,10 @@ function initDocumentsView() {
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-merge-start')) {
+            startMerge(selectedNode);
+            return;
+        }
         if (event.target.closest('#graph-clear-path')) {
             resetColors();
             setStatus(t('graph_path_cleared', 'Path highlight cleared'));

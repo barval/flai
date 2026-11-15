@@ -5693,3 +5693,22 @@ msgstr "Подсветка пути сброшена"
 #: app/templates/chat.html
 msgid "Show or hide relation types"
 msgstr "Показать или скрыть типы связей"
+
+#: app/templates/chat.html
+msgid "Merge into another node…"
+msgstr "Слить с другим узлом…"
+#: app/templates/chat.html
+msgid "Cancel merge"
+msgstr "Отменить слияние"
+#: app/templates/chat.html
+msgid "Pick the node it should be merged into"
+msgstr "Выберите узел, в который нужно слить"
+#: app/templates/chat.html
+msgid "Merge “{source}” into “{target}”? The first node disappears."
+msgstr "Слить «{source}» в «{target}»? Первый узел исчезнет."
+#: app/templates/chat.html
+msgid "The nodes could not be merged"
+msgstr "Не удалось слить узлы"
+#: app/templates/chat.html
+msgid "Merge cancelled"
+msgstr "Слияние отменено"

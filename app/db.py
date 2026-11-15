@@ -1501,6 +1501,25 @@ def add_kg_occurrence(node_id, user_id, doc_id, chunk_index, mention_text=""):
         )
 
 
+def add_kg_cooccurrence(user_id, src_id, dst_id, doc_id, chunk_index):
+    """Link two entities that were mentioned in the same chunk.
+
+    Unlike a model-proposed relation this is structural evidence, so it carries
+    the minimum weight and never accumulates: re-extracting the same chunk must
+    not make a co-occurrence look stronger than a stated relation. ``ON CONFLICT
+    DO NOTHING`` is what keeps a rebuild idempotent.
+    """
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence, source_kind)
+            VALUES (%s, %s::uuid, %s::uuid, 'co-occurs', 1, %s, %s, '', 'document')
+            ON CONFLICT (user_id, src_id, dst_id, predicate) DO NOTHING
+            """,
+            (user_id, src_id, dst_id, doc_id, chunk_index),
+        )
+
+
 def upsert_kg_edge(user_id, src_id, dst_id, predicate, doc_id, chunk_index, evidence="", source_kind="document"):
     """Insert a relation, or raise the weight of the identical one."""
     with get_db() as conn:

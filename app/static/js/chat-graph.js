@@ -15,6 +15,8 @@
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // The node waiting to be merged into another one (two clicks, no modal).
+    let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
     // view of it, so hiding a relation type never costs another request.
     let baseGraph = { nodes: [], links: [] };
@@ -191,6 +193,17 @@
             .linkColor(linkColorFor)
             .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
             .onNodeClick(function (node) {
+                if (mergeSourceId && mergeSourceId !== node.id) {
+                    mergeInto(node);
+                    return;
+                }
+                if (mergeSourceId === node.id) {
+                    mergeSourceId = null;
+                    setStatus(t('graph_merge_cancelled', 'Merge cancelled'));
+                    selectedNode = node;
+                    renderSidePanel(node);
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
                     showPath(pathSourceId, node.id);
                     pathSourceId = null;
@@ -331,6 +344,53 @@
         if (clear) clear.hidden = true;
     }
 
+    function mergeButtonHTML(node) {
+        if (!node || node.shared) return '';
+        const label = mergeSourceId === node.id
+            ? t('graph_merge_cancel', 'Cancel merge')
+            : t('graph_merge_start', 'Merge into another node…');
+        return '<button type="button" class="graph-merge-btn" id="graph-merge-start">' + escapeHtml(label) + '</button>';
+    }
+
+    function startMerge(node) {
+        if (!node || node.shared) return;
+        mergeSourceId = node.id;
+        setStatus(t('graph_merge_pick', 'Pick the node it should be merged into'));
+        renderSidePanel(node);
+    }
+
+    async function mergeInto(target) {
+        const source = mergeSourceId;
+        mergeSourceId = null;
+        const sourceLabel = (selectedNode && selectedNode.label) || source;
+        const question = t('graph_merge_confirm', 'Merge “{source}” into “{target}”? The first node disappears.')
+            .replace('{source}', sourceLabel)
+            .replace('{target}', (target && target.label) || '');
+        if (!window.confirm(question)) {
+            draw({ doc: focusedDoc, layer: currentLayer });
+            return;
+        }
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        const headers = { 'Content-Type': 'application/json' };
+        if (meta) headers['X-CSRFToken'] = meta.content;
+        try {
+            const response = await fetch('/api/graph/merge', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers,
+                body: JSON.stringify({ source: source, target: target.id })
+            });
+            if (!response.ok) {
+                setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+                return;
+            }
+        } catch (error) {
+            setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+            return;
+        }
+        await draw({ doc: focusedDoc, layer: currentLayer });
+    }
+
     function renderSidePanel(node) {
         const panel = document.getElementById('graph-side-panel');
         if (!panel) return;
@@ -360,7 +420,8 @@
                 : '') +
             (node.description ? '<p>' + escapeHtml(node.description) + '</p>' : '') +
             (neighbours ? '<ul class="graph-neighbours">' + neighbours + '</ul>' : '') +
-            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>';
+            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>' +
+            mergeButtonHTML(node);
     }
 
     function escapeHtml(text) {
@@ -483,6 +544,7 @@
             return;
         }
         selectedNode = null;
+        mergeSourceId = null;
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -632,6 +694,10 @@
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-merge-start')) {
+            startMerge(selectedNode);
+            return;
+        }
         if (event.target.closest('#graph-clear-path')) {
             resetColors();
             setStatus(t('graph_path_cleared', 'Path highlight cleared'));

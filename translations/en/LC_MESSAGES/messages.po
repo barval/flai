@@ -5662,3 +5662,22 @@ msgstr "Path highlight cleared"
 #: app/templates/chat.html
 msgid "Show or hide relation types"
 msgstr "Show or hide relation types"
+
+#: app/templates/chat.html
+msgid "Merge into another node…"
+msgstr "Merge into another node…"
+#: app/templates/chat.html
+msgid "Cancel merge"
+msgstr "Cancel merge"
+#: app/templates/chat.html
+msgid "Pick the node it should be merged into"
+msgstr "Pick the node it should be merged into"
+#: app/templates/chat.html
+msgid "Merge “{source}” into “{target}”? The first node disappears."
+msgstr "Merge “{source}” into “{target}”? The first node disappears."
+#: app/templates/chat.html
+msgid "The nodes could not be merged"
+msgstr "The nodes could not be merged"
+#: app/templates/chat.html
+msgid "Merge cancelled"
+msgstr "Merge cancelled"

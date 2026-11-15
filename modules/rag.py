@@ -554,6 +554,9 @@ class RagModule:
         except Exception as e:
             # If the collection does not exist, there is nothing to delete -> treat as success
             if "Not found" in str(e) or "doesn't exist" in str(e):
+                # The collection is gone, the lexical mirror is not: leaving it
+                # would keep scoring chunks of a document that no longer exists.
+                self._delete_chunks(doc_id, user_id, refresh=refresh_stats)
                 return True
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False

@@ -153,3 +153,25 @@ def test_a_document_is_written_in_one_statement(test_app, monkeypatch):
         RagModule()._store_chunks("batchuser", "doc-1", "cv.pdf", ["чанк"] * 40)
 
     assert calls == [40]
+
+
+def test_a_missing_collection_still_clears_the_mirror(test_app):
+    """The Qdrant collection can be gone while the lexical mirror is not."""
+    from types import SimpleNamespace
+
+    from modules.rag import RagModule
+
+    with test_app.app_context():
+        _cleanup("hybriduser")
+        module = RagModule()
+        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["Работал в Твери"])
+        module.check_availability = lambda: True
+
+        def _missing(**_kwargs):
+            raise RuntimeError("Not found: Collection `user_hybriduser` doesn't exist")
+
+        module.qdrant_client = SimpleNamespace(delete=_missing)
+
+        assert module.delete_document("doc-1", "hybriduser") is True
+        assert module._lexical_search("hybriduser", "Твери", 10) == []
+        _cleanup("hybriduser")

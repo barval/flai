@@ -685,17 +685,18 @@ def _init_postgresql():
             doc_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             filename TEXT,
-            text TEXT NOT NULL,
-            tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('russian', text)) STORED
+            text TEXT NOT NULL
         )
     """)
     c.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk
         ON rag_chunks (user_id, doc_id, chunk_index)
     """)
-    c.execute("""
-        CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
-    """)
+    # The generated tsv column and its GIN index served ts_rank_cd. BM25 over
+    # lemmas replaced that search and nothing reads the column, so it costs an
+    # to_tsvector and an index update on every chunk write for no reader.
+    c.execute("DROP INDEX IF EXISTS idx_rag_chunks_tsv")
+    c.execute("ALTER TABLE rag_chunks DROP COLUMN IF EXISTS tsv")
     # BM25 over lemmatized words replaced ts_rank_cd (which has no IDF); the
     # column is filled by _store_chunks and by `flask rag-lemmatize-chunks`
     # for chunks indexed before the change.

@@ -16,6 +16,14 @@
 
 ### Fixed
 
+- **A document whose Qdrant collection is gone kept its lexical mirror.** `RagModule.delete_document()` treats "collection not found" as success, but returned before `_delete_chunks()`, so the chunks stayed in `rag_chunks` and — since this release — kept counting in the BM25 statistics: a document that no longer exists could still be retrieved. The mirror is cleared on that path too.
+
+### Changed
+
+- **The unused full-text column left `rag_chunks`.** `tsv` was a generated `to_tsvector('russian', text)` with a GIN index, used by `ts_rank_cd`; BM25 over lemmas replaced that search and nothing has read the column since, while every chunk write paid an `to_tsvector` and an index update. The migration drops the index and the column (`DROP ... IF EXISTS`, so it is idempotent per start) — the table went from 9 800 kB to what the columns and two remaining indexes take, and a chunk insert no longer computes full-text data for nobody.
+
+### Fixed
+
 - **A live answer still showed the vision icon in single-model mode.** The label fix reached the stored row but not the response dict: `_build_success_response()` copied `extra["model_type"]` unchanged, and the chat header is painted from that dict the moment the stream ends — so the answer appeared as `multimodal` (🖼️) until the page was reloaded, when the stored `universal` label took over. The dict is normalised now, on the same rule as the row, and the task view's chat-style header (`/api/tasks`) follows it. Answers stored before the fix keep whatever type they were saved with.
 
 - **"What can you do" was answered with internal tool names.** The chat prompt names the time tools to make the model call them, and the model copied those identifiers into its user-facing summary: the answer listed "time and dates (get_current_time, time_calc)" instead of describing the ability. The prompt now says that an answer must not contain tool names, paths or other internal identifiers.

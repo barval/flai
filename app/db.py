@@ -1916,6 +1916,37 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
     return {"nodes": nodes, "edges": edges}
 
 
+def store_rag_chunks(user_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
+    """Mirror a document's chunks for the lexical half, in one round trip.
+
+    One ``executemany`` per document instead of one statement per chunk; the
+    BM25 statistics are refreshed in the same transaction.
+    """
+    from app.lemmatizer import lemmas as lemmatize
+
+    rows = [
+        (user_id, doc_id, index, filename, chunk, lemmatize(chunk))
+        for index, chunk in enumerate(chunks)
+    ]
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        if rows:
+            cursor.executemany(
+                "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
+                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                rows,
+            )
+        rebuild_lexical_stats(user_id, conn)
+
+
+def delete_rag_chunks(user_id: str, doc_id: str) -> None:
+    """Remove one document's mirrored chunks and refresh the statistics."""
+    with get_db() as conn:
+        conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        rebuild_lexical_stats(user_id, conn)
+
+
 def _rebuild_lexical_stats(cursor, user_id: str) -> None:
     """Rewrite one user's BM25 statistics through ``cursor``."""
     cursor.execute(

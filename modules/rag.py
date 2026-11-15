@@ -549,32 +549,17 @@ class RagModule:
     def _store_chunks(self, user_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
         """Mirror the chunks into PostgreSQL for the lexical half of hybrid search."""
         try:
-            from app.database import get_db
+            from app.db import store_rag_chunks
 
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
-                for index, chunk in enumerate(chunks):
-                    cursor.execute(
-                        "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
-                        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        (user_id, doc_id, index, filename, chunk, lemmatize(chunk)),
-                    )
-                # Same transaction: the cache describes what this write just did.
-                from app.db import rebuild_lexical_stats
-
-                rebuild_lexical_stats(user_id, conn)
+            store_rag_chunks(user_id, doc_id, filename, chunks)
         except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
             self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
 
     def _delete_chunks(self, doc_id: str, user_id: str) -> None:
         try:
-            from app.database import get_db
-            from app.db import rebuild_lexical_stats
+            from app.db import delete_rag_chunks
 
-            with get_db() as conn:
-                conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
-                rebuild_lexical_stats(user_id, conn)
+            delete_rag_chunks(user_id, doc_id)
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
 

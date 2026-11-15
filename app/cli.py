@@ -1578,6 +1578,9 @@ def rag_lemmatize_chunks(user, batch):
                     (lemmatize(row["text"] or ""), row["id"]),
                 )
                 updated += 1
+    from app.db import rebuild_lexical_stats
+
+    rebuild_lexical_stats(user)
     click.echo(f"Lemmatized {updated} chunks for {user}")
 
 

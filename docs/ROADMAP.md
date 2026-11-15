@@ -21,11 +21,11 @@ This list is not a commitment. Items move when their priority changes, and an it
   its benchmark. Next: a few hundred labelled queries, a trained head or a
   fine-tune, and the hybrid rule (confident → fast path, unsure → kernel) only if
   it clears the kernel on our own cases.
-- **Deeper graph extraction, and a corpus where the graph earns its place in retrieval** — v13.2 shipped the
-  graph as a reading instrument because measurements show no retrieval gain (see
-  [GRAPH.md](GRAPH.md#measurements)). Next: a second extraction pass over entity pairs inside one sentence, a
-  corpus whose bridging document is semantically unreachable from the question, and the same measurements again;
-  `GRAPH_RAG_ENABLED` stays off until a corpus shows a gain.
+- **A graph stage that earns its context** — v13.4 linked the entities that share a chunk (isolated nodes
+  43 % → 18 %) and measured retrieval with the graph on: hit@10 0.900 → 0.933, but the context per query grew
+  from 4 000 to 8 974 characters (see [GRAPH.md](GRAPH.md#measurements)). Next: shrink `GRAPH_SHARE` until the
+  gain survives that context cost, or show that on a real corpus it cannot; `GRAPH_RAG_ENABLED` stays off until
+  then.
 - Plugin architecture for custom modules
 - Multi-GPU support
 - **Multi-platform GPU support** — first iteration shipped in v13.0: the compose stack is split into a

@@ -219,7 +219,7 @@ def test_a_denied_room_is_skipped_while_permitted_rooms_are_captured():
     queue = _queue()
     modules = _modules({"kor": "Коридор", "kuh": "Кухня"}, fail={"kuh"})
     queue.app.modules = modules
-    captures = RedisRequestQueue._capture_all_rooms(queue, "zoya", "ru")
+    captures = RedisRequestQueue._capture_all_rooms(queue, "demo_user", "ru")
     assert [item["room_name"] for item in captures] == ["Коридор"]
 
 

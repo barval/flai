@@ -134,8 +134,14 @@ DATABASE_URL=... python -m bench.lexical store --chunks 300
 
 ### Режим базы данных
 
-- **Мок по умолчанию** (без `DATABASE_URL`).
-- **В CI** (`DATABASE_URL` задан) — настоящий PostgreSQL с `TRUNCATE` между тестами в teardown фикстуры `test_app`.
+- **По умолчанию мок** (без `DATABASE_URL`).
+- **Отдельная база для тестов**, когда нужен настоящий PostgreSQL: тесты пишут, удаляют и очищают таблицы, поэтому запускаются только против базы, имя которой оканчивается на `_test`. С любым другим `DATABASE_URL` все тесты с маркером `requires_db` пропускаются — собственная база установки никогда не является целью тестов.
+
+```bash
+docker exec flai-postgres psql -U flai -d postgres -c "CREATE DATABASE flai_test OWNER flai"
+docker exec flai-postgres sh -lc 'pg_dump -U flai --schema-only -d flai | psql -U flai -d flai_test'
+DATABASE_URL=postgresql://flai:<пароль>@<хост postgres>:5432/flai_test pytest -m requires_db
+```
 
 ### Фоновые воркеры
 

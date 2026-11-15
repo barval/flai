@@ -35,9 +35,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     that key and the test fails on the mock, not on the product. CI always sets
     DATABASE_URL, where these tests run against a real database.
     """
-    if not _USE_MOCK_DB:
+    if _USE_MOCK_DB:
+        skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
+    elif not _is_test_database():
+        # A live database is never a test target. The fixtures write, delete and
+        # (for a database whose name ends in `_test`) truncate; running them
+        # against an installation's own database destroys real accounts. Point
+        # DATABASE_URL at a scratch database named `*_test` to run these.
+        skip = pytest.mark.skip(
+            reason="requires a *_test database: the live DATABASE_URL is never a test target"
+        )
+    else:
         return
-    skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
     for item in items:
         if "requires_db" in item.keywords:
             item.add_marker(skip)

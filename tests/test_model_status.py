@@ -96,3 +96,41 @@ def test_an_answer_is_labelled_universal_only_where_one_model_served_it(monkeypa
     monkeypatch.setattr("app.model_status.universal_mode_active", lambda: enabled)
 
     assert model_status.answer_model_type(given) == expected
+
+
+def _bare_queue(config=None):
+    """A queue object with just enough state to build a response dict."""
+    from types import SimpleNamespace
+
+    from app.queue import RedisRequestQueue
+
+    queue = object.__new__(RedisRequestQueue)
+    queue.app = SimpleNamespace(config=config or {})
+    return queue
+
+
+def test_the_live_answer_is_labelled_exactly_like_the_stored_one(monkeypatch):
+    """The header is painted from the live dict, minutes before any reload."""
+    monkeypatch.setattr("app.model_status.universal_mode_active", lambda: True)
+
+    result = _bare_queue()._build_success_response(
+        "session", "answer", "Qwen3.6", 1.0, message_id=1, extra={"model_type": "multimodal"}
+    )
+
+    assert result["model_type"] == "universal"
+
+
+def test_a_media_answer_keeps_its_own_type_in_the_live_dict(monkeypatch):
+    monkeypatch.setattr("app.model_status.universal_mode_active", lambda: True)
+
+    result = _bare_queue()._build_success_response("session", "answer", "sd", 1.0, extra={"model_type": "image_gen"})
+
+    assert result["model_type"] == "image_gen"
+
+
+def test_a_task_step_header_uses_the_same_label(monkeypatch):
+    monkeypatch.setattr("app.model_status.universal_mode_active", lambda: True)
+
+    meta = _bare_queue()._subtask_model_meta("Qwen3.6", "reasoning")
+
+    assert meta["model_type"] == "universal"

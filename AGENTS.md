@@ -138,7 +138,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
     was the only candidate on a host and was rightly not offered. The projector is matched by the model's own name
     (`mmproj-<model>-F16.gguf`) or as the single `mmproj*.gguf` inside the model's own subdirectory —
     never as "the only projector in a flat directory", which once attached gemma's encoder to Qwen.
-    **An answer is labelled `universal` in single-model mode** (`app/model_status.py:answer_model_type()`): the chat header picks its icon from `model_type`, and calling the one model's answers `multimodal` showed only the vision half. Media types keep their own. **Thinking is disabled outside the reasoning role** (`chat_template_kwargs={"enable_thinking":
+    **An answer is labelled `universal` in single-model mode** (`app/model_status.py:answer_model_type()`): the chat header picks its icon from `model_type`, and calling the one model's answers `multimodal` showed only the vision half. Media types keep their own. The live response dict is normalised in `_build_success_response()` as well: the header is painted from it long before a reload reads the stored row, and an un-normalised dict showed the picture icon on an answer the row already called `universal`. **Thinking is disabled outside the reasoning role** (`chat_template_kwargs={"enable_thinking":
     false}`, `_thinking_kwargs_needed()` in `app/llamacpp_client.py`): measured on Qwen3.6-35B, a
     trivial question spent 294 tokens thinking first, and the request kernel's JSON reply never
     appeared at all — 37 of 37 cases fell back to `none` (0.216 accuracy against 1.000 with thinking

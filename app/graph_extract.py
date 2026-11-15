@@ -208,6 +208,41 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
     return result["nodes"], result["edges"]
 
 
+def backfill_cooccurrence(user_id: str, dry_run: bool = False) -> dict:
+    """Link the entities every stored chunk already mentions.
+
+    The occurrences table knows which nodes share a chunk, so an existing graph
+    gains the structural edges without a model call — only the edge is new, not
+    the extraction.
+    """
+    from app.database import get_db
+    from app.db import add_kg_cooccurrences
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT doc_id, chunk_index, array_agg(node_id::text ORDER BY node_id) AS ids
+            FROM kg_occurrences
+            WHERE user_id = %s
+            GROUP BY doc_id, chunk_index
+            HAVING count(*) > 1
+            """,
+            (user_id,),
+        )
+        chunks = cursor.fetchall()
+
+    rows = []
+    for chunk in chunks:
+        ids = list(dict.fromkeys(str(node_id) for node_id in chunk["ids"]))[:COOCCURRENCE_MAX_ENTITIES]
+        for left in range(len(ids)):
+            for right in range(left + 1, len(ids)):
+                rows.append((ids[left], ids[right], chunk["doc_id"], chunk["chunk_index"]))
+    if not dry_run:
+        add_kg_cooccurrences(user_id, rows)
+    return {"chunks": len(chunks), "pairs": len(rows), "dry_run": dry_run}
+
+
 def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: dict) -> dict:
     """Write one chunk's extraction into the graph.
 

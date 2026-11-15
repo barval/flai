@@ -699,6 +699,31 @@ def doctor(as_json):
         sys.exit(1)
 
 
+@click.command("graph-cooccurrence")
+@click.option("--user", default="", help="Login to backfill; omit for every user with a graph")
+@click.option("--dry-run", is_flag=True, help="Report how many edges would be written")
+@with_appcontext
+def graph_cooccurrence(user, dry_run):
+    """Link entities that share a chunk, from the occurrences already stored."""
+    from app.database import get_db
+    from app.graph_extract import backfill_cooccurrence
+
+    if user:
+        logins = [user]
+    else:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT user_id FROM kg_occurrences")
+            logins = [row["user_id"] for row in cursor.fetchall()]
+    total = 0
+    for login in logins:
+        result = backfill_cooccurrence(login, dry_run=dry_run)
+        total += result["pairs"]
+        click.echo(f"{login}: {result['pairs']} co-occurrence edges from {result['chunks']} chunks")
+    verb = "would write" if dry_run else "wrote"
+    click.echo(f"{verb} {total} edges for {len(logins)} user(s)")
+
+
 @click.command("rag-eval")
 @click.option("--user", required=True, help="Login whose indexed documents are searched")
 @click.option("--dataset", required=True, type=click.Path(exists=True), help="JSONL question set")

@@ -1501,6 +1501,21 @@ def add_kg_occurrence(node_id, user_id, doc_id, chunk_index, mention_text=""):
         )
 
 
+def add_kg_cooccurrences(user_id, rows):
+    """Insert many co-occurrence edges in one transaction (rows: src, dst, doc_id, chunk)."""
+    if not rows:
+        return
+    with get_db() as conn:
+        conn.cursor().executemany(
+            """
+            INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence, source_kind)
+            VALUES (%s, %s::uuid, %s::uuid, 'co-occurs', 1, %s, %s, '', 'document')
+            ON CONFLICT (user_id, src_id, dst_id, predicate) DO NOTHING
+            """,
+            [(user_id, src, dst, doc, chunk) for src, dst, doc, chunk in rows],
+        )
+
+
 def add_kg_cooccurrence(user_id, src_id, dst_id, doc_id, chunk_index):
     """Link two entities that were mentioned in the same chunk.
 

@@ -72,3 +72,41 @@ def test_the_pair_count_is_capped_per_chunk(written):
 
     assert len(written["cooccurrence"]) <= graph_extract.COOCCURRENCE_MAX_PAIRS
     assert len(written["cooccurrence"]) > 1
+
+
+@pytest.mark.requires_db
+def test_the_backfill_links_the_entities_a_chunk_already_has(test_app):
+    """No model call: the occurrences table already says who shares a chunk."""
+    from app.database import get_db
+    from app.db import add_kg_occurrence, upsert_kg_node
+    from app.graph_extract import backfill_cooccurrence
+
+    user = "graph_cooccur"
+    with test_app.app_context():
+        with get_db() as conn:
+            c = conn.cursor()
+            for table in ("kg_edges", "kg_occurrences", "kg_nodes"):
+                c.execute(f"DELETE FROM {table} WHERE user_id = %s", (user,))
+        ids = []
+        for name in ("Ласточка", "Ромашка", "Договор"):
+            node_id = upsert_kg_node(user, "term", name, name.lower(), [name.lower()], "")
+            add_kg_occurrence(node_id, user, "doc-1", 0, name)
+            ids.append(node_id)
+
+        first = backfill_cooccurrence(user)
+        second = backfill_cooccurrence(user)
+
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT count(*) AS n FROM kg_edges WHERE user_id = %s AND predicate = 'co-occurs'",
+                (user,),
+            )
+            edges = c.fetchone()["n"]
+            c.execute("DELETE FROM kg_edges WHERE user_id = %s", (user,))
+            c.execute("DELETE FROM kg_occurrences WHERE user_id = %s", (user,))
+            c.execute("DELETE FROM kg_nodes WHERE user_id = %s", (user,))
+
+    assert first["pairs"] == 3
+    assert edges == 3, "a second run must not duplicate or inflate anything"
+    assert second["pairs"] == 3

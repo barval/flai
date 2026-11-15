@@ -5646,3 +5646,19 @@ msgstr "No model with both reasoning and a vision projector was found. Download 
 #: app/templates/chat.html
 msgid "Loading the model..."
 msgstr "Loading the model..."
+
+#: app/templates/chat.html
+msgid "Relations"
+msgstr "Relations"
+#: app/templates/chat.html
+msgid "Clear path"
+msgstr "Clear path"
+#: app/templates/chat.html
+msgid "No relations"
+msgstr "No relations"
+#: app/templates/chat.html
+msgid "Path highlight cleared"
+msgstr "Path highlight cleared"
+#: app/templates/chat.html
+msgid "Show or hide relation types"
+msgstr "Show or hide relation types"

@@ -5677,3 +5677,19 @@ msgstr "Не найдено модели, которая и рассуждает
 #: app/templates/chat.html
 msgid "Loading the model..."
 msgstr "Загружаю модель..."
+
+#: app/templates/chat.html
+msgid "Relations"
+msgstr "Связи"
+#: app/templates/chat.html
+msgid "Clear path"
+msgstr "Сбросить путь"
+#: app/templates/chat.html
+msgid "No relations"
+msgstr "Нет связей"
+#: app/templates/chat.html
+msgid "Path highlight cleared"
+msgstr "Подсветка пути сброшена"
+#: app/templates/chat.html
+msgid "Show or hide relation types"
+msgstr "Показать или скрыть типы связей"

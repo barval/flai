@@ -4071,6 +4071,58 @@ video {
     font-size: 0.85rem;
 }
 
+.graph-filters {
+    position: relative;
+}
+
+.graph-filters > summary {
+    border: 1px solid #c8c8c8;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    list-style: none;
+}
+
+.graph-filters > summary::-webkit-details-marker {
+    display: none;
+}
+
+.graph-filter-list {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    min-width: 14rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.dark-theme .graph-filter-list {
+    background: #262626;
+    border-color: #444;
+}
+
+.graph-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.graph-filter-row em {
+    margin-left: auto;
+    opacity: 0.6;
+    font-style: normal;
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -9422,6 +9474,58 @@ video {
     font-size: 0.85rem;
 }
 
+.graph-filters {
+    position: relative;
+}
+
+.graph-filters > summary {
+    border: 1px solid #c8c8c8;
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    list-style: none;
+}
+
+.graph-filters > summary::-webkit-details-marker {
+    display: none;
+}
+
+.graph-filter-list {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    min-width: 14rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.dark-theme .graph-filter-list {
+    background: #262626;
+    border-color: #444;
+}
+
+.graph-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.graph-filter-row em {
+    margin-left: auto;
+    opacity: 0.6;
+    font-style: normal;
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -11046,6 +11150,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_empty': "\u0413\u0440\u0430\u0444 \u043f\u043e \u044d\u0442\u0438\u043c \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430\u043c \u0435\u0449\u0451 \u0441\u0442\u0440\u043e\u0438\u0442\u0441\u044f",
     'graph_webgl_missing': "\u042d\u0442\u043e\u0442 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u043e\u0442\u043e\u0431\u0440\u0430\u0437\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
     'graph_path_pick': "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0442\u043e\u0440\u043e\u0439 \u0443\u0437\u0435\u043b \u043f\u0443\u0442\u0438",
+    'graph_clear_path': "\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u0443\u0442\u044c",
+    'graph_no_relations': "\u041d\u0435\u0442 \u0441\u0432\u044f\u0437\u0435\u0439",
+    'graph_path_cleared': "\u041f\u043e\u0434\u0441\u0432\u0435\u0442\u043a\u0430 \u043f\u0443\u0442\u0438 \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u0430",
     'graph_no_path': "\u041f\u0443\u0442\u044c \u0441\u0432\u044f\u0437\u0435\u0439 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
     'graph_build_now': "\u041f\u043e\u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0433\u0440\u0430\u0444",
     'graph_building': "\u0421\u0442\u0440\u043e\u0438\u0442\u0441\u044f",
@@ -13332,6 +13439,15 @@ function initDocumentsView() {
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // The graph as the server sent it; the renderer only ever gets a filtered
+    // view of it, so hiding a relation type never costs another request.
+    let baseGraph = { nodes: [], links: [] };
+    let lastTotalNodes = 0;
+
+    const HIDDEN_PREDICATES_KEY = 'flai.graph.hiddenPredicates';
+    // Read once at start-up, before any draw: the loader reads the key above,
+    // and a const declared after this line would be in its temporal dead zone.
+    let hiddenPredicates = new Set(loadHiddenPredicates());
     // Why the last 3D attempt ended in 2D, kept until a 3D view succeeds.
     let kindError = '';
 
@@ -13470,6 +13586,14 @@ function initDocumentsView() {
         }
     }
 
+    function nodeColorFor(node) {
+        return colorFor(node.kind, node);
+    }
+
+    function linkColorFor() {
+        return 'rgba(160,170,190,0.45)';
+    }
+
     async function createRenderer(kind, element, graph) {
         await loadVendor(kind);
         if (!element.clientHeight) {
@@ -13477,7 +13601,7 @@ function initDocumentsView() {
         }
         let instance = buildRenderer(kind, element)
             .nodeLabel(function (node) { return escapeHtml(node.label); })
-            .nodeColor(function (node) { return colorFor(node.kind, node); })
+            .nodeColor(nodeColorFor)
             .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
             .linkLabel(function (link) {
                 // Document links carry a similarity score, not a verb.
@@ -13488,7 +13612,7 @@ function initDocumentsView() {
                 }
                 return escapeHtml(link.predicate || '');
             })
-            .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
+            .linkColor(linkColorFor)
             .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
             .onNodeClick(function (node) {
                 if (pathSourceId && pathSourceId !== node.id) {
@@ -13549,6 +13673,86 @@ function initDocumentsView() {
     function setStatus(text) {
         const status = document.getElementById('graph-status-line');
         if (status) status.textContent = text || '';
+    }
+
+    function loadHiddenPredicates() {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(HIDDEN_PREDICATES_KEY) || '[]');
+            return Array.isArray(stored) ? stored.map(String) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveHiddenPredicates() {
+        try {
+            window.localStorage.setItem(HIDDEN_PREDICATES_KEY, JSON.stringify([...hiddenPredicates]));
+        } catch (error) {
+            // A private-mode browser refuses storage; the filter still works for this visit.
+        }
+    }
+
+    function filteredGraph() {
+        const links = (baseGraph.links || [])
+            .filter(function (link) { return !hiddenPredicates.has(String(link.predicate || '')); })
+            .map(function (link) { return Object.assign({}, link); });
+        return { nodes: baseGraph.nodes || [], links: links };
+    }
+
+    function updateCounts(graph) {
+        const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
+            .replace('{n}', graph.nodes.length)
+            .replace('{total}', lastTotalNodes || graph.nodes.length)
+            .replace('{m}', graph.links.length);
+        setStatus(counts);
+    }
+
+    function applyFilterToView() {
+        if (!graphInstance) return;
+        const graph = filteredGraph();
+        graphInstance.graphData(graph);
+        // A highlighted path overrides the base colours; a filter change is a
+        // fresh view of the same data, so the highlight goes with it.
+        resetColors();
+        updateCounts(graph);
+        fitGraph(300);
+    }
+
+    function renderFilters() {
+        const list = document.getElementById('graph-filter-list');
+        if (!list) return;
+        const counts = new Map();
+        (baseGraph.links || []).forEach(function (link) {
+            const key = String(link.predicate || '');
+            counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        const rows = [...counts.entries()]
+            .sort(function (a, b) { return b[1] - a[1]; })
+            .map(function (entry) {
+                const predicate = entry[0];
+                const shown = hiddenPredicates.has(predicate) ? '' : ' checked';
+                return '<label class="graph-filter-row"><input type="checkbox" class="graph-filter-check" value="' +
+                    escapeHtml(predicate) + '"' + shown + '> <span>' + escapeHtml(predicate || '—') +
+                    '</span> <em>' + entry[1] + '</em></label>';
+            })
+            .join('');
+        list.innerHTML = rows || '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
+        list.querySelectorAll('.graph-filter-check').forEach(function (box) {
+            box.addEventListener('change', function () {
+                if (box.checked) hiddenPredicates.delete(box.value);
+                else hiddenPredicates.add(box.value);
+                saveHiddenPredicates();
+                applyFilterToView();
+            });
+        });
+    }
+
+    function resetColors() {
+        if (!graphInstance) return;
+        graphInstance.nodeColor(nodeColorFor);
+        graphInstance.linkColor(linkColorFor);
+        const clear = document.getElementById('graph-clear-path');
+        if (clear) clear.hidden = true;
     }
 
     function renderSidePanel(node) {
@@ -13705,8 +13909,15 @@ function initDocumentsView() {
         selectedNode = null;
         renderSidePanel(null);
 
-        // The renderers read `links`; the API names the array `edges`.
-        const graph = { nodes: data.nodes, links: data.edges || [] };
+        // The renderers read `links`; the API names the array `edges`. The
+        // server answer is kept whole: filtering is a view, not a request.
+        baseGraph = {
+            nodes: data.nodes,
+            links: (data.edges || []).map(function (link) { return Object.assign({}, link); })
+        };
+        lastTotalNodes = data.total_nodes || data.nodes.length;
+        renderFilters();
+        const graph = filteredGraph();
         let kind = preferredKind();
         reportKind(kind);
         if (graphInstance && rendererKind !== kind) {
@@ -13753,9 +13964,9 @@ function initDocumentsView() {
         // counts over it is why a browser without WebGL looked like a broken
         // button instead of an explained fallback.
         const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
-            .replace('{n}', data.nodes.length)
-            .replace('{total}', data.total_nodes || data.nodes.length)
-            .replace('{m}', (data.edges || []).length);
+            .replace('{n}', graph.nodes.length)
+            .replace('{total}', lastTotalNodes || graph.nodes.length)
+            .replace('{m}', graph.links.length);
         if (kind === '2d' && kindError) {
             const reason = /webgl|context/i.test(kindError)
                 ? t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode')
@@ -13789,6 +14000,8 @@ function initDocumentsView() {
             const target = typeof link.target === 'object' ? link.target.id : link.target;
             return ids.has(source) && ids.has(target) ? '#ffd166' : 'rgba(160,170,190,0.08)';
         });
+        const clear = document.getElementById('graph-clear-path');
+        if (clear) clear.hidden = false;
         setStatus(data.edges.map(function (edge) { return edge.predicate; }).join(' → '));
     }
 
@@ -13843,6 +14056,11 @@ function initDocumentsView() {
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-clear-path')) {
+            resetColors();
+            setStatus(t('graph_path_cleared', 'Path highlight cleared'));
+            return;
+        }
         const cardButton = event.target.closest('.graph-document-button');
         const allButton = event.target.closest('#documents-graph-button');
         if (!cardButton && !allButton) return;
@@ -20819,6 +21037,11 @@ window.relocateChatControls = relocateChatControls;
                     title="Переключить на документы">Документы</button>
             <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="Переключить в 2D">2D</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="Найти узел">
+            <details class="graph-filters" id="graph-filters">
+                <summary title="Показать или скрыть типы связей">Связи</summary>
+                <div class="graph-filter-list" id="graph-filter-list"></div>
+            </details>
+            <button type="button" class="graph-layer-btn" id="graph-clear-path" hidden>Сбросить путь</button>
             <span class="graph-status" id="graph-status-line"></span>
         </div>
         <div class="graph-body">

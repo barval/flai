@@ -86,3 +86,31 @@ def test_the_fallback_reason_stays_on_the_button():
     assert "graph_3d_unavailable" in script
     assert "button.title = (kind === '3d'" in script
     assert "kind === '2d' && kindError" in script
+
+
+def test_relation_types_can_be_hidden_and_the_choice_is_remembered():
+    """Hiding a type is a view filter: the server answer is not fetched again."""
+    html = TEMPLATE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'id="graph-filters"' in html and 'id="graph-filter-list"' in html
+    assert "hiddenPredicates" in script
+    assert "flai.graph.hiddenPredicates" in script
+    assert "function filteredGraph()" in script
+    assert "graphInstance.graphData(graph);" in script
+
+
+def test_a_highlighted_path_can_be_cleared():
+    html = TEMPLATE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'id="graph-clear-path"' in html
+    assert "function resetColors()" in script
+    assert "graphInstance.nodeColor(nodeColorFor)" in script
+
+
+def test_the_storage_key_is_declared_before_the_first_read():
+    """A `const` used by the initialiser above it is in its temporal dead zone."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert script.index("const HIDDEN_PREDICATES_KEY") < script.index("new Set(loadHiddenPredicates())")

@@ -117,8 +117,13 @@ neighbourhood) or from the panel header (the whole cloud).
   node card.
 - **Navigation.** Sidebar tabs are navigation: opening Documents, Tasks or Sessions closes the graph and
   shows that section.
+- **Relation types.** The **Relations** menu lists every relation type the scene contains with its count;
+  unchecking one hides those links without another request — the server answer is kept whole and only the
+  drawn view is filtered. The choice is remembered per browser, so a corpus whose relations a reader never
+  wants (say `mentions`) stays quiet on the next visit.
 - **Controls.** Click a node to inspect it, right-click two nodes for the path between them, search to
-  fly to a node, and the cloud is fitted to the view once when it opens.
+  fly to a node, and the cloud is fitted to the view once when it opens. A highlighted path can be cleared
+  with the **Clear path** button, which restores the normal colours instead of leaving the scene dimmed.
 
 The renderer (`3d-force-graph`, MIT, with three.js) is vendored and loaded only when the view opens; no
 CDN is used.

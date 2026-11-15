@@ -1115,6 +1115,11 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
+    # The executor asks for the next queued task once a second: equality on
+    # status, then the order the selection sorts by.
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_queue ON tasks(status, task_class, created_at)"
+    )
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")

@@ -294,7 +294,9 @@ class RagModule:
             )
             self.logger.info(f"Created collection {collection_name} with vector size {current_dim}")
 
-    def index_document(self, user_id: str, doc_id: str, file_path: str) -> tuple[bool, str]:
+    def index_document(
+        self, user_id: str, doc_id: str, file_path: str, refresh_stats: bool = True
+    ) -> tuple[bool, str]:
         """
         Extract text from document, chunk it, generate embeddings and store in Qdrant.
         Returns (success, message).
@@ -314,7 +316,7 @@ class RagModule:
 
         # 0. Identical bytes are already indexed somewhere: their chunks are the
         #    same chunks, so copy the vectors instead of embedding them again.
-        reused = self._reuse_indexed_content(user_id, doc_id, doc_info)
+        reused = self._reuse_indexed_content(user_id, doc_id, doc_info, refresh_stats=refresh_stats)
         if reused is not None:
             return reused
 
@@ -400,7 +402,7 @@ class RagModule:
             collection_name = self._get_collection_name(user_id)
             self.qdrant_client.upsert(collection_name=collection_name, points=points)
             self.logger.info(f"index_document: upserted {len(points)} points for doc_id={doc_id}")
-            self._store_chunks(user_id, doc_id, filename, chunks)
+            self._store_chunks(user_id, doc_id, filename, chunks, refresh=refresh_stats)
             self._record_centroid(user_id, doc_id, points)
             return True, f"Indexed {len(chunks)} chunks"
         except Exception as e:
@@ -426,7 +428,9 @@ class RagModule:
         except Exception as exc:  # noqa: BLE001 — the graph must never fail indexing
             self.logger.warning(f"graph: centroid of {doc_id} not recorded: {exc}")
 
-    def _reuse_indexed_content(self, user_id: str, doc_id: str, doc_info: dict) -> tuple[bool, str] | None:
+    def _reuse_indexed_content(
+        self, user_id: str, doc_id: str, doc_info: dict, refresh_stats: bool = True
+    ) -> tuple[bool, str] | None:
         """Copy the vectors of an already-indexed document with identical bytes.
 
         Content addressing gives two documents the same SHA-256, so their chunks
@@ -475,7 +479,15 @@ class RagModule:
             self.logger.warning(f"reuse: copy into {user_id} failed for {doc_id}: {exc}")
             return None
 
-        self._store_chunks(user_id, doc_id, filename=doc_info["filename"], chunks=chunks)
+        self._store_chunks(
+            user_id,
+            doc_id,
+            filename=doc_info["filename"],
+            chunks=chunks,
+            refresh=refresh_stats,
+            # The source mirror already lemmatized exactly these texts.
+            lemma_source=(source["user_id"], source["id"]),
+        )
         self._record_centroid(user_id, doc_id, ordered)
         self.logger.info(
             f"reuse: copied {len(points)} vectors of {source['id']} ({source['user_id']}) to {doc_id} ({user_id})"
@@ -524,7 +536,7 @@ class RagModule:
             )
         return copied
 
-    def delete_document(self, doc_id: str, user_id: str) -> bool:
+    def delete_document(self, doc_id: str, user_id: str, refresh_stats: bool = True) -> bool:
         """Delete all points belonging to a document from the index."""
         if not self.check_availability():
             return False
@@ -536,41 +548,79 @@ class RagModule:
                     must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
                 ),
             )
-            self._delete_chunks(doc_id, user_id)
+            self._delete_chunks(doc_id, user_id, refresh=refresh_stats)
             self.logger.info(f"delete_document: deleted vectors for doc_id={doc_id}")
             return True
         except Exception as e:
             # If the collection does not exist, there is nothing to delete -> treat as success
             if "Not found" in str(e) or "doesn't exist" in str(e):
+                # The collection is gone, the lexical mirror is not: leaving it
+                # would keep scoring chunks of a document that no longer exists.
+                self._delete_chunks(doc_id, user_id, refresh=refresh_stats)
                 return True
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False
 
-    def _store_chunks(self, user_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
+    def _store_chunks(
+        self,
+        user_id: str,
+        doc_id: str,
+        filename: str,
+        chunks: list[str],
+        refresh: bool = True,
+        lemma_source: tuple[str, str] | None = None,
+    ) -> None:
         """Mirror the chunks into PostgreSQL for the lexical half of hybrid search."""
         try:
-            from app.database import get_db
+            from app.db import store_rag_chunks
 
-            with get_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
-                for index, chunk in enumerate(chunks):
-                    cursor.execute(
-                        "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas) "
-                        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        (user_id, doc_id, index, filename, chunk, lemmatize(chunk)),
-                    )
+            store_rag_chunks(user_id, doc_id, filename, chunks, refresh=refresh, lemma_source=lemma_source)
         except Exception as exc:  # noqa: BLE001 — the lexical index must never break indexing
             self.logger.warning(f"rag_chunks mirror failed for doc_id={doc_id}: {exc}")
 
-    def _delete_chunks(self, doc_id: str, user_id: str) -> None:
+    def _delete_chunks(self, doc_id: str, user_id: str, refresh: bool = True) -> None:
         try:
-            from app.database import get_db
+            from app.db import delete_rag_chunks
 
-            with get_db() as conn:
-                conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+            delete_rag_chunks(user_id, doc_id, refresh=refresh)
         except Exception as exc:  # noqa: BLE001
             self.logger.warning(f"rag_chunks delete failed for doc_id={doc_id}: {exc}")
+
+    def _live_lexical_stats(
+        self, user_id: str, terms: list[str], cursor=None
+    ) -> tuple[int, float, dict[str, int]]:
+        """Count the BM25 corpus statistics straight from ``rag_chunks``.
+
+        The fallback for a user with no cache row. Linear in the corpus, which
+        is why the caller heals the cache after one such count.
+        """
+        import contextlib
+
+        from app.database import get_db
+
+        with contextlib.ExitStack() as stack:
+            if cursor is None:
+                cursor = stack.enter_context(get_db()).cursor()
+            cursor.execute(
+                "SELECT count(*) AS n, coalesce(avg(cardinality(lemmas)), 0) AS avgdl "
+                "FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL",
+                (user_id,),
+            )
+            stats = cursor.fetchone() or {}
+            n_chunks = int(stats.get("n") or 0)
+            average_length = float(stats.get("avgdl") or 0)
+            if not n_chunks:
+                # An empty corpus is the only case with nothing to report: a
+                # corpus whose chunks hold no lemmas has n_chunks > 0, avgdl 0,
+                # and must still heal the cache.
+                return 0, 0.0, {}
+            cursor.execute(
+                "SELECT term, count(*) AS df FROM rag_chunks rc, unnest(rc.lemmas) AS term "
+                "WHERE rc.user_id = %s AND term = ANY(%s) GROUP BY term",
+                (user_id, terms),
+            )
+            document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
+        return n_chunks, average_length, document_frequency
 
     def _lexical_search(
         self,
@@ -588,30 +638,37 @@ class RagModule:
         the query is scored against the candidates that contain at least one.
         """
         from app.database import get_db
+        from app.db import read_lexical_stats, rebuild_lexical_stats
 
         terms = list(dict.fromkeys(lemmatize(query)))
         if not terms:
             return []
 
         with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT count(*) AS n, coalesce(avg(cardinality(lemmas)), 0) AS avgdl "
-                "FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL",
-                (user_id,),
-            )
-            stats = cursor.fetchone() or {}
-            n_chunks = int(stats.get("n") or 0)
-            average_length = float(stats.get("avgdl") or 0)
+            # Statistics and the rows they score belong to one transaction: a
+            # commit between the two reads would score one corpus with another's
+            # numbers.
+            stats = read_lexical_stats(user_id, terms, conn=conn)
+            if stats is None:
+                n_chunks, average_length, document_frequency = self._live_lexical_stats(
+                    user_id, terms, cursor=conn.cursor()
+                )
+                if n_chunks:
+                    # avgdl 0 is a real corpus (every chunk holds no lemmas of
+                    # its own): it still heals, or every search counts it again.
+                    try:
+                        rebuild_lexical_stats(user_id, conn)
+                    except Exception as exc:  # noqa: BLE001 — a broken cache must not fail a search
+                        self.logger.warning(f"rag stats heal failed for {user_id}: {exc}")
+            else:
+                n_chunks = stats["n_chunks"]
+                average_length = stats["avgdl"]
+                document_frequency = stats["df"]
+
             if not n_chunks or average_length <= 0:
                 return []
-            cursor.execute(
-                "SELECT term, count(*) AS df FROM rag_chunks rc, unnest(rc.lemmas) AS term "
-                "WHERE rc.user_id = %s AND term = ANY(%s) GROUP BY term",
-                (user_id, terms),
-            )
-            document_frequency = {row["term"]: int(row["df"]) for row in cursor.fetchall()}
 
+            cursor = conn.cursor()
             sql = (
                 "SELECT user_id, doc_id, chunk_index, filename, text, lemmas FROM rag_chunks "
                 "WHERE user_id = %s AND lemmas && %s"

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from flask import current_app
 from flask_babel import gettext as _
+from psycopg2.extras import execute_values
 
 from app.database import get_db
 from app.monitoring.archive import archive_documents, archive_messages, archive_session
@@ -855,16 +856,18 @@ def document_blob_savings_bytes():
         return int((row["saved"] if row else 0) or 0)
 
 
-def delete_document_resources(doc, login):
+def delete_document_resources(doc, login, refresh_stats=True):
     """Delete one document: index entry, blob reference, file and DB row.
 
     The single deletion path for every caller (web route, folder delete, API):
     the file is unlinked only when this was the last document using it.
+    ``refresh_stats=False`` lets a caller deleting many documents rebuild the
+    BM25 statistics once instead of after every one.
     """
     rag = current_app.modules.get("rag")
     if rag and rag.available:
         try:
-            rag.delete_document(doc["id"], login)
+            rag.delete_document(doc["id"], login, refresh_stats=refresh_stats)
         except Exception as e:
             current_app.logger.error(f"Failed to delete document from index: {e}")
     documents_folder = current_app.config["DOCUMENTS_FOLDER"]
@@ -1498,6 +1501,40 @@ def add_kg_occurrence(node_id, user_id, doc_id, chunk_index, mention_text=""):
         )
 
 
+def add_kg_cooccurrences(user_id, rows):
+    """Insert many co-occurrence edges in one transaction (rows: src, dst, doc_id, chunk)."""
+    if not rows:
+        return
+    with get_db() as conn:
+        conn.cursor().executemany(
+            """
+            INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence, source_kind)
+            VALUES (%s, %s::uuid, %s::uuid, 'co-occurs', 1, %s, %s, '', 'document')
+            ON CONFLICT (user_id, src_id, dst_id, predicate) DO NOTHING
+            """,
+            [(user_id, src, dst, doc, chunk) for src, dst, doc, chunk in rows],
+        )
+
+
+def add_kg_cooccurrence(user_id, src_id, dst_id, doc_id, chunk_index):
+    """Link two entities that were mentioned in the same chunk.
+
+    Unlike a model-proposed relation this is structural evidence, so it carries
+    the minimum weight and never accumulates: re-extracting the same chunk must
+    not make a co-occurrence look stronger than a stated relation. ``ON CONFLICT
+    DO NOTHING`` is what keeps a rebuild idempotent.
+    """
+    with get_db() as conn:
+        conn.cursor().execute(
+            """
+            INSERT INTO kg_edges (user_id, src_id, dst_id, predicate, weight, doc_id, chunk_index, evidence, source_kind)
+            VALUES (%s, %s::uuid, %s::uuid, 'co-occurs', 1, %s, %s, '', 'document')
+            ON CONFLICT (user_id, src_id, dst_id, predicate) DO NOTHING
+            """,
+            (user_id, src_id, dst_id, doc_id, chunk_index),
+        )
+
+
 def upsert_kg_edge(user_id, src_id, dst_id, predicate, doc_id, chunk_index, evidence="", source_kind="document"):
     """Insert a relation, or raise the weight of the identical one."""
     with get_db() as conn:
@@ -1914,6 +1951,138 @@ def get_kg_graph(user_id, doc_id="", kind="", limit=400, doc_ids=None):
             for row in c.fetchall()
         ]
     return {"nodes": nodes, "edges": edges}
+
+
+def store_rag_chunks(
+    user_id: str,
+    doc_id: str,
+    filename: str,
+    chunks: list[str],
+    refresh: bool = True,
+    indices: list[int] | None = None,
+    lemma_source: tuple[str, str] | None = None,
+) -> None:
+    """Mirror a document's chunks for the lexical half, in one statement.
+
+    ``execute_values`` joins the rows into one ``INSERT`` (psycopg2's
+    ``executemany`` still sends one statement per row), so a document costs one
+    statement per 500-row page instead of one per chunk.
+
+    ``refresh=False`` skips the statistics rebuild: a caller that stores many
+    documents in a row rebuilds once at the end instead of paying a full pass
+    over the corpus per document.
+
+    ``lemma_source`` names a mirrored document whose chunks hold the same text
+    (the embedding-reuse copy): their lemmas are reused by chunk index instead
+    of running the analyzer again.
+    """
+    from app.lemmatizer import lemmas as lemmatize
+
+    order = indices if indices is not None else list(range(len(chunks)))
+    with get_db() as conn:
+        cursor = conn.cursor()
+        reused: dict[int, list[str]] = {}
+        if lemma_source is not None:
+            cursor.execute(
+                "SELECT chunk_index, lemmas FROM rag_chunks"
+                " WHERE user_id = %s AND doc_id = %s AND lemmas IS NOT NULL",
+                lemma_source,
+            )
+            reused = {int(row["chunk_index"]): list(row["lemmas"]) for row in cursor.fetchall()}
+        rows = []
+        for index, chunk in zip(order, chunks, strict=False):
+            lemmas = reused.get(int(index))
+            rows.append(
+                (user_id, doc_id, int(index), filename, chunk, lemmas if lemmas is not None else lemmatize(chunk))
+            )
+        cursor.execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        if rows:
+            execute_values(
+                cursor,
+                "INSERT INTO rag_chunks (user_id, doc_id, chunk_index, filename, text, lemmas)"
+                " VALUES %s ON CONFLICT DO NOTHING",
+                rows,
+                page_size=500,
+            )
+        if refresh:
+            rebuild_lexical_stats(user_id, conn)
+
+
+def delete_rag_chunks(user_id: str, doc_id: str, refresh: bool = True) -> None:
+    """Remove one document's mirrored chunks and refresh the statistics."""
+    with get_db() as conn:
+        conn.cursor().execute("DELETE FROM rag_chunks WHERE user_id = %s AND doc_id = %s", (user_id, doc_id))
+        if refresh:
+            rebuild_lexical_stats(user_id, conn)
+
+
+def _rebuild_lexical_stats(cursor, user_id: str) -> None:
+    """Rewrite one user's BM25 statistics through ``cursor``."""
+    cursor.execute(
+        """
+        INSERT INTO rag_stats (user_id, n_chunks, avgdl)
+        SELECT %s, count(*), coalesce(avg(cardinality(lemmas)), 0)
+        FROM rag_chunks WHERE user_id = %s AND lemmas IS NOT NULL
+        ON CONFLICT (user_id) DO UPDATE
+        SET n_chunks = EXCLUDED.n_chunks, avgdl = EXCLUDED.avgdl, updated_at = now()
+        """,
+        (user_id, user_id),
+    )
+    cursor.execute("DELETE FROM rag_term_df WHERE user_id = %s", (user_id,))
+    cursor.execute(
+        """
+        INSERT INTO rag_term_df (user_id, term, df)
+        SELECT %s, term, count(*)
+        FROM rag_chunks rc, unnest(rc.lemmas) AS term
+        WHERE rc.user_id = %s AND rc.lemmas IS NOT NULL
+        GROUP BY term
+        """,
+        (user_id, user_id),
+    )
+
+
+def rebuild_lexical_stats(user_id: str, conn: Any | None = None) -> None:
+    """Recompute the BM25 corpus statistics of one user.
+
+    Pass ``conn`` to stay inside the caller's transaction (the chunk write that
+    just happened is not visible to another connection yet).
+    """
+    if conn is not None:
+        _rebuild_lexical_stats(conn.cursor(), user_id)
+        return
+    with get_db() as own:
+        _rebuild_lexical_stats(own.cursor(), user_id)
+
+
+def read_lexical_stats(
+    user_id: str, terms: list[str], conn: Any | None = None
+) -> dict[str, Any] | None:
+    """The cached BM25 statistics, or ``None`` when the user has no row.
+
+    Two primary-key lookups replace the per-query scan of ``rag_chunks``; the
+    caller falls back to counting live when this returns ``None``. Pass ``conn``
+    to read inside the caller's transaction, so the numbers and the rows they
+    score come from the same snapshot.
+    """
+
+    def _read(cursor) -> dict[str, Any] | None:
+        cursor.execute("SELECT n_chunks, avgdl FROM rag_stats WHERE user_id = %s", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        df: dict[str, int] = {}
+        if terms:
+            cursor.execute(
+                "SELECT term, df FROM rag_term_df WHERE user_id = %s AND term = ANY(%s)",
+                (user_id, list(terms)),
+            )
+            df = {item["term"]: int(item["df"]) for item in cursor.fetchall()}
+        return {"n_chunks": int(row["n_chunks"]), "avgdl": float(row["avgdl"]), "df": df}
+
+    if conn is not None:
+        return _read(conn.cursor())
+    with get_db() as own:
+        return _read(own.cursor())
 
 
 def get_kg_counts(user_id, doc_ids=None):

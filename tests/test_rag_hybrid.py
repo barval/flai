@@ -135,3 +135,43 @@ def test_reranker_is_manageable_from_the_models_tab():
 
     deploy = Path("deploy.sh").read_text(encoding="utf-8")
     assert "bge-reranker-v2-m3-Q4_K_M.gguf" in deploy
+
+
+def test_a_document_is_written_in_one_statement(test_app, monkeypatch):
+    """The mirror is one INSERT per document, not one per chunk.
+
+    psycopg2's ``executemany`` still sends one statement per row; only
+    ``execute_values`` joins them, which is what this asserts.
+    """
+    import app.db as db
+    from modules.rag import RagModule
+
+    calls = []
+    monkeypatch.setattr(db, "execute_values", lambda cursor, sql, rows, page_size=None: calls.append(len(rows)))
+
+    with test_app.app_context():
+        RagModule()._store_chunks("batchuser", "doc-1", "cv.pdf", ["чанк"] * 40)
+
+    assert calls == [40]
+
+
+def test_a_missing_collection_still_clears_the_mirror(test_app):
+    """The Qdrant collection can be gone while the lexical mirror is not."""
+    from types import SimpleNamespace
+
+    from modules.rag import RagModule
+
+    with test_app.app_context():
+        _cleanup("hybriduser")
+        module = RagModule()
+        module._store_chunks("hybriduser", "doc-1", "cv.pdf", ["Работал в Твери"])
+        module.check_availability = lambda: True
+
+        def _missing(**_kwargs):
+            raise RuntimeError("Not found: Collection `user_hybriduser` doesn't exist")
+
+        module.qdrant_client = SimpleNamespace(delete=_missing)
+
+        assert module.delete_document("doc-1", "hybriduser") is True
+        assert module._lexical_search("hybriduser", "Твери", 10) == []
+        _cleanup("hybriduser")

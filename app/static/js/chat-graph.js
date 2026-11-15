@@ -15,6 +15,63 @@
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // The node waiting to be merged into another one (two clicks, no modal).
+    let mergeSourceId = null;
+    // The graph as the server sent it; the renderer only ever gets a filtered
+    // view of it, so hiding a relation type never costs another request.
+    let baseGraph = { nodes: [], links: [] };
+    let lastTotalNodes = 0;
+
+    const HIDDEN_PREDICATES_KEY = 'flai.graph.hiddenPredicates';
+    const FILTER_DEFAULTS_KEY = 'flai.graph.filterDefaults';
+    // The default is a version, not a value: a stored list from an older view
+    // must still gain the new default once, and a reader who switches a type
+    // back on keeps it on.
+    const FILTER_DEFAULTS_VERSION = '2';
+    // Structured noise: every pair of entities in one chunk is linked, which is
+    // what pulled isolation from 43 % to 18 %. It is not a stated relation, so
+    // the first view shows what the model actually claimed and this is one
+    // click away.
+    const HIDDEN_BY_DEFAULT = ['co-occurs'];
+
+    // The extractor writes both language forms of its closed predicate list, so
+    // these are data values, not identifiers.
+    const PREDICATE_LABEL_KEYS = {
+        'co-occurs': 'graph_pred_co_occurs',
+        'similar': 'graph_pred_similar',
+        'supplies': 'graph_pred_supplies',
+        'поставляет': 'graph_pred_supplies',
+        'belongs to': 'graph_pred_part_of',
+        'входит в': 'graph_pred_part_of',
+        'works for': 'graph_pred_works_for',
+        'работает в': 'graph_pred_works_for',
+        'leads': 'graph_pred_leads',
+        'руководит': 'graph_pred_leads',
+        'signed': 'graph_pred_signed',
+        'подписал': 'graph_pred_signed',
+        'rents': 'graph_pred_rents',
+        'арендует': 'graph_pred_rents',
+        'maintains': 'graph_pred_maintains',
+        'обслуживает': 'graph_pred_maintains',
+        'performs': 'graph_pred_performs',
+        'выполняет': 'graph_pred_performs',
+        'forbids': 'graph_pred_forbids',
+        'запрещает': 'graph_pred_forbids',
+        'allows': 'graph_pred_allows',
+        'разрешает': 'graph_pred_allows',
+        'located in': 'graph_pred_located_in',
+        'расположен в': 'graph_pred_located_in',
+        'related to': 'graph_pred_related_to',
+        'связан с': 'graph_pred_related_to'
+    };
+
+    function predicateLabel(predicate) {
+        const key = PREDICATE_LABEL_KEYS[predicate];
+        return key ? t(key, predicate) : predicate;
+    }
+    // Read once at start-up, before any draw: the loader reads the key above,
+    // and a const declared after this line would be in its temporal dead zone.
+    let hiddenPredicates = new Set(loadHiddenPredicates());
     // Why the last 3D attempt ended in 2D, kept until a 3D view succeeds.
     let kindError = '';
 
@@ -153,6 +210,14 @@
         }
     }
 
+    function nodeColorFor(node) {
+        return colorFor(node.kind, node);
+    }
+
+    function linkColorFor() {
+        return 'rgba(160,170,190,0.45)';
+    }
+
     async function createRenderer(kind, element, graph) {
         await loadVendor(kind);
         if (!element.clientHeight) {
@@ -160,7 +225,7 @@
         }
         let instance = buildRenderer(kind, element)
             .nodeLabel(function (node) { return escapeHtml(node.label); })
-            .nodeColor(function (node) { return colorFor(node.kind, node); })
+            .nodeColor(nodeColorFor)
             .nodeVal(function (node) { return 1 + Math.log(1 + (node.mentions || 0)); })
             .linkLabel(function (link) {
                 // Document links carry a similarity score, not a verb.
@@ -171,9 +236,20 @@
                 }
                 return escapeHtml(link.predicate || '');
             })
-            .linkColor(function () { return 'rgba(160,170,190,0.45)'; })
+            .linkColor(linkColorFor)
             .linkWidth(function (link) { return 1.2 + Math.log(1 + (link.weight || 1)) * 1.6; })
             .onNodeClick(function (node) {
+                if (mergeSourceId && mergeSourceId !== node.id) {
+                    mergeInto(node);
+                    return;
+                }
+                if (mergeSourceId === node.id) {
+                    mergeSourceId = null;
+                    setStatus(t('graph_merge_cancelled', 'Merge cancelled'));
+                    selectedNode = node;
+                    renderSidePanel(node);
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
                     showPath(pathSourceId, node.id);
                     pathSourceId = null;
@@ -234,6 +310,139 @@
         if (status) status.textContent = text || '';
     }
 
+    function loadHiddenPredicates() {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(HIDDEN_PREDICATES_KEY) || '[]');
+            const hidden = new Set(Array.isArray(stored) ? stored.map(String) : []);
+            if (window.localStorage.getItem(FILTER_DEFAULTS_KEY) !== FILTER_DEFAULTS_VERSION) {
+                HIDDEN_BY_DEFAULT.forEach(function (predicate) { hidden.add(predicate); });
+                window.localStorage.setItem(FILTER_DEFAULTS_KEY, FILTER_DEFAULTS_VERSION);
+                window.localStorage.setItem(HIDDEN_PREDICATES_KEY, JSON.stringify([...hidden]));
+            }
+            return [...hidden];
+        } catch (error) {
+            return HIDDEN_BY_DEFAULT.slice();
+        }
+    }
+
+    function saveHiddenPredicates() {
+        try {
+            window.localStorage.setItem(HIDDEN_PREDICATES_KEY, JSON.stringify([...hiddenPredicates]));
+        } catch (error) {
+            // A private-mode browser refuses storage; the filter still works for this visit.
+        }
+    }
+
+    function filteredGraph() {
+        const links = (baseGraph.links || [])
+            .filter(function (link) { return !hiddenPredicates.has(String(link.predicate || '')); })
+            .map(function (link) { return Object.assign({}, link); });
+        return { nodes: baseGraph.nodes || [], links: links };
+    }
+
+    function updateCounts(graph) {
+        const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
+            .replace('{n}', graph.nodes.length)
+            .replace('{total}', lastTotalNodes || graph.nodes.length)
+            .replace('{m}', graph.links.length);
+        setStatus(counts);
+    }
+
+    function applyFilterToView() {
+        if (!graphInstance) return;
+        const graph = filteredGraph();
+        graphInstance.graphData(graph);
+        // A highlighted path overrides the base colours; a filter change is a
+        // fresh view of the same data, so the highlight goes with it.
+        resetColors();
+        updateCounts(graph);
+        fitGraph(300);
+    }
+
+    function renderFilters() {
+        const list = document.getElementById('graph-filter-list');
+        if (!list) return;
+        const counts = new Map();
+        (baseGraph.links || []).forEach(function (link) {
+            const key = String(link.predicate || '');
+            counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        const rows = [...counts.entries()]
+            .sort(function (a, b) { return b[1] - a[1]; })
+            .map(function (entry) {
+                const predicate = entry[0];
+                const shown = hiddenPredicates.has(predicate) ? '' : ' checked';
+                return '<label class="graph-filter-row"><input type="checkbox" class="graph-filter-check" value="' +
+                    escapeHtml(predicate) + '"' + shown + '> <span>' + escapeHtml(predicateLabel(predicate) || '—') +
+                    '</span> <em>' + entry[1] + '</em></label>';
+            })
+            .join('');
+        list.innerHTML = rows || '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
+        list.querySelectorAll('.graph-filter-check').forEach(function (box) {
+            box.addEventListener('change', function () {
+                if (box.checked) hiddenPredicates.delete(box.value);
+                else hiddenPredicates.add(box.value);
+                saveHiddenPredicates();
+                applyFilterToView();
+            });
+        });
+    }
+
+    function resetColors() {
+        if (!graphInstance) return;
+        graphInstance.nodeColor(nodeColorFor);
+        graphInstance.linkColor(linkColorFor);
+        const clear = document.getElementById('graph-clear-path');
+        if (clear) clear.hidden = true;
+    }
+
+    function mergeButtonHTML(node) {
+        if (!node || node.shared) return '';
+        const label = mergeSourceId === node.id
+            ? t('graph_merge_cancel', 'Cancel merge')
+            : t('graph_merge_start', 'Merge into another node…');
+        return '<button type="button" class="graph-merge-btn" id="graph-merge-start">' + escapeHtml(label) + '</button>';
+    }
+
+    function startMerge(node) {
+        if (!node || node.shared) return;
+        mergeSourceId = node.id;
+        setStatus(t('graph_merge_pick', 'Pick the node it should be merged into'));
+        renderSidePanel(node);
+    }
+
+    async function mergeInto(target) {
+        const source = mergeSourceId;
+        mergeSourceId = null;
+        const sourceLabel = (selectedNode && selectedNode.label) || source;
+        const question = t('graph_merge_confirm', 'Merge “{source}” into “{target}”? The first node disappears.')
+            .replace('{source}', sourceLabel)
+            .replace('{target}', (target && target.label) || '');
+        if (!window.confirm(question)) {
+            draw({ doc: focusedDoc, layer: currentLayer });
+            return;
+        }
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        const headers = { 'Content-Type': 'application/json' };
+        if (meta) headers['X-CSRFToken'] = meta.content;
+        try {
+            const response = await fetch('/api/graph/merge', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers,
+                body: JSON.stringify({ source: source, target: target.id })
+            });
+            if (!response.ok) {
+                setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+                return;
+            }
+        } catch (error) {
+            setStatus(t('graph_merge_failed', 'The nodes could not be merged'));
+            return;
+        }
+        await draw({ doc: focusedDoc, layer: currentLayer });
+    }
+
     function renderSidePanel(node) {
         const panel = document.getElementById('graph-side-panel');
         if (!panel) return;
@@ -251,7 +460,7 @@
                 const source = typeof link.source === 'object' ? link.source : { id: link.source };
                 const target = typeof link.target === 'object' ? link.target : { id: link.target };
                 const other = source.id === node.id ? target : source;
-                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(link.predicate || '') + '</em></li>';
+                return '<li>' + escapeHtml(other.label || other.id || '') + ' — <em>' + escapeHtml(predicateLabel(link.predicate)) + '</em></li>';
             })
             .join('');
         panel.innerHTML =
@@ -263,7 +472,8 @@
                 : '') +
             (node.description ? '<p>' + escapeHtml(node.description) + '</p>' : '') +
             (neighbours ? '<ul class="graph-neighbours">' + neighbours + '</ul>' : '') +
-            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>';
+            '<p class="graph-mentions">' + t('graph_mentions', 'Mentions') + ': ' + (node.mentions || 0) + '</p>' +
+            mergeButtonHTML(node);
     }
 
     function escapeHtml(text) {
@@ -386,10 +596,18 @@
             return;
         }
         selectedNode = null;
+        mergeSourceId = null;
         renderSidePanel(null);
 
-        // The renderers read `links`; the API names the array `edges`.
-        const graph = { nodes: data.nodes, links: data.edges || [] };
+        // The renderers read `links`; the API names the array `edges`. The
+        // server answer is kept whole: filtering is a view, not a request.
+        baseGraph = {
+            nodes: data.nodes,
+            links: (data.edges || []).map(function (link) { return Object.assign({}, link); })
+        };
+        lastTotalNodes = data.total_nodes || data.nodes.length;
+        renderFilters();
+        const graph = filteredGraph();
         let kind = preferredKind();
         reportKind(kind);
         if (graphInstance && rendererKind !== kind) {
@@ -436,9 +654,9 @@
         // counts over it is why a browser without WebGL looked like a broken
         // button instead of an explained fallback.
         const counts = t('graph_counts', 'shown {n} of {total} nodes · {m} links')
-            .replace('{n}', data.nodes.length)
-            .replace('{total}', data.total_nodes || data.nodes.length)
-            .replace('{m}', (data.edges || []).length);
+            .replace('{n}', graph.nodes.length)
+            .replace('{total}', lastTotalNodes || graph.nodes.length)
+            .replace('{m}', graph.links.length);
         if (kind === '2d' && kindError) {
             const reason = /webgl|context/i.test(kindError)
                 ? t('graph_no_webgl', 'This browser does not provide WebGL — 2D mode')
@@ -472,7 +690,9 @@
             const target = typeof link.target === 'object' ? link.target.id : link.target;
             return ids.has(source) && ids.has(target) ? '#ffd166' : 'rgba(160,170,190,0.08)';
         });
-        setStatus(data.edges.map(function (edge) { return edge.predicate; }).join(' → '));
+        const clear = document.getElementById('graph-clear-path');
+        if (clear) clear.hidden = false;
+        setStatus(data.edges.map(function (edge) { return predicateLabel(edge.predicate); }).join(' → '));
     }
 
     // The label names the action, not the current layer: while entities are
@@ -526,6 +746,15 @@
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-merge-start')) {
+            startMerge(selectedNode);
+            return;
+        }
+        if (event.target.closest('#graph-clear-path')) {
+            resetColors();
+            setStatus(t('graph_path_cleared', 'Path highlight cleared'));
+            return;
+        }
         const cardButton = event.target.closest('.graph-document-button');
         const allButton = event.target.closest('#documents-graph-button');
         if (!cardButton && !allButton) return;

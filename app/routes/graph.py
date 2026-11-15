@@ -157,6 +157,42 @@ def graph_path():
     )
 
 
+@bp.route("/graph/merge", methods=["POST"])
+def graph_merge():
+    """Merge one of the caller's nodes into another, keeping the second one.
+
+    Only the caller's own nodes are eligible: a share recipient reads a graph,
+    it does not rewrite it.
+    """
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    source = str(payload.get("source") or "")
+    target = str(payload.get("target") or "")
+    if not source or not target:
+        return jsonify({"error": "two nodes are required"}), 400
+    if source == target:
+        return jsonify({"error": "a node cannot be merged into itself"}), 400
+
+    from app.database import get_db
+    from app.db import merge_kg_nodes
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM kg_nodes WHERE user_id = %s AND id = ANY(%s::uuid[])",
+            (login, [source, target]),
+        )
+        found = {str(row["id"]) for row in cursor.fetchall()}
+    if len(found) != 2:
+        return jsonify({"error": "node not found"}), 404
+
+    merge_kg_nodes(login, target, source)
+    return jsonify({"status": "ok", "kept": target, "merged": source})
+
+
 @bp.route("/graph/status", methods=["GET"])
 def graph_status():
     login = session.get("login")

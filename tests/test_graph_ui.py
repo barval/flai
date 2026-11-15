@@ -86,3 +86,71 @@ def test_the_fallback_reason_stays_on_the_button():
     assert "graph_3d_unavailable" in script
     assert "button.title = (kind === '3d'" in script
     assert "kind === '2d' && kindError" in script
+
+
+def test_relation_types_can_be_hidden_and_the_choice_is_remembered():
+    """Hiding a type is a view filter: the server answer is not fetched again."""
+    html = TEMPLATE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'id="graph-filters"' in html and 'id="graph-filter-list"' in html
+    assert "hiddenPredicates" in script
+    assert "flai.graph.hiddenPredicates" in script
+    assert "function filteredGraph()" in script
+    assert "graphInstance.graphData(graph);" in script
+
+
+def test_a_highlighted_path_can_be_cleared():
+    html = TEMPLATE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'id="graph-clear-path"' in html
+    assert "function resetColors()" in script
+    assert "graphInstance.nodeColor(nodeColorFor)" in script
+
+
+def test_the_storage_key_is_declared_before_the_first_read():
+    """A `const` used by the initialiser above it is in its temporal dead zone."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert script.index("const HIDDEN_PREDICATES_KEY") < script.index("new Set(loadHiddenPredicates())")
+
+
+def test_a_node_can_be_merged_into_another_from_the_panel():
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "graph_merge_start" in script and "graph-merge-btn" in script
+    assert "mergeSourceId" in script
+    assert "/api/graph/merge" in script
+    # The merge never starts for a document somebody else shared.
+    assert "node.shared" in script
+
+
+def test_the_merge_route_refuses_a_foreign_node():
+    routes = Path("app/routes/graph.py").read_text(encoding="utf-8")
+    block = routes[routes.index('def graph_merge(') :]
+    block = block[: block.index("@bp.route", 10)]
+
+    assert "kg_nodes WHERE user_id = %s" in block
+    assert "merge_kg_nodes(login, target, source)" in block
+    assert '"error"' in block
+
+
+def test_relation_types_are_named_for_a_reader_not_for_the_database():
+    """`co-occurs`, `works for` and their Russian forms read as labels."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    html = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "function predicateLabel(" in script
+    assert "graph_pred_co_occurs" in script and "graph_pred_works_for" in script
+    assert "'graph_pred_co_occurs'" in html
+
+
+def test_co_occurrence_is_hidden_until_the_reader_asks_for_it():
+    """It is structural noise, not a stated relation, so it starts off."""
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "HIDDEN_BY_DEFAULT = ['co-occurs']" in script
+    assert "FILTER_DEFAULTS_VERSION" in script
+    # The stored list is honoured after the default has been applied once.
+    assert "flai.graph.filterDefaults" in script

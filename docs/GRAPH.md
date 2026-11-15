@@ -117,8 +117,13 @@ neighbourhood) or from the panel header (the whole cloud).
   node card.
 - **Navigation.** Sidebar tabs are navigation: opening Documents, Tasks or Sessions closes the graph and
   shows that section.
+- **Relation types.** The **Relations** menu lists every relation type the scene contains with its count;
+  unchecking one hides those links without another request — the server answer is kept whole and only the
+  drawn view is filtered. The choice is remembered per browser, so a corpus whose relations a reader never
+  wants (say `mentions`) stays quiet on the next visit.
 - **Controls.** Click a node to inspect it, right-click two nodes for the path between them, search to
-  fly to a node, and the cloud is fitted to the view once when it opens.
+  fly to a node, and the cloud is fitted to the view once when it opens. A highlighted path can be cleared
+  with the **Clear path** button, which restores the normal colours instead of leaving the scene dimmed.
 
 The renderer (`3d-force-graph`, MIT, with three.js) is vendored and loaded only when the view opens; no
 CDN is used.
@@ -169,6 +174,20 @@ relations kept, 0.72 edges per node and 6 % isolated.
 The graph genuinely adds evidence (+11 % context) and costs about 65 ms; the ranking does not move,
 because its fragments are additional material at the end of the candidate pool rather than better
 candidates.
+
+**After the co-occurrence pass (v13.4).** Entities extracted from the same chunk are now linked, which
+filled the graph without a model call: on the live corpus (1 436 nodes, 990 edges) 761 chunks produced
+2 525 new `co-occurs` edges and isolated nodes fell from **615 (43 %) to 263 (18 %)**. The same 30
+questions, measured again on the restored corpus:
+
+| | MRR | nDCG@10 | hit@10 | context | p50 |
+|---|---|---|---|---|---|
+| graph off | 0.760 | 0.829 | 0.900 | 4 000 chars | 171 ms |
+| graph on | 0.763 | 0.837 | **0.933** | **8 974 chars** | 281 ms |
+
+The gain is real but small (+3.3 pp hit@10) and is paid for with more than twice the context, so the
+stage stays off by default; the open question is whether a smaller `GRAPH_SHARE` keeps the hit rate
+without the context.
 
 **Answer quality, the same 30 questions, graded by a model judge (2 = complete and correct):**
 

@@ -162,7 +162,7 @@ def test_scrubber_drops_credentials_and_keeps_the_interface_fields():
         {
             "rows": [
                 {
-                    "login": "andrey",
+                    "login": "demo_user",
                     "password_hash": "scrypt:32768:8:1$abc$def",
                     "tavily_key_added_at": "Sat, 03 Oct 2026 20:07:32 GMT",
                     "has_tavily_key": False,
@@ -175,7 +175,7 @@ def test_scrubber_drops_credentials_and_keeps_the_interface_fields():
     row = cleaned["rows"][0]
     assert "password_hash" not in row
     assert "tavily_key_added_at" not in row
-    assert row["login"] == "andrey"
+    assert row["login"] == "demo_user"
     assert row["has_tavily_key"] is False
     assert row["api_keys_count"] == 2
     assert row["note"] == ""

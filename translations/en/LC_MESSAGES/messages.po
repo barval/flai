@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.3\n"
+"Project-Id-Version: FLAI 13.4\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -5646,3 +5646,103 @@ msgstr "No model with both reasoning and a vision projector was found. Download 
 #: app/templates/chat.html
 msgid "Loading the model..."
 msgstr "Loading the model..."
+
+#: app/templates/chat.html
+msgid "Relations"
+msgstr "Relations"
+
+#: app/templates/chat.html
+msgid "Clear path"
+msgstr "Clear path"
+
+#: app/templates/chat.html
+msgid "No relations"
+msgstr "No relations"
+
+#: app/templates/chat.html
+msgid "Path highlight cleared"
+msgstr "Path highlight cleared"
+
+#: app/templates/chat.html
+msgid "Show or hide relation types"
+msgstr "Show or hide relation types"
+
+#: app/templates/chat.html
+msgid "Merge into another node…"
+msgstr "Merge into another node…"
+
+#: app/templates/chat.html
+msgid "Cancel merge"
+msgstr "Cancel merge"
+
+#: app/templates/chat.html
+msgid "Pick the node it should be merged into"
+msgstr "Pick the node it should be merged into"
+
+#: app/templates/chat.html
+msgid "Merge “{source}” into “{target}”? The first node disappears."
+msgstr "Merge “{source}” into “{target}”? The first node disappears."
+
+#: app/templates/chat.html
+msgid "The nodes could not be merged"
+msgstr "The nodes could not be merged"
+
+#: app/templates/chat.html
+msgid "Merge cancelled"
+msgstr "Merge cancelled"
+
+#: app/templates/chat.html
+msgid "In one chunk"
+msgstr "In one chunk"
+
+#: app/templates/chat.html
+msgid "Similar document"
+msgstr "Similar document"
+
+#: app/templates/chat.html
+msgid "Supplies"
+msgstr "Supplies"
+
+#: app/templates/chat.html
+msgid "Part of"
+msgstr "Part of"
+
+#: app/templates/chat.html
+msgid "Works for"
+msgstr "Works for"
+
+#: app/templates/chat.html
+msgid "Leads"
+msgstr "Leads"
+
+#: app/templates/chat.html
+msgid "Signed"
+msgstr "Signed"
+
+#: app/templates/chat.html
+msgid "Rents"
+msgstr "Rents"
+
+#: app/templates/chat.html
+msgid "Maintains"
+msgstr "Maintains"
+
+#: app/templates/chat.html
+msgid "Performs"
+msgstr "Performs"
+
+#: app/templates/chat.html
+msgid "Forbids"
+msgstr "Forbids"
+
+#: app/templates/chat.html
+msgid "Allows"
+msgstr "Allows"
+
+#: app/templates/chat.html
+msgid "Located in"
+msgstr "Located in"
+
+#: app/templates/chat.html
+msgid "Related to"
+msgstr "Related to"

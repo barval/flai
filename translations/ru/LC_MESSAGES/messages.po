@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 13.3\n"
+"Project-Id-Version: FLAI 13.4\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-11-02 09:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -5677,3 +5677,103 @@ msgstr "Не найдено модели, которая и рассуждает
 #: app/templates/chat.html
 msgid "Loading the model..."
 msgstr "Загружаю модель..."
+
+#: app/templates/chat.html
+msgid "Relations"
+msgstr "Связи"
+
+#: app/templates/chat.html
+msgid "Clear path"
+msgstr "Сбросить путь"
+
+#: app/templates/chat.html
+msgid "No relations"
+msgstr "Нет связей"
+
+#: app/templates/chat.html
+msgid "Path highlight cleared"
+msgstr "Подсветка пути сброшена"
+
+#: app/templates/chat.html
+msgid "Show or hide relation types"
+msgstr "Показать или скрыть типы связей"
+
+#: app/templates/chat.html
+msgid "Merge into another node…"
+msgstr "Слить с другим узлом…"
+
+#: app/templates/chat.html
+msgid "Cancel merge"
+msgstr "Отменить слияние"
+
+#: app/templates/chat.html
+msgid "Pick the node it should be merged into"
+msgstr "Выберите узел, в который нужно слить"
+
+#: app/templates/chat.html
+msgid "Merge “{source}” into “{target}”? The first node disappears."
+msgstr "Слить «{source}» в «{target}»? Первый узел исчезнет."
+
+#: app/templates/chat.html
+msgid "The nodes could not be merged"
+msgstr "Не удалось слить узлы"
+
+#: app/templates/chat.html
+msgid "Merge cancelled"
+msgstr "Слияние отменено"
+
+#: app/templates/chat.html
+msgid "In one chunk"
+msgstr "В одном фрагменте"
+
+#: app/templates/chat.html
+msgid "Similar document"
+msgstr "Похожий документ"
+
+#: app/templates/chat.html
+msgid "Supplies"
+msgstr "Поставляет"
+
+#: app/templates/chat.html
+msgid "Part of"
+msgstr "Входит в"
+
+#: app/templates/chat.html
+msgid "Works for"
+msgstr "Работает в"
+
+#: app/templates/chat.html
+msgid "Leads"
+msgstr "Руководит"
+
+#: app/templates/chat.html
+msgid "Signed"
+msgstr "Подписал"
+
+#: app/templates/chat.html
+msgid "Rents"
+msgstr "Арендует"
+
+#: app/templates/chat.html
+msgid "Maintains"
+msgstr "Обслуживает"
+
+#: app/templates/chat.html
+msgid "Performs"
+msgstr "Выполняет"
+
+#: app/templates/chat.html
+msgid "Forbids"
+msgstr "Запрещает"
+
+#: app/templates/chat.html
+msgid "Allows"
+msgstr "Разрешает"
+
+#: app/templates/chat.html
+msgid "Located in"
+msgstr "Расположен в"
+
+#: app/templates/chat.html
+msgid "Related to"
+msgstr "Связан с"

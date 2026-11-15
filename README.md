@@ -27,7 +27,7 @@
 <!-- TOC:BEGIN -->
 - [TL;DR](#tldr)
 - [📑 Contents](#-contents)
-- [🆕 What's New in v13.3](#-whats-new-in-v133)
+- [🆕 What's New in v13.4](#-whats-new-in-v134)
 - [🖼 Demo](#-demo)
 - [✨ Features](#-features)
 - [🔎 Working with document search](#-working-with-document-search)
@@ -73,17 +73,15 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 | Release process | [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | [RELEASE_GUIDE-ru.md](docs/RELEASE_GUIDE-ru.md) |
 | How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING-ru.md](CONTRIBUTING-ru.md) |
 
-## 🆕 What's New in v13.3
+## 🆕 What's New in v13.4
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
-- **One universal model or the classic pair — switchable in the admin panel.** From 12 GB of VRAM a fresh install runs a single model that answers chat, vision, routing and reasoning, so an answer never waits for the 11.7 GB reload the pair pays (measured: 14 s per reasoning answer on a 16 GB card, and the pair cannot be resident together at all). Below that the pair stays, because there the single model is slower. The mode is a choice in Admin → Models and needs no deployment flag. → [MODELS.md](docs/MODELS.md)
+- **One command tells you what is broken.** `flask doctor` checks PostgreSQL and its schema, Redis, llama-swap and the roles it serves, the model files with their vision projector, the VRAM budget against the card, the document folders and the optional services — and prints a hint for every failure. It is read-only, exits non-zero when something is broken, and `--json` makes it usable in a script. → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
-- **Long-term memory keeps facts with their time, and resolves contradictions.** A fact is stored as a typed `(subject, predicate, value)` with a validity interval: when a newer fact contradicts an older one, the older row is closed instead of deleted, and a question that names a year — "where did I live in 2024" — is answered from the interval it held. The always-injected profile now separates what holds from what no longer does. → [MEMORY.md](docs/MEMORY.md)
+- **The knowledge graph is readable, and you can fix it.** The view filters by relation type with a count per type, clears a highlighted path, and merges two of your own nodes when the extractor split one thing in two. Entities mentioned in one chunk are now linked automatically (`co-occurs`), which took isolated nodes from 43 % to 18 %; those links start hidden, so the first view shows only what a model actually stated. → [GRAPH.md](docs/GRAPH.md)
 
-- **The document panel says why an upload was refused.** Quota, size cap, unsupported format, an unreadable or password-protected file, the folder limit — the reason appears next to the file name instead of one generic sentence. → [DOCUMENTS.md](docs/DOCUMENTS.md)
-
-- **Admin settings show where every value comes from.** Each field is marked `panel`, `.env` or `default`; a banner lists the fields where the panel and `.env` disagree and names the one in effect, and a field shows the value this version ships when the live one differs — the case where a limit stayed at 5 MB through an upgrade that shipped 25. → [CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Search stays flat as the corpus grows.** BM25 needs corpus-wide statistics, and the lexical half counted them from scratch on every question. They are cached now and refreshed when a document changes: at 10 000 chunks a search went from 97 ms to 7 ms, so a large library no longer pays for its own size on every question. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 
 ## 🖼 Demo
 

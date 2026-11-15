@@ -98,6 +98,22 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
 ```
 
+---
+
+### Бенчмарки
+
+В `bench/` лежат скрипты, которые замеряют один горячий путь на реальной базе. Они не входят в набор тестов: скрипт создаёт и удаляет собственные синтетические строки и работает секунды.
+
+```bash
+# Статистика корпуса для BM25: живой подсчёт против кэша
+DATABASE_URL=... python -m bench.lexical stats --chunks 10000
+
+# Зеркалирование чанков: вставка по одной строке против одного executemany
+DATABASE_URL=... python -m bench.lexical store --chunks 300
+```
+
+Что именно замеряет каждая подкоманда — в [bench/README.md](../bench/README.md).
+
 Подробные инструкции по нагрузочному тестированию — в [tests/load/README-ru.md](../tests/load/README-ru.md).
 
 ---
@@ -118,8 +134,14 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 ### Режим базы данных
 
-- **Мок по умолчанию** (без `DATABASE_URL`).
-- **В CI** (`DATABASE_URL` задан) — настоящий PostgreSQL с `TRUNCATE` между тестами в teardown фикстуры `test_app`.
+- **По умолчанию мок** (без `DATABASE_URL`).
+- **Отдельная база для тестов**, когда нужен настоящий PostgreSQL: тесты пишут, удаляют и очищают таблицы, поэтому запускаются только против базы, имя которой оканчивается на `_test`. С любым другим `DATABASE_URL` все тесты с маркером `requires_db` пропускаются — собственная база установки никогда не является целью тестов.
+
+```bash
+docker exec flai-postgres psql -U flai -d postgres -c "CREATE DATABASE flai_test OWNER flai"
+docker exec flai-postgres sh -lc 'pg_dump -U flai --schema-only -d flai | psql -U flai -d flai_test'
+DATABASE_URL=postgresql://flai:<пароль>@<хост postgres>:5432/flai_test pytest -m requires_db
+```
 
 ### Фоновые воркеры
 

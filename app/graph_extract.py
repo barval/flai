@@ -9,8 +9,19 @@ invented facts into a graph that later answers questions with them.
 import json
 import re
 
-from app.db import add_kg_occurrence, upsert_kg_edge, upsert_kg_node
+from app.db import add_kg_cooccurrence, add_kg_occurrence, upsert_kg_edge, upsert_kg_node
 from app.lemmatizer import lemmas as lemmatize
+
+# Two entities in one chunk are evidence they belong together; the graph is
+# sparse because each entity is usually mentioned once (measured: 0.62 edges per
+# node, 43 % of nodes isolated). Pairing the entities of a chunk links them
+# without a model call and without claiming what the relation is. The cap keeps
+# a chunk that names forty things from turning into a 780-edge clique: the first
+# four names of a chunk are the ones the model put first.
+COOCCURRENCE_MAX_ENTITIES = 4
+
+# What that cap allows: 4 entities -> 6 pairs.
+COOCCURRENCE_MAX_PAIRS = COOCCURRENCE_MAX_ENTITIES * (COOCCURRENCE_MAX_ENTITIES - 1) // 2
 
 
 def graph_lemmas(text: str) -> list[str]:
@@ -197,6 +208,41 @@ def merge_extraction(user_id: str, doc_id: str, chunk_index: int, chunk_text: st
     return result["nodes"], result["edges"]
 
 
+def backfill_cooccurrence(user_id: str, dry_run: bool = False) -> dict:
+    """Link the entities every stored chunk already mentions.
+
+    The occurrences table knows which nodes share a chunk, so an existing graph
+    gains the structural edges without a model call — only the edge is new, not
+    the extraction.
+    """
+    from app.database import get_db
+    from app.db import add_kg_cooccurrences
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT doc_id, chunk_index, array_agg(node_id::text ORDER BY node_id) AS ids
+            FROM kg_occurrences
+            WHERE user_id = %s
+            GROUP BY doc_id, chunk_index
+            HAVING count(*) > 1
+            """,
+            (user_id,),
+        )
+        chunks = cursor.fetchall()
+
+    rows = []
+    for chunk in chunks:
+        ids = list(dict.fromkeys(str(node_id) for node_id in chunk["ids"]))[:COOCCURRENCE_MAX_ENTITIES]
+        for left in range(len(ids)):
+            for right in range(left + 1, len(ids)):
+                rows.append((ids[left], ids[right], chunk["doc_id"], chunk["chunk_index"]))
+    if not dry_run:
+        add_kg_cooccurrences(user_id, rows)
+    return {"chunks": len(chunks), "pairs": len(rows), "dry_run": dry_run}
+
+
 def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: dict) -> dict:
     """Write one chunk's extraction into the graph.
 
@@ -231,6 +277,15 @@ def _merge(user_id: str, doc_id: str, chunk_index: int, chunk_text: str, data: d
         add_kg_occurrence(node_id, user_id, doc_id, chunk_index, entity["name"])
         nodes[normalized] = node_id
         written_nodes += 1
+
+    # Structural evidence: the entities of this chunk belong together even when
+    # the model stated no relation between them.
+    cooccurrence_ids = list(dict.fromkeys(nodes.values()))[:COOCCURRENCE_MAX_ENTITIES]
+    for left_index in range(len(cooccurrence_ids)):
+        for right_index in range(left_index + 1, len(cooccurrence_ids)):
+            add_kg_cooccurrence(
+                user_id, cooccurrence_ids[left_index], cooccurrence_ids[right_index], doc_id, chunk_index
+            )
 
     written_edges = 0
     proposed = len(data.get("relations", []))

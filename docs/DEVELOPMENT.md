@@ -103,6 +103,22 @@ See [tests/load/README.md](../tests/load/README.md) for detailed load testing in
 
 ---
 
+### Benchmarks
+
+`bench/` holds scripts that measure one hot path against a real database. They are not part of the test suite: they write and remove their own synthetic rows and take seconds.
+
+```bash
+# BM25 corpus statistics: the live count against the cache
+DATABASE_URL=... python -m bench.lexical stats --chunks 10000
+
+# Chunk mirroring: one INSERT per chunk against one executemany
+DATABASE_URL=... python -m bench.lexical store --chunks 300
+```
+
+See [bench/README.md](../bench/README.md) for what each subcommand measures.
+
+---
+
 ### Test structure
 
 - **Fixtures** in `tests/conftest.py`:
@@ -120,7 +136,13 @@ See [tests/load/README.md](../tests/load/README.md) for detailed load testing in
 ### Database mode
 
 - **Mock by default** (no `DATABASE_URL`).
-- **In CI** (`DATABASE_URL` set) — real PostgreSQL with `TRUNCATE` between tests via `test_app` teardown.
+- **A scratch database** when you need real PostgreSQL: the tests write, delete and truncate, so they run only against a database whose name ends in `_test`. With any other `DATABASE_URL` every `requires_db` test is skipped — an installation's own database is never a test target.
+
+```bash
+docker exec flai-postgres psql -U flai -d postgres -c "CREATE DATABASE flai_test OWNER flai"
+docker exec flai-postgres sh -lc 'pg_dump -U flai --schema-only -d flai | psql -U flai -d flai_test'
+DATABASE_URL=postgresql://flai:<password>@<postgres-host>:5432/flai_test pytest -m requires_db
+```
 
 ### Background workers
 

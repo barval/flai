@@ -472,6 +472,12 @@ class RedisRequestQueue:
                 serialized = self.redis.lpop(DEFERRED_SUBTASKS_KEY)
                 if not serialized:
                     break
+                if not isinstance(serialized, (bytes, bytearray, str)):
+                    # A client answering objects is not a queue that emptied:
+                    # the executor calls this every cycle, and a truthy
+                    # non-payload kept the thread inside this loop forever.
+                    self.logger.warning("Deferred subtask requeue: queue answered a non-payload, stopping")
+                    break
                 self.redis.rpush(self.slow_queue_key, serialized)
                 count += 1
             if count:

@@ -35,9 +35,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     that key and the test fails on the mock, not on the product. CI always sets
     DATABASE_URL, where these tests run against a real database.
     """
-    if not _USE_MOCK_DB:
+    if _USE_MOCK_DB:
+        skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
+    elif not _is_test_database():
+        # A live database is never a test target. The fixtures write, delete and
+        # (for a database whose name ends in `_test`) truncate; running them
+        # against an installation's own database destroys real accounts. Point
+        # DATABASE_URL at a scratch database named `*_test` to run these.
+        skip = pytest.mark.skip(
+            reason="requires a *_test database: the live DATABASE_URL is never a test target"
+        )
+    else:
         return
-    skip = pytest.mark.skip(reason="requires a real PostgreSQL database (set DATABASE_URL)")
     for item in items:
         if "requires_db" in item.keywords:
             item.add_marker(skip)
@@ -88,6 +97,11 @@ def create_mock_redis():
     mock_redis.hgetall.return_value = {}
     mock_redis.hget.return_value = None
     mock_redis.lrange.return_value = []
+    # An unset MagicMock return is truthy, and the deferred-subtask requeue
+    # pops until the queue answers empty: the mock kept the executor thread in
+    # an endless loop, so every teardown waited out its join timeout.
+    mock_redis.lpop.return_value = None
+    mock_redis.rpop.return_value = None
     mock_redis.smembers.return_value = set()
     mock_redis.ping.return_value = True
     mock_redis.expire.return_value = True

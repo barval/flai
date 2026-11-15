@@ -276,7 +276,11 @@ def api_delete_folder(folder_id):
     docs = db.get_folder_documents(login, folder_id)
     deleted_size = sum(doc.get("file_size") or 0 for doc in docs)
     for doc in docs:
-        db.delete_document_resources(doc, login)
+        db.delete_document_resources(doc, login, refresh_stats=False)
+    if docs:
+        from app.db import rebuild_lexical_stats
+
+        rebuild_lexical_stats(login)
     db.delete_folder(folder_id, login)
     return jsonify({"status": "ok", "deleted_documents": len(docs), "deleted_size": deleted_size})
 

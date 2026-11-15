@@ -685,17 +685,18 @@ def _init_postgresql():
             doc_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             filename TEXT,
-            text TEXT NOT NULL,
-            tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('russian', text)) STORED
+            text TEXT NOT NULL
         )
     """)
     c.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk
         ON rag_chunks (user_id, doc_id, chunk_index)
     """)
-    c.execute("""
-        CREATE INDEX IF NOT EXISTS idx_rag_chunks_tsv ON rag_chunks USING GIN (tsv)
-    """)
+    # The generated tsv column and its GIN index served ts_rank_cd. BM25 over
+    # lemmas replaced that search and nothing reads the column, so it costs an
+    # to_tsvector and an index update on every chunk write for no reader.
+    c.execute("DROP INDEX IF EXISTS idx_rag_chunks_tsv")
+    c.execute("ALTER TABLE rag_chunks DROP COLUMN IF EXISTS tsv")
     # BM25 over lemmatized words replaced ts_rank_cd (which has no IDF); the
     # column is filled by _store_chunks and by `flask rag-lemmatize-chunks`
     # for chunks indexed before the change.
@@ -704,6 +705,26 @@ def _init_postgresql():
     """)
     c.execute("""
         CREATE INDEX IF NOT EXISTS idx_rag_chunks_lemmas ON rag_chunks USING GIN (lemmas)
+    """)
+    # BM25 needs three corpus-wide numbers per query (chunk count, average
+    # lemma count, per-term document frequency). Counting them over
+    # rag_chunks on every search is linear in the corpus; these two tables hold
+    # the same numbers, refreshed when a document's chunks change.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_stats (
+            user_id TEXT PRIMARY KEY,
+            n_chunks INTEGER NOT NULL,
+            avgdl DOUBLE PRECISION NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS rag_term_df (
+            user_id TEXT NOT NULL,
+            term TEXT NOT NULL,
+            df INTEGER NOT NULL,
+            PRIMARY KEY (user_id, term)
+        )
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS settings (
@@ -1095,6 +1116,11 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
+    # The executor asks for the next queued task once a second: equality on
+    # status, then the order the selection sorts by.
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_queue ON tasks(status, task_class, created_at)"
+    )
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")

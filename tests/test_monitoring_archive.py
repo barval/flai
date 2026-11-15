@@ -18,6 +18,24 @@ LOCAL_TS = "2020-10-23 12:05:00"
 TASK_AT = datetime(2020, 10, 23, 12, 30, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_archive():
+    """Each test asserts the absolute rows the archive holds for ``u1``.
+
+    The rows survive the test (nothing deletes an archive entry — that is the
+    point of an archive), so a fixture has to clear them or the second test in
+    the file counts the first one's activity.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM monitoring_archive WHERE user_id = 'u1'")
+        # A failed run can leave its seed rows behind, and the seed ids are fixed.
+        c.execute("DELETE FROM documents WHERE user_id = 'u1'")
+        c.execute("DELETE FROM messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = 'u1')")
+        c.execute("DELETE FROM chat_sessions WHERE user_id = 'u1'")
+    yield
+
+
 def _seed_session(login: str = "u1", session_id: str = "s1") -> str:
     with get_db() as conn:
         cursor = conn.cursor()
@@ -76,17 +94,21 @@ def test_account_deletion_does_not_archive(test_app):
 
 
 def test_deleting_a_document_archives_it(test_app):
+    import uuid
+
+    # A fixed id collides with a row another test file left behind.
+    doc_id = str(uuid.uuid4())
     with test_app.app_context():
         test_app.config["TIMEZONE"] = pytz.UTC
         create_user("u1", "pw", "U1")
         with get_db() as conn:
             conn.cursor().execute(
                 "INSERT INTO documents (id, user_id, filename, file_ext, uploaded_at) "
-                "VALUES ('d1', 'u1', 'report.pdf', '.pdf', %s)",
-                (LOCAL_TS,),
+                "VALUES (%s, 'u1', 'report.pdf', '.pdf', %s)",
+                (doc_id, LOCAL_TS),
             )
 
-        delete_document("d1", "u1")
+        delete_document(doc_id, "u1")
 
         rows = _archive_rows()
 

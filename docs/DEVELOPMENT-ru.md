@@ -98,6 +98,22 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
 ```
 
+---
+
+### Бенчмарки
+
+В `bench/` лежат скрипты, которые замеряют один горячий путь на реальной базе. Они не входят в набор тестов: скрипт создаёт и удаляет собственные синтетические строки и работает секунды.
+
+```bash
+# Статистика корпуса для BM25: живой подсчёт против кэша
+DATABASE_URL=... python -m bench.lexical stats --chunks 10000
+
+# Зеркалирование чанков: вставка по одной строке против одного executemany
+DATABASE_URL=... python -m bench.lexical store --chunks 300
+```
+
+Что именно замеряет каждая подкоманда — в [bench/README.md](../bench/README.md).
+
 Подробные инструкции по нагрузочному тестированию — в [tests/load/README-ru.md](../tests/load/README-ru.md).
 
 ---

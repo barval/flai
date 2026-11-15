@@ -103,6 +103,22 @@ See [tests/load/README.md](../tests/load/README.md) for detailed load testing in
 
 ---
 
+### Benchmarks
+
+`bench/` holds scripts that measure one hot path against a real database. They are not part of the test suite: they write and remove their own synthetic rows and take seconds.
+
+```bash
+# BM25 corpus statistics: the live count against the cache
+DATABASE_URL=... python -m bench.lexical stats --chunks 10000
+
+# Chunk mirroring: one INSERT per chunk against one executemany
+DATABASE_URL=... python -m bench.lexical store --chunks 300
+```
+
+See [bench/README.md](../bench/README.md) for what each subcommand measures.
+
+---
+
 ### Test structure
 
 - **Fixtures** in `tests/conftest.py`:

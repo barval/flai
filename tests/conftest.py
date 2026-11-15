@@ -88,6 +88,11 @@ def create_mock_redis():
     mock_redis.hgetall.return_value = {}
     mock_redis.hget.return_value = None
     mock_redis.lrange.return_value = []
+    # An unset MagicMock return is truthy, and the deferred-subtask requeue
+    # pops until the queue answers empty: the mock kept the executor thread in
+    # an endless loop, so every teardown waited out its join timeout.
+    mock_redis.lpop.return_value = None
+    mock_redis.rpop.return_value = None
     mock_redis.smembers.return_value = set()
     mock_redis.ping.return_value = True
     mock_redis.expire.return_value = True

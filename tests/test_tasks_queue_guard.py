@@ -166,6 +166,32 @@ class TestRequeueDeferredSubtasks:
         assert queue._deserialize(slow[1])["id"] == "t2"
         assert fake.llen(DEFERRED_SUBTASKS_KEY) == 0
 
+    def test_a_truthy_non_payload_stops_the_loop(self):
+        """A client answering objects must not spin the requeue forever.
+
+        The executor calls this once per cycle; an unset MagicMock return is
+        truthy, so the loop popped "tasks" that were never payloads and never
+        reached the end of the queue — it kept the executor thread busy and
+        every test teardown timed out on its join.
+        """
+        queue, _fake = _make_queue()
+        calls = {"n": 0}
+
+        def _lpop(_key):
+            calls["n"] += 1
+            # One bogus answer, then empty: an unbounded stub would hang the
+            # suite instead of failing it.
+            return object() if calls["n"] == 1 else None
+
+        queue.redis = MagicMock()
+        queue.redis.lpop.side_effect = _lpop
+
+        with patch("app.tasks.gate.is_gate_open", return_value=True):
+            assert queue.requeue_deferred_subtasks() == 0
+
+        assert calls["n"] == 1
+        assert queue.redis.rpush.call_count == 0
+
     def test_requeue_deferred_gate_closed_returns_zero(self):
         """Gate closed: the deferred list is left untouched and 0 is returned."""
         queue, fake = _make_queue()

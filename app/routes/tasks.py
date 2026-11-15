@@ -1089,12 +1089,14 @@ def task_answer(task_id):
         ui_extra["media"] = ui_media
     if images:
         from app.model_config import get_model_config as _gmc
+        from app.model_status import answer_model_type
 
         mm_config = _gmc("multimodal") or {}
         mm_model_name = str(mm_config.get("model_name") or "")
         if mm_model_name:
             ui_extra["model_name"] = mm_model_name
-            ui_extra["model_type"] = "multimodal"
+            # Same header rule as the chat: one universal model is not vision-only.
+            ui_extra["model_type"] = answer_model_type("multimodal")
     if ui_extra:
         update_step(ui_step_id, extra=ui_extra)
     if images:

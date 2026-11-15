@@ -2,6 +2,10 @@
 
 ### Fixed
 
+- **A live answer still showed the vision icon in single-model mode.** The label fix reached the stored row but not the response dict: `_build_success_response()` copied `extra["model_type"]` unchanged, and the chat header is painted from that dict the moment the stream ends — so the answer appeared as `multimodal` (🖼️) until the page was reloaded, when the stored `universal` label took over. The dict is normalised now, on the same rule as the row, and the task view's chat-style header (`/api/tasks`) follows it. Answers stored before the fix keep whatever type they were saved with.
+
+### Fixed
+
 - **"What can you do" was answered with internal tool names.** The chat prompt names the time tools to make the model call them, and the model copied those identifiers into its user-facing summary: the answer listed "time and dates (get_current_time, time_calc)" instead of describing the ability. The prompt now says that an answer must not contain tool names, paths or other internal identifiers.
 - **A universal model's answers were labelled with the vision icon only.** The chat header picks the emoji from `model_type`, and every answer from the single universal model was stored as `multimodal` — a picture, while the model also reasons. Answers now carry the type `universal` with a combined icon (brain + picture); media types (`image_gen`, `image_edit`, `video`) keep their own, and the admin card shows the same type instead of the file classifier's "multimodal".
 

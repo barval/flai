@@ -1362,6 +1362,10 @@ class RedisRequestQueue:
             result["message_id"] = message_id
         if extra:
             result.update(extra)
+            if result.get("model_type"):
+                # The live answer and the stored one must agree: the header is
+                # painted from this dict long before any reload reads the row.
+                result["model_type"] = answer_model_type(result["model_type"])
         return result
 
     @staticmethod
@@ -1439,7 +1443,10 @@ class RedisRequestQueue:
         chat message of that kind shows (multimodal/reasoning via
         get_model_config, image_gen/image_edit/video via their config).
         """
-        meta: dict[str, Any] = {"model_name": str(model_name or ""), "model_type": model_type}
+        meta: dict[str, Any] = {
+            "model_name": str(model_name or ""),
+            "model_type": answer_model_type(model_type),
+        }
         usage = self._subtask_usage_meta() if with_usage else None
         if usage:
             meta["usage"] = usage

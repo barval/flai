@@ -10939,6 +10939,7 @@ video {
                         <th data-sort="web_requests_month">Запросы<br>в интернет</th>
                         <th>Tavily API</th>
                         <th data-sort="api_keys_count">ПЛИИ API</th>
+                        <th>Сетевые инструменты</th>
 
                         <th>Действия</th>
                      </tr>
@@ -10964,6 +10965,26 @@ video {
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>Сетевые вызовы</h3>
+                <span class="monitoring-value">24 ч</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Пользователь</th>
+                        <th>Инструмент</th>
+                        <th>Цель</th>
+                        <th>Результат</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">Сетевых вызовов за последние 24 часа нет</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -14175,6 +14196,14 @@ body.dark-theme .mode-option {
     border-radius: 0.35rem;
     cursor: pointer;
 }
+
+/* ── Network diagnostics audit (v13.5) ───────────────────────────────────── */
+.monitoring-net { grid-column: 1 / -1; }
+.monitoring-net table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.monitoring-net th,
+.monitoring-net td { padding: 0.3rem 0.45rem; text-align: left; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.monitoring-net th { font-weight: 600; opacity: 0.75; }
+.net-audit-empty { opacity: 0.7; font-style: italic; }
 </style>
 <script>
 window.ROOMS = [];
@@ -14190,6 +14219,8 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'monitoring_no_data': "\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u0437\u0430 \u044d\u0442\u043e\u0442 \u043f\u0435\u0440\u0438\u043e\u0434",
     'monitoring_load_error': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435 \u043c\u043e\u043d\u0438\u0442\u043e\u0440\u0438\u043d\u0433\u0430",
     'monitoring_since': "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0441 {date}",
+    'monitoring_net_empty': "\u0421\u0435\u0442\u0435\u0432\u044b\u0445 \u0432\u044b\u0437\u043e\u0432\u043e\u0432 \u0437\u0430 \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 24 \u0447\u0430\u0441\u0430 \u043d\u0435\u0442",
+    'net_tools_help': "\u0418\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438 \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f",
     'delete_user_confirm': "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f {login}?",
     'error': "\u041e\u0448\u0438\u0431\u043a\u0430",
     'internal_server_error': "\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044f\u044f \u043e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
@@ -14255,6 +14286,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_secret_empty': "\u041d\u0435 \u0437\u0430\u0434\u0430\u043d\u043e",
     'settings_secret_set': "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e",
     'Search and crawl': "\u041f\u043e\u0438\u0441\u043a \u0438 \u043e\u0431\u0445\u043e\u0434",
+    'Network diagnostics': "\u0421\u0435\u0442\u0435\u0432\u0430\u044f \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0430",
     'Documents and RAG': "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 RAG",
     'Tasks': "\u0417\u0430\u0434\u0430\u0447\u0438",
     'MCP': "MCP",
@@ -14268,6 +14300,9 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Debug': "\u041e\u0442\u043b\u0430\u0434\u043a\u0430",
     'Description': "\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435",
     'Use the per-user Tavily key before the local search engine': "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u043b\u0438\u0447\u043d\u044b\u0439 \u043a\u043b\u044e\u0447 Tavily \u0440\u0430\u043d\u044c\u0448\u0435 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u043f\u043e\u0438\u0441\u043a\u043e\u0432\u0438\u043a\u0430",
+    'Offer the network diagnostics tools to users who were granted them': "\u041f\u0440\u0435\u0434\u043b\u0430\u0433\u0430\u0442\u044c \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f\u043c, \u043a\u043e\u0442\u043e\u0440\u044b\u043c \u043e\u043d\u0438 \u0432\u044b\u0434\u0430\u043d\u044b",
+    'Network diagnostics service URL': "\u0410\u0434\u0440\u0435\u0441 \u0441\u043b\u0443\u0436\u0431\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438",
+    'Bearer token for the network diagnostics service': "\u0422\u043e\u043a\u0435\u043d \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a \u0441\u043b\u0443\u0436\u0431\u0435 \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438",
     'Tavily API base URL': "\u0411\u0430\u0437\u043e\u0432\u044b\u0439 \u0430\u0434\u0440\u0435\u0441 API Tavily",
     'Tavily search request timeout (seconds)': "\u0422\u0430\u0439\u043c\u0430\u0443\u0442 \u043f\u043e\u0438\u0441\u043a\u043e\u0432\u043e\u0433\u043e \u0437\u0430\u043f\u0440\u043e\u0441\u0430 Tavily (\u0441\u0435\u043a\u0443\u043d\u0434\u044b)",
     'Timeout for the Tavily quota lookup (seconds)': "\u0422\u0430\u0439\u043c\u0430\u0443\u0442 \u0437\u0430\u043f\u0440\u043e\u0441\u0430 \u043a\u0432\u043e\u0442\u044b Tavily (\u0441\u0435\u043a\u0443\u043d\u0434\u044b)",
@@ -16591,6 +16626,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -16693,6 +16736,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {
@@ -19202,11 +19257,52 @@ document.addEventListener('DOMContentLoaded', function() {
         loadMonitoring();
     });
 
+
+    // Network diagnostics audit: 24 hours of Redis, filled whenever the tab opens.
+    async function loadNetAudit() {
+        const body = document.getElementById('net-audit-body');
+        if (!body) return;
+        try {
+            const resp = await fetch('/admin/api/net-audit?limit=50', { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const calls = data.calls || [];
+            body.innerHTML = '';
+            if (!calls.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'net-audit-empty';
+                cell.textContent = t('monitoring_net_empty');
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            calls.forEach((call) => {
+                const row = document.createElement('tr');
+                [call.at, call.login, call.tool, call.target, call.ok ? 'ok' : 'failed'].forEach((value) => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value === undefined || value === null ? '-' : String(value);
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        } catch (err) {
+            // The audit is best effort: a Redis hiccup leaves the table as it was.
+        }
+    }
+
     const tabButton = document.querySelector('.admin-tab[data-tab="monitoring"]');
-    if (tabButton) tabButton.addEventListener('click', loadMonitoring);
+    if (tabButton) tabButton.addEventListener('click', () => {
+        loadMonitoring();
+        loadNetAudit();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (isActive()) loadMonitoring();
+        if (isActive()) {
+            loadMonitoring();
+            loadNetAudit();
+        }
     });
 
     setInterval(() => {

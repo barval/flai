@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import operator
+import time
 from typing import Any
 
 import pendulum
@@ -365,6 +366,125 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+
+# ── Network diagnostics (v13.5) ───────────────────────────────────────────────
+# Advertised only when the netdiag sidecar answers, and gated per user at execution
+# time: a hidden tool cannot tell the person why it refused.
+
+NET_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "net_dns",
+            "description": "Resolve a name through DNS. Use for 'why does this domain not open', mail records, or what a name points to.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Domain or host name, e.g. 'example.com'"},
+                    "type": {"type": "string", "description": "Record type: A, AAAA, MX, TXT, NS, SOA, CNAME, PTR"},
+                    "server": {"type": "string", "description": "Resolver to ask, e.g. '8.8.8.8'"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_whois",
+            "description": "Look up the registration of a domain or the allocation of an address.",
+            "parameters": {
+                "type": "object",
+                "properties": {"target": {"type": "string", "description": "Domain or IP address"}},
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_ping",
+            "description": "Check whether a host answers, and how long it takes. One host per call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "count": {"type": "integer", "description": "Packets to send, 1-5 (default 3)"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_trace",
+            "description": "Trace the route to a host and report latency and loss per hop.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "hops": {"type": "integer", "description": "Maximum hops, 1-15"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_ports",
+            "description": "Scan the 100 most common TCP ports of one host, or discover which addresses answer in a network (at most /24).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "One host, or a network such as '192.168.1.0/24' for a discovery sweep"},
+                    "services": {"type": "boolean", "description": "Also identify the service on open ports (slower)"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_http",
+            "description": "Fetch the HTTP response headers and the TLS certificate of a URL, to see why a page fails or what a server answers.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "http or https URL"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "net_speed",
+            "description": "Measure throughput to a host running an iperf3 server.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "Host name or IP address"},
+                    "port": {"type": "integer", "description": "Server port (default 5201)"},
+                    "seconds": {"type": "integer", "description": "Test duration, 1-10 seconds"},
+                },
+                "required": ["host"],
+            },
+        },
+    },
+]
+
+
+def net_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
+    """The diagnostics tools, offered only while the sidecar answers."""
+    from app import netdiag
+
+    if not netdiag.available():
+        return []
+    return [d for d in NET_TOOL_DEFINITIONS]
+
+
 def _camera_available() -> bool:
     """Is the camera module registered and reachable? Unknown counts as no."""
     try:
@@ -393,7 +513,7 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         # A tool that can only answer "the service is unavailable" is noise in
         # the catalogue; the camera module is optional.
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
-    return definitions + skill_tool_definitions() + mcp_tool_definitions()
+    return definitions + skill_tool_definitions() + mcp_tool_definitions() + net_tool_definitions()
 
 
 # A restricted profile's catalogue, named here rather than in the module that
@@ -955,6 +1075,101 @@ def _exec_time_calc(
 
 # ── Tool dispatch ────────────────────────────────────────────────────
 
+def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[str, Any], target: str) -> str:
+    """Permission, blocked address, rate limit, one call, one audit line.
+
+    The audit is written in a ``finally``: a call that failed still happened, and
+    "who scanned what" must survive the failure that made it interesting.
+    """
+    from app import netdiag
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    with force_locale(lang):
+        if not login:
+            return "⚠️ " + str(_("User not identified for network tools"))
+        if not netdiag.user_allowed(login):
+            return "⚠️ " + str(_("Network tools are not available to you."))
+        if not netdiag.available():
+            return "⚠️ " + str(_("The network diagnostics service is not running"))
+
+    reason = netdiag.blocked_target(target)
+    if reason:
+        with force_locale(lang):
+            return "⚠️ " + str(_("This address is refused: {reason}").format(reason=reason))
+
+    if not netdiag.check_rate_limit(login):
+        with force_locale(lang):
+            return "⚠️ " + str(_("Too many network calls; try again in a minute."))
+
+    started = time.monotonic()
+    ok = False
+    try:
+        answer = netdiag.call(endpoint, payload)
+        text = netdiag.output_of(answer)
+        ok = not text.startswith("⚠️ ")
+        return text
+    except Exception:  # noqa: BLE001 - a failed call is a sentence, not a crash
+        logger.exception(f"network tool {tool} failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+    finally:
+        netdiag.record_call(login, tool, target, ok, time.monotonic() - started)
+
+
+def _exec_net_dns(ctx: dict[str, Any], **kw: Any) -> str:
+    name = str(kw.get("name", "")).strip()
+    payload = {"name": name}
+    if kw.get("type"):
+        payload["type"] = str(kw["type"])
+    if kw.get("server"):
+        payload["server"] = str(kw["server"])
+    return _run_net_tool("net_dns", "dns", ctx, payload, name)
+
+
+def _exec_net_whois(ctx: dict[str, Any], **kw: Any) -> str:
+    target = str(kw.get("target", "")).strip()
+    return _run_net_tool("net_whois", "whois", ctx, {"target": target}, target)
+
+
+def _exec_net_ping(ctx: dict[str, Any], **kw: Any) -> str:
+    host = str(kw.get("host", "")).strip()
+    payload = {"host": host}
+    if kw.get("count") is not None:
+        payload["count"] = kw["count"]
+    return _run_net_tool("net_ping", "ping", ctx, payload, host)
+
+
+def _exec_net_trace(ctx: dict[str, Any], **kw: Any) -> str:
+    host = str(kw.get("host", "")).strip()
+    payload = {"host": host}
+    if kw.get("hops") is not None:
+        payload["hops"] = kw["hops"]
+    return _run_net_tool("net_trace", "trace", ctx, payload, host)
+
+
+def _exec_net_ports(ctx: dict[str, Any], **kw: Any) -> str:
+    host = str(kw.get("host", "")).strip()
+    payload = {"host": host}
+    if kw.get("services"):
+        payload["service_version"] = True
+    return _run_net_tool("net_ports", "ports", ctx, payload, host)
+
+
+def _exec_net_http(ctx: dict[str, Any], **kw: Any) -> str:
+    url = str(kw.get("url", "")).strip()
+    return _run_net_tool("net_http", "http", ctx, {"url": url}, url)
+
+
+def _exec_net_speed(ctx: dict[str, Any], **kw: Any) -> str:
+    host = str(kw.get("host", "")).strip()
+    payload = {"host": host}
+    for key in ("port", "seconds"):
+        if kw.get(key) is not None:
+            payload[key] = kw[key]
+    return _run_net_tool("net_speed", "speed", ctx, payload, host)
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
@@ -966,6 +1181,13 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
+    "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
+    "net_whois": lambda ctx, **kw: _exec_net_whois(ctx, **kw),
+    "net_ping": lambda ctx, **kw: _exec_net_ping(ctx, **kw),
+    "net_trace": lambda ctx, **kw: _exec_net_trace(ctx, **kw),
+    "net_ports": lambda ctx, **kw: _exec_net_ports(ctx, **kw),
+    "net_http": lambda ctx, **kw: _exec_net_http(ctx, **kw),
+    "net_speed": lambda ctx, **kw: _exec_net_speed(ctx, **kw),
 }
 
 

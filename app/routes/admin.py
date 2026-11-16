@@ -698,6 +698,7 @@ def update_user_data(login):
         service_class = data.get("service_class")
         is_active = data.get("is_active")
         camera_permissions = data.get("camera_permissions")
+        net_tools_enabled = data.get("net_tools_enabled")
 
         update_user(
             login=login,
@@ -705,6 +706,7 @@ def update_user_data(login):
             service_class=service_class,
             is_active=is_active,
             camera_permissions=camera_permissions,
+            net_tools_enabled=net_tools_enabled,
         )
 
         if "storage_limit_mb" in data:
@@ -2785,3 +2787,17 @@ def skills_delete(name: str):
     shutil.rmtree(target)
     skills.reset_cache()
     return jsonify({"ok": True})
+
+
+@bp.route("/api/net-audit", methods=["GET"])
+@admin_required
+def net_audit():
+    """The last network calls: who ran what, for the Monitoring tab and the CLI.
+
+    Twenty-four hours of Redis, best effort — the point is answering "what happened
+    yesterday", not keeping a permanent record.
+    """
+    from app import netdiag
+
+    limit = request.args.get("limit", type=int) or 50
+    return jsonify({"calls": netdiag.recent_calls(limit=max(1, min(limit, 200)))})

@@ -319,11 +319,52 @@
         loadMonitoring();
     });
 
+
+    // Network diagnostics audit: 24 hours of Redis, filled whenever the tab opens.
+    async function loadNetAudit() {
+        const body = document.getElementById('net-audit-body');
+        if (!body) return;
+        try {
+            const resp = await fetch('/admin/api/net-audit?limit=50', { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const calls = data.calls || [];
+            body.innerHTML = '';
+            if (!calls.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'net-audit-empty';
+                cell.textContent = t('monitoring_net_empty');
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            calls.forEach((call) => {
+                const row = document.createElement('tr');
+                [call.at, call.login, call.tool, call.target, call.ok ? 'ok' : 'failed'].forEach((value) => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value === undefined || value === null ? '-' : String(value);
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        } catch (err) {
+            // The audit is best effort: a Redis hiccup leaves the table as it was.
+        }
+    }
+
     const tabButton = document.querySelector('.admin-tab[data-tab="monitoring"]');
-    if (tabButton) tabButton.addEventListener('click', loadMonitoring);
+    if (tabButton) tabButton.addEventListener('click', () => {
+        loadMonitoring();
+        loadNetAudit();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (isActive()) loadMonitoring();
+        if (isActive()) {
+            loadMonitoring();
+            loadNetAudit();
+        }
     });
 
     setInterval(() => {

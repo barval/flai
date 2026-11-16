@@ -9,6 +9,7 @@ the chat turn it runs inside.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -96,3 +97,143 @@ def output_of(answer: dict[str, Any]) -> str:
     if text:
         return text
     return "⚠️ the diagnostics service returned nothing"
+
+
+# ── The chat tools' half: permission, limits, audit ───────────────────────────
+
+NET_TOOL_IDS: tuple[str, ...] = (
+    "net_dns",
+    "net_whois",
+    "net_ping",
+    "net_trace",
+    "net_ports",
+    "net_http",
+    "net_speed",
+)
+
+RATE_PER_MINUTE = 10
+RATE_PER_HOUR = 60
+AUDIT_KEY = "net:audit"
+AUDIT_MAX = 500
+AUDIT_TTL_S = 86_400
+
+# Same set the container refuses; repeated here so a blocked target never leaves the
+# application at all, whatever the container does.
+_BLOCKED = ("127.0.0.0/8", "::1/128", "169.254.0.0/16", "fe80::/10")
+
+
+_fallback_redis: Any = None
+
+
+def _redis() -> Any:
+    """The application's Redis client; a direct one for callers without an app.
+
+    ``flask net-audit`` runs from a shell where there is no request queue, and a
+    read-only report should not need a whole application to exist.
+    """
+    global _fallback_redis
+    try:
+        queue = getattr(current_app, "request_queue", None)
+    except RuntimeError:
+        queue = None
+    client = getattr(queue, "redis", None)
+    if client is not None:
+        return client
+    if queue is not None:
+        return None
+    if _fallback_redis is None:
+        import redis as redis_module
+
+        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        _fallback_redis = redis_module.Redis.from_url(url, decode_responses=True, socket_timeout=3)
+    return _fallback_redis
+
+
+def blocked_target(target: str) -> str | None:
+    """The reason a literal address is always refused, or None."""
+    import ipaddress
+
+    text = str(target or "").strip().strip("[]").split("/", 1)[0]
+    try:
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return None
+    for net in _BLOCKED:
+        if address in ipaddress.ip_network(net):
+            return "loopback or link-local"
+    return None
+
+
+def user_allowed(login: str) -> bool:
+    """Whether an administrator granted this account the network tools."""
+    if not login:
+        return False
+    try:
+        from app.userdb import get_user_by_login
+
+        row = get_user_by_login(login)
+    except Exception as exc:  # noqa: BLE001 - an unreadable row is not a permission
+        logger.warning(f"net tools permission could not be read for {login!r}: {exc}")
+        return False
+    return bool(row and row.get("net_tools_enabled"))
+
+
+def check_rate_limit(login: str) -> bool:
+    """False when this account has spent its budget. A refusal is not counted."""
+    client = _redis()
+    if client is None:
+        return True
+    now = int(time.time())
+    minute_key = f"net:rate:{login}:m{now // 60}"
+    hour_key = f"net:rate:{login}:h{now // 3600}"
+    try:
+        used_minute = int(client.get(minute_key) or 0)
+        used_hour = int(client.get(hour_key) or 0)
+        if used_minute >= RATE_PER_MINUTE or used_hour >= RATE_PER_HOUR:
+            return False
+        client.incr(minute_key)
+        client.expire(minute_key, 120)
+        client.incr(hour_key)
+        client.expire(hour_key, 7200)
+    except Exception as exc:  # noqa: BLE001 - a broken counter must not block the tool
+        logger.warning(f"net tools rate limit unavailable: {exc}")
+    return True
+
+
+def record_call(login: str, tool: str, target: str, ok: bool, seconds: float) -> None:
+    """One audit line, best effort: a lost Redis loses the day's record, not the call."""
+    client = _redis()
+    if client is None:
+        return
+    entry = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "login": login,
+        "tool": tool,
+        "target": str(target)[:253],
+        "ok": bool(ok),
+        "seconds": round(float(seconds), 2),
+    }
+    try:
+        client.lpush(AUDIT_KEY, json.dumps(entry, ensure_ascii=False))
+        client.ltrim(AUDIT_KEY, 0, AUDIT_MAX - 1)
+        client.expire(AUDIT_KEY, AUDIT_TTL_S)
+    except Exception as exc:  # noqa: BLE001 - best effort by design
+        logger.warning(f"net tools audit write failed: {exc}")
+
+
+def recent_calls(limit: int = 50) -> list[dict[str, Any]]:
+    client = _redis()
+    if client is None:
+        return []
+    try:
+        raw = client.lrange(AUDIT_KEY, 0, max(0, limit - 1)) or []
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"net tools audit read failed: {exc}")
+        return []
+    entries = []
+    for item in raw:
+        try:
+            entries.append(json.loads(item))
+        except (TypeError, ValueError):
+            continue
+    return entries

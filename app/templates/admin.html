@@ -80,6 +80,7 @@
                         <th data-sort="web_requests_month">{{ internet_header[0] }}<br>{{ internet_header[1] }}</th>
                         <th>{{ _('Tavily API') }}</th>
                         <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
+                        <th>{{ _('Network tools') }}</th>
                         {% if rooms %}
                         <th>{{ _('Camera access') }}</th>
                         {% endif %}
@@ -107,6 +108,26 @@
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>{{ _('Network calls') }}</h3>
+                <span class="monitoring-value">{{ _('24 h') }}</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Time') }}</th>
+                        <th>{{ _('User') }}</th>
+                        <th>{{ _('Tool') }}</th>
+                        <th>{{ _('Target') }}</th>
+                        <th>{{ _('Result') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">{{ _('No network calls in the last 24 hours') }}</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -609,6 +630,8 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'monitoring_no_data': {{ _('No data in this range')|tojson }},
     'monitoring_load_error': {{ _('Failed to load monitoring data')|tojson }},
     'monitoring_since': {{ _('History since {date}')|tojson }},
+    'monitoring_net_empty': {{ _('No network calls in the last 24 hours')|tojson }},
+    'net_tools_help': {{ _('Network diagnostics tools for this user')|tojson }},
     'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
     'error': {{ _('Error')|tojson }},
     'internal_server_error': {{ _('Internal server error')|tojson }},
@@ -674,6 +697,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'settings_secret_empty': {{ _('Not set')|tojson }},
     'settings_secret_set': {{ _('A value is stored')|tojson }},
     'Search and crawl': {{ _('Search and crawl')|tojson }},
+    'Network diagnostics': {{ _('Network diagnostics')|tojson }},
     'Documents and RAG': {{ _('Documents and RAG')|tojson }},
     'Tasks': {{ _('Tasks')|tojson }},
     'MCP': {{ _('MCP')|tojson }},
@@ -687,6 +711,9 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Debug': {{ _('Debug')|tojson }},
     'Description': {{ _('Description')|tojson }},
     'Use the per-user Tavily key before the local search engine': {{ _('Use the per-user Tavily key before the local search engine')|tojson }},
+    'Offer the network diagnostics tools to users who were granted them': {{ _('Offer the network diagnostics tools to users who were granted them')|tojson }},
+    'Network diagnostics service URL': {{ _('Network diagnostics service URL')|tojson }},
+    'Bearer token for the network diagnostics service': {{ _('Bearer token for the network diagnostics service')|tojson }},
     'Tavily API base URL': {{ _('Tavily API base URL')|tojson }},
     'Tavily search request timeout (seconds)': {{ _('Tavily search request timeout (seconds)')|tojson }},
     'Timeout for the Tavily quota lookup (seconds)': {{ _('Timeout for the Tavily quota lookup (seconds)')|tojson }},

@@ -10939,6 +10939,7 @@ video {
                         <th data-sort="web_requests_month">Internet<br>requests</th>
                         <th>Tavily API</th>
                         <th data-sort="api_keys_count">FLAI API</th>
+                        <th>Network tools</th>
 
                         <th>Actions</th>
                      </tr>
@@ -10964,6 +10965,26 @@ video {
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>Network calls</h3>
+                <span class="monitoring-value">24 h</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>User</th>
+                        <th>Tool</th>
+                        <th>Target</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">No network calls in the last 24 hours</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -14175,6 +14196,14 @@ body.dark-theme .mode-option {
     border-radius: 0.35rem;
     cursor: pointer;
 }
+
+/* ── Network diagnostics audit (v13.5) ───────────────────────────────────── */
+.monitoring-net { grid-column: 1 / -1; }
+.monitoring-net table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.monitoring-net th,
+.monitoring-net td { padding: 0.3rem 0.45rem; text-align: left; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.monitoring-net th { font-weight: 600; opacity: 0.75; }
+.net-audit-empty { opacity: 0.7; font-style: italic; }
 </style>
 <script>
 window.ROOMS = [];
@@ -14190,6 +14219,8 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'monitoring_no_data': "No data in this range",
     'monitoring_load_error': "Failed to load monitoring data",
     'monitoring_since': "History since {date}",
+    'monitoring_net_empty': "No network calls in the last 24 hours",
+    'net_tools_help': "Network diagnostics tools for this user",
     'delete_user_confirm': "Delete user {login}?",
     'error': "Error",
     'internal_server_error': "Internal server error",
@@ -14255,6 +14286,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_secret_empty': "Not set",
     'settings_secret_set': "A value is stored",
     'Search and crawl': "Search and crawl",
+    'Network diagnostics': "Network diagnostics",
     'Documents and RAG': "Documents and RAG",
     'Tasks': "Tasks",
     'MCP': "MCP",
@@ -14268,6 +14300,9 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Debug': "Debug",
     'Description': "Description",
     'Use the per-user Tavily key before the local search engine': "Use the per-user Tavily key before the local search engine",
+    'Offer the network diagnostics tools to users who were granted them': "Offer the network diagnostics tools to users who were granted them",
+    'Network diagnostics service URL': "Network diagnostics service URL",
+    'Bearer token for the network diagnostics service': "Bearer token for the network diagnostics service",
     'Tavily API base URL': "Tavily API base URL",
     'Tavily search request timeout (seconds)': "Tavily search request timeout (seconds)",
     'Timeout for the Tavily quota lookup (seconds)': "Timeout for the Tavily quota lookup (seconds)",
@@ -16591,6 +16626,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -16693,6 +16736,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {
@@ -19202,11 +19257,52 @@ document.addEventListener('DOMContentLoaded', function() {
         loadMonitoring();
     });
 
+
+    // Network diagnostics audit: 24 hours of Redis, filled whenever the tab opens.
+    async function loadNetAudit() {
+        const body = document.getElementById('net-audit-body');
+        if (!body) return;
+        try {
+            const resp = await fetch('/admin/api/net-audit?limit=50', { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const calls = data.calls || [];
+            body.innerHTML = '';
+            if (!calls.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'net-audit-empty';
+                cell.textContent = t('monitoring_net_empty');
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            calls.forEach((call) => {
+                const row = document.createElement('tr');
+                [call.at, call.login, call.tool, call.target, call.ok ? 'ok' : 'failed'].forEach((value) => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value === undefined || value === null ? '-' : String(value);
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        } catch (err) {
+            // The audit is best effort: a Redis hiccup leaves the table as it was.
+        }
+    }
+
     const tabButton = document.querySelector('.admin-tab[data-tab="monitoring"]');
-    if (tabButton) tabButton.addEventListener('click', loadMonitoring);
+    if (tabButton) tabButton.addEventListener('click', () => {
+        loadMonitoring();
+        loadNetAudit();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (isActive()) loadMonitoring();
+        if (isActive()) {
+            loadMonitoring();
+            loadNetAudit();
+        }
     });
 
     setInterval(() => {

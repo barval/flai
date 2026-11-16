@@ -228,6 +228,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -330,6 +338,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {

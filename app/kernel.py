@@ -262,16 +262,17 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
     }
 
 
-# What the backend is actually asked for. llama-server (build b11889 as shipped in
-# llama-swap v267) accepts only "text" or "json_object" and rejects a full schema
-# with HTTP 400, so JSON mode plus the enum check in this module is the strongest
-# guarantee the runtime gives us. The schema below stays as documentation of the
-# shape and as the contract the parser enforces.
+# What the backend is actually asked for. Build b11889 (llama-swap v267) accepted
+# only "text" or "json_object" and rejected a full schema with HTTP 400, which is
+# why JSON mode plus the enum check in this module is the guarantee the runtime
+# gives us. Build b12407 (llama-swap v273) accepts a schema — measured 2026-11-16,
+# HTTP 200 with `strict: true` — but switching this to constrained decoding is a
+# behaviour change that needs its own measurement against the seed set.
 KERNEL_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
 
-# Documentation of the reply shape, NOT something sent to the server: llama-server
-# rejects a schema outright (see KERNEL_RESPONSE_FORMAT above). Tests assert on it
-# so the documented contract and the parser cannot drift apart.
+# Documentation of the reply shape, NOT sent to the server while the format above
+# is JSON mode. Tests assert on it so the documented contract, a future schema and
+# the parser cannot drift apart.
 KERNEL_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {

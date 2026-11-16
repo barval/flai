@@ -37,8 +37,8 @@ The numbers below are a snapshot. Refresh them with the commands listed under
 | PostgreSQL | 18.6 | 18.6 | Up to date |
 | Redis | 8.4.7 | 8.4.8 (security) | 8.4.8 has no `-alpine` variant yet, which is what this stack runs; newer lines exist (8.8, 8.10) and a line jump needs a queue test |
 | Qdrant | 1.20.0 | 1.20.0 | Up to date, client included |
-| llama-swap | v267 | v270 | v268–v270 are released but no GHCR image exists for them (`v270-cuda` is missing), so there is nothing to pull |
-| llama.cpp | b11889 | v0.9.0 (2026-11-04) | Upstream moved to semantic versions; the build is bundled into the llama-swap image tag, so this only moves with that image |
+| llama-swap | v273 | v273 | Up to date. v268–v272 published no per-backend image — the image builds were failing upstream — so v273 is the first release since v267 with images to pull |
+| llama.cpp | b12407 | v1.0.0 (2026-11-13) | The v1.0.0 tag itself is b12359 and no llama-swap image carries it; b12407 is the build the v273 image bundles, the closest published one. Moves only with that image |
 | Whisper ASR | v1.10.0 | v1.10.0 | Up to date; the deploy now prefetches `large-v3-turbo`, the model the container actually loads |
 | Crawl4AI | 0.9.5 | 0.9.5 | Up to date |
 | SearXNG | `2026.11.6-ac11e14c5` + digest | 2026.11.6 | Pinned by dated tag and digest since 2026-11-07 (was a three-month-old digest) |
@@ -238,6 +238,47 @@ Gate on the new build:
   p50 44 ms), which also proves the embedding model loads and answers under b11889;
 - **MTP draft: not applicable** — the active reasoning model (`Qwen3.6-35B-A3B-UD-Q2_K_XL`) has
   `supports_mtp = false` and the generated llama-swap config carries no draft model.
+
+### The llama.cpp 1.0.0 build (v13.4)
+
+| Change | Detail |
+|---|---|
+| llama-swap | v267 → **v273** (`v273-cuda-b12407` and `v273-cuda13-b12407`; the CPU line moves to `v273-cpu-b12407`) |
+| llama.cpp | b11889 → **b12407** |
+
+llama.cpp published `v1.0.0` on 2026-11-13 — the first semantic release, where a major bump now
+means a breaking change in the public C API. The tag itself is nightly **b12359**, and no
+llama-swap image carries it: v273 bundles **b12407**, the closest published build, so the upgrade
+stops there, exactly as the previous step stopped at b11889 instead of the audited b11898.
+`llama-server --version` reports `1.0.0-dev (build 12407)` and `llama-swap -version` reports `v273`.
+
+Gate on the new build (2026-11-16):
+
+- **flags**: all 19 switches the generator emits are still in `--help`; `--defrag-thold` is the one
+  this release removes, and FLAI has never emitted it;
+- **multimodal**: an image with a digit answered correctly, which also proves the projector passes
+  the stricter `2x2` spatial-merge check the release adds for Qwen-VL files; a loaded model with an
+  image request measured 13 776 MiB;
+- **reasoning**: `reasoning_content` and the final answer both arrive, `finish_reason=stop`;
+- **tool call**: HTTP 200 with a proper `tool_calls` block;
+- **prompt processing**: median 2 300 → **2 747 t/s (+19 %)** on a ~4 700-token prompt;
+- **generation**: 116.0 → 114.1 t/s, inside the run-to-run spread of three runs each;
+- **`flask doctor`**: ready, 0 failed;
+- **Vulkan image**: rebuilt from the new pin — `llama-server --version` reports 12407 and the
+  llama-swap binary runs, though its version string is unstamped in a local build because upstream
+  stamps it in its own release pipeline.
+
+Two findings the gate produced:
+
+- **b12407 accepts a full `json_schema` response format** with `strict: true` (HTTP 200, exact
+  object back), where b11889 rejected it with HTTP 400. The request kernel still asks for
+  `json_object` plus the enum check, because constrained decoding is a behaviour change that needs
+  its own measurement against the seed set.
+- **The two `crawl` seed cases are answered by the shipped `web-research` skill**, so `flask
+  kernel-eval` reports them as `crawl → none` (0.946 on 37 cases). Measured on b11889 as well: the
+  same two, so the build is not the cause — the skill claims those requests and the route becomes
+  the chat loop by design. The 1.000 recorded in the v13.4 changelog was measured before that
+  happened.
 
 ### Phase 3, started (v12.8)
 

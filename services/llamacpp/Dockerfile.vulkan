@@ -8,12 +8,12 @@
 # It has never been run against an AMD or Intel card: enumerate devices on real
 # hardware first.
 #
-# The llama.cpp build is pinned to the same b11889 as the CUDA image that
+# The llama.cpp build is pinned to the same b12407 as the CUDA image that
 # docker-compose.gpu.nvidia.yml uses, so every flag app/llama_swap_config.py
 # emits (--reasoning-budget, --cache-type-k q4_0, --jinja, --metrics) exists in
 # this binary too. Bump both together.
-ARG LLAMA_SERVER_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b11889
-ARG LLAMA_SWAP_VERSION=v267
+ARG LLAMA_SERVER_IMAGE=ghcr.io/ggml-org/llama.cpp:server-vulkan-b12407
+ARG LLAMA_SWAP_VERSION=v273
 ARG GO_VERSION=1.27
 
 FROM golang:${GO_VERSION}-bookworm AS build

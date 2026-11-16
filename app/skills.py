@@ -16,6 +16,7 @@ Two rules shape the module:
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
 import time
@@ -64,6 +65,49 @@ class Skill:
 def reset_cache() -> None:
     """Drop the scan cache (tests, and after an edit to the skills folder)."""
     _cache.clear()
+
+
+# Tools that exist in the catalogue but only when their service is running.
+# A skill naming one of these is correct and stays correct when the service
+# comes back, so it is a warning rather than a mistake.
+OPTIONAL_TOOLS = frozenset({"read_page", "list_rooms", "camera_snapshot"})
+
+
+@dataclass(frozen=True)
+class ToolMark:
+    """One name from ``allowed-tools``, and what this installation makes of it."""
+
+    name: str
+    status: str  # "offered" | "unavailable" | "typo" | "foreign"
+    suggestion: str | None = None
+
+
+def _near_miss(name: str, offered: set[str]) -> str | None:
+    """The offered tool this name is a keystroke away from, if any."""
+    normalized = name.strip().lower().replace("-", "_")
+    if normalized in offered:
+        return normalized
+    matches = difflib.get_close_matches(normalized, sorted(offered), n=1, cutoff=0.8)
+    return matches[0] if matches else None
+
+
+def classify_allowed_tools(allowed: tuple[str, ...], offered: set[str]) -> list[ToolMark]:
+    """Sort every name into offered / unavailable / typo / foreign.
+
+    The fourth class is why uploading a Claude Code skill works: ``Read`` and
+    ``Bash(git:*)`` are correct names from another catalogue, and rejecting the
+    file over them would refuse exactly the files the panel exists to accept.
+    """
+    marks: list[ToolMark] = []
+    for name in allowed:
+        if name in offered:
+            marks.append(ToolMark(name, "offered"))
+        elif name in OPTIONAL_TOOLS:
+            marks.append(ToolMark(name, "unavailable"))
+        else:
+            suggestion = _near_miss(name, offered)
+            marks.append(ToolMark(name, "typo", suggestion) if suggestion else ToolMark(name, "foreign"))
+    return marks
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:

@@ -129,8 +129,14 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return fields, body
 
 
-def _read(path: Path) -> Skill:
-    fields, body = _parse_frontmatter(path.read_text(encoding="utf-8"))
+def parse_skill_text(text: str, path: str = "") -> Skill:
+    """Validate a skill document exactly as a file on disk is validated.
+
+    The panel edits text, so the same rules have to run on a string; keeping one
+    implementation is what stops an editor from writing something the scanner
+    would then reject in silence.
+    """
+    fields, body = _parse_frontmatter(text)
     name = fields.get("name", "").strip()
     description = fields.get("description", "").strip()
     if not name:
@@ -144,7 +150,11 @@ def _read(path: Path) -> Skill:
     if not body.strip():
         raise SkillError("empty body")
     allowed = tuple(item.strip() for item in fields.get("allowed-tools", "").split(",") if item.strip())
-    return Skill(name=name, description=description, body=body, allowed_tools=allowed, path=str(path))
+    return Skill(name=name, description=description, body=body, allowed_tools=allowed, path=path)
+
+
+def _read(path: Path) -> Skill:
+    return parse_skill_text(path.read_text(encoding="utf-8"), path=str(path))
 
 
 def _load_skill(folder: Path, source: str = "bundled") -> Skill:

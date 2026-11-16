@@ -8,6 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from functools import wraps
+from typing import Any
 
 import magic
 import requests
@@ -2581,3 +2582,196 @@ def api_set_branding_names():
         return jsonify({"error": _("Both language variants are required")}), 400
     db.set_branding_site_names(ru, en)
     return jsonify({"ok": True, "site_name_ru": ru, "site_name_en": en})
+
+
+# ── Skills (v13.5) ────────────────────────────────────────────────────────────
+#
+# Two zones: ``skills/`` ships with the project and is tracked, ``data/skills`` is
+# written here and is not. A bundled skill is read-only in the panel because a save
+# would dirty the working tree; an installed one is fully editable.
+
+SKILL_MAX_BYTES = 64 * 1024
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _skills_offered() -> set[str]:
+    """The tools the chat catalogue currently advertises."""
+    try:
+        from app.tools import get_tool_definitions
+
+        return {d["function"]["name"] for d in get_tool_definitions("en")}
+    except Exception as e:  # noqa: BLE001 - the marks are advisory
+        logger.warning(f"skill tool catalogue could not be built: {e}")
+        return set()
+
+
+def _skill_payload(skill: Any, enabled: bool, offered: set[str]) -> dict[str, Any]:
+    from dataclasses import asdict
+
+    from app.skills import classify_allowed_tools
+
+    return {
+        "name": skill.name,
+        "description": skill.description,
+        "source": skill.source,
+        "path": skill.path,
+        "enabled": enabled,
+        "shadowed": skill.shadowed,
+        "allowed_tools": [asdict(mark) for mark in classify_allowed_tools(skill.allowed_tools, offered)],
+    }
+
+
+def _skill_name_error(name: str) -> str | None:
+    if not name:
+        return _("The skill name is empty")
+    if not _SKILL_NAME_RE.match(name):
+        return _("A skill name uses lowercase letters, digits, - and _ only (max 64 characters)")
+    return None
+
+
+def _bundled_names() -> set[str]:
+    from app import skills
+
+    return {skill.name for skill in skills.discover(skills.BUNDLED_ROOT)}
+
+
+def _write_skill(name: str, text: str, description_ru: str, body_ru: str) -> tuple[Any, int]:
+    """Validate and store one skill. Returns (payload, status)."""
+    from app import skills
+
+    error = _skill_name_error(name)
+    if error:
+        return jsonify({"error": "⚠️ " + error}), 400
+
+    try:
+        parsed = skills.parse_skill_text(text)
+    except skills.SkillError as exc:
+        return jsonify({"error": "⚠️ " + _("The skill could not be read: {reason}").format(reason=str(exc))}), 400
+    if parsed.name != name:
+        return jsonify({"error": "⚠️ " + _("The name in the file does not match the skill name")}), 400
+
+    marks = skills.classify_allowed_tools(parsed.allowed_tools, _skills_offered())
+    typos = [mark for mark in marks if mark.status == "typo"]
+    if typos:
+        detail = ", ".join(f"{mark.name} → {mark.suggestion}" for mark in typos)
+        return jsonify({"error": "⚠️ " + _("Unknown tool in allowed-tools: {detail}").format(detail=detail)}), 400
+
+    if name in _bundled_names():
+        return (
+            jsonify({"error": "⚠️ " + _("A bundled skill owns this name; rename the skill instead")}),
+            409,
+        )
+
+    root = skills.INSTALLED_ROOT
+    root.mkdir(parents=True, exist_ok=True)
+    target = (root / name).resolve()
+    if target.parent != root.resolve():
+        return jsonify({"error": "⚠️ " + _("The skill name leaves the skills folder")}), 400
+    target.mkdir(parents=True, exist_ok=True)
+    (target / skills.SKILL_FILE).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+
+    if description_ru.strip() and body_ru.strip():
+        # The variant needs its own frontmatter: a body-only file is logged and
+        # ignored by the scanner, so the name comes from the English document.
+        variant = f"---\nname: {name}\ndescription: {description_ru.strip()}\n---\n{body_ru.strip()}\n"
+        (target / f"SKILL.{'ru'}.md").write_text(variant, encoding="utf-8")
+
+    skills.reset_cache()
+    stored = next((s for s in skills.discover_all() if s.name == name), parsed)
+    warnings = [
+        _("Not available here: {name}").format(name=mark.name) for mark in marks if mark.status in ("unavailable", "foreign")
+    ]
+    return (
+        jsonify({"ok": True, "skill": _skill_payload(stored, _enabled_flags().get(name, True), _skills_offered()), "warnings": warnings}),
+        200,
+    )
+
+
+def _enabled_flags() -> dict[str, bool]:
+    try:
+        from app import skilldb
+
+        return skilldb.enabled_map()
+    except Exception as e:  # noqa: BLE001 - an unreadable flag table means "all enabled"
+        logger.warning(f"skill settings could not be read: {e}")
+        return {}
+
+
+@bp.route("/api/skills", methods=["GET"])
+@admin_required
+def skills_list():
+    """Every skill the panel may show, bundled and installed."""
+    from app import skills
+
+    offered = _skills_offered()
+    flags = _enabled_flags()
+    payload = [_skill_payload(skill, flags.get(skill.name, True), offered) for skill in skills.discover_all()]
+    return jsonify({"skills": payload})
+
+
+@bp.route("/api/skills/save", methods=["POST"])
+@admin_required
+def skills_save():
+    data = request.get_json(silent=True) or {}
+    return _write_skill(
+        str(data.get("name", "")).strip(),
+        str(data.get("body_en", "")),
+        str(data.get("description_ru", "")),
+        str(data.get("body_ru", "")),
+    )
+
+
+@bp.route("/api/skills/upload", methods=["POST"])
+@admin_required
+def skills_upload():
+    upload = request.files.get("file")
+    if upload is None:
+        return jsonify({"error": "⚠️ " + _("No file was uploaded")}), 400
+    raw = upload.read(SKILL_MAX_BYTES + 1)
+    if len(raw) > SKILL_MAX_BYTES:
+        return jsonify({"error": "⚠️ " + _("The skill file is too large")}), 400
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return jsonify({"error": "⚠️ " + _("The skill file is not UTF-8 text")}), 400
+
+    from app import skills
+
+    try:
+        parsed = skills.parse_skill_text(text)
+    except skills.SkillError as exc:
+        return jsonify({"error": "⚠️ " + _("The skill could not be read: {reason}").format(reason=str(exc))}), 400
+    return _write_skill(parsed.name, text, "", "")
+
+
+@bp.route("/api/skills/toggle", methods=["POST"])
+@admin_required
+def skills_toggle():
+    from app import skilldb, skills
+
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", "")).strip()
+    if name not in {skill.name for skill in skills.discover_all()}:
+        return jsonify({"error": "⚠️ " + _("Unknown skill: {name}").format(name=name)}), 404
+    skilldb.set_enabled(name, bool(data.get("enabled", True)))
+    return jsonify({"ok": True, "name": name, "enabled": bool(data.get("enabled", True))})
+
+
+@bp.route("/api/skills/<name>", methods=["DELETE"])
+@admin_required
+def skills_delete(name: str):
+    import shutil
+
+    from app import skills
+
+    error = _skill_name_error(name)
+    if error:
+        return jsonify({"error": "⚠️ " + error}), 400
+    if name in _bundled_names():
+        return jsonify({"error": "⚠️ " + _("A bundled skill lives in the project and cannot be deleted")}), 409
+    target = (skills.INSTALLED_ROOT / name).resolve()
+    if target.parent != skills.INSTALLED_ROOT.resolve() or not target.is_dir():
+        return jsonify({"error": "⚠️ " + _("Unknown skill: {name}").format(name=name)}), 404
+    shutil.rmtree(target)
+    skills.reset_cache()
+    return jsonify({"ok": True})

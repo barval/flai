@@ -1212,6 +1212,13 @@ class RedisRequestQueue:
                         if task is None:
                             self.logger.error("Slow worker: failed to deserialize background task")
                             continue
+                        # Every other branch logs what it took: without this line a
+                        # background job ran with no trace of having been dequeued,
+                        # which is exactly what made a failed search unexplainable.
+                        self.logger.info(
+                            f"Slow worker: dequeued background task {str(task.get('id'))[:12]} "
+                            f"(type={task.get('type') or task.get('data', {}).get('type', '')})"
+                        )
                         # Background tasks are CPU-only except the LLM fact
                         # extraction, which needs the resident model and must
                         # therefore wait for the GPU like any other call.

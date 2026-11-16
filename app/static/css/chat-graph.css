@@ -151,17 +151,42 @@
 
 .graph-filter-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.4rem;
     padding: 0.15rem 0;
     font-size: 0.85rem;
     cursor: pointer;
+    min-width: 0;
+}
+
+.graph-filter-row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .graph-filter-row em {
     margin-left: auto;
+    padding-left: 0.4rem;
     opacity: 0.6;
     font-style: normal;
+    flex: 0 0 auto;
+}
+
+/* A phone shows the toolbar wrapped, so the menu is anchored to its right edge
+   and never wider than the screen: a 14rem panel starting at the filters button
+   ran past the viewport. */
+@media (max-width: 768px) {
+    .graph-filter-list {
+        left: auto;
+        right: 0;
+        min-width: 0;
+        width: min(20rem, calc(100vw - 1rem));
+        max-width: calc(100vw - 1rem);
+    }
+
+    .graph-filter-title {
+        overflow-wrap: anywhere;
+    }
 }
 
 .graph-search {

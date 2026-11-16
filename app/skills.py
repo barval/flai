@@ -186,9 +186,25 @@ def discover_all(ttl_s: int = CACHE_TTL_S) -> list[Skill]:
     return [merged[name] for name in sorted(merged)] + [s for s in sorted(shadowed, key=lambda s: s.name)]
 
 
+def active_skills(ttl_s: int = CACHE_TTL_S) -> list[Skill]:
+    """The skills the model may see: installed or bundled, enabled, not shadowed.
+
+    A database that cannot be read means "nothing disabled" rather than an empty
+    catalogue: a broken flag table should not silently remove every skill, and the
+    rest of the application needs PostgreSQL to run at all.
+    """
+    try:
+        from app.skilldb import disabled_names
+
+        disabled = disabled_names()
+    except Exception:  # noqa: BLE001 - see the docstring
+        disabled = set()
+    return [s for s in discover_all(ttl_s=ttl_s) if not s.shadowed and s.name not in disabled]
+
+
 def catalog(lang: str = "en", root: Path | str | None = None) -> str:
     """The lines that go into every system prompt: name and description only."""
-    skills = discover(root)
+    skills = active_skills() if root is None else discover(root)
     if not skills:
         return ""
     lines = [f"- `{skill.name}`: {skill.for_lang(lang)[0]}" for skill in skills]
@@ -197,7 +213,7 @@ def catalog(lang: str = "en", root: Path | str | None = None) -> str:
 
 def activate(name: str, lang: str = "en", root: Path | str | None = None) -> str | None:
     """The body of one skill, or None when the name is not in the catalog."""
-    for skill in discover(root):
+    for skill in active_skills() if root is None else discover(root):
         if skill.name == name:
             return skill.for_lang(lang)[1]
     return None
@@ -210,7 +226,8 @@ def skill_tool_definition(root: Path | str | None = None) -> dict | None:
     more reliably than it recalls a name, and a name outside the list is refused
     by the server before the tool even runs.
     """
-    names = [skill.name for skill in discover(root)]
+    found = active_skills() if root is None else discover(root)
+    names = [skill.name for skill in found]
     if not names:
         return None
     return {

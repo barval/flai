@@ -121,9 +121,9 @@ def wait_for_service(
 def _kernel_skills() -> set[str]:
     """The names the kernel may return, or an empty set when none is installed."""
     try:
-        from app.skills import discover
+        from app.skills import active_skills
 
-        return {skill.name for skill in discover()}
+        return {skill.name for skill in active_skills()}
     except Exception:  # noqa: BLE001 - a broken skills folder must not fail routing
         return set()
 

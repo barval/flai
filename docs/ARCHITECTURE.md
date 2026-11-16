@@ -287,6 +287,17 @@ task capabilities (`exec="direct"|"queue"`), the RLM sandbox tools
 (`exec="sandbox"`, with schemas) and, from it, the planner's prose, the UI badges
 and the executor's routing tables.
 
+### Network diagnostics
+
+An optional sidecar (`services/netdiag`, profile `with-net-tools`) owns every network
+question: seven chat tools (`net_dns`, `net_whois`, `net_ping`, `net_trace`,
+`net_ports`, `net_http`, `net_speed`) turn a typed request into one program run with
+`shell=False`, and the container is on a network of its own, shared only with `web`.
+`app/netdiag.py` holds the client and the policy that belongs to this application — the
+per-user permission, the Redis rate limit and the 24-hour audit — while the catalogue
+adds the tools only when the sidecar answers its cached `/health`. Details →
+[NET_TOOLS.md](NET_TOOLS.md).
+
 ### Skills
 
 `skills/<name>/SKILL.md` — `name` / `description` / `allowed-tools` frontmatter,

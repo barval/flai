@@ -8,6 +8,9 @@
 
 - **A disabled skill cannot be activated, even by a stale answer.** Enabled state lives in `skill_settings` in PostgreSQL rather than in the frontmatter, so an editor cannot change behaviour behind the panel's back, and the catalogue, the `activate_skill` enum and the request kernel's known-name set all read the same filtered list.
 
+- **Network diagnostics from chat, behind a permission you grant per user.** Seven tools answer what a terminal used to answer: `net_dns`, `net_whois`, `net_ping`, `net_trace`, `net_ports`, `net_http`, `net_speed`. They live in their own container (`services/netdiag`, profile `with-net-tools`) that validates every field and runs one program per request — no command line, no shell — with `cap_drop: ALL` plus the single capability ping and mtr need. It joins its own Docker network shared with the web service only, so a permitted user cannot reach PostgreSQL or Redis through Docker's networking. Without the permission the answer is «⚠️ Сетевые инструменты Вам недоступны.» — a sentence, not silence. A `/24` is host discovery only, port scans are the 100 most common ports on one host, and loopback and link-local are refused whatever the permission says. Ten calls a minute, sixty an hour, and a 24-hour audit line per call read by `flask net-audit` and the Monitoring tab. → [NET_TOOLS.md](docs/NET_TOOLS.md)
+
+
 ## [v13.4] — 2026-11-16
 
 ### Added

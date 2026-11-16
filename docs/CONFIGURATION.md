@@ -143,6 +143,9 @@ CRAWL_PAGE_TIMEOUT_S=30
 CRAWL_MAX_PAGE_CHARS=50000
 CRAWL_MAX_TOTAL_CHARS=1000000
 CRAWL_CONCURRENCY=2
+NET_TOOLS_ENABLED=false                  # Network diagnostics sidecar; enable with --with-net-tools
+NETDIAG_URL=http://flai-netdiag:8099
+NETDIAG_API_TOKEN=your_netdiag_token_here  # Shared with the container; the tools stay per-user in Admin -> Users
 ```
 
 **Background Tasks:**
@@ -352,6 +355,9 @@ docker compose -f docker-compose.gpu.yml --profile with-video up -d
 
 # Long-term memory (SuperLocalMemory)
 docker compose -f docker-compose.gpu.yml --profile with-slm up -d
+
+# Network diagnostics (dig, whois, ping, mtr, nmap, iperf3); then grant the tools per user
+docker compose -f docker-compose.gpu.yml --profile with-net-tools up -d
 
 # Chat only (no images, no voice, no video)
 docker compose -f docker-compose.gpu.yml up -d

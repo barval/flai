@@ -81,6 +81,12 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 - **The knowledge graph is readable, and you can fix it.** The view filters by relation type with a count per type, clears a highlighted path, and merges two of your own nodes when the extractor split one thing in two. Entities mentioned in one chunk are now linked automatically (`co-occurs`), which took isolated nodes from 43 % to 18 %; those links start hidden, so the first view shows only what a model actually stated. → [GRAPH.md](docs/GRAPH.md)
 
+- **Long-term memory stores what you tell it.** The extractor's rules never asked for the `confidence`
+  field its parser required, so a fact the model had already recognised was thrown away — measured on six
+  plain statements, four of them. The rules ask now, a fact without the field is kept, and «I live in
+  Tbilisi» becomes a typed fact with a validity interval instead of a line nobody stores.
+  → [MEMORY.md](docs/MEMORY.md)
+
 - **Search stays flat as the corpus grows.** BM25 needs corpus-wide statistics, and the lexical half counted them from scratch on every question. They are cached now and refreshed when a document changes: at 10 000 chunks a search went from 97 ms to 7 ms, so a large library no longer pays for its own size on every question. → [DOCUMENTS.md](docs/DOCUMENTS.md)
 
 ## 🖼 Demo

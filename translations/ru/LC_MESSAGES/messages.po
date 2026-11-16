@@ -5801,3 +5801,7 @@ msgstr "Выберите первый узел пути"
 #: app/templates/chat.html
 msgid "Show the path between two nodes"
 msgstr "Показать путь между двумя узлами"
+
+#: app/settings_registry.py
+msgid "Ask for a schema-constrained reply from the request kernel"
+msgstr "Просить у сервера ответ по схеме от ядра запросов"

@@ -111,7 +111,13 @@ Werkzeug 3.1.9, urllib3 2.8.0, cryptography 50.0.2 and gevent 26.9.0, while the 
   `Q2_K_XL` in use, while `Q3_K_S` at 15.4 GB and everything above it does not fit. Untested.
 - **FP8 KV caches** (`-ctk/-ctv f8_e4m3`) cost one byte per value like `q8_0` and run on tensor
   cores; adopting them means teaching `app/vram_probe.py` the type, which knows `q4_0` today. Not
-  measured yet.
+  measured yet. **CUDA only**: `ggml-vulkan.cpp` carries no `F8_E4M3` reference at all (18 in
+  `ggml-cuda.cu`), so an AMD or Intel installation does not get this knob.
+- **The driver floor did not move.** The `cuda` image is still CUDA 12.8.1 with the same
+  `NVIDIA_REQUIRE_CUDA=cuda>=12.8` requirement as v267, and its kernel set still compiles sm_86
+  natively, so an Ampere card on an older driver is in exactly the position it was in before:
+  `deploy.sh` waives the image requirement below CUDA 12.8 and relies on CUDA 12.x minor-version
+  compatibility, with 12.2 as the documented floor.
 - A full **`json_schema`** response format is accepted (HTTP 200 with `strict: true`), which the
   previous build refused with HTTP 400. The request kernel still asks for `json_object` and checks
   the enum itself; constrained decoding needs its own measurement against the seed set first.

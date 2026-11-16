@@ -15,6 +15,9 @@
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // Two taps on a phone, where a right click does not exist: the button turns
+    // the next two node taps into "from" and "to".
+    let pathMode = false;
     // The node waiting to be merged into another one (two clicks, no modal).
     let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
@@ -275,9 +278,19 @@
                     renderSidePanel(node);
                     return;
                 }
+                if (pathMode && !pathSourceId) {
+                    pathSourceId = node.id;
+                    selectedNode = node;
+                    focusNode(node);
+                    renderSidePanel(node);
+                    setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
-                    showPath(pathSourceId, node.id);
+                    const source = pathSourceId;
                     pathSourceId = null;
+                    setPathMode(false, true);
+                    showPath(source, node.id);
                 }
                 selectedNode = node;
                 focusNode(node);
@@ -427,6 +440,7 @@
             group('graph_relations_structural', 'Structural, no quote', structural) ||
             '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
 
+        clampFilterPanel();
         list.querySelectorAll('.graph-filter-check').forEach(function (box) {
             box.addEventListener('change', function () {
                 if (box.checked) hiddenPredicates.delete(box.value);
@@ -647,6 +661,7 @@
         }
         selectedNode = null;
         mergeSourceId = null;
+        setPathMode(false, true);
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -747,6 +762,56 @@
 
     // The label names the action, not the current layer: while entities are
     // shown the button offers documents, and the other way round.
+    // A dropdown anchored to its button is only inside the screen while the
+    // button is: on a phone the toolbar wraps, the button sits where it fits,
+    // and a panel wider than the space to its left is clipped by the view.
+    // Measuring after the panel opens and pinning it to the visible edge costs
+    // one layout read and works for every button position.
+    function clampFilterPanel() {
+        const details = document.getElementById('graph-filters');
+        const list = document.getElementById('graph-filter-list');
+        if (!details || !list || !details.open) return;
+
+        list.style.left = '';
+        list.style.right = '';
+        list.style.width = '';
+        list.style.maxWidth = '';
+
+        const view = viewRoot();
+        const bounds = view ? view.getBoundingClientRect() : { left: 0, right: window.innerWidth };
+        const natural = list.getBoundingClientRect();
+        if (natural.left >= bounds.left && natural.right <= bounds.right) return;
+
+        // Pin the panel to the view, not to the button: `left: 0` is measured
+        // from the filters element, so on a wrapped phone toolbar it left the
+        // panel hanging off the other side. Offsets are taken from the button's
+        // own rectangle, which is what an absolutely positioned child uses.
+        const detailsRect = details.getBoundingClientRect();
+        const available = Math.max(160, Math.round(bounds.right - bounds.left - 16));
+        list.style.width = Math.min(Math.round(natural.width), available) + 'px';
+        list.style.maxWidth = available + 'px';
+        list.style.left = Math.round(bounds.left - detailsRect.left + 8) + 'px';
+        list.style.right = 'auto';
+    }
+
+    document.addEventListener('toggle', function (event) {
+        if (event.target && event.target.id === 'graph-filters') clampFilterPanel();
+    }, true);
+
+    function setPathMode(on, silent) {
+        pathMode = on;
+        if (!on) pathSourceId = null;
+        const button = document.getElementById('graph-path-mode');
+        if (button) {
+            button.classList.toggle('active', on);
+            button.setAttribute('aria-pressed', on ? 'true' : 'false');
+            button.textContent = on
+                ? t('graph_path_cancel', 'Cancel path')
+                : t('graph_path_mode', 'Path');
+        }
+        if (!silent) setStatus(on ? t('graph_path_first', 'Pick the first node of the path') : '');
+    }
+
     function reportLayer(layer) {
         const button = document.getElementById('graph-layer-btn');
         if (!button) return;
@@ -796,6 +861,10 @@
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-path-mode')) {
+            setPathMode(!pathMode);
+            return;
+        }
         if (event.target.closest('#graph-merge-start')) {
             startMerge(selectedNode);
             return;

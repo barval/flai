@@ -5785,3 +5785,19 @@ msgstr "Утверждённые связи"
 #: app/templates/chat.html
 msgid "Structural, no quote"
 msgstr "Структурные, без цитаты"
+
+#: app/templates/chat.html
+msgid "Path"
+msgstr "Путь"
+
+#: app/templates/chat.html
+msgid "Cancel path"
+msgstr "Отменить путь"
+
+#: app/templates/chat.html
+msgid "Pick the first node of the path"
+msgstr "Выберите первый узел пути"
+
+#: app/templates/chat.html
+msgid "Show the path between two nodes"
+msgstr "Показать путь между двумя узлами"

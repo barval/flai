@@ -19,12 +19,16 @@ from __future__ import annotations
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"
+# Bundled skills ship with the project and are tracked; installed ones are written
+# by the admin panel into the git-ignored data tree, so a save never touches git.
+BUNDLED_ROOT = SKILLS_ROOT
+INSTALLED_ROOT = SKILLS_ROOT.parent / "data" / "skills"
 SKILL_FILE = "SKILL.md"
 MAX_DESCRIPTION_CHARS = 1024
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -48,6 +52,9 @@ class Skill:
     allowed_tools: tuple[str, ...]
     path: str
     variants: dict[str, tuple[str, str]] = field(default_factory=dict)
+    source: str = "bundled"
+    shadowed: bool = False
+    installed_path: str | None = None
 
     def for_lang(self, lang: str) -> tuple[str, str]:
         """(description, body) in the requested language, English otherwise."""
@@ -96,7 +103,7 @@ def _read(path: Path) -> Skill:
     return Skill(name=name, description=description, body=body, allowed_tools=allowed, path=str(path))
 
 
-def _load_skill(folder: Path) -> Skill:
+def _load_skill(folder: Path, source: str = "bundled") -> Skill:
     skill = _read(folder / SKILL_FILE)
     if folder.name != skill.name:
         raise SkillError(f"folder {folder.name!r} does not match the skill name {skill.name!r}")
@@ -109,16 +116,29 @@ def _load_skill(folder: Path) -> Skill:
             logger.warning(f"Skill variant {variant} is ignored: {exc}")
             continue
         variants[lang] = (localized.description, localized.body)
-    if variants:
-        skill = Skill(
-            name=skill.name,
-            description=skill.description,
-            body=skill.body,
-            allowed_tools=skill.allowed_tools,
-            path=skill.path,
-            variants=variants,
-        )
-    return skill
+    return Skill(
+        name=skill.name,
+        description=skill.description,
+        body=skill.body,
+        allowed_tools=skill.allowed_tools,
+        path=skill.path,
+        variants=variants,
+        source=source,
+        installed_path=str(folder) if source == "installed" else None,
+    )
+
+
+def _source_of(base: Path) -> str:
+    """Which of the two zones a root belongs to.
+
+    Derived from the path rather than passed in, because ``discover`` caches by
+    root: a caller that asked for the install root without naming the zone would
+    otherwise poison the cache with skills labelled ``bundled``.
+    """
+    try:
+        return "installed" if base.resolve() == INSTALLED_ROOT.resolve() else "bundled"
+    except OSError:
+        return "bundled"
 
 
 def discover(root: Path | str | None = None, ttl_s: int = CACHE_TTL_S) -> list[Skill]:
@@ -131,19 +151,39 @@ def discover(root: Path | str | None = None, ttl_s: int = CACHE_TTL_S) -> list[S
     cached = _cache.get(key)
     if cached and (time.monotonic() - cached[0]) < ttl_s:
         return list(cached[1])
+    source = _source_of(base)
     skills: list[Skill] = []
     if base.is_dir():
         for folder in sorted(base.iterdir()):
             if not folder.is_dir() or not (folder / SKILL_FILE).is_file():
                 continue
             try:
-                skills.append(_load_skill(folder))
+                skills.append(_load_skill(folder, source=source))
             except SkillError as exc:
                 logger.warning(f"Skill {folder} is ignored: {exc}")
             except OSError as exc:
                 logger.warning(f"Skill {folder} could not be read: {exc}")
     _cache[key] = (time.monotonic(), skills)
     return list(skills)
+
+
+def discover_all(ttl_s: int = CACHE_TTL_S) -> list[Skill]:
+    """Both zones, with a bundled skill winning a name an install also holds.
+
+    An upgrade can create that collision after the fact: a release ships a skill
+    whose name an administrator already installed. The installed copy is returned
+    with ``shadowed=True`` instead of being dropped or becoming a second catalog
+    line, so the panel can offer a rename and nothing disappears silently.
+    """
+    merged: dict[str, Skill] = {}
+    shadowed: list[Skill] = []
+    for root in (BUNDLED_ROOT, INSTALLED_ROOT):
+        for skill in discover(root, ttl_s=ttl_s):
+            if skill.name in merged:
+                shadowed.append(replace(skill, shadowed=True))
+            else:
+                merged[skill.name] = skill
+    return [merged[name] for name in sorted(merged)] + [s for s in sorted(shadowed, key=lambda s: s.name)]
 
 
 def catalog(lang: str = "en", root: Path | str | None = None) -> str:

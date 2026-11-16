@@ -285,3 +285,38 @@ def test_chat_tone_change_detection():
     assert _EDIT_TONE_CHANGE_RE.search("сделай ярче")
     assert _EDIT_TONE_CHANGE_RE.search("make it brighter")
     assert _EDIT_TONE_CHANGE_RE.search("black and white")
+
+
+@pytest.mark.unit
+def test_image_generation_takes_a_vulkan_device():
+    """AMD and Intel hosts were pinned to the CPU path by a CUDA-only check."""
+    from unittest.mock import Mock
+
+    from modules.sd_cpp import SdCppModule as SDModule
+
+    module = SDModule.__new__(SDModule)
+    module.logger = Mock()
+    module.model_type = "sdxl"
+
+    rm = Mock()
+    rm.hardware.accelerator = "vulkan"
+    rm.hardware.available_vram_mb = 12000
+    rm._poll_vram = Mock()
+
+    assert module._resolve_use_gpu(rm) is True
+
+    rm.hardware.accelerator = "none"
+    assert module._resolve_use_gpu(rm) is False
+
+
+@pytest.mark.unit
+def test_the_wrapper_treats_a_vulkan_build_as_a_gpu_build():
+    """Source-level, like the other assertions about the wrapper in this file."""
+    import pathlib
+
+    src = pathlib.Path("services/sd_cpp/sd_wrapper.py").read_text(encoding="utf-8")
+    assert "def _gpu_backend()" in src
+    assert "--list-devices" in src, "a Vulkan build must confirm the device instead of assuming it"
+    # The CUDA-only switches stay CUDA-only: `--rng cuda` on a Vulkan device is a
+    # runtime failure, not a preference.
+    assert 'cuda = _gpu_backend() == "cuda"' in src

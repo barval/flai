@@ -188,8 +188,13 @@ class SdCppModule(TranslationMixin):
         return 3
 
     def _resolve_use_gpu(self, rm) -> bool:
-        """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient."""
-        if not rm.hardware.cuda_detected:
+        """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient.
+
+        ``accelerator`` rather than ``cuda_detected``: image generation runs on a
+        Vulkan device too, and reading the CUDA-only flag is what kept every AMD
+        and Intel host on the CPU path regardless of the wrapper's build.
+        """
+        if rm.hardware.accelerator not in ("cuda", "vulkan"):
             return False
         rm._poll_vram()
         available = rm.hardware.available_vram_mb
@@ -197,6 +202,7 @@ class SdCppModule(TranslationMixin):
         if available > 0 and available < needed:
             self.logger.warning(f"VRAM too low for SD ({available}MB available, ~{needed}MB needed) — forcing CPU")
             return False
+        self.logger.info(f"SD on {rm.hardware.accelerator} ({available}MB available, ~{needed}MB needed)")
         return True
 
     def _call_wrapper(self, prompt_data, lang="ru", task_id=None, user_id=None, session_id=None):

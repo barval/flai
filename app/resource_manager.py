@@ -52,6 +52,9 @@ class HardwareInfo:
         self.cpu_name: str = ""
         self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
+        # "cuda" | "vulkan" | "none": a Vulkan card is a GPU without being CUDA,
+        # and image generation is the caller that needs exactly that distinction.
+        self.accelerator: str = "none"
         self.cuda_version: str = ""
         self.platform: str = "cpu"
 
@@ -146,6 +149,7 @@ class ResourceManager:
             hw.used_vram_mb = info.used_vram_mb
             hw.available_vram_mb = info.available_vram_mb
             hw.cuda_detected = info.cuda_detected
+            hw.accelerator = info.accelerator
             hw.cuda_version = info.cuda_version
             if hw.cuda_detected:
                 logger.info(
@@ -160,6 +164,7 @@ class ResourceManager:
             logger.warning(f"GPU detection failed: {e}")
             hw.platform = "cpu"
             hw.cuda_detected = False
+            hw.accelerator = "none"
 
         self.hardware = hw
         self._start_vram_polling()

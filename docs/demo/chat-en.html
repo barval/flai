@@ -4173,6 +4173,42 @@ video {
     color: #f0b45b;
 }
 
+/* The node panel's header: the title and the button that clears the selection. */
+.graph-panel-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+}
+
+.graph-panel-head h4 {
+    margin: 0 0 0.25rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.graph-panel-close {
+    flex: 0 0 auto;
+    padding: 0 0.3rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1.2;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.graph-panel-close:hover {
+    opacity: 1;
+    border-color: #c8c8c8;
+}
+
+.dark-theme .graph-panel-close:hover {
+    border-color: #444;
+}
+
 .graph-filter-row {
     display: flex;
     align-items: flex-start;
@@ -9678,6 +9714,42 @@ video {
     color: #f0b45b;
 }
 
+/* The node panel's header: the title and the button that clears the selection. */
+.graph-panel-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+}
+
+.graph-panel-head h4 {
+    margin: 0 0 0.25rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.graph-panel-close {
+    flex: 0 0 auto;
+    padding: 0 0.3rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1.2;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.graph-panel-close:hover {
+    opacity: 1;
+    border-color: #c8c8c8;
+}
+
+.dark-theme .graph-panel-close:hover {
+    border-color: #444;
+}
+
 .graph-filter-row {
     display: flex;
     align-items: flex-start;
@@ -11386,6 +11458,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_path_pick': "Pick the second node of the path",
     'graph_clear_path': "Clear path",
     'graph_no_relations': "No relations",
+    'graph_panel_close': "Close",
     'graph_path_cleared': "Path highlight cleared",
     'graph_path_mode': "Path",
     'graph_path_cancel': "Cancel path",
@@ -14134,6 +14207,18 @@ function initDocumentsView() {
         });
     }
 
+    // Back to the view without a selection: colours, panel, and the two
+    // half-finished modes (merge and path) that hang off a selected node.
+    function clearSelection() {
+        selectedNode = null;
+        mergeSourceId = null;
+        pathSourceId = null;
+        if (pathMode) setPathMode(false, true);
+        resetColors();
+        renderSidePanel(null);
+        setStatus('');
+    }
+
     function resetColors() {
         if (!graphInstance) return;
         graphInstance.nodeColor(nodeColorFor);
@@ -14211,7 +14296,11 @@ function initDocumentsView() {
             })
             .join('');
         panel.innerHTML =
+            '<div class="graph-panel-head">' +
             '<h4>' + escapeHtml(node.label) + '</h4>' +
+            '<button type="button" class="graph-panel-close" id="graph-panel-close" title="' +
+            escapeHtml(t('graph_panel_close', 'Close')) + '">✕</button>' +
+            '</div>' +
             '<div class="graph-node-kind">' + escapeHtml(node.kind || '') + '</div>' +
             (node.shared && node.owner
                 ? '<div class="graph-node-shared">👥 ' + escapeHtml(t('graph_shared_by', 'Shared by')) + ': ' +
@@ -14552,6 +14641,10 @@ function initDocumentsView() {
             startMerge(selectedNode);
             return;
         }
+        if (event.target.closest('#graph-panel-close')) {
+            clearSelection();
+            return;
+        }
         if (event.target.closest('#graph-clear-path')) {
             resetColors();
             setStatus(t('graph_path_cleared', 'Path highlight cleared'));
@@ -14607,7 +14700,10 @@ function initDocumentsView() {
             search.addEventListener('keydown', function (event) {
                 if (event.key !== 'Enter' || !graphInstance) return;
                 const needle = search.value.trim().toLowerCase();
-                if (!needle) return;
+                if (!needle) {
+                    clearSelection();
+                    return;
+                }
                 const found = (graphInstance.graphData().nodes || []).find(function (node) {
                     return (node.label || '').toLowerCase().indexOf(needle) !== -1;
                 });

@@ -94,11 +94,13 @@ SD_CLI = "/usr/local/bin/sd-cli"
 # Lock to serialize generation (one at a time)
 _lock = threading.Lock()
 
-# ── CUDA detection ──
-# Preferred backend is baked into the image (SD_BACKEND build arg) — cuda maps
-# to nvidia-smi live check, vulkan/cpu are treated as non-CUDA.
+# ── Backend detection ──
+# The backend is baked into the image (SD_BACKEND build arg). A Vulkan build is a
+# GPU build and must not be treated like the CPU one, which is what the earlier
+# cuda-only check did on AMD and Intel hosts.
 _DEFAULT_BACKEND = os.environ.get("SD_BACKEND", "cuda")
 _CUDA_AVAILABLE: bool | None = None
+_VULKAN_AVAILABLE: bool | None = None
 
 
 def _check_cuda() -> bool:
@@ -205,9 +207,39 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"Stable Diffusion Wrapper is running\n")
 
 
+def _check_vulkan() -> bool:
+    """True when a Vulkan build actually enumerates a device.
+
+    ``sd-cli --list-devices`` prints one device per line, and the CPU backend is
+    always there, so the probe looks for a Vulkan entry rather than for output.
+    """
+    global _VULKAN_AVAILABLE
+    if _VULKAN_AVAILABLE is not None:
+        return _VULKAN_AVAILABLE
+    if _DEFAULT_BACKEND != "vulkan":
+        _VULKAN_AVAILABLE = False
+    else:
+        try:
+            result = subprocess.run([SD_CLI, "--list-devices"], capture_output=True, timeout=30, text=True)
+            _VULKAN_AVAILABLE = "vulkan" in (result.stdout or "").lower()
+        except Exception:
+            _VULKAN_AVAILABLE = False
+    logger.info(f"Vulkan detection result: {_VULKAN_AVAILABLE} (backend={_DEFAULT_BACKEND})")
+    return _VULKAN_AVAILABLE
+
+
+def _gpu_backend() -> str:
+    """Which accelerator this image can use: ``cuda``, ``vulkan`` or ``cpu``."""
+    if _check_cuda():
+        return "cuda"
+    if _DEFAULT_BACKEND == "vulkan" and _check_vulkan():
+        return "vulkan"
+    return "cpu"
+
+
 def _validate_use_gpu(use_gpu: bool) -> bool:
-    """Return True only if user wants GPU AND CUDA is actually available."""
-    return use_gpu and _check_cuda()
+    """Return True only if the caller wants a GPU and one is actually usable."""
+    return use_gpu and _gpu_backend() != "cpu"
 
 
 def _build_generate_cmd(
@@ -237,7 +269,7 @@ def _build_generate_cmd(
     preview_path: path to write preview images (enables --preview tae)
     preview_interval: steps between preview updates (default 2)
     """
-    cuda = _check_cuda()
+    cuda = _gpu_backend() == "cuda"
     cmd = [
         SD_CLI,
         "--diffusion-model",

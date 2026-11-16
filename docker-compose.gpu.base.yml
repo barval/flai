@@ -45,10 +45,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - PYTHONDONTWRITEBYTECODE=1
       - CRAWL_API_TOKEN=${CRAWL4AI_API_TOKEN:-flai-crawler-token}
+      - NET_TOOLS_ENABLED=${NET_TOOLS_ENABLED:-false}
+      - NETDIAG_URL=http://flai-netdiag:8099
+      - NETDIAG_API_TOKEN=${NETDIAG_API_TOKEN:-}
       # Mirrors the sd container limit: the Wan planner runs in this process.
       - WAN_VIDEO_RAM_LIMIT_MB=12288
     networks:
       - flai_network
+      - netdiag_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -530,9 +534,43 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ============================================================
+  # NETDIAG (Optional - network diagnostics: dig, whois, ping, mtr, nmap, iperf3)
+  # ============================================================
+  # Its own network, shared with `web` only: it must not see PostgreSQL, Redis or
+  # the model servers, or a permitted user could reach an unauthenticated database
+  # through Docker's own networking. NET_RAW is what ping, mtr and SYN scanning need.
+  netdiag:
+    build:
+      context: ./services/netdiag
+    image: flai_netdiag:latest
+    container_name: flai-netdiag
+    profiles: ["with-net-tools"]
+    networks: [netdiag_network]
+    environment:
+      - NETDIAG_API_TOKEN=${NETDIAG_API_TOKEN:-}
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1g
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
 networks:
   flai_network:
     name: flai_network
+    driver: bridge
+  netdiag_network:
+    name: flai_netdiag_network
     driver: bridge
 
 volumes:

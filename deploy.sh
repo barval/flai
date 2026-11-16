@@ -170,6 +170,11 @@ enable_env_features() {
     else
         disable_env_key CRAWL_ENABLED "Disabling deep web crawl (Crawl4AI) in .env..."
     fi
+    if [[ "$WITH_NET_TOOLS" == "true" ]]; then
+        enable_env_key NET_TOOLS_ENABLED "Enabling network diagnostics (netdiag) in .env..." true
+    else
+        disable_env_key NET_TOOLS_ENABLED
+    fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
     else
@@ -764,6 +769,7 @@ resolve_stack() {
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
+    [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
 
     # Platform: --platform/--gpu-*, else FLAI_PLATFORM from the environment, else
     # what the host reports.
@@ -963,6 +969,8 @@ Options:
   --with-video        Deploy LTX-Video (fast backend, clips up to 10 s)
   --with-video-wan    Deploy Wan 2.2 TI2V 5B (quality backend, 5 s clips)
                       (mutually exclusive with --with-video; needs a GPU)
+  --with-net-tools    Deploy the network diagnostics sidecar (dig, whois, ping,
+                      mtr, nmap, iperf3); tools are then granted per user in the panel
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
@@ -1015,6 +1023,7 @@ WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
+WITH_NET_TOOLS=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 TWO_MODELS=false
@@ -1034,6 +1043,7 @@ for arg in "$@"; do
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
+        --with-net-tools)                 WITH_NET_TOOLS=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
         --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
         --gpu-amd)                       FLAI_PLATFORM=amd ;;

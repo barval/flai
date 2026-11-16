@@ -173,6 +173,11 @@ enable_env_features() {
     else
         disable_env_key CRAWL_ENABLED "Отключаю глубокий обход веба (Crawl4AI) в .env..."
     fi
+    if [[ "$WITH_NET_TOOLS" == "true" ]]; then
+        enable_env_key NET_TOOLS_ENABLED "Включаю сетевую диагностику (netdiag) в .env..." true
+    else
+        disable_env_key NET_TOOLS_ENABLED
+    fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Включаю долговременную память (SLM) в .env..."
     else
@@ -748,6 +753,7 @@ resolve_stack() {
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
     [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
     [[ "$WITH_CRAWLER" == "true" ]] && PROFILES="$PROFILES --profile with-crawler"
+    [[ "$WITH_NET_TOOLS" == "true" ]] && PROFILES="$PROFILES --profile with-net-tools"
 
     # Платформа: --platform/--gpu-*, иначе FLAI_PLATFORM из окружения, иначе автоопределение.
     local platform="${FLAI_PLATFORM:-auto}"
@@ -956,6 +962,8 @@ FLAI v13.5 — Скрипт развёртывания
   --with-video        Развернуть LTX-Video (быстрый бэкенд, клипы до 10 с)
   --with-video-wan    Развернуть Wan 2.2 TI2V 5B (качественный бэкенд, клипы 5 с)
                       (взаимоисключающе с --with-video; требуется GPU)
+--with-net-tools    Развернуть контейнер сетевой диагностики (dig, whois, ping,
+                     mtr, nmap, iperf3); инструменты выдаются пользователю в панели
 --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: выключено, используйте флаг для включения)
   --cpu               Принудительный режим только CPU (GPU не требуется)
@@ -1004,6 +1012,7 @@ WITH_VIDEO=false
 WITH_SLM=false
 WITH_SEARCH=false
 WITH_CRAWLER=false
+WITH_NET_TOOLS=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 TWO_MODELS=false
@@ -1023,6 +1032,7 @@ for arg in "$@"; do
         --with-slm)                      WITH_SLM=true ;;
         --with-search)                   WITH_SEARCH=true ;;
         --with-crawler)                  WITH_CRAWLER=true ;;
+        --with-net-tools)                 WITH_NET_TOOLS=true ;;
         --cpu)                           FLAI_PLATFORM=cpu ;;
         --gpu-nvidia)                    FLAI_PLATFORM=nvidia ;;
         --gpu-amd)                       FLAI_PLATFORM=amd ;;

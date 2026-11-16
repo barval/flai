@@ -10,11 +10,13 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
-- **Long-term memory with facts in it** — v13.3 gave facts a typed schema, validity
-  intervals and a deterministic supersede, but a measured 44 real user messages
-  produced none: the extractor is not the bottleneck, the material is. Next:
-  extraction quality on real conversations, a labelled set for `memory-eval`, and
-  the profile consolidation run on something worth consolidating.
+- **Long-term memory with facts in it** — v13.4 found and fixed the reason typed facts never
+  appeared: the parser required a `confidence` field the rules never asked for, so a correct fact
+  the model had extracted was dropped four times out of six. With that fixed, the remaining
+  obstacle is material, and it is now measured: the installation's 116 user messages contain no
+  statement of a durable personal fact — the history is test and demo traffic (weather, camera
+  checks, media prompts). Next: a conversation that actually says something about the user, or a
+  labelled set built from one; `memory-eval` has nothing to score until then.
 - **A classifier that could replace the request kernel** — the zero-shot probe is
   measured and parked: `laya-multilingual` scored 0.31–0.39 on the intent set
   against the kernel's 0.89–1.00, and the vendor's own fine-tune reaches 0.766 on

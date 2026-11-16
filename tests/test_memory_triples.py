@@ -205,3 +205,24 @@ class TestPastPeriods:
 
         assert "Тбилиси" in block
         assert "2024" in block and "Москва" in block
+
+
+@pytest.mark.unit
+def test_a_fact_without_a_confidence_field_is_still_a_fact():
+    """The rules ask for the field; the model copies it only sometimes.
+
+    Measured on the live model: five of six statements that name a durable fact
+    came back as valid JSON without `confidence`, and every one of them stored
+    nothing because the parser defaulted the missing field to zero.
+    """
+    from app.memory_triples import parse_triples
+
+    facts = parse_triples('[{"predicate": "lives_in", "value": "Тбилиси"}]')
+    assert [fact["predicate"] for fact in facts] == ["lives_in"]
+
+
+@pytest.mark.unit
+def test_an_explicit_low_confidence_is_still_dropped():
+    from app.memory_triples import parse_triples
+
+    assert parse_triples('[{"predicate": "lives_in", "value": "Тбилиси", "confidence": 0.2}]') == []

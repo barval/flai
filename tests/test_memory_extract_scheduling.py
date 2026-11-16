@@ -20,6 +20,9 @@ def _queue():
     queue.app = app
     queue.logger = MagicMock()
     queue.redis = MagicMock()
+    queue.redis.incr.return_value = 1
+    queue.redis.zadd.return_value = 1
+    queue.redis.zcard.return_value = 0
     queue.queue_key = "request_queue"
     queue.slow_queue_key = "slow_request_queue"
     queue.background_queue_key = "background_queue"
@@ -48,7 +51,7 @@ def test_idle_work_does_not_raise_the_interrupt_flag():
 
 def test_gate_closes_while_a_chat_request_is_recent():
     queue, redis = _queue()
-    redis.llen.side_effect = [3, 0, 0]  # background, fast, slow
+    redis.zcard.side_effect = [3, 0, 0]  # background, fast, slow
     redis.exists.return_value = 1
 
     assert queue.background_gate_open() is False
@@ -56,7 +59,7 @@ def test_gate_closes_while_a_chat_request_is_recent():
 
 def test_gate_closes_when_a_user_task_is_queued():
     queue, redis = _queue()
-    redis.llen.side_effect = [3, 0, 1]  # a slow-queue task is waiting
+    redis.zcard.side_effect = [3, 0, 1]  # a slow-queue task is waiting
     redis.exists.return_value = 0
 
     assert queue.background_gate_open() is False
@@ -64,7 +67,7 @@ def test_gate_closes_when_a_user_task_is_queued():
 
 def test_gate_opens_when_everything_is_idle():
     queue, redis = _queue()
-    redis.llen.side_effect = [3, 0, 0]
+    redis.zcard.side_effect = [3, 0, 0]
     redis.exists.return_value = 0
 
     assert queue.background_gate_open() is True
@@ -72,7 +75,7 @@ def test_gate_opens_when_everything_is_idle():
 
 def test_gate_is_closed_when_there_is_nothing_to_do():
     queue, redis = _queue()
-    redis.llen.side_effect = [0, 0, 0]
+    redis.zcard.side_effect = [0, 0, 0]
     redis.exists.return_value = 0
 
     assert queue.background_gate_open() is False
@@ -88,7 +91,7 @@ def test_summary_task_is_deduplicated_per_session():
     redis.set.return_value = False  # already pending
 
     assert queue.add_session_summary_task("s1", 40) is None
-    redis.rpush.assert_not_called()
+    redis.zadd.assert_not_called()
 
 
 def test_summary_task_is_queued_once():
@@ -96,5 +99,5 @@ def test_summary_task_is_queued_once():
     redis.set.return_value = True
 
     assert queue.add_session_summary_task("s1", 40) is not None
-    redis.rpush.assert_called_once()
-    assert redis.rpush.call_args[0][0] == queue.background_queue_key
+    redis.zadd.assert_called_once()
+    assert redis.zadd.call_args[0][0] == queue._ready_key(queue.background_queue_key)

@@ -211,7 +211,7 @@ def test_delete_removes_index_file_and_document(client, api_user, test_app, rag_
 
     deleted = client.delete(f"{FILES}/{doc_id}", headers=bearer(api_user))
     assert deleted.status_code == 200
-    rag_module.delete_document.assert_called_once_with(doc_id, "apiuser")
+    rag_module.delete_document.assert_called_once_with(doc_id, "apiuser", refresh_stats=True)
     assert not os.path.exists(stored)
     assert db.get_document(doc_id, "apiuser") is None
 

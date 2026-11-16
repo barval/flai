@@ -202,8 +202,8 @@ def test_queue_status_includes_queued_document_tasks_and_document_id():
     }
     queue.redis = Mock()
     queue.redis.hgetall.side_effect = [{}, {b"active-doc-task": processing_task}, {}]
-    queue.redis.llen.side_effect = [0, 0, 1]
-    queue.redis.lrange.return_value = [queued_task]
+    queue.redis.zrange.side_effect = [[], [], [queued_task]]
+    queue.redis.zcard.return_value = 0
     queue._deserialize = lambda value: value
     queue._format_request_info = RedisRequestQueue._format_request_info.__get__(queue)
 

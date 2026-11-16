@@ -132,8 +132,13 @@ class TestCrawlTask:
         redis = Mock()
         redis.blpop.return_value = None
         redis.llen.return_value = 1
+        redis.incr.return_value = 1
+        redis.zadd.return_value = 1
+        redis.zcard.return_value = 0
+        redis.zcount.return_value = 1
         pipe = Mock()
         pipe.execute.return_value = []
+        pipe.zadd.return_value = 1
         redis.pipeline.return_value = pipe
         return redis
 
@@ -169,8 +174,8 @@ class TestCrawlTask:
 
         queue._process_crawl_task.assert_not_called()
         assert result["status"] == "queued"
-        pushed_key = mock_redis.pipeline.return_value.rpush.call_args[0][0]
-        assert pushed_key == queue.crawl_queue_key
+        pushed_key = mock_redis.pipeline.return_value.zadd.call_args[0][0]
+        assert pushed_key == queue._ready_key(queue.crawl_queue_key)
         assert pushed_key not in (queue.queue_key, queue.slow_queue_key)
 
     def test_crawl_action_takes_the_url_from_the_user_message(self, mock_app, mock_redis):
@@ -200,7 +205,8 @@ class TestCrawlTask:
             True,
         )
 
-        queued = queue._deserialize(mock_redis.pipeline.return_value.rpush.call_args[0][1])
+        mapping = mock_redis.pipeline.return_value.zadd.call_args[0][1]
+        queued = queue._deserialize(next(iter(mapping)))
         assert queued["data"]["url"] == "https://docs.example.com/guide"
         # The router's query stays the reasoning handoff.
         assert queued["data"]["query"] == "изучи документацию на сайте"

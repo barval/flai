@@ -13,6 +13,8 @@ class FakeRedis:
     def __init__(self):
         self.values: dict = {}
         self.lists: dict = {}
+        self.sorted_sets: dict = {}
+        self.seq = 0
 
     def exists(self, key):
         return 1 if key in self.values else 0
@@ -36,3 +38,22 @@ class FakeRedis:
 
     def llen(self, key):
         return len(self.lists.get(key, []))
+
+    # The ready queue is a sorted set ranked by class (app/priority.py).
+    def incr(self, key):
+        self.seq += 1
+        return self.seq
+
+    def zadd(self, key, mapping):
+        self.sorted_sets.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    def zcard(self, key):
+        return len(self.sorted_sets.get(key, {}))
+
+    def zcount(self, key, low, high):
+        return len(self.sorted_sets.get(key, {}))
+
+    def zrange(self, key, start, end, withscores=False):
+        items = sorted(self.sorted_sets.get(key, {}).items(), key=lambda pair: pair[1])
+        return [member for member, _score in items]

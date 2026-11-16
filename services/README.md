@@ -4,7 +4,7 @@ This directory contains deployment configurations for AI backend services.
 
 ## llama-swap (Required)
 
-Runs [llama-swap](https://github.com/mostlygeek/llama-swap) (image `ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991`, container `flai-llamaswap`, port 8080) — a llama.cpp proxy that loads/unloads GGUF models on demand. Models live in `services/llamacpp/models/` (one subdirectory per model, mounted as `/models`); llama-swap spawns a `llama-server` per model from the generated `config/llama-swap.yaml` (the web app rewrites it on every admin save).
+Runs [llama-swap](https://github.com/mostlygeek/llama-swap) (image `ghcr.io/mostlygeek/llama-swap:v273-cuda-b12407`, container `flai-llamaswap`, port 8080) — a llama.cpp proxy that loads/unloads GGUF models on demand. Models live in `services/llamacpp/models/` (one subdirectory per model, mounted as `/models`); llama-swap spawns a `llama-server` per model from the generated `config/llama-swap.yaml` (the web app rewrites it on every admin save).
 
 ### Setup
 

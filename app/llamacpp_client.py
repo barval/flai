@@ -36,7 +36,7 @@ def _thinking_kwargs_needed(model_type: str) -> bool:
     all inside its token budget (37 of 37 cases fell back to "none"). The
     reasoning role keeps thinking — that is what it is for.
 
-    ``chat_template_kwargs`` is understood by llama-server (build b11889) and
+    ``chat_template_kwargs`` is understood by llama-server (build b12407) and
     ignored by templates that do not define the flag, so sending it is safe for
     models that do not think.
     """

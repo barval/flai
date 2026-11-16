@@ -37,9 +37,6 @@ This list is not a commitment. Items move when their priority changes, and an it
   - **GPU video and speech recognition on AMD/Intel** — LTX-Video needs a ROCm/SYCL PyTorch base and the
     Whisper `-gpu` image is CUDA-only.
   - **Real-hardware verification** of the AMD and Intel files; this project has NVIDIA and CPU only.
-- **llama-swap v268–v270 and llama.cpp v0.9.0** — the releases exist but the GHCR images do not
-  (`v270-cuda` is missing). When they are published: rebuild the pinned llama-swap image, re-run the
-  model/dry-load tests, and bump `LLAMA_SWAP_IMAGE`.
 - **Redis 8.4.8** — published without the `-alpine` variant this stack uses. Bump when that tag appears;
   the advisory on that line (PUBLISH larger than 4 GB across the cluster bus) is unreachable for a
   standalone instance.

@@ -115,12 +115,27 @@ def graph_chunk_refs(edges: list[dict], max_edges: int = 12) -> list[tuple[str, 
     return refs
 
 
-def shortest_path_edges(user_id: str, source: str, target: str, doc_ids: list[str] | None, hops: int | None = None) -> list[dict]:
+# A relation the extractor asserted, quoting evidence, and a link the graph adds
+# because two names share a chunk are different claims. Structural links are
+# drawn (they are what makes the scene navigable), but a *path* must mean "these
+# two things are described in relation to each other", not "their names occur in
+# the same paragraphs".
+STRUCTURAL_PREDICATES = ("co-occurs",)
+
+
+def shortest_path_edges(
+    user_id: str,
+    source: str,
+    target: str,
+    doc_ids: list[str] | None,
+    hops: int | None = None,
+    include_structural: bool = False,
+) -> list[dict]:
     """Edges along the shortest relation path between two entities.
 
     The search radius follows ``GRAPH_HOPS`` unless the caller pins it, so a
     deployment that widened its traversal does not silently keep a shorter path
-    radius.
+    radius. Structural links are excluded unless the caller asks for them.
     """
     if not source or not target or source == target:
         return []
@@ -131,6 +146,8 @@ def shortest_path_edges(user_id: str, source: str, target: str, doc_ids: list[st
 
         hops = max(1, int(setting("GRAPH_HOPS", 2))) * 2
     edges = get_kg_edges(user_id, [source], hops=hops, doc_ids=doc_ids)
+    if not include_structural:
+        edges = [edge for edge in edges if edge.get("predicate") not in STRUCTURAL_PREDICATES]
     graph = nx.DiGraph()
     by_pair: dict[tuple[str, str], dict] = {}
     for edge in edges:

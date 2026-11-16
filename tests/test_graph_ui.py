@@ -154,3 +154,16 @@ def test_co_occurrence_is_hidden_until_the_reader_asks_for_it():
     assert "FILTER_DEFAULTS_VERSION" in script
     # The stored list is honoured after the default has been applied once.
     assert "flai.graph.filterDefaults" in script
+
+
+def test_a_structural_link_never_looks_like_a_stated_relation():
+    """Shared chunks are drawn, but in their own colour and their own group."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    style = STYLE.read_text(encoding="utf-8")
+
+    assert "STRUCTURAL_PREDICATES = ['co-occurs']" in script
+    assert "function structuralLinkColor()" in script
+    assert "linkLineDash(linkDashFor)" in script
+    assert "graph_relations_structural" in script
+    assert ".graph-filter-dot-structural" in style
+    assert ".graph-pred-structural" in style

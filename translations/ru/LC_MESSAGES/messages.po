@@ -5777,3 +5777,11 @@ msgstr "Расположен в"
 #: app/templates/chat.html
 msgid "Related to"
 msgstr "Связан с"
+
+#: app/templates/chat.html
+msgid "Stated relations"
+msgstr "Утверждённые связи"
+
+#: app/templates/chat.html
+msgid "Structural, no quote"
+msgstr "Структурные, без цитаты"

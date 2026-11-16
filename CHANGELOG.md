@@ -26,6 +26,8 @@
 
 - **The unused full-text column left `rag_chunks`.** `tsv` was a generated `to_tsvector('russian', text)` with a GIN index, used by `ts_rank_cd`; BM25 over lemmas replaced that search and nothing has read the column since, while every chunk write paid an `to_tsvector` and an index update. The migration drops the index and the column (`DROP ... IF EXISTS`, so it is idempotent per start) — the table went from 9 800 kB to what the columns and two remaining indexes take, and a chunk insert no longer computes full-text data for nobody.
 
+- **A structural link never reads as a stated relation.** `co-occurs` is drawn dashed in its own amber (a different shade in the light and dark theme), sits in a separate **Structural, no quote** group in the Relations menu with a matching dot, and colours its name in the node card. `/api/graph/path` now excludes structural links by default: a path means "these two things are described in relation to each other", not "their names share paragraphs" — the exclusion is a parameter, so nothing is lost from the data. Tests: `tests/test_graph_api.py::test_a_path_is_made_of_stated_relations_not_shared_chunks`, `tests/test_graph_ui.py`.
+
 ### Fixed
 
 - **A document whose Qdrant collection is gone kept its lexical mirror.** `RagModule.delete_document()` treats "collection not found" as success, but returned before `_delete_chunks()`, so the chunks stayed in `rag_chunks` and — since this release — kept counting in the BM25 statistics: a document that no longer exists could still be retrieved. The mirror is cleared on that path too.

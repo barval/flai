@@ -10,6 +10,12 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
+  engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
+  in containers, the low-VRAM throughput they claim (8 GB cards), multimodal and embedding support,
+  model formats, MIT licensing and maintenance risk. Deliverable: a short report with measurements
+  on the reference hardware and a go/no-go for the serving layer.
+
 - **Long-term memory with facts in it** — v13.4 found and fixed the reason typed facts never
   appeared: the parser required a `confidence` field the rules never asked for, so a correct fact
   the model had extracted was dropped four times out of six. With that fixed, the remaining
@@ -48,12 +54,6 @@ This list is not a commitment. Items move when their priority changes, and an it
   not move:** both builds are `cu128`, so an RTX 3060 on a CUDA 12.2+ driver keeps working exactly as it
   does today (minor-version compatibility plus `NVIDIA_DISABLE_REQUIRE`, the same mechanism the rest of the
   stack already relies on).
-- **Alternative LLM inference engines (research)** — evaluate Strata, PolyStrata and other local
-  engines as a possible complement to llama.cpp + llama-swap: OpenAI-compatible serving on Linux and
-  in containers, the low-VRAM throughput they claim (8 GB cards), multimodal and embedding support,
-  model formats, MIT licensing and maintenance risk. Deliverable: a short report with measurements
-  on the reference hardware and a go/no-go for the serving layer.
-
 ## Documented behaviour worth knowing
 
 These are not roadmap items — they are current behaviour that surprises people often enough to be worth stating here:

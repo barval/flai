@@ -37,7 +37,7 @@ The numbers below are a snapshot. Refresh them with the commands listed under
 | PostgreSQL | 18.6 | 18.6 | Up to date |
 | Redis | 8.4.7 | 8.4.8 (security) | 8.4.8 has no `-alpine` variant yet, which is what this stack runs; newer lines exist (8.8, 8.10) and a line jump needs a queue test |
 | Qdrant | 1.20.0 | 1.20.0 | Up to date, client included |
-| llama-swap | v273 | v273 | Up to date. v268–v272 published no per-backend image — the image builds were failing upstream — so v273 is the first release since v267 with images to pull |
+| llama-swap | v273 | v273 | Up to date. v268–v272 did publish per-backend images (`v270-cuda13-b12124`, `v272-cuda13-b12375`, …); the note this table carried before read `v270-cuda`, a tag that never exists without a build suffix. v273 is the first release audited since v267 |
 | llama.cpp | b12407 | v1.0.0 (2026-11-13) | The v1.0.0 tag itself is b12359 and no llama-swap image carries it; b12407 is the build the v273 image bundles, the closest published one. Moves only with that image |
 | Whisper ASR | v1.10.0 | v1.10.0 | Up to date; the deploy now prefetches `large-v3-turbo`, the model the container actually loads |
 | Crawl4AI | 0.9.5 | 0.9.5 | Up to date |

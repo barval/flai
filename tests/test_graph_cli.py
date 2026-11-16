@@ -51,7 +51,7 @@ def test_graph_build_queues_one_seed_task_per_document(graph_env, queue, runner)
     result = runner.invoke(graph_build, ["--user", LOGIN, "--no-follow"])
 
     assert result.exit_code == 0, result.output
-    assert queue.redis.llen(queue.background_queue_key) == 1
+    assert queue.redis.zcard(queue._ready_key(queue.background_queue_key)) == 1
 
 
 def test_graph_build_never_calls_a_model(graph_env, queue, runner, test_app):

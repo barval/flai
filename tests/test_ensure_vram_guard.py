@@ -151,6 +151,11 @@ class TestVramWaitSelfHealing:
         ):
             rm.unload_video_pipeline = MagicMock()
             rm._poll_vram = MagicMock()
+            # The guard only waits when the model cannot sit next to what is
+            # resident: with the fixture's 15 GB free, 13.7 GB legitimately fits
+            # and co-residency returns immediately (v13.0). A nearly full card is
+            # what forces the unload-and-wait path this test is about.
+            rm.hardware.available_vram_mb = 2000
             result = rm.ensure_vram_for("reasoning", needed_mb=13736, timeout=1)
 
         assert result is False

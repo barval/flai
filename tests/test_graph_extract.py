@@ -136,7 +136,9 @@ def test_an_english_relation_lands_under_one_predicate(database):
     with get_db() as conn:
         c = conn.cursor()
         c.execute("SELECT predicate FROM kg_edges WHERE user_id = %s", (LOGIN,))
-        assert [row["predicate"] for row in c.fetchall()] == ["supplies"]
+        # The stated relation plus the structural link between the two entities
+        # that share the chunk: co-occurrence is added by every extraction.
+        assert sorted(row["predicate"] for row in c.fetchall()) == ["co-occurs", "supplies"]
 
 def test_a_stray_closing_fence_does_not_void_the_answer():
     from app.graph_extract import parse_extraction

@@ -186,8 +186,22 @@ questions, measured again on the restored corpus:
 | graph on | 0.763 | 0.837 | **0.933** | **8 974 chars** | 281 ms |
 
 The gain is real but small (+3.3 pp hit@10) and is paid for with more than twice the context, so the
-stage stays off by default; the open question is whether a smaller `GRAPH_SHARE` keeps the hit rate
-without the context.
+stage stays off by default. **Whether a smaller `GRAPH_SHARE` keeps the hit rate without the cost was
+measured, and the answer is no** — same 30 questions, retrieval only:
+
+| `GRAPH_SHARE` | hit@10 | MRR | nDCG@10 | context |
+|---|---|---|---|---|
+| off | 0.900 | 0.760 | 0.829 | 4 005 chars |
+| 0.15 | 0.933 | 0.763 | 0.837 | 8 978 chars |
+| 0.10 | 0.933 | 0.763 | 0.837 | 7 380 chars |
+| 0.05 | 0.900 | 0.760 | 0.829 | 5 684 chars |
+| 0.02 | 0.900 | 0.760 | 0.829 | 4 437 chars |
+
+One question of thirty flips, and it needs a share of at least 0.10: below that the bridging fragment
+no longer fits the allowance and the hit rate returns to the baseline. At 0.10 the context is still
+84 % larger, and the judged answers do not improve — mean score **0.417 against 0.433** with the stage
+off, the same 33 % fully right, two questions better and two worse. The graph remains a way to read a
+corpus, not a way to retrieve better from it.
 
 **Answer quality, the same 30 questions, graded by a model judge (2 = complete and correct):**
 

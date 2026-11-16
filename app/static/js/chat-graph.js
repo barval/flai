@@ -427,6 +427,7 @@
             group('graph_relations_structural', 'Structural, no quote', structural) ||
             '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
 
+        clampFilterPanel();
         list.querySelectorAll('.graph-filter-check').forEach(function (box) {
             box.addEventListener('change', function () {
                 if (box.checked) hiddenPredicates.delete(box.value);
@@ -747,6 +748,33 @@
 
     // The label names the action, not the current layer: while entities are
     // shown the button offers documents, and the other way round.
+    // A dropdown anchored to its button is only inside the screen while the
+    // button is: on a phone the toolbar wraps, the button sits where it fits,
+    // and a panel wider than the space to its left is clipped by the view.
+    // Measuring after the panel opens and pinning it to the visible edge costs
+    // one layout read and works for every button position.
+    function clampFilterPanel() {
+        const details = document.getElementById('graph-filters');
+        const list = document.getElementById('graph-filter-list');
+        if (!details || !list || !details.open) return;
+        list.style.left = '';
+        list.style.right = '';
+        const view = viewRoot();
+        const bounds = view ? view.getBoundingClientRect() : { left: 0, right: window.innerWidth };
+        const rect = list.getBoundingClientRect();
+        if (rect.left < bounds.left) {
+            list.style.left = '0px';
+            list.style.right = 'auto';
+        } else if (rect.right > bounds.right) {
+            list.style.right = '0px';
+            list.style.left = 'auto';
+        }
+    }
+
+    document.addEventListener('toggle', function (event) {
+        if (event.target && event.target.id === 'graph-filters') clampFilterPanel();
+    }, true);
+
     function reportLayer(layer) {
         const button = document.getElementById('graph-layer-btn');
         if (!button) return;

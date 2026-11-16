@@ -167,3 +167,13 @@ def test_a_structural_link_never_looks_like_a_stated_relation():
     assert "graph_relations_structural" in script
     assert ".graph-filter-dot-structural" in style
     assert ".graph-pred-structural" in style
+
+
+def test_the_relations_menu_stays_inside_the_view():
+    """Content-box width plus a wrapped toolbar clipped the panel's left edge."""
+    style = STYLE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "box-sizing: border-box" in style.split(".graph-filter-list {", 1)[1].split("}", 1)[0]
+    assert "function clampFilterPanel()" in script
+    assert "list.style.left = '0px'" in script

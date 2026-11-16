@@ -4213,6 +4213,16 @@ video {
     }
 }
 
+.graph-layer-btn.active {
+    border-color: #d9a219;
+    background: rgba(217, 162, 25, 0.18);
+}
+
+.dark-theme .graph-layer-btn.active {
+    border-color: #f0b45b;
+    background: rgba(240, 180, 91, 0.2);
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -9706,6 +9716,16 @@ video {
     }
 }
 
+.graph-layer-btn.active {
+    border-color: #d9a219;
+    background: rgba(217, 162, 25, 0.18);
+}
+
+.dark-theme .graph-layer-btn.active {
+    border-color: #f0b45b;
+    background: rgba(240, 180, 91, 0.2);
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -11363,6 +11383,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_clear_path': "Clear path",
     'graph_no_relations': "No relations",
     'graph_path_cleared': "Path highlight cleared",
+    'graph_path_mode': "Path",
+    'graph_path_cancel': "Cancel path",
+    'graph_path_first': "Choose the first node of the path",
     'graph_relations_stated': "Stated relations",
     'graph_relations_structural': "Structural, no quote",
     'graph_merge_start': "Merge into another node\u2026",
@@ -13671,6 +13694,9 @@ function initDocumentsView() {
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // Two taps on a phone, where a right click does not exist: the button turns
+    // the next two node taps into "from" and "to".
+    let pathMode = false;
     // The node waiting to be merged into another one (two clicks, no modal).
     let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
@@ -13931,9 +13957,19 @@ function initDocumentsView() {
                     renderSidePanel(node);
                     return;
                 }
+                if (pathMode && !pathSourceId) {
+                    pathSourceId = node.id;
+                    selectedNode = node;
+                    focusNode(node);
+                    renderSidePanel(node);
+                    setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
-                    showPath(pathSourceId, node.id);
+                    const source = pathSourceId;
                     pathSourceId = null;
+                    setPathMode(false, true);
+                    showPath(source, node.id);
                 }
                 selectedNode = node;
                 focusNode(node);
@@ -14304,6 +14340,7 @@ function initDocumentsView() {
         }
         selectedNode = null;
         mergeSourceId = null;
+        setPathMode(false, true);
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -14440,6 +14477,20 @@ function initDocumentsView() {
         if (event.target && event.target.id === 'graph-filters') clampFilterPanel();
     }, true);
 
+    function setPathMode(on, silent) {
+        pathMode = on;
+        if (!on) pathSourceId = null;
+        const button = document.getElementById('graph-path-mode');
+        if (button) {
+            button.classList.toggle('active', on);
+            button.setAttribute('aria-pressed', on ? 'true' : 'false');
+            button.textContent = on
+                ? t('graph_path_cancel', 'Cancel path')
+                : t('graph_path_mode', 'Path');
+        }
+        if (!silent) setStatus(on ? t('graph_path_first', 'Pick the first node of the path') : '');
+    }
+
     function reportLayer(layer) {
         const button = document.getElementById('graph-layer-btn');
         if (!button) return;
@@ -14489,6 +14540,10 @@ function initDocumentsView() {
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-path-mode')) {
+            setPathMode(!pathMode);
+            return;
+        }
         if (event.target.closest('#graph-merge-start')) {
             startMerge(selectedNode);
             return;
@@ -21473,6 +21528,8 @@ window.relocateChatControls = relocateChatControls;
             <button type="button" class="graph-layer-btn" id="graph-layer-btn" data-layer="documents"
                     title="Switch to documents">Documents</button>
             <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="Switch to 2D">2D</button>
+            <button type="button" class="graph-layer-btn" id="graph-path-mode" aria-pressed="false"
+                    title="Show the path between two nodes">Path</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="Find a node">
             <details class="graph-filters" id="graph-filters">
                 <summary title="Show or hide relation types">Relations</summary>

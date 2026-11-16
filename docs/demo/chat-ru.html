@@ -4213,6 +4213,16 @@ video {
     }
 }
 
+.graph-layer-btn.active {
+    border-color: #d9a219;
+    background: rgba(217, 162, 25, 0.18);
+}
+
+.dark-theme .graph-layer-btn.active {
+    border-color: #f0b45b;
+    background: rgba(240, 180, 91, 0.2);
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -9706,6 +9716,16 @@ video {
     }
 }
 
+.graph-layer-btn.active {
+    border-color: #d9a219;
+    background: rgba(217, 162, 25, 0.18);
+}
+
+.dark-theme .graph-layer-btn.active {
+    border-color: #f0b45b;
+    background: rgba(240, 180, 91, 0.2);
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;
@@ -11333,6 +11353,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_clear_path': "\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u0443\u0442\u044c",
     'graph_no_relations': "\u041d\u0435\u0442 \u0441\u0432\u044f\u0437\u0435\u0439",
     'graph_path_cleared': "\u041f\u043e\u0434\u0441\u0432\u0435\u0442\u043a\u0430 \u043f\u0443\u0442\u0438 \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u0430",
+    'graph_path_mode': "\u041f\u0443\u0442\u044c",
+    'graph_path_cancel': "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u043f\u0443\u0442\u044c",
+    'graph_path_first': "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u0435\u0440\u0432\u044b\u0439 \u0443\u0437\u0435\u043b \u043f\u0443\u0442\u0438",
     'graph_relations_stated': "\u0423\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043d\u043d\u044b\u0435 \u0441\u0432\u044f\u0437\u0438",
     'graph_relations_structural': "\u0421\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u043d\u044b\u0435, \u0431\u0435\u0437 \u0446\u0438\u0442\u0430\u0442\u044b",
     'graph_merge_start': "\u0421\u043b\u0438\u0442\u044c \u0441 \u0434\u0440\u0443\u0433\u0438\u043c \u0443\u0437\u043b\u043e\u043c\u2026",
@@ -13641,6 +13664,9 @@ function initDocumentsView() {
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // Two taps on a phone, where a right click does not exist: the button turns
+    // the next two node taps into "from" and "to".
+    let pathMode = false;
     // The node waiting to be merged into another one (two clicks, no modal).
     let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
@@ -13901,9 +13927,19 @@ function initDocumentsView() {
                     renderSidePanel(node);
                     return;
                 }
+                if (pathMode && !pathSourceId) {
+                    pathSourceId = node.id;
+                    selectedNode = node;
+                    focusNode(node);
+                    renderSidePanel(node);
+                    setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
-                    showPath(pathSourceId, node.id);
+                    const source = pathSourceId;
                     pathSourceId = null;
+                    setPathMode(false, true);
+                    showPath(source, node.id);
                 }
                 selectedNode = node;
                 focusNode(node);
@@ -14274,6 +14310,7 @@ function initDocumentsView() {
         }
         selectedNode = null;
         mergeSourceId = null;
+        setPathMode(false, true);
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -14410,6 +14447,20 @@ function initDocumentsView() {
         if (event.target && event.target.id === 'graph-filters') clampFilterPanel();
     }, true);
 
+    function setPathMode(on, silent) {
+        pathMode = on;
+        if (!on) pathSourceId = null;
+        const button = document.getElementById('graph-path-mode');
+        if (button) {
+            button.classList.toggle('active', on);
+            button.setAttribute('aria-pressed', on ? 'true' : 'false');
+            button.textContent = on
+                ? t('graph_path_cancel', 'Cancel path')
+                : t('graph_path_mode', 'Path');
+        }
+        if (!silent) setStatus(on ? t('graph_path_first', 'Pick the first node of the path') : '');
+    }
+
     function reportLayer(layer) {
         const button = document.getElementById('graph-layer-btn');
         if (!button) return;
@@ -14459,6 +14510,10 @@ function initDocumentsView() {
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-path-mode')) {
+            setPathMode(!pathMode);
+            return;
+        }
         if (event.target.closest('#graph-merge-start')) {
             startMerge(selectedNode);
             return;
@@ -21443,6 +21498,8 @@ window.relocateChatControls = relocateChatControls;
             <button type="button" class="graph-layer-btn" id="graph-layer-btn" data-layer="documents"
                     title="Переключить на документы">Документы</button>
             <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="Переключить в 2D">2D</button>
+            <button type="button" class="graph-layer-btn" id="graph-path-mode" aria-pressed="false"
+                    title="Показать путь между двумя узлами">Путь</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="Найти узел">
             <details class="graph-filters" id="graph-filters">
                 <summary title="Показать или скрыть типы связей">Связи</summary>

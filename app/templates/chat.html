@@ -336,6 +336,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'graph_clear_path': {{ _('Clear path')|tojson }},
     'graph_no_relations': {{ _('No relations')|tojson }},
     'graph_path_cleared': {{ _('Path highlight cleared')|tojson }},
+    'graph_path_mode': {{ _('Path')|tojson }},
+    'graph_path_cancel': {{ _('Cancel path')|tojson }},
+    'graph_path_first': {{ _('Pick the first node of the path')|tojson }},
     'graph_relations_stated': {{ _('Stated relations')|tojson }},
     'graph_relations_structural': {{ _('Structural, no quote')|tojson }},
     'graph_merge_start': {{ _('Merge into another node…')|tojson }},
@@ -478,6 +481,8 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
             <button type="button" class="graph-layer-btn" id="graph-layer-btn" data-layer="documents"
                     title="{{ _('Switch to documents') }}">{{ _('Documents') }}</button>
             <button type="button" class="graph-layer-btn" id="graph-kind-btn" title="{{ _('Switch to 2D') }}">2D</button>
+            <button type="button" class="graph-layer-btn" id="graph-path-mode" aria-pressed="false"
+                    title="{{ _('Show the path between two nodes') }}">{{ _('Path') }}</button>
             <input type="search" id="graph-search-input" class="graph-search" placeholder="{{ _('Find a node') }}">
             <details class="graph-filters" id="graph-filters">
                 <summary title="{{ _('Show or hide relation types') }}">{{ _('Relations') }}</summary>

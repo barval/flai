@@ -194,6 +194,16 @@
     }
 }
 
+.graph-layer-btn.active {
+    border-color: #d9a219;
+    background: rgba(217, 162, 25, 0.18);
+}
+
+.dark-theme .graph-layer-btn.active {
+    border-color: #f0b45b;
+    background: rgba(240, 180, 91, 0.2);
+}
+
 .graph-search {
     min-width: 10rem;
     padding: 0.2rem 0.5rem;

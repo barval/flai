@@ -15,6 +15,9 @@
     let focusedDoc = '';
     let selectedNode = null;
     let pathSourceId = null;
+    // Two taps on a phone, where a right click does not exist: the button turns
+    // the next two node taps into "from" and "to".
+    let pathMode = false;
     // The node waiting to be merged into another one (two clicks, no modal).
     let mergeSourceId = null;
     // The graph as the server sent it; the renderer only ever gets a filtered
@@ -275,9 +278,19 @@
                     renderSidePanel(node);
                     return;
                 }
+                if (pathMode && !pathSourceId) {
+                    pathSourceId = node.id;
+                    selectedNode = node;
+                    focusNode(node);
+                    renderSidePanel(node);
+                    setStatus(t('graph_path_pick', 'Pick the second node of the path'));
+                    return;
+                }
                 if (pathSourceId && pathSourceId !== node.id) {
-                    showPath(pathSourceId, node.id);
+                    const source = pathSourceId;
                     pathSourceId = null;
+                    setPathMode(false, true);
+                    showPath(source, node.id);
                 }
                 selectedNode = node;
                 focusNode(node);
@@ -648,6 +661,7 @@
         }
         selectedNode = null;
         mergeSourceId = null;
+        setPathMode(false, true);
         renderSidePanel(null);
 
         // The renderers read `links`; the API names the array `edges`. The
@@ -784,6 +798,20 @@
         if (event.target && event.target.id === 'graph-filters') clampFilterPanel();
     }, true);
 
+    function setPathMode(on, silent) {
+        pathMode = on;
+        if (!on) pathSourceId = null;
+        const button = document.getElementById('graph-path-mode');
+        if (button) {
+            button.classList.toggle('active', on);
+            button.setAttribute('aria-pressed', on ? 'true' : 'false');
+            button.textContent = on
+                ? t('graph_path_cancel', 'Cancel path')
+                : t('graph_path_mode', 'Path');
+        }
+        if (!silent) setStatus(on ? t('graph_path_first', 'Pick the first node of the path') : '');
+    }
+
     function reportLayer(layer) {
         const button = document.getElementById('graph-layer-btn');
         if (!button) return;
@@ -833,6 +861,10 @@
     // re-render of the documents list.
     document.addEventListener('click', function (event) {
         if (!event.target || !event.target.closest) return;
+        if (event.target.closest('#graph-path-mode')) {
+            setPathMode(!pathMode);
+            return;
+        }
         if (event.target.closest('#graph-merge-start')) {
             startMerge(selectedNode);
             return;

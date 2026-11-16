@@ -26,6 +26,8 @@
 
 - **The unused full-text column left `rag_chunks`.** `tsv` was a generated `to_tsvector('russian', text)` with a GIN index, used by `ts_rank_cd`; BM25 over lemmas replaced that search and nothing has read the column since, while every chunk write paid an `to_tsvector` and an index update. The migration drops the index and the column (`DROP ... IF EXISTS`, so it is idempotent per start) — the table went from 9 800 kB to what the columns and two remaining indexes take, and a chunk insert no longer computes full-text data for nobody.
 
+- **The path between two nodes is reachable without a right click.** The path was built by right-clicking the first node and clicking the second, and a touch screen has no context menu — so on a phone the whole feature was unreachable and its Clear button could never appear. A **Path** button now turns the next two node taps into “from” and “to” (pressed state visible, the second tap on the same node cancels), while the right-click shortcut stays for the desktop.
+
 - **A structural link never reads as a stated relation.** `co-occurs` is drawn dashed in its own amber (a different shade in the light and dark theme), sits in a separate **Structural, no quote** group in the Relations menu with a matching dot, and colours its name in the node card. `/api/graph/path` now excludes structural links by default: a path means "these two things are described in relation to each other", not "their names share paragraphs" — the exclusion is a parameter, so nothing is lost from the data. Tests: `tests/test_graph_api.py::test_a_path_is_made_of_stated_relations_not_shared_chunks`, `tests/test_graph_ui.py`.
 
 ### Fixed

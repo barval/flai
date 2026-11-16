@@ -180,3 +180,15 @@ def test_the_relations_menu_stays_inside_the_view():
     # the opposite side when the toolbar wrapped.
     assert "bounds.left - detailsRect.left" in script
     assert "list.style.right = 'auto'" in script
+
+
+def test_the_path_can_be_built_without_a_right_click():
+    """A touch screen has no context menu, so the path needs a button."""
+    html = TEMPLATE.read_text(encoding="utf-8")
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'id="graph-path-mode"' in html
+    assert "let pathMode" in script
+    assert "function setPathMode(" in script
+    assert "pathMode && !pathSourceId" in script
+    assert "graph-layer-btn.active" in STYLE.read_text(encoding="utf-8")

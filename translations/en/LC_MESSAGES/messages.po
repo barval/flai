@@ -5754,3 +5754,19 @@ msgstr "Stated relations"
 #: app/templates/chat.html
 msgid "Structural, no quote"
 msgstr "Structural, no quote"
+
+#: app/templates/chat.html
+msgid "Path"
+msgstr "Path"
+
+#: app/templates/chat.html
+msgid "Cancel path"
+msgstr "Cancel path"
+
+#: app/templates/chat.html
+msgid "Pick the first node of the path"
+msgstr "Choose the first node of the path"
+
+#: app/templates/chat.html
+msgid "Show the path between two nodes"
+msgstr "Show the path between two nodes"

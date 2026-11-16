@@ -52,6 +52,9 @@ class HardwareInfo:
         self.cpu_name: str = ""
         self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
+        # "cuda" | "vulkan" | "none": a Vulkan card is a GPU without being CUDA,
+        # and image generation is the caller that needs exactly that distinction.
+        self.accelerator: str = "none"
         self.cuda_version: str = ""
         self.platform: str = "cpu"
 
@@ -146,6 +149,7 @@ class ResourceManager:
             hw.used_vram_mb = info.used_vram_mb
             hw.available_vram_mb = info.available_vram_mb
             hw.cuda_detected = info.cuda_detected
+            hw.accelerator = info.accelerator
             hw.cuda_version = info.cuda_version
             if hw.cuda_detected:
                 logger.info(
@@ -160,6 +164,7 @@ class ResourceManager:
             logger.warning(f"GPU detection failed: {e}")
             hw.platform = "cpu"
             hw.cuda_detected = False
+            hw.accelerator = "none"
 
         self.hardware = hw
         self._start_vram_polling()
@@ -576,8 +581,9 @@ class ResourceManager:
             "warning": "",
         }
 
-        if not hw.cuda_detected:
-            # CPU-only mode
+        if hw.accelerator == "none":
+            # No device at all. An NVIDIA card whose memory could not be read also
+            # lands here, as it always did.
             result["n_gpu_layers"] = 0
             result["flash_attn"] = False
             result["warning"] = "No GPU detected — running CPU-only mode"
@@ -627,9 +633,15 @@ class ResourceManager:
             result["cache_capacity"] = 1024
             result["warning"] = f"Limited VRAM ({total_vram}MB) — heavy CPU offloading"
         else:
-            # <8GB — CPU-only
+            # <8GB, or a card that reported no memory at all: plan on the CPU.
+            # The two are not the same message — an unreadable Vulkan heap is not
+            # a small card, and telling the user it is sends them to buy RAM.
             result["n_gpu_layers"] = 0
-            result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
+            result["warning"] = (
+                "GPU detected but it reported no usable VRAM — planning all layers on CPU"
+                if not total_vram
+                else f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
+            )
 
         # Degradation: ensure model fits in available VRAM BEFORE loading
         # Iteratively reduce n_gpu_layers if estimated VRAM exceeds capacity

@@ -4,7 +4,7 @@
 #
 # Vendor delta against docker-compose.gpu.nvidia.yml:
 #   llama-swap   Vulkan llama-server image, /dev/kfd + /dev/dri, video/render groups
-#   sd_cpp       CPU build (no Vulkan path in sd_wrapper yet)
+#   sd_cpp       Vulkan build (unverified on real AMD hardware)
 #   ltxvideo     CPU build (no ROCm PyTorch base yet)
 #   whisper      CPU image (the -gpu tag is CUDA)
 #   web          no device passthrough: AMD VRAM is read from /sys/class/drm
@@ -28,10 +28,16 @@ services:
       - render
 
   sd_cpp:
-    image: flai-sd_cpp:cpu
+    # Vulkan build. NOT VERIFIED on real AMD hardware — see docs/UPGRADES.md.
+    image: flai-sd_cpp:vulkan
     build:
       args:
-        SD_BACKEND: cpu
+        SD_BACKEND: vulkan
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
 
   ltxvideo:
     image: flai-ltxvideo:cpu

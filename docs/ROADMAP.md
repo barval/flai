@@ -10,30 +10,32 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
-- **Long-term memory with facts in it** — v13.3 gave facts a typed schema, validity
-  intervals and a deterministic supersede, but a measured 44 real user messages
-  produced none: the extractor is not the bottleneck, the material is. Next:
-  extraction quality on real conversations, a labelled set for `memory-eval`, and
-  the profile consolidation run on something worth consolidating.
+- **Long-term memory with facts in it** — v13.4 found and fixed the reason typed facts never
+  appeared: the parser required a `confidence` field the rules never asked for, so a correct fact
+  the model had extracted was dropped four times out of six. With that fixed, the remaining
+  obstacle is material, and it is now measured: the installation's 116 user messages contain no
+  statement of a durable personal fact — the history is test and demo traffic (weather, camera
+  checks, media prompts). Next: a conversation that actually says something about the user, or a
+  labelled set built from one; `memory-eval` has nothing to score until then.
 - **A classifier that could replace the request kernel** — the zero-shot probe is
   measured and parked: `laya-multilingual` scored 0.31–0.39 on the intent set
   against the kernel's 0.89–1.00, and the vendor's own fine-tune reaches 0.766 on
   its benchmark. Next: a few hundred labelled queries, a trained head or a
   fine-tune, and the hybrid rule (confident → fast path, unsure → kernel) only if
   it clears the kernel on our own cases.
-- **A graph stage that earns its context** — v13.4 linked the entities that share a chunk (isolated nodes
-  43 % → 18 %) and measured retrieval with the graph on: hit@10 0.900 → 0.933, but the context per query grew
-  from 4 000 to 8 974 characters (see [GRAPH.md](GRAPH.md#measurements)). Next: shrink `GRAPH_SHARE` until the
-  gain survives that context cost, or show that on a real corpus it cannot; `GRAPH_RAG_ENABLED` stays off until
-  then.
 - Plugin architecture for custom modules
 - Multi-GPU support
 - **Multi-platform GPU support** — first iteration shipped in v13.0: the compose stack is split into a
   shared base plus per-vendor entry files, llama.cpp has a Vulkan image, `GpuInfo.accelerator` separates
   "a GPU" from "CUDA", AMD VRAM is read from sysfs and Intel from its Vulkan heaps, and the deploy scripts
   take `--platform`. Still planned:
-  - **Vulkan path for image generation** — `sd_wrapper` forces CPU offload for any non-CUDA backend, so
-    stable-diffusion.cpp needs a backend-aware device check and a Vulkan build that is actually exercised.
+  - **Vulkan path for image generation — implemented, NOT VERIFIED on hardware.** `sd_wrapper` now
+    resolves the backend to `cuda` / `vulkan` / `cpu`, confirms a Vulkan device with `sd-cli
+    --list-devices` instead of assuming one, and keeps the CUDA-only switches (`--rng cuda`,
+    `--diffusion-fa`, the offload levels) off a Vulkan device; `modules/sd_cpp.py` gates on
+    `GpuInfo.accelerator` instead of `cuda_detected`, and the AMD and Intel compose files build and run
+    `flai-sd_cpp:vulkan`. What is left is one measurement on an actual AMD or Intel card: a generated
+    image and its VRAM peak. Until then the AMD/Intel stacks are experimental by their own admission.
   - **GPU video and speech recognition on AMD/Intel** — LTX-Video needs a ROCm/SYCL PyTorch base and the
     Whisper `-gpu` image is CUDA-only.
   - **Real-hardware verification** of the AMD and Intel files; this project has NVIDIA and CPU only.

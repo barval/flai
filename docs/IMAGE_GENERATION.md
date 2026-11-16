@@ -51,7 +51,11 @@ The `sd_cpp` service is **built from source** during first `docker compose up`:
 
 Each compose file builds **its own tagged image** via the `SD_BACKEND` build arg (see `Dockerfile.sd_cpp`):
 - `docker-compose.gpu.yml` → `flai-sd_cpp:cuda` (`SD_BACKEND=cuda`)
-- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`; optional `vulkan` variant supported)
+- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`)
+- `docker-compose.gpu-amd.yml` and `docker-compose.gpu-intel.yml` → `flai-sd_cpp:vulkan`
+  (`SD_BACKEND=vulkan`). **Not verified on real hardware**: the image compiles and the wrapper asks
+  `sd-cli --list-devices` before claiming a GPU, but no AMD or Intel card has generated an image with it,
+  so those two stacks stay experimental.
 
 Because the tags differ, GPU and CPU images can live side by side — switching between the stacks (see «CPU-only mode» above) does not require rebuilding.
 

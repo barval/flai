@@ -41,6 +41,12 @@ PREDICATES: dict[str, str] = {
 }
 
 MIN_CONFIDENCE = 0.6
+#: Confidence of a fact that carries no ``confidence`` field. The rules ask for the
+#: field but the model copies it only sometimes, and defaulting a missing field to
+#: zero silently discarded correct facts the model had already extracted — measured
+#: on the live model: five of six "I live in…", "I have a cat…", "I speak…"
+#: statements came back as valid JSON and stored nothing.
+IMPLICIT_CONFIDENCE = 1.0
 MAX_VALUE_CHARS = 120
 MAX_SENTENCE_CHARS = 200
 _SUBJECT = "user"
@@ -116,7 +122,7 @@ def parse_triples(answer: str, source: str = "") -> list[dict[str, Any]]:
         if not value or len(value) > MAX_VALUE_CHARS:
             continue
         try:
-            confidence = float(item.get("confidence", 0.0))
+            confidence = float(item.get("confidence", IMPLICIT_CONFIDENCE))
         except (TypeError, ValueError):
             continue
         if confidence < MIN_CONFIDENCE:

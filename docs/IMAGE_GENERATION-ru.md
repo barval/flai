@@ -50,7 +50,11 @@ SD_MODEL_TYPE=z_image_turbo
 
 В каждом compose-файле собирается **собственный тегированный образ** через build-arg `SD_BACKEND` (см. `Dockerfile.sd_cpp`):
 - `docker-compose.gpu.yml` → `flai-sd_cpp:cuda` (`SD_BACKEND=cuda`)
-- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`; поддерживается также вариант `vulkan`)
+- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`)
+- `docker-compose.gpu-amd.yml` и `docker-compose.gpu-intel.yml` → `flai-sd_cpp:vulkan`
+  (`SD_BACKEND=vulkan`). **На реальном железе не проверено**: образ собирается, а обёртка спрашивает
+  `sd-cli --list-devices` прежде чем считать GPU доступным, но ни одна карта AMD или Intel не
+  сгенерировала на нём изображение, поэтому оба стека остаются экспериментальными.
 
 Поскольку теги разные, GPU- и CPU-образы могут существовать одновременно — переключение между режимами (GPU/CPU-only) не требует пересборки.
 

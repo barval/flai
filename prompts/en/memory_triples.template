@@ -9,6 +9,7 @@ Extract durable facts about the user from one message.
 - A fact that fits none of the predicates goes into notes as one short phrase.
 - The subject is almost always "user".
 - At most three facts per message.
+- Every fact carries "confidence" from 0 to 1 — how clearly the message states it.
 - Write value and sentence in the language of the message.
 
 # PREDICATES

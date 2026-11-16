@@ -451,6 +451,18 @@
         });
     }
 
+    // Back to the view without a selection: colours, panel, and the two
+    // half-finished modes (merge and path) that hang off a selected node.
+    function clearSelection() {
+        selectedNode = null;
+        mergeSourceId = null;
+        pathSourceId = null;
+        if (pathMode) setPathMode(false, true);
+        resetColors();
+        renderSidePanel(null);
+        setStatus('');
+    }
+
     function resetColors() {
         if (!graphInstance) return;
         graphInstance.nodeColor(nodeColorFor);
@@ -528,7 +540,11 @@
             })
             .join('');
         panel.innerHTML =
+            '<div class="graph-panel-head">' +
             '<h4>' + escapeHtml(node.label) + '</h4>' +
+            '<button type="button" class="graph-panel-close" id="graph-panel-close" title="' +
+            escapeHtml(t('graph_panel_close', 'Close')) + '">✕</button>' +
+            '</div>' +
             '<div class="graph-node-kind">' + escapeHtml(node.kind || '') + '</div>' +
             (node.shared && node.owner
                 ? '<div class="graph-node-shared">👥 ' + escapeHtml(t('graph_shared_by', 'Shared by')) + ': ' +
@@ -869,6 +885,10 @@
             startMerge(selectedNode);
             return;
         }
+        if (event.target.closest('#graph-panel-close')) {
+            clearSelection();
+            return;
+        }
         if (event.target.closest('#graph-clear-path')) {
             resetColors();
             setStatus(t('graph_path_cleared', 'Path highlight cleared'));
@@ -924,7 +944,10 @@
             search.addEventListener('keydown', function (event) {
                 if (event.key !== 'Enter' || !graphInstance) return;
                 const needle = search.value.trim().toLowerCase();
-                if (!needle) return;
+                if (!needle) {
+                    clearSelection();
+                    return;
+                }
                 const found = (graphInstance.graphData().nodes || []).find(function (node) {
                     return (node.label || '').toLowerCase().indexOf(needle) !== -1;
                 });

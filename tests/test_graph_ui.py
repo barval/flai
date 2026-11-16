@@ -200,3 +200,18 @@ def test_the_structural_group_leads_the_relations_menu():
     block = script.split("list.innerHTML =", 1)[1]
     assert block.index("graph_relations_structural") < block.index("graph_relations_stated")
     assert "min-width: 18rem" in STYLE.read_text(encoding="utf-8")
+
+
+def test_the_selection_can_be_cleared():
+    """A selected node dims everything else; there must be a way back."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    html = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "function clearSelection()" in script
+    # An empty search is a request to clear, not a no-op.
+    assert "if (!needle) {\n                    clearSelection();" in script
+    # And the panel that opens on a node carries its own close button.
+    assert 'id="graph-panel-close"' in script
+    assert "event.target.closest('#graph-panel-close')" in script
+    assert "graph_panel_close" in html
+    assert ".graph-panel-close" in STYLE.read_text(encoding="utf-8")

@@ -213,6 +213,13 @@ def parse_kernel_decision(text: str | None, known_skills: set[str] | None = None
     )
 
 
+# A skill may replace only a request that would otherwise be answered by the chat
+# loop. The crawl pipeline, the memory write path and the media generators are
+# their own procedure: dropping a skill onto them would move the request to a
+# loop where that pipeline does not exist.
+SKILL_TAKEOVER_ACTIONS = frozenset({"none", "search", "reasoning", "reasoning_web"})
+
+
 def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = None) -> dict[str, Any]:
     """Convert a decision into the dict shape every downstream caller expects.
 
@@ -242,13 +249,20 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
     if action == "none":
         processed = original_query
 
-    if decision.skills:
+    skills = decision.skills
+    if skills and action in SKILL_TAKEOVER_ACTIONS:
         # A skill is a procedure for the chat loop, where the tools it names are
         # available: a request that matches one is answered by that loop even if
-        # the intent was search or rag. The skill bodies are loaded before the
-        # first round, so the model reads them as the instructions they are.
+        # the intent was search or reasoning. The skill bodies are loaded before
+        # the first round, so the model reads them as the instructions they are.
         action = "none"
         processed = original_query
+    elif skills:
+        # The intent is a pipeline that does its own work — the crawler indexes
+        # the site, remember writes a fact, the media intents generate an
+        # artefact — and the chat loop never runs, so the body would not be
+        # loaded. Reporting the skill anyway claims a step that does not happen.
+        skills = ()
 
     return {
         "action": action,
@@ -258,7 +272,7 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
         # needed" (advertise none). The two must not collapse into one value.
         "tools": decision.tools,
         "memory": decision.sources.memory,
-        "skills": decision.skills,
+        "skills": skills,
     }
 
 
@@ -268,7 +282,27 @@ def decision_to_route(decision: KernelDecision, original_query: str, cam: Any = 
 # gives us. Build b12407 (llama-swap v273) accepts a schema — measured 2026-11-16,
 # HTTP 200 with `strict: true` — but switching this to constrained decoding is a
 # behaviour change that needs its own measurement against the seed set.
-KERNEL_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
+KERNEL_RESPONSE_FORMAT: dict[str, Any] = {"type": "json_object"}
+
+KERNEL_SCHEMA_NAME = "kernel_decision"
+
+
+def kernel_response_format(constrained: bool, strict: bool) -> dict[str, Any] | None:
+    """What to ask the server for: nothing, JSON mode, or the schema itself.
+
+    JSON mode plus the enum check in the parser is the guarantee that works on
+    every build we ship. Constrained decoding is stricter — the grammar cannot
+    emit an intent outside the list — and is a setting because it is measured
+    against the seed set rather than assumed.
+    """
+    if not constrained:
+        return None
+    if strict:
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": KERNEL_SCHEMA_NAME, "strict": True, "schema": KERNEL_RESPONSE_SCHEMA},
+        }
+    return KERNEL_RESPONSE_FORMAT
 
 # Documentation of the reply shape, NOT sent to the server while the format above
 # is JSON mode. Tests assert on it so the documented contract, a future schema and

@@ -28,6 +28,7 @@ class FakeGuardRedis:
     def __init__(self):
         self.data = {}
         self.lists = {}
+        self.sets = {}
         pipe = MagicMock()
         pipe.execute.return_value = [1, 1, 1]
         self._pipe = pipe
@@ -57,6 +58,25 @@ class FakeGuardRedis:
 
     def pipeline(self):
         return self._pipe
+
+    # The ready queue is a sorted set; a lane length is a ZCARD, and requeueing
+    # a deferred subtask ranks it by class (app/priority.py).
+    def incr(self, key):
+        self.data[key] = int(self.data.get(key) or 0) + 1
+        return self.data[key]
+
+    def zadd(self, key, mapping):
+        self.sets.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    def zcard(self, key):
+        return len(self.sets.get(key, {}))
+
+    def zrange(self, key, start, end, withscores=False):
+        return []
+
+    def zcount(self, key, low, high):
+        return 0
 
 
 def _make_queue():
@@ -152,7 +172,7 @@ class TestRequeueDeferredSubtasks:
             yield rm
 
     def test_requeue_deferred_moves_to_slow_queue(self):
-        """Gate open: every deferred sub-task is LPOPed onto the slow queue in order."""
+        """Gate open: every deferred sub-task is moved to the slow lane in order."""
         queue, fake = _make_queue()
         fake.data[LAST_CHAT_KEY] = str(time.time() - 61)  # quiet window expired → gate open
         fake.lists[DEFERRED_SUBTASKS_KEY] = [
@@ -160,10 +180,10 @@ class TestRequeueDeferredSubtasks:
             queue._serialize(_subtask_task(task_id="t2", step_id="s2")),
         ]
         assert queue.requeue_deferred_subtasks() == 2
-        slow = fake.lists[queue.slow_queue_key]
-        assert len(slow) == 2
-        assert queue._deserialize(slow[0])["id"] == "t1"
-        assert queue._deserialize(slow[1])["id"] == "t2"
+        ready = fake.sets[queue._ready_key(queue.slow_queue_key)]
+        assert len(ready) == 2
+        ordered = sorted(ready.items(), key=lambda item: item[1])
+        assert [queue._deserialize(member)["id"] for member, _score in ordered] == ["t1", "t2"]
         assert fake.llen(DEFERRED_SUBTASKS_KEY) == 0
 
     def test_a_truthy_non_payload_stops_the_loop(self):

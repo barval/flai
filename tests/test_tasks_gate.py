@@ -31,6 +31,21 @@ class FakeGateRedis:
     def hlen(self, key):
         return 0
 
+    # The ready queue is a sorted set; add_request writes into it and ranks the
+    # request by class (app/priority.py).
+    def incr(self, key):
+        self.data[key] = int(self.data.get(key) or 0) + 1
+        return self.data[key]
+
+    def zadd(self, key, mapping):
+        return len(mapping)
+
+    def zcount(self, key, low, high):
+        return 1
+
+    def zcard(self, key):
+        return 0
+
     def delete(self, key):
         self.data.pop(key, None)
 

@@ -119,8 +119,11 @@ Werkzeug 3.1.9, urllib3 2.8.0, cryptography 50.0.2 and gevent 26.9.0, while the 
   `deploy.sh` waives the image requirement below CUDA 12.8 and relies on CUDA 12.x minor-version
   compatibility, with 12.2 as the documented floor.
 - A full **`json_schema`** response format is accepted (HTTP 200 with `strict: true`), which the
-  previous build refused with HTTP 400. The request kernel still asks for `json_object` and checks
-  the enum itself; constrained decoding needs its own measurement against the seed set first.
+  previous build refused with HTTP 400. The request kernel can use it behind `KERNEL_STRICT_SCHEMA`;
+  measured on the 37-case seed set, JSON mode and the schema both score 1.000 intent accuracy with
+  zero fallbacks, so the switch ships off — it buys the guarantee, not a number. On a build that
+  rejects the schema the kernel call fails and the marker router takes over, which is why it is not
+  the default.
 
 **llama-swap (v260+ / v273)**
 

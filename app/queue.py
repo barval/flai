@@ -195,6 +195,8 @@ class RedisRequestQueue:
         # Shutdown event for graceful termination (created here so
         # stop_workers() is safe even when workers were never started, e.g. CLI).
         self._shutdown_event = threading.Event()
+        # Per-thread count of pops that skipped a lower waiting class (app/priority.py).
+        self._pop_state = threading.local()
 
         # Clean stale processing entries from previous runs (e.g. after container restart).
         # Workers are recreated — old in-flight tasks are orphaned and would show ⚡ forever.
@@ -207,6 +209,7 @@ class RedisRequestQueue:
         self.redis.delete(f"{self.queue_key}:user_counts")
 
         if start_workers:
+            self._migrate_ready_queues()
             self.start_worker()
         else:
             self.app.logger.info("RedisRequestQueue: workers NOT started (CLI/non-server process)")
@@ -232,6 +235,113 @@ class RedisRequestQueue:
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             self.logger.error(f"Failed to deserialize data: {e}")
             return None
+
+    # ── Ready queue: a class orders it, a quantum bounds the wait ─────────────
+    # The lanes used to be plain Redis lists, so a task's class lived only in its
+    # payload. app/priority.py holds the policy and the properties it keeps; this
+    # block is the Redis half of it.
+
+    def _ready_key(self, queue_key: str) -> str:
+        """The sorted set holding one lane's waiting tasks.
+
+        A separate key rather than the list itself: an upgrade must be able to see
+        the old list untouched, and a rollback must not read a sorted set as one.
+        """
+        return f"{queue_key}:ready"
+
+    def _next_seq(self) -> int:
+        return int(self.redis.incr(f"{self.queue_key}:seq"))
+
+    def _enqueue_ready(self, queue_key: str, serialized: Any, user_class: Any = None) -> None:
+        """Put a serialized task into its lane with the score its class earns."""
+        from app.priority import score_for
+
+        if user_class is None:
+            user_class = (self._deserialize(serialized) or {}).get("user_class")
+        self.redis.zadd(self._ready_key(queue_key), {serialized: score_for(user_class, self._next_seq())})
+
+    def _ready_len(self, queue_key: str) -> int:
+        return int(self.redis.zcard(self._ready_key(queue_key)) or 0)
+
+    def _ready_entries(self, queue_key: str) -> list[Any]:
+        return list(self.redis.zrange(self._ready_key(queue_key), 0, -1) or [])
+
+    def _ready_position(self, queue_key: str, score: int) -> int:
+        """How many tasks, this one included, sort no later than ``score``."""
+        return int(self.redis.zcount(self._ready_key(queue_key), "-inf", score) or 0)
+
+    def _pop_state_for(self) -> dict[str, int]:
+        state = getattr(self._pop_state, "skipped", None)
+        if state is None:
+            state = {}
+            self._pop_state.skipped = state
+        return state
+
+    def _take_lowest_class(self, ready_key: str) -> Any | None:
+        """Take the oldest task of the lowest waiting class, if one is there."""
+        from app.priority import band, class_of
+
+        last = self.redis.zrange(ready_key, -1, -1, withscores=True) or []
+        if not last:
+            return None
+        low, high = band(class_of(last[0][1]))
+        candidates = self.redis.zrangebyscore(ready_key, low, high, start=0, num=1)
+        if not candidates:
+            return None
+        if int(self.redis.zrem(ready_key, candidates[0]) or 0) != 1:
+            return None  # another worker took it first
+        return candidates[0]
+
+    def _pop_ready(self, queue_key: str, timeout: int) -> Any | None:
+        """Pop the next task of one lane: class order, with the quantum override.
+
+        The override is what turns "class 0 goes first" into a bound: at
+        ``QUANTUM`` consecutive pops that skipped a class, that class is served
+        whether or not something better is waiting.
+        """
+        from app.priority import QUANTUM, class_of
+
+        ready_key = self._ready_key(queue_key)
+        state = self._pop_state_for()
+        if state.get(ready_key, 0) + 1 >= QUANTUM:
+            taken = self._take_lowest_class(ready_key)
+            if taken is not None:
+                state[ready_key] = 0
+                return taken
+
+        item = self.redis.bzpopmin(ready_key, timeout=timeout)
+        if not item or not isinstance(item, (tuple, list)) or len(item) < 3:
+            return None
+        member, score = item[1], item[2]
+        waiting = self.redis.zrange(ready_key, -1, -1, withscores=True) or []
+        skipped_lower = bool(waiting) and class_of(waiting[0][1]) > class_of(score)
+        state[ready_key] = state.get(ready_key, 0) + 1 if skipped_lower else 0
+        return member
+
+    def _migrate_ready_queues(self) -> int:
+        """Move tasks left in the old FIFO lists into the ready sets, once.
+
+        Idempotent: a lane that is not a list is skipped, and the old key is
+        deleted only after every entry has been added.
+        """
+        moved = 0
+        for lane in (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key):
+            try:
+                kind = self.redis.type(lane)
+                if isinstance(kind, bytes):
+                    kind = kind.decode("utf-8", "ignore")
+                if kind != "list":
+                    continue
+                entries = self.redis.lrange(lane, 0, -1) or []
+                for raw in entries:
+                    self._enqueue_ready(lane, raw)
+                self.redis.delete(lane)
+                moved += len(entries)
+            except Exception as exc:  # noqa: BLE001 - a stale list must not block startup
+                self.app.logger.warning(f"Ready-queue migration failed for {lane}: {exc}")
+        if moved:
+            self.app.logger.info(f"Ready-queue migration: moved {moved} waiting task(s) into the priority sets")
+        return moved
 
     def start_worker(self):
         """Start worker threads for the fast, slow and crawl task queues."""
@@ -351,9 +461,9 @@ class RedisRequestQueue:
         """
         try:
             return (
-                self.redis.llen(self.background_queue_key) > 0
-                and self.redis.llen(self.queue_key) == 0
-                and self.redis.llen(self.slow_queue_key) == 0
+                self._ready_len(self.background_queue_key) > 0
+                and self._ready_len(self.queue_key) == 0
+                and self._ready_len(self.slow_queue_key) == 0
                 and not self.redis.exists(self.MEMORY_EXTRACT_INTERRUPT_KEY)
             )
         except Exception as e:
@@ -415,7 +525,7 @@ class RedisRequestQueue:
                 quiet_s=quiet_s,
                 gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
                 queues_empty=lambda: all(
-                    self.redis.llen(key) == 0
+                    self._ready_len(key) == 0
                     for key in (
                         self.queue_key,
                         self.slow_queue_key,
@@ -455,7 +565,7 @@ class RedisRequestQueue:
                 quiet_s=quiet_s,
                 gpu_busy=lambda: get_resource_manager().is_gpu_busy(),
                 queues_empty=lambda: all(
-                    self.redis.llen(key) == 0
+                    self._ready_len(key) == 0
                     for key in (
                         self.queue_key,
                         self.slow_queue_key,
@@ -478,7 +588,7 @@ class RedisRequestQueue:
                     # non-payload kept the thread inside this loop forever.
                     self.logger.warning("Deferred subtask requeue: queue answered a non-payload, stopping")
                     break
-                self.redis.rpush(self.slow_queue_key, serialized)
+                self._enqueue_ready(self.slow_queue_key, serialized)
                 count += 1
             if count:
                 self.logger.info(f"Gate open: requeued {count} deferred subtask(s) onto the slow queue")
@@ -629,17 +739,22 @@ class RedisRequestQueue:
         # sub-tasks (task_step_subtask tag). Redis failure must never break chat.
         self._mark_chat_activity(task)
 
-        # Atomic: RPUSH + HINCRBY in the same pipeline so get_user_queue_counts()
-        # never sees a task in the LIST before the hash counter is updated.
+        # Atomic: ZADD + HINCRBY in the same pipeline so get_user_queue_counts()
+        # never sees a task in the queue before the hash counter is updated. The
+        # class is resolved into the score here, once, so a worker never has to
+        # read a payload to rank a task (app/priority.py).
+        from app.priority import score_for
+
         user_count_key = f"{self.queue_key}:user_counts"
+        score = score_for(user_class, self._next_seq())
         pipe = self.redis.pipeline()
-        pipe.rpush(queue_key, serialized)
+        pipe.zadd(self._ready_key(queue_key), {serialized: score})
         pipe.hincrby(user_count_key, user_id, 1)
         pipe.hincrby(user_count_key, "__total__", 1)
         pipe.execute()
 
-        # Get position in queue
-        position = self.redis.llen(queue_key)
+        # Tasks that sort no later than this one include this one.
+        position = self._ready_position(queue_key, score)
 
         return task_id, {
             "position": position,
@@ -679,7 +794,7 @@ class RedisRequestQueue:
             "timestamp": time.time(),
         }
         serialized = self._serialize(task)
-        self.redis.rpush(self.slow_queue_key, serialized)
+        self._enqueue_ready(self.slow_queue_key, serialized, user_class=0)
         self.app.logger.info(f"Reindex task added: {task_id}")
         return task_id
 
@@ -693,9 +808,9 @@ class RedisRequestQueue:
 
     def get_user_queue_counts(self, user_id: str) -> tuple[int, int]:
         """Get user's queue count and total queue+processing length."""
-        fast_total = self.redis.llen(self.queue_key)
-        slow_total = self.redis.llen(self.slow_queue_key)
-        crawl_total = self.redis.llen(self.crawl_queue_key)
+        fast_total = self._ready_len(self.queue_key)
+        slow_total = self._ready_len(self.slow_queue_key)
+        crawl_total = self._ready_len(self.crawl_queue_key)
         fast_proc = self.redis.hlen(self.processing_key)
         slow_proc = self.redis.hlen(self.slow_processing_key)
         crawl_proc = self.redis.hlen(self.crawl_processing_key)
@@ -1034,10 +1149,9 @@ class RedisRequestQueue:
         self.app.logger.info("Fast worker started")
         while not self._shutdown_event.is_set():
             try:
-                result = self.redis.blpop(self.queue_key, timeout=5)
-                if not result:
+                task_data = self._pop_ready(self.queue_key, timeout=5)
+                if not task_data:
                     continue
-                _, task_data = result
                 task = self._deserialize(task_data)
                 if task is None:
                     self.logger.error("Fast worker: failed to deserialize task")
@@ -1065,9 +1179,8 @@ class RedisRequestQueue:
         while not self._shutdown_event.is_set():
             try:
                 # Priority 1: slow queue (user-facing GPU tasks)
-                result = self.redis.blpop(self.slow_queue_key, timeout=1)
-                if result:
-                    _, task_data = result
+                task_data = self._pop_ready(self.slow_queue_key, timeout=1)
+                if task_data:
                     task = self._deserialize(task_data)
                     if task is None:
                         self.logger.error("Slow worker: failed to deserialize task")
@@ -1093,13 +1206,19 @@ class RedisRequestQueue:
                 # Priority 2: background queue (idle only — any chat or API
                 # request in the quiet window keeps it parked)
                 if self.background_gate_open():
-                    result = self.redis.blpop(self.background_queue_key, timeout=5)
-                    if result:
-                        _, task_data = result
+                    task_data = self._pop_ready(self.background_queue_key, timeout=5)
+                    if task_data:
                         task = self._deserialize(task_data)
                         if task is None:
                             self.logger.error("Slow worker: failed to deserialize background task")
                             continue
+                        # Every other branch logs what it took: without this line a
+                        # background job ran with no trace of having been dequeued,
+                        # which is exactly what made a failed search unexplainable.
+                        self.logger.info(
+                            f"Slow worker: dequeued background task {str(task.get('id'))[:12]} "
+                            f"(type={task.get('type') or task.get('data', {}).get('type', '')})"
+                        )
                         # Background tasks are CPU-only except the LLM fact
                         # extraction, which needs the resident model and must
                         # therefore wait for the GPU like any other call.
@@ -1124,10 +1243,9 @@ class RedisRequestQueue:
         self.app.logger.info("Crawl worker started")
         while not self._shutdown_event.is_set():
             try:
-                result = self.redis.blpop(self.crawl_queue_key, timeout=5)
-                if not result:
+                task_data = self._pop_ready(self.crawl_queue_key, timeout=5)
+                if not task_data:
                     continue
-                _, task_data = result
                 task = self._deserialize(task_data)
                 if task is None:
                     self.logger.error("Crawl worker: failed to deserialize task")
@@ -5809,7 +5927,7 @@ class RedisRequestQueue:
                 "lang": lang,
                 "timestamp": time.time(),
             }
-            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            self._enqueue_ready(self.background_queue_key, self._serialize(task))
             return task_id
         except Exception as e:
             self.logger.debug(f"memory extract enqueue failed: {e}")
@@ -5840,7 +5958,7 @@ class RedisRequestQueue:
                 "lang": lang,
                 "timestamp": time.time(),
             }
-            self.redis.rpush(self.background_queue_key, self._serialize(task))
+            self._enqueue_ready(self.background_queue_key, self._serialize(task))
             return task_id
         except Exception as e:
             self.logger.debug(f"session summary enqueue failed: {e}")
@@ -6059,7 +6177,7 @@ class RedisRequestQueue:
             "timestamp": time.time(),
             "data": {"doc_id": doc_id, "chunk_index": int(chunk_index)},
         }
-        self.redis.rpush(self.background_queue_key, self._serialize(task))
+        self._enqueue_ready(self.background_queue_key, self._serialize(task))
         return task["id"]
 
     def _process_graph_extract(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -6126,7 +6244,7 @@ class RedisRequestQueue:
         retry = {**task, "id": uuid.uuid4().hex}
         retry["data"] = {**task.get("data", {}), "attempts": attempts}
         self.app.logger.warning(f"graph extract retry {attempts} ({reason})")
-        self.redis.rpush(self.background_queue_key, self._serialize(retry))
+        self._enqueue_ready(self.background_queue_key, self._serialize(retry))
         return True
 
     def _run_graph_extract_chunk(self, user_id: str, doc_id: str, chunk_index: int, task: dict) -> dict[str, Any]:
@@ -7676,8 +7794,7 @@ class RedisRequestQueue:
         # Collect items actually waiting in queues
         position = 1
         for q_key in [self.queue_key, self.slow_queue_key, self.crawl_queue_key]:
-            queue_length = self.redis.llen(q_key)
-            queue_tasks = self.redis.lrange(q_key, 0, queue_length - 1) if queue_length > 0 else []
+            queue_tasks = self._ready_entries(q_key)
             for task_data in queue_tasks:
                 task = self._deserialize(task_data)
                 if task and task.get("user_id") == user_id:
@@ -7839,7 +7956,7 @@ class RedisRequestQueue:
         target = str(task_id)
         for key in (self.queue_key, self.slow_queue_key, self.background_queue_key, self.crawl_queue_key):
             try:
-                for raw in self.redis.lrange(key, 0, -1) or []:
+                for raw in self._ready_entries(key):
                     task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
                     if task and str(task.get("id")) == target:
                         return True
@@ -7863,7 +7980,7 @@ class RedisRequestQueue:
         )
         for key in (*list_keys, *hash_keys):
             try:
-                raw_values = self.redis.lrange(key, 0, -1) if key in list_keys else self.redis.hvals(key)
+                raw_values = self._ready_entries(key) if key in list_keys else self.redis.hvals(key)
                 for raw in raw_values or []:
                     task = self._deserialize(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
                     if task:

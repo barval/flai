@@ -744,7 +744,7 @@ def _queues_empty() -> bool:
     """All four request queues empty (fast / slow / background / crawl)."""
     q = _get_request_queue()
     return all(
-        q.redis.llen(key) == 0 for key in (q.queue_key, q.slow_queue_key, q.background_queue_key, q.crawl_queue_key)
+        q._ready_len(key) == 0 for key in (q.queue_key, q.slow_queue_key, q.background_queue_key, q.crawl_queue_key)
     )
 
 

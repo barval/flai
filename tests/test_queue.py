@@ -11,6 +11,28 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 
+def _ready_queue_defaults(redis):
+    """The sorted-set half of the ready queue, silent on a Mock client.
+
+    An unset Mock is truthy and not an int: a worker would unpack it as
+    (key, member, score) and int() of it raises, so every fixture states the
+    empty answer explicitly.
+    """
+    redis.bzpopmin.return_value = None
+    redis.zcard.return_value = 0
+    redis.zrange.return_value = []
+    redis.zrangebyscore.return_value = []
+    redis.zcount.return_value = 0
+    redis.zadd.return_value = 1
+    redis.zrem.return_value = 1
+    redis.incr.return_value = 1
+    redis.type.return_value = "none"
+    pipe = redis.pipeline.return_value
+    if pipe is not None:
+        pipe.zadd.return_value = 1
+    return redis
+
+
 @pytest.mark.unit
 class TestRedisRequestQueue:
     """Test cases for RedisRequestQueue class."""
@@ -45,7 +67,7 @@ class TestRedisRequestQueue:
         pipe.hincrby.return_value = 1
         pipe.execute.return_value = [1, 1]
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     def test_rag_context_keeps_every_retrieved_chunk(self, mock_app, mock_redis):
         """The 15-chunk cap dropped the tail of the retrieved list.
@@ -166,9 +188,9 @@ class TestRedisRequestQueue:
                 lang="ru",
             )
 
-            # RPUSH + HINCRBY should be called atomically via pipeline
+            # ZADD + HINCRBY should be called atomically via pipeline
             pipe = mock_redis.pipeline.return_value
-            assert pipe.rpush.called
+            assert pipe.zadd.called
             assert pipe.hincrby.called
             assert pipe.execute.called
 
@@ -274,7 +296,7 @@ class TestWorkerStartGuard:
     def mock_redis(self):
         redis = Mock()
         redis.hlen.return_value = 0
-        return redis
+        return _ready_queue_defaults(redis)
 
     def test_start_workers_false_does_not_start_worker(self, mock_app, mock_redis):
         """RedisRequestQueue(app, start_workers=False) must not call start_worker()."""
@@ -353,7 +375,7 @@ class TestMultimodalStageProgress:
         pipe = Mock()
         pipe.execute.return_value = []
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     def _make_queue(self, mock_app, mock_redis, base=None, multimodal=None):
         """RedisRequestQueue stub with SSE/result methods mocked away."""
@@ -496,7 +518,7 @@ class TestReasoningWebRouting:
         pipe = Mock()
         pipe.execute.return_value = []
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     def _make_queue(self, mock_app, mock_redis, router_result):
         from app.queue import RedisRequestQueue
@@ -585,7 +607,7 @@ class TestHistoryRouting:
         pipe = Mock()
         pipe.execute.return_value = []
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     def _make_queue(self, mock_app, mock_redis, router_result):
         from app.queue import RedisRequestQueue
@@ -756,7 +778,7 @@ class TestSearchQueryNormalization:
         pipe = Mock()
         pipe.execute.return_value = []
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     def _make_queue(self, mock_app, mock_redis, search):
         from app.queue import RedisRequestQueue
@@ -1114,7 +1136,7 @@ class TestCancellationOfChatRequests:
         pipe.hincrby.return_value = 1
         pipe.execute.return_value = [1, 1]
         redis.pipeline.return_value = pipe
-        return redis
+        return _ready_queue_defaults(redis)
 
     @pytest.fixture
     def queue_env(self, mock_app, mock_redis):
@@ -1143,7 +1165,8 @@ class TestCancellationOfChatRequests:
         queue, redis = queue_env
         payload = queue._serialize(self._chat_task("q-1"))
         redis.hexists.return_value = False
-        redis.lrange.side_effect = lambda key, start, end: [payload] if key == queue.slow_queue_key else []
+        slow_ready = queue._ready_key(queue.slow_queue_key)
+        redis.zrange.side_effect = lambda key, start, end, **kwargs: [payload] if key == slow_ready else []
 
         assert queue.cancel_task("q-1") is True
         redis.setex.assert_any_call("task:cancel:q-1", 300 + 120, "1")
@@ -1172,7 +1195,8 @@ class TestCancellationOfChatRequests:
             queue._serialize(self._chat_task("q-2", "other")),
         ]
         redis.hvals.side_effect = lambda key: [running] if key == queue.slow_processing_key else []
-        redis.lrange.side_effect = lambda key, start, end: queued if key == queue.slow_queue_key else []
+        slow_ready = queue._ready_key(queue.slow_queue_key)
+        redis.zrange.side_effect = lambda key, start, end, **kwargs: queued if key == slow_ready else []
 
         assert queue.cancel_session_tasks("s1") == 2
 

@@ -51,6 +51,16 @@ Selected by `LLAMACP_BACKEND` env var (default: `llama-swap`).
 
 **Worker ownership:** workers start only in server processes. `create_app()` calls `RedisRequestQueue(app, start_workers=not _is_cli_process())` — a `flask` CLI process (detected via `sys.argv[0]`) never starts workers. Without this guard a `docker exec flai-web flask <cmd>` invocation became a second, invisible queue consumer (daemon=False worker threads hang the CLI process forever; its logs go to the lost exec stdout). `start_worker()` additionally has a `_workers_started` idempotence guard so a duplicate worker set can never be spawned in one process.
 
+**The ready queue is a sorted set, not a list.** Each lane (`request_queue`,
+`slow_request_queue`, `background_queue`, `request_queue:crawl`) is a Redis sorted set whose score is
+`class * 10^12 + sequence` (`app/priority.py`): a class-0 request sorts ahead of every class-2 request
+already waiting, and inside one class the sequence keeps arrival order exactly. Classes come from
+`users.service_class` (0/1/2, default 2) and from the background task derived from it (3/4/5). Strict
+class order would starve the bottom of the queue, so a worker counts the pops that skipped the lowest
+waiting class and at `QUANTUM` (8) takes that class next — a class-2 request waits at most eight
+service slots however fast class-0 requests arrive. `_migrate_ready_queues()` moves anything left in
+the old lists into the sets once, at startup, before the workers start.
+
 ### Fast Worker (mostly CPU; embedding is GPU-light)
 - Router classification (multimodal model, always resident)
 - Text processing

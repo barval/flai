@@ -331,6 +331,7 @@ def load_config(app):
     # Schema-constrained decoding removes a whole class of malformed replies on
     # small models; it is off only for a backend that rejects the field.
     app.config["KERNEL_CONSTRAINED"] = os.getenv("KERNEL_CONSTRAINED", "1") == "1"
+    app.config["KERNEL_STRICT_SCHEMA"] = os.getenv("KERNEL_STRICT_SCHEMA", "0") == "1"
 
     # External MCP servers (see app/mcp_registry.py). Off by default: with no
     # server configured the assistant exposes no tool it did not have before.

@@ -895,3 +895,49 @@ class TestStaleBusyFlags:
 
         assert rm.is_gpu_busy() is False
         assert rm._video_busy is False
+
+
+class TestVulkanPlacement:
+    """A Vulkan card is a GPU; the CUDA-only flag said otherwise.
+
+    AMD and Intel hosts run llama.cpp on Vulkan, and the planner used to read
+    ``cuda_detected=False`` as "no GPU" and set ``n_gpu_layers=0`` — the card sat
+    idle while the model ran on the CPU. Not verified on hardware.
+    """
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    def test_a_vulkan_card_gets_gpu_layers(self, mock_run, mock_file, mock_cpu):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no nvidia-smi")
+        rm = ResourceManager()
+        rm.detect_hardware()
+        rm.hardware.accelerator = "vulkan"
+        rm.hardware.total_vram_mb = 16384
+        rm.hardware.available_vram_mb = 14336
+
+        cfg = rm.compute_llamacpp_config("multimodal")
+
+        assert cfg["n_gpu_layers"] == -1
+        assert "CPU-only" not in (cfg["warning"] or "")
+        # Flash attention stays a CUDA default until it is measured on Vulkan.
+        assert cfg["flash_attn"] is False
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    def test_a_vulkan_card_without_a_vram_reading_is_planned_conservatively(self, mock_run, mock_file, mock_cpu):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no nvidia-smi")
+        rm = ResourceManager()
+        rm.detect_hardware()
+        rm.hardware.accelerator = "vulkan"
+        rm.hardware.total_vram_mb = 0
+        rm.hardware.available_vram_mb = 0
+
+        cfg = rm.compute_llamacpp_config("multimodal")
+
+        assert "no usable VRAM" in (cfg["warning"] or "")

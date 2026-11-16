@@ -28,9 +28,13 @@
   основу и входные файлы по вендорам, у llama.cpp есть Vulkan-образ, `GpuInfo.accelerator` отделяет «есть
   GPU» от «есть CUDA», VRAM у AMD читается из sysfs, у Intel — из Vulkan-куч, а скрипты деплоя принимают
   `--platform`. Остаётся:
-  - **Vulkan для генерации изображений** — `sd_wrapper` принудительно уходит на CPU при любом не-CUDA
-    бэкенде, поэтому stable-diffusion.cpp нужен backend-aware выбор устройства и реально проверенная
-    Vulkan-сборка.
+  - **Vulkan для генерации изображений — реализовано, НЕ ПРОВЕРЕНО на железе.** `sd_wrapper` теперь
+    определяет бэкенд как `cuda` / `vulkan` / `cpu`, подтверждает наличие Vulkan-устройства через
+    `sd-cli --list-devices` вместо предположения и не передаёт CUDA-only переключатели (`--rng cuda`,
+    `--diffusion-fa`, уровни offload) на Vulkan; `modules/sd_cpp.py` смотрит на `GpuInfo.accelerator`, а
+    не на `cuda_detected`, а compose-файлы AMD и Intel собирают и запускают `flai-sd_cpp:vulkan`.
+    Осталось одно измерение на реальной карте AMD или Intel: сгенерированное изображение и пик VRAM.
+    До тех пор стеки AMD/Intel остаются экспериментальными по собственному признанию.
   - **GPU-видео и распознавание речи на AMD/Intel** — LTX-Video требует PyTorch на ROCm/SYCL, а образ
     Whisper `-gpu` собран только под CUDA.
   - **Проверка на реальном железе** файлов AMD и Intel — в проекте есть только NVIDIA и CPU.

@@ -159,19 +159,28 @@ cryptography 50.0.2 и gevent 26.9.0, а в виртуальном окруже�
 
 Пункт роадмапа **Multi-platform GPU support** реализован частично:
 
-- `app/platform_detect.py` определяет `nvidia | amd | intel | cpu`, разбирает память AMD через
-  `rocm-smi`, читает имя Intel GPU через `vulkaninfo` и учитывает override `FLAI_PLATFORM`.
-  Вкладка Hardware в админке показывает результат.
-- `services/sd_cpp/Dockerfile.sd_cpp` принимает `SD_BACKEND=cuda|vulkan|cpu`, обёртка SD
-  учитывает бэкенд.
-- Генерация изображений и видео деградируют в CPU при отсутствии CUDA.
+- `app/platform_detect.py` определяет `nvidia | amd | intel | cpu`, читает память AMD через sysfs, а
+  память карты Intel — через её Vulkan-кучу, и учитывает override `FLAI_PLATFORM`.
+  `GpuInfo.accelerator` (`cuda | vulkan | none`) — переключатель, отделяющий «есть GPU» от «есть CUDA»;
+  менеджер ресурсов копирует его в `HardwareInfo.accelerator`, и планирование слоёв смотрит на него:
+  Vulkan-карта получает свой `n_gpu_layers` из своего объёма VRAM, а не планируется как CPU-хост.
+- Стек GPU разделён на общую основу плюс `docker-compose.gpu.yml` (NVIDIA), `docker-compose.gpu-amd.yml`
+  и `docker-compose.gpu-intel.yml` (Vulkan); `deploy.sh` и `deploy-ru.sh` принимают
+  `--platform=auto|nvidia|amd|intel|cpu`.
+- `services/sd_cpp/Dockerfile.sd_cpp` собирает `cuda`, `vulkan` или `cpu`. Обёртка определяет бэкенд как
+  `cuda | vulkan | cpu`, подтверждает Vulkan-устройство через `sd-cli --list-devices` вместо
+  предположения и не передаёт CUDA-only переключатели (`--rng cuda`, `--diffusion-fa`, уровни offload)
+  на Vulkan; compose-файлы AMD и Intel запускают `flai-sd_cpp:vulkan`.
+
+**На реальном железе не проверено.** В проекте есть только NVIDIA и CPU. Путь генерации изображений на
+Vulkan собирается, его решения покрыты юнит-тестами, а `llama-server` на Vulkan прошёл дымовую проверку —
+но ни одна карта AMD или Intel не сгенерировала на нём изображение, поэтому оба стека остаются
+экспериментальными.
 
 Чего не хватает:
 
-- `cuda_detected` равен `False` для AMD и Intel, поэтому менеджер ресурсов планирует их как
-  CPU-хосты и ставит `n_gpu_layers=0`, даже когда `rocm-smi` сообщил объём памяти.
-- `docker-compose.gpu.yml` и `deploy.sh` рассчитаны только на NVIDIA: `runtime: nvidia`,
-  `NVIDIA_VISIBLE_DEVICES`, `SD_BACKEND=cuda`, `LTX_BACKEND=cuda`, профилей платформ нет.
+- Опрос VRAM и гейт вытеснения остаются только для CUDA: `_poll_vram()` и `ensure_vram_for_reasoning()`
+  выходят сразу без CUDA, поэтому на AMD/Intel объём VRAM — тот, что прочитал `platform_detect` при старте.
 - LTX-Video поставляется с CUDA-образом; для ROCm нужна база torch-ROCm и тестовый прогон.
 - У Whisper нет ROCm-образа.
 - Apple не может использовать Metal внутри Linux-контейнеров: для macOS нужен отдельный нативный

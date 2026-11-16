@@ -49,8 +49,8 @@ Three keys, all in `.env` and in the admin panel:
 | `NETDIAG_API_TOKEN` | the shared bearer token; stored as a secret in the panel |
 
 With `NET_TOOLS_ENABLED=false` the sidecar contributes nothing to the catalogue and can
-keep running. `flask doctor` reports whether it answers either way — a container that is
-up but broken is exactly the failure that command exists to name.
+keep running. `flask doctor` reports it only when the switch is on — a container that is
+advertised and broken is exactly the failure that command exists to name.
 
 ## The permission
 
@@ -59,7 +59,7 @@ administrator account has no chat, so it never needs the flag.
 
 A user without it who asks for a ping gets a sentence, not silence:
 
-> ⚠️ Сетевые инструменты Вам недоступны.
+> ⚠️ Network tools are not available to you.  (localized into the user's language)
 
 That is why the tools are advertised to everyone who can chat: a hidden tool cannot
 explain itself, and the model would answer the question from its own knowledge instead.
@@ -81,13 +81,13 @@ operations, `-O` and `-sS` are never used.
 | `net_whois` | 15 s |
 | `net_http` | 20 s |
 | `net_speed` | 20 s |
-| `net_trace` | 30 s |
-| `net_ports` | 45 s |
+| `net_trace` | 20 s |
+| `net_ports` | 30 s |
 
 The ceiling is enforced twice — by the application's request timeout and by the
 container itself — and a call that exceeds it returns a sentence, not an exception.
-Every call publishes a stream stage («📡 Сканирую порты…»), so a thirty-second trace is
-not a silent chat. Results go through the same 4 000-character bound as every other
+Every call publishes a stream stage («📡 Scanning ports…» in the user's language), so a
+thirty-second trace is not a silent chat. Results go through the same 4 000-character bound as every other
 tool, so a scan cannot flood the context window.
 
 ## What is always blocked
@@ -141,10 +141,11 @@ this installation".
 | Symptom | Cause |
 |---|---|
 | The tools never appear | `NET_TOOLS_ENABLED=false`, or the sidecar is not answering: `flask doctor` says which |
-| «Сетевые инструменты Вам недоступны» | the user has no flag in Admin → Users |
-| «Служба сетевой диагностики не запущена» | the flag is on but `/health` failed — check the container |
+| Network tools are not available to you | the user has no flag in Admin → Users |
+| The network diagnostics service is not running | the flag is on but `/health` failed — check the container |
 | A scan returns nothing | nmap needs `NET_RAW`; `cap_add` is in both compose files |
 | A target is refused as loopback | it is `127.0.0.0/8`, `::1`, `169.254.0.0/16` or `fe80::/10` |
+| The tools vanish after enabling | `NETDIAG_API_TOKEN` is empty: the sidecar fails closed, and `--with-net-tools` generates one |
 
 ## Related
 

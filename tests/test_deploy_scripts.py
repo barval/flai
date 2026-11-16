@@ -92,3 +92,18 @@ def test_deploy_scripts_create_the_branding_folder():
         assert "mkdir -p data/uploads data/documents data/db_backups data/slm data/branding" in src, (
             f"{script.name}: data/branding is missing from setup_dirs"
         )
+
+
+def test_enabling_the_net_tools_generates_a_token():
+    """The documented path must not leave NETDIAG_API_TOKEN empty.
+
+    The sidecar fails closed on an empty token, so `--with-net-tools` without one
+    produces a running container that refuses every request and a doctor hint
+    pointing at the wrong cause.
+    """
+    from pathlib import Path
+
+    for script in ("deploy.sh", "deploy-ru.sh"):
+        text = Path(script).read_text(encoding="utf-8")
+        assert "NETDIAG_API_TOKEN" in text, script
+        assert "openssl rand" in text or "python3 -c" in text or "/dev/urandom" in text, script

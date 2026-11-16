@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 01:54+0300\n"
+"POT-Creation-Date: 2026-11-17 02:04+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -23,15 +23,15 @@ msgstr ""
 msgid "FLAI"
 msgstr "ПЛИИ"
 
-#: app/__init__.py:608 app/__init__.py:624
+#: app/__init__.py:609 app/__init__.py:625
 msgid "Session expired. Please refresh the page."
 msgstr "Сессия истекла. Обновите страницу."
 
-#: app/__init__.py:616
+#: app/__init__.py:617
 msgid "Authentication required."
 msgstr "Требуется авторизация."
 
-#: app/__init__.py:631 app/routes/admin.py:404 app/routes/admin.py:688
+#: app/__init__.py:632 app/routes/admin.py:404 app/routes/admin.py:688
 #: app/routes/admin.py:731 app/routes/admin.py:747 app/routes/admin.py:759
 #: app/routes/admin.py:784 app/routes/admin.py:832 app/routes/admin.py:2262
 #: app/routes/admin.py:2279 app/routes/admin.py:2314
@@ -39,7 +39,7 @@ msgstr "Требуется авторизация."
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
-#: app/__init__.py:637
+#: app/__init__.py:638
 msgid "Not found"
 msgstr "Не найдено"
 
@@ -931,7 +931,7 @@ msgid "Calculation error: {error}"
 msgstr "Ошибка вычисления: {error}"
 
 #: app/tools.py:634 app/tools.py:703 app/tools.py:745 app/tools.py:1073
-#: app/tools.py:1115 app/tools.py:1431 app/tools.py:1450
+#: app/tools.py:1118 app/tools.py:1434 app/tools.py:1453
 msgid "The tool could not complete the request."
 msgstr "Инструмент не смог выполнить запрос."
 
@@ -1024,16 +1024,22 @@ msgstr "Этот адрес запрещён: {reason}"
 msgid "Too many network calls; try again in a minute."
 msgstr "Слишком много сетевых вызовов; попробуйте через минуту."
 
-#: app/routes/admin.py:2767 app/routes/admin.py:2786 app/tools.py:1204
+#: app/tools.py:1112
+#
+msgid "The diagnostics service returned nothing"
+msgstr "Служба диагностики ничего не вернула"
+
+
+#: app/routes/admin.py:2771 app/routes/admin.py:2790 app/tools.py:1207
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Неизвестный навык: {name}"
 
-#: app/tools.py:1362
+#: app/tools.py:1365
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."
 
-#: app/tools.py:1377
+#: app/tools.py:1380
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1041,11 +1047,11 @@ msgstr ""
 "Вызов отклонён: он повторяет вызов с теми же аргументами, результат "
 "которого уже приведён выше."
 
-#: app/tools.py:1383
+#: app/tools.py:1386
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."
 
-#: app/tools.py:1437
+#: app/tools.py:1440
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Неизвестный инструмент: {tool}"
@@ -1311,7 +1317,7 @@ msgstr ""
 "Имя навыка — строчные латинские буквы, цифры, - и _, не длиннее 64 "
 "символов"
 
-#: app/routes/admin.py:2661 app/routes/admin.py:2755
+#: app/routes/admin.py:2661 app/routes/admin.py:2759
 #, python-brace-format
 msgid "The skill could not be read: {reason}"
 msgstr "Не удалось прочитать навык: {reason}"
@@ -1333,24 +1339,24 @@ msgstr "Это имя занято встроенным навыком — пе�
 msgid "The skill name leaves the skills folder"
 msgstr "Имя навыка выводит за пределы папки навыков"
 
-#: app/routes/admin.py:2694
+#: app/routes/admin.py:2698
 #, python-brace-format
 msgid "Not available here: {name}"
 msgstr "Здесь недоступен: {name}"
 
-#: app/routes/admin.py:2741
+#: app/routes/admin.py:2745
 msgid "No file was uploaded"
 msgstr "Файл не загружен"
 
-#: app/routes/admin.py:2744
+#: app/routes/admin.py:2748
 msgid "The skill file is too large"
 msgstr "Файл навыка слишком большой"
 
-#: app/routes/admin.py:2748
+#: app/routes/admin.py:2752
 msgid "The skill file is not UTF-8 text"
 msgstr "Файл навыка — не текст UTF-8"
 
-#: app/routes/admin.py:2783
+#: app/routes/admin.py:2787
 msgid "A bundled skill lives in the project and cannot be deleted"
 msgstr "Встроенный навык лежит в проекте и не может быть удалён"
 
@@ -5539,38 +5545,29 @@ msgstr "Открываю страницу..."
 msgid "tool_net_dns"
 msgstr "Проверяю DNS…"
 
-
 #: app/templates/chat.html:418
 msgid "tool_net_whois"
 msgstr "Смотрю регистрацию домена…"
 
-
 #: app/templates/chat.html:419
-#
 msgid "tool_net_ping"
 msgstr "Проверяю узел…"
-
 
 #: app/templates/chat.html:420
 msgid "tool_net_trace"
 msgstr "Трассирую маршрут…"
 
-
 #: app/templates/chat.html:421
 msgid "tool_net_ports"
 msgstr "Сканирую порты…"
-
 
 #: app/templates/chat.html:422
 msgid "tool_net_http"
 msgstr "Смотрю ответ сервера…"
 
-
 #: app/templates/chat.html:423
-#
 msgid "tool_net_speed"
 msgstr "Меряю скорость…"
-
 
 #: app/templates/chat.html:424
 msgid "Preparing resources..."

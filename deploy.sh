@@ -175,6 +175,19 @@ enable_env_features() {
     else
         disable_env_key NET_TOOLS_ENABLED
     fi
+        # The sidecar fails closed on an empty token: a generated one is what
+        # makes the container usable without a second manual step.
+        if ! grep -qE '^NETDIAG_API_TOKEN=.+' .env 2>/dev/null; then
+            local netdiag_token
+            netdiag_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))' 2>/dev/null \
+                || openssl rand -hex 24 2>/dev/null || date +%s%N)
+            if grep -qE '^#? ?NETDIAG_API_TOKEN=' .env 2>/dev/null; then
+                sed -Ei "s|^#? ?NETDIAG_API_TOKEN=.*|NETDIAG_API_TOKEN=${netdiag_token}|" .env
+            else
+                printf '\nNETDIAG_API_TOKEN=%s\n' "$netdiag_token" >> .env
+            fi
+            info "Generated NETDIAG_API_TOKEN in .env"
+        fi
     if [[ "$WITH_SLM" == "true" ]]; then
         enable_env_key SLM_URL "Enabling long-term memory (SLM) in .env..."
     else

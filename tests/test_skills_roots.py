@@ -7,7 +7,11 @@ skill whose name an administrator already installed, and the merge must stay
 deterministic rather than resolving by directory order.
 """
 
+import pytest
+
 from app import skills
+
+pytestmark = pytest.mark.unit
 
 
 def _write(root, name, description="d", body="b", extra=""):

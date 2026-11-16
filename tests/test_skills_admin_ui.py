@@ -60,3 +60,18 @@ def test_the_new_panel_strings_are_translated_in_both_catalogs():
     needed = {"Skills", "Enabled", "Edit", "Read-only", "Upload .md", "New skill"}
     for lang, path in CATALOGS.items():
         assert needed <= _msgids(path), f"{lang} is missing: {sorted(needed - _msgids(path))}"
+
+
+def test_every_mutating_request_carries_the_csrf_token():
+    """The panel is CSRF-protected; a bare fetch() is a 400 in a real browser.
+
+    conftest disables CSRF and the API tests call the view directly, so nothing
+    else in the suite would notice a missing token.
+    """
+    source = SCRIPT.read_text(encoding="utf-8")
+    writes = [
+        line for line in source.splitlines() if "api('/admin/api/skills" in line and "api('/admin/api/skills'" in line
+    ]
+    assert writes, "the script must call the skills API"
+    assert "fetchWithCSRF" in source
+    assert "await fetch(" not in source.replace("const response = await fetchWithCSRF", "")

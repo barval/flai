@@ -174,3 +174,14 @@ def test_the_cli_prints_one_line_per_call(redis_stub):
     assert result.exit_code == 0
     assert "192.168.1.10" in result.output
     assert "net_ports" in result.output
+
+
+def test_the_flask_command_is_registered(test_app):
+    assert "net-audit" in test_app.cli.commands
+
+
+def test_the_switch_reads_a_string_from_the_environment(monkeypatch):
+    monkeypatch.delenv("NET_TOOLS_ENABLED", raising=False)
+    assert netdiag._setting("NET_TOOLS_ENABLED", False) is False
+    monkeypatch.setenv("NET_TOOLS_ENABLED", "true")
+    assert netdiag._setting("NET_TOOLS_ENABLED", False) is True

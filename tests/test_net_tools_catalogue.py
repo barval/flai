@@ -41,9 +41,17 @@ def test_each_tool_has_a_stream_label():
 
 def test_each_label_is_translated_in_both_catalogs():
     chat = (ROOT / "app/templates/chat.html").read_text(encoding="utf-8")
+    catalogs = {
+        lang: (ROOT / f"translations/{lang}/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
+        for lang in ("en", "ru")
+    }
 
     for tool_id in netdiag.NET_TOOL_IDS:
         assert f"'tool_{tool_id}': {{{{ _('tool_{tool_id}')|tojson }}}}" in chat, tool_id
+        msgid = f'msgid "tool_{tool_id}"\nmsgstr "'
+        for lang, text in catalogs.items():
+            start = text.index(msgid) + len(msgid)
+            assert text[start] != '"', f"{lang}: tool_{tool_id} is not translated"
 
 
 def test_the_definitions_are_typed_and_name_their_arguments():

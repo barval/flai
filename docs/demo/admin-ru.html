@@ -19908,7 +19908,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function api(path, options) {
-        const response = await fetch(path, Object.assign({ credentials: 'same-origin' }, options));
+        // Every write on this tab is CSRF-protected; a bare fetch() is a 400 in a
+        // real browser, which the test suite cannot see because it disables CSRF.
+        const response = await fetchWithCSRF(path, options);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'HTTP ' + response.status);
         return payload;
@@ -20072,9 +20074,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }),
             });
             const warnings = payload.warnings || [];
-            // A shadowed skill is renamed by saving under the new name; the old
-            // folder is removed only after that save succeeded.
-            if (editing.shadowed && editing.name && editing.name !== name) {
+            // A rename is a save under the new name; the old folder is removed
+            // only after that save succeeded, and only for an installed skill.
+            if (editing.name && editing.name !== name && editing.source !== 'bundled') {
                 await api('/admin/api/skills/' + encodeURIComponent(editing.name), { method: 'DELETE' });
             }
             setStatus(status, warnings.length ? warnings.join(' · ') : t('Skill saved'), warnings.length > 0);

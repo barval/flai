@@ -92,9 +92,9 @@ classes, and the panel shows which:
 | Mark | Meaning | Blocks the save |
 |---|---|---|
 | (plain) | the tool is in the catalogue right now | no |
-| *Здесь недоступен* | a real tool whose service is not running (`read_page` without the crawler, `list_rooms` without the camera) | no |
-| *Неизвестный инструмент* | one keystroke away from a real name — `web-serach` for `web_search` | **yes**, with the suggestion |
-| *Здесь недоступен* (foreign) | a name this installation never had — `Read`, `Bash(git:*)` | no |
+| *not available here* | a real tool whose service is not running (`read_page` without the crawler, `list_rooms` without the camera) | no |
+| *unknown tool* | one keystroke away from a real name — `web-serach` for `web_search` | **yes**, with the suggestion |
+| *not available here* (foreign) | a name this installation never had — `Read`, `Bash(git:*)` | no |
 
 The fourth class is deliberate: skills written for Claude Code list *its* tools, and
 rejecting a file over a name that is correct elsewhere would refuse exactly the files
@@ -113,7 +113,7 @@ restricting what it can do.
 - **Delete** removes an installed folder and its files. A bundled skill offers no delete.
 - **Shadowing** happens when a release ships a bundled skill whose name you already
   installed. The bundled one wins and appears once; the installed copy stays on disk,
-  listed as *перекрыт встроенным навыком* with a **Rename** action. Renaming saves the
+  listed as *shadowed by a bundled skill* with a **Rename** action. Renaming saves the
   document under the new name and removes the old folder only after that save succeeded.
 
 ## Troubleshooting a skill that never fires

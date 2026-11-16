@@ -1107,6 +1107,9 @@ def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[s
     try:
         answer = netdiag.call(endpoint, payload)
         text = netdiag.output_of(answer)
+        if not text:
+            with force_locale(lang):
+                text = "⚠️ " + str(_("The diagnostics service returned nothing"))
         ok = not text.startswith("⚠️ ")
         return text
     except Exception:  # noqa: BLE001 - a failed call is a sentence, not a crash

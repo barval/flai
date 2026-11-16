@@ -29,8 +29,10 @@ TOOL_TIMEOUTS: dict[str, float] = {
     "whois": 15.0,
     "http": 20.0,
     "speed": 20.0,
-    "trace": 30.0,
-    "ports": 45.0,
+    # These run inside the chat turn, which holds the GPU queue: a ceiling is part
+    # of the feature's cost, not only its patience.
+    "trace": 20.0,
+    "ports": 30.0,
 }
 
 # (checked_at, verdict)
@@ -40,7 +42,12 @@ _available: tuple[float, bool] | None = None
 def _setting(key: str, default: Any) -> Any:
     if has_app_context():
         return current_app.config.get(key, default)
-    return os.getenv(key, default)
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    if isinstance(default, bool):
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    return raw
 
 
 def reset_availability_cache() -> None:
@@ -92,11 +99,17 @@ def call(tool: str, payload: dict[str, Any], timeout: float | None = None) -> di
 
 
 def output_of(answer: dict[str, Any]) -> str:
-    """The text a tool result should carry, whatever shape the sidecar answered in."""
+    """The text a tool result should carry, whatever shape the sidecar answered in.
+
+    An empty answer returns an empty string and the caller supplies a localized
+    sentence: this module has no request context to ask for one.
+    """
     text = str(answer.get("output") or answer.get("error") or "").strip()
-    if text:
-        return text
-    return "⚠️ the diagnostics service returned nothing"
+    if not text:
+        return ""
+    if answer.get("ok") is False and not text.startswith("⚠️ "):
+        return "⚠️ " + text
+    return text
 
 
 # ── The chat tools' half: permission, limits, audit ───────────────────────────
@@ -149,11 +162,29 @@ def _redis() -> Any:
     return _fallback_redis
 
 
+def _host_of(target: str) -> str:
+    """The host inside a URL, or the target itself when it is not one.
+
+    Splitting on "/" or ":" is not enough: ``http://user@127.0.0.1/`` and
+    ``http://[::1]/`` both hide their address from a naive split, which is how a
+    documented "always refused" set stops being true for one tool.
+    """
+    text = str(target or "").strip()
+    if "://" not in text:
+        return text.strip("[]").split("/", 1)[0]
+    from urllib.parse import urlsplit
+
+    try:
+        return (urlsplit(text).hostname or "").strip("[]")
+    except ValueError:
+        return ""
+
+
 def blocked_target(target: str) -> str | None:
     """The reason a literal address is always refused, or None."""
     import ipaddress
 
-    text = str(target or "").strip().strip("[]").split("/", 1)[0]
+    text = _host_of(target)
     try:
         address = ipaddress.ip_address(text)
     except ValueError:

@@ -2682,11 +2682,15 @@ def _write_skill(name: str, text: str, description_ru: str, body_ru: str) -> tup
     target.mkdir(parents=True, exist_ok=True)
     (target / skills.SKILL_FILE).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 
+    variant_path = target / "SKILL.ru.md"
     if description_ru.strip() and body_ru.strip():
         # The variant needs its own frontmatter: a body-only file is logged and
         # ignored by the scanner, so the name comes from the English document.
         variant = f"---\nname: {name}\ndescription: {description_ru.strip()}\n---\n{body_ru.strip()}\n"
-        (target / f"SKILL.{'ru'}.md").write_text(variant, encoding="utf-8")
+        variant_path.write_text(variant, encoding="utf-8")
+    elif variant_path.exists():
+        # An emptied translation means "no Russian version", not "keep the old one".
+        variant_path.unlink()
 
     skills.reset_cache()
     stored = next((s for s in skills.discover_all() if s.name == name), parsed)

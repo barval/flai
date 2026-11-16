@@ -18,6 +18,7 @@ import os
 import re
 import socket
 import subprocess
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request
 
@@ -101,11 +102,21 @@ def _text(value: object) -> str:
     return str(value if value is not None else "").strip()
 
 
+def _is_ip(text: str) -> bool:
+    try:
+        ipaddress.ip_address(text.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
 def _host(payload: dict, key: str = "host") -> str:
     text = _text(payload.get(key))
-    if not text or len(text) > MAX_HOST_CHARS or not _HOST_RE.match(text):
+    if not text or len(text) > MAX_HOST_CHARS:
         raise ToolError("the target is not a host name or an address")
-    return text
+    if not _HOST_RE.match(text) and not _is_ip(text):
+        raise ToolError("the target is not a host name or an address")
+    return text.strip("[]") if text.startswith("[") else text
 
 
 def _network(payload: dict) -> str:
@@ -221,7 +232,12 @@ def _http(payload: dict) -> list[str]:
     url = _text(payload.get("url"))
     if not url.lower().startswith(("http://", "https://")):
         raise ToolError("the url must be http or https")
-    host = url.split("//", 1)[1].split("/", 1)[0].split(":", 1)[0]
+    try:
+        host = (urlsplit(url).hostname or "").strip("[]")
+    except ValueError as exc:
+        raise ToolError("the url is not valid") from exc
+    if not host:
+        raise ToolError("the url has no host")
     _guarded(host)
     return ["curl", "-sS", "-I", "--max-time", "10", url]
 

@@ -105,3 +105,19 @@ def test_the_service_and_its_network_are_declared_on_both_platforms():
         assert "netdiag_network" in text, name
         assert "cap_add" in text and "NET_RAW" in text, name
         assert "read_only: true" in text, name
+
+
+def test_the_ceilings_stay_inside_one_chat_turn(monkeypatch):
+    assert max(netdiag.TOOL_TIMEOUTS.values()) <= 30
+
+
+def test_a_url_into_loopback_is_refused_by_the_application(monkeypatch):
+    assert netdiag.blocked_target("http://127.0.0.1/") is not None
+    assert netdiag.blocked_target("http://user@127.0.0.1:8080/") is not None
+    assert netdiag.blocked_target("http://[::1]/") is not None
+    assert netdiag.blocked_target("http://169.254.169.254/latest/meta-data") is not None
+    assert netdiag.blocked_target("https://example.com/page") is None
+
+
+def test_a_sidecar_refusal_is_a_sentence_not_a_bare_word(monkeypatch):
+    assert netdiag.output_of({"ok": False, "error": "unauthorized"}).startswith("⚠️ ")

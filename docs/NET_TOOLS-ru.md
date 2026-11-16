@@ -82,8 +82,8 @@ docker compose -f docker-compose.gpu.yml --profile with-net-tools up -d
 | `net_whois` | 15 с |
 | `net_http` | 20 с |
 | `net_speed` | 20 с |
-| `net_trace` | 30 с |
-| `net_ports` | 45 с |
+| `net_trace` | 20 с |
+| `net_ports` | 30 с |
 
 Потолок проверяется дважды — таймаутом запроса в приложении и самим контейнером, — а
 вызов, вышедший за него, возвращает фразу, а не исключение. Каждый вызов публикует

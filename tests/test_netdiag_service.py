@@ -48,7 +48,7 @@ def test_a_command_is_a_list_and_never_a_shell_string(netdiag, monkeypatch):
     netdiag.run("ping", {"host": "example.com", "count": 2, "timeout": 5})
 
     assert isinstance(seen["args"], list)
-    assert seen["kwargs"].get("shell") is not True
+    assert seen["kwargs"].get("shell") is False
     assert "example.com" in seen["args"]
 
 
@@ -99,3 +99,19 @@ def test_a_single_host_scan_keeps_the_port_list_small(netdiag, monkeypatch):
     assert seen["args"][seen["args"].index("--top-ports") + 1] == "100"
     assert "-O" not in seen["args"]
     assert "-sS" not in seen["args"]
+
+
+def test_a_url_is_parsed_before_the_address_is_checked(netdiag, monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("a blocked url must not run"))
+
+    for url in ("http://127.0.0.1/", "http://user@127.0.0.1:8080/x", "http://[::1]/", "http://169.254.169.254/"):
+        assert netdiag.run("http", {"url": url, "timeout": 5}).startswith("⚠️ "), url
+
+
+def test_an_ipv6_literal_is_a_valid_host(netdiag, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: seen.update({"args": a[0]}) or _Done())
+
+    netdiag.run("ping", {"host": "2001:4860:4860::8888", "count": 1, "timeout": 5})
+
+    assert "2001:4860:4860::8888" in seen["args"]

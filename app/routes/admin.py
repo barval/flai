@@ -2607,8 +2607,15 @@ def _skills_offered() -> set[str]:
 
 def _skill_payload(skill: Any, enabled: bool, offered: set[str]) -> dict[str, Any]:
     from dataclasses import asdict
+    from pathlib import Path
 
-    from app.skills import classify_allowed_tools
+    from app.skills import SKILL_FILE, classify_allowed_tools
+
+    folder = Path(skill.installed_path or skill.path).parent
+    body = ""
+    with suppress(OSError):
+        body = (folder / SKILL_FILE).read_text(encoding="utf-8")
+    description_ru, body_ru = skill.variants.get("ru", ("", ""))
 
     return {
         "name": skill.name,
@@ -2617,6 +2624,9 @@ def _skill_payload(skill: Any, enabled: bool, offered: set[str]) -> dict[str, An
         "path": skill.path,
         "enabled": enabled,
         "shadowed": skill.shadowed,
+        "body": body,
+        "description_ru": description_ru,
+        "body_ru": body_ru,
         "allowed_tools": [asdict(mark) for mark in classify_allowed_tools(skill.allowed_tools, offered)],
     }
 

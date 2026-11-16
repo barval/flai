@@ -14,6 +14,7 @@
         <button class="admin-tab" data-tab="settings">{{ _('Settings') }}</button>
         <button class="admin-tab" data-tab="hub">{{ _('Model Hub') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        <button class="admin-tab" data-tab="skills">{{ _('Skills') }}</button>
         <button class="admin-tab" data-tab="mcp">{{ _('MCP') }}</button>
         {% if camera_enabled %}
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
@@ -368,6 +369,56 @@
             <input id="mcp-new-token" type="password" placeholder="{{ _('Token (optional)') }}" autocomplete="new-password">
             <input id="mcp-new-allow" type="text" placeholder="{{ _('Allowed tools, comma separated') }}" autocomplete="off">
             <button id="mcp-add-server" class="add-user-button">{{ _('Add server') }}</button>
+        </div>
+    </div>
+
+    <!-- Skills tab content -->
+    <div id="skills-tab" class="admin-tab-content">
+        <div class="skills-toolbar">
+            <button id="skills-upload-button" class="btn-primary">{{ _('Upload .md') }}</button>
+            <input type="file" id="skills-upload" accept=".md,text/markdown" hidden>
+            <button id="skills-new" class="add-user-button">{{ _('New skill') }}</button>
+            <span id="skills-status" class="settings-status"></span>
+        </div>
+        <div class="skills-table-wrapper">
+            <table id="skills-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Name') }}</th>
+                        <th>{{ _('Description') }}</th>
+                        <th>{{ _('Source') }}</th>
+                        <th>{{ _('Tools') }}</th>
+                        <th>{{ _('Enabled') }}</th>
+                        <th>{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="skills-body"></tbody>
+            </table>
+            <div id="skills-empty" class="no-backups">{{ _('No skills installed') }}</div>
+        </div>
+
+        <div id="skill-editor" class="skill-editor" hidden>
+            <label class="skill-field">
+                <span>{{ _('Skill name') }}</span>
+                <input type="text" id="skill-name" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Skill document (SKILL.md)') }}</span>
+                <textarea id="skill-body-en" rows="14" spellcheck="false"></textarea>
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Russian description (optional)') }}</span>
+                <input type="text" id="skill-description-ru" autocomplete="off">
+            </label>
+            <label class="skill-field">
+                <span>{{ _('Russian body (optional)') }}</span>
+                <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+            </label>
+            <div class="skill-editor-actions">
+                <button id="skill-save" class="btn-primary">{{ _('Save') }}</button>
+                <button id="skill-cancel" class="btn-secondary">{{ _('Cancel') }}</button>
+                <span id="skill-editor-status" class="settings-status"></span>
+            </div>
         </div>
     </div>
 
@@ -1044,7 +1095,20 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'branding_names_saved': {{ _('Site names saved')|tojson }},
     'branding_both_required': {{ _('Both language variants are required')|tojson }},
     'branding_name_too_long': {{ _('Site name is too long (max 40 characters per language)')|tojson }},
-    'branding_upload_failed': {{ _('Logo upload failed')|tojson }}
+    'branding_upload_failed': {{ _('Logo upload failed')|tojson }},
+    'Bundled': {{ _('Bundled')|tojson }},
+    'Installed': {{ _('Installed')|tojson }},
+    'Shadowed by a bundled skill': {{ _('Shadowed by a bundled skill')|tojson }},
+    'Rename': {{ _('Rename')|tojson }},
+    'Read-only': {{ _('Read-only')|tojson }},
+    'Edit': {{ _('Edit')|tojson }},
+    'Not available here': {{ _('Not available here')|tojson }},
+    'Unknown tool': {{ _('Unknown tool')|tojson }},
+    'Skill saved': {{ _('Skill saved')|tojson }},
+    'Skill deleted': {{ _('Skill deleted')|tojson }},
+    'Skill enabled': {{ _('Skill enabled')|tojson }},
+    'Skill disabled': {{ _('Skill disabled')|tojson }},
+    'The same name is already taken': {{ _('The same name is already taken')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -1059,6 +1123,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin-monitoring.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-settings.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-mcp.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-skills.js', v=config.STATIC_VERSION) }}"></script>
 {% if camera_enabled %}
 <script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
 {% endif %}

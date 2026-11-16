@@ -102,6 +102,17 @@ def create_mock_redis():
     # an endless loop, so every teardown waited out its join timeout.
     mock_redis.lpop.return_value = None
     mock_redis.rpop.return_value = None
+    # The ready queue is a sorted set: a truthy MagicMock here would make a worker
+    # unpack a mock as (key, member, score), and an int() of one raises.
+    mock_redis.bzpopmin.return_value = None
+    mock_redis.zcard.return_value = 0
+    mock_redis.zrange.return_value = []
+    mock_redis.zrangebyscore.return_value = []
+    mock_redis.zcount.return_value = 0
+    mock_redis.zadd.return_value = 1
+    mock_redis.zrem.return_value = 1
+    mock_redis.incr.return_value = 1
+    mock_redis.type.return_value = "none"
     mock_redis.smembers.return_value = set()
     mock_redis.ping.return_value = True
     mock_redis.expire.return_value = True

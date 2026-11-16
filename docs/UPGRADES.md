@@ -96,7 +96,27 @@ Werkzeug 3.1.9, urllib3 2.8.0, cryptography 50.0.2 and gevent 26.9.0, while the 
 - The per-request `reasoning_budget` field is still not documented in the server API, so the
   project's CLI workaround (`--reasoning-budget max(1024, ctx*0.4)`) must stay and be re-tested.
 
-**llama-swap (v260+ / v267)**
+**llama.cpp 1.0.0 (shipped as build b12407)**
+
+- The **MoE expert cache** (`--moe-cache-mib`, `--moe-cache-cpu-share`) was measured on the live
+  installation and is not enabled. With the model already fully resident it has nothing to cache, and
+  with the experts of eight layers forced onto the CPU (`--n-cpu-moe 8`) it buys the speed back only
+  by spending the VRAM the eviction freed. Measured on a ~4 700-token prompt with 96 generated
+  tokens, median of three runs: full GPU 2 757 / 114.4 t/s at 13 604 MiB; `--n-cpu-moe 8` 1 611 /
+  82.7 t/s at 11 664 MiB; the same with a 2 048 MiB cache 2 075 / 112.8 t/s at 13 722 MiB, still
+  climbing on its third run as the cache warmed. It is a way to trade VRAM for speed continuously
+  instead of in whole layers — not a way to run a model the card cannot hold at all.
+- A larger quant of the same model now has measured room: of the ~2 535 MiB the card leaves free at
+  the current window, `IQ3_XXS` (13.2 GB) and `IQ3_S` (13.7 GB) sit 0.9 and 1.4 GB above the 12.3 GB
+  `Q2_K_XL` in use, while `Q3_K_S` at 15.4 GB and everything above it does not fit. Untested.
+- **FP8 KV caches** (`-ctk/-ctv f8_e4m3`) cost one byte per value like `q8_0` and run on tensor
+  cores; adopting them means teaching `app/vram_probe.py` the type, which knows `q4_0` today. Not
+  measured yet.
+- A full **`json_schema`** response format is accepted (HTTP 200 with `strict: true`), which the
+  previous build refused with HTTP 400. The request kernel still asks for `json_object` and checks
+  the enum itself; constrained decoding needs its own measurement against the seed set first.
+
+**llama-swap (v260+ / v273)**
 
 - Per-backend images: `cuda`, `cuda13`, `rocm`, `vulkan`, `intel` (SYCL), `musa`, `cpu`, plus
   `-non-root` variants. This removes the "build llama.cpp images ourselves" blocker for AMD and

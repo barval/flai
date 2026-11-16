@@ -300,6 +300,16 @@ skill is installed. With the marker router (`KERNEL_ENABLED=0`) nothing names a
 skill automatically. `SKILL.<lang>.md` carries a localized
 description and body.
 
+Since v13.5 there are **two zones**: `skills/` ships with the project and is tracked,
+`data/skills/` is written by the admin panel and is not. `discover_all()` merges them
+with the bundled skill winning a name collision (the installed copy comes back
+`shadowed`), `active_skills()` additionally drops what `skill_settings` marks
+disabled, and every reader — catalog, `activate`, the kernel's known-name set — goes
+through that one filter. `allowed-tools` is validated when a skill is saved:
+`classify_allowed_tools()` sorts each name into offered / unavailable / typo /
+foreign, a typo blocks the write and the rest become marks in the panel. Details →
+[SKILLS.md](SKILLS.md).
+
 ### Plan as a tool, and the research step
 
 The task planner records its plan by calling `write_plan`, whose schema lists the

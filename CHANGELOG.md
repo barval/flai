@@ -1,5 +1,13 @@
 ## [v13.5] — Unreleased
 
+### Added
+
+- **Skills are installed from the panel, and an install never touches git.** A skill used to mean editing a tracked folder, so anything an administrator added landed in the next `git status` and the next release. There are now two zones: `skills/` ships with the project and is read-only in the panel, `data/skills/` is git-ignored and written by **Admin → Skills** — upload a `.md`, create or edit one as text, switch it off, delete it. A name a bundled skill owns is refused; one a release later ships is handled by letting the bundled copy win and listing the installed one as shadowed with a Rename action, so nothing an administrator wrote disappears. → [SKILLS.md](docs/SKILLS.md)
+
+- **`allowed-tools` is checked when a skill is saved.** The field was parsed and read by nobody. Each name is now sorted into four classes: in the catalogue (plain), a real tool whose service is not running (warning — the crawler may come back), one keystroke away from a real name (`web-serach` → `web_search`, **blocks the save** with the suggestion), or a name from another harness (`Read`, `Bash(git:*)`, warning and saved verbatim). The last class is why the upload button accepts skills written for Claude Code instead of refusing exactly those files. The field remains a contract, not a sandbox: the tool list is not narrowed at runtime.
+
+- **A disabled skill cannot be activated, even by a stale answer.** Enabled state lives in `skill_settings` in PostgreSQL rather than in the frontmatter, so an editor cannot change behaviour behind the panel's back, and the catalogue, the `activate_skill` enum and the request kernel's known-name set all read the same filtered list.
+
 ## [v13.4] — 2026-11-16
 
 ### Added

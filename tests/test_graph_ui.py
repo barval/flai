@@ -176,4 +176,7 @@ def test_the_relations_menu_stays_inside_the_view():
 
     assert "box-sizing: border-box" in style.split(".graph-filter-list {", 1)[1].split("}", 1)[0]
     assert "function clampFilterPanel()" in script
-    assert "list.style.left = '0px'" in script
+    # Pinned to the view's edges, not to the button: `left: 0` hung the panel off
+    # the opposite side when the toolbar wrapped.
+    assert "bounds.left - detailsRect.left" in script
+    assert "list.style.right = 'auto'" in script

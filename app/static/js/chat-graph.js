@@ -757,18 +757,27 @@
         const details = document.getElementById('graph-filters');
         const list = document.getElementById('graph-filter-list');
         if (!details || !list || !details.open) return;
+
         list.style.left = '';
         list.style.right = '';
+        list.style.width = '';
+        list.style.maxWidth = '';
+
         const view = viewRoot();
         const bounds = view ? view.getBoundingClientRect() : { left: 0, right: window.innerWidth };
-        const rect = list.getBoundingClientRect();
-        if (rect.left < bounds.left) {
-            list.style.left = '0px';
-            list.style.right = 'auto';
-        } else if (rect.right > bounds.right) {
-            list.style.right = '0px';
-            list.style.left = 'auto';
-        }
+        const natural = list.getBoundingClientRect();
+        if (natural.left >= bounds.left && natural.right <= bounds.right) return;
+
+        // Pin the panel to the view, not to the button: `left: 0` is measured
+        // from the filters element, so on a wrapped phone toolbar it left the
+        // panel hanging off the other side. Offsets are taken from the button's
+        // own rectangle, which is what an absolutely positioned child uses.
+        const detailsRect = details.getBoundingClientRect();
+        const available = Math.max(160, Math.round(bounds.right - bounds.left - 16));
+        list.style.width = Math.min(Math.round(natural.width), available) + 'px';
+        list.style.maxWidth = available + 'px';
+        list.style.left = Math.round(bounds.left - detailsRect.left + 8) + 'px';
+        list.style.right = 'auto';
     }
 
     document.addEventListener('toggle', function (event) {

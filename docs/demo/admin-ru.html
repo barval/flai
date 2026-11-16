@@ -4198,9 +4198,11 @@ video {
    and never wider than the screen: a 14rem panel starting at the filters button
    ran past the viewport. */
 @media (max-width: 768px) {
+    /* The script pins the panel inside the graph view; this is the no-script
+       fallback, and it must not be wider than the screen. */
     .graph-filter-list {
-        left: auto;
-        right: 0;
+        left: 0;
+        right: auto;
         min-width: 0;
         width: min(22rem, calc(100vw - 1rem));
         max-width: calc(100vw - 1rem);
@@ -9690,9 +9692,11 @@ video {
    and never wider than the screen: a 14rem panel starting at the filters button
    ran past the viewport. */
 @media (max-width: 768px) {
+    /* The script pins the panel inside the graph view; this is the no-script
+       fallback, and it must not be wider than the screen. */
     .graph-filter-list {
-        left: auto;
-        right: 0;
+        left: 0;
+        right: auto;
         min-width: 0;
         width: min(22rem, calc(100vw - 1rem));
         max-width: calc(100vw - 1rem);

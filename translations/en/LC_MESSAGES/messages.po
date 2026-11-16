@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 01:53+0300\n"
+"POT-Creation-Date: 2026-11-17 01:54+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -2421,7 +2421,7 @@ msgstr ""
 #: app/templates/admin.html:231 app/templates/admin.html:656
 #: app/templates/admin.html:1077 app/templates/chat.html:9
 #: app/templates/chat.html:198 app/templates/chat.html:377
-#: app/templates/chat.html:483
+#: app/templates/chat.html:490
 msgid "Documents"
 msgstr "Documents"
 
@@ -2947,10 +2947,8 @@ msgid "Search and crawl"
 msgstr "Search and crawl"
 
 #: app/templates/admin.html:700
-#
 msgid "Network diagnostics"
 msgstr "Network diagnostics"
-
 
 #: app/templates/admin.html:701
 msgid "Documents and RAG"
@@ -2989,22 +2987,16 @@ msgid "Use the per-user Tavily key before the local search engine"
 msgstr "Use the per-user Tavily key before the local search engine"
 
 #: app/templates/admin.html:714
-#
 msgid "Offer the network diagnostics tools to users who were granted them"
 msgstr "Offer the network diagnostics tools to users who were granted them"
 
-
 #: app/templates/admin.html:715
-#
 msgid "Network diagnostics service URL"
 msgstr "Network diagnostics service URL"
 
-
 #: app/templates/admin.html:716
-#
 msgid "Bearer token for the network diagnostics service"
 msgstr "Bearer token for the network diagnostics service"
-
 
 #: app/templates/admin.html:717
 msgid "Tavily API base URL"
@@ -3500,7 +3492,7 @@ msgid "Maximum accepted image width"
 msgstr "Maximum accepted image width"
 
 #: app/templates/admin.html:833 app/templates/chat.html:327
-#: app/templates/chat.html:481
+#: app/templates/chat.html:488
 msgid "Knowledge graph"
 msgstr "Knowledge graph"
 
@@ -5212,7 +5204,7 @@ msgstr "This browser cannot render the graph"
 msgid "Pick the second node of the path"
 msgstr "Pick the second node of the path"
 
-#: app/templates/chat.html:336 app/templates/chat.html:492
+#: app/templates/chat.html:336 app/templates/chat.html:499
 msgid "Clear path"
 msgstr "Clear path"
 
@@ -5228,7 +5220,7 @@ msgstr "Close"
 msgid "Path highlight cleared"
 msgstr "Path highlight cleared"
 
-#: app/templates/chat.html:340 app/templates/chat.html:486
+#: app/templates/chat.html:340 app/templates/chat.html:493
 msgid "Path"
 msgstr "Path"
 
@@ -5367,7 +5359,7 @@ msgstr "3D is unavailable: {reason}"
 msgid "Switch between 2D and 3D"
 msgstr "Switch between 2D and 3D"
 
-#: app/templates/chat.html:374 app/templates/chat.html:484
+#: app/templates/chat.html:374 app/templates/chat.html:491
 msgid "Switch to 2D"
 msgstr "Switch to 2D"
 
@@ -5379,7 +5371,7 @@ msgstr "Switch to 3D"
 msgid "Entities"
 msgstr "Entities"
 
-#: app/templates/chat.html:378 app/templates/chat.html:483
+#: app/templates/chat.html:378 app/templates/chat.html:490
 msgid "Switch to documents"
 msgstr "Switch to documents"
 
@@ -5503,173 +5495,210 @@ msgid "tool_read_page"
 msgstr "Reading the page..."
 
 #: app/templates/chat.html:417
+msgid "tool_net_dns"
+msgstr "tool_net_dns"
+
+
+#: app/templates/chat.html:418
+msgid "tool_net_whois"
+msgstr "tool_net_whois"
+
+
+#: app/templates/chat.html:419
+#
+msgid "tool_net_ping"
+msgstr "tool_net_ping"
+
+
+#: app/templates/chat.html:420
+msgid "tool_net_trace"
+msgstr "tool_net_trace"
+
+
+#: app/templates/chat.html:421
+msgid "tool_net_ports"
+msgstr "tool_net_ports"
+
+
+#: app/templates/chat.html:422
+msgid "tool_net_http"
+msgstr "tool_net_http"
+
+
+#: app/templates/chat.html:423
+#
+msgid "tool_net_speed"
+msgstr "tool_net_speed"
+
+
+#: app/templates/chat.html:424
 msgid "Preparing resources..."
 msgstr "⏳ Preparing resources..."
 
-#: app/templates/chat.html:418 app/templates/chat.html:419
+#: app/templates/chat.html:425 app/templates/chat.html:426
 msgid "Analyzing request..."
 msgstr "🔍 Analyzing request..."
 
-#: app/templates/chat.html:420
+#: app/templates/chat.html:427
 msgid "Analyzing image..."
 msgstr "🔍 Analyzing image..."
 
-#: app/templates/chat.html:421
+#: app/templates/chat.html:428
 msgid "Analyzing prompt..."
 msgstr "🔍 Analyzing prompt..."
 
-#: app/templates/chat.html:422
+#: app/templates/chat.html:429
 msgid "Generating video..."
 msgstr "🎬 Generating video..."
 
-#: app/templates/chat.html:423
+#: app/templates/chat.html:430
 msgid "Generating image..."
 msgstr "🎨 Generating image..."
 
-#: app/templates/chat.html:424
+#: app/templates/chat.html:431
 msgid "Editing image..."
 msgstr "✏️ Editing image..."
 
-#: app/templates/chat.html:425
+#: app/templates/chat.html:432
 msgid "Loading reasoning model..."
 msgstr "🧠 Loading reasoning model..."
 
-#: app/templates/chat.html:426
+#: app/templates/chat.html:433
 msgid "Loading the model..."
 msgstr "Loading the model..."
 
-#: app/templates/chat.html:427
+#: app/templates/chat.html:434
 msgid "Thinking..."
 msgstr "🤔 Thinking..."
 
-#: app/templates/chat.html:428
+#: app/templates/chat.html:435
 msgid "Searching documents..."
 msgstr "📚 Searching documents..."
 
-#: app/templates/chat.html:429 app/templates/chat.html:433
+#: app/templates/chat.html:436 app/templates/chat.html:440
 #, python-format
 msgid "Found %s fragments, preparing the answer..."
 msgstr "Found %s fragments, preparing the answer..."
 
-#: app/templates/chat.html:430
+#: app/templates/chat.html:437
 msgid "Searching the web..."
 msgstr "🌐 Searching the web..."
 
-#: app/templates/chat.html:431
+#: app/templates/chat.html:438
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Found %s results, preparing the answer..."
 
-#: app/templates/chat.html:432
+#: app/templates/chat.html:439
 msgid "Searching your conversation history..."
 msgstr "🗨 Searching your conversation history..."
 
-#: app/templates/chat.html:434
+#: app/templates/chat.html:441
 msgid "Getting time..."
 msgstr "🕐 Getting time..."
 
-#: app/templates/chat.html:435
+#: app/templates/chat.html:442
 msgid "Calculating..."
 msgstr "🔢 Calculating..."
 
-#: app/templates/chat.html:436
+#: app/templates/chat.html:443
 msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
-#: app/templates/chat.html:437
+#: app/templates/chat.html:444
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Deep analysis: reading documents"
 
-#: app/templates/chat.html:438
+#: app/templates/chat.html:445
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Deep analysis: phase %s"
 
-#: app/templates/chat.html:439
+#: app/templates/chat.html:446
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Deep analysis: searching the web"
 
-#: app/templates/chat.html:440
+#: app/templates/chat.html:447
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:441
+#: app/templates/chat.html:448
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Deep analysis: composing the answer"
 
-#: app/templates/chat.html:442
+#: app/templates/chat.html:449
 msgid "Starting web crawl..."
 msgstr "🕸️ Starting web crawl..."
 
-#: app/templates/chat.html:443
+#: app/templates/chat.html:450
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Crawling page %s..."
 
-#: app/templates/chat.html:444
+#: app/templates/chat.html:451
 msgid "Indexing crawled content..."
 msgstr "🕸️ Indexing crawled content..."
 
-#: app/templates/chat.html:445
+#: app/templates/chat.html:452
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Deep analysis (%s steps)"
 
-#: app/templates/chat.html:446
+#: app/templates/chat.html:453
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:447
+#: app/templates/chat.html:454
 msgid "Making the plan..."
 msgstr "Making the plan..."
 
-#: app/templates/chat.html:448
+#: app/templates/chat.html:455
 msgid "Extracting the visual continuity sheet..."
 msgstr "📐 Extracting the visual continuity sheet..."
 
-#: app/templates/chat.html:449
+#: app/templates/chat.html:456
 msgid "Could not build the visual continuity sheet — images continue without it."
 msgstr ""
 "⚠️ Could not build the visual continuity sheet — images continue without "
 "it."
 
-#: app/templates/chat.html:450
+#: app/templates/chat.html:457
 msgid "Creating index for document..."
 msgstr "Creating index for document..."
 
-#: app/templates/chat.html:451
+#: app/templates/chat.html:458
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:452
+#: app/templates/chat.html:459
 msgid "Step"
 msgstr "Step"
 
-#: app/templates/chat.html:453
+#: app/templates/chat.html:460
 msgid "minute_abbr"
 msgstr "m"
 
-#: app/templates/chat.html:454
+#: app/templates/chat.html:461
 msgid "second_abbr"
 msgstr "s"
 
-#: app/templates/chat.html:455
+#: app/templates/chat.html:462
 msgid "timer_zero"
 msgstr "0s"
 
-#: app/templates/chat.html:486
+#: app/templates/chat.html:493
 msgid "Show the path between two nodes"
 msgstr "Show the path between two nodes"
 
-#: app/templates/chat.html:487
+#: app/templates/chat.html:494
 msgid "Find a node"
 msgstr "Find a node"
 
-#: app/templates/chat.html:489
+#: app/templates/chat.html:496
 msgid "Show or hide relation types"
 msgstr "Show or hide relation types"
 
-#: app/templates/chat.html:489
+#: app/templates/chat.html:496
 msgid "Relations"
 msgstr "Relations"
 

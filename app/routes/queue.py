@@ -143,7 +143,7 @@ def api_queue_status():
     user_id = session["login"]
     lang = session.get("language", "ru")
     status = current_app.request_queue.get_user_requests_status(user_id, lang=lang)
-    queue_length = current_app.request_queue.redis.llen(current_app.request_queue.queue_key)
+    queue_length = current_app.request_queue._ready_len(current_app.request_queue.queue_key)
     status["system"] = {
         "total_queued": queue_length,
         "current_load": "high" if queue_length > 10 else "normal",

@@ -105,3 +105,25 @@ def test_without_a_system_message_one_is_inserted(app):
     with app.app_context():
         RedisRequestQueue._preload_skills(_Stub(), messages, ("web-research",), "en")
     assert [message["role"] for message in messages] == ["system", "user"]
+
+
+@pytest.mark.unit
+def test_a_skill_does_not_replace_a_pipeline_intent():
+    """The crawler indexes the site; the chat loop would only read one page."""
+    decision = parse_kernel_decision(
+        _reply(intent="crawl", skills=["web-research"]), {"web-research"}
+    )
+    route = decision_to_route(decision, "go through all of docs.example.com and summarize")
+    assert route["action"] == "crawl"
+    # The body would never be loaded on that path, so the route reports none.
+    assert route["skills"] == ()
+
+
+@pytest.mark.unit
+def test_a_skill_still_takes_over_a_prose_intent():
+    decision = parse_kernel_decision(
+        _reply(intent="reasoning", skills=["web-research"]), {"web-research"}
+    )
+    route = decision_to_route(decision, "check the maths behind this claim")
+    assert route["action"] == "none"
+    assert route["skills"] == ("web-research",)

@@ -5770,3 +5770,7 @@ msgstr "Choose the first node of the path"
 #: app/templates/chat.html
 msgid "Show the path between two nodes"
 msgstr "Show the path between two nodes"
+
+#: app/settings_registry.py
+msgid "Ask for a schema-constrained reply from the request kernel"
+msgstr "Ask for a schema-constrained reply from the request kernel"

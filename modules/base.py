@@ -201,6 +201,7 @@ class BaseModule(TranslationMixin):
         # stays the reference until the kernel is measured against it.
         self.KERNEL_ENABLED = False
         self.KERNEL_CONSTRAINED = True
+        self.KERNEL_STRICT_SCHEMA = False
         if app:
             self.init_app(app)
 
@@ -222,6 +223,7 @@ class BaseModule(TranslationMixin):
         self.ROUTER_SLM_FACTS = app.config.get("ROUTER_SLM_FACTS", 2)
         self.KERNEL_ENABLED = bool(app.config.get("KERNEL_ENABLED", False))
         self.KERNEL_CONSTRAINED = bool(app.config.get("KERNEL_CONSTRAINED", True))
+        self.KERNEL_STRICT_SCHEMA = bool(app.config.get("KERNEL_STRICT_SCHEMA", False))
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
@@ -966,10 +968,10 @@ class BaseModule(TranslationMixin):
         handles.
         """
         from app.kernel import (
-            KERNEL_RESPONSE_FORMAT,
             build_kernel_catalog,
             build_kernel_prompt,
             decision_to_route,
+            kernel_response_format,
             parse_kernel_decision,
         )
         from app.tools import get_tool_definitions
@@ -998,7 +1000,7 @@ class BaseModule(TranslationMixin):
             model_type="multimodal",
             lang=lang,
             temperature=0,
-            response_format=KERNEL_RESPONSE_FORMAT if self.KERNEL_CONSTRAINED else None,
+            response_format=kernel_response_format(self.KERNEL_CONSTRAINED, self.KERNEL_STRICT_SCHEMA),
         )
         decision = parse_kernel_decision(reply if isinstance(reply, str) else None, skill_names)
         if decision is None:

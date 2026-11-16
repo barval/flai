@@ -4109,7 +4109,9 @@ video {
     z-index: 20;
     top: calc(100% + 0.3rem);
     left: 0;
-    min-width: 14rem;
+    /* Wide enough for the longest group title and a four-digit count on one
+       line: at 14rem the title and its only row both wrapped. */
+    min-width: 18rem;
     /* Content-box made the panel wider than its bound by its own padding and
        border, and a right-anchored panel pays that overage on the left edge. */
     box-sizing: border-box;
@@ -9612,7 +9614,9 @@ video {
     z-index: 20;
     top: calc(100% + 0.3rem);
     left: 0;
-    min-width: 14rem;
+    /* Wide enough for the longest group title and a four-digit count on one
+       line: at 14rem the title and its only row both wrapped. */
+    min-width: 18rem;
     /* Content-box made the panel wider than its bound by its own padding and
        border, and a right-anchored panel pays that overage on the left edge. */
     box-sizing: border-box;
@@ -14085,8 +14089,8 @@ function initDocumentsView() {
         }
 
         list.innerHTML =
-            group('graph_relations_stated', 'Stated relations', stated) +
-            group('graph_relations_structural', 'Structural, no quote', structural) ||
+            group('graph_relations_structural', 'Structural, no quote', structural) +
+            group('graph_relations_stated', 'Stated relations', stated) ||
             '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
 
         clampFilterPanel();

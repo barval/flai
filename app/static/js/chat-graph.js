@@ -436,8 +436,8 @@
         }
 
         list.innerHTML =
-            group('graph_relations_stated', 'Stated relations', stated) +
-            group('graph_relations_structural', 'Structural, no quote', structural) ||
+            group('graph_relations_structural', 'Structural, no quote', structural) +
+            group('graph_relations_stated', 'Stated relations', stated) ||
             '<p class="graph-hint">' + escapeHtml(t('graph_no_relations', 'No relations')) + '</p>';
 
         clampFilterPanel();

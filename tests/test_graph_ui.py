@@ -192,3 +192,11 @@ def test_the_path_can_be_built_without_a_right_click():
     assert "function setPathMode(" in script
     assert "pathMode && !pathSourceId" in script
     assert "graph-layer-btn.active" in STYLE.read_text(encoding="utf-8")
+
+
+def test_the_structural_group_leads_the_relations_menu():
+    """The group a reader asks about first is also the one with the longest label."""
+    script = SCRIPT.read_text(encoding="utf-8")
+    block = script.split("list.innerHTML =", 1)[1]
+    assert block.index("graph_relations_structural") < block.index("graph_relations_stated")
+    assert "min-width: 18rem" in STYLE.read_text(encoding="utf-8")

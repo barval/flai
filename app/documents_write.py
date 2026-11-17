@@ -11,6 +11,7 @@ language, because this module has no request context of its own.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import json
@@ -46,6 +47,7 @@ class WrittenDocument:
     filename: str
     size: int
     file_path: str
+    absolute_path: str
 
 
 def _documents_root() -> str:
@@ -53,18 +55,17 @@ def _documents_root() -> str:
 
 
 def _display_name(name: str, extension: str) -> str:
-    """A display name from whatever the model called it: no directory, no control bytes."""
-    text = str(name or "").replace("\\", "/")
-    text = text.rsplit("/", 1)[-1]
+    """A display name from whatever the model called it: no directory, no control bytes.
+
+    A suffix the caller wrote ("report.pdf" asked for as markdown) is replaced rather
+    than doubled; a name without one gets the format's.
+    """
+    text = str(name or "").replace("\\", "/").rsplit("/", 1)[-1]
     text = re.sub(r"[\x00-\x1f\x7f]", "", text)
     text = re.sub(r"\s+", " ", text).strip().strip(".")
     stem, suffix = os.path.splitext(text)
-    if suffix.lower() == extension:
-        text, stem = stem, stem
-    elif suffix and suffix.lower() in FORMAT_EXTENSIONS.values():
+    if not suffix or not re.fullmatch(r"\.[A-Za-z0-9]{1,5}", suffix):
         stem = text
-    else:
-        text, stem = f"{text}{extension}", text
     stem = stem[:MAX_NAME_STEM].strip()
     if not stem:
         raise DocumentWriteError("name")
@@ -93,10 +94,30 @@ def _storage_full(user_id: str, size: int) -> bool:
     return used + size > limit
 
 
+def count_quota_exceeded(user_id: str) -> bool:
+    """The document COUNT limit, which the byte limit does not cover.
+
+    Without it a model looping across turns could create thousands of tiny files and
+    queue a GPU indexing job for each, all inside the byte budget.
+    """
+    from app.utils import check_document_quota
+
+    # The language is explicit: without one the helper calls gettext(), whose locale
+    # selector reads the request, and its own broad except would report "no quota"
+    # instead of checking. Only None-vs-message matters here.
+    try:
+        return check_document_quota(user_id, lang="en") is not None
+    except Exception:  # noqa: BLE001 - an unreadable quota is not a refusal
+        return False
+
+
 def _payload(content: str, fmt: str, rows: list[list[str]] | None) -> str:
     if fmt == "csv":
         if not rows:
-            raise DocumentWriteError("empty")
+            # A model that passes content instead of rows gets told which one is needed.
+            raise DocumentWriteError("csv_rows" if str(content or "").strip() else "empty")
+        if not isinstance(rows, list) or any(not isinstance(row, (list, tuple)) for row in rows):
+            raise DocumentWriteError("csv_rows")
         buffer = io.StringIO()
         csv.writer(buffer).writerows(rows)
         return buffer.getvalue()
@@ -129,7 +150,7 @@ def write_document_file(
     data = payload.encode("utf-8")
     if len(data) > MAX_CONTENT_BYTES:
         raise DocumentWriteError("too_large", str(len(data)))
-    if _storage_full(user_id, len(data)):
+    if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
         raise DocumentWriteError("quota")
 
     filename = _free_name(user_id, _display_name(name, extension))
@@ -142,19 +163,28 @@ def write_document_file(
     if not os.path.realpath(absolute).startswith(root + os.sep):
         raise DocumentWriteError("name", filename)
 
+    if not payload.endswith("\n"):
+        payload = f"{payload}\n"
+    data = payload.encode("utf-8")
+    if len(data) > MAX_CONTENT_BYTES:
+        raise DocumentWriteError("too_large", str(len(data)))
+    if _storage_full(user_id, len(data)):
+        raise DocumentWriteError("quota")
+
     os.makedirs(folder, exist_ok=True)
-    text = payload if payload.endswith("\n") else f"{payload}\n"
     try:
         with open(absolute, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
+            handle.write(payload)
         size = os.path.getsize(absolute)
         db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
+        db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
         db.update_user_storage(user_id, size)
     except Exception:
-        with open(absolute, "w", encoding="utf-8"):
-            pass
-        os.remove(absolute)
+        # Never let the cleanup replace the error that caused it, and never leave a
+        # half-document behind.
+        with contextlib.suppress(OSError):
+            os.remove(absolute)
         raise
 
     logger.info(f"document written by the assistant: {filename} ({size} bytes) for {user_id!r}")
-    return WrittenDocument(id=doc_id, filename=filename, size=size, file_path=relative)
+    return WrittenDocument(id=doc_id, filename=filename, size=size, file_path=relative, absolute_path=absolute)

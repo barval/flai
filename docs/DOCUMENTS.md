@@ -72,9 +72,9 @@ badge. The `source` column distinguishes all four origins — `upload`, `crawl` 
 crawler saved), `chat` (a file attached to a message) and `generated`. Rows that predate
 the column read `upload`; nothing can tell them apart retroactively.
 
-Ask for it in plain language: «собери отчёт по этим договорам и отдай файлом», "save that
-as a table". The tool answers with the stored name and the size, and indexing happens in
-the background.
+Ask for it in plain language — "put a report together from these contracts and give it to
+me as a file", "save that as a table". The tool answers with the stored name and the size,
+and indexing happens in the background.
 
 ## 1. Configure RAG in Admin Panel
 

@@ -101,8 +101,8 @@ def test_oversized_content_is_refused_before_the_write(writer_env):
     assert not folder.exists() or not any(folder.iterdir())
 
 
-def test_a_full_quota_is_refused_before_the_write(writer_env, monkeypatch):
-    monkeypatch.setattr(documents_write, "_storage_full", lambda user, size: True)
+def test_a_full_byte_quota_is_refused_before_the_write(writer_env, test_app):
+    test_app.config["MAX_DOCUMENTS_STORAGE_MB"] = 0
 
     with pytest.raises(DocumentWriteError) as error:
         write_document_file(LOGIN, "x", "y", fmt="md")
@@ -110,6 +110,42 @@ def test_a_full_quota_is_refused_before_the_write(writer_env, monkeypatch):
     assert error.value.code == "quota"
     folder = writer_env / LOGIN
     assert not folder.exists() or not any(folder.iterdir())
+
+
+def test_the_document_count_quota_is_refused_too(writer_env, test_app):
+    """The byte limit alone lets a loop create thousands of tiny files."""
+    test_app.config["MAX_DOCUMENTS_PER_USER"] = 0
+
+    with pytest.raises(DocumentWriteError) as error:
+        write_document_file(LOGIN, "x", "y", fmt="md")
+
+    assert error.value.code == "quota"
+
+
+def test_a_written_document_is_pending_for_indexing(writer_env):
+    doc = write_document_file(LOGIN, "n", "c")
+
+    assert db.get_document(doc.id, LOGIN)["index_status"] == db.INDEX_STATUS_PENDING
+
+
+def test_a_foreign_extension_is_replaced_not_doubled(writer_env):
+    doc = write_document_file(LOGIN, "report.pdf", "x", fmt="md")
+
+    assert doc.filename == "report.md"
+
+
+def test_csv_without_rows_names_the_real_mistake(writer_env):
+    with pytest.raises(DocumentWriteError) as error:
+        write_document_file(LOGIN, "t", "a,b", fmt="csv")
+
+    assert error.value.code == "csv_rows"
+
+
+def test_csv_rows_must_be_rows(writer_env):
+    with pytest.raises(DocumentWriteError) as error:
+        write_document_file(LOGIN, "t", rows=["a", "b"], fmt="csv")
+
+    assert error.value.code == "csv_rows"
 
 
 def test_empty_content_is_refused(writer_env):

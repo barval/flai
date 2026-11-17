@@ -66,3 +66,17 @@ def test_the_badge_labels_are_translated():
         for lang in ("en", "ru"):
             catalog = (root / f"translations/{lang}/LC_MESSAGES/messages.po").read_text(encoding="utf-8")
             assert f'msgid "{msgid}"' in catalog, (msgid, lang)
+
+
+def test_a_fresh_database_gets_every_documents_column():
+    """The migration file is the only thing that creates them: `CREATE TABLE` does not.
+
+    A commit once replaced a column's ALTER instead of adding to it, and nothing
+    noticed because the development database already had it.
+    """
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "app/database.py").read_text(encoding="utf-8")
+
+    for column in ("blob_sha256 TEXT", "source TEXT NOT NULL DEFAULT 'upload'"):
+        assert f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {column}" in source, column

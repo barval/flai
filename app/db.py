@@ -699,7 +699,7 @@ def get_user_documents(user_id, include_shared=False, with_share_counts=False):
                 """
             SELECT d.id, d.filename, d.file_size, d.file_ext, d.file_path, d.uploaded_at,
                    d.index_status, d.indexed_at, d.indexing_started_at, d.embedding_model,
-                   d.description_model, d.folder_id, s.owner_login AS shared_by
+                   d.description_model, d.folder_id, d.source, s.owner_login AS shared_by
             FROM document_shares s
             JOIN documents d ON d.id = s.document_id
             WHERE s.shared_with = %s
@@ -758,7 +758,7 @@ def get_shared_document(document_id, viewer_login):
             """
         SELECT d.id, d.user_id, d.filename, d.file_size, d.file_ext, d.file_path, d.index_status,
                d.indexed_at, d.uploaded_at, d.embedding_model, d.folder_id, d.blob_sha256,
-               d.stored_bytes, s.owner_login AS shared_by
+               d.stored_bytes, d.source, s.owner_login AS shared_by
         FROM document_shares s
         JOIN documents d ON d.id = s.document_id
         WHERE s.document_id = %s AND s.shared_with = %s

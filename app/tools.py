@@ -1276,16 +1276,21 @@ SKILL_LOADER_TOOL = "activate_skill"
 
 def _write_document_message(code: str, detail: str, lang: str) -> str:
     """The sentence a refusal becomes, in the caller's language."""
+    from app import documents_write
+
     # Built inside force_locale: gettext() runs the app's locale selector, which reads
     # the request, so calling it outside a request context raises.
     with force_locale(lang):
         messages = {
             "empty": _("There is nothing to write: the content is empty"),
             "format": _("Unsupported document format: {detail}. Use md, csv, json or txt"),
-            "too_large": _("The document is too large (limit {limit} KB)").format(limit=256),
+            "too_large": _("The document is too large (limit {limit} KB)").format(
+                limit=documents_write.MAX_CONTENT_BYTES // 1024
+            ),
             "quota": _("The document storage quota is exhausted; delete something first"),
             "json": _("The JSON does not parse, so nothing was written"),
             "name": _("The document name is not usable: {detail}"),
+            "csv_rows": _("A csv needs rows: a list of rows, each a list of cells"),
         }
         text = messages.get(code, _("The document could not be written"))
         if "{detail}" in text:
@@ -1328,7 +1333,8 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
                 request_data={
                     "type": "index_document",
                     "doc_id": written.id,
-                    "file_path": written.file_path,
+                    # Absolute, like the upload route: the indexer opens it as given.
+                    "file_path": written.absolute_path,
                 },
                 user_class=ctx.get("user_class", 100),
                 lang=lang,

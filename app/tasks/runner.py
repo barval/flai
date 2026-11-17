@@ -796,6 +796,50 @@ def _run_continuity(context: DirectStepContext) -> Any:
 # The dispatch table. Keyed by the capability ids the manifest marks as
 # ``direct``; tests/test_direct_runner_table.py asserts the two agree, so a
 # capability cannot be declared and silently un-runnable.
+
+def _allowed_chat_tools() -> set[str]:
+    """The chat catalogue a task step may name.
+
+    Taken from the live catalogue, so a tool that is not installed (a sidecar that is
+    down) is not offered here either, and the skill loader is excluded: the task path
+    gets its skills through the plan, not through a tool call.
+    """
+    from app.tools import get_tool_definitions
+
+    names = {definition["function"]["name"] for definition in get_tool_definitions("en")}
+    names.discard("activate_skill")
+    return names
+
+
+def _run_chat_tool(context: DirectStepContext) -> Any:
+    """Run one chat tool by name, through the single gate the chat loop uses.
+
+    Routing through ``execute_tool`` is the whole point: the per-user permission, the
+    rate limit and the audit live there, and a second dispatcher inside the task runner
+    would be a second place for them to drift.
+    """
+    from app.tools import execute_tool
+
+    extra = context.step.get("extra") or {}
+    name = str(extra.get("tool") or "").strip()
+    allowed = _allowed_chat_tools()
+    if name not in allowed:
+        raise ValueError(f"tool {name!r} is not in the chat catalogue")
+    arguments = extra.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        raise ValueError("chat_tool arguments must be an object")
+    return execute_tool(
+        name,
+        arguments,
+        {
+            "app": context.app,
+            "user_id": context.user_id,
+            "lang": context.lang,
+            "message_text": context.task_request,
+        },
+    )
+
+
 DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
     "llm": _run_llm,
     "search": _run_search,
@@ -804,6 +848,7 @@ DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
     "calculate": _run_calculate,
     "continuity": _run_continuity,
     "research": _run_research,
+    "chat_tool": _run_chat_tool,
 }
 
 # Tools that stream the reasoning model themselves, so the step header reports
@@ -811,7 +856,7 @@ DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
 OWN_METADATA_TOOLS = frozenset({"llm", "continuity", "research"})
 # Tools whose failure reason is worth showing verbatim (an unknown variable, an
 # unparseable sheet) instead of a bare "tool error".
-ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity"})
+ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity", "chat_tool"})
 
 
 def run_direct_step(
@@ -885,6 +930,8 @@ def run_direct_step(
             }
         exec_seconds = round(time.monotonic() - start, 2)
         result = _result_to_str(raw)
+        if tool == "chat_tool" and result.startswith("⚠️ "):
+            return {"result": result, "exec_seconds": exec_seconds, "status": "error", "checkpoint": None}
         if tool == "llm" and _is_error_text(result):
             return {"result": result, "exec_seconds": exec_seconds, "status": "error", "checkpoint": None}
         if cancel_check():

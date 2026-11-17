@@ -115,3 +115,13 @@ def test_an_ipv6_literal_is_a_valid_host(netdiag, monkeypatch):
     netdiag.run("ping", {"host": "2001:4860:4860::8888", "count": 1, "timeout": 5})
 
     assert "2001:4860:4860::8888" in seen["args"]
+
+
+def test_the_container_ceiling_matches_the_application(netdiag):
+    """Two tables describe one limit; a container that allows longer than the caller
+    waits turns a slow scan into a truncated answer with no explanation."""
+    from app import netdiag as client
+
+    assert set(netdiag.DEFAULT_TIMEOUT) == set(client.TOOL_TIMEOUTS)
+    for tool, limit in client.TOOL_TIMEOUTS.items():
+        assert netdiag.DEFAULT_TIMEOUT[tool] <= limit, tool

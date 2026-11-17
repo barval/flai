@@ -42,8 +42,10 @@ DEFAULT_TIMEOUT = {
     "dns": 10.0,
     "whois": 15.0,
     "ping": 15.0,
-    "trace": 30.0,
-    "ports": 45.0,
+    # Never longer than the caller waits: the application gives up first, and a
+    # container that kept working would answer into a closed request.
+    "trace": 20.0,
+    "ports": 30.0,
     "http": 20.0,
     "speed": 20.0,
 }

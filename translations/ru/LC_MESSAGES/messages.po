@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 21:51+0300\n"
+"POT-Creation-Date: 2026-11-17 22:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -1065,7 +1065,6 @@ msgstr "Имя документа не подходит: {detail}"
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "Для csv нужны rows: список строк, каждая — список ячеек"
 
-
 #: app/tools.py:1295
 msgid "The document could not be written"
 msgstr "Документ не удалось записать"
@@ -1079,8 +1078,9 @@ msgstr "Пользователь не определён для работы с 
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
-msgstr "Сохранено как {name} ({size} КБ) в ваших документах. Отметьте его галочкой, чтобы включить поиск."
-
+msgstr ""
+"Сохранено как {name} ({size} КБ) в ваших документах. Отметьте его "
+"галочкой, чтобы включить поиск."
 
 #: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1342
 #, python-brace-format
@@ -1655,7 +1655,6 @@ msgstr "Распознавание не вернуло текст"
 msgid "Document not found"
 msgstr "Документ не найден"
 
-
 #: app/routes/api_v1.py:1298 app/routes/documents.py:160
 #: app/routes/documents.py:173 modules/multimodal.py:115
 msgid "Unsupported file type"
@@ -1828,15 +1827,12 @@ msgid "User not found"
 msgstr "Пользователь не найден"
 
 #: app/routes/documents.py:801
-#
 msgid "Not authenticated"
 msgstr "Не выполнен вход"
-
 
 #: app/routes/documents.py:806
 msgid "Only a document written by the assistant has this switch"
 msgstr "Эта галка есть только у документов, написанных ассистентом"
-
 
 #: app/routes/messages.py:187
 msgid "Multiple documents are not supported in one message"
@@ -5281,21 +5277,18 @@ msgid "Generated"
 msgstr "Сгенерировано"
 
 #: app/templates/chat.html:326
-#
+msgid "Index"
+msgstr "Индекс"
+
+
+#: app/templates/chat.html:327
 msgid "Index for search and graph"
 msgstr "Индексировать в поиск и граф"
 
 
-#: app/templates/chat.html:327
-msgid "A document the assistant wrote stays out of search until you tick this"
-msgstr "Документ, написанный ассистентом, не попадает в поиск, пока вы не отметите это"
-
-
 #: app/templates/chat.html:328
-#
 msgid "index is outdated"
 msgstr "индекс устарел"
-
 
 #: app/templates/chat.html:329
 msgid "Crawled"
@@ -6062,4 +6055,10 @@ msgstr "Не удалось подключиться к сервису гене�
 
 #~ msgid "Both language variants are required"
 #~ msgstr "Требуются оба языковых варианта"
+
+#~ msgid "A document the assistant wrote stays out of search until you tick this"
+#~ msgstr ""
+#~ "Документ, написанный ассистентом, не попадает"
+#~ " в поиск, пока вы не отметите "
+#~ "это"
 

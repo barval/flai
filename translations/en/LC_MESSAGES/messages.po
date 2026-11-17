@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 21:51+0300\n"
+"POT-Creation-Date: 2026-11-17 22:03+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -1050,7 +1050,6 @@ msgstr "The document name is not usable: {detail}"
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "A csv needs rows: a list of rows, each a list of cells"
 
-
 #: app/tools.py:1295
 msgid "The document could not be written"
 msgstr "The document could not be written"
@@ -1064,8 +1063,9 @@ msgstr "User not identified for documents"
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
-msgstr "Saved as {name} ({size} KB) in your documents. Tick its box to index it for search."
-
+msgstr ""
+"Saved as {name} ({size} KB) in your documents. Tick its box to index it "
+"for search."
 
 #: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1342
 #, python-brace-format
@@ -1630,7 +1630,6 @@ msgstr "Transcription produced no text"
 msgid "Document not found"
 msgstr "Document not found"
 
-
 #: app/routes/api_v1.py:1298 app/routes/documents.py:160
 #: app/routes/documents.py:173 modules/multimodal.py:115
 msgid "Unsupported file type"
@@ -1803,15 +1802,12 @@ msgid "User not found"
 msgstr "User not found"
 
 #: app/routes/documents.py:801
-#
 msgid "Not authenticated"
 msgstr "Not authenticated"
-
 
 #: app/routes/documents.py:806
 msgid "Only a document written by the assistant has this switch"
 msgstr "Only a document written by the assistant has this switch"
-
 
 #: app/routes/messages.py:187
 msgid "Multiple documents are not supported in one message"
@@ -5238,21 +5234,18 @@ msgid "Generated"
 msgstr "Generated"
 
 #: app/templates/chat.html:326
-#
+msgid "Index"
+msgstr "Index"
+
+
+#: app/templates/chat.html:327
 msgid "Index for search and graph"
 msgstr "Index for search and graph"
 
 
-#: app/templates/chat.html:327
-msgid "A document the assistant wrote stays out of search until you tick this"
-msgstr "A document the assistant wrote stays out of search until you tick this"
-
-
 #: app/templates/chat.html:328
-#
 msgid "index is outdated"
 msgstr "index is outdated"
-
 
 #: app/templates/chat.html:329
 msgid "Crawled"
@@ -6021,4 +6014,7 @@ msgstr "Could not connect to video generation service"
 
 #~ msgid "Both language variants are required"
 #~ msgstr "Both language variants are required"
+
+#~ msgid "A document the assistant wrote stays out of search until you tick this"
+#~ msgstr "A document the assistant wrote stays out of search until you tick this"
 

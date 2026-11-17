@@ -3209,7 +3209,13 @@ class TaskExecutor:
             self._publish_running_step(task_id, row["id"])
             self._current_step_id = row["id"]
             update_step(row["id"], status="running", started_at=_now_iso(), attempts=attempts + 1)
-            digest = self._context_digest(task_id, idx, corrective_note=corrective_note)
+            digest = self._context_digest(
+                task_id,
+                idx,
+                corrective_note=corrective_note,
+                skills=(task.get("step_plan") or {}).get("skills") if isinstance(task.get("step_plan"), dict) else None,
+                lang=task.get("lang") or "ru",
+            )
             start = time.monotonic()
             try:
                 outcome = run_direct_step(
@@ -3474,6 +3480,8 @@ class TaskExecutor:
         corrective_note: str = "",
         char_cap: int = 16000,
         skip_seqs: set[int] | None = None,
+        skills: list[str] | None = None,
+        lang: str = "ru",
     ) -> str:
         """Previous step results as the running context for the next step.
 
@@ -3503,11 +3511,7 @@ class TaskExecutor:
                 f"Corrective note: the verifier REJECTED the previous attempt of step {upto_idx + 1}. "
                 f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
             )
-        digest = "\n".join(parts)[:char_cap]
-        task = get_task(task_id) or {}
-        plan = task.get("step_plan") or {}
-        skills = plan.get("skills") if isinstance(plan, dict) else None
-        return _context_with_skills(digest, skills, task.get("lang") or "ru")
+        return _context_with_skills("\n".join(parts)[:char_cap], skills, lang)
 
     def _add_budget(self, task_id: str, seconds: float) -> None:
         """Read-modify-write the task budget (single writer: the executor)."""
@@ -3578,7 +3582,12 @@ class TaskExecutor:
             str(s.get("goal") or "") for s in steps
             if str(s.get("tool") or "") in ("image_gen", "image_edit")
         )
-        digest = self._context_digest(task_id, int(task.get("next_step_index") or 0))
+        digest = self._context_digest(
+            task_id,
+            int(task.get("next_step_index") or 0),
+            skills=(task.get("step_plan") or {}).get("skills") if isinstance(task.get("step_plan"), dict) else None,
+            lang=task.get("lang") or "ru",
+        )
         budget = max(200, int(self._cfg("TASK_CONTINUITY_MAX_CHARS", TASK_CONTINUITY_MAX_CHARS)))
         try:
             corrective = ""
@@ -3754,6 +3763,8 @@ class TaskExecutor:
             idx,
             char_cap=max(0, cap - len(source_text)),
             skip_seqs={source_step} if (source_text and source_step is not None) else None,
+            skills=(task.get("step_plan") or {}).get("skills") if isinstance(task.get("step_plan"), dict) else None,
+            lang=lang,
         )
         context = "\n\n".join(p for p in (source_text, previous) if p.strip())[:cap]
         if context:

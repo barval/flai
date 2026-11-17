@@ -595,6 +595,8 @@ INDEX_STATUS_FAILED = "failed"
 # A document the assistant wrote: stored and readable, but out of RAG and the graph
 # until its owner ticks the box on its card.
 INDEX_STATUS_NOT_INDEXED = "not_indexed"
+# Appended to after it was indexed: the vectors still exist and are out of date.
+INDEX_STATUS_STALE = "stale"
 
 
 def _localize_document_dates(documents):
@@ -929,6 +931,12 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, fol
                 source,
             ),
         )
+
+
+def update_document_size(doc_id, file_size):
+    """Record a document's new size after an append."""
+    with get_db() as conn:
+        conn.cursor().execute("UPDATE documents SET file_size = %s WHERE id = %s", (file_size, doc_id))
 
 
 def update_document_index_status(doc_id, index_status, indexed_at=None, indexing_started_at=None, embedding_model=None):

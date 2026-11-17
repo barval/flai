@@ -797,6 +797,22 @@ def _run_continuity(context: DirectStepContext) -> Any:
 # ``direct``; tests/test_direct_runner_table.py asserts the two agree, so a
 # capability cannot be declared and silently un-runnable.
 
+def _run_document_step(context: DirectStepContext) -> Any:
+    """Write a document, or append to one this assistant wrote."""
+    from app.documents_write import write_document_file
+
+    extra = context.step.get("extra") or {}
+    written = write_document_file(
+        context.user_id,
+        str(extra.get("name") or context.step.get("goal") or "document"),
+        content=str(extra.get("content") or ""),
+        fmt=str(extra.get("format") or "md"),
+        rows=extra.get("rows") if isinstance(extra.get("rows"), list) else None,
+        append=bool(extra.get("append")),
+    )
+    return f"{written.filename} ({written.size} bytes)"
+
+
 def _allowed_chat_tools() -> set[str]:
     """The chat catalogue a task step may name.
 
@@ -849,6 +865,7 @@ DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
     "continuity": _run_continuity,
     "research": _run_research,
     "chat_tool": _run_chat_tool,
+    "document": _run_document_step,
 }
 
 # Tools that stream the reasoning model themselves, so the step header reports
@@ -856,7 +873,7 @@ DIRECT_RUNNERS: dict[str, Callable[[DirectStepContext], Any]] = {
 OWN_METADATA_TOOLS = frozenset({"llm", "continuity", "research"})
 # Tools whose failure reason is worth showing verbatim (an unknown variable, an
 # unparseable sheet) instead of a bare "tool error".
-ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity", "chat_tool"})
+ERROR_TEXT_TOOLS = frozenset({"calculate", "continuity", "chat_tool", "document"})
 
 
 def run_direct_step(

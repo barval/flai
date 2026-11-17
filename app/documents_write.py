@@ -29,6 +29,9 @@ from app import db
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_BYTES = 256 * 1024
+# A log may grow past one call's payload, but not without end: an unbounded file inside
+# the document store is a disk leak with a friendly name.
+MAX_APPEND_BYTES = 2 * 1024 * 1024
 FORMAT_EXTENSIONS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
 MAX_NAME_STEM = 120
 
@@ -42,7 +45,7 @@ class DocumentWriteError(ValueError):
     """A write that was refused; ``code`` is the reason, ``detail`` may name a value."""
 
     def __init__(self, code: str, detail: str = ""):
-        super().__init__(code)
+        super().__init__(f"{code}: {detail}" if detail else code)
         self.code = code
         self.detail = detail
 
@@ -76,6 +79,23 @@ def _display_name(name: str, extension: str) -> str:
     if not stem:
         raise DocumentWriteError("name")
     return f"{stem}{extension}"
+
+
+def _append_target(user_id: str, name: str, extension: str):
+    """The generated document an append may extend, or None when it does not exist.
+
+    Only a document this tool created is eligible: an upload's bytes are shared through
+    the content-addressed blob store, so appending to a same-named upload would edit a
+    file another user also references.
+    """
+    wanted = _display_name(name, extension)
+    for doc in db.get_user_documents(user_id):
+        if doc.get("filename") != wanted:
+            continue
+        if doc.get("source") != "generated" or doc.get("blob_sha256"):
+            raise DocumentWriteError("append_target", wanted)
+        return doc
+    return None
 
 
 def _free_name(user_id: str, filename: str) -> str:
@@ -139,8 +159,9 @@ def write_document_file(
     content: str = "",
     fmt: str = "md",
     rows: list[list[str]] | None = None,
+    append: bool = False,
 ) -> WrittenDocument:
-    """Store one document. Raises ``DocumentWriteError`` before writing when refused."""
+    """Store one document, or extend one this tool wrote. Refuses before writing."""
     format_key = str(fmt or "md").strip().lower().lstrip(".")
     if format_key not in FORMAT_EXTENSIONS:
         raise DocumentWriteError("format", format_key)
@@ -158,8 +179,6 @@ def write_document_file(
     data = payload.encode("utf-8")
     if len(data) > MAX_CONTENT_BYTES:
         raise DocumentWriteError("too_large", str(len(data)))
-    if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
-        raise DocumentWriteError("quota")
 
     root = os.path.realpath(_documents_root())
     folder = os.path.join(root, user_id)
@@ -167,6 +186,36 @@ def write_document_file(
     # The lock covers the name choice and the row: two chats can otherwise both see
     # "note.md" free and both keep that name.
     with _write_lock:
+        existing = _append_target(user_id, name, extension) if append else None
+
+        if existing is not None:
+            absolute = os.path.join(root, existing["file_path"])
+            if not os.path.realpath(absolute).startswith(root + os.sep) or not os.path.isfile(absolute):
+                raise DocumentWriteError("append_target", existing["filename"])
+            grown = os.path.getsize(absolute) + len(data)
+            if grown > MAX_APPEND_BYTES:
+                raise DocumentWriteError("too_large", str(grown))
+            if _storage_full(user_id, len(data)):
+                raise DocumentWriteError("quota")
+            with open(absolute, "a", encoding="utf-8", newline="") as handle:
+                handle.write(payload)
+            size = os.path.getsize(absolute)
+            db.update_document_size(existing["id"], size)
+            db.update_user_storage(user_id, len(data))
+            if existing.get("index_status") in (db.INDEX_STATUS_INDEXED, db.INDEX_STATUS_INDEXING):
+                db.update_document_index_status(existing["id"], db.INDEX_STATUS_STALE)
+            logger.info(f"document appended by the assistant: {existing['filename']} (+{len(data)} bytes)")
+            return WrittenDocument(
+                id=existing["id"],
+                filename=existing["filename"],
+                size=size,
+                file_path=existing["file_path"],
+                absolute_path=absolute,
+            )
+
+        if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
+            raise DocumentWriteError("quota")
+
         filename = _free_name(user_id, _display_name(name, extension))
         doc_id = uuid.uuid4().hex
         relative = os.path.join(user_id, f"{doc_id}{extension}")

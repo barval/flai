@@ -14,6 +14,7 @@ from app.tasks.tools import CAPABILITIES, TOOL_BADGES, get_capabilities
 EXPECTED_IDS = [
     "llm",
     "search",
+    "document",
     "chat_tool",
     "research",
     "rag",
@@ -31,6 +32,7 @@ EXPECTED_IDS = [
 
 EXPECTED_BADGES = {
     "search": ("🔎", "Web search"),
+    "document": ("📝", "Write a document"),
     "chat_tool": ("🧰", "Chat tool"),
     "research": ("🔬", "Research"),
     "rag": ("📄", "Document search"),
@@ -62,9 +64,9 @@ def test_capabilities_keep_their_keys():
 def test_capabilities_keep_their_text():
     assert CAPABILITIES[0]["label"] == "Reasoning model"
     assert CAPABILITIES[0]["description"].startswith("Think, write, analyze")
-    assert CAPABILITIES[4]["id"] == "rag"
-    assert CAPABILITIES[10]["id"] == "rlm"
-    assert CAPABILITIES[12]["description"] == "Generate an image from a text prompt."
+    assert CAPABILITIES[5]["id"] == "rag"
+    assert CAPABILITIES[11]["id"] == "rlm"
+    assert CAPABILITIES[13]["description"] == "Generate an image from a text prompt."
 
 
 @pytest.mark.unit

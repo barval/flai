@@ -828,3 +828,37 @@ def set_document_indexing(doc_id):
         db.update_document_index_status(doc_id, db.INDEX_STATUS_NOT_INDEXED)
 
     return jsonify({"ok": True, "index_status": db.get_document(doc_id, login)["index_status"]})
+
+
+@bp.route("/documents/check-name", methods=["POST"])
+def check_upload_name():
+    """Whether a chosen upload name collides with a document the assistant wrote.
+
+    Names are first come, first served: a name an upload already holds is refused by the
+    writer, and a name the assistant already holds is offered to the uploader as a
+    rename — silently appending " (2)" would hide the conflict from the person who
+    chose the name.
+    """
+    login = session.get("login")
+    if not login:
+        return jsonify({"error": "⚠️ " + _("Not authenticated")}), 401
+    wanted = str((request.get_json(silent=True) or {}).get("filename") or "").strip()
+    if not wanted:
+        return jsonify({"ok": True})
+
+    generated = {doc["filename"] for doc in db.get_user_documents(login) if doc.get("source") == "generated"}
+    if wanted not in generated:
+        return jsonify({"ok": True})
+
+    stem, suffix = os.path.splitext(wanted)
+    suggestion = f"{stem} (2){suffix}"
+    return (
+        jsonify(
+            {
+                "error": "⚠️ " + _("The assistant already wrote a document with this name"),
+                "code": "name_taken_by_generated",
+                "suggested": suggestion,
+            }
+        ),
+        409,
+    )

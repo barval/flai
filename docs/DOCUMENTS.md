@@ -46,6 +46,21 @@ edit a file another user also references. The file stops at 2 MB, and a document
 indexed is marked **stale** rather than re-indexed on every append: a log written every fifteen
 minutes would otherwise rebuild its index ninety-six times a day.
 
+### Names are first come, first served
+
+A document's display name belongs to whoever used it first. An upload keeps the name it
+arrived with, and the assistant cannot take it: a write to a name an upload already holds is
+refused (`⚠️ ` sentence naming the file), so the model can report the conflict or choose
+another name. In the other direction an upload whose name the assistant already wrote is
+offered a rename instead of being silently suffixed — the person chose that name and should
+hear about the collision.
+
+Two names the assistant itself wrote collide differently: the second write gets ` (2)`,
+because there is no person to ask and a log with two files is better than a refusal. There is
+**no content deduplication for written documents** — that exists for uploads (identical bytes
+are stored once); a generated file is stored in full. If that ever matters, it is a change to
+`app/documents_write.py`, not to the upload path.
+
 ## Upload limits
 
 | What | Limit | Variable |

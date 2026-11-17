@@ -105,3 +105,38 @@ def test_append_keeps_rows_in_place(writer_env):
     write_document_file(LOGIN, "log", "de", fmt="txt", append=True)
 
     assert db.get_document(doc.id, LOGIN)["file_size"] > size_before
+
+
+def test_a_name_an_upload_already_holds_is_refused(writer_env):
+    """First come, first served: an upload's name cannot be taken by the assistant."""
+    db.save_document(LOGIN, "upload-doc", "peoples.txt", 1, ".txt", f"{LOGIN}/upload-doc.txt")
+
+    with pytest.raises(DocumentWriteError) as error:
+        write_document_file(LOGIN, "peoples", "x", fmt="txt")
+
+    assert error.value.code == "name_taken"
+
+
+def test_a_name_the_assistant_holds_gets_a_suffix_for_another_write(writer_env):
+    write_document_file(LOGIN, "note", "one", fmt="md")
+    second = write_document_file(LOGIN, "note", "two", fmt="md")
+
+    assert second.filename == "note (2).md"
+
+
+def test_a_failed_row_write_truncates_the_file_back(writer_env, monkeypatch):
+    """The bytes and the row must not disagree: a DB failure restores the old size."""
+    doc = write_document_file(LOGIN, "log", "abc", fmt="txt")
+    path = writer_env / LOGIN / f"{doc.id}.txt"
+    before = path.read_bytes()
+
+    def refuse(*_a, **_k):
+        raise RuntimeError("db is gone")
+
+    monkeypatch.setattr(db, "update_user_storage", refuse)
+
+    with pytest.raises(RuntimeError):
+        write_document_file(LOGIN, "log", "de", fmt="txt", append=True)
+
+    assert path.read_bytes() == before
+    assert db.get_document(doc.id, LOGIN)["file_size"] == len(before)

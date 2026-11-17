@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 01:14+0300\n"
+"POT-Creation-Date: 2026-11-18 01:39+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -700,29 +700,26 @@ msgid "Name the fact or data the search must confirm."
 msgstr "Назови факт или данные, которые должен подтвердить поиск."
 
 #: app/tool_registry.py:67 app/tool_registry.py:68
-#
 msgid "Write a document"
 msgstr "Записать документ"
-
 
 #: app/tool_registry.py:70
 msgid ""
 "Save text as a document of the user, or append a line to one this "
 "assistant wrote. Use append for a log that grows: sightings, "
 "measurements, a running list."
-msgstr "Сохранить текст документом пользователя или дописать строку в тот, что написал ассистент. Используйте append для растущего журнала: наблюдения, измерения, список."
-
+msgstr ""
+"Сохранить текст документом пользователя или дописать строку в тот, что "
+"написал ассистент. Используйте append для растущего журнала: наблюдения, "
+"измерения, список."
 
 #: app/tool_registry.py:73
 msgid "Name what the document must contain after this step."
 msgstr "Назови, что должно быть в документе после этого шага."
 
-
 #: app/tool_registry.py:78 app/tool_registry.py:79
-#
 msgid "Chat tool"
 msgstr "Инструмент чата"
-
 
 #: app/tool_registry.py:81
 msgid ""
@@ -730,14 +727,15 @@ msgid ""
 "network check, a camera snapshot, writing a file. Put the tool name and "
 "its arguments in the step's extra fields, exactly as the chat catalogue "
 "names them."
-msgstr "Запустить один из собственных инструментов ассистента: веб-поиск, поиск по документам, сетевую проверку, снимок камеры, запись файла. Имя инструмента и аргументы положите в поле extra шага, ровно как они названы в каталоге чата."
-
+msgstr ""
+"Запустить один из собственных инструментов ассистента: веб-поиск, поиск "
+"по документам, сетевую проверку, снимок камеры, запись файла. Имя "
+"инструмента и аргументы положите в поле extra шага, ровно как они названы"
+" в каталоге чата."
 
 #: app/tool_registry.py:85
-#
 msgid "Name the result the tool must return."
 msgstr "Назови результат, который должен вернуть инструмент."
-
 
 #: app/tool_registry.py:90 app/tool_registry.py:91
 msgid "Research"
@@ -1871,13 +1869,18 @@ msgstr "У вас уже есть доступ к этому документу"
 msgid "User not found"
 msgstr "Пользователь не найден"
 
-#: app/routes/documents.py:801
+#: app/routes/documents.py:801 app/routes/documents.py:844
 msgid "Not authenticated"
 msgstr "Не выполнен вход"
 
 #: app/routes/documents.py:806
 msgid "Only a document written by the assistant has this switch"
 msgstr "Эта галка есть только у документов, написанных ассистентом"
+
+#: app/routes/documents.py:858
+msgid "The assistant already wrote a document with this name"
+msgstr "Ассистент уже написал документ с таким именем"
+
 
 #: app/routes/messages.py:187
 msgid "Multiple documents are not supported in one message"

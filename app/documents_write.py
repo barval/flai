@@ -92,10 +92,25 @@ def _append_target(user_id: str, name: str, extension: str):
     for doc in db.get_user_documents(user_id):
         if doc.get("filename") != wanted:
             continue
-        if doc.get("source") != "generated" or doc.get("blob_sha256"):
+        # `source` is the whole guard: a generated document never registers a blob, and
+        # the column is not even selected for the panel's list (see docs/DOCUMENTS.md).
+        if doc.get("source") != "generated":
             raise DocumentWriteError("append_target", wanted)
         return doc
     return None
+
+
+def _refuse_uploaded_name(user_id: str, filename: str) -> None:
+    """An upload keeps its name: the assistant writes under a different one.
+
+    Names are first come, first served. A generated document that collides with
+    another generated one gets a suffix, but a name an upload already holds is the
+    user's file, and silently writing "peoples (2)" next to it would hide the conflict
+    from the model that asked for it.
+    """
+    for doc in db.get_user_documents(user_id):
+        if doc.get("filename") == filename and doc.get("source") != "generated":
+            raise DocumentWriteError("name_taken", filename)
 
 
 def _free_name(user_id: str, filename: str) -> str:
@@ -197,13 +212,23 @@ def write_document_file(
                 raise DocumentWriteError("too_large", str(grown))
             if _storage_full(user_id, len(data)):
                 raise DocumentWriteError("quota")
-            with open(absolute, "a", encoding="utf-8", newline="") as handle:
-                handle.write(payload)
-            size = os.path.getsize(absolute)
-            db.update_document_size(existing["id"], size)
-            db.update_user_storage(user_id, len(data))
-            if existing.get("index_status") in (db.INDEX_STATUS_INDEXED, db.INDEX_STATUS_INDEXING):
-                db.update_document_index_status(existing["id"], db.INDEX_STATUS_STALE)
+            size_before = os.path.getsize(absolute)
+            try:
+                with open(absolute, "a", encoding="utf-8", newline="") as handle:
+                    handle.write(payload)
+                size = os.path.getsize(absolute)
+                db.update_document_size(existing["id"], size)
+                db.update_user_storage(user_id, len(data))
+                if existing.get("index_status") in (db.INDEX_STATUS_INDEXED, db.INDEX_STATUS_INDEXING):
+                    db.update_document_index_status(existing["id"], db.INDEX_STATUS_STALE)
+            except Exception:
+                # The bytes are on disk but the row is not: undo both sides, so the file
+                # and the row that describes it never disagree about its size.
+                with contextlib.suppress(OSError):
+                    os.truncate(absolute, size_before)
+                with contextlib.suppress(Exception):
+                    db.update_document_size(existing["id"], size_before)
+                raise
             logger.info(f"document appended by the assistant: {existing['filename']} (+{len(data)} bytes)")
             return WrittenDocument(
                 id=existing["id"],
@@ -216,7 +241,9 @@ def write_document_file(
         if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
             raise DocumentWriteError("quota")
 
-        filename = _free_name(user_id, _display_name(name, extension))
+        wanted = _display_name(name, extension)
+        _refuse_uploaded_name(user_id, wanted)
+        filename = _free_name(user_id, wanted)
         doc_id = uuid.uuid4().hex
         relative = os.path.join(user_id, f"{doc_id}{extension}")
         absolute = os.path.join(root, relative)

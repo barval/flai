@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 01:14+0300\n"
+"POT-Creation-Date: 2026-11-18 01:39+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -695,29 +695,26 @@ msgid "Name the fact or data the search must confirm."
 msgstr "Name the fact or data the search must confirm."
 
 #: app/tool_registry.py:67 app/tool_registry.py:68
-#
 msgid "Write a document"
 msgstr "Write a document"
-
 
 #: app/tool_registry.py:70
 msgid ""
 "Save text as a document of the user, or append a line to one this "
 "assistant wrote. Use append for a log that grows: sightings, "
 "measurements, a running list."
-msgstr "Save text as a document of the user, or append a line to one this assistant wrote. Use append for a log that grows: sightings, measurements, a running list."
-
+msgstr ""
+"Save text as a document of the user, or append a line to one this "
+"assistant wrote. Use append for a log that grows: sightings, "
+"measurements, a running list."
 
 #: app/tool_registry.py:73
 msgid "Name what the document must contain after this step."
 msgstr "Name what the document must contain after this step."
 
-
 #: app/tool_registry.py:78 app/tool_registry.py:79
-#
 msgid "Chat tool"
 msgstr "Chat tool"
-
 
 #: app/tool_registry.py:81
 msgid ""
@@ -725,14 +722,15 @@ msgid ""
 "network check, a camera snapshot, writing a file. Put the tool name and "
 "its arguments in the step's extra fields, exactly as the chat catalogue "
 "names them."
-msgstr "Run one of the assistant's own tools: a web search, a document search, a network check, a camera snapshot, writing a file. Put the tool name and its arguments in the step's extra fields, exactly as the chat catalogue names them."
-
+msgstr ""
+"Run one of the assistant's own tools: a web search, a document search, a "
+"network check, a camera snapshot, writing a file. Put the tool name and "
+"its arguments in the step's extra fields, exactly as the chat catalogue "
+"names them."
 
 #: app/tool_registry.py:85
-#
 msgid "Name the result the tool must return."
 msgstr "Name the result the tool must return."
-
 
 #: app/tool_registry.py:90 app/tool_registry.py:91
 msgid "Research"
@@ -1846,13 +1844,18 @@ msgstr "You already have access to this document"
 msgid "User not found"
 msgstr "User not found"
 
-#: app/routes/documents.py:801
+#: app/routes/documents.py:801 app/routes/documents.py:844
 msgid "Not authenticated"
 msgstr "Not authenticated"
 
 #: app/routes/documents.py:806
 msgid "Only a document written by the assistant has this switch"
 msgstr "Only a document written by the assistant has this switch"
+
+#: app/routes/documents.py:858
+msgid "The assistant already wrote a document with this name"
+msgstr "The assistant already wrote a document with this name"
+
 
 #: app/routes/messages.py:187
 msgid "Multiple documents are not supported in one message"

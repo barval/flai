@@ -1471,10 +1471,17 @@ function uploadDocuments(files, folderId) {
             return;
         }
         if (button) button.textContent = (done + 1) + '/' + total;
-        const formData = new FormData();
-        formData.append('file', file);
-        if (folderId) formData.append('folder_id', folderId);
-        fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData })
+
+        // Names are first come, first served: when the assistant already wrote a document
+        // with this name, the uploader is asked for another one instead of getting a
+        // silently suffixed copy.
+        const send = (uploadFile) => {
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            if (folderId) formData.append('folder_id', folderId);
+            return fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData });
+        };
+        checkUploadName(file.name, file).then(renamed => send(renamed || file))
             .then(res => res.json())
             .then(data => {
                 if (data.status !== 'ok') failed.push(file.name + ': ' + uploadReason(data.error));
@@ -1486,6 +1493,26 @@ function uploadDocuments(files, folderId) {
             });
     };
     next();
+}
+
+
+// Ask the server whether the assistant already holds this name; offer a rename if so.
+async function checkUploadName(name, file) {
+    try {
+        const response = await fetchWithCSRF('/api/documents/check-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: name })
+        });
+        if (response.status !== 409) return null;
+        const payload = await response.json();
+        const chosen = window.prompt(payload.error || t('document_upload_failed'), payload.suggested || name);
+        if (!chosen || chosen.trim() === '') return null;
+        if (chosen.trim() === name) return null;
+        return new File([file], chosen.trim(), { type: file.type });
+    } catch (err) {
+        return null;
+    }
 }
 
 // Open the file picker and upload into the chosen folder (null = root).

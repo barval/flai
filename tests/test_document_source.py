@@ -80,3 +80,35 @@ def test_a_fresh_database_gets_every_documents_column():
 
     for column in ("blob_sha256 TEXT", "source TEXT NOT NULL DEFAULT 'upload'"):
         assert f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {column}" in source, column
+
+
+def test_an_upload_is_offered_a_rename_when_the_assistant_holds_the_name(source_env, test_app):
+    """First come, first served, and the loser is told rather than silently renamed."""
+    from flask import session
+
+    from app import documents_write
+    from app.routes.documents import check_upload_name
+
+    documents_write.write_document_file(LOGIN, "peoples", "x", fmt="txt")
+    with test_app.test_request_context("/api/documents", method="POST", json={"filename": "peoples.txt"}):
+        session["login"] = LOGIN
+        response = check_upload_name()
+
+    body, status = response if isinstance(response, tuple) else (response, 200)
+    assert status == 409
+    assert body.get_json()["code"] == "name_taken_by_generated"
+    assert body.get_json()["suggested"] == "peoples (2).txt"
+
+
+def test_a_free_name_passes_the_upload_check(source_env, test_app):
+    from flask import session
+
+    from app.routes.documents import check_upload_name
+
+    with test_app.test_request_context("/api/documents", method="POST", json={"filename": "fresh.txt"}):
+        session["login"] = LOGIN
+        response = check_upload_name()
+
+    body, status = response if isinstance(response, tuple) else (response, 200)
+    assert status == 200
+    assert body.get_json()["ok"] is True

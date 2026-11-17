@@ -67,3 +67,15 @@ def test_the_network_label_is_available_to_the_script():
     html = (Path(__file__).resolve().parent.parent / "app/templates/admin.html").read_text(encoding="utf-8")
 
     assert "'Network tools': {{ _('Network tools')|tojson }}" in html
+
+
+def test_the_three_api_headers_are_two_lines_too():
+    """SLM facts, Tavily API and the FLAI API count are narrow columns; the header
+    was the widest thing in them."""
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parent.parent / "app/templates/admin.html").read_text(encoding="utf-8")
+
+    for name in ("slm_facts_header", "tavily_header", "flai_api_header"):
+        assert f"{{% set {name} = " in html, name
+        assert f"{{{{ {name}[0] }}}}<br>{{{{ {name}[1] }}}}" in html, name

@@ -63,6 +63,9 @@
                     {% set documents_header = _('Documents (shared)').split(' ', 1) %}
                     {% set internet_header = _('Internet requests').split(' ', 1) %}
                     {% set net_tools_header = _('Network tools').split(' ', 1) %}
+                    {% set slm_facts_header = _('SLM Facts').split(' ', 1) %}
+                    {% set tavily_header = _('Tavily API').split(' ', 1) %}
+                    {% set flai_api_header = _('FLAI API').split(' ', 1) %}
                     {% set camera_header = _('Camera access').split(' ', 1) %}
                     <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
@@ -78,10 +81,10 @@
                         <th data-sort="messages_count">{{ _('Messages') }}</th>
                         <th data-sort="files_count">{{ _('Files') }}</th>
                         <th data-sort="documents_count">{{ documents_header[0] }}<br>{{ documents_header[1] }}</th>
-                        <th data-sort="slm_facts_count">{{ _('SLM Facts') }}</th>
+                        <th data-sort="slm_facts_count">{{ slm_facts_header[0] }}<br>{{ slm_facts_header[1] }}</th>
                         <th data-sort="web_requests_month">{{ internet_header[0] }}<br>{{ internet_header[1] }}</th>
-                        <th>{{ _('Tavily API') }}</th>
-                        <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
+                        <th>{{ tavily_header[0] }}<br>{{ tavily_header[1] }}</th>
+                        <th data-sort="api_keys_count">{{ flai_api_header[0] }}<br>{{ flai_api_header[1] }}</th>
                         <th>{{ net_tools_header[0] }}<br>{{ net_tools_header[1] }}</th>
                         {% if rooms %}
                         <th>{{ camera_header[0] }}<br>{{ camera_header[1] }}</th>

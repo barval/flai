@@ -36,6 +36,16 @@ longer visited.
 
 Sharing is per document, never per folder.
 
+### Appending to a document
+
+A document the assistant wrote can be appended to instead of replaced: `write_document` with
+`append: true` finds the document by its display name, writes into the same file, and charges
+the quota on the delta. Only a document this tool created is eligible — an upload's bytes are
+shared through the content-addressed blob store, so appending to a same-named upload would
+edit a file another user also references. The file stops at 2 MB, and a document that was
+indexed is marked **stale** rather than re-indexed on every append: a log written every fifteen
+minutes would otherwise rebuild its index ninety-six times a day.
+
 ## Upload limits
 
 | What | Limit | Variable |

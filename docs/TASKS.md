@@ -36,6 +36,8 @@ The plan arrives as a **tool call**: the planner is offered `write_plan`, whose 
 | `crawl` | deep site study through the Crawl4AI sidecar as a queue sub-task (`crawl_task`); the collected pages become the step result (no reasoning requeue) and index as a per-user document |
 | `calculate` | the safe AST-based calculator; the planner puts the bare expression in the step goal («2 + 2 * 2»), and a prose goal falls back to extracting the math expression from the text |
 | `rlm` | Deep Analysis run as a queue sub-task |
+| `chat_tool` | any tool the chat loop offers, by name and arguments — web search, network checks, a camera snapshot, writing a file. The step's `extra` carries `{"tool": ..., "arguments": ...}`; the name is checked against the live catalogue, and a tool that answers with a refusal (`⚠️ `) fails the step instead of reading as success |
+| `document` | write a document, or append a line to one this assistant wrote: `extra` carries `name`, `content`, `format`, `append`. An append refuses an upload (its bytes are shared), stops at 2 MB, and marks an indexed document stale instead of re-indexing it |
 | `image_gen` / `image_edit` / `video_gen` | media sub-tasks through the existing GPU queue. With several images attached, `image_edit` edits the image its goal names (one step per image, like `vision`) and falls back to the first attached image when the goal names none. A step the plan binds to a producer step (`source_step`) and whose producer produced no image is **skipped** — the reason names that step, nothing is enqueued for the skipped step, and the task continues (the final summary explains the missing media); an unbound `video_gen` keeps its chat-parity fallback to text-to-video |
 
 ### Media step context and verification
@@ -89,6 +91,14 @@ A running task reviews its own remaining plan. A review is triggered by a **fail
 - **A paraphrase is not new work.** A candidate step whose tool and goal lemma set repeat an already executed step is dropped, duplicates inside the new tail are dropped too, and the tail comparison (`_same_plan_tail`) is lemma-based — «draw scene 3» and «drawing scene 3» read as «no change». A rewrite that leaves no new steps keeps the plan and adds no revision notice.
 - **What the user sees.** Every applied rewrite adds a service line «Plan updated (N steps).» to the task conversation, anchored right after the step that triggered it. The plan message and the «Step N of M» headers are rendered from the **current** plan, so all later status messages already follow the new plan.
 - **A redo is not a new plan position.** The reviewer is told to repeat a failed step's goal **verbatim**; `_apply_replan` recognises the verbatim repeat of the just-consumed step's goal (same tool), re-opens that row (`status=pending`, `attempts=0`, `extra.redos+1`, the reviewer's refined criterion applied in place), drops the duplicate from the tail and resumes at the same position. `TASK_STEP_REDO_MAX` (default 1) caps the re-opens; when it is spent the duplicate is dropped and the step stays failed. Before this, every redo became a new row with a fresh attempt budget — a scene could be generated six times through two «steps» — and the plan carried the same goal twice.
+
+### Skills in a task
+
+The planner is shown the installed skills (name and one line) and may name up to two in the
+plan. Their bodies are loaded **ahead of** the running context for every step, the way a chat
+turn loads them into its system prompt; a name that no longer resolves — disabled between
+planning and running — is skipped rather than failing the step. What a task cannot name is the
+`python` tool of the deep-analysis sandbox: that loop has its own inventory on purpose.
 
 ## Notes
 

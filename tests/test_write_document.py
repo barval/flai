@@ -122,10 +122,11 @@ def test_the_document_count_quota_is_refused_too(writer_env, test_app):
     assert error.value.code == "quota"
 
 
-def test_a_written_document_is_pending_for_indexing(writer_env):
+def test_a_written_document_is_stored_unindexed(writer_env):
+    """Its card carries a switch; a log appended every few minutes must not index itself."""
     doc = write_document_file(LOGIN, "n", "c")
 
-    assert db.get_document(doc.id, LOGIN)["index_status"] == db.INDEX_STATUS_PENDING
+    assert db.get_document(doc.id, LOGIN)["index_status"] == db.INDEX_STATUS_NOT_INDEXED
 
 
 def test_a_foreign_extension_is_replaced_not_doubled(writer_env):

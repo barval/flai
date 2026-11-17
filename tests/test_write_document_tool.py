@@ -49,31 +49,18 @@ def test_a_failure_is_a_sentence_naming_the_problem(ctx, queued):
     assert "pdf" in result
 
 
-def test_indexing_is_queued_once_with_the_document_id(ctx, queued):
+def test_the_tool_queues_no_indexing_at_all(ctx, queued):
+    """A written document is stored unindexed; its card carries the switch instead."""
     tools.execute_tool("write_document", {"name": "n", "content": "c"}, ctx)
 
-    assert [call["request_data"]["type"] for call in queued] == ["index_document"]
-    assert queued[0]["request_data"]["doc_id"]
+    assert queued == []
 
 
-def test_the_queued_path_is_absolute_and_exists(ctx, queued):
-    """The indexer opens the path as given; a relative one fails silently and the
-    document never reaches RAG or the graph."""
-    import os
+def test_the_answer_points_at_the_switch(ctx, queued):
+    result = tools.execute_tool("write_document", {"name": "n", "content": "c"}, ctx)
 
-    tools.execute_tool("write_document", {"name": "n", "content": "c"}, ctx)
-    path = queued[0]["request_data"]["file_path"]
-
-    assert os.path.isabs(path)
-    assert os.path.isfile(path)
-
-
-def test_the_task_carries_the_callers_class_and_language(ctx, queued):
-    tools.execute_tool("write_document", {"name": "n", "content": "c"}, ctx)
-
-    assert queued[0]["user_class"] == 2
-    assert queued[0]["lang"] == "ru"
-    assert queued[0]["session_id"] == ""
+    assert "n.md" in result
+    assert "поиск" in result.lower()   # the sentence points at the search switch
 
 
 def test_the_tool_is_kept_when_the_kernel_narrows_the_list(test_app):

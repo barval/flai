@@ -1323,29 +1323,10 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
         with force_locale(lang):
             return "⚠️ " + str(_("The tool could not complete the request."))
 
-    app = ctx.get("app")
-    queue = getattr(app, "request_queue", None) if app else None
-    if queue is not None:
-        try:
-            queue.add_request(
-                user_id=login,
-                session_id="",
-                request_data={
-                    "type": "index_document",
-                    "doc_id": written.id,
-                    # Absolute, like the upload route: the indexer opens it as given.
-                    "file_path": written.absolute_path,
-                },
-                user_class=ctx.get("user_class", 100),
-                lang=lang,
-            )
-        except Exception:  # noqa: BLE001 - a written file that is not indexed yet is not lost
-            logger.exception(f"indexing was not queued for the written document {written.id}")
-
     with force_locale(lang):
         size_kb = max(1, round(written.size / 1024))
         return str(
-            _("Saved as {name} ({size} KB) in your documents; indexing is queued.").format(
+            _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
                 name=written.filename, size=size_kb
             )
         )

@@ -2625,3 +2625,14 @@ video {
     opacity: 0.65;
     vertical-align: middle;
 }
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
+}

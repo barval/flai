@@ -592,6 +592,9 @@ INDEX_STATUS_PENDING = "pending"
 INDEX_STATUS_INDEXING = "indexing"
 INDEX_STATUS_INDEXED = "indexed"
 INDEX_STATUS_FAILED = "failed"
+# A document the assistant wrote: stored and readable, but out of RAG and the graph
+# until its owner ticks the box on its card.
+INDEX_STATUS_NOT_INDEXED = "not_indexed"
 
 
 def _localize_document_dates(documents):

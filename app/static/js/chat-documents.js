@@ -320,6 +320,11 @@ function renderDocItem(doc) {
                     📄 ${escapeHtml(doc.filename)}${originBadge}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
+                ${doc.source === 'generated' ? `
+                <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
+                    <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
+                    ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}
+                </label>` : ''}
                 ${embeddingLine}
                 ${descriptionLine}
             </div>
@@ -457,6 +462,32 @@ function attachDocumentEventHandlers() {
         item.addEventListener('click', function(e) {
             if (e.target.closest('.document-checkbox, .document-actions, button, input, label')) return;
             openDocumentPreview(this.dataset.documentId, this.dataset.documentName || '');
+        });
+    });
+    // The indexing switch exists only on documents the assistant wrote; it is the
+    // one place that puts such a document into RAG and the graph.
+    document.querySelectorAll('.doc-index-check').forEach(box => {
+        box.addEventListener('change', async function(e) {
+            e.stopPropagation();
+            const docId = this.dataset.documentId;
+            box.disabled = true;
+            try {
+                const response = await fetchWithCSRF(`/api/documents/${encodeURIComponent(docId)}/index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: box.checked })
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.error || 'HTTP ' + response.status);
+                }
+                await loadDocuments();
+            } catch (err) {
+                box.checked = !box.checked;
+                alert(err.message || String(err));
+            } finally {
+                box.disabled = false;
+            }
         });
     });
     document.querySelectorAll('.delete-document-button').forEach(btn => {

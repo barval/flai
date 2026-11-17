@@ -180,7 +180,7 @@ def write_document_file(
                 handle.write(payload)
             size = os.path.getsize(absolute)
             db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
-            db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
+            db.update_document_index_status(doc_id, db.INDEX_STATUS_NOT_INDEXED)
             db.update_user_storage(user_id, size)
         except Exception:
             # Never let the cleanup replace the error that caused it, and never leave

@@ -161,3 +161,28 @@ def test_the_usage_counter_grows_by_the_file_size(writer_env):
     after = db.get_user_storage_usage(LOGIN)
 
     assert after - before == doc.size
+
+
+def test_two_writers_of_the_same_name_do_not_collide(writer_env, test_app):
+    """Two chat turns can write at once; both must get their own name and file."""
+    import threading
+
+    names = []
+    errors = []
+
+    def write():
+        # Flask contexts are thread-local: each writer needs its own.
+        with test_app.app_context():
+            try:
+                names.append(write_document_file(LOGIN, "note", "x", fmt="md").filename)
+            except Exception as exc:  # noqa: BLE001 - the test reports it
+                errors.append(exc)
+
+    threads = [threading.Thread(target=write) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    assert sorted(names) == ["note (2).md", "note.md"]

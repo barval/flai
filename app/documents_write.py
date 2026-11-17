@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import threading
 import uuid
 from dataclasses import dataclass
 
@@ -30,6 +31,11 @@ logger = logging.getLogger(__name__)
 MAX_CONTENT_BYTES = 256 * 1024
 FORMAT_EXTENSIONS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
 MAX_NAME_STEM = 120
+
+# Name allocation is a read-then-write: two chats can both see "note.md" free. One
+# process runs the chat loop, so a lock covers it; a second worker would need a
+# database constraint instead.
+_write_lock = threading.Lock()
 
 
 class DocumentWriteError(ValueError):
@@ -146,6 +152,8 @@ def write_document_file(
         raise DocumentWriteError("json", str(exc)) from exc
     if not str(payload or "").strip():
         raise DocumentWriteError("empty")
+    if not payload.endswith("\n"):
+        payload = f"{payload}\n"
 
     data = payload.encode("utf-8")
     if len(data) > MAX_CONTENT_BYTES:
@@ -153,38 +161,33 @@ def write_document_file(
     if _storage_full(user_id, len(data)) or count_quota_exceeded(user_id):
         raise DocumentWriteError("quota")
 
-    filename = _free_name(user_id, _display_name(name, extension))
-
-    doc_id = uuid.uuid4().hex
-    folder = os.path.join(_documents_root(), user_id)
-    relative = os.path.join(user_id, f"{doc_id}{extension}")
-    absolute = os.path.join(_documents_root(), relative)
     root = os.path.realpath(_documents_root())
-    if not os.path.realpath(absolute).startswith(root + os.sep):
-        raise DocumentWriteError("name", filename)
+    folder = os.path.join(root, user_id)
 
-    if not payload.endswith("\n"):
-        payload = f"{payload}\n"
-    data = payload.encode("utf-8")
-    if len(data) > MAX_CONTENT_BYTES:
-        raise DocumentWriteError("too_large", str(len(data)))
-    if _storage_full(user_id, len(data)):
-        raise DocumentWriteError("quota")
+    # The lock covers the name choice and the row: two chats can otherwise both see
+    # "note.md" free and both keep that name.
+    with _write_lock:
+        filename = _free_name(user_id, _display_name(name, extension))
+        doc_id = uuid.uuid4().hex
+        relative = os.path.join(user_id, f"{doc_id}{extension}")
+        absolute = os.path.join(root, relative)
+        if not os.path.realpath(absolute).startswith(root + os.sep):
+            raise DocumentWriteError("name", filename)
 
-    os.makedirs(folder, exist_ok=True)
-    try:
-        with open(absolute, "w", encoding="utf-8", newline="") as handle:
-            handle.write(payload)
-        size = os.path.getsize(absolute)
-        db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
-        db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
-        db.update_user_storage(user_id, size)
-    except Exception:
-        # Never let the cleanup replace the error that caused it, and never leave a
-        # half-document behind.
-        with contextlib.suppress(OSError):
-            os.remove(absolute)
-        raise
+        os.makedirs(folder, exist_ok=True)
+        try:
+            with open(absolute, "w", encoding="utf-8", newline="") as handle:
+                handle.write(payload)
+            size = os.path.getsize(absolute)
+            db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
+            db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
+            db.update_user_storage(user_id, size)
+        except Exception:
+            # Never let the cleanup replace the error that caused it, and never leave
+            # a half-document behind.
+            with contextlib.suppress(OSError):
+                os.remove(absolute)
+            raise
 
     logger.info(f"document written by the assistant: {filename} ({size} bytes) for {user_id!r}")
     return WrittenDocument(id=doc_id, filename=filename, size=size, file_path=relative, absolute_path=absolute)

@@ -383,7 +383,7 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Display name, e.g. 'Отчёт за октябрь'"},
+                "name": {"type": "string", "description": "Display name, e.g. 'October report'"},
                 "content": {"type": "string", "description": "The whole text of the document"},
                 "format": {
                     "type": "string",

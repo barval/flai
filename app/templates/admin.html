@@ -62,6 +62,8 @@
                     {% set incoming_header = _('Incoming tokens').split(' ', 1) %}
                     {% set documents_header = _('Documents (shared)').split(' ', 1) %}
                     {% set internet_header = _('Internet requests').split(' ', 1) %}
+                    {% set net_tools_header = _('Network tools').split(' ', 1) %}
+                    {% set camera_header = _('Camera access').split(' ', 1) %}
                     <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
                         <th data-sort="login">{{ _('Login') }}</th>
@@ -80,9 +82,9 @@
                         <th data-sort="web_requests_month">{{ internet_header[0] }}<br>{{ internet_header[1] }}</th>
                         <th>{{ _('Tavily API') }}</th>
                         <th data-sort="api_keys_count">{{ _('FLAI API') }}</th>
-                        <th>{{ _('Network tools') }}</th>
+                        <th>{{ net_tools_header[0] }}<br>{{ net_tools_header[1] }}</th>
                         {% if rooms %}
-                        <th>{{ _('Camera access') }}</th>
+                        <th>{{ camera_header[0] }}<br>{{ camera_header[1] }}</th>
                         {% endif %}
                         <th>{{ _('Actions') }}</th>
                      </tr>
@@ -1120,7 +1122,6 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'branding_logo_deleted': {{ _('Custom logo deleted — the built-in logo is shown')|tojson }},
     'branding_logo_too_large': {{ _('Logo is too large (max 2 MB)')|tojson }},
     'branding_names_saved': {{ _('Site names saved')|tojson }},
-    'branding_both_required': {{ _('Both language variants are required')|tojson }},
     'branding_name_too_long': {{ _('Site name is too long (max 40 characters per language)')|tojson }},
     'branding_upload_failed': {{ _('Logo upload failed')|tojson }},
     'Bundled': {{ _('Bundled')|tojson }},

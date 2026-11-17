@@ -10921,6 +10921,8 @@ video {
 
 
 
+
+
                     <tr>
                         <th data-sort="is_active">Status</th>
                         <th data-sort="login">Login</th>
@@ -10939,7 +10941,7 @@ video {
                         <th data-sort="web_requests_month">Internet<br>requests</th>
                         <th>Tavily API</th>
                         <th data-sort="api_keys_count">FLAI API</th>
-                        <th>Network tools</th>
+                        <th>Network<br>tools</th>
 
                         <th>Actions</th>
                      </tr>
@@ -14719,7 +14721,6 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'branding_logo_deleted': "Custom logo deleted \u2014 the built-in logo is shown",
     'branding_logo_too_large': "Logo is too large (max 2 MB)",
     'branding_names_saved': "Site names saved",
-    'branding_both_required': "Both language variants are required",
     'branding_name_too_long': "Site name is too long (max 40 characters per language)",
     'branding_upload_failed': "Logo upload failed",
     'Bundled': "Bundled",
@@ -18916,12 +18917,9 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const ru = nameRu.value.trim();
         const en = nameEn.value.trim();
-        if (!ru && !en) {
-            // Deliberate reset — both empty means "use the default brand name".
-        } else if (!ru || !en) {
-            alert(t('branding_both_required'));
-            return;
-        } else if (ru.length > 40 || en.length > 40) {
+        if (ru.length > 40 || en.length > 40) {
+            // Only both-empty is special (the default brand); one empty language is
+            // a normal state, and that language simply renders nothing.
             alert(t('branding_name_too_long'));
             return;
         }

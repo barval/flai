@@ -11,6 +11,7 @@ from pathlib import Path
 from flasgger import Swagger
 from flask import Flask, abort, g, jsonify, redirect, request, send_file, session, url_for
 from flask_babel import Babel, gettext
+from flask_babel import get_locale as current_locale
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -166,7 +167,8 @@ def create_app():
     # Resolved per request; DB failures degrade to the built-in brand silently.
     @app.context_processor
     def _inject_branding() -> dict:
-        lang = get_locale() or "ru"
+        lang = str(current_locale() or "ru")
+        ru_name = en_name = ""
         try:
             from app import db as app_db
 
@@ -186,12 +188,17 @@ def create_app():
                         else re.sub(r"[^0-9]", "", str(stamp))[:10]
                     )
                     logo_url = f"/admin/api/branding/logo?v={version}" if version else "/admin/api/branding/logo"
-            name = (branding.get("site_name_ru") if lang == "ru" else branding.get("site_name_en")) or ""
+            ru_name = branding.get("site_name_ru") or ""
+            en_name = branding.get("site_name_en") or ""
+            name = ru_name if lang == "ru" else en_name
         except Exception as e:
             app.logger.warning(f"Branding lookup failed, using defaults: {e}")
             logo_url = None
             name = ""
-        if not name:
+            ru_name = en_name = ""
+        # Only an empty pair means "the built-in brand": a language the admin left
+        # blank stays blank, because a translation is not a prerequisite.
+        if not ru_name and not en_name:
             name = gettext("FLAI")
         return {"branding_logo_url": logo_url, "branding_site_name": name}
 

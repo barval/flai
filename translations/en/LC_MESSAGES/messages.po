@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 02:04+0300\n"
+"POT-Creation-Date: 2026-11-17 11:24+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -18,19 +18,19 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: app/__init__.py:195 app/templates/base.html:7 app/templates/base.html:34
+#: app/__init__.py:202 app/templates/base.html:7 app/templates/base.html:34
 msgid "FLAI"
 msgstr "FLAI"
 
-#: app/__init__.py:609 app/__init__.py:625
+#: app/__init__.py:616 app/__init__.py:632
 msgid "Session expired. Please refresh the page."
 msgstr "Session expired. Please refresh the page."
 
-#: app/__init__.py:617
+#: app/__init__.py:624
 msgid "Authentication required."
 msgstr "Authentication required."
 
-#: app/__init__.py:632 app/routes/admin.py:404 app/routes/admin.py:688
+#: app/__init__.py:639 app/routes/admin.py:404 app/routes/admin.py:688
 #: app/routes/admin.py:731 app/routes/admin.py:747 app/routes/admin.py:759
 #: app/routes/admin.py:784 app/routes/admin.py:832 app/routes/admin.py:2262
 #: app/routes/admin.py:2279 app/routes/admin.py:2314
@@ -38,7 +38,7 @@ msgstr "Authentication required."
 msgid "Internal server error"
 msgstr "Internal server error"
 
-#: app/__init__.py:638
+#: app/__init__.py:645
 msgid "Not found"
 msgstr "Not found"
 
@@ -1012,12 +1012,10 @@ msgid "Too many network calls; try again in a minute."
 msgstr "Too many network calls; try again in a minute."
 
 #: app/tools.py:1112
-#
 msgid "The diagnostics service returned nothing"
 msgstr "The diagnostics service returned nothing"
 
-
-#: app/routes/admin.py:2771 app/routes/admin.py:2790 app/tools.py:1207
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1207
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Unknown skill: {name}"
@@ -1275,26 +1273,22 @@ msgstr "Logo is too small (minimum 16x16)"
 msgid "Invalid image file"
 msgstr "Invalid image file"
 
-#: app/routes/admin.py:2574 app/routes/api_v1.py:627 app/routes/api_v1.py:789
+#: app/routes/admin.py:2575 app/routes/api_v1.py:627 app/routes/api_v1.py:789
 #: app/routes/api_v1.py:909 app/routes/api_v1.py:938 app/routes/api_v1.py:1017
 #: app/routes/api_v1.py:1075 app/routes/api_v1.py:1442
 #: app/routes/api_v1.py:1599
 msgid "Request body must be a JSON object"
 msgstr "Request body must be a JSON object"
 
-#: app/routes/admin.py:2582 app/templates/admin.html:1124
+#: app/routes/admin.py:2583 app/templates/admin.html:1123
 msgid "Site name is too long (max 40 characters per language)"
 msgstr "Site name is too long (max 40 characters per language)"
 
-#: app/routes/admin.py:2584 app/templates/admin.html:1123
-msgid "Both language variants are required"
-msgstr "Both language variants are required"
-
-#: app/routes/admin.py:2638
+#: app/routes/admin.py:2650
 msgid "The skill name is empty"
 msgstr "The skill name is empty"
 
-#: app/routes/admin.py:2640
+#: app/routes/admin.py:2652
 msgid ""
 "A skill name uses lowercase letters, digits, - and _ only (max 64 "
 "characters)"
@@ -1302,46 +1296,46 @@ msgstr ""
 "A skill name uses lowercase letters, digits, - and _ only (max 64 "
 "characters)"
 
-#: app/routes/admin.py:2661 app/routes/admin.py:2759
+#: app/routes/admin.py:2673 app/routes/admin.py:2777
 #, python-brace-format
 msgid "The skill could not be read: {reason}"
 msgstr "The skill could not be read: {reason}"
 
-#: app/routes/admin.py:2663
+#: app/routes/admin.py:2675
 msgid "The name in the file does not match the skill name"
 msgstr "The name in the file does not match the skill name"
 
-#: app/routes/admin.py:2669
+#: app/routes/admin.py:2681
 #, python-brace-format
 msgid "Unknown tool in allowed-tools: {detail}"
 msgstr "Unknown tool in allowed-tools: {detail}"
 
-#: app/routes/admin.py:2673
+#: app/routes/admin.py:2685
 msgid "A bundled skill owns this name; rename the skill instead"
 msgstr "A bundled skill owns this name; rename the skill instead"
 
-#: app/routes/admin.py:2681
+#: app/routes/admin.py:2693
 msgid "The skill name leaves the skills folder"
 msgstr "The skill name leaves the skills folder"
 
-#: app/routes/admin.py:2698
+#: app/routes/admin.py:2710
 #, python-brace-format
 msgid "Not available here: {name}"
 msgstr "Not available here: {name}"
 
-#: app/routes/admin.py:2745
+#: app/routes/admin.py:2763
 msgid "No file was uploaded"
 msgstr "No file was uploaded"
 
-#: app/routes/admin.py:2748
+#: app/routes/admin.py:2766
 msgid "The skill file is too large"
 msgstr "The skill file is too large"
 
-#: app/routes/admin.py:2752
+#: app/routes/admin.py:2770
 msgid "The skill file is not UTF-8 text"
 msgstr "The skill file is not UTF-8 text"
 
-#: app/routes/admin.py:2787
+#: app/routes/admin.py:2805
 msgid "A bundled skill lives in the project and cannot be deleted"
 msgstr "A bundled skill lives in the project and cannot be deleted"
 
@@ -4383,59 +4377,59 @@ msgstr "Custom logo deleted — the built-in logo is shown"
 msgid "Site names saved"
 msgstr "Site names saved"
 
-#: app/templates/admin.html:1125
+#: app/templates/admin.html:1124
 msgid "Logo upload failed"
 msgstr "Logo upload failed"
 
-#: app/templates/admin.html:1126
+#: app/templates/admin.html:1125
 msgid "Bundled"
 msgstr "Bundled"
 
-#: app/templates/admin.html:1127
+#: app/templates/admin.html:1126
 msgid "Installed"
 msgstr "Installed"
 
-#: app/templates/admin.html:1128
+#: app/templates/admin.html:1127
 msgid "Shadowed by a bundled skill"
 msgstr "Shadowed by a bundled skill"
 
-#: app/templates/admin.html:1129
+#: app/templates/admin.html:1128
 msgid "Rename"
 msgstr "Rename"
 
-#: app/templates/admin.html:1130
+#: app/templates/admin.html:1129
 msgid "Read-only"
 msgstr "Read-only"
 
-#: app/templates/admin.html:1131
+#: app/templates/admin.html:1130
 msgid "Edit"
 msgstr "Edit"
 
-#: app/templates/admin.html:1132
+#: app/templates/admin.html:1131
 msgid "Not available here"
 msgstr "Not available here"
 
-#: app/templates/admin.html:1133
+#: app/templates/admin.html:1132
 msgid "Unknown tool"
 msgstr "Unknown tool"
 
-#: app/templates/admin.html:1134
+#: app/templates/admin.html:1133
 msgid "Skill saved"
 msgstr "Skill saved"
 
-#: app/templates/admin.html:1135
+#: app/templates/admin.html:1134
 msgid "Skill deleted"
 msgstr "Skill deleted"
 
-#: app/templates/admin.html:1136
+#: app/templates/admin.html:1135
 msgid "Skill enabled"
 msgstr "Skill enabled"
 
-#: app/templates/admin.html:1137
+#: app/templates/admin.html:1136
 msgid "Skill disabled"
 msgstr "Skill disabled"
 
-#: app/templates/admin.html:1138
+#: app/templates/admin.html:1137
 msgid "The same name is already taken"
 msgstr "The same name is already taken"
 
@@ -5926,4 +5920,7 @@ msgstr "Could not connect to video generation service"
 #~ "Legacy .doc is not supported. Save "
 #~ "the document as .docx and upload "
 #~ "it again."
+
+#~ msgid "Both language variants are required"
+#~ msgstr "Both language variants are required"
 

@@ -10921,6 +10921,8 @@ video {
 
 
 
+
+
                     <tr>
                         <th data-sort="is_active">Статус</th>
                         <th data-sort="login">Логин</th>
@@ -10939,7 +10941,7 @@ video {
                         <th data-sort="web_requests_month">Запросы<br>в интернет</th>
                         <th>Tavily API</th>
                         <th data-sort="api_keys_count">ПЛИИ API</th>
-                        <th>Сетевые инструменты</th>
+                        <th>Сетевые<br>инструменты</th>
 
                         <th>Действия</th>
                      </tr>
@@ -14719,7 +14721,6 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'branding_logo_deleted': "\u0421\u0432\u043e\u0439 \u043b\u043e\u0433\u043e\u0442\u0438\u043f \u0443\u0434\u0430\u043b\u0451\u043d \u2014 \u043e\u0442\u043e\u0431\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044f \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u043b\u043e\u0433\u043e\u0442\u0438\u043f",
     'branding_logo_too_large': "\u041b\u043e\u0433\u043e\u0442\u0438\u043f \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0431\u043e\u043b\u044c\u0448\u043e\u0439 (\u043c\u0430\u043a\u0441. 2 \u041c\u0411)",
     'branding_names_saved': "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u044f \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b",
-    'branding_both_required': "\u0422\u0440\u0435\u0431\u0443\u044e\u0442\u0441\u044f \u043e\u0431\u0430 \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u0445 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430",
     'branding_name_too_long': "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0434\u043b\u0438\u043d\u043d\u043e\u0435 (\u043c\u0430\u043a\u0441. 40 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432 \u043d\u0430 \u044f\u0437\u044b\u043a)",
     'branding_upload_failed': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043b\u043e\u0433\u043e\u0442\u0438\u043f",
     'Bundled': "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439",
@@ -18916,12 +18917,9 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const ru = nameRu.value.trim();
         const en = nameEn.value.trim();
-        if (!ru && !en) {
-            // Deliberate reset — both empty means "use the default brand name".
-        } else if (!ru || !en) {
-            alert(t('branding_both_required'));
-            return;
-        } else if (ru.length > 40 || en.length > 40) {
+        if (ru.length > 40 || en.length > 40) {
+            // Only both-empty is special (the default brand); one empty language is
+            // a normal state, and that language simply renders nothing.
             alert(t('branding_name_too_long'));
             return;
         }

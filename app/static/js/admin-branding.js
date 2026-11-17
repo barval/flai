@@ -104,12 +104,9 @@
         e.preventDefault();
         const ru = nameRu.value.trim();
         const en = nameEn.value.trim();
-        if (!ru && !en) {
-            // Deliberate reset — both empty means "use the default brand name".
-        } else if (!ru || !en) {
-            alert(t('branding_both_required'));
-            return;
-        } else if (ru.length > 40 || en.length > 40) {
+        if (ru.length > 40 || en.length > 40) {
+            // Only both-empty is special (the default brand); one empty language is
+            // a normal state, and that language simply renders nothing.
             alert(t('branding_name_too_long'));
             return;
         }

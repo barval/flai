@@ -2564,10 +2564,11 @@ def api_delete_branding_logo():
 @bp.route("/api/branding/names", methods=["POST"])
 @admin_required
 def api_set_branding_names():
-    """Save the localized site names — both languages are required at once.
+    """Save the localized site names, each language on its own.
 
-    Emptying either field resets the whole pair to the built-in brand name:
-    a half-translated brand is worse than a default one.
+    A translation is not a prerequisite for using the product: an admin who works
+    in one language leaves the other empty, and that language renders nothing.
+    Only an empty pair means "use the built-in brand".
     """
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
@@ -2580,8 +2581,6 @@ def api_set_branding_names():
         return jsonify({"ok": True, "site_name_ru": "", "site_name_en": ""})
     if len(ru) > BRANDING_NAME_MAX_CHARS or len(en) > BRANDING_NAME_MAX_CHARS:
         return jsonify({"error": _("Site name is too long (max 40 characters per language)")}), 400
-    if not ru or not en:
-        return jsonify({"error": _("Both language variants are required")}), 400
     db.set_branding_site_names(ru, en)
     return jsonify({"ok": True, "site_name_ru": ru, "site_name_en": en})
 

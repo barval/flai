@@ -1,5 +1,9 @@
 ## [v13.5] — Unreleased
 
+### Changed
+
+- **A language you do not use is no longer a blocker.** Personalization used to demand both site names at once and reset the pair when either was emptied; now each language stands alone — save the Russian name and leave English blank (or the reverse), and only an empty pair falls back to the built-in brand. Forcing a translation in either direction was wrong: a Russian admin should not be required to write English, and an English one should not be required to write Russian.
+
 ### Added
 
 - **Skills are installed from the panel, and an install never touches git.** A skill used to mean editing a tracked folder, so anything an administrator added landed in the next `git status` and the next release. There are now two zones: `skills/` ships with the project and is read-only in the panel, `data/skills/` is git-ignored and written by **Admin → Skills** — upload a `.md`, create or edit one as text, switch it off, delete it. A name a bundled skill owns is refused; one a release later ships is handled by letting the bundled copy win and listing the installed one as shadowed with a Rename action, so nothing an administrator wrote disappears. → [SKILLS.md](docs/SKILLS.md)

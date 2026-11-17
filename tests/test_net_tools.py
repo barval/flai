@@ -185,3 +185,11 @@ def test_the_switch_reads_a_string_from_the_environment(monkeypatch):
     assert netdiag._setting("NET_TOOLS_ENABLED", False) is False
     monkeypatch.setenv("NET_TOOLS_ENABLED", "true")
     assert netdiag._setting("NET_TOOLS_ENABLED", False) is True
+
+
+def test_a_blocked_target_is_explained_in_the_user_language(ctx, permitted, redis_stub):
+    result = tools.execute_tool("net_http", {"url": "http://169.254.169.254/latest/meta-data"}, ctx)
+
+    assert result.startswith("⚠️ ")
+    assert "loopback or link-local" not in result
+    assert "петля" in result

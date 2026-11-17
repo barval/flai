@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 11:31+0300\n"
+"POT-Creation-Date: 2026-11-17 12:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -176,8 +176,8 @@ msgstr ""
 "Service temporarily unavailable. Circuit breaker is open after repeated "
 "failures."
 
-#: app/llamacpp_client.py:698 app/llamacpp_client.py:1119 modules/base.py:948
-#: modules/base.py:1033
+#: app/llamacpp_client.py:698 app/llamacpp_client.py:1119 modules/base.py:993
+#: modules/base.py:1079
 msgid "Model returned empty response"
 msgstr "Model returned empty response"
 
@@ -568,8 +568,8 @@ msgstr "⚠️ Document quota reached — the collected materials were not saved
 msgid "Failed to save the collected materials"
 msgstr "⚠️ Failed to save the collected materials."
 
-#: app/queue.py:5645 modules/base.py:921 modules/base.py:1158
-#: modules/base.py:1208 modules/multimodal.py:258 modules/multimodal.py:290
+#: app/queue.py:5645 modules/base.py:966 modules/base.py:1204
+#: modules/base.py:1254 modules/multimodal.py:258 modules/multimodal.py:290
 #: modules/multimodal.py:296 modules/multimodal.py:337
 #: modules/multimodal.py:375 modules/multimodal.py:399
 #: modules/multimodal.py:448 modules/multimodal.py:543
@@ -1005,6 +1005,11 @@ msgstr "The network diagnostics service is not running"
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "This address is refused: {reason}"
+
+#: app/tools.py:1099
+msgid "loopback or link-local"
+msgstr "loopback or link-local"
+
 
 # GPU memory error messages
 #: app/tools.py:1103
@@ -2642,7 +2647,6 @@ msgstr "Russian description (optional)"
 #: app/templates/admin.html:435 app/templates/admin.html:440
 msgid "Leave it empty and the base description is shown instead"
 msgstr "Leave it empty and the base description is shown instead"
-
 
 #: app/templates/admin.html:438
 msgid "Russian body (optional)"
@@ -5706,7 +5710,7 @@ msgstr "Sign in"
 msgid "Log in"
 msgstr "Log in"
 
-#: modules/base.py:643
+#: modules/base.py:687
 msgid "Request too long, please simplify your request"
 msgstr "Request too long, please simplify your request"
 

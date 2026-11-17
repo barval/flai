@@ -118,6 +118,50 @@ def wait_for_service(
     return False
 
 
+# The routing rule for network questions. It is injected ONLY when the net_* tools
+# are in the catalogue: with the sidecar off they must not be named, or a network
+# question becomes an answerless chat instead of an ordinary web search.
+_NETWORK_RULES = {
+    "ru": (
+        "ВАЖНО: Состояние сети → НЕ 6. Владелец домена (WHOIS), что резолвится, отвечает ли узел, "
+        "маршрут, открытые порты, заголовки и сертификат URL, скорость до iperf3 — это обычный чат: "
+        "ответят инструменты net_*. Поисковик по такому запросу отдаёт статьи о том, как проверять, "
+        "и ни одного владельца."
+    ),
+    "en": (
+        "IMPORTANT: The state of a network → NOT 6. The owner of a domain (WHOIS), what a name resolves "
+        "to, whether a host answers, the route, open ports, a URL's headers and certificate, throughput "
+        "to iperf3 — that is ordinary chat: the net_* tools answer it. A search engine returns articles "
+        "about how to check and no owner at all."
+    ),
+}
+
+_KERNEL_NETWORK_RULES = {
+    "ru": (
+        "- Вопрос о сети — это none, не search: используй подходящий инструмент net_* (см. # TOOLS).\n"
+        "  «Кто владелец домена» — это net_whois + none, не search: поиск отдаёт списки регистраторов, "
+        "а не владельца."
+    ),
+    "en": (
+        "- A question about a network is none, never search: use the net_* tool that matches it (see # TOOLS).\n"
+        "  'Who owns <domain>' is net_whois + none, never search: search returns registrar lists, not the owner."
+    ),
+}
+
+
+def network_rule(lang: str = "ru", for_kernel: bool = False) -> str:
+    """The rule for this language, or an empty string when the tools do not exist."""
+    try:
+        from app import netdiag
+
+        if not netdiag.available():
+            return ""
+    except Exception:  # noqa: BLE001 - no sidecar, no rule
+        return ""
+    rules = _KERNEL_NETWORK_RULES if for_kernel else _NETWORK_RULES
+    return rules.get(lang, rules["en"])
+
+
 def _kernel_skills() -> set[str]:
     """The names the kernel may return, or an empty set when none is installed."""
     try:
@@ -886,6 +930,7 @@ class BaseModule(TranslationMixin):
                 "response_style": style_instruction,
                 "camera_section": camera_section,
                 "router_context": recent_context or "",
+                "network_rule": network_rule(lang),
             },
             lang=lang,
         )
@@ -985,6 +1030,7 @@ class BaseModule(TranslationMixin):
             recent_context,
             _kernel_rooms(cam),
             skills=_kernel_skill_catalog(skill_names),
+            network_rule=network_rule(lang, for_kernel=True),
         )
         if not prompt:
             self.logger.error("Request kernel: prompt template is missing")

@@ -1093,10 +1093,10 @@ def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[s
         if not netdiag.available():
             return "⚠️ " + str(_("The network diagnostics service is not running"))
 
-    reason = netdiag.blocked_target(target)
-    if reason:
+    if netdiag.blocked_target(target):
+        # The guard's phrase is English; the user reads their own language.
         with force_locale(lang):
-            return "⚠️ " + str(_("This address is refused: {reason}").format(reason=reason))
+            return "⚠️ " + str(_("This address is refused: {reason}").format(reason=_("loopback or link-local")))
 
     if not netdiag.check_rate_limit(login):
         with force_locale(lang):

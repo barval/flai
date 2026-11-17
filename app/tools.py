@@ -367,6 +367,40 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 
+WRITE_DOCUMENT_TOOL = "write_document"
+
+_WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": WRITE_DOCUMENT_TOOL,
+        "description": (
+            "Save a document for the user: a report, a summary, a letter, a table. The file "
+            "appears in the user's own document library and is indexed like any other document. "
+            "Use it whenever the answer is meant to be a FILE the user keeps. Give a display "
+            "name without a path; the extension follows the format. For a table use format csv "
+            "with rows (a list of rows, each a list of cells), never a hand-built string."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Display name, e.g. 'Отчёт за октябрь'"},
+                "content": {"type": "string", "description": "The whole text of the document"},
+                "format": {
+                    "type": "string",
+                    "enum": ["md", "csv", "json", "txt"],
+                    "description": "md for prose, csv with rows, json (must parse), txt plain",
+                },
+                "rows": {
+                    "type": "array",
+                    "description": "For csv only: the rows, each a list of cell values",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+            "required": ["name"],
+        },
+    },
+}
+
 # ── Network diagnostics (v13.5) ───────────────────────────────────────────────
 # Advertised only when the netdiag sidecar answers, and gated per user at execution
 # time: a hidden tool cannot tell the person why it refused.
@@ -513,7 +547,13 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         # A tool that can only answer "the service is unavailable" is noise in
         # the catalogue; the camera module is optional.
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
-    return definitions + skill_tool_definitions() + mcp_tool_definitions() + net_tool_definitions()
+    return (
+        list(definitions)
+        + [_WRITE_DOCUMENT_DEFINITION]
+        + skill_tool_definitions()
+        + mcp_tool_definitions()
+        + net_tool_definitions()
+    )
 
 
 # A restricted profile's catalogue, named here rather than in the module that
@@ -1220,6 +1260,7 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
+    WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
     "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
     "net_whois": lambda ctx, **kw: _exec_net_whois(ctx, **kw),
     "net_ping": lambda ctx, **kw: _exec_net_ping(ctx, **kw),
@@ -1231,6 +1272,77 @@ _EXECUTOR_MAP: dict[str, Any] = {
 
 
 SKILL_LOADER_TOOL = "activate_skill"
+
+
+def _write_document_message(code: str, detail: str, lang: str) -> str:
+    """The sentence a refusal becomes, in the caller's language."""
+    # Built inside force_locale: gettext() runs the app's locale selector, which reads
+    # the request, so calling it outside a request context raises.
+    with force_locale(lang):
+        messages = {
+            "empty": _("There is nothing to write: the content is empty"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json or txt"),
+            "too_large": _("The document is too large (limit {limit} KB)").format(limit=256),
+            "quota": _("The document storage quota is exhausted; delete something first"),
+            "json": _("The JSON does not parse, so nothing was written"),
+            "name": _("The document name is not usable: {detail}"),
+        }
+        text = messages.get(code, _("The document could not be written"))
+        if "{detail}" in text:
+            text = text.format(detail=detail)
+    return "⚠️ " + str(text)
+
+
+def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
+    """Write a document and queue its indexing; the answer names the file."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.write_document_file(
+            login,
+            str(kw.get("name", "")),
+            content=str(kw.get("content") or ""),
+            fmt=str(kw.get("format") or "md"),
+            rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed write is a sentence, not a crash
+        logger.exception("write_document failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    app = ctx.get("app")
+    queue = getattr(app, "request_queue", None) if app else None
+    if queue is not None:
+        try:
+            queue.add_request(
+                user_id=login,
+                session_id="",
+                request_data={
+                    "type": "index_document",
+                    "doc_id": written.id,
+                    "file_path": written.file_path,
+                },
+                user_class=ctx.get("user_class", 100),
+                lang=lang,
+            )
+        except Exception:  # noqa: BLE001 - a written file that is not indexed yet is not lost
+            logger.exception(f"indexing was not queued for the written document {written.id}")
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Saved as {name} ({size} KB) in your documents; indexing is queued.").format(
+                name=written.filename, size=size_kb
+            )
+        )
 
 
 def _exec_activate_skill(name: str, lang: str) -> str:
@@ -1265,10 +1377,11 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    if not any(item["function"]["name"] == SKILL_LOADER_TOOL for item in chosen):
-        # The loader survives narrowing: a turn that picked any other tool would
-        # otherwise lose the only way to load a skill for the rest of the turn.
-        chosen += [item for item in definitions if item["function"]["name"] == SKILL_LOADER_TOOL]
+    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL):
+        # Both survive narrowing: a turn that picked any other tool would otherwise
+        # lose the skill loader, or the only way to hand the user a file.
+        if not any(item["function"]["name"] == keep for item in chosen):
+            chosen += [item for item in definitions if item["function"]["name"] == keep]
     return chosen
 
 

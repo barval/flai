@@ -11289,10 +11289,12 @@ video {
             <label class="skill-field">
                 <span>Описание на русском (необязательно)</span>
                 <input type="text" id="skill-description-ru" autocomplete="off">
+                <small class="skill-hint">Оставьте пустым — будет показано базовое описание</small>
             </label>
             <label class="skill-field">
                 <span>Текст на русском (необязательно)</span>
                 <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+                <small class="skill-hint">Оставьте пустым — будет показано базовое описание</small>
             </label>
             <div class="skill-editor-actions">
                 <button id="skill-save" class="btn-primary">Сохранить</button>
@@ -14216,6 +14218,13 @@ body.dark-theme .mode-option {
 .monitoring-net td { padding: 0.3rem 0.45rem; text-align: left; border-bottom: 1px solid var(--border-color, #d9d9d9); }
 .monitoring-net th { font-weight: 600; opacity: 0.75; }
 .net-audit-empty { opacity: 0.7; font-style: italic; }
+
+.skill-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
 </style>
 <script>
 window.ROOMS = [];

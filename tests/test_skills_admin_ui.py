@@ -83,3 +83,14 @@ def test_the_toolbar_buttons_are_the_same_height():
     block = css[css.index(".skills-toolbar") : css.index(".skills-table-wrapper")]
     assert ".skills-toolbar .btn-primary" in block or ".skills-toolbar button" in block
     assert "height:" in block
+
+
+def test_the_russian_fields_explain_what_an_empty_translation_does():
+    """Without the line a reader cannot tell whether empty means "no translation"."""
+    html = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "skill-hint" in html
+    assert "Leave it empty and the base description is shown instead" in html
+    for lang, path in CATALOGS.items():
+        msgid = 'msgid "Leave it empty and the base description is shown instead"'
+        assert msgid in path.read_text(encoding="utf-8"), lang

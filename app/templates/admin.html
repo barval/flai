@@ -432,10 +432,12 @@
             <label class="skill-field">
                 <span>{{ _('Russian description (optional)') }}</span>
                 <input type="text" id="skill-description-ru" autocomplete="off">
+                <small class="skill-hint">{{ _('Leave it empty and the base description is shown instead') }}</small>
             </label>
             <label class="skill-field">
                 <span>{{ _('Russian body (optional)') }}</span>
                 <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+                <small class="skill-hint">{{ _('Leave it empty and the base description is shown instead') }}</small>
             </label>
             <div class="skill-editor-actions">
                 <button id="skill-save" class="btn-primary">{{ _('Save') }}</button>

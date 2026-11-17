@@ -14265,6 +14265,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'files': "Files",
     'documents': "Documents",
     'camera_access': "Camera access",
+    'Network tools': "Network tools",
     'actions': "Actions",
     'active': "Active",
     'create': "Create",
@@ -16436,9 +16437,17 @@ const USER_CARD_LABELS = [
 
 function labelUserCardCells(row) {
     const cells = Array.from(row.children);
-    const labels = cells.length === USER_CARD_LABELS.length + 2
-        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
-        : [...USER_CARD_LABELS, 'Actions'];
+    // The trailing columns depend on what the panel renders, so the row itself says
+    // whether the camera column is there. Counting cells instead let one added
+    // column shift every label after it — the camera cell printed "Actions" and the
+    // network cell printed nothing.
+    const hasCamera = !!row.querySelector('.camera-checkboxes');
+    const labels = hasCamera
+        ? [...USER_CARD_LABELS, 'Camera access', 'Network tools', 'Actions']
+        : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
+    if (cells.length !== labels.length) {
+        console.warn('user card labels do not match the columns:', cells.length, labels.length);
+    }
     cells.forEach((cell, index) => {
         if (labels[index]) cell.dataset.label = t(labels[index]);
     });

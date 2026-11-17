@@ -42,3 +42,26 @@ def test_both_translations_have_two_words_to_split():
         block = re.search(rf'^msgid "{msgid}"\nmsgstr "(.*)"$', (root / "translations/ru/LC_MESSAGES/messages.po").read_text(encoding="utf-8"), re.M)
         assert block, msgid
         assert " " in block.group(1), f"the Russian {msgid!r} heading has no space to split"
+
+
+def test_the_mobile_card_labels_follow_the_columns_that_exist():
+    """On a phone each cell prints its own label; a positional list shifts silently.
+
+    Adding the network column without touching the label list gave the camera cell
+    "Actions" and left the network cell with no label at all.
+    """
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "app/static/js/admin.js").read_text(encoding="utf-8")
+
+    assert "hasCamera" in source
+    assert "'Camera access', 'Network tools', 'Actions'" in source
+    assert "'Network tools', 'Actions'" in source
+
+
+def test_the_network_label_is_available_to_the_script():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parent.parent / "app/templates/admin.html").read_text(encoding="utf-8")
+
+    assert "'Network tools': {{ _('Network tools')|tojson }}" in html

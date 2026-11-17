@@ -14265,6 +14265,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'files': "\u0424\u0430\u0439\u043b\u044b",
     'documents': "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
     'camera_access': "\u0414\u043e\u0441\u0442\u0443\u043f \u043a \u043a\u0430\u043c\u0435\u0440\u0430\u043c",
+    'Network tools': "\u0421\u0435\u0442\u0435\u0432\u044b\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b",
     'actions': "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f",
     'active': "\u0410\u043a\u0442\u0438\u0432\u0435\u043d",
     'create': "\u0421\u043e\u0437\u0434\u0430\u0442\u044c",
@@ -16436,9 +16437,17 @@ const USER_CARD_LABELS = [
 
 function labelUserCardCells(row) {
     const cells = Array.from(row.children);
-    const labels = cells.length === USER_CARD_LABELS.length + 2
-        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
-        : [...USER_CARD_LABELS, 'Actions'];
+    // The trailing columns depend on what the panel renders, so the row itself says
+    // whether the camera column is there. Counting cells instead let one added
+    // column shift every label after it — the camera cell printed "Actions" and the
+    // network cell printed nothing.
+    const hasCamera = !!row.querySelector('.camera-checkboxes');
+    const labels = hasCamera
+        ? [...USER_CARD_LABELS, 'Camera access', 'Network tools', 'Actions']
+        : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
+    if (cells.length !== labels.length) {
+        console.warn('user card labels do not match the columns:', cells.length, labels.length);
+    }
     cells.forEach((cell, index) => {
         if (labels[index]) cell.dataset.label = t(labels[index]);
     });

@@ -376,7 +376,7 @@ NET_TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "net_dns",
-            "description": "Resolve a name through DNS. Use for 'why does this domain not open', mail records, or what a name points to.",
+            "description": "Resolve a name through DNS. Use for 'why does this domain not open', mail records, or what a name points to. Copy the name exactly as the user wrote it; the words around it are not part of it.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -392,7 +392,7 @@ NET_TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "net_whois",
-            "description": "Look up the registration of a domain or the allocation of an address.",
+            "description": "Look up the registration of a domain or the allocation of an address. Copy the name exactly as the user wrote it; the words around it are not part of it.",
             "parameters": {
                 "type": "object",
                 "properties": {"target": {"type": "string", "description": "Domain or IP address"}},
@@ -1075,6 +1075,42 @@ def _exec_time_calc(
 
 # ── Tool dispatch ────────────────────────────────────────────────────
 
+def _ground_target(value: str, message: str) -> str:
+    """The host the user actually typed, when the model's copy is off by a character.
+
+    A small model merges the word next to a name into the name — measured on the
+    live installation: "какие ns-сервера у prits.ru?" reached ``net_dns`` as
+    ``pritns.ru``, and the kernel's own query was correct, so the mistake is the
+    tool argument and not the routing. The message is the source of truth: a
+    candidate replaces the argument only when the argument does not appear in the
+    message verbatim and a host-like token there is a near match. Nothing is
+    rewritten when the user typed what the model sent.
+    """
+    text = str(value or "").strip()
+    if not text or not message:
+        return text
+    lowered = str(message).lower()
+    if text.lower() in lowered:
+        return text
+    _original = text
+
+    import difflib
+    import re
+
+    candidates = re.findall(r"[0-9a-z](?:[0-9a-z.-]*[0-9a-z])?", lowered)
+    best: tuple[float, str] | None = None
+    for candidate in candidates:
+        if "." not in candidate or abs(len(candidate) - len(text)) > 2:
+            continue
+        ratio = difflib.SequenceMatcher(None, candidate, text.lower()).ratio()
+        if ratio >= 0.85 and (best is None or ratio > best[0]):
+            best = (ratio, candidate)
+    if best is None:
+        return text
+    logger.info(f"network target repaired from the user's message: {_original} -> {best[1]}")
+    return best[1]
+
+
 def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[str, Any], target: str) -> str:
     """Permission, blocked address, rate limit, one call, one audit line.
 
@@ -1121,7 +1157,7 @@ def _run_net_tool(tool: str, endpoint: str, ctx: dict[str, Any], payload: dict[s
 
 
 def _exec_net_dns(ctx: dict[str, Any], **kw: Any) -> str:
-    name = str(kw.get("name", "")).strip()
+    name = _ground_target(str(kw.get("name", "")).strip(), str(ctx.get("message_text") or ""))
     payload = {"name": name}
     if kw.get("type"):
         payload["type"] = str(kw["type"])
@@ -1131,12 +1167,12 @@ def _exec_net_dns(ctx: dict[str, Any], **kw: Any) -> str:
 
 
 def _exec_net_whois(ctx: dict[str, Any], **kw: Any) -> str:
-    target = str(kw.get("target", "")).strip()
+    target = _ground_target(str(kw.get("target", "")).strip(), str(ctx.get("message_text") or ""))
     return _run_net_tool("net_whois", "whois", ctx, {"target": target}, target)
 
 
 def _exec_net_ping(ctx: dict[str, Any], **kw: Any) -> str:
-    host = str(kw.get("host", "")).strip()
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
     payload = {"host": host}
     if kw.get("count") is not None:
         payload["count"] = kw["count"]
@@ -1144,7 +1180,7 @@ def _exec_net_ping(ctx: dict[str, Any], **kw: Any) -> str:
 
 
 def _exec_net_trace(ctx: dict[str, Any], **kw: Any) -> str:
-    host = str(kw.get("host", "")).strip()
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
     payload = {"host": host}
     if kw.get("hops") is not None:
         payload["hops"] = kw["hops"]
@@ -1152,7 +1188,7 @@ def _exec_net_trace(ctx: dict[str, Any], **kw: Any) -> str:
 
 
 def _exec_net_ports(ctx: dict[str, Any], **kw: Any) -> str:
-    host = str(kw.get("host", "")).strip()
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
     payload = {"host": host}
     if kw.get("services"):
         payload["service_version"] = True
@@ -1165,7 +1201,7 @@ def _exec_net_http(ctx: dict[str, Any], **kw: Any) -> str:
 
 
 def _exec_net_speed(ctx: dict[str, Any], **kw: Any) -> str:
-    host = str(kw.get("host", "")).strip()
+    host = _ground_target(str(kw.get("host", "")).strip(), str(ctx.get("message_text") or ""))
     payload = {"host": host}
     for key in ("port", "seconds"):
         if kw.get(key) is not None:

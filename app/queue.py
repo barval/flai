@@ -5562,6 +5562,10 @@ class RedisRequestQueue:
                 "app": self.app,
                 "user_id": user_id,
                 "lang": lang,
+                # The network tools compare their argument against what the user
+                # actually typed: a small model merges neighbouring words into a
+                # host name (measured: prits.ru -> pritns.ru next to "ns-сервера").
+                "message_text": (task.get("data") or {}).get("text", ""),
                 "current_message_id": (task.get("data") or {}).get("current_message_id"),
                 "current_session_id": task.get("session_id"),
             }

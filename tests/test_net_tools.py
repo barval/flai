@@ -193,3 +193,44 @@ def test_a_blocked_target_is_explained_in_the_user_language(ctx, permitted, redi
     assert result.startswith("⚠️ ")
     assert "loopback or link-local" not in result
     assert "петля" in result
+
+
+def test_a_garbled_host_is_repaired_from_the_user_message(ctx, permitted, redis_stub, monkeypatch):
+    """The model merged the neighbouring word into the name: prits.ru -> pritns.ru.
+
+    The user's own spelling is the source of truth, and the kernel already carried
+    it correctly — only the tool argument was wrong.
+    """
+    seen = {}
+    monkeypatch.setattr(
+        netdiag, "call", lambda tool, payload, **kw: seen.update(payload) or {"ok": True, "output": "NS answered"}
+    )
+    ctx["message_text"] = "какие ns-сервера у prits.ru?"
+
+    tools.execute_tool("net_dns", {"name": "pritns.ru", "type": "NS"}, ctx)
+
+    assert seen["name"] == "prits.ru"
+
+
+def test_a_name_the_user_really_typed_is_not_rewritten(ctx, permitted, redis_stub, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        netdiag, "call", lambda tool, payload, **kw: seen.update(payload) or {"ok": True, "output": "NS answered"}
+    )
+    ctx["message_text"] = "какие ns-сервера у pritns.ru?"
+
+    tools.execute_tool("net_dns", {"name": "pritns.ru", "type": "NS"}, ctx)
+
+    assert seen["name"] == "pritns.ru"
+
+
+def test_an_unrelated_host_is_left_alone(ctx, permitted, redis_stub, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        netdiag, "call", lambda tool, payload, **kw: seen.update(payload) or {"ok": True, "output": "ok"}
+    )
+    ctx["message_text"] = "пингни что-нибудь публичное"
+
+    tools.execute_tool("net_ping", {"host": "8.8.8.8"}, ctx)
+
+    assert seen["host"] == "8.8.8.8"

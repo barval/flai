@@ -44,20 +44,22 @@ def test_both_translations_have_two_words_to_split():
         assert " " in block.group(1), f"the Russian {msgid!r} heading has no space to split"
 
 
-def test_the_mobile_card_labels_follow_the_columns_that_exist():
-    """On a phone each cell prints its own label; a positional list shifts silently.
+def test_the_mobile_card_labels_follow_the_column_order():
+    """A card label must name its own column, in the order the header prints them.
 
-    Adding the network column without touching the label list gave the camera cell
-    "Actions" and left the network cell with no label at all.
+    Two rounds of this bug: the list was positional first (adding a column shifted
+    every label), then ordered wrongly (the network and camera labels swapped).
+    The header is the authority, so the test compares against it.
     """
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parent.parent / "app/static/js/admin.js").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    source = (root / "app/static/js/admin.js").read_text(encoding="utf-8")
+    html = (root / "app/templates/admin.html").read_text(encoding="utf-8")
 
-    assert "hasCamera" in source
-    assert "'Camera access', 'Network tools', 'Actions'" in source
-    assert "'Network tools', 'Actions'" in source
-
+    assert html.index("net_tools_header[0]") < html.index("camera_header[0]"), "header order"
+    assert source.index("'Network tools', 'Camera access', 'Actions'") > 0, "camera present"
+    assert source.index("'Network tools', 'Actions'") > 0, "camera absent"
 
 def test_the_network_label_is_available_to_the_script():
     from pathlib import Path

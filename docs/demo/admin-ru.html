@@ -16442,8 +16442,10 @@ function labelUserCardCells(row) {
     // column shift every label after it — the camera cell printed "Actions" and the
     // network cell printed nothing.
     const hasCamera = !!row.querySelector('.camera-checkboxes');
+    // The row builds the network cell before the camera one, and the header prints
+    // them in that order; the labels must follow the cells, not the other way round.
     const labels = hasCamera
-        ? [...USER_CARD_LABELS, 'Camera access', 'Network tools', 'Actions']
+        ? [...USER_CARD_LABELS, 'Network tools', 'Camera access', 'Actions']
         : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
     if (cells.length !== labels.length) {
         console.warn('user card labels do not match the columns:', cells.length, labels.length);

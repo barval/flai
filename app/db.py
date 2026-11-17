@@ -671,7 +671,7 @@ def get_user_documents(user_id, include_shared=False, with_share_counts=False):
             """
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
                index_status, indexed_at, indexing_started_at, embedding_model, description_model,
-               folder_id
+               folder_id, source
         FROM documents
         WHERE user_id = %s
         ORDER BY uploaded_at DESC
@@ -896,7 +896,7 @@ def delete_document_resources(doc, login, refresh_stats=True):
 
 
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, folder_id=None,
-                  blob_sha256=None, stored_bytes=None):
+                  blob_sha256=None, stored_bytes=None, source="upload"):
     """Save document metadata to database.
 
     ``stored_bytes`` is what this upload added to the disk: the file size when it
@@ -909,8 +909,8 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, fol
         c.execute(
             """
         INSERT INTO documents (id, user_id, filename, file_size, file_ext, file_path, uploaded_at, folder_id,
-                               blob_sha256, stored_bytes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               blob_sha256, stored_bytes, source)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 doc_id,
@@ -923,6 +923,7 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path, fol
                 folder_id,
                 blob_sha256,
                 stored_bytes if stored_bytes is not None else file_size,
+                source,
             ),
         )
 
@@ -981,7 +982,7 @@ def get_document(doc_id, user_id):
         c.execute(
             """
         SELECT id, filename, file_size, file_ext, file_path, index_status, indexed_at, uploaded_at,
-               embedding_model, blob_sha256, stored_bytes
+               embedding_model, blob_sha256, stored_bytes, source
         FROM documents
         WHERE id = %s AND user_id = %s
         """,

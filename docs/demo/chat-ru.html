@@ -3825,6 +3825,19 @@ video {
         gap: 0.15rem;
     }
 }
+
+/* Where a document came from, when it was not an upload (v13.5). */
+.doc-origin-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    border: 1px solid currentColor;
+    opacity: 0.65;
+    vertical-align: middle;
+}
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
 .image-modal {
@@ -9366,6 +9379,19 @@ video {
         gap: 0.15rem;
     }
 }
+
+/* Where a document came from, when it was not an upload (v13.5). */
+.doc-origin-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    border: 1px solid currentColor;
+    opacity: 0.65;
+    vertical-align: middle;
+}
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
 .image-modal {
@@ -11415,6 +11441,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_selected_count': "\u0412\u044b\u0434\u0435\u043b\u0435\u043d\u043e: {count} ({size})",
     'documents_select_folder': "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0432\u0441\u0435 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0432 \u043f\u0430\u043f\u043a\u0435",
     'documents_select_for_move': "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0434\u043b\u044f \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f",
+    'documents_origin_generated': "\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043e",
+    'documents_origin_crawl': "\u0418\u0437 \u043e\u0431\u0445\u043e\u0434\u0430 \u0441\u0430\u0439\u0442\u0430",
+    'documents_origin_chat': "\u0418\u0437 \u0447\u0430\u0442\u0430",
     'documents_select_for_analysis': "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0434\u043b\u044f \u0433\u043b\u0443\u0431\u043e\u043a\u043e\u0433\u043e \u0430\u043d\u0430\u043b\u0438\u0437\u0430",
     'documents_view_in_graph': "\u041f\u043e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u0432 \u0433\u0440\u0430\u0444\u0435 \u0437\u043d\u0430\u043d\u0438\u0439",
     'graph_title': "\u0413\u0440\u0430\u0444 \u0437\u043d\u0430\u043d\u0438\u0439",
@@ -12489,6 +12518,17 @@ function renderDocItem(doc) {
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
+    // Where a document came from, when it was not an upload: the crawler saves pages,
+    // a chat attachment becomes a document, and the assistant writes files.
+    const originLabel = {
+        generated: t('documents_origin_generated'),
+        crawl: t('documents_origin_crawl'),
+        chat: t('documents_origin_chat'),
+    }[String(doc.source || '').toLowerCase()];
+    const originBadge = originLabel
+        ? `<span class="doc-origin-badge doc-origin-${escapeHtml(String(doc.source).toLowerCase())}">${escapeHtml(originLabel)}</span>`
+        : '';
+
     return `
     <div class="document-item${showRlm ? ' rlm-selected' : ''}${sharedBy ? ' document-shared' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="${sharedBy ? 'false' : 'true'}">
         <div class="document-content">
@@ -12498,7 +12538,7 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    📄 ${escapeHtml(doc.filename)}${originBadge}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                 ${embeddingLine}

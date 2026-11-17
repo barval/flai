@@ -297,6 +297,17 @@ function renderDocItem(doc) {
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
+    // Where a document came from, when it was not an upload: the crawler saves pages,
+    // a chat attachment becomes a document, and the assistant writes files.
+    const originLabel = {
+        generated: t('documents_origin_generated'),
+        crawl: t('documents_origin_crawl'),
+        chat: t('documents_origin_chat'),
+    }[String(doc.source || '').toLowerCase()];
+    const originBadge = originLabel
+        ? `<span class="doc-origin-badge doc-origin-${escapeHtml(String(doc.source).toLowerCase())}">${escapeHtml(originLabel)}</span>`
+        : '';
+
     return `
     <div class="document-item${showRlm ? ' rlm-selected' : ''}${sharedBy ? ' document-shared' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="${sharedBy ? 'false' : 'true'}">
         <div class="document-content">
@@ -306,7 +317,7 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    📄 ${escapeHtml(doc.filename)}${originBadge}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
                 ${embeddingLine}

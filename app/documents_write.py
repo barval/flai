@@ -148,7 +148,7 @@ def write_document_file(
         with open(absolute, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         size = os.path.getsize(absolute)
-        db.save_document(user_id, doc_id, filename, size, extension, relative)
+        db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
         db.update_user_storage(user_id, size)
     except Exception:
         with open(absolute, "w", encoding="utf-8"):

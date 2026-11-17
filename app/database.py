@@ -520,7 +520,7 @@ def _init_postgresql():
             refcount INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        ALTER TABLE documents ADD COLUMN IF NOT EXISTS blob_sha256 TEXT;
+        ALTER TABLE documents ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'upload';
         ALTER TABLE documents ADD COLUMN IF NOT EXISTS stored_bytes BIGINT DEFAULT 0;
     """)
     # Read-only sharing: the owner keeps the document, its file and its index

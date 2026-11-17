@@ -48,6 +48,34 @@ Sharing is per document, never per folder.
 
 When the OCR budget expires, the pages recognized so far are indexed and the user is notified how far the recognition went.
 
+## Documents the assistant writes
+
+The model can produce a file, not only a paragraph. `write_document` stores text as an
+ordinary document of the person who asked, so it appears in the Documents panel, can be
+searched, shared, moved and deleted, and is **indexed and added to the knowledge graph
+on the same path as an upload** — under the same `GRAPH_AUTO_EXTRACT` switch, with no
+rule of its own.
+
+| | |
+|---|---|
+| Formats | `.md` (default), `.csv`, `.json`, `.txt` |
+| CSV | the model passes `rows` — a list of rows, each a list of cells — so a comma or a quote inside a value cannot corrupt the file |
+| JSON | validated before writing: a file that does not parse is refused instead of stored |
+| Size | at most 256 KB of text per call |
+| Name | a display name only; the server strips any path, caps it at 120 characters and appends the extension |
+| Collision | a name the user already has gets ` (2)`, ` (3)` — a generated file never overwrites another |
+| Quota | checked **before** anything is written, against the same document quota as an upload |
+| Preview | shown as plain text; Markdown is not rendered in the panel |
+
+A document written this way carries `source = 'generated'`, and the panel marks it with a
+badge. The `source` column distinguishes all four origins — `upload`, `crawl` (a site the
+crawler saved), `chat` (a file attached to a message) and `generated`. Rows that predate
+the column read `upload`; nothing can tell them apart retroactively.
+
+Ask for it in plain language: «собери отчёт по этим договорам и отдай файлом», "save that
+as a table". The tool answers with the stored name and the size, and indexing happens in
+the background.
+
 ## 1. Configure RAG in Admin Panel
 
 After starting the services, log in as admin and go to **Admin Panel → Models** tab. Scroll down to the **Chunks** section. Here you can fine-tune RAG behavior:

@@ -34,6 +34,12 @@ Current time: {current_time}.
 Available capabilities (id — the only allowed tool values):
 {capabilities_section}
 
+# SKILLS
+Installed skills are instructions, not tools. If the task clearly matches one, name it in
+"skills" (at most 2); the runtime loads its instructions before the first step and every
+step then follows them. Name a skill only when it matches — an unrelated one adds noise.
+{skills_catalog}
+
 # OUTPUT FORMAT
 Answer with strictly one JSON object and no text before or after it:
-{{"title": "...", "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}
+{{"title": "...", "skills": [], "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}

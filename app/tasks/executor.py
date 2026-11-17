@@ -748,6 +748,55 @@ def _queues_empty() -> bool:
     )
 
 
+def _context_with_skills(digest: str, skills, lang: str) -> str:
+    """Put the task's skills ahead of the running context.
+
+    Ahead, not behind: a step that reads its instructions after the previous results
+    tends to treat them as an answer already given.
+    """
+    block = _task_skills_block(skills or (), lang)
+    if not block:
+        return digest
+    return f"{block}\n\n{digest}" if digest else block
+
+
+def _skills_catalog(lang: str = "ru") -> str:
+    """The installed, enabled skills as name + one line, for the planner."""
+    try:
+        from app.skills import catalog
+
+        return catalog(lang)
+    except Exception:  # noqa: BLE001 - no catalog is a normal state
+        return ""
+
+
+def _task_skills_block(names, lang: str = "ru") -> str:
+    """The bodies of the skills the planner chose, as instructions for every step.
+
+    A skill is a set of instructions, not a tool: the chat loads it into the system
+    prompt for the turn, and a task gets the same treatment so a scheduled report can
+    be told *how* to be written. A name that no longer resolves (disabled, or removed
+    between planning and running) is skipped rather than failing the step.
+    """
+    if not names:
+        return ""
+    try:
+        from app.skills import activate
+    except Exception:  # noqa: BLE001 - a broken skills folder costs the task its hints only
+        return ""
+    bodies = []
+    for name in names:
+        try:
+            body = activate(str(name), lang)
+        except Exception:  # noqa: BLE001
+            body = None
+        if body:
+            bodies.append(body)
+    if not bodies:
+        return ""
+    return "# SKILLS\n\n" + "\n\n".join(bodies)
+
+
 def _capabilities_section(
     deep_analysis: bool = False,
     camera_rooms: list[str] | None = None,
@@ -1233,7 +1282,9 @@ def _parse_plan(raw: str) -> dict | None:
         src = entry.get("source_step")
         if src is not None and not (1 <= src < entry["seq"]):
             entry["source_step"] = None
-    return {"title": str(data.get("title", "")), "steps": steps}
+    raw_skills = data.get("skills") if isinstance(data, dict) else None
+    skills = [item for item in (raw_skills or []) if isinstance(item, str) and item.strip()]
+    return {"title": str(data.get("title", "")), "steps": steps, "skills": skills}
 
 
 def _plan_needs_audit(task: dict, plan: dict) -> bool:
@@ -2569,6 +2620,7 @@ class TaskExecutor:
             "current_time": get_current_time_in_timezone(self.app) or "",
             "attachments_section": attachments,
             "plan_audit_section": "",
+            "skills_catalog": _skills_catalog(lang),
         }
         from app.utils import format_prompt
 
@@ -3451,7 +3503,11 @@ class TaskExecutor:
                 f"Corrective note: the verifier REJECTED the previous attempt of step {upto_idx + 1}. "
                 f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
             )
-        return "\n".join(parts)[:char_cap]
+        digest = "\n".join(parts)[:char_cap]
+        task = get_task(task_id) or {}
+        plan = task.get("step_plan") or {}
+        skills = plan.get("skills") if isinstance(plan, dict) else None
+        return _context_with_skills(digest, skills, task.get("lang") or "ru")
 
     def _add_budget(self, task_id: str, seconds: float) -> None:
         """Read-modify-write the task budget (single writer: the executor)."""

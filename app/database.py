@@ -1139,6 +1139,33 @@ def _init_postgresql():
     # A step's own parameters (which chat tool and with what arguments, what to write and
     # whether to append): the plan carries them and the runner reads them back.
     c.execute("ALTER TABLE task_steps ADD COLUMN IF NOT EXISTS extra JSONB NOT NULL DEFAULT '{}'::jsonb")
+
+    # Scheduled reminders and actions (v13.5). One row per item; next_run_at is absolute
+    # so the tick is one indexed query, and the zone is kept because "daily at 09:00" must
+    # stay 09:00 across a DST change.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_items (
+            id            UUID PRIMARY KEY,
+            user_id       TEXT NOT NULL,
+            kind          TEXT NOT NULL CHECK (kind IN ('reminder', 'action')),
+            title         TEXT NOT NULL DEFAULT '',
+            body          TEXT NOT NULL DEFAULT '',
+            repeat        TEXT NOT NULL DEFAULT 'once',
+            every_minutes INTEGER,
+            weekday       SMALLINT,
+            day_of_month  SMALLINT,
+            time_of_day   TIME,
+            timezone      TEXT NOT NULL DEFAULT 'UTC',
+            next_run_at   TIMESTAMPTZ,
+            last_run_at   TIMESTAMPTZ,
+            enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
+        " WHERE enabled AND next_run_at IS NOT NULL"
+    )
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")

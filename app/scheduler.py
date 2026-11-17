@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -89,3 +89,93 @@ def next_after(item: dict, moment: datetime) -> datetime | None:
 
     logger.warning(f"scheduler: unknown repeat {repeat!r}, treating it as a one-off")
     return None
+
+
+# ── The tick ─────────────────────────────────────────────────────────────────
+
+TICK_SECONDS = 30
+LEASE_KEY = "scheduler:tick"
+LEASE_SECONDS = 25
+
+
+def _redis(app):
+    """The application's Redis client, or None outside a request (tests, CLI)."""
+    queue = getattr(app, "request_queue", None)
+    return getattr(queue, "redis", None)
+
+
+def acquire_lease(app) -> bool:
+    """One tick at a time across workers; without Redis a single process is assumed."""
+    client = _redis(app)
+    if client is None:
+        return True
+    try:
+        return bool(client.set(LEASE_KEY, "1", nx=True, ex=LEASE_SECONDS))
+    except Exception:  # noqa: BLE001 - a broken lease must not stop the scheduler
+        logger.warning("scheduler: lease unavailable, running the tick anyway")
+        return True
+
+
+def deliver(app, item: dict, fired_at: datetime) -> str:
+    """Deliver one firing. Replaced by the delivery task; a stub keeps the tick testable."""
+    raise NotImplementedError("delivery is not wired yet")
+
+
+def _fire(app, item: dict, now: datetime) -> dict:
+    """One due item: deliver it, then schedule the next firing."""
+    from app import scheduler_store
+
+    counts = {"delivered": 0, "failed": 0}
+    try:
+        deliver(app, item, now)
+        counts["delivered"] = 1
+    except NotImplementedError:
+        raise
+    except Exception:  # noqa: BLE001 - one broken item must not stop the tick
+        logger.exception(f"scheduler: item {item.get('id')} could not be delivered")
+        counts["failed"] = 1
+
+    following = next_after(item, now)
+    if following is None:
+        scheduler_store.update_item(item["id"], next_run_at=None, last_run_at=now, enabled=False)
+    else:
+        scheduler_store.update_item(item["id"], next_run_at=following, last_run_at=now)
+    return counts
+
+
+def tick(app, now: datetime | None = None) -> dict:
+    """Deliver everything due. Returns counts so a test can read what happened."""
+    from app import scheduler_store
+
+    moment = now or datetime.now(UTC)
+    if not acquire_lease(app):
+        return {"delivered": 0, "failed": 0, "skipped_lease": 1}
+
+    counts = {"delivered": 0, "failed": 0}
+    for item in scheduler_store.due_items(moment):
+        result = _fire(app, item, moment)
+        counts["delivered"] += result["delivered"]
+        counts["failed"] += result["failed"]
+    return counts
+
+
+def start(app) -> None:
+    """Background tick, beside the warm-up and the memory watcher."""
+    import threading
+    import time as time_module
+
+    if not app.config.get("SCHEDULER_ENABLED", True):
+        return
+
+    def loop():
+        while True:
+            try:
+                with app.app_context():
+                    tick(app)
+            except Exception:  # noqa: BLE001 - the loop must survive anything
+                logger.exception("scheduler: tick failed")
+            time_module.sleep(TICK_SECONDS)
+
+    thread = threading.Thread(target=loop, daemon=True, name="scheduler-tick")
+    thread.start()
+    logger.info(f"scheduler: tick thread started (every {TICK_SECONDS}s)")

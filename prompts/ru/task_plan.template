@@ -43,4 +43,4 @@
 
 # ФОРМАТ ОТВЕТА
 Ответь строго одним JSON-объектом без какого-либо текста до или после:
-{{"title": "...", "skills": [], "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}
+{{"title": "...", "skills": [], "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null, "extra": {{}}}}]}}

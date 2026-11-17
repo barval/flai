@@ -798,18 +798,26 @@ def _run_continuity(context: DirectStepContext) -> Any:
 # capability cannot be declared and silently un-runnable.
 
 def _run_document_step(context: DirectStepContext) -> Any:
-    """Write a document, or append to one this assistant wrote."""
-    from app.documents_write import write_document_file
+    """Write a document, or append to one this assistant wrote.
+
+    A refusal becomes the same localized sentence the chat shows: a task view is read by
+    a person, so a bare code like ``quota`` would be a defect, not an error message.
+    """
+    from app.documents_write import DocumentWriteError, write_document_file
+    from app.tools import _write_document_message
 
     extra = context.step.get("extra") or {}
-    written = write_document_file(
-        context.user_id,
-        str(extra.get("name") or context.step.get("goal") or "document"),
-        content=str(extra.get("content") or ""),
-        fmt=str(extra.get("format") or "md"),
-        rows=extra.get("rows") if isinstance(extra.get("rows"), list) else None,
-        append=bool(extra.get("append")),
-    )
+    try:
+        written = write_document_file(
+            context.user_id,
+            str(extra.get("name") or context.step.get("goal") or "document"),
+            content=str(extra.get("content") or ""),
+            fmt=str(extra.get("format") or "md"),
+            rows=extra.get("rows") if isinstance(extra.get("rows"), list) else None,
+            append=bool(extra.get("append")),
+        )
+    except DocumentWriteError as exc:
+        raise ValueError(_write_document_message(exc.code, exc.detail, context.lang)) from exc
     return f"{written.filename} ({written.size} bytes)"
 
 

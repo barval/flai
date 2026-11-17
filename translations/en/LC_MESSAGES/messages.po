@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 22:03+0300\n"
+"POT-Creation-Date: 2026-11-18 01:14+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -321,7 +321,7 @@ msgid "Studying the site…"
 msgstr "Studying the site…"
 
 #: app/queue.py:2654 app/templates/admin.html:714 app/templates/chat.html:133
-#: app/tool_registry.py:157 app/tool_registry.py:158
+#: app/tool_registry.py:180 app/tool_registry.py:181
 msgid "Deep analysis"
 msgstr "Deep analysis"
 
@@ -545,7 +545,7 @@ msgstr "⚠️ No link found in your message"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Crawler service is unavailable"
 
-#: app/queue.py:4907 app/tools.py:716
+#: app/queue.py:4907 app/tools.py:723
 msgid "This address is not available for reading"
 msgstr "⚠️ This address is not available for reading"
 
@@ -695,47 +695,87 @@ msgid "Name the fact or data the search must confirm."
 msgstr "Name the fact or data the search must confirm."
 
 #: app/tool_registry.py:67 app/tool_registry.py:68
-msgid "Research"
-msgstr "Research"
+#
+msgid "Write a document"
+msgstr "Write a document"
+
 
 #: app/tool_registry.py:70
 msgid ""
-"Research a question across the web and the user's documents in several "
-"rounds: search, open what looks relevant, refine the query. Use it when "
-"one search is not enough and the answer must be cross-checked against "
-"more than one source."
-msgstr ""
-"Research a question across the web and the user's documents in several "
-"rounds: search, open what looks relevant, refine the query. Use it when "
-"one search is not enough and the answer must be cross-checked against "
-"more than one source."
+"Save text as a document of the user, or append a line to one this "
+"assistant wrote. Use append for a log that grows: sightings, "
+"measurements, a running list."
+msgstr "Save text as a document of the user, or append a line to one this assistant wrote. Use append for a log that grows: sightings, measurements, a running list."
 
-#: app/tool_registry.py:74
-msgid "Name the facts the research must establish and agree on."
-msgstr "Name the facts the research must establish and agree on."
 
-#: app/tool_registry.py:79 app/tool_registry.py:80
-msgid "Document search"
-msgstr "Document search"
+#: app/tool_registry.py:73
+msgid "Name what the document must contain after this step."
+msgstr "Name what the document must contain after this step."
 
-#: app/tool_registry.py:82
+
+#: app/tool_registry.py:78 app/tool_registry.py:79
+#
+msgid "Chat tool"
+msgstr "Chat tool"
+
+
+#: app/tool_registry.py:81
 msgid ""
-"Search the user's own documents and return the relevant fragments. Pair "
-"with a following llm step that composes the answer from them."
-msgstr ""
-"Search the user's own documents and return the relevant fragments. Pair "
-"with a following llm step that composes the answer from them."
+"Run one of the assistant's own tools: a web search, a document search, a "
+"network check, a camera snapshot, writing a file. Put the tool name and "
+"its arguments in the step's extra fields, exactly as the chat catalogue "
+"names them."
+msgstr "Run one of the assistant's own tools: a web search, a document search, a network check, a camera snapshot, writing a file. Put the tool name and its arguments in the step's extra fields, exactly as the chat catalogue names them."
+
 
 #: app/tool_registry.py:85
-msgid "Name the data the search must find in the documents."
-msgstr "Name the data the search must find in the documents."
+#
+msgid "Name the result the tool must return."
+msgstr "Name the result the tool must return."
+
 
 #: app/tool_registry.py:90 app/tool_registry.py:91
-msgid "Conversation history"
-msgstr "Conversation history"
+msgid "Research"
+msgstr "Research"
 
 #: app/tool_registry.py:93
 msgid ""
+"Research a question across the web and the user's documents in several "
+"rounds: search, open what looks relevant, refine the query. Use it when "
+"one search is not enough and the answer must be cross-checked against "
+"more than one source."
+msgstr ""
+"Research a question across the web and the user's documents in several "
+"rounds: search, open what looks relevant, refine the query. Use it when "
+"one search is not enough and the answer must be cross-checked against "
+"more than one source."
+
+#: app/tool_registry.py:97
+msgid "Name the facts the research must establish and agree on."
+msgstr "Name the facts the research must establish and agree on."
+
+#: app/tool_registry.py:102 app/tool_registry.py:103
+msgid "Document search"
+msgstr "Document search"
+
+#: app/tool_registry.py:105
+msgid ""
+"Search the user's own documents and return the relevant fragments. Pair "
+"with a following llm step that composes the answer from them."
+msgstr ""
+"Search the user's own documents and return the relevant fragments. Pair "
+"with a following llm step that composes the answer from them."
+
+#: app/tool_registry.py:108
+msgid "Name the data the search must find in the documents."
+msgstr "Name the data the search must find in the documents."
+
+#: app/tool_registry.py:113 app/tool_registry.py:114
+msgid "Conversation history"
+msgstr "Conversation history"
+
+#: app/tool_registry.py:116
+msgid ""
 "Search the user's past conversations for a topic and return matching "
 "fragments (what was discussed earlier). Pair with a following llm step "
 "that composes the answer from them."
@@ -744,15 +784,15 @@ msgstr ""
 "fragments (what was discussed earlier). Pair with a following llm step "
 "that composes the answer from them."
 
-#: app/tool_registry.py:97
+#: app/tool_registry.py:120
 msgid "Name the topic the past conversation must contain."
 msgstr "Name the topic the past conversation must contain."
 
-#: app/tool_registry.py:103 app/tool_registry.py:104
+#: app/tool_registry.py:126 app/tool_registry.py:127
 msgid "Image analysis"
 msgstr "Image analysis"
 
-#: app/tool_registry.py:106
+#: app/tool_registry.py:129
 msgid ""
 "Extract data from ONE image attached to the task with the multimodal "
 "model: a detailed description of everything visible plus all text on the "
@@ -770,7 +810,7 @@ msgstr ""
 " the step reads only the image its goal names. Use only when images are "
 "attached to the task."
 
-#: app/tool_registry.py:115
+#: app/tool_registry.py:138
 msgid ""
 "Name this image's file in the goal and require a detailed description "
 "plus all text on it."
@@ -778,11 +818,11 @@ msgstr ""
 "Name this image's file in the goal and require a detailed description "
 "plus all text on it."
 
-#: app/tool_registry.py:122 app/tool_registry.py:123
+#: app/tool_registry.py:145 app/tool_registry.py:146
 msgid "Camera"
 msgstr "Camera"
 
-#: app/tool_registry.py:125
+#: app/tool_registry.py:148
 msgid ""
 "Take a camera snapshot of one of the user's rooms and answer a question "
 "about what the camera sees (e.g. whether a cat is in the room). To "
@@ -794,15 +834,15 @@ msgstr ""
 "compare several rooms, plan ONE step per room with the room name in the "
 "goal."
 
-#: app/tool_registry.py:130
+#: app/tool_registry.py:153
 msgid "Name the room and the question the analysis must answer."
 msgstr "Name the room and the question the analysis must answer."
 
-#: app/tool_registry.py:136 app/tool_registry.py:137
+#: app/tool_registry.py:159 app/tool_registry.py:160
 msgid "Site study"
 msgstr "Site study"
 
-#: app/tool_registry.py:139
+#: app/tool_registry.py:162
 msgid ""
 "Deeply study a website (it contains a URL): fetch its pages, index them "
 "as a document and answer questions about the site. Pair with a following "
@@ -812,35 +852,35 @@ msgstr ""
 "as a document and answer questions about the site. Pair with a following "
 "llm step that composes the answer from the collected material."
 
-#: app/tool_registry.py:143
+#: app/tool_registry.py:166
 msgid "Name the site and the question the study must answer."
 msgstr "Name the site and the question the study must answer."
 
-#: app/tool_registry.py:148 app/tool_registry.py:149
+#: app/tool_registry.py:171 app/tool_registry.py:172
 msgid "Calculator"
 msgstr "Calculator"
 
-#: app/tool_registry.py:150
+#: app/tool_registry.py:173
 msgid "Evaluate a math expression safely (arithmetic and math functions)."
 msgstr "Evaluate a math expression safely (arithmetic and math functions)."
 
-#: app/tool_registry.py:151
+#: app/tool_registry.py:174
 msgid "State the expression and its expected exact result."
 msgstr "State the expression and its expected exact result."
 
-#: app/tool_registry.py:159
+#: app/tool_registry.py:182
 msgid "Multi-step deep analysis over selected documents, images and web pages."
 msgstr "Multi-step deep analysis over selected documents, images and web pages."
 
-#: app/tool_registry.py:160
+#: app/tool_registry.py:183
 msgid "Name the documents and the question the analysis must answer."
 msgstr "Name the documents and the question the analysis must answer."
 
-#: app/tool_registry.py:165 app/tool_registry.py:166
+#: app/tool_registry.py:188 app/tool_registry.py:189
 msgid "Visual continuity"
 msgstr "Visual continuity"
 
-#: app/tool_registry.py:168
+#: app/tool_registry.py:191
 msgid ""
 "Extract the visual continuity sheet: one style plus the fixed look of "
 "every character, place and prop named in the task, as one JSON object. "
@@ -852,27 +892,27 @@ msgstr ""
 "Plan it before the first image generation step when the task produces "
 "several images."
 
-#: app/tool_registry.py:173
+#: app/tool_registry.py:196
 msgid "Output the sheet as valid JSON."
 msgstr "Output the sheet as valid JSON."
 
-#: app/tool_registry.py:180 app/tool_registry.py:181
+#: app/tool_registry.py:203 app/tool_registry.py:204
 msgid "Image generation"
 msgstr "Image generation"
 
-#: app/tool_registry.py:182
+#: app/tool_registry.py:205
 msgid "Generate an image from a text prompt."
 msgstr "Generate an image from a text prompt."
 
-#: app/tool_registry.py:183
+#: app/tool_registry.py:206
 msgid "Describe the subject the generated image must show."
 msgstr "Describe the subject the generated image must show."
 
-#: app/tool_registry.py:190 app/tool_registry.py:191
+#: app/tool_registry.py:213 app/tool_registry.py:214
 msgid "Image editing"
 msgstr "Image editing"
 
-#: app/tool_registry.py:193
+#: app/tool_registry.py:216
 msgid ""
 "Edit one image according to an instruction: the attached image the goal "
 "names (one step per image; the first attached one when the goal names "
@@ -884,15 +924,15 @@ msgstr ""
 "none), or the artifact of an earlier step when its seq is set in "
 "\"source_step\" (no attachment edit). Without any source the step fails."
 
-#: app/tool_registry.py:198
+#: app/tool_registry.py:221
 msgid "Name this image's file in the goal and the change that must be visible."
 msgstr "Name this image's file in the goal and the change that must be visible."
 
-#: app/tool_registry.py:205 app/tool_registry.py:206
+#: app/tool_registry.py:228 app/tool_registry.py:229
 msgid "Video generation"
 msgstr "Video generation"
 
-#: app/tool_registry.py:208
+#: app/tool_registry.py:231
 msgid ""
 "Generate a short video from a text prompt; with \"source_step\" (or any "
 "earlier step-produced image) it animates that image instead."
@@ -900,72 +940,72 @@ msgstr ""
 "Generate a short video from a text prompt; with \"source_step\" (or any "
 "earlier step-produced image) it animates that image instead."
 
-#: app/tool_registry.py:211
+#: app/tool_registry.py:234
 msgid "Describe the scene and motion the video must show."
 msgstr "Describe the scene and motion the video must show."
 
-#: app/tools.py:647
+#: app/tools.py:654
 msgid "Current time unavailable"
 msgstr "Current time unavailable"
 
-#: app/tools.py:662
+#: app/tools.py:669
 msgid "Division by zero"
 msgstr "Division by zero"
 
-#: app/tools.py:669
+#: app/tools.py:676
 #, python-brace-format
 msgid "Calculation error: {error}"
 msgstr "Calculation error: {error}"
 
-#: app/tools.py:674 app/tools.py:743 app/tools.py:785 app/tools.py:1113
-#: app/tools.py:1194 app/tools.py:1324 app/tools.py:1570 app/tools.py:1589
+#: app/tools.py:681 app/tools.py:750 app/tools.py:792 app/tools.py:1120
+#: app/tools.py:1201 app/tools.py:1333 app/tools.py:1579 app/tools.py:1598
 msgid "The tool could not complete the request."
 msgstr "The tool could not complete the request."
 
-#: app/tools.py:687
+#: app/tools.py:694
 msgid "Web search service unavailable"
 msgstr "Web search service unavailable"
 
-#: app/tools.py:695
+#: app/tools.py:702
 #, python-brace-format
 msgid "No results found for query: {query}"
 msgstr "No results found for query: {query}"
 
-#: app/tools.py:711
+#: app/tools.py:718
 msgid "Page reading service is unavailable"
 msgstr "⚠️ Page reading service is unavailable"
 
-#: app/tools.py:722
+#: app/tools.py:729
 msgid "Failed to read the page"
 msgstr "⚠️ Failed to read the page"
 
-#: app/tools.py:733
+#: app/tools.py:740
 msgid "Document search service unavailable"
 msgstr "Document search service unavailable"
 
-#: app/tools.py:736
+#: app/tools.py:743
 msgid "User not identified for document search"
 msgstr "User not identified for document search"
 
-#: app/tasks/runner.py:591 app/tools.py:747
+#: app/tasks/runner.py:591 app/tools.py:754
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
 
-#: app/tools.py:769
+#: app/tools.py:776
 msgid "User not identified for conversation search"
 msgstr "User not identified for conversation search"
 
-#: app/tools.py:789
+#: app/tools.py:796
 #, python-brace-format
 msgid "No past conversations found for query: {query}"
 msgstr "No past conversations found for query: {query}"
 
-#: app/tools.py:803 app/tools.py:838 modules/cam.py:404 modules/cam.py:527
+#: app/tools.py:810 app/tools.py:845 modules/cam.py:404 modules/cam.py:527
 msgid "CCTV service unavailable"
 msgstr "CCTV service unavailable"
 
-#: app/tools.py:816
+#: app/tools.py:823
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
@@ -973,92 +1013,97 @@ msgstr ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
 
-#: app/tools.py:826
+#: app/tools.py:833
 msgid "Snapshot captured; no description is available."
 msgstr "Snapshot captured; no description is available."
 
-#: app/tools.py:925 app/tools.py:932 app/tools.py:948 app/tools.py:995
-#: app/tools.py:998 app/tools.py:1006 app/tools.py:1052 app/tools.py:1055
-#: app/tools.py:1063 app/tools.py:1070 app/tools.py:1080 app/tools.py:1109
+#: app/tools.py:932 app/tools.py:939 app/tools.py:955 app/tools.py:1002
+#: app/tools.py:1005 app/tools.py:1013 app/tools.py:1059 app/tools.py:1062
+#: app/tools.py:1070 app/tools.py:1077 app/tools.py:1087 app/tools.py:1116
 #, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Date calculation error: {error}"
 
-#: app/tools.py:1105
+#: app/tools.py:1112
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Unknown time_calc operation: {op}"
 
-#: app/tools.py:1166
+#: app/tools.py:1173
 msgid "User not identified for network tools"
 msgstr "User not identified for network tools"
 
-#: app/tools.py:1168
+#: app/tools.py:1175
 msgid "Network tools are not available to you."
 msgstr "Network tools are not available to you."
 
-#: app/tools.py:1170
+#: app/tools.py:1177
 msgid "The network diagnostics service is not running"
 msgstr "The network diagnostics service is not running"
 
-#: app/tools.py:1175
+#: app/tools.py:1182
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "This address is refused: {reason}"
 
-#: app/tools.py:1175
+#: app/tools.py:1182
 msgid "loopback or link-local"
 msgstr "loopback or link-local"
 
 # GPU memory error messages
-#: app/tools.py:1179
+#: app/tools.py:1186
 msgid "Too many network calls; try again in a minute."
 msgstr "Too many network calls; try again in a minute."
 
-#: app/tools.py:1188
+#: app/tools.py:1195
 msgid "The diagnostics service returned nothing"
 msgstr "The diagnostics service returned nothing"
 
-#: app/tools.py:1285
+#: app/tools.py:1292
 msgid "There is nothing to write: the content is empty"
 msgstr "There is nothing to write: the content is empty"
 
-#: app/tools.py:1286
+#: app/tools.py:1293
 #, python-brace-format
 msgid "Unsupported document format: {detail}. Use md, csv, json or txt"
 msgstr "Unsupported document format: {detail}. Use md, csv, json or txt"
 
-#: app/tools.py:1287
+#: app/tools.py:1294
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "The document is too large (limit {limit} KB)"
 
-#: app/tools.py:1290
+#: app/tools.py:1297
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "The document storage quota is exhausted; delete something first"
 
-#: app/tools.py:1291
+#: app/tools.py:1298
+msgid "Can only append to a document this assistant wrote, not to an upload"
+msgstr "Can only append to a document this assistant wrote, not to an upload"
+
+
+#: app/tools.py:1299
 msgid "The JSON does not parse, so nothing was written"
 msgstr "The JSON does not parse, so nothing was written"
 
-#: app/tools.py:1292
+#: app/tools.py:1300
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "The document name is not usable: {detail}"
 
-#: app/tools.py:1293
+#: app/tools.py:1301
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "A csv needs rows: a list of rows, each a list of cells"
 
-#: app/tools.py:1295
+#: app/tools.py:1303
 msgid "The document could not be written"
 msgstr "The document could not be written"
 
-#: app/tools.py:1309
+#: app/tools.py:1317
 msgid "User not identified for documents"
 msgstr "User not identified for documents"
 
-#: app/tools.py:1329
+#: app/tools.py:1338
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1067,16 +1112,16 @@ msgstr ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1342
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1351
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Unknown skill: {name}"
 
-#: app/tools.py:1501
+#: app/tools.py:1510
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "The tool call was ignored: the last round of the loop has been reached."
 
-#: app/tools.py:1516
+#: app/tools.py:1525
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1084,11 +1129,11 @@ msgstr ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
 
-#: app/tools.py:1522
+#: app/tools.py:1531
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "The tool call was rejected: its arguments were not valid JSON."
 
-#: app/tools.py:1576
+#: app/tools.py:1585
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Unknown tool: {tool}"
@@ -2050,7 +2095,7 @@ msgstr "Minor defects: {details}"
 msgid "Minor style or detail drift"
 msgstr "Minor style or detail drift"
 
-#: app/tasks/executor.py:628 app/tasks/executor.py:2670
+#: app/tasks/executor.py:628 app/tasks/executor.py:2740
 msgid ""
 "the analysis contains the concrete data from the documents that answers "
 "the request"
@@ -2058,46 +2103,46 @@ msgstr ""
 "the analysis contains the concrete data from the documents that answers "
 "the request"
 
-#: app/tasks/executor.py:795
+#: app/tasks/executor.py:846
 msgid "label"
 msgstr "Label"
 
-#: app/tasks/executor.py:795
+#: app/tasks/executor.py:846
 msgid "description"
 msgstr "Description"
 
-#: app/tasks/executor.py:796
+#: app/tasks/executor.py:847
 msgid "Checkpoint hint:"
 msgstr "Checkpoint hint:"
 
-#: app/tasks/executor.py:796
+#: app/tasks/executor.py:847
 msgid "checkpoint_hint"
 msgstr "Checkpoint hint"
 
-#: app/tasks/executor.py:799
+#: app/tasks/executor.py:850
 msgid "Available rooms:"
 msgstr "Available rooms:"
 
-#: app/tasks/executor.py:834
+#: app/tasks/executor.py:885
 #, python-brace-format
 msgid "Attached images: {count} ({names})."
 msgstr "Attached images: {count} ({names})."
 
-#: app/tasks/executor.py:851
+#: app/tasks/executor.py:902
 #, python-brace-format
 msgid "Attached documents: {count} ({names})."
 msgstr "Attached documents: {count} ({names})."
 
-#: app/tasks/executor.py:857
+#: app/tasks/executor.py:908
 #, python-brace-format
 msgid "Attached audio recordings: {count} ({names})."
 msgstr "Attached audio recordings: {count} ({names})."
 
-#: app/tasks/executor.py:862
+#: app/tasks/executor.py:913
 msgid "No files are attached to the task."
 msgstr "No files are attached to the task."
 
-#: app/tasks/executor.py:903
+#: app/tasks/executor.py:954
 msgid ""
 "The user turned on 🔬 Deep Analysis: to find data in the user's documents,"
 " plan a step with tool \"rlm\" (multi-step deep analysis) over the "
@@ -2111,7 +2156,7 @@ msgstr ""
 "Do NOT plan \"rag\" or \"llm\" steps for document search. Do not ask "
 "which documents to analyze."
 
-#: app/tasks/executor.py:909
+#: app/tasks/executor.py:960
 msgid ""
 "Deep analysis: the user turned on 🔬 Deep Analysis — include a step with "
 "tool \"rlm\" that deeply analyzes the attached documents (all of the "
@@ -2123,7 +2168,7 @@ msgstr ""
 "user's documents when none are attached) and answers the task request; do"
 " not ask which documents to analyze."
 
-#: app/tasks/executor.py:916
+#: app/tasks/executor.py:967
 msgid ""
 "To find data in the user's documents, plan a step with tool \"rag\" "
 "(document search) followed by a step with tool \"llm\" that composes the "
@@ -2137,19 +2182,19 @@ msgstr ""
 "analyze: if documents are attached to the task — search them, otherwise "
 "search all of the user's documents."
 
-#: app/tasks/executor.py:2190
+#: app/tasks/executor.py:2259
 msgid "no media file was produced by any attempt"
 msgstr "no media file was produced by any attempt"
 
-#: app/tasks/executor.py:2192
+#: app/tasks/executor.py:2261
 msgid "the step did not pass verification"
 msgstr "the step did not pass verification"
 
-#: app/tasks/executor.py:3130
+#: app/tasks/executor.py:3201
 msgid "step attempts exhausted"
 msgstr "step attempts exhausted"
 
-#: app/tasks/executor.py:4105
+#: app/tasks/executor.py:4192
 msgid "Result of subtask expired while task was paused. Please restart the task."
 msgstr "Result of subtask expired while task was paused. Please restart the task."
 
@@ -2162,15 +2207,15 @@ msgstr "The tool call was rejected: its arguments did not match the tool."
 msgid "No previous conversations found on topic: {topic}"
 msgstr "No previous conversations found on topic: {topic}"
 
-#: app/tasks/runner.py:1077
+#: app/tasks/runner.py:1149
 msgid "the verifier returned an unreadable verdict"
 msgstr "the verifier returned an unreadable verdict"
 
-#: app/tasks/runner.py:1079
+#: app/tasks/runner.py:1151
 msgid "the verification could not be started"
 msgstr "the verification could not be started"
 
-#: app/tasks/runner.py:1081
+#: app/tasks/runner.py:1153
 msgid "the verifier answered in another language"
 msgstr "the verifier answered in another language"
 
@@ -5237,11 +5282,9 @@ msgstr "Generated"
 msgid "Index"
 msgstr "Index"
 
-
 #: app/templates/chat.html:327
 msgid "Index for search and graph"
 msgstr "Index for search and graph"
-
 
 #: app/templates/chat.html:328
 msgid "index is outdated"

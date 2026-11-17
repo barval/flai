@@ -77,3 +77,43 @@ def test_the_allowed_set_is_the_chat_catalogue(test_app):
     # always-present tools are what this test pins.
     assert "web_search" in names and "write_document" in names
     assert "python" not in names and "sh" not in names and "activate_skill" not in names
+
+
+def test_a_planned_step_keeps_its_extra_all_the_way_to_the_row(test_app):
+    """The plan carries `extra`; without it a chat_tool step arrives with no tool name.
+
+    This is the path a real task takes — plan → step row → runner — and the earlier
+    tests built the step by hand, which is exactly how a dead feature passed them.
+    """
+    from app.tasks import executor as ex
+    from app.tasks.executor import get_task_steps
+    from app.tasks.store import create_task
+
+    plan = ex._parse_plan(
+        '{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "chat_tool", '
+        '"checkpoint_criteria": "c", "extra": {"tool": "write_document", "arguments": {"name": "n"}}}]}'
+    )
+
+    with test_app.app_context():
+        from app.database import init_db
+
+        init_db()
+        task_id = create_task(
+            user_id="alice", task_class=5, title="t", lang="en", response_style="neutral"
+        )
+        executor = ex.TaskExecutor(test_app)
+        executor._create_plan_step_rows(task_id, plan["steps"])
+        row = get_task_steps(task_id)[0]
+
+    assert row["extra"]["tool"] == "write_document"
+    assert row["extra"]["arguments"] == {"name": "n"}
+
+
+def test_a_plan_carries_at_most_two_skills():
+    from app.tasks.executor import _parse_plan
+
+    plan = _parse_plan(
+        '{"title": "t", "skills": ["a", "b", "c"], "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}'
+    )
+
+    assert plan["skills"] == ["a", "b"]

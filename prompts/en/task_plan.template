@@ -42,4 +42,4 @@ step then follows them. Name a skill only when it matches — an unrelated one a
 
 # OUTPUT FORMAT
 Answer with strictly one JSON object and no text before or after it:
-{{"title": "...", "skills": [], "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null}}]}}
+{{"title": "...", "skills": [], "steps": [{{"seq": 1, "goal": "...", "tool": "...", "checkpoint_criteria": "...", "user_input_expected": false, "source_step": null, "extra": {{}}}}]}}

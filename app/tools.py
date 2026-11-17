@@ -395,6 +395,13 @@ _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
                     "description": "For csv only: the rows, each a list of cell values",
                     "items": {"type": "array", "items": {"type": "string"}},
                 },
+                "append": {
+                    "type": "boolean",
+                    "description": (
+                        "Add to a document this assistant already wrote instead of making "
+                        "another one. Use it for a log that grows."
+                    ),
+                },
             },
             "required": ["name"],
         },
@@ -1288,6 +1295,7 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
                 limit=documents_write.MAX_CONTENT_BYTES // 1024
             ),
             "quota": _("The document storage quota is exhausted; delete something first"),
+            "append_target": _("Can only append to a document this assistant wrote, not to an upload"),
             "json": _("The JSON does not parse, so nothing was written"),
             "name": _("The document name is not usable: {detail}"),
             "csv_rows": _("A csv needs rows: a list of rows, each a list of cells"),
@@ -1315,6 +1323,7 @@ def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
             content=str(kw.get("content") or ""),
             fmt=str(kw.get("format") or "md"),
             rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+            append=bool(kw.get("append")),
         )
     except documents_write.DocumentWriteError as exc:
         return _write_document_message(exc.code, exc.detail, lang)
@@ -1567,13 +1576,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
             logger.exception(f"MCP tool '{tool_name}' failed")
             lang = context.get("lang", "ru")
             with force_locale(lang):
-                return str(_("The tool could not complete the request."))
+                return "⚠️ " + str(_("The tool could not complete the request."))
 
     executor = _EXECUTOR_MAP.get(tool_name)
     if not executor:
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Unknown tool: {tool}").format(tool=tool_name))
+            return "⚠️ " + str(_("Unknown tool: {tool}").format(tool=tool_name))
 
     try:
         result = executor(context, **arguments)
@@ -1586,4 +1595,4 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
         logger.exception(f"Tool '{tool_name}' execution failed")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("The tool could not complete the request."))
+            return "⚠️ " + str(_("The tool could not complete the request."))

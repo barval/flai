@@ -73,4 +73,6 @@ def test_a_refused_append_fails_the_step(env):
         )
 
     assert outcome["status"] == "error"
-    assert "peoples.txt" in outcome["result"]
+    # A person reads this line in the task view: a sentence, not the code `append_target`.
+    assert outcome["result"].startswith("⚠️ ")
+    assert "загрузку" in outcome["result"]   # a localized sentence, not the code `append_target`

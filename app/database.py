@@ -1065,6 +1065,17 @@ def _init_postgresql():
     """)
     c.execute("INSERT INTO branding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
 
+    # v13.5: whether an installed skill is enabled. An absent row means enabled,
+    # so an upgrade switches nothing off; the flag lives here rather than in the
+    # frontmatter so an editor cannot change behaviour behind the panel's back.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS skill_settings (
+            skill_name  TEXT PRIMARY KEY,
+            enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # v12.6: Tasks subsystem — persisted background task plans and their steps.
     c.execute("""
         CREATE TABLE IF NOT EXISTS tasks (

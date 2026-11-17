@@ -348,7 +348,13 @@ def build_kernel_catalog(tool_definitions: list[dict[str, Any]]) -> str:
 
 
 def build_kernel_prompt(
-    message: str, catalog: str, current_time: str, router_context: str, rooms: str = "", skills: str = ""
+    message: str,
+    catalog: str,
+    current_time: str,
+    router_context: str,
+    rooms: str = "",
+    skills: str = "",
+    network_rule: str = "",
 ) -> str:
     """Render the kernel prompt.
 
@@ -371,6 +377,7 @@ def build_kernel_prompt(
             "rooms": rooms,
             "router_context": router_context or "",
             "user_query": message,
+            "network_rule": network_rule,
         },
         lang="en",
     )

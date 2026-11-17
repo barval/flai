@@ -10875,6 +10875,7 @@ video {
         <button class="admin-tab" data-tab="settings">Настройки</button>
         <button class="admin-tab" data-tab="hub">Хаб Моделей</button>
         <button class="admin-tab" data-tab="models">Модели</button>
+        <button class="admin-tab" data-tab="skills">Навыки</button>
         <button class="admin-tab" data-tab="mcp">MCP</button>
 
         <button class="admin-tab" data-tab="cameras">Камеры</button>
@@ -10920,6 +10921,11 @@ video {
 
 
 
+
+
+
+
+
                     <tr>
                         <th data-sort="is_active">Статус</th>
                         <th data-sort="login">Логин</th>
@@ -10934,10 +10940,11 @@ video {
                         <th data-sort="messages_count">Сообщения</th>
                         <th data-sort="files_count">Файлы</th>
                         <th data-sort="documents_count">Документы<br>(общие)</th>
-                        <th data-sort="slm_facts_count">SLM факты</th>
+                        <th data-sort="slm_facts_count">SLM<br>факты</th>
                         <th data-sort="web_requests_month">Запросы<br>в интернет</th>
-                        <th>Tavily API</th>
-                        <th data-sort="api_keys_count">ПЛИИ API</th>
+                        <th>Tavily<br>API</th>
+                        <th data-sort="api_keys_count">ПЛИИ<br>API</th>
+                        <th>Сетевые<br>инструменты</th>
 
                         <th>Действия</th>
                      </tr>
@@ -10963,6 +10970,26 @@ video {
             </div>
         </div>
         <p id="monitoring-error" class="monitoring-error" hidden></p>
+        <div class="monitoring-card monitoring-net">
+            <div class="monitoring-card-head">
+                <h3>Сетевые вызовы</h3>
+                <span class="monitoring-value">24 ч</span>
+            </div>
+            <table class="net-audit-table">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Пользователь</th>
+                        <th>Инструмент</th>
+                        <th>Цель</th>
+                        <th>Результат</th>
+                    </tr>
+                </thead>
+                <tbody id="net-audit-body">
+                    <tr><td colspan="5" class="net-audit-empty">Сетевых вызовов за последние 24 часа нет</td></tr>
+                </tbody>
+            </table>
+        </div>
         <div id="monitoring-cards" class="monitoring-cards">
             <div class="monitoring-card">
                 <div class="monitoring-card-head">
@@ -11225,6 +11252,58 @@ video {
             <input id="mcp-new-token" type="password" placeholder="Токен (необязательно)" autocomplete="new-password">
             <input id="mcp-new-allow" type="text" placeholder="Разрешённые инструменты через запятую" autocomplete="off">
             <button id="mcp-add-server" class="add-user-button">Добавить сервер</button>
+        </div>
+    </div>
+
+    <\!-- Skills tab content -->
+    <div id="skills-tab" class="admin-tab-content">
+        <div class="skills-toolbar">
+            <button id="skills-upload-button" class="btn-primary">Загрузить .md</button>
+            <input type="file" id="skills-upload" accept=".md,text/markdown" hidden>
+            <button id="skills-new" class="add-user-button">Новый навык</button>
+            <span id="skills-status" class="settings-status"></span>
+        </div>
+        <div class="skills-table-wrapper">
+            <table id="skills-table">
+                <thead>
+                    <tr>
+                        <th>Имя</th>
+                        <th>Описание</th>
+                        <th>Источник</th>
+                        <th>Инструменты</th>
+                        <th>Включён</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="skills-body"></tbody>
+            </table>
+            <div id="skills-empty" class="no-backups">Навыки не установлены</div>
+        </div>
+
+        <div id="skill-editor" class="skill-editor" hidden>
+            <label class="skill-field">
+                <span>Имя навыка</span>
+                <input type="text" id="skill-name" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="skill-field">
+                <span>Документ навыка (SKILL.md)</span>
+                <textarea id="skill-body-en" rows="14" spellcheck="false"></textarea>
+            </label>
+            <label class="skill-field">
+                <span>Описание на русском (необязательно)</span>
+                <input type="text" id="skill-description-ru" autocomplete="off">
+                <small class="skill-hint">Оставьте пустым — будет показано базовое описание</small>
+            </label>
+            <label class="skill-field">
+                <span>Текст на русском (необязательно)</span>
+                <textarea id="skill-body-ru" rows="6" spellcheck="false"></textarea>
+                <small class="skill-hint">Оставьте пустым — будет показано базовое описание</small>
+            </label>
+            <div class="skill-editor-actions">
+                <button id="skill-save" class="btn-primary">Сохранить</button>
+                <button id="skill-cancel" class="btn-secondary">Отмена</button>
+                <span id="skill-editor-status" class="settings-status"></span>
+            </div>
         </div>
     </div>
 
@@ -14050,6 +14129,105 @@ body.dark-theme .settings-reset {
 body.dark-theme .mode-option {
     color: #ecf0f1;
 }
+
+/* ── Skills tab (v13.5) ───────────────────────────────────────────────────── */
+.skills-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+    flex-wrap: wrap;
+}
+
+/* One line, one height: .btn-primary and .add-user-button carry different paddings. */
+.skills-toolbar .btn-primary,
+.skills-toolbar .add-user-button {
+    height: 2.25rem;
+    padding: 0 1rem;
+    font-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.skills-table-wrapper table { width: 100%; border-collapse: collapse; }
+.skills-table-wrapper th,
+.skills-table-wrapper td { padding: 0.45rem 0.5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.skills-table-wrapper th { font-weight: 600; font-size: 0.85rem; opacity: 0.75; }
+
+.skill-badge {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.6rem;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+}
+.skill-badge--bundled { opacity: 0.75; }
+.skill-badge--installed { border-color: #3a8f4f; color: #3a8f4f; }
+
+.skill-note { font-size: 0.75rem; opacity: 0.7; margin-top: 0.15rem; }
+
+.tool-mark { font-size: 0.78rem; line-height: 1.35; }
+.tool-mark--offered { opacity: 0.85; }
+.tool-mark--unavailable { color: #b07a12; }
+.tool-mark--typo { color: #b3261e; }
+.tool-mark--foreign { opacity: 0.6; }
+
+.skill-editor {
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+    border-radius: 0.5rem;
+}
+.skill-field { display: block; margin-bottom: 0.7rem; }
+.skill-field > span { display: block; font-size: 0.82rem; margin-bottom: 0.25rem; opacity: 0.8; }
+.skill-field input,
+.skill-field textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+.skill-editor-actions { display: flex; align-items: center; gap: 0.6rem; }
+
+@media (max-width: 900px) {
+    .skills-table-wrapper table,
+    .skills-table-wrapper thead,
+    .skills-table-wrapper tbody,
+    .skills-table-wrapper tr,
+    .skills-table-wrapper td { display: block; width: 100%; }
+    .skills-table-wrapper thead { display: none; }
+    .skills-table-wrapper tr { border: 1px solid var(--border-color, #d9d9d9); border-radius: 0.5rem; margin-bottom: 0.7rem; padding: 0.4rem; }
+    .skills-table-wrapper td { border: none; padding: 0.25rem 0.35rem; }
+    .skills-table-wrapper td[data-label]::before {
+        content: attr(data-label) ': ';
+        font-weight: 600;
+        font-size: 0.75rem;
+        opacity: 0.75;
+    }
+}
+
+.skills-table-wrapper .btn-small {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    margin-right: 0.35rem;
+}
+.skill-editor-actions .btn-secondary {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border-color, #d9d9d9);
+    background: transparent;
+    border-radius: 0.35rem;
+    cursor: pointer;
+}
+
+/* ── Network diagnostics audit (v13.5) ───────────────────────────────────── */
+.monitoring-net { grid-column: 1 / -1; }
+.monitoring-net table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.monitoring-net th,
+.monitoring-net td { padding: 0.3rem 0.45rem; text-align: left; border-bottom: 1px solid var(--border-color, #d9d9d9); }
+.monitoring-net th { font-weight: 600; opacity: 0.75; }
+.net-audit-empty { opacity: 0.7; font-style: italic; }
+
+.skill-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
 </style>
 <script>
 window.ROOMS = [];
@@ -14065,6 +14243,8 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'monitoring_no_data': "\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u0437\u0430 \u044d\u0442\u043e\u0442 \u043f\u0435\u0440\u0438\u043e\u0434",
     'monitoring_load_error': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435 \u043c\u043e\u043d\u0438\u0442\u043e\u0440\u0438\u043d\u0433\u0430",
     'monitoring_since': "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0441 {date}",
+    'monitoring_net_empty': "\u0421\u0435\u0442\u0435\u0432\u044b\u0445 \u0432\u044b\u0437\u043e\u0432\u043e\u0432 \u0437\u0430 \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 24 \u0447\u0430\u0441\u0430 \u043d\u0435\u0442",
+    'net_tools_help': "\u0418\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438 \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f",
     'delete_user_confirm': "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f {login}?",
     'error': "\u041e\u0448\u0438\u0431\u043a\u0430",
     'internal_server_error': "\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044f\u044f \u043e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
@@ -14088,6 +14268,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'files': "\u0424\u0430\u0439\u043b\u044b",
     'documents': "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
     'camera_access': "\u0414\u043e\u0441\u0442\u0443\u043f \u043a \u043a\u0430\u043c\u0435\u0440\u0430\u043c",
+    'Network tools': "\u0421\u0435\u0442\u0435\u0432\u044b\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b",
     'actions': "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f",
     'active': "\u0410\u043a\u0442\u0438\u0432\u0435\u043d",
     'create': "\u0421\u043e\u0437\u0434\u0430\u0442\u044c",
@@ -14130,6 +14311,7 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'settings_secret_empty': "\u041d\u0435 \u0437\u0430\u0434\u0430\u043d\u043e",
     'settings_secret_set': "\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e",
     'Search and crawl': "\u041f\u043e\u0438\u0441\u043a \u0438 \u043e\u0431\u0445\u043e\u0434",
+    'Network diagnostics': "\u0421\u0435\u0442\u0435\u0432\u0430\u044f \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0430",
     'Documents and RAG': "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 RAG",
     'Tasks': "\u0417\u0430\u0434\u0430\u0447\u0438",
     'MCP': "MCP",
@@ -14143,6 +14325,9 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'Debug': "\u041e\u0442\u043b\u0430\u0434\u043a\u0430",
     'Description': "\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435",
     'Use the per-user Tavily key before the local search engine': "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u043b\u0438\u0447\u043d\u044b\u0439 \u043a\u043b\u044e\u0447 Tavily \u0440\u0430\u043d\u044c\u0448\u0435 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u043f\u043e\u0438\u0441\u043a\u043e\u0432\u0438\u043a\u0430",
+    'Offer the network diagnostics tools to users who were granted them': "\u041f\u0440\u0435\u0434\u043b\u0430\u0433\u0430\u0442\u044c \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f\u043c, \u043a\u043e\u0442\u043e\u0440\u044b\u043c \u043e\u043d\u0438 \u0432\u044b\u0434\u0430\u043d\u044b",
+    'Network diagnostics service URL': "\u0410\u0434\u0440\u0435\u0441 \u0441\u043b\u0443\u0436\u0431\u044b \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438",
+    'Bearer token for the network diagnostics service': "\u0422\u043e\u043a\u0435\u043d \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a \u0441\u043b\u0443\u0436\u0431\u0435 \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u0434\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0438",
     'Tavily API base URL': "\u0411\u0430\u0437\u043e\u0432\u044b\u0439 \u0430\u0434\u0440\u0435\u0441 API Tavily",
     'Tavily search request timeout (seconds)': "\u0422\u0430\u0439\u043c\u0430\u0443\u0442 \u043f\u043e\u0438\u0441\u043a\u043e\u0432\u043e\u0433\u043e \u0437\u0430\u043f\u0440\u043e\u0441\u0430 Tavily (\u0441\u0435\u043a\u0443\u043d\u0434\u044b)",
     'Timeout for the Tavily quota lookup (seconds)': "\u0422\u0430\u0439\u043c\u0430\u0443\u0442 \u0437\u0430\u043f\u0440\u043e\u0441\u0430 \u043a\u0432\u043e\u0442\u044b Tavily (\u0441\u0435\u043a\u0443\u043d\u0434\u044b)",
@@ -14549,9 +14734,21 @@ window.CAMERA_ROOMS = [{"code": "bal", "created_at": "Tue, 09 Jun 2026 22:57:03 
     'branding_logo_deleted': "\u0421\u0432\u043e\u0439 \u043b\u043e\u0433\u043e\u0442\u0438\u043f \u0443\u0434\u0430\u043b\u0451\u043d \u2014 \u043e\u0442\u043e\u0431\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044f \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u043b\u043e\u0433\u043e\u0442\u0438\u043f",
     'branding_logo_too_large': "\u041b\u043e\u0433\u043e\u0442\u0438\u043f \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0431\u043e\u043b\u044c\u0448\u043e\u0439 (\u043c\u0430\u043a\u0441. 2 \u041c\u0411)",
     'branding_names_saved': "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u044f \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b",
-    'branding_both_required': "\u0422\u0440\u0435\u0431\u0443\u044e\u0442\u0441\u044f \u043e\u0431\u0430 \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u0445 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u0430",
     'branding_name_too_long': "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0434\u043b\u0438\u043d\u043d\u043e\u0435 (\u043c\u0430\u043a\u0441. 40 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432 \u043d\u0430 \u044f\u0437\u044b\u043a)",
-    'branding_upload_failed': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043b\u043e\u0433\u043e\u0442\u0438\u043f"
+    'branding_upload_failed': "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043b\u043e\u0433\u043e\u0442\u0438\u043f",
+    'Bundled': "\u0412\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439",
+    'Installed': "\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0439",
+    'Shadowed by a bundled skill': "\u041f\u0435\u0440\u0435\u043a\u0440\u044b\u0442 \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u043c \u043d\u0430\u0432\u044b\u043a\u043e\u043c",
+    'Rename': "\u041f\u0435\u0440\u0435\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u0442\u044c",
+    'Read-only': "\u0422\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u0435\u043d\u0438\u0435",
+    'Edit': "\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c",
+    'Not available here': "\u0417\u0434\u0435\u0441\u044c \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d",
+    'Unknown tool': "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442",
+    'Skill saved': "\u041d\u0430\u0432\u044b\u043a \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d",
+    'Skill deleted': "\u041d\u0430\u0432\u044b\u043a \u0443\u0434\u0430\u043b\u0451\u043d",
+    'Skill enabled': "\u041d\u0430\u0432\u044b\u043a \u0432\u043a\u043b\u044e\u0447\u0451\u043d",
+    'Skill disabled': "\u041d\u0430\u0432\u044b\u043a \u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d",
+    'The same name is already taken': "\u042d\u0442\u043e \u0438\u043c\u044f \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442\u043e"
 });
 
 <\/script>
@@ -14805,6 +15002,13 @@ const TOOL_META = {
     rag_search: ['📚', 'tool_rag_search'],
     camera_snapshot: ['📹', 'tool_camera_snapshot'],
     read_page: ['🕸️', 'tool_read_page'],
+    net_dns: ['📡', 'tool_net_dns'],
+    net_whois: ['📡', 'tool_net_whois'],
+    net_ping: ['📡', 'tool_net_ping'],
+    net_trace: ['📡', 'tool_net_trace'],
+    net_ports: ['📡', 'tool_net_ports'],
+    net_http: ['📡', 'tool_net_http'],
+    net_speed: ['📡', 'tool_net_speed'],
 };
 
 function getToolLabel(toolName) {
@@ -16236,9 +16440,19 @@ const USER_CARD_LABELS = [
 
 function labelUserCardCells(row) {
     const cells = Array.from(row.children);
-    const labels = cells.length === USER_CARD_LABELS.length + 2
-        ? [...USER_CARD_LABELS, 'Camera access', 'Actions']
-        : [...USER_CARD_LABELS, 'Actions'];
+    // The trailing columns depend on what the panel renders, so the row itself says
+    // whether the camera column is there. Counting cells instead let one added
+    // column shift every label after it — the camera cell printed "Actions" and the
+    // network cell printed nothing.
+    const hasCamera = !!row.querySelector('.camera-checkboxes');
+    // The row builds the network cell before the camera one, and the header prints
+    // them in that order; the labels must follow the cells, not the other way round.
+    const labels = hasCamera
+        ? [...USER_CARD_LABELS, 'Network tools', 'Camera access', 'Actions']
+        : [...USER_CARD_LABELS, 'Network tools', 'Actions'];
+    if (cells.length !== labels.length) {
+        console.warn('user card labels do not match the columns:', cells.length, labels.length);
+    }
     cells.forEach((cell, index) => {
         if (labels[index]) cell.dataset.label = t(labels[index]);
     });
@@ -16453,6 +16667,14 @@ function loadUsers() {
             const flaiApiCell = document.createElement('td');
             flaiApiCell.textContent = user.api_keys_count ? user.api_keys_count : '-';
             row.appendChild(flaiApiCell);
+            const netToolsCell = document.createElement('td');
+            const netToolsBox = document.createElement('input');
+            netToolsBox.type = 'checkbox';
+            netToolsBox.checked = !!user.net_tools_enabled;
+            netToolsBox.title = window.TRANSLATIONS.net_tools_help || '';
+            netToolsBox.addEventListener('change', () => updateNetTools(user.login, netToolsBox));
+            netToolsCell.appendChild(netToolsBox);
+            row.appendChild(netToolsCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');
@@ -16555,6 +16777,18 @@ function updateUserField(login, field, value) {
             console.error('Update failed', result);
         }
     }).catch(err => console.error('Error updating user:', err));
+}
+
+function updateNetTools(login, checkbox) {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ net_tools_enabled: checkbox.checked })
+    }).then(response => response.json()).then(result => {
+        if (result.status !== 'ok') checkbox.checked = !checkbox.checked;
+    }).catch(() => {
+        checkbox.checked = !checkbox.checked;
+    });
 }
 
 function updateCameraPermissions(login) {
@@ -18706,12 +18940,9 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const ru = nameRu.value.trim();
         const en = nameEn.value.trim();
-        if (!ru && !en) {
-            // Deliberate reset — both empty means "use the default brand name".
-        } else if (!ru || !en) {
-            alert(t('branding_both_required'));
-            return;
-        } else if (ru.length > 40 || en.length > 40) {
+        if (ru.length > 40 || en.length > 40) {
+            // Only both-empty is special (the default brand); one empty language is
+            // a normal state, and that language simply renders nothing.
             alert(t('branding_name_too_long'));
             return;
         }
@@ -19064,11 +19295,52 @@ document.addEventListener('DOMContentLoaded', function() {
         loadMonitoring();
     });
 
+
+    // Network diagnostics audit: 24 hours of Redis, filled whenever the tab opens.
+    async function loadNetAudit() {
+        const body = document.getElementById('net-audit-body');
+        if (!body) return;
+        try {
+            const resp = await fetch('/admin/api/net-audit?limit=50', { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            const calls = data.calls || [];
+            body.innerHTML = '';
+            if (!calls.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 5;
+                cell.className = 'net-audit-empty';
+                cell.textContent = t('monitoring_net_empty');
+                row.appendChild(cell);
+                body.appendChild(row);
+                return;
+            }
+            calls.forEach((call) => {
+                const row = document.createElement('tr');
+                [call.at, call.login, call.tool, call.target, call.ok ? 'ok' : 'failed'].forEach((value) => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value === undefined || value === null ? '-' : String(value);
+                    row.appendChild(cell);
+                });
+                body.appendChild(row);
+            });
+        } catch (err) {
+            // The audit is best effort: a Redis hiccup leaves the table as it was.
+        }
+    }
+
     const tabButton = document.querySelector('.admin-tab[data-tab="monitoring"]');
-    if (tabButton) tabButton.addEventListener('click', loadMonitoring);
+    if (tabButton) tabButton.addEventListener('click', () => {
+        loadMonitoring();
+        loadNetAudit();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (isActive()) loadMonitoring();
+        if (isActive()) {
+            loadMonitoring();
+            loadNetAudit();
+        }
     });
 
     setInterval(() => {
@@ -19627,6 +19899,249 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.addEventListener('DOMContentLoaded', load);
     if (document.readyState !== 'loading') load();
+})();
+<\/script>
+<script>// app/static/js/admin-skills.js
+// Skills tab: install, edit, enable and remove the instructions the model can load.
+//
+// Two zones, and the panel says which is which: a bundled skill ships with the
+// project inside git, so it can be switched off but never written — a save there
+// would dirty the working tree. An installed one lives under data/skills and is
+// fully editable. Labels come from window.TRANSLATIONS, which the template fills
+// from the catalogs, so nothing here is an untranslated literal.
+(function () {
+    'use strict';
+
+    const body = document.getElementById('skills-body');
+    if (!body) return;
+
+    const t = (key) => (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
+    const status = document.getElementById('skills-status');
+    const editor = document.getElementById('skill-editor');
+    const nameInput = document.getElementById('skill-name');
+    const bodyEn = document.getElementById('skill-body-en');
+    const descriptionRu = document.getElementById('skill-description-ru');
+    const bodyRu = document.getElementById('skill-body-ru');
+    const editorStatus = document.getElementById('skill-editor-status');
+    const uploadInput = document.getElementById('skills-upload');
+    const uploadButton = document.getElementById('skills-upload-button');
+    const newButton = document.getElementById('skills-new');
+    const saveButton = document.getElementById('skill-save');
+    const cancelButton = document.getElementById('skill-cancel');
+
+    let skills = [];
+    let editing = null;
+
+    function setStatus(node, text, isError) {
+        if (!node) return;
+        node.textContent = text || '';
+        node.classList.toggle('is-error', !!isError);
+    }
+
+    async function api(path, options) {
+        // Every write on this tab is CSRF-protected; a bare fetch() is a 400 in a
+        // real browser, which the test suite cannot see because it disables CSRF.
+        const response = await fetchWithCSRF(path, options);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'HTTP ' + response.status);
+        return payload;
+    }
+
+    function markLabel(mark) {
+        if (mark.status === 'offered') return null;
+        if (mark.status === 'typo') return t('Unknown tool') + ': ' + mark.name + ' → ' + mark.suggestion;
+        if (mark.status === 'unavailable') return mark.name + ' — ' + t('Not available here');
+        return mark.name + ' — ' + t('Not available here');
+    }
+
+    function cell(row, text, label) {
+        const td = document.createElement('td');
+        if (label) td.dataset.label = label;
+        if (text instanceof Node) td.appendChild(text);
+        else td.textContent = text;
+        row.appendChild(td);
+        return td;
+    }
+
+    function render() {
+        body.innerHTML = '';
+        const empty = document.getElementById('skills-empty');
+        if (empty) empty.style.display = skills.length ? 'none' : '';
+        skills.forEach((skill) => {
+            const row = document.createElement('tr');
+            row.className = 'skill-row';
+
+            cell(row, skill.name, t('Name'));
+
+            const description = document.createElement('td');
+            description.dataset.label = t('Description');
+            description.textContent = skill.description;
+            if (skill.shadowed) {
+                const note = document.createElement('div');
+                note.className = 'skill-note';
+                note.textContent = t('Shadowed by a bundled skill');
+                description.appendChild(note);
+            }
+            row.appendChild(description);
+
+            const source = document.createElement('td');
+            source.dataset.label = t('Source');
+            const badge = document.createElement('span');
+            badge.className = 'skill-badge skill-badge--' + skill.source;
+            badge.textContent = skill.source === 'bundled' ? t('Bundled') : t('Installed');
+            source.appendChild(badge);
+            row.appendChild(source);
+
+            const tools = document.createElement('td');
+            tools.dataset.label = t('Tools');
+            (skill.allowed_tools || []).forEach((mark) => {
+                const line = document.createElement('div');
+                const label = markLabel(mark);
+                line.className = 'tool-mark tool-mark--' + mark.status;
+                line.textContent = label || mark.name;
+                tools.appendChild(line);
+            });
+            row.appendChild(tools);
+
+            const enabled = document.createElement('td');
+            enabled.dataset.label = t('Enabled');
+            const toggle = document.createElement('input');
+            toggle.type = 'checkbox';
+            toggle.checked = !!skill.enabled;
+            toggle.addEventListener('change', () => setEnabled(skill, toggle));
+            enabled.appendChild(toggle);
+            row.appendChild(enabled);
+
+            const actions = document.createElement('td');
+            actions.dataset.label = t('Actions');
+            if (skill.source === 'bundled') {
+                const readOnly = document.createElement('span');
+                readOnly.className = 'skill-note';
+                readOnly.textContent = t('Read-only');
+                actions.appendChild(readOnly);
+            } else {
+                const edit = document.createElement('button');
+                edit.className = 'btn-small';
+                edit.textContent = skill.shadowed ? t('Rename') : t('Edit');
+                edit.addEventListener('click', () => openEditor(skill));
+                actions.appendChild(edit);
+
+                const remove = document.createElement('button');
+                remove.className = 'btn-small btn-danger';
+                remove.textContent = t('Delete');
+                remove.addEventListener('click', () => removeSkill(skill));
+                actions.appendChild(remove);
+            }
+            row.appendChild(actions);
+
+            body.appendChild(row);
+        });
+    }
+
+    async function load() {
+        try {
+            const payload = await api('/admin/api/skills');
+            skills = payload.skills || [];
+            render();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    async function setEnabled(skill, checkbox) {
+        try {
+            await api('/admin/api/skills/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: skill.name, enabled: checkbox.checked }),
+            });
+            skill.enabled = checkbox.checked;
+            setStatus(status, checkbox.checked ? t('Skill enabled') : t('Skill disabled'));
+        } catch (error) {
+            checkbox.checked = !checkbox.checked;
+            setStatus(status, error.message, true);
+        }
+    }
+
+    async function removeSkill(skill) {
+        if (!window.confirm(skill.name + ' — ' + t('Delete') + '?')) return;
+        try {
+            await api('/admin/api/skills/' + encodeURIComponent(skill.name), { method: 'DELETE' });
+            setStatus(status, t('Skill deleted'));
+            await load();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    function openEditor(skill) {
+        editing = skill || { name: '', body: '', description_ru: '', body_ru: '' };
+        nameInput.value = editing.name;
+        bodyEn.value = editing.body || '';
+        descriptionRu.value = editing.description_ru || '';
+        bodyRu.value = editing.body_ru || '';
+        setStatus(editorStatus, '');
+        editor.hidden = false;
+        bodyEn.focus();
+    }
+
+    function closeEditor() {
+        editing = null;
+        editor.hidden = true;
+    }
+
+    async function save() {
+        if (!editing) return;
+        const name = nameInput.value.trim();
+        try {
+            const payload = await api('/admin/api/skills/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    body_en: bodyEn.value,
+                    description_ru: descriptionRu.value,
+                    body_ru: bodyRu.value,
+                }),
+            });
+            const warnings = payload.warnings || [];
+            // A rename is a save under the new name; the old folder is removed
+            // only after that save succeeded, and only for an installed skill.
+            if (editing.name && editing.name !== name && editing.source !== 'bundled') {
+                await api('/admin/api/skills/' + encodeURIComponent(editing.name), { method: 'DELETE' });
+            }
+            setStatus(status, warnings.length ? warnings.join(' · ') : t('Skill saved'), warnings.length > 0);
+            closeEditor();
+            await load();
+        } catch (error) {
+            setStatus(editorStatus, error.message, true);
+        }
+    }
+
+    async function upload(file) {
+        const data = new FormData();
+        data.append('file', file);
+        try {
+            const payload = await api('/admin/api/skills/upload', { method: 'POST', body: data });
+            const warnings = payload.warnings || [];
+            setStatus(status, warnings.length ? warnings.join(' · ') : t('Skill saved'), warnings.length > 0);
+            await load();
+        } catch (error) {
+            setStatus(status, error.message, true);
+        }
+    }
+
+    if (uploadButton && uploadInput) {
+        uploadButton.addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', () => {
+            if (uploadInput.files && uploadInput.files[0]) upload(uploadInput.files[0]);
+            uploadInput.value = '';
+        });
+    }
+    if (newButton) newButton.addEventListener('click', () => openEditor(null));
+    if (saveButton) saveButton.addEventListener('click', save);
+    if (cancelButton) cancelButton.addEventListener('click', closeEditor);
+    document.addEventListener('DOMContentLoaded', load);
 })();
 <\/script>
 

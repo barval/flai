@@ -78,6 +78,7 @@ def update_user(
     voice_gender=None,
     theme=None,
     response_style=None,
+    net_tools_enabled=None,
 ):
     """Update user data (except password)."""
     updates = []
@@ -92,6 +93,7 @@ def update_user(
         "voice_gender": voice_gender,
         "theme": theme,
         "response_style": response_style,
+        "net_tools_enabled": net_tools_enabled,
     }
 
     for field, value in values_to_update.items():
@@ -303,6 +305,7 @@ def init_user_db() -> None:
                 response_style TEXT DEFAULT 'neutral',
                 tavily_api_key TEXT,
                 tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                net_tools_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -310,6 +313,7 @@ def init_user_db() -> None:
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS response_style TEXT DEFAULT 'neutral'")
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_api_key TEXT")
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tavily_key_added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS net_tools_enabled BOOLEAN NOT NULL DEFAULT FALSE")
         c.execute("""
             CREATE TABLE IF NOT EXISTS api_tokens (
                 id SERIAL PRIMARY KEY,

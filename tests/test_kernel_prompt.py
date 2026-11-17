@@ -81,3 +81,33 @@ def test_prompt_carries_the_room_list_after_the_catalog():
 def test_prompt_without_rooms_still_renders():
     prompt = build_kernel_prompt("q", "- x: y", "2026-10-30", "")
     assert "Rooms known to this installation" in prompt
+
+
+def test_the_network_rule_appears_only_when_it_is_passed():
+    from app.kernel import build_kernel_prompt
+
+    without = build_kernel_prompt("кто владелец домена x.ru?", "cat", "now", "")
+    with_rule = build_kernel_prompt("кто владелец домена x.ru?", "cat", "now", "", network_rule="NETWORK-RULE")
+
+    assert "NETWORK-RULE" not in without
+    assert "NETWORK-RULE" in with_rule
+
+
+def test_the_rule_is_silent_when_the_sidecar_is_absent(monkeypatch):
+    """With the tools off, a network question must stay an ordinary web search."""
+    from app import netdiag
+    from modules.base import network_rule
+
+    monkeypatch.setattr(netdiag, "available", lambda: False)
+    assert network_rule("ru") == ""
+    assert network_rule("en", for_kernel=True) == ""
+
+
+def test_the_rule_speaks_the_user_language(monkeypatch):
+    from app import netdiag
+    from modules.base import network_rule
+
+    monkeypatch.setattr(netdiag, "available", lambda: True)
+    assert "net_*" in network_rule("ru")
+    assert "WHOIS" in network_rule("en")
+    assert "net_whois" in network_rule("en", for_kernel=True)

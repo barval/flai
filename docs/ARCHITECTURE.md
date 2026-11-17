@@ -287,6 +287,17 @@ task capabilities (`exec="direct"|"queue"`), the RLM sandbox tools
 (`exec="sandbox"`, with schemas) and, from it, the planner's prose, the UI badges
 and the executor's routing tables.
 
+### Network diagnostics
+
+An optional sidecar (`services/netdiag`, profile `with-net-tools`) owns every network
+question: seven chat tools (`net_dns`, `net_whois`, `net_ping`, `net_trace`,
+`net_ports`, `net_http`, `net_speed`) turn a typed request into one program run with
+`shell=False`, and the container is on a network of its own, shared only with `web`.
+`app/netdiag.py` holds the client and the policy that belongs to this application — the
+per-user permission, the Redis rate limit and the 24-hour audit — while the catalogue
+adds the tools only when the sidecar answers its cached `/health`. Details →
+[NET_TOOLS.md](NET_TOOLS.md).
+
 ### Skills
 
 `skills/<name>/SKILL.md` — `name` / `description` / `allowed-tools` frontmatter,
@@ -299,6 +310,16 @@ still exists for a model that asks for a skill itself, and is advertised only wh
 skill is installed. With the marker router (`KERNEL_ENABLED=0`) nothing names a
 skill automatically. `SKILL.<lang>.md` carries a localized
 description and body.
+
+Since v13.5 there are **two zones**: `skills/` ships with the project and is tracked,
+`data/skills/` is written by the admin panel and is not. `discover_all()` merges them
+with the bundled skill winning a name collision (the installed copy comes back
+`shadowed`), `active_skills()` additionally drops what `skill_settings` marks
+disabled, and every reader — catalog, `activate`, the kernel's known-name set — goes
+through that one filter. `allowed-tools` is validated when a skill is saved:
+`classify_allowed_tools()` sorts each name into offered / unavailable / typo /
+foreign, a typo blocks the write and the rest become marks in the panel. Details →
+[SKILLS.md](SKILLS.md).
 
 ### Plan as a tool, and the research step
 

@@ -51,6 +51,7 @@ SECRET_KEYS = {
     "QDRANT_API_KEY",
     "HUGGINGFACE_TOKEN",
     "CRAWL_API_TOKEN",
+    "NETDIAG_API_TOKEN",
 }
 
 # Group id → (label, keys). The order here is the order in the panel.
@@ -81,6 +82,14 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "CRAWL_MAX_TOTAL_CHARS",
             "CRAWL_CONCURRENCY",
             "RAG_MAX_RESULTS_CHARS",
+        ],
+    ),
+    "network": (
+        "Network diagnostics",
+        [
+            "NET_TOOLS_ENABLED",
+            "NETDIAG_URL",
+            "NETDIAG_API_TOKEN",
         ],
     ),
     "documents": (
@@ -486,6 +495,9 @@ DESCRIPTIONS: dict[str, str] = {
     "CRAWL_PAGE_TIMEOUT_S": "Single page fetch timeout (seconds)",
     "CRAWL_MAX_PAGE_CHARS": "Characters kept per crawled page",
     "CRAWL_MAX_TOTAL_CHARS": "Characters kept across the whole crawl",
+    "NET_TOOLS_ENABLED": "Offer the network diagnostics tools to users who were granted them",
+    "NETDIAG_URL": "Network diagnostics service URL",
+    "NETDIAG_API_TOKEN": "Bearer token for the network diagnostics service",
     "CRAWL_CONCURRENCY": "Parallel crawl requests",
     "RAG_MAX_RESULTS_CHARS": "Characters of document context passed to the model",
     "QDRANT_URL": "Qdrant vector database URL",

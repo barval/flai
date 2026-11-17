@@ -193,6 +193,17 @@ def _check_optional_services(app: Any) -> Check:
     modules = getattr(app, "modules", None) or {}
     states = []
     down = []
+    # The diagnostics sidecar has no module object: its tools are chat tools whose
+    # availability is one cached probe, so it is reported the same way.
+    from app import netdiag
+
+    if app.config.get("NET_TOOLS_ENABLED"):
+        netdiag.reset_availability_cache()
+        reachable = netdiag.available()
+        states.append(f"Network diagnostics: {'ok' if reachable else 'down'}")
+        if not reachable:
+            down.append("Network diagnostics")
+
     for name, title in (
         ("rag", "Qdrant"),
         ("audio", "Whisper"),

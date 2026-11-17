@@ -1,5 +1,20 @@
 ## [v13.5] — Unreleased
 
+### Changed
+
+- **A language you do not use is no longer a blocker.** Personalization used to demand both site names at once and reset the pair when either was emptied; now each language stands alone — save the Russian name and leave English blank (or the reverse), and only an empty pair falls back to the built-in brand. Forcing a translation in either direction was wrong: a Russian admin should not be required to write English, and an English one should not be required to write Russian.
+
+### Added
+
+- **Skills are installed from the panel, and an install never touches git.** A skill used to mean editing a tracked folder, so anything an administrator added landed in the next `git status` and the next release. There are now two zones: `skills/` ships with the project and is read-only in the panel, `data/skills/` is git-ignored and written by **Admin → Skills** — upload a `.md`, create or edit one as text, switch it off, delete it. A name a bundled skill owns is refused; one a release later ships is handled by letting the bundled copy win and listing the installed one as shadowed with a Rename action, so nothing an administrator wrote disappears. → [SKILLS.md](docs/SKILLS.md)
+
+- **`allowed-tools` is checked when a skill is saved.** The field was parsed and read by nobody. Each name is now sorted into four classes: in the catalogue (plain), a real tool whose service is not running (warning — the crawler may come back), one keystroke away from a real name (`web-serach` → `web_search`, **blocks the save** with the suggestion), or a name from another harness (`Read`, `Bash(git:*)`, warning and saved verbatim). The last class is why the upload button accepts skills written for Claude Code instead of refusing exactly those files. The field remains a contract, not a sandbox: the tool list is not narrowed at runtime.
+
+- **A disabled skill cannot be activated, even by a stale answer.** Enabled state lives in `skill_settings` in PostgreSQL rather than in the frontmatter, so an editor cannot change behaviour behind the panel's back, and the catalogue, the `activate_skill` enum and the request kernel's known-name set all read the same filtered list.
+
+- **Network diagnostics from chat, behind a permission you grant per user.** Seven tools answer what a terminal used to answer: `net_dns`, `net_whois`, `net_ping`, `net_trace`, `net_ports`, `net_http`, `net_speed`. They live in their own container (`services/netdiag`, profile `with-net-tools`) that validates every field and runs one program per request — no command line, no shell — with `cap_drop: ALL` plus the single capability ping and mtr need. It joins its own Docker network shared with the web service only, so a permitted user cannot reach PostgreSQL or Redis through Docker's networking. Without the permission the answer is a localized «network tools are not available to you» — a sentence, not silence. A `/24` is host discovery only, port scans are the 100 most common ports on one host, and loopback and link-local are refused whatever the permission says. Ten calls a minute, sixty an hour, and a 24-hour audit line per call read by `flask net-audit` and the Monitoring tab. → [NET_TOOLS.md](docs/NET_TOOLS.md)
+
+
 ## [v13.4] — 2026-11-16
 
 ### Added

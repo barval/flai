@@ -1,8 +1,9 @@
 """Branding settings: DB helpers, admin API and the context processor.
 
 Covers the Personalization tab end-to-end: the singleton `branding_settings`
-row, logo upload/normalization/delete with realpath containment, the
-all-or-nothing site-name pair, and the `branding_logo_url` /
+row, logo upload/normalization/delete with realpath containment, the per-language
+site names (each language stands alone; both empty means the built-in brand), and
+`branding_logo_url` /
 `branding_site_name` template variables.
 """
 
@@ -156,10 +157,38 @@ class TestBrandingApi:
 
         assert db.get_branding_settings()["logo_path"] is None
 
-    def test_names_require_both_languages(self, admin_client):
+    def test_one_language_is_enough(self, admin_client):
+        """A translation is not a prerequisite: an English-only admin must not be blocked."""
         resp = admin_client.post("/admin/api/branding/names", json={"site_name_ru": "Только русский"})
-        assert resp.status_code == 400
-        assert resp.get_json()["code" if False else "error"]
+        assert resp.status_code == 200
+        from app import db
+
+        settings = db.get_branding_settings()
+        assert settings["site_name_ru"] == "Только русский"
+        assert settings["site_name_en"] == ""
+
+    def test_the_language_without_a_name_renders_empty(self, test_app):
+        from flask import render_template_string
+        from flask_babel import force_locale
+
+        from app import db
+
+        db.set_branding_site_names("Мой ПЛИИ", "")
+        # One request per language: Babel caches the locale on the request context.
+        with test_app.test_request_context("/"), force_locale("ru"):
+            assert render_template_string("{{ branding_site_name }}").strip() == "Мой ПЛИИ"
+        with test_app.test_request_context("/"), force_locale("en"):
+            assert render_template_string("{{ branding_site_name }}").strip() == ""
+
+    def test_both_empty_renders_the_project_brand(self, test_app):
+        from flask import render_template_string
+        from flask_babel import force_locale
+
+        from app import db
+
+        db.set_branding_site_names("", "")
+        with test_app.test_request_context("/"), force_locale("en"):
+            assert render_template_string("{{ branding_site_name }}").strip() == "FLAI"
 
     def test_names_too_long_rejected(self, admin_client):
         resp = admin_client.post(
@@ -176,11 +205,15 @@ class TestBrandingApi:
         assert resp.status_code == 200
         assert resp.get_json()["site_name_ru"] == "Мой ПЛИИ"
 
-    def test_emptying_either_name_resets_pair(self, admin_client):
+    def test_emptying_one_side_keeps_the_other(self, admin_client):
         admin_client.post("/admin/api/branding/names", json={"site_name_ru": "Мой ПЛИИ", "site_name_en": "My FLAI"})
-        # Emptying one side resets the whole pair (no half-translated brand).
         resp = admin_client.post("/admin/api/branding/names", json={"site_name_ru": "Новое", "site_name_en": ""})
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        from app import db
+
+        settings = db.get_branding_settings()
+        assert settings["site_name_ru"] == "Новое"
+        assert settings["site_name_en"] == ""
 
     def test_both_empty_is_a_deliberate_reset(self, admin_client):
         admin_client.post("/admin/api/branding/names", json={"site_name_ru": "Мой ПЛИИ", "site_name_en": "My FLAI"})

@@ -14132,6 +14132,16 @@ body.dark-theme .mode-option {
     flex-wrap: wrap;
 }
 
+/* One line, one height: .btn-primary and .add-user-button carry different paddings. */
+.skills-toolbar .btn-primary,
+.skills-toolbar .add-user-button {
+    height: 2.25rem;
+    padding: 0 1rem;
+    font-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+}
+
 .skills-table-wrapper table { width: 100%; border-collapse: collapse; }
 .skills-table-wrapper th,
 .skills-table-wrapper td { padding: 0.45rem 0.5rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color, #d9d9d9); }

@@ -159,3 +159,32 @@ def test_a_non_admin_is_forbidden(app, install_root):
         response = skills_list()
     body, status = response if isinstance(response, tuple) else (response, 200)
     assert status == 403
+
+
+def test_the_list_describes_a_skill_in_the_panel_language(app, install_root):
+    """The panel speaks the admin's language: an English line in a Russian UI is a bug.
+
+    `SKILL.ru.md` already carries a translated description; the payload used the
+    English one regardless of the interface language.
+    """
+    from flask_babel import force_locale
+
+    bundle = install_root.parent / "bundled" / "shipped"
+    bundle.mkdir(parents=True)
+    (bundle / "SKILL.md").write_text(
+        "---\nname: shipped\ndescription: English line\n---\nBody.\n", encoding="utf-8"
+    )
+    (bundle / "SKILL.ru.md").write_text(
+        "---\nname: shipped\ndescription: Русская строка\n---\nТело.\n", encoding="utf-8"
+    )
+    skills.reset_cache()
+
+    with app.test_request_context("/admin/api/skills", method="GET"):
+        session["is_admin"] = True
+        with force_locale("ru"):
+            russian = skills_list.__wrapped__().get_json()["skills"][0]
+        with force_locale("en"):
+            english = skills_list.__wrapped__().get_json()["skills"][0]
+
+    assert russian["description"] == "Русская строка"
+    assert english["description"] == "English line"

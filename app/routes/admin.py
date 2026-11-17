@@ -2607,7 +2607,16 @@ def _skills_offered() -> set[str]:
         return set()
 
 
-def _skill_payload(skill: Any, enabled: bool, offered: set[str]) -> dict[str, Any]:
+def _panel_language() -> str:
+    """The language the admin panel is rendered in, for a label that is prose."""
+    from flask_babel import get_locale
+
+    return getattr(get_locale(), "language", None) or "en"
+
+
+def _skill_payload(
+    skill: Any, enabled: bool, offered: set[str], lang: str | None = None
+) -> dict[str, Any]:
     from dataclasses import asdict
     from pathlib import Path
 
@@ -2619,9 +2628,13 @@ def _skill_payload(skill: Any, enabled: bool, offered: set[str]) -> dict[str, An
         body = (folder / SKILL_FILE).read_text(encoding="utf-8")
     description_ru, body_ru = skill.variants.get("ru", ("", ""))
 
+    language = lang or _panel_language()
     return {
         "name": skill.name,
-        "description": skill.description,
+        # The list is read by a person in their own language; the file may ship a
+        # translated description that the panel was ignoring.
+        "description": skill.for_lang(language)[0],
+        "description_en": skill.description,
         "source": skill.source,
         "path": skill.path,
         "enabled": enabled,
@@ -2698,7 +2711,13 @@ def _write_skill(name: str, text: str, description_ru: str, body_ru: str) -> tup
         _("Not available here: {name}").format(name=mark.name) for mark in marks if mark.status in ("unavailable", "foreign")
     ]
     return (
-        jsonify({"ok": True, "skill": _skill_payload(stored, _enabled_flags().get(name, True), _skills_offered()), "warnings": warnings}),
+        jsonify(
+            {
+                "ok": True,
+                "skill": _skill_payload(stored, _enabled_flags().get(name, True), _skills_offered()),
+                "warnings": warnings,
+            }
+        ),
         200,
     )
 

@@ -75,3 +75,11 @@ def test_every_mutating_request_carries_the_csrf_token():
     assert writes, "the script must call the skills API"
     assert "fetchWithCSRF" in source
     assert "await fetch(" not in source.replace("const response = await fetchWithCSRF", "")
+
+
+def test_the_toolbar_buttons_are_the_same_height():
+    """«Upload .md» and «New skill» sit on one line; two paddings made one taller."""
+    css = (ROOT / "app/static/css/admin.css").read_text(encoding="utf-8")
+    block = css[css.index(".skills-toolbar") : css.index(".skills-table-wrapper")]
+    assert ".skills-toolbar .btn-primary" in block or ".skills-toolbar button" in block
+    assert "height:" in block

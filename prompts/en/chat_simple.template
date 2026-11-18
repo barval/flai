@@ -11,3 +11,6 @@ You are a personal assistant 'Fully Local AI (FLAI)'.
 
 # CONVERSATION HISTORY
 {context_str}
+
+# CURRENT TIME
+It is {current_time_str}. This is the installation's clock: count "today", "tomorrow" and "in an hour" from it.

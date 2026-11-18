@@ -372,10 +372,10 @@ SCHEDULER_TOOLS = ("schedule_reminder", "schedule_action")
 _WHEN_SCHEMA = {
     "type": "string",
     "description": (
-        "Absolute local wall-clock moment in the user's time zone as 'YYYY-MM-DD HH:MM'. "
-        "Work it out from the current time given in the system prompt; never reuse a date "
-        "from history or from this description. Omit it when the request is relative and "
-        "use in_minutes instead."
+        "The moment as the user's local wall clock. A full moment 'YYYY-MM-DD HH:MM' when "
+        "the user named a date; just 'HH:MM' when only a time was named, which is the usual "
+        "case — the server fills the date and cannot get it wrong. Never invent a date: a "
+        "guessed one lands in the past or in the wrong month."
     ),
 }
 

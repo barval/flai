@@ -276,3 +276,37 @@ def test_a_nonsense_interval_is_refused(env):
         answer = execute_tool("schedule_reminder", {"in_minutes": value, "text": "🔔"}, _ctx())
         assert answer.startswith("⚠️ "), value
     assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_a_bare_time_means_today_or_tomorrow(env):
+    """«Remind me at 13:23» names no date, and the model must not invent one."""
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from app.tools import execute_tool
+
+    zone = ZoneInfo(ZONE)
+    now_local = datetime.now(UTC).astimezone(zone)
+    ahead = (now_local + timedelta(minutes=40)).strftime("%H:%M")
+    passed = (now_local - timedelta(minutes=40)).strftime("%H:%M")
+
+    execute_tool("schedule_reminder", {"when": ahead, "text": "🔔 Скоро"}, _ctx())
+    items = scheduler_store.list_items(LOGIN)
+    assert len(items) == 1
+    first = items[0]["next_run_at"]
+    assert first > datetime.now(UTC) + timedelta(minutes=5)
+
+    execute_tool("schedule_reminder", {"when": passed, "text": "🔔 Позже"}, _ctx())
+    later = [i for i in scheduler_store.list_items(LOGIN) if i["next_run_at"] != first][0]
+    assert later["next_run_at"] > first
+
+
+def test_the_chat_prompt_carries_the_clock(env):
+    """Without it the model guessed a date once: 31 January for a request in November."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for name in ("chat.template", "chat_simple.template"):
+        for lang in ("ru", "en"):
+            text = (root / f"prompts/{lang}/{name}").read_text(encoding="utf-8")
+            assert "{current_time_str}" in text, (lang, name)

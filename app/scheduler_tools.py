@@ -12,7 +12,7 @@ cannot see until the wrong moment arrives.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 # Parsing a moment is deterministic and cheap; picking it apart from prose is the model's
@@ -75,6 +75,24 @@ def parse_when(raw: str | None) -> datetime | None:
     return None
 
 
+def parse_time_of_day(raw: str | None) -> time | None:
+    """A bare ``HH:MM``, which is what a request naming only a time carries.
+
+    The model has no reliable clock and invented a date once already (31 January for a
+    request made in November). A time alone is the part it does know; the date belongs to
+    the server, which has a clock.
+    """
+    text = " ".join(str(raw or "").split())
+    if not text or " " in text:
+        return None
+    for fmt in ("%H:%M", "%H.%M"):
+        try:
+            return datetime.strptime(text, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
 def _repeat_of(raw: str | None) -> str:
     repeat = str(raw or "once").strip().lower()
     if repeat not in REPEATS:
@@ -107,6 +125,15 @@ def plan(
     current = now or datetime.now(UTC)
     zone = zone_for(zone_name)
     repeat = _repeat_of(repeat_raw)
+
+    bare = parse_time_of_day(when_raw)
+    if bare is not None:
+        local_now = current.astimezone(zone)
+        local = datetime.combine(local_now.date(), bare, tzinfo=zone)
+        if local <= local_now:
+            # "13:23" said at 13:30 means tomorrow, not a refusal.
+            local = local + timedelta(days=1)
+        return local.astimezone(UTC), local, _fields(local, repeat, every_minutes, zone_name)
 
     if in_minutes not in (None, ""):
         try:

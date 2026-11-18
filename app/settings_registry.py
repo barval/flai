@@ -390,6 +390,10 @@ def build_schema(app) -> list[dict]:
                 {
                     "key": key,
                     "kind": _kind_of(value),
+                    # A closed set is a choice, not a spelling test: the panel draws a
+                    # selector for these instead of a text box. The same tuple the
+                    # save-time validator enforces, so the two cannot disagree.
+                    "choices": list(_ENUMS.get(key, ())),
                     "description": DESCRIPTIONS.get(key, ""),
                     "secret": key in SECRET_KEYS,
                     "value": None if key in SECRET_KEYS else value,

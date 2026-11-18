@@ -1597,7 +1597,7 @@ def _write_document_message(code: str, detail: str, lang: str) -> str:
     with force_locale(lang):
         messages = {
             "empty": _("There is nothing to write: the content is empty"),
-            "format": _("Unsupported document format: {detail}. Use md, csv, json or txt"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx or pdf"),
             "too_large": _("The document is too large (limit {limit} KB)").format(
                 limit=documents_write.MAX_CONTENT_BYTES // 1024
             ),

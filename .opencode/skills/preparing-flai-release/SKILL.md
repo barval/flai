@@ -276,6 +276,13 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_schema_changes.py 
   column is not "probably unused" because the new code stopped reading it.
 - **It must be idempotent.** Start the application twice against that copy. A migration
   that only works on the first run fails in front of the user on the second.
+- **A fresh database is a different test.** `init_db()` also runs on an empty install, where
+  nothing it alters exists yet. Measured (v13.5): `ALTER TABLE task_steps ADD COLUMN extra`
+  sat above the `CREATE TABLE IF NOT EXISTS task_steps` that makes the table — invisible on
+  the live installation, `UndefinedTable` on the first start of a clean one, and CI was the
+  only gate that saw it. `tests/test_schema_order.py` now fails on any ALTER that precedes
+  its CREATE; run the narrow suite against a scratch database (`CREATE DATABASE flai_fresh`)
+  as well as the migrated one.
 
 `tests/test_demo_pages.py` and the other guards cannot see any of this: the test suite
 builds its own schema from scratch.

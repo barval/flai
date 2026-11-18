@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 00:33+0300\n"
+"POT-Creation-Date: 2026-11-19 02:25+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -1203,10 +1203,12 @@ msgstr "Нечего записывать: содержимое пустое"
 
 #: app/tools.py:1600
 #, python-brace-format
-msgid "Unsupported document format: {detail}. Use md, csv, json or txt"
+msgid ""
+"Unsupported document format: {detail}. Use md, csv, json, txt, docx, xlsx"
+" or pdf"
 msgstr ""
-"Неподдерживаемый формат документа: {detail}. Используйте md, csv, json "
-"или txt"
+"Неподдерживаемый формат документа: {detail}. Используйте md, csv, json, "
+"txt, docx, xlsx или pdf"
 
 #: app/tools.py:1601
 #, python-brace-format

@@ -1157,10 +1157,6 @@ def _init_postgresql():
     # v12.6: existing deployments predate the doc_ids column (CREATE TABLE IF
     # NOT EXISTS never alters a live table).
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS doc_ids JSONB NOT NULL DEFAULT '[]'::jsonb")
-    # A step's own parameters (which chat tool and with what arguments, what to write and
-    # whether to append): the plan carries them and the runner reads them back.
-    c.execute("ALTER TABLE task_steps ADD COLUMN IF NOT EXISTS extra JSONB NOT NULL DEFAULT '{}'::jsonb")
-
     # Scheduled reminders and actions (v13.5). One row per item; next_run_at is absolute
     # so the tick is one indexed query, and the zone is kept because "daily at 09:00" must
     # stay 09:00 across a DST change.
@@ -1256,6 +1252,10 @@ def _init_postgresql():
         )
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_task_steps_task_id ON task_steps(task_id)")
+    # A step's own parameters (which chat tool and with what arguments, what to write and
+    # whether to append): the plan carries them and the runner reads them back. After the
+    # CREATE above, because `init_db()` also runs on an installation with no schema yet.
+    c.execute("ALTER TABLE task_steps ADD COLUMN IF NOT EXISTS extra JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
     # so the lightweight models don't burn RAM with oversized KV cache.

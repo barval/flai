@@ -43,10 +43,18 @@ def test_the_tool_writes_and_returns_the_stored_name(ctx, queued):
 
 
 def test_a_failure_is_a_sentence_naming_the_problem(ctx, queued):
-    result = tools.execute_tool("write_document", {"name": "x", "content": "y", "format": "pdf"}, ctx)
+    result = tools.execute_tool("write_document", {"name": "x", "content": "y", "format": "exe"}, ctx)
 
     assert result.startswith("⚠️ ")
-    assert "pdf" in result
+    assert "exe" in result
+
+
+def test_the_tool_writes_a_container_format(ctx, queued):
+    result = tools.execute_tool(
+        "write_document", {"name": "Страница", "content": "# Отчёт", "format": "pdf"}, ctx
+    )
+
+    assert result.startswith("Сохранено как Страница.pdf"), result
 
 
 def test_the_tool_queues_no_indexing_at_all(ctx, queued):

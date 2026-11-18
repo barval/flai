@@ -1010,6 +1010,27 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # v13.5 scheduler: which system chat a session is (recreated on demand when the
+    # user deletes it), and which item a delivered message belongs to.
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'chat_sessions' AND column_name = 'scheduler_kind') THEN
+                ALTER TABLE chat_sessions ADD COLUMN scheduler_kind TEXT;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'scheduler_item_id') THEN
+                ALTER TABLE messages ADD COLUMN scheduler_item_id UUID;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'scheduler_kind') THEN
+                ALTER TABLE messages ADD COLUMN scheduler_kind TEXT;
+            END IF;
+        END
+        $migrate$
+    """)
+
     # camera_rooms — configurable camera/room definitions (single source of truth)
     c.execute("""
         CREATE TABLE IF NOT EXISTS camera_rooms (

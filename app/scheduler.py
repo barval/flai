@@ -116,9 +116,145 @@ def acquire_lease(app) -> bool:
         return True
 
 
-def deliver(app, item: dict, fired_at: datetime) -> str:
-    """Deliver one firing. Replaced by the delivery task; a stub keeps the tick testable."""
-    raise NotImplementedError("delivery is not wired yet")
+# ── Delivery ─────────────────────────────────────────────────────────────────
+
+INTERRUPTING_KINDS = ("reminder",)
+
+
+def session_title(kind: str, language: str) -> str:
+    """The title of a system chat, in the person's language.
+
+    Literal ``gettext`` calls on purpose: the title is stored in the row, so it is not
+    rendered from a template and the extractor would otherwise never see the string.
+    """
+    from flask_babel import force_locale, gettext
+
+    with force_locale(language):
+        if kind == "action":
+            return gettext("⚙️ Scheduler: actions")
+        return gettext("🔔 Scheduler: reminders")
+
+
+def _publisher(app):
+    """The app's SSE publisher, or None where events are not wired (tests, CLI)."""
+    publisher = getattr(app, "events_publisher", None)
+    if publisher is not None:
+        return publisher
+    try:
+        from app.events import get_events_publisher
+
+        return get_events_publisher(app)
+    except Exception:  # noqa: BLE001 - a missing publisher must not lose the delivery
+        return None
+
+
+def _user_language(user_id: str | None) -> str:
+    """The language the person reads, which is the language their reminders are written in."""
+    if not user_id:
+        return "ru"
+    try:
+        from app import userdb
+
+        row = userdb.get_user_by_login(user_id) or {}
+    except Exception:  # noqa: BLE001 - a missing account must not stop a delivery
+        return "ru"
+    language = row.get("language")
+    return language if language in ("ru", "en") else "ru"
+
+
+def scheduler_session(app, user_id: str, kind: str) -> str:
+    """The user's chat for this kind, created on first delivery and after a deletion."""
+    from app import db
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id FROM chat_sessions WHERE user_id = %s AND scheduler_kind = %s"
+            " ORDER BY created_at DESC LIMIT 1",
+            (user_id, kind),
+        )
+        row = c.fetchone()
+    if row:
+        return row["id"]
+
+    language = _user_language(user_id)
+    title = session_title(kind, language)
+    session_id = db.create_session(user_id, title=title, lang=language)
+    with get_db() as conn:
+        conn.cursor().execute(
+            "UPDATE chat_sessions SET scheduler_kind = %s WHERE id = %s", (kind, session_id)
+        )
+    return session_id
+
+
+def render_when(moment: datetime | None, lang: str = "ru") -> str:
+    """The firing time as the person reads it: "18 November, 09:00"."""
+    if moment is None:
+        return ""
+    from babel.dates import format_datetime
+
+    return format_datetime(moment, "d MMMM, HH:mm", locale=lang if lang in ("ru", "en") else "ru")
+
+
+def deliver_message(app, item: dict, text: str) -> int:
+    """Write one delivered message into its chat and announce it.
+
+    The message carries the item it belongs to, so a re-render can style it and an
+    export keeps the provenance. Only a reminder interrupts: an action's result is a
+    message, which the person finds when they open the chat.
+    """
+    from app import db
+
+    user_id = item.get("user_id")
+    kind = str(item.get("kind") or "reminder")
+    session_id = scheduler_session(app, user_id, kind)
+    message_id = db.save_message(
+        session_id,
+        "assistant",
+        text,
+        user_id=user_id,
+        scheduler_item_id=item.get("id"),
+        scheduler_kind=kind,
+    )
+    if kind in INTERRUPTING_KINDS:
+        publisher = _publisher(app)
+        if publisher is not None:
+            fired_at = item.get("next_run_at")
+            publisher.publish(
+                user_id,
+                "scheduler_popup",
+                {
+                    "item_id": str(item.get("id") or ""),
+                    "kind": kind,
+                    "title": str(item.get("title") or ""),
+                    "text": text,
+                    "session_id": session_id,
+                    "message_id": message_id,
+                    "fired_at": fired_at.isoformat() if hasattr(fired_at, "isoformat") else None,
+                },
+            )
+    return message_id
+
+
+def deliver(app, item: dict, fired_at: datetime) -> int:
+    """Deliver one firing.
+
+    A reminder is a prepared sentence: ``{when}`` is the only part the clock supplies,
+    and it is rendered in the item's zone and the person's language. An action is a
+    task, so its delivery belongs to the Tasks engine.
+    """
+    kind = str(item.get("kind") or "reminder")
+    if kind == "action":
+        raise NotImplementedError("an action is delivered by the Tasks engine")
+
+    user_id = item.get("user_id")
+    language = _user_language(user_id)
+    scheduled = item.get("next_run_at") or fired_at
+    moment = scheduled.astimezone(_zone(item.get("timezone")))
+    body = str(item.get("body") or "").strip() or str(item.get("title") or "").strip()
+    text = body.replace("{when}", render_when(moment, language))
+    return deliver_message(app, item, text)
 
 
 def _fire(app, item: dict, now: datetime) -> dict:

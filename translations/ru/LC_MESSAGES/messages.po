@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 01:39+0300\n"
+"POT-Creation-Date: 2026-11-18 09:08+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -23,15 +23,15 @@ msgstr ""
 msgid "FLAI"
 msgstr "ПЛИИ"
 
-#: app/__init__.py:616 app/__init__.py:632
+#: app/__init__.py:626 app/__init__.py:642
 msgid "Session expired. Please refresh the page."
 msgstr "Сессия истекла. Обновите страницу."
 
-#: app/__init__.py:624
+#: app/__init__.py:634
 msgid "Authentication required."
 msgstr "Требуется авторизация."
 
-#: app/__init__.py:639 app/routes/admin.py:404 app/routes/admin.py:688
+#: app/__init__.py:649 app/routes/admin.py:404 app/routes/admin.py:688
 #: app/routes/admin.py:731 app/routes/admin.py:747 app/routes/admin.py:759
 #: app/routes/admin.py:784 app/routes/admin.py:832 app/routes/admin.py:2262
 #: app/routes/admin.py:2279 app/routes/admin.py:2314
@@ -39,7 +39,7 @@ msgstr "Требуется авторизация."
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
-#: app/__init__.py:645
+#: app/__init__.py:655
 msgid "Not found"
 msgstr "Не найдено"
 
@@ -115,7 +115,7 @@ msgstr "Задача %s была переочередлена на %s без п�
 msgid "Task %s returned no vectors"
 msgstr "Задача %s не вернула векторы"
 
-#: app/db.py:247 app/db.py:275 app/routes/api_v1.py:1609
+#: app/db.py:249 app/db.py:277 app/routes/api_v1.py:1609
 #: app/routes/sessions.py:156 app/routes/sessions.py:230
 #: app/templates/chat.html:21 app/templates/chat.html:189
 msgid "New session"
@@ -183,8 +183,8 @@ msgstr ""
 "Сервис временно недоступен. Открыт автоматический выключатель после "
 "повторных сбоев."
 
-#: app/llamacpp_client.py:698 app/llamacpp_client.py:1119 modules/base.py:993
-#: modules/base.py:1079
+#: app/llamacpp_client.py:698 app/llamacpp_client.py:1119 modules/base.py:1002
+#: modules/base.py:1088
 msgid "Model returned empty response"
 msgstr "Модель вернула пустой ответ"
 
@@ -573,8 +573,8 @@ msgstr "⚠️ Достигнут лимит документов — собра
 msgid "Failed to save the collected materials"
 msgstr "⚠️ Не удалось сохранить собранные материалы."
 
-#: app/queue.py:5650 modules/base.py:966 modules/base.py:1204
-#: modules/base.py:1254 modules/multimodal.py:258 modules/multimodal.py:290
+#: app/queue.py:5650 modules/base.py:975 modules/base.py:1225
+#: modules/base.py:1275 modules/multimodal.py:258 modules/multimodal.py:290
 #: modules/multimodal.py:296 modules/multimodal.py:337
 #: modules/multimodal.py:375 modules/multimodal.py:399
 #: modules/multimodal.py:448 modules/multimodal.py:543
@@ -672,6 +672,14 @@ msgstr ""
 #: app/queue.py:7839 app/templates/chat.html:188
 msgid "Unknown session"
 msgstr "Неизвестный сеанс"
+
+#: app/scheduler.py:134
+msgid "⚙️ Scheduler: actions"
+msgstr "⚙️ Планировщик: действия"
+
+#: app/scheduler.py:135
+msgid "🔔 Scheduler: reminders"
+msgstr "🔔 Планировщик: напоминания"
 
 #: app/tool_registry.py:52
 msgid "Reasoning model"
@@ -1092,8 +1100,9 @@ msgstr "Место для документов закончилось; снач�
 
 #: app/tools.py:1298
 msgid "Can only append to a document this assistant wrote, not to an upload"
-msgstr "Дописывать можно только в документ, написанный ассистентом, но не в загрузку"
-
+msgstr ""
+"Дописывать можно только в документ, написанный ассистентом, но не в "
+"загрузку"
 
 #: app/tools.py:1299
 msgid "The JSON does not parse, so nothing was written"
@@ -1880,7 +1889,6 @@ msgstr "Эта галка есть только у документов, нап�
 #: app/routes/documents.py:858
 msgid "The assistant already wrote a document with this name"
 msgstr "Ассистент уже написал документ с таким именем"
-
 
 #: app/routes/messages.py:187
 msgid "Multiple documents are not supported in one message"
@@ -5879,7 +5887,7 @@ msgstr "Вход"
 msgid "Log in"
 msgstr "Войти"
 
-#: modules/base.py:687
+#: modules/base.py:696
 msgid "Request too long, please simplify your request"
 msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
 
@@ -6107,4 +6115,7 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ "Документ, написанный ассистентом, не попадает"
 #~ " в поиск, пока вы не отметите "
 #~ "это"
+
+#~ msgid "reminder"
+#~ msgstr "Реранкер"
 

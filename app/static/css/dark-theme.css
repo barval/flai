@@ -592,6 +592,29 @@
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;

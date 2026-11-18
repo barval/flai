@@ -106,6 +106,25 @@
             </div>
         </div>
 
+        <!-- Scheduler popup: a reminder is a message in its own chat and this
+             notification on top of whatever is open. Closing it loses nothing —
+             the message is already stored. -->
+        <div id="scheduler-popup" class="scheduler-popup" hidden>
+            <div class="scheduler-popup-backdrop" data-scheduler-close></div>
+            <div class="scheduler-popup-card" role="dialog" aria-modal="true" aria-labelledby="scheduler-popup-title">
+                <div class="scheduler-popup-head">
+                    <span class="scheduler-popup-icon" aria-hidden="true">🔔</span>
+                    <h3 class="scheduler-popup-title" id="scheduler-popup-title"></h3>
+                    <button type="button" class="scheduler-popup-close" data-scheduler-close
+                            aria-label="{{ _('Close') }}">&times;</button>
+                </div>
+                <p class="scheduler-popup-text" id="scheduler-popup-text"></p>
+                <div class="scheduler-popup-actions">
+                    <button type="button" class="scheduler-popup-button" id="scheduler-popup-ok" data-scheduler-close>{{ _('Close') }}</button>
+                </div>
+            </div>
+        </div>
+
         <!-- The new-task dialog was removed (v12.6 review): «+» creates a draft
      task directly (like a new chat session); the request text goes into the
      ordinary message input. -->
@@ -484,6 +503,7 @@ if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATION
 <script src="{{ url_for('static', filename='js/chat-tts.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-recording.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-export.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-scheduler.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/events.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-queue.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/chat-style.js', v=config.STATIC_VERSION) }}"></script>

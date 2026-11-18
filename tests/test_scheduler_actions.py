@@ -237,3 +237,34 @@ def test_the_actions_chat_is_the_one_for_actions(env):
         c = conn.cursor()
         c.execute("SELECT title FROM chat_sessions WHERE user_id = %s AND scheduler_kind = 'action'", (LOGIN,))
         assert c.fetchone()["title"] == "⚙️ Планировщик: действия"
+
+
+def test_the_lead_is_capped_by_the_interval(env):
+    """A ten-minute lead under a five-minute cadence queues the next run too early."""
+    item = {"kind": "action", "repeat": "minutes", "every_minutes": 5}
+    assert scheduler.action_lead_minutes(item, 10) == 2
+
+    assert scheduler.action_lead_minutes({"kind": "action", "repeat": "minutes", "every_minutes": 10}, 10) == 5
+
+    assert scheduler.action_lead_minutes({"kind": "action", "repeat": "minutes", "every_minutes": 15}, 10) == 7
+
+    # A long cadence keeps the configured lead: half of a day is not a lead.
+    assert scheduler.action_lead_minutes({"kind": "action", "repeat": "daily"}, 10) == 10
+    assert scheduler.action_lead_minutes({"kind": "action", "repeat": "once"}, 10) == 10
+
+
+def test_a_frequent_action_is_not_enqueued_before_half_its_interval(env):
+    target = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
+    item = {
+        "kind": "action",
+        "repeat": "minutes",
+        "every_minutes": 10,
+        "next_run_at": target,
+    }
+
+    assert scheduler.is_due_now(item, target - timedelta(minutes=8), 10) is False
+    assert scheduler.is_due_now(item, target - timedelta(minutes=5), 10) is True
+
+    reminder = {"kind": "reminder", "repeat": "minutes", "every_minutes": 10, "next_run_at": target}
+    assert scheduler.is_due_now(reminder, target - timedelta(minutes=8), 10) is False
+    assert scheduler.is_due_now(reminder, target, 10) is True

@@ -61,6 +61,18 @@ def graph_auto_extract_enabled(app=None) -> bool:
     return platform.strip().lower() != "cpu"
 
 
+def resolve_action_floor(platform: str, configured: int) -> int:
+    """The smallest step between two runs of a recurring action.
+
+    Work costs a planning loop and the GPU: five minutes apart on a GPU host, fifteen on a
+    CPU-only one where the same loop would occupy the machine all day. An explicit value
+    wins over the platform.
+    """
+    if configured > 0:
+        return configured
+    return 15 if str(platform or "").strip().lower() == "cpu" else 5
+
+
 def load_config(app):
     app.config["APP_VERSION"] = APP_VERSION
     """Load all variables from .env into Flask config."""
@@ -274,6 +286,20 @@ def load_config(app):
     app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
     app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "10"))
     app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))
+    # A recurring action is work: five minutes apart on a GPU host, fifteen on a CPU-only
+    # one where the same loop would occupy the machine all day. 0 means "decide from the
+    # hardware"; any positive value wins.
+    platform = str(app.config.get("FLAI_PLATFORM") or "")
+    if not platform:
+        try:
+            from app.platform_detect import get_platform_info
+
+            platform = "cpu" if get_platform_info().accelerator == "none" else "gpu"
+        except Exception:  # noqa: BLE001 - an unknown host is treated as a CPU one
+            platform = "cpu"
+    app.config["SCHEDULER_ACTION_MIN_MINUTES"] = resolve_action_floor(
+        platform, int(os.getenv("SCHEDULER_ACTION_MIN_MINUTES", "0") or 0)
+    )
 
     # The depth axis (app/depth.py) supplies the defaults; an explicit key in the
     # environment still wins, so one number can be tuned without a profile.

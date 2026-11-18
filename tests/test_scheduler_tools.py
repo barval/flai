@@ -310,3 +310,110 @@ def test_the_chat_prompt_carries_the_clock(env):
         for lang in ("ru", "en"):
             text = (root / f"prompts/{lang}/{name}").read_text(encoding="utf-8")
             assert "{current_time_str}" in text, (lang, name)
+
+
+def test_an_action_is_refused_below_the_hardware_floor(env):
+    """Ten minutes silently becoming fifteen is worse than being told the floor."""
+    env.config["SCHEDULER_ACTION_MIN_MINUTES"] = 5
+    from app.tools import execute_tool
+
+    refused = execute_tool(
+        "schedule_action", {"when": _tomorrow_at(), "goal": "Проверь курс", "repeat": "minutes", "every_minutes": 2}, _ctx()
+    )
+    assert refused.startswith("⚠️ ")
+    assert "5" in refused
+    assert scheduler_store.list_items(LOGIN) == []
+
+    accepted = execute_tool(
+        "schedule_action", {"when": _tomorrow_at(), "goal": "Проверь курс", "repeat": "minutes", "every_minutes": 10}, _ctx()
+    )
+    assert "⚠️" not in accepted
+    assert "10" in accepted  # the answer names the interval, not only the first firing
+    assert scheduler_store.list_items(LOGIN)[0]["every_minutes"] == 10
+
+
+def test_the_floor_is_fifteen_on_a_cpu_host(env):
+    env.config["SCHEDULER_ACTION_MIN_MINUTES"] = 15
+    from app.tools import execute_tool
+
+    refused = execute_tool(
+        "schedule_action", {"when": _tomorrow_at(), "goal": "Проверь курс", "repeat": "minutes", "every_minutes": 10}, _ctx()
+    )
+
+    assert refused.startswith("⚠️ ")
+    assert "15" in refused
+
+
+def test_the_defaults_follow_the_platform(env):
+    """A GPU host allows five minutes; a CPU-only one gets fifteen."""
+    from app.config import resolve_action_floor
+
+    assert resolve_action_floor("nvidia", 0) == 5
+    assert resolve_action_floor("amd", 0) == 5
+    assert resolve_action_floor("cpu", 0) == 15
+    assert resolve_action_floor("", 0) == 5
+    # An explicit value wins over the hardware.
+    assert resolve_action_floor("nvidia", 30) == 30
+    assert resolve_action_floor("cpu", 7) == 7
+
+
+def test_a_repeating_reminder_is_bounded_by_fifteen(env):
+    env.config["SCHEDULER_ACTION_MIN_MINUTES"] = 5
+    from app.tools import execute_tool
+
+    refused = execute_tool(
+        "schedule_reminder", {"when": _tomorrow_at(), "text": "🔔", "repeat": "minutes", "every_minutes": 5}, _ctx()
+    )
+
+    assert refused.startswith("⚠️ ")
+    assert "15" in refused
+
+
+def test_every_n_minutes_needs_no_first_moment(env):
+    """«Every five minutes» names no start: the first firing is one interval away."""
+    from datetime import UTC, datetime
+
+    from app.tools import execute_tool
+
+    env.config["SCHEDULER_ACTION_MIN_MINUTES"] = 5
+    answer = execute_tool(
+        "schedule_action", {"goal": "Курс доллара", "repeat": "minutes", "every_minutes": 5}, _ctx()
+    )
+
+    assert "⚠️" not in answer
+    item = scheduler_store.list_items(LOGIN)[0]
+    delta = item["next_run_at"] - datetime.now(UTC)
+    assert 3 * 60 < delta.total_seconds() < 7 * 60
+
+
+def test_the_floor_applies_to_every_way_of_naming_the_moment(env):
+    """A date, a bare time or "in five minutes" must all hit the same floor."""
+    from app.tools import execute_tool
+
+    env.config["SCHEDULER_ACTION_MIN_MINUTES"] = 15
+    for moment in (
+        {"when": _tomorrow_at()},
+        {"when": "23:59"},
+        {"in_minutes": 5},
+        {},
+    ):
+        answer = execute_tool(
+            "schedule_action",
+            {"goal": "Курс", "repeat": "minutes", "every_minutes": 5, **moment},
+            _ctx(),
+        )
+        assert answer.startswith("⚠️ "), moment
+        assert "15" in answer, moment
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_the_action_description_does_not_put_a_file_in_the_goal(env):
+    """Measured: an example ending in "save it to a file" came back as a goal that wrote a CSV."""
+    from app.tools import _SCHEDULER_DEFINITIONS
+
+    action = next(d for d in _SCHEDULER_DEFINITIONS if d["function"]["name"] == "schedule_action")
+    description = action["function"]["description"].lower()
+
+    # The prohibition may name a file; the example must not model one.
+    assert "save it to a file" not in description
+    assert "nothing else" in description

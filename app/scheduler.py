@@ -18,8 +18,26 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-# Anything faster is a busy loop wearing a schedule's clothes.
+# Anything faster is a busy loop wearing a schedule's clothes. Work is held to a wider
+# floor than a sentence: an action costs a planning loop and the GPU, a reminder costs a
+# database row.
 MIN_MINUTES = 15
+
+
+def min_interval_minutes(kind: str | None = None) -> int:
+    """The smallest useful step for a repeating item of this kind."""
+    if str(kind or "reminder") != "action":
+        return MIN_MINUTES
+    from app.config import setting
+
+    try:
+        value = int(setting("SCHEDULER_ACTION_MIN_MINUTES", 0) or 0)
+    except (TypeError, ValueError):
+        value = 0
+    # 0 (or nonsense) means "the conservative floor": startup resolves the hardware and
+    # writes 5 on a GPU host or 15 on a CPU-only one, so this is only the fallback for a
+    # value saved by hand.
+    return value if value > 0 else MIN_MINUTES
 
 REPEATS = ("once", "minutes", "daily", "weekly", "monthly")
 
@@ -41,6 +59,43 @@ def _at(item: dict, day: datetime) -> datetime:
     ).replace(tzinfo=zone)
 
 
+def action_lead_minutes(item: dict, configured: int | None = None) -> int:
+    """How early an action is enqueued, capped by its own interval.
+
+    A ten-minute lead under a five-minute cadence put the next task in the queue before the
+    previous one had started, so every second firing was skipped as an overlap. Half the
+    interval keeps the queue ahead of the target without racing the run it replaced; a daily
+    or weekly item keeps the configured lead, because half of a day is not a lead.
+    """
+    if configured is None:
+        from app.config import setting
+
+        try:
+            configured = int(setting("SCHEDULER_ACTION_LEAD_MIN", 10) or 0)
+        except (TypeError, ValueError):
+            configured = 10
+    lead = max(0, int(configured))
+    if str(item.get("repeat") or "once") != "minutes":
+        return lead
+    try:
+        every = int(item.get("every_minutes") or 0)
+    except (TypeError, ValueError):
+        return lead
+    if every <= 0:
+        return lead
+    return max(0, min(lead, every // 2))
+
+
+def is_due_now(item: dict, moment: datetime, max_lead: int) -> bool:
+    """Whether this item has reached its firing window, given its own lead."""
+    scheduled = item.get("next_run_at")
+    if scheduled is None:
+        return True
+    if str(item.get("kind") or "reminder") == "action":
+        return moment >= scheduled - timedelta(minutes=action_lead_minutes(item, max_lead))
+    return moment >= scheduled
+
+
 def next_after(item: dict, moment: datetime) -> datetime | None:
     """The first firing strictly after ``moment``, or None for a one-off.
 
@@ -56,7 +111,8 @@ def next_after(item: dict, moment: datetime) -> datetime | None:
     local = moment.astimezone(zone)
 
     if repeat == "minutes":
-        step = max(MIN_MINUTES, int(item.get("every_minutes") or MIN_MINUTES))
+        floor = min_interval_minutes(item.get("kind"))
+        step = max(floor, int(item.get("every_minutes") or floor))
         return moment + timedelta(minutes=step)
 
     if repeat == "daily":
@@ -498,6 +554,10 @@ def tick(app, now: datetime | None = None) -> dict:
     counts = {"delivered": _deliver_ready(app, moment), "skipped": 0, "failed": 0, "missed": 0}
     lead = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 10) or 0)
     for item in scheduler_store.due_items(moment, action_lead_minutes=lead):
+        # The query uses the widest lead any item could have; each item is then judged by
+        # its own, which is half its interval for a frequent one.
+        if not is_due_now(item, moment, lead):
+            continue
         result = _fire(app, item, moment)
         counts["delivered"] += result["delivered"]
         counts["skipped"] += result["skipped"]

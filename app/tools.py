@@ -428,8 +428,10 @@ _SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Schedule real work at a moment: the task plans and runs by itself, with the "
                 "user's tools and skills, and its result arrives in the actions chat. Use it "
-                "when the user asks to have something DONE later ('every morning send me the "
-                "news and save it to a file'), not just to be reminded of it."
+                "when the user asks to have something DONE later ('every morning at eight send "
+                "me the news'), not just to be reminded of it. The goal is the user's request "
+                "and nothing else: do not add steps they did not ask for (a file, a copy, an "
+                "extra check)."
             ),
             "parameters": {
                 "type": "object",
@@ -1360,6 +1362,16 @@ def _schedule_refusal(language: str, refusal) -> str:
     with force_locale(language):
         if refusal.code == "time_unclear":
             return "⚠️ " + str(_("I could not tell the time. When should it happen?"))
+        if refusal.code == "interval_too_small":
+            # Literal gettext calls: a message chosen through a variable is invisible to the
+            # extractor and would ship in the source language.
+            if refusal.params.get("kind") == "action":
+                return "⚠️ " + str(
+                    _("An action cannot run more often than every {minutes} minutes on this installation")
+                ).format(minutes=refusal.params.get("floor"))
+            return "⚠️ " + str(_("A reminder cannot repeat more often than every {minutes} minutes")).format(
+                minutes=refusal.params.get("floor")
+            )
         if refusal.code == "repeat_unclear":
             return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
         if refusal.code == "in_the_past":
@@ -1411,6 +1423,10 @@ def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
     with force_locale(language):
         template = _("Action scheduled for {when}") if kind == "action" else _("Reminder set for {when}")
         head = str(template).format(when=when)
+        if str(kw.get("repeat") or "once") == "minutes":
+            every = int(kw.get("every_minutes") or 0)
+            if every:
+                head += ", " + str(_("then every {minutes} minutes")).format(minutes=every)
     return f"🔔 {head}" if kind == "reminder" else f"⚙️ {head}"
 
 

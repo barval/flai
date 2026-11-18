@@ -126,6 +126,30 @@ def plan(
     zone = zone_for(zone_name)
     repeat = _repeat_of(repeat_raw)
 
+    # The interval is resolved before the moment, because every path below stores it and the
+    # floor applies to all of them: a five-minute action on a CPU-only host must be refused
+    # whether the request named a date, a bare time or "in five minutes".
+    interval = None
+    if repeat == "minutes":
+        from app.scheduler import min_interval_minutes
+
+        floor = min_interval_minutes(kind)
+        try:
+            requested = int(every_minutes or floor)
+        except (TypeError, ValueError) as exc:
+            raise ScheduleRefusalError("repeat_unclear", value=str(every_minutes)) from exc
+        if requested < floor:
+            # Asking for ten minutes and quietly getting fifteen is worse than being told:
+            # the person would believe a rate they never receive.
+            raise ScheduleRefusalError("interval_too_small", floor=floor, kind=kind, asked=requested)
+        interval = requested
+
+    if in_minutes in (None, "") and not str(when_raw or "").strip():
+        if repeat != "minutes":
+            raise ScheduleRefusalError("time_unclear")
+        # "Every five minutes" names no first moment: the first firing is one interval away.
+        in_minutes = interval
+
     bare = parse_time_of_day(when_raw)
     if bare is not None:
         local_now = current.astimezone(zone)
@@ -133,7 +157,7 @@ def plan(
         if local <= local_now:
             # "13:23" said at 13:30 means tomorrow, not a refusal.
             local = local + timedelta(days=1)
-        return local.astimezone(UTC), local, _fields(local, repeat, every_minutes, zone_name)
+        return local.astimezone(UTC), local, _fields(local, repeat, interval, zone_name)
 
     if in_minutes not in (None, ""):
         try:
@@ -144,7 +168,7 @@ def plan(
             raise ScheduleRefusalError("time_unclear")
         moment = current + timedelta(minutes=minutes)
         local = moment.astimezone(zone)
-        return moment, local, _fields(local, repeat, every_minutes, zone_name)
+        return moment, local, _fields(local, repeat, interval, zone_name)
 
     moment_local = parse_when(when_raw)
     if moment_local is None:
@@ -152,13 +176,6 @@ def plan(
 
     local = moment_local.replace(tzinfo=zone)
     moment = local.astimezone(UTC)
-
-    interval = None
-    if repeat == "minutes":
-        try:
-            interval = max(MIN_EVERY_MINUTES, int(every_minutes or MIN_EVERY_MINUTES))
-        except (TypeError, ValueError) as exc:
-            raise ScheduleRefusalError("repeat_unclear", value=str(every_minutes)) from exc
 
     if moment <= current:
         if repeat == "once":
@@ -173,6 +190,7 @@ def plan(
                 "day_of_month": local.day,
                 "time_of_day": local.time(),
                 "timezone": zone_name,
+                "kind": kind,
             },
             current,
         )

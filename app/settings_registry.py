@@ -148,6 +148,7 @@ GROUPS: dict[str, tuple[str, list[str]]] = {
             "SCHEDULER_CATCHUP_MAX",
             "SCHEDULER_ACTION_LEAD_MIN",
             "SCHEDULER_MAX_LATENESS_MIN",
+            "SCHEDULER_ACTION_MIN_MINUTES",
             "SCHEDULER_GRACE_MIN",
         ],
     ),
@@ -679,6 +680,9 @@ DESCRIPTIONS: dict[str, str] = {
         "Minutes after its target a task that never started is cancelled with a short notice"
     ),
     "SCHEDULER_GRACE_MIN": "Minutes late before a firing counts as missed rather than on time",
+    "SCHEDULER_ACTION_MIN_MINUTES": (
+        "The smallest step between two runs of a recurring action (5 on a GPU host, 15 on a CPU-only one)"
+    ),
     "SCHEDULER_ENABLED": "Deliver scheduled reminders and actions at all",
     "DEPTH_LEVEL": "How much work one task request may spend: min, norm or max (applies after a restart)",
     "VRAM_CO_RESIDENCY": "Keep residents that fit next to a new model (auto) or unload everything (off)",

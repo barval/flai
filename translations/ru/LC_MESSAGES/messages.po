@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 11:21+0300\n"
+"POT-Creation-Date: 2026-11-18 15:42+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -81,7 +81,7 @@ msgid "Each content part must be an object"
 msgstr "Каждая часть содержимого должна быть объектом"
 
 #: app/api_bridge.py:508 app/routes/api_v1.py:666 app/routes/messages.py:167
-#: app/routes/tasks.py:105 app/templates/chat.html:284
+#: app/routes/tasks.py:105 app/templates/chat.html:287
 msgid "max_images_reached"
 msgstr "Максимум {max} изображений в одном сообщении"
 
@@ -115,9 +115,9 @@ msgstr "Задача %s была переочередлена на %s без п�
 msgid "Task %s returned no vectors"
 msgstr "Задача %s не вернула векторы"
 
-#: app/db.py:249 app/db.py:277 app/routes/api_v1.py:1609
+#: app/db.py:250 app/db.py:278 app/routes/api_v1.py:1609
 #: app/routes/sessions.py:156 app/routes/sessions.py:230
-#: app/templates/chat.html:21 app/templates/chat.html:208
+#: app/templates/chat.html:21 app/templates/chat.html:211
 msgid "New session"
 msgstr "Новый сеанс"
 
@@ -210,7 +210,7 @@ msgstr "Не удалось подключиться к llama-server"
 #: app/llamacpp_client.py:1238 app/llamacpp_client.py:1532
 #: app/routes/admin.py:659 app/routes/admin.py:1339 app/routes/admin.py:1781
 #: app/routes/admin.py:1854 app/routes/admin.py:2108
-#: app/templates/admin.html:643 app/templates/chat.html:267 modules/cam.py:520
+#: app/templates/admin.html:643 app/templates/chat.html:270 modules/cam.py:520
 #: modules/sd_cpp.py:354 modules/sd_cpp.py:555 modules/video.py:828
 msgid "Error"
 msgstr "Ошибка"
@@ -241,7 +241,7 @@ msgstr "Запрос отменён - слишком долго в очеред�
 
 #: app/queue.py:1103 app/queue.py:6428 app/queue.py:6431 app/queue.py:7065
 #: app/queue.py:7211 app/tasks/audio_transcribe.py:200
-#: app/templates/chat.html:199
+#: app/templates/chat.html:202
 msgid "Failed to recognize speech"
 msgstr "Не удалось распознать речь"
 
@@ -309,7 +309,7 @@ msgstr "Проверка памяти GPU не удалась. Попробуй�
 msgid "Reference examples (draw something similar):"
 msgstr "Примеры для подражания (нарисуй что-то похожее):"
 
-#: app/queue.py:2376 app/templates/chat.html:205
+#: app/queue.py:2376 app/templates/chat.html:208
 #, python-brace-format
 msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
@@ -331,7 +331,7 @@ msgstr "Запрос рассуждений"
 msgid "Studying the site…"
 msgstr "Изучаю сайт…"
 
-#: app/queue.py:2654 app/templates/admin.html:719 app/templates/chat.html:152
+#: app/queue.py:2654 app/templates/admin.html:719 app/templates/chat.html:153
 #: app/tool_registry.py:180 app/tool_registry.py:181
 msgid "Deep analysis"
 msgstr "Глубокий анализ"
@@ -496,7 +496,7 @@ msgstr ""
 "или сравнения — посчитай по этим числам. Запрос: {request}"
 
 #: app/queue.py:3957 app/queue.py:4182 app/queue.py:4353
-#: app/templates/chat.html:206
+#: app/templates/chat.html:209
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Снимок с камеры: {room_name}"
@@ -632,12 +632,12 @@ msgid "Invalid image"
 msgstr "Неверное изображение"
 
 #: app/queue.py:7083 app/queue.py:7201 app/routes/tasks.py:502
-#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:204
+#: app/tasks/audio_transcribe.py:168 app/templates/chat.html:207
 msgid "Transcribed"
 msgstr "Распознано"
 
 #: app/queue.py:7098 app/queue.py:7230 app/routes/messages.py:480
-#: app/templates/chat.html:200
+#: app/templates/chat.html:203
 msgid "Voice request"
 msgstr "Голосовой запрос"
 
@@ -673,44 +673,44 @@ msgstr ""
 "Достигнут лимит времени распознавания: распознаны первые {pages} из "
 "{total} страниц. Они сейчас индексируются."
 
-#: app/queue.py:7840 app/templates/chat.html:207
+#: app/queue.py:7840 app/templates/chat.html:210
 msgid "Unknown session"
 msgstr "Неизвестный сеанс"
 
-#: app/scheduler.py:134
+#: app/scheduler.py:153 app/templates/chat.html:492
 msgid "⚙️ Scheduler: actions"
 msgstr "⚙️ Планировщик: действия"
 
-#: app/scheduler.py:135
+#: app/scheduler.py:154 app/templates/chat.html:491
 msgid "🔔 Scheduler: reminders"
 msgstr "🔔 Планировщик: напоминания"
 
-#: app/scheduler.py:301
+#: app/scheduler.py:320
 #, python-brace-format
 msgid "Skipped firings: {count}"
 msgstr "Пропущено срабатываний: {count}"
 
-#: app/scheduler.py:446
+#: app/scheduler.py:465
 msgid "The action could not run in time"
 msgstr "Действие не успело выполниться"
 
-#: app/scheduler.py:450
+#: app/scheduler.py:469
 msgid "The action finished without an answer"
 msgstr "Действие завершилось без ответа"
 
-#: app/scheduler.py:452
+#: app/scheduler.py:471
 msgid "The action was cancelled"
 msgstr "Действие отменено"
 
-#: app/scheduler.py:454
+#: app/scheduler.py:473
 msgid "The action ran out of time"
 msgstr "У действия закончилось время"
 
-#: app/scheduler.py:456
+#: app/scheduler.py:475
 msgid "The action failed"
 msgstr "Действие завершилось ошибкой"
 
-#: app/scheduler.py:463
+#: app/scheduler.py:482
 #, python-brace-format
 msgid "Finished at {at} instead of {target}"
 msgstr "Готово в {at} вместо {target}"
@@ -1011,7 +1011,7 @@ msgid "Calculation error: {error}"
 msgstr "Ошибка вычисления: {error}"
 
 #: app/tools.py:778 app/tools.py:847 app/tools.py:889 app/tools.py:1217
-#: app/tools.py:1298 app/tools.py:1501 app/tools.py:1747 app/tools.py:1766
+#: app/tools.py:1298 app/tools.py:1515 app/tools.py:1761 app/tools.py:1780
 msgid "The tool could not complete the request."
 msgstr "Инструмент не смог выполнить запрос."
 
@@ -1116,92 +1116,111 @@ msgstr "Служба диагностики ничего не вернула"
 msgid "I could not tell the time. When should it happen?"
 msgstr "Не понял время. Когда это должно произойти?"
 
-#: app/tools.py:1364
+#: app/tools.py:1368
+#, python-brace-format
+msgid ""
+"An action cannot run more often than every {minutes} minutes on this "
+"installation"
+msgstr ""
+"На этом инстансе действие не может запускаться чаще, чем раз в {minutes} "
+"минут"
+
+#: app/tools.py:1370
+#, python-brace-format
+msgid "A reminder cannot repeat more often than every {minutes} minutes"
+msgstr "Напоминание не может повторяться чаще, чем раз в {minutes} минут"
+
+#: app/tools.py:1374
 msgid "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 msgstr ""
 "Такое повторение мне неизвестно: разово, ежедневно, еженедельно, "
 "ежемесячно или каждые минуты"
 
-#: app/tools.py:1366
+#: app/tools.py:1376
 #, python-brace-format
 msgid "That time has already passed: {when}. When should it happen?"
 msgstr "Это время уже прошло: {when}. Когда это должно произойти?"
 
-#: app/tools.py:1370
+#: app/tools.py:1380
 msgid "There is nothing to send or do. What should happen?"
 msgstr "Нечего отправить или сделать. Что должно произойти?"
 
-#: app/tools.py:1372
+#: app/tools.py:1382
 #, python-brace-format
 msgid "That is too long to schedule (max {limit} characters)"
 msgstr "Слишком длинно для расписания (не больше {limit} символов)"
 
-#: app/tools.py:1375
+#: app/tools.py:1385
 msgid "The schedule could not be created"
 msgstr "Не удалось создать расписание"
 
-#: app/tools.py:1389
+#: app/tools.py:1399
 msgid "User not identified for the scheduler"
 msgstr "Пользователь не определён для планировщика"
 
-#: app/tools.py:1412
+#: app/tools.py:1422
 #, python-brace-format
 msgid "Action scheduled for {when}"
 msgstr "Действие на {when}"
 
-#: app/tools.py:1412
+#: app/tools.py:1422
 #, python-brace-format
 msgid "Reminder set for {when}"
 msgstr "Напоминание на {when}"
 
-#: app/tools.py:1460
+#: app/tools.py:1427
+#, python-brace-format
+msgid "then every {minutes} minutes"
+msgstr "далее каждые {minutes} минут"
+
+#: app/tools.py:1474
 msgid "There is nothing to write: the content is empty"
 msgstr "Нечего записывать: содержимое пустое"
 
-#: app/tools.py:1461
+#: app/tools.py:1475
 #, python-brace-format
 msgid "Unsupported document format: {detail}. Use md, csv, json or txt"
 msgstr ""
 "Неподдерживаемый формат документа: {detail}. Используйте md, csv, json "
 "или txt"
 
-#: app/tools.py:1462
+#: app/tools.py:1476
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "Документ слишком большой (предел {limit} КБ)"
 
-#: app/tools.py:1465
+#: app/tools.py:1479
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "Место для документов закончилось; сначала удалите что-нибудь"
 
-#: app/tools.py:1466
+#: app/tools.py:1480
 msgid "Can only append to a document this assistant wrote, not to an upload"
 msgstr ""
 "Дописывать можно только в документ, написанный ассистентом, но не в "
 "загрузку"
 
-#: app/tools.py:1467
+#: app/tools.py:1481
 msgid "The JSON does not parse, so nothing was written"
 msgstr "JSON не разбирается, поэтому ничего не записано"
 
-#: app/tools.py:1468
+#: app/tools.py:1482
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "Имя документа не подходит: {detail}"
 
-#: app/tools.py:1469
+#: app/tools.py:1483
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "Для csv нужны rows: список строк, каждая — список ячеек"
 
-#: app/tools.py:1471
+#: app/tools.py:1485
 msgid "The document could not be written"
 msgstr "Документ не удалось записать"
 
-#: app/tools.py:1485
+#: app/tools.py:1499
 msgid "User not identified for documents"
 msgstr "Пользователь не определён для работы с документами"
 
-#: app/tools.py:1506
+#: app/tools.py:1520
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1210,16 +1229,16 @@ msgstr ""
 "Сохранено как {name} ({size} КБ) в ваших документах. Отметьте его "
 "галочкой, чтобы включить поиск."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1519
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1533
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Неизвестный навык: {name}"
 
-#: app/tools.py:1678
+#: app/tools.py:1692
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."
 
-#: app/tools.py:1693
+#: app/tools.py:1707
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1227,11 +1246,11 @@ msgstr ""
 "Вызов отклонён: он повторяет вызов с теми же аргументами, результат "
 "которого уже приведён выше."
 
-#: app/tools.py:1699
+#: app/tools.py:1713
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."
 
-#: app/tools.py:1753
+#: app/tools.py:1767
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Неизвестный инструмент: {tool}"
@@ -1438,7 +1457,7 @@ msgstr "Переиндексация запущена"
 msgid "Camera integration is not available"
 msgstr "Интеграция с камерой недоступна"
 
-#: app/routes/admin.py:2348 app/templates/admin.html:1063
+#: app/routes/admin.py:2348 app/templates/admin.html:1064
 msgid "Camera unavailable"
 msgstr "Камера недоступна"
 
@@ -1454,7 +1473,7 @@ msgstr "Файл логотипа не передан"
 msgid "Uploaded file is empty"
 msgstr "Загруженный файл пуст"
 
-#: app/routes/admin.py:2500 app/templates/admin.html:1141
+#: app/routes/admin.py:2500 app/templates/admin.html:1142
 msgid "Logo is too large (max 2 MB)"
 msgstr "Логотип слишком большой (макс. 2 МБ)"
 
@@ -1477,7 +1496,7 @@ msgstr "Некорректный файл изображения"
 msgid "Request body must be a JSON object"
 msgstr "Тело запроса должно быть JSON-объектом"
 
-#: app/routes/admin.py:2583 app/templates/admin.html:1143
+#: app/routes/admin.py:2583 app/templates/admin.html:1144
 msgid "Site name is too long (max 40 characters per language)"
 msgstr "Название слишком длинное (макс. 40 символов на язык)"
 
@@ -1557,7 +1576,7 @@ msgstr "Встроенный навык лежит в проекте и не м�
 #: app/routes/tasks.py:824 app/routes/tasks.py:870 app/routes/tasks.py:968
 #: app/routes/tasks.py:978 app/routes/tasks.py:1151 app/routes/tasks.py:1173
 #: app/routes/tasks.py:1210 app/routes/tasks.py:1255 app/routes/tts.py:13
-#: app/templates/chat.html:197 modules/cam.py:544 modules/cam.py:550
+#: app/templates/chat.html:200 modules/cam.py:544 modules/cam.py:550
 #: modules/cam.py:558 modules/cam.py:578
 msgid "Not authorized"
 msgstr "Не авторизован"
@@ -1814,7 +1833,7 @@ msgstr "Поле 'doc_ids' должно быть списком строк"
 #: app/routes/api_v1.py:1650 app/routes/api_v1.py:1657
 #: app/routes/messages.py:53 app/routes/rlm.py:97 app/routes/sessions.py:119
 #: app/routes/sessions.py:153 app/routes/sessions.py:205
-#: app/routes/sessions.py:221 app/templates/chat.html:212
+#: app/routes/sessions.py:221 app/templates/chat.html:215
 msgid "Session not found"
 msgstr "Сессия не найдена"
 
@@ -1850,7 +1869,7 @@ msgstr "Некорректный стиль ответа"
 msgid "Invalid backup type"
 msgstr "Некорректный тип резервной копии"
 
-#: app/routes/backups.py:260 app/templates/admin.html:1040
+#: app/routes/backups.py:260 app/templates/admin.html:1041
 msgid "Error creating backup"
 msgstr "Ошибка при создании резервной копии"
 
@@ -1866,7 +1885,7 @@ msgstr "Файл резервной копии не найден"
 msgid "Archive checksum mismatch. File may be corrupted."
 msgstr "Контрольная сумма не совпадает. Файл может быть повреждён."
 
-#: app/routes/backups.py:372 app/templates/admin.html:1041
+#: app/routes/backups.py:372 app/templates/admin.html:1042
 msgid "Error restoring backup"
 msgstr "Ошибка при восстановлении"
 
@@ -1921,7 +1940,7 @@ msgid "Maximum file size {max_size} MB"
 msgstr "Максимальный размер файла {max_size} Мб"
 
 #: app/routes/documents.py:470 app/routes/documents.py:520
-#: app/templates/chat.html:211
+#: app/templates/chat.html:214
 msgid "Permission denied"
 msgstr "Нет доступа"
 
@@ -1930,7 +1949,7 @@ msgid "Could not read the document"
 msgstr "⚠️ Не удалось прочитать документ"
 
 #: app/routes/documents.py:608 app/routes/documents.py:636
-#: app/routes/documents.py:667 app/templates/chat.html:251
+#: app/routes/documents.py:667 app/templates/chat.html:254
 msgid "Preview is not available for this format"
 msgstr "Предпросмотр для этого формата недоступен"
 
@@ -1972,13 +1991,13 @@ msgid "Multiple documents are not supported in one message"
 msgstr "В одно сообщение можно приложить только один документ"
 
 #: app/routes/messages.py:224 app/routes/tasks.py:220
-#: app/templates/chat.html:285
+#: app/templates/chat.html:288
 msgid "max_audio_reached"
 msgstr ""
 "Не более {max} аудиозаписей в одном сообщении (голосовое считается за "
 "одну)"
 
-#: app/routes/messages.py:236 app/templates/chat.html:198
+#: app/routes/messages.py:236 app/templates/chat.html:201
 msgid "Empty message"
 msgstr "Пустое сообщение"
 
@@ -1992,13 +2011,13 @@ msgid "The image has been reduced."
 msgstr "Изображение было уменьшено."
 
 #: app/routes/messages.py:509 app/routes/messages.py:573
-#: app/templates/chat.html:202
+#: app/templates/chat.html:205
 #, python-brace-format
 msgid "Request queued (position {pos})"
 msgstr "Запрос поставлен в очередь (позиция {pos})"
 
 #: app/routes/messages.py:540 app/routes/messages.py:554
-#: app/templates/chat.html:311
+#: app/templates/chat.html:314
 msgid "Text request"
 msgstr "Текстовый запрос"
 
@@ -2062,7 +2081,7 @@ msgstr "Сессия не найдена или доступ запрещён"
 msgid "Permission denied or session not found"
 msgstr "Нет прав или сеанс не найден"
 
-#: app/routes/sessions.py:217 app/templates/chat.html:213
+#: app/routes/sessions.py:217 app/templates/chat.html:216
 msgid "No active session"
 msgstr "Нет активного сеанса"
 
@@ -2338,7 +2357,7 @@ msgstr "верификатор ответил на другом языке"
 msgid "Admin Panel"
 msgstr "Панель администратора"
 
-#: app/templates/admin.html:11 app/templates/admin.html:1066
+#: app/templates/admin.html:11 app/templates/admin.html:1067
 msgid "Hardware"
 msgstr "Оборудование"
 
@@ -2354,7 +2373,7 @@ msgstr "Мониторинг"
 msgid "Settings"
 msgstr "Настройки"
 
-#: app/templates/admin.html:15 app/templates/admin.html:1104
+#: app/templates/admin.html:15 app/templates/admin.html:1105
 msgid "Model Hub"
 msgstr "Хаб Моделей"
 
@@ -2370,12 +2389,12 @@ msgstr "Навыки"
 msgid "MCP"
 msgstr "MCP"
 
-#: app/templates/admin.html:20 app/templates/admin.html:1054
+#: app/templates/admin.html:20 app/templates/admin.html:1055
 msgid "Cameras"
 msgstr "Камеры"
 
 # Backup/restore translations
-#: app/templates/admin.html:22 app/templates/admin.html:1025
+#: app/templates/admin.html:22 app/templates/admin.html:1026
 msgid "Backups"
 msgstr "Резервные копии"
 
@@ -2383,7 +2402,7 @@ msgstr "Резервные копии"
 msgid "Personalization"
 msgstr "Персонализация"
 
-#: app/templates/admin.html:30 app/templates/admin.html:1067
+#: app/templates/admin.html:30 app/templates/admin.html:1068
 msgid "Update hardware list"
 msgstr "Обновить список оборудования"
 
@@ -2391,26 +2410,26 @@ msgstr "Обновить список оборудования"
 msgid "Add user"
 msgstr "Добавить пользователя"
 
-#: app/templates/admin.html:48 app/templates/admin.html:941
+#: app/templates/admin.html:48 app/templates/admin.html:942
 msgid "User DB"
 msgstr "База пользователей"
 
 #: app/templates/admin.html:48 app/templates/admin.html:49
 #: app/templates/admin.html:50 app/templates/admin.html:51
-#: app/templates/admin.html:52 app/templates/admin.html:945
-#: app/templates/admin.html:976
+#: app/templates/admin.html:52 app/templates/admin.html:946
+#: app/templates/admin.html:977
 msgid "MB"
 msgstr "МБ"
 
-#: app/templates/admin.html:49 app/templates/admin.html:942
+#: app/templates/admin.html:49 app/templates/admin.html:943
 msgid "Chat DB"
 msgstr "База чатов"
 
-#: app/templates/admin.html:50 app/templates/admin.html:943
+#: app/templates/admin.html:50 app/templates/admin.html:944
 msgid "Files DB"
 msgstr "База файлов"
 
-#: app/templates/admin.html:51 app/templates/admin.html:944
+#: app/templates/admin.html:51 app/templates/admin.html:945
 msgid "Documents DB"
 msgstr "База документов"
 
@@ -2419,12 +2438,12 @@ msgid "Saved by deduplication"
 msgstr "Сэкономлено дедупликацией"
 
 #: app/templates/admin.html:61 app/templates/admin.html:212
-#: app/templates/admin.html:1093
+#: app/templates/admin.html:1094
 msgid "Outgoing tokens"
 msgstr "Исходящие токены"
 
 #: app/templates/admin.html:62 app/templates/admin.html:220
-#: app/templates/admin.html:1094
+#: app/templates/admin.html:1095
 msgid "Incoming tokens"
 msgstr "Входящие токены"
 
@@ -2433,7 +2452,7 @@ msgid "Documents (shared)"
 msgstr "Документы (общие)"
 
 #: app/templates/admin.html:64 app/templates/admin.html:204
-#: app/templates/admin.html:1099
+#: app/templates/admin.html:1100
 msgid "Internet requests"
 msgstr "Запросы в интернет"
 
@@ -2441,37 +2460,37 @@ msgstr "Запросы в интернет"
 msgid "Network tools"
 msgstr "Сетевые инструменты"
 
-#: app/templates/admin.html:66 app/templates/admin.html:1098
+#: app/templates/admin.html:66 app/templates/admin.html:1099
 msgid "SLM Facts"
 msgstr "SLM факты"
 
-#: app/templates/admin.html:67 app/templates/admin.html:1100
+#: app/templates/admin.html:67 app/templates/admin.html:1101
 msgid "Tavily API"
 msgstr "Tavily API"
 
-#: app/templates/admin.html:68 app/templates/admin.html:1101
+#: app/templates/admin.html:68 app/templates/admin.html:1102
 msgid "FLAI API"
 msgstr "ПЛИИ API"
 
 #: app/templates/admin.html:69 app/templates/admin.html:591
-#: app/templates/admin.html:664 app/templates/admin.html:1102
+#: app/templates/admin.html:664 app/templates/admin.html:1103
 msgid "Camera access"
 msgstr "Доступ к камерам"
 
 #: app/templates/admin.html:71 app/templates/admin.html:464
-#: app/templates/admin.html:655 app/templates/admin.html:1059
-#: app/templates/admin.html:1085
+#: app/templates/admin.html:655 app/templates/admin.html:1060
+#: app/templates/admin.html:1086
 msgid "Status"
 msgstr "Статус"
 
 #: app/templates/admin.html:72 app/templates/admin.html:565
-#: app/templates/admin.html:656 app/templates/admin.html:1086
+#: app/templates/admin.html:656 app/templates/admin.html:1087
 #: app/templates/login.html:14
 msgid "Login"
 msgstr "Логин"
 
 #: app/templates/admin.html:73 app/templates/admin.html:569
-#: app/templates/admin.html:657 app/templates/admin.html:1087
+#: app/templates/admin.html:657 app/templates/admin.html:1088
 #: app/templates/login.html:18
 msgid "Password"
 msgstr "Пароль"
@@ -2479,47 +2498,47 @@ msgstr "Пароль"
 #: app/templates/admin.html:74 app/templates/admin.html:379
 #: app/templates/admin.html:393 app/templates/admin.html:413
 #: app/templates/admin.html:573 app/templates/admin.html:658
-#: app/templates/admin.html:1088
+#: app/templates/admin.html:1089
 msgid "Name"
 msgstr "Имя"
 
 #: app/templates/admin.html:75 app/templates/admin.html:577
-#: app/templates/admin.html:659 app/templates/admin.html:1089
+#: app/templates/admin.html:659 app/templates/admin.html:1090
 msgid "Class"
 msgstr "Класс"
 
 #: app/templates/admin.html:76 app/templates/admin.html:139
-#: app/templates/admin.html:1090
+#: app/templates/admin.html:1091
 msgid "Storage"
 msgstr "Хранилище"
 
 #: app/templates/admin.html:77 app/templates/admin.html:180
-#: app/templates/admin.html:660 app/templates/admin.html:1091
-#: app/templates/chat.html:20 app/templates/chat.html:216
+#: app/templates/admin.html:660 app/templates/admin.html:1092
+#: app/templates/chat.html:20 app/templates/chat.html:219
 msgid "Sessions"
 msgstr "Сеансы"
 
 # Tasks subsystem (v12.6): панель «Задачи» UI (chat.html, chat-tasks.js)
 #: app/templates/admin.html:78 app/templates/admin.html:196
-#: app/templates/admin.html:710 app/templates/admin.html:1092
-#: app/templates/chat.html:15 app/templates/chat.html:218
+#: app/templates/admin.html:710 app/templates/admin.html:1093
+#: app/templates/chat.html:15 app/templates/chat.html:221
 msgid "Tasks"
 msgstr "Задачи"
 
 #: app/templates/admin.html:81 app/templates/admin.html:188
-#: app/templates/admin.html:661 app/templates/admin.html:1095
-#: app/templates/chat.html:69 app/templates/chat.html:265
+#: app/templates/admin.html:661 app/templates/admin.html:1096
+#: app/templates/chat.html:70 app/templates/chat.html:268
 msgid "Messages"
 msgstr "Сообщения"
 
 #: app/templates/admin.html:82 app/templates/admin.html:228
-#: app/templates/admin.html:662 app/templates/admin.html:1096
+#: app/templates/admin.html:662 app/templates/admin.html:1097
 msgid "Files"
 msgstr "Файлы"
 
 #: app/templates/admin.html:92 app/templates/admin.html:418
 #: app/templates/admin.html:504 app/templates/admin.html:666
-#: app/templates/admin.html:1051 app/templates/admin.html:1103
+#: app/templates/admin.html:1052 app/templates/admin.html:1104
 msgid "Actions"
 msgstr "Действия"
 
@@ -2640,9 +2659,9 @@ msgstr ""
 "считается здесь и в «Документах»."
 
 #: app/templates/admin.html:236 app/templates/admin.html:663
-#: app/templates/admin.html:1097 app/templates/chat.html:9
-#: app/templates/chat.html:217 app/templates/chat.html:402
-#: app/templates/chat.html:516
+#: app/templates/admin.html:1098 app/templates/chat.html:9
+#: app/templates/chat.html:220 app/templates/chat.html:405
+#: app/templates/chat.html:521
 msgid "Documents"
 msgstr "Документы"
 
@@ -2658,39 +2677,39 @@ msgstr "Режим работы"
 msgid "One universal model"
 msgstr "Одна универсальная модель"
 
-#: app/templates/admin.html:256 app/templates/admin.html:1112
+#: app/templates/admin.html:256 app/templates/admin.html:1113
 msgid "Two models: multimodal and reasoning"
 msgstr "Две модели: мультимодальная и рассуждающая"
 
-#: app/templates/admin.html:262 app/templates/admin.html:949
+#: app/templates/admin.html:262 app/templates/admin.html:950
 msgid "Refresh models from llama-server"
 msgstr "Обновить модели из llama-server"
 
-#: app/templates/admin.html:262 app/templates/admin.html:950
+#: app/templates/admin.html:262 app/templates/admin.html:951
 msgid "Update model list"
 msgstr "Обновить список моделей"
 
-#: app/templates/admin.html:271 app/templates/admin.html:990
+#: app/templates/admin.html:271 app/templates/admin.html:991
 msgid "Chunks"
 msgstr "Чанки"
 
-#: app/templates/admin.html:274 app/templates/admin.html:991
+#: app/templates/admin.html:274 app/templates/admin.html:992
 msgid "Chunk Size (characters)"
 msgstr "Размер чанка (символов)"
 
-#: app/templates/admin.html:278 app/templates/admin.html:992
+#: app/templates/admin.html:278 app/templates/admin.html:993
 msgid "Chunk Overlap (characters)"
 msgstr "Перекрытие чанков (символов)"
 
-#: app/templates/admin.html:282 app/templates/admin.html:993
+#: app/templates/admin.html:282 app/templates/admin.html:994
 msgid "Chunk Strategy"
 msgstr "Стратегия чанкинга"
 
-#: app/templates/admin.html:284 app/templates/admin.html:994
+#: app/templates/admin.html:284 app/templates/admin.html:995
 msgid "Fixed (by size)"
 msgstr "Фиксированный (по размеру)"
 
-#: app/templates/admin.html:285 app/templates/admin.html:995
+#: app/templates/admin.html:285 app/templates/admin.html:996
 msgid "Structural (by headings)"
 msgstr "Структурный (по заголовкам)"
 
@@ -2712,8 +2731,8 @@ msgstr "Порог (рассуждения)"
 
 #: app/templates/admin.html:304 app/templates/admin.html:446
 #: app/templates/admin.html:620 app/templates/admin.html:649
-#: app/templates/admin.html:989 app/templates/chat.html:73
-#: app/templates/chat.html:332
+#: app/templates/admin.html:990 app/templates/chat.html:74
+#: app/templates/chat.html:335
 msgid "Save"
 msgstr "Сохранить"
 
@@ -2765,12 +2784,12 @@ msgstr "Имя модели"
 msgid "Search models on Hugging Face…"
 msgstr "Поиск моделей на Hugging Face…"
 
-#: app/templates/admin.html:343 app/templates/admin.html:1078
+#: app/templates/admin.html:343 app/templates/admin.html:1079
 msgid "Search"
 msgstr "Поиск"
 
 #: app/templates/admin.html:351 app/templates/admin.html:503
-#: app/templates/admin.html:1049
+#: app/templates/admin.html:1050
 msgid "Size"
 msgstr "Размер"
 
@@ -2802,8 +2821,8 @@ msgstr "Токен"
 msgid "Allowed tools"
 msgstr "Разрешённые инструменты"
 
-#: app/templates/admin.html:383 app/templates/admin.html:953
-#: app/templates/chat.html:54 app/templates/chat.html:215
+#: app/templates/admin.html:383 app/templates/admin.html:954
+#: app/templates/chat.html:55 app/templates/chat.html:218
 msgid "Chat"
 msgstr "Чат"
 
@@ -2869,63 +2888,63 @@ msgid "Russian body (optional)"
 msgstr "Текст на русском (необязательно)"
 
 #: app/templates/admin.html:447 app/templates/admin.html:650
-#: app/templates/admin.html:1120 app/templates/chat.html:330
+#: app/templates/admin.html:1121 app/templates/chat.html:333
 msgid "Cancel"
 msgstr "Отмена"
 
-#: app/templates/admin.html:457 app/templates/admin.html:1055
+#: app/templates/admin.html:457 app/templates/admin.html:1056
 msgid "Update camera list"
 msgstr "Обновить список камер"
 
-#: app/templates/admin.html:465 app/templates/admin.html:1056
+#: app/templates/admin.html:465 app/templates/admin.html:1057
 msgid "Code"
 msgstr "Код"
 
-#: app/templates/admin.html:466 app/templates/admin.html:1057
+#: app/templates/admin.html:466 app/templates/admin.html:1058
 msgid "Room"
 msgstr "Комната"
 
-#: app/templates/admin.html:467 app/templates/admin.html:1058
+#: app/templates/admin.html:467 app/templates/admin.html:1059
 msgid "Preview"
 msgstr "Миниатюра"
 
-#: app/templates/admin.html:475 app/templates/admin.html:1060
+#: app/templates/admin.html:475 app/templates/admin.html:1061
 msgid "No cameras configured"
 msgstr "Камеры не настроены"
 
-#: app/templates/admin.html:485 app/templates/admin.html:1052
+#: app/templates/admin.html:485 app/templates/admin.html:1053
 msgid "Update backup list"
 msgstr "Обновить список резервных копий"
 
-#: app/templates/admin.html:487 app/templates/admin.html:1026
+#: app/templates/admin.html:487 app/templates/admin.html:1027
 msgid "Backup type"
 msgstr "Тип резервной копии"
 
-#: app/templates/admin.html:489 app/templates/admin.html:1027
+#: app/templates/admin.html:489 app/templates/admin.html:1028
 msgid "Users only"
 msgstr "Только пользователи"
 
-#: app/templates/admin.html:490 app/templates/admin.html:1028
+#: app/templates/admin.html:490 app/templates/admin.html:1029
 msgid "Full (users + chats + files)"
 msgstr "Полная (пользователи + чаты + файлы)"
 
-#: app/templates/admin.html:492 app/templates/admin.html:1029
+#: app/templates/admin.html:492 app/templates/admin.html:1030
 msgid "Create backup"
 msgstr "Создать резервную копию"
 
-#: app/templates/admin.html:500 app/templates/admin.html:1050
+#: app/templates/admin.html:500 app/templates/admin.html:1051
 msgid "Created"
 msgstr "Создана"
 
-#: app/templates/admin.html:501 app/templates/admin.html:1047
+#: app/templates/admin.html:501 app/templates/admin.html:1048
 msgid "Filename"
 msgstr "Имя файла"
 
-#: app/templates/admin.html:502 app/templates/admin.html:1048
+#: app/templates/admin.html:502 app/templates/admin.html:1049
 msgid "Type"
 msgstr "Тип"
 
-#: app/templates/admin.html:513 app/templates/admin.html:1033
+#: app/templates/admin.html:513 app/templates/admin.html:1034
 msgid "No backups found"
 msgstr "Резервные копии не найдены"
 
@@ -3015,7 +3034,7 @@ msgid "Leave all unchecked to deny access to all cameras."
 msgstr "Оставьте все неотмеченными — доступ будет закрыт ко всем камерам."
 
 #: app/templates/admin.html:602 app/templates/admin.html:668
-#: app/templates/chat.html:331
+#: app/templates/chat.html:334
 msgid "Create"
 msgstr "Создать"
 
@@ -3069,7 +3088,7 @@ msgstr "Удалить"
 msgid "Delete user"
 msgstr "Удалить пользователя"
 
-#: app/templates/admin.html:676 app/templates/chat.html:288
+#: app/templates/admin.html:676 app/templates/chat.html:291
 msgid "unknown_error"
 msgstr "Неизвестная ошибка"
 
@@ -3153,7 +3172,7 @@ msgstr "Источник: умолчание"
 msgid "This version ships"
 msgstr "В этой версии"
 
-#: app/templates/admin.html:703 app/templates/admin.html:951
+#: app/templates/admin.html:703 app/templates/admin.html:952
 msgid "Saved"
 msgstr "Сохранено"
 
@@ -3185,8 +3204,8 @@ msgstr "Документы и RAG"
 msgid "Scheduler"
 msgstr "Планировщик"
 
-#: app/templates/admin.html:714 app/templates/admin.html:1031
-#: app/templates/admin.html:1133 app/templates/base.html:109
+#: app/templates/admin.html:714 app/templates/admin.html:1032
+#: app/templates/admin.html:1134 app/templates/base.html:81
 msgid "Delete"
 msgstr "Удалить"
 
@@ -3366,7 +3385,7 @@ msgstr "Переупорядочивать верхние кандидаты CPU
 msgid "How many top candidates the reranker reorders"
 msgstr "Сколько верхних кандидатов переупорядочивает реранкер"
 
-#: app/templates/admin.html:763 app/templates/admin.html:937
+#: app/templates/admin.html:763 app/templates/admin.html:938
 msgid "Reranker request timeout (seconds)"
 msgstr "Таймаут запроса к реранкеру (секунды)"
 
@@ -3528,13 +3547,21 @@ msgstr ""
 
 #: app/templates/admin.html:801
 msgid ""
+"The smallest step between two runs of a recurring action (5 on a GPU "
+"host, 15 on a CPU-only one)"
+msgstr ""
+"Наименьший шаг между двумя запусками повторяющегося действия (5 на "
+"GPU-хосте, 15 на CPU)"
+
+#: app/templates/admin.html:802
+msgid ""
 "A reminder missed while the server was down: all of them, only the last "
 "one, or none"
 msgstr ""
 "Напоминание, пропущенное пока сервер был выключен: все, только последнее "
 "или ни одного"
 
-#: app/templates/admin.html:802
+#: app/templates/admin.html:803
 msgid ""
 "An action missed while the server was down: all of them, only the last "
 "one, or none"
@@ -3542,7 +3569,7 @@ msgstr ""
 "Действие, пропущенное пока сервер был выключен: все, только последнее или"
 " ни одного"
 
-#: app/templates/admin.html:803
+#: app/templates/admin.html:804
 msgid ""
 "The most firings one catch-up delivers; past it only the newest arrives, "
 "with how many were skipped"
@@ -3550,7 +3577,7 @@ msgstr ""
 "Сколько срабатываний доставит одно догоняющее: сверх этого приходит "
 "только последнее, с числом пропущенных"
 
-#: app/templates/admin.html:804
+#: app/templates/admin.html:805
 msgid ""
 "Minutes before its target an action is enqueued, so the queue can wait "
 "without making it late"
@@ -3558,7 +3585,7 @@ msgstr ""
 "За сколько минут до цели ставится действие, чтобы очередь успела без "
 "искусственного опоздания"
 
-#: app/templates/admin.html:805
+#: app/templates/admin.html:806
 msgid ""
 "Minutes after its target a task that never started is cancelled with a "
 "short notice"
@@ -3566,7 +3593,7 @@ msgstr ""
 "Через сколько минут после цели задача, так и не начавшаяся, отменяется с "
 "коротким уведомлением"
 
-#: app/templates/admin.html:806
+#: app/templates/admin.html:807
 msgid ""
 "How much work one task request may spend: min, norm or max (applies after"
 " a restart)"
@@ -3574,11 +3601,11 @@ msgstr ""
 "Сколько работы может потратить один запрос задачи: min, norm или "
 "max(применяется после перезапуска)"
 
-#: app/templates/admin.html:807
+#: app/templates/admin.html:808
 msgid "When a step is checked: each, final or off (applies after a restart)"
 msgstr "Когда проверяется шаг: each, final или off (применяется послеперезапуска)"
 
-#: app/templates/admin.html:808
+#: app/templates/admin.html:809
 msgid ""
 "Offer tools from the configured MCP servers to the chat model (applies "
 "immediately)"
@@ -3586,11 +3613,11 @@ msgstr ""
 "Отдавать инструменты настроенных MCP-серверов модели чата "
 "(применяетсясразу)"
 
-#: app/templates/admin.html:809
+#: app/templates/admin.html:810
 msgid "Timeout for one MCP request (seconds)"
 msgstr "Таймаут одного запроса к MCP (секунды)"
 
-#: app/templates/admin.html:810
+#: app/templates/admin.html:811
 #, python-brace-format
 msgid ""
 "Configured MCP servers: a JSON array of {name, url, token, allow} "
@@ -3599,7 +3626,7 @@ msgstr ""
 "Настроенные MCP-серверы: JSON-массив {name, url, token, "
 "allow}(применяется сразу)"
 
-#: app/templates/admin.html:811
+#: app/templates/admin.html:812
 msgid ""
 "Route through the request kernel (one JSON decision) instead of the "
 "marker router"
@@ -3607,15 +3634,15 @@ msgstr ""
 "Маршрутизировать через ядро запроса (одно JSON-решение) вместо роутерапо "
 "маркерам"
 
-#: app/templates/admin.html:812
+#: app/templates/admin.html:813
 msgid "Ask the server for a JSON-object reply from the request kernel"
 msgstr "Просить у сервера ответ в виде JSON-объекта для ядра запроса"
 
-#: app/templates/admin.html:813
+#: app/templates/admin.html:814
 msgid "Ask for a schema-constrained reply from the request kernel"
 msgstr "Просить у сервера ответ по схеме от ядра запросов"
 
-#: app/templates/admin.html:814
+#: app/templates/admin.html:815
 msgid ""
 "Keep residents that fit next to a new model (auto) or unload everything "
 "(off)"
@@ -3623,41 +3650,41 @@ msgstr ""
 "Оставлять резидентные модели, если новая помещается рядом (auto), "
 "иливыгружать всё (off)"
 
-#: app/templates/admin.html:815
+#: app/templates/admin.html:816
 msgid "VRAM kept free for prefill buffers when deciding what to unload"
 msgstr "VRAM, оставляемая свободной под буферы префилла при решении, чтовыгружать"
 
-#: app/templates/admin.html:816
+#: app/templates/admin.html:817
 msgid "RAM kept free for the OS before an idle model is unloaded for a service"
 msgstr "RAM, оставляемая свободной для ОС, прежде чем выгрузить модель радисервиса"
 
-#: app/templates/admin.html:817
+#: app/templates/admin.html:818
 msgid "RAM kept free on a CPU-only host when deciding whether both big models fit"
 msgstr ""
 "RAM, оставляемая свободной на CPU-хосте при решении, помещаются ли "
 "обебольшие модели"
 
-#: app/templates/admin.html:818
+#: app/templates/admin.html:819
 msgid "CPU-only hosts: idle seconds before the reasoning model releases its RAM"
 msgstr "CPU-хосты: секунды простоя до того, как модель рассуждений освободит RAM"
 
-#: app/templates/admin.html:819
+#: app/templates/admin.html:820
 msgid "VRAM budget assumed for the LTX video pipeline when it is not measured"
 msgstr "Бюджет VRAM для видеоконвейера LTX, когда он не измерен"
 
-#: app/templates/admin.html:820
+#: app/templates/admin.html:821
 msgid "CPU-only LTX generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "Бюджет генерации LTX на CPU в секундах (0 = 85% таймаута)"
 
-#: app/templates/admin.html:821
+#: app/templates/admin.html:822
 msgid "CPU-only Wan generation budget in seconds (0 = 85 percent of the timeout)"
 msgstr "Бюджет генерации Wan на CPU в секундах (0 = 85% таймаута)"
 
-#: app/templates/admin.html:822
+#: app/templates/admin.html:823
 msgid "Snapshots one \"check every room\" request may take"
 msgstr "Сколько снимков может сделать один запрос «проверить все комнаты»"
 
-#: app/templates/admin.html:823
+#: app/templates/admin.html:824
 msgid ""
 "Snapshot width the vision model reads in chat (384 px previews are too "
 "small)"
@@ -3665,468 +3692,468 @@ msgstr ""
 "Ширина снимка, которую читает модель зрения в чате (превью 384 pxслишком "
 "малы)"
 
-#: app/templates/admin.html:824
+#: app/templates/admin.html:825
 msgid "Recent messages passed to the router"
 msgstr "Последних сообщений для роутера"
 
-#: app/templates/admin.html:825
+#: app/templates/admin.html:826
 msgid "Characters per message passed to the router"
 msgstr "Символов на сообщение для роутера"
 
-#: app/templates/admin.html:826
+#: app/templates/admin.html:827
 msgid "Long-term facts passed to the router"
 msgstr "Долговременных фактов для роутера"
 
-#: app/templates/admin.html:827
+#: app/templates/admin.html:828
 msgid "Startup health-check attempts per service"
 msgstr "Попыток проверки сервиса при старте"
 
-#: app/templates/admin.html:828
+#: app/templates/admin.html:829
 msgid "Delay between startup health checks (seconds)"
 msgstr "Пауза между проверками при старте (секунды)"
 
-#: app/templates/admin.html:829
+#: app/templates/admin.html:830
 msgid "How long to wait for VRAM to free (seconds)"
 msgstr "Сколько ждать освобождения VRAM (секунды)"
 
-#: app/templates/admin.html:830
+#: app/templates/admin.html:831
 msgid "Image generation wrapper URL"
 msgstr "Адрес обёртки генерации изображений"
 
-#: app/templates/admin.html:831
+#: app/templates/admin.html:832
 msgid "Model used for image generation"
 msgstr "Модель для генерации изображений"
 
-#: app/templates/admin.html:832
+#: app/templates/admin.html:833
 msgid "Model used for image editing"
 msgstr "Модель для редактирования изображений"
 
-#: app/templates/admin.html:833
+#: app/templates/admin.html:834
 msgid "Image generation timeout (seconds)"
 msgstr "Таймаут генерации изображения (секунды)"
 
-#: app/templates/admin.html:834
+#: app/templates/admin.html:835
 msgid "Default image width (pixels)"
 msgstr "Ширина изображения по умолчанию (пиксели)"
 
-#: app/templates/admin.html:835
+#: app/templates/admin.html:836
 msgid "Default image height (pixels)"
 msgstr "Высота изображения по умолчанию (пиксели)"
 
-#: app/templates/admin.html:836
+#: app/templates/admin.html:837
 msgid "Default diffusion steps"
 msgstr "Шагов диффузии по умолчанию"
 
-#: app/templates/admin.html:837
+#: app/templates/admin.html:838
 msgid "Default classifier-free guidance scale"
 msgstr "Масштаб CFG по умолчанию"
 
-#: app/templates/admin.html:838
+#: app/templates/admin.html:839
 msgid "Video backend (ltx or wan)"
 msgstr "Видеобэкенд (ltx или wan)"
 
-#: app/templates/admin.html:839
+#: app/templates/admin.html:840
 msgid "LTX-Video wrapper URL"
 msgstr "URL обёртки LTX-Video"
 
-#: app/templates/admin.html:840
+#: app/templates/admin.html:841
 msgid "LTX-Video model file"
 msgstr "Файл модели LTX-Video"
 
-#: app/templates/admin.html:841
+#: app/templates/admin.html:842
 msgid "LTX-Video generation timeout (seconds)"
 msgstr "Таймаут генерации LTX-Video (сек)"
 
-#: app/templates/admin.html:842
+#: app/templates/admin.html:843
 msgid "Wan video wrapper URL (sd.cpp container)"
 msgstr "URL обёртки видео Wan (контейнер sd.cpp)"
 
-#: app/templates/admin.html:843
+#: app/templates/admin.html:844
 msgid "Wan 2.2 model file"
 msgstr "Файл модели Wan 2.2"
 
-#: app/templates/admin.html:844
+#: app/templates/admin.html:845
 msgid "Wan generation timeout (seconds)"
 msgstr "Таймаут генерации Wan (сек)"
 
-#: app/templates/admin.html:845
+#: app/templates/admin.html:846
 msgid "Wan denoising steps (4 for Turbo)"
 msgstr "Шаги денойза Wan (4 для Turbo)"
 
-#: app/templates/admin.html:846
+#: app/templates/admin.html:847
 msgid "Wan classifier-free guidance scale"
 msgstr "Масштаб classifier-free guidance Wan"
 
-#: app/templates/admin.html:847
+#: app/templates/admin.html:848
 msgid "Wan flow shift"
 msgstr "Flow shift Wan"
 
-#: app/templates/admin.html:848
+#: app/templates/admin.html:849
 msgid "Allow Wan video generation on a CPU-only host"
 msgstr "Разрешить генерацию видео Wan на хосте только с CPU"
 
-#: app/templates/admin.html:849
+#: app/templates/admin.html:850
 msgid "Largest single image side (pixels)"
 msgstr "Максимальная сторона изображения (пиксели)"
 
-#: app/templates/admin.html:850
+#: app/templates/admin.html:851
 msgid "Largest image upload (MB)"
 msgstr "Максимальный размер изображения (МБ)"
 
-#: app/templates/admin.html:851
+#: app/templates/admin.html:852
 msgid "Side limit when several images are attached"
 msgstr "Предел стороны при нескольких изображениях"
 
-#: app/templates/admin.html:852
+#: app/templates/admin.html:853
 msgid "Maximum accepted image width"
 msgstr "Максимальная ширина изображения"
 
-#: app/templates/admin.html:853 app/templates/chat.html:352
-#: app/templates/chat.html:514
+#: app/templates/admin.html:854 app/templates/chat.html:355
+#: app/templates/chat.html:519
 msgid "Knowledge graph"
 msgstr "Граф знаний"
 
-#: app/templates/admin.html:854
+#: app/templates/admin.html:855
 msgid "Use the knowledge graph in retrieval"
 msgstr "Использовать граф знаний в поиске"
 
-#: app/templates/admin.html:855
+#: app/templates/admin.html:856
 msgid "Extract entities while idle (auto: on for a GPU host)"
 msgstr "Извлекать сущности в простое (auto: включено на хосте с GPU)"
 
-#: app/templates/admin.html:856
+#: app/templates/admin.html:857
 msgid "Model that extracts entities (multimodal or reasoning)"
 msgstr "Модель, извлекающая сущности (multimodal или reasoning)"
 
-#: app/templates/admin.html:857
+#: app/templates/admin.html:858
 msgid "Traversal depth around the seeds"
 msgstr "Глубина обхода вокруг семян"
 
-#: app/templates/admin.html:858
+#: app/templates/admin.html:859
 msgid "Entities seeded per question"
 msgstr "Сущностей-семян на вопрос"
 
-#: app/templates/admin.html:859
+#: app/templates/admin.html:860
 msgid "Relations turned into retrieval candidates"
 msgstr "Связей, превращаемых в кандидатов поиска"
 
-#: app/templates/admin.html:860
+#: app/templates/admin.html:861
 msgid "Share of the evidence budget the graph may take"
 msgstr "Доля бюджета доказательств, которую может занять граф"
 
-#: app/templates/admin.html:861
+#: app/templates/admin.html:862
 msgid "Cap for the graph block in the prompt"
 msgstr "Лимит блока графа в промпте"
 
-#: app/templates/admin.html:862
+#: app/templates/admin.html:863
 msgid "Node cap of one graph API response"
 msgstr "Предел узлов в одном ответе API графа"
 
-#: app/templates/admin.html:863
+#: app/templates/admin.html:864
 msgid "Cosine threshold for a document-to-document edge"
 msgstr "Порог косинуса для связи между документами"
 
-#: app/templates/admin.html:864
+#: app/templates/admin.html:865
 msgid "Document edges kept per document"
 msgstr "Связей документа, сохраняемых на документ"
 
-#: app/templates/admin.html:865
+#: app/templates/admin.html:866
 msgid "Maximum accepted image height"
 msgstr "Максимальная высота изображения"
 
-#: app/templates/admin.html:866
+#: app/templates/admin.html:867
 msgid "Images per chat message"
 msgstr "Изображений на одно сообщение"
 
-#: app/templates/admin.html:867
+#: app/templates/admin.html:868
 msgid "Audio attachments per chat message"
 msgstr "Аудиовложений на одно сообщение"
 
-#: app/templates/admin.html:868
+#: app/templates/admin.html:869
 msgid "Largest audio upload (MB)"
 msgstr "Максимальный размер аудио (МБ)"
 
-#: app/templates/admin.html:869
+#: app/templates/admin.html:870
 msgid "Largest voice message (MB)"
 msgstr "Максимальный размер голосового сообщения (МБ)"
 
-#: app/templates/admin.html:870
+#: app/templates/admin.html:871
 msgid "Enable deep analysis"
 msgstr "Включить глубокий анализ"
 
-#: app/templates/admin.html:871
+#: app/templates/admin.html:872
 msgid "Model driving the analysis loop"
 msgstr "Модель, ведущая цикл анализа"
 
-#: app/templates/admin.html:872
+#: app/templates/admin.html:873
 msgid "Hard ceiling on analysis steps"
 msgstr "Жёсткий предел шагов анализа"
 
-#: app/templates/admin.html:873
+#: app/templates/admin.html:874
 msgid "Wall-clock limit (0 = derived from the step budget)"
 msgstr "Лимит времени (0 — из бюджета шагов)"
 
-#: app/templates/admin.html:874
+#: app/templates/admin.html:875
 msgid "Sandbox execution limit (seconds)"
 msgstr "Лимит выполнения в песочнице (секунды)"
 
-#: app/templates/admin.html:875
+#: app/templates/admin.html:876
 msgid "Characters kept per observation"
 msgstr "Символов на одно наблюдение"
 
-#: app/templates/admin.html:876
+#: app/templates/admin.html:877
 msgid "Tokens per sub-model call"
 msgstr "Токенов на вызов под-модели"
 
-#: app/templates/admin.html:877
+#: app/templates/admin.html:878
 msgid "Web lookups per analysis"
 msgstr "Веб-запросов за анализ"
 
-#: app/templates/admin.html:878
+#: app/templates/admin.html:879
 msgid "Largest corpus accepted (characters)"
 msgstr "Максимальный корпус (символы)"
 
-#: app/templates/admin.html:879
+#: app/templates/admin.html:880
 msgid "Piper TTS service URL"
 msgstr "Адрес сервиса синтеза Piper"
 
-#: app/templates/admin.html:880
+#: app/templates/admin.html:881
 msgid "Piper synthesis timeout (seconds)"
 msgstr "Таймаут синтеза Piper (секунды)"
 
-#: app/templates/admin.html:881
+#: app/templates/admin.html:882
 msgid "Kokoro TTS service URL"
 msgstr "Адрес сервиса синтеза Kokoro"
 
-#: app/templates/admin.html:882
+#: app/templates/admin.html:883
 msgid "Kokoro synthesis timeout (seconds)"
 msgstr "Таймаут синтеза Kokoro (секунды)"
 
-#: app/templates/admin.html:883
+#: app/templates/admin.html:884
 msgid "Whisper speech-recognition URL"
 msgstr "Адрес распознавания речи Whisper"
 
-#: app/templates/admin.html:884
+#: app/templates/admin.html:885
 msgid "Transcription timeout (seconds)"
 msgstr "Таймаут расшифровки (секунды)"
 
-#: app/templates/admin.html:885
+#: app/templates/admin.html:886
 msgid "Run Whisper transcription on the GPU"
 msgstr "Выполнять транскрипцию Whisper на GPU"
 
-#: app/templates/admin.html:886
+#: app/templates/admin.html:887
 msgid "VRAM budget for the Whisper container (MB)"
 msgstr "Бюджет VRAM для контейнера Whisper (МБ)"
 
-#: app/templates/admin.html:887
+#: app/templates/admin.html:888
 msgid "SuperLocalMemory service URL"
 msgstr "Адрес сервиса SuperLocalMemory"
 
-#: app/templates/admin.html:888
+#: app/templates/admin.html:889
 msgid "Automatic fact extraction mode (auto, on, off)"
 msgstr "Режим автоматического извлечения фактов (auto, on, off)"
 
-#: app/templates/admin.html:889
+#: app/templates/admin.html:890
 msgid "Minimum recall score for non-profile facts"
 msgstr "Минимальный балл recall для фактов, кроме профиля"
 
-#: app/templates/admin.html:890
+#: app/templates/admin.html:891
 msgid "Quiet window before fact extraction starts (seconds)"
 msgstr "Тихий интервал перед извлечением фактов (сек)"
 
-#: app/templates/admin.html:891
+#: app/templates/admin.html:892
 msgid "Facts recalled per message"
 msgstr "Фактов на одно сообщение"
 
-#: app/templates/admin.html:892
+#: app/templates/admin.html:893
 msgid "Minimum similarity for a recalled fact"
 msgstr "Порог похожести для факта"
 
-#: app/templates/admin.html:893
+#: app/templates/admin.html:894
 msgid "Confidence below which a fact starts decaying"
 msgstr "Уверенность, ниже которой факт забывается"
 
-#: app/templates/admin.html:894
+#: app/templates/admin.html:895
 msgid "Days after which a fact loses weight"
 msgstr "Дней до снижения веса факта"
 
-#: app/templates/admin.html:895
+#: app/templates/admin.html:896
 msgid "Facts considered in one merge pass"
 msgstr "Фактов за один проход слияния"
 
-#: app/templates/admin.html:896
+#: app/templates/admin.html:897
 msgid "Characters per merged fact"
 msgstr "Символов на объединённый факт"
 
-#: app/templates/admin.html:897
+#: app/templates/admin.html:898
 msgid "Facts kept per merge batch"
 msgstr "Фактов в пакете слияния"
 
-#: app/templates/admin.html:898
+#: app/templates/admin.html:899
 msgid "Facts that must fit the model window"
 msgstr "Фактов, помещающихся в окно модели"
 
-#: app/templates/admin.html:899
+#: app/templates/admin.html:900
 msgid "Characters in a rolling session summary"
 msgstr "Символов в сводке сеанса"
 
-#: app/templates/admin.html:900
+#: app/templates/admin.html:901
 msgid "Messages read when building a summary"
 msgstr "Сообщений для построения сводки"
 
-#: app/templates/admin.html:901
+#: app/templates/admin.html:902
 msgid "Trimmed messages needed before summarizing"
 msgstr "Обрезанных сообщений до создания сводки"
 
-#: app/templates/admin.html:902
+#: app/templates/admin.html:903
 msgid "History matches per search"
 msgstr "Совпадений в истории на поиск"
 
-#: app/templates/admin.html:903
+#: app/templates/admin.html:904
 msgid "Characters of history context passed to the model"
 msgstr "Символов истории для модели"
 
-#: app/templates/admin.html:904
+#: app/templates/admin.html:905
 msgid "Characters per history message"
 msgstr "Символов на сообщение истории"
 
-#: app/templates/admin.html:905
+#: app/templates/admin.html:906
 msgid "Messages kept in the conversation window"
 msgstr "Сообщений в окне диалога"
 
-#: app/templates/admin.html:906
+#: app/templates/admin.html:907
 msgid "Messages loaded per session by default"
 msgstr "Сообщений загружается по умолчанию"
 
-#: app/templates/admin.html:907
+#: app/templates/admin.html:908
 msgid "Largest message page the API returns"
 msgstr "Максимальная страница сообщений в API"
 
-#: app/templates/admin.html:908
+#: app/templates/admin.html:909
 msgid "Enable the public OpenAI-compatible API"
 msgstr "Включить публичный OpenAI-совместимый API"
 
-#: app/templates/admin.html:909
+#: app/templates/admin.html:910
 msgid "Rate limits, e.g. 60 per minute;1000 per hour"
 msgstr "Лимиты, например 60 per minute;1000 per hour"
 
-#: app/templates/admin.html:910
+#: app/templates/admin.html:911
 msgid "Synchronous API waiters per instance"
 msgstr "Одновременных ожиданий API на инстанс"
 
-#: app/templates/admin.html:911
+#: app/templates/admin.html:912
 msgid "How long a synchronous request waits (seconds)"
 msgstr "Сколько ждёт синхронный запрос (секунды)"
 
-#: app/templates/admin.html:912
+#: app/templates/admin.html:913
 msgid "Allowed origins for /v1, comma separated"
 msgstr "Разрешённые origin для /v1 через запятую"
 
-#: app/templates/admin.html:913
+#: app/templates/admin.html:914
 msgid "How long API results stay in Redis (seconds)"
 msgstr "Сколько секунд результаты API живут в Redis"
 
-#: app/templates/admin.html:914
+#: app/templates/admin.html:915
 msgid "Enable camera support"
 msgstr "Включить поддержку камер"
 
-#: app/templates/admin.html:915
+#: app/templates/admin.html:916
 msgid "Room snapshot service URL"
 msgstr "Адрес сервиса снимков комнаты"
 
-#: app/templates/admin.html:916
+#: app/templates/admin.html:917
 msgid "Shared API key of the room snapshot service"
 msgstr "Общий API-ключ сервиса снимков комнат"
 
-#: app/templates/admin.html:917
+#: app/templates/admin.html:918
 msgid "Camera MCP server URL (agent mode)"
 msgstr "URL MCP-сервера камер (агентный режим)"
 
-#: app/templates/admin.html:918
+#: app/templates/admin.html:919
 msgid "Preview width requested from the camera service (pixels)"
 msgstr "Ширина превью, запрашиваемая у сервиса камер (пиксели)"
 
-#: app/templates/admin.html:919
+#: app/templates/admin.html:920
 msgid "Parallel camera captures per preview refresh"
 msgstr "Параллельных захватов камер за обновление превью"
 
-#: app/templates/admin.html:921
+#: app/templates/admin.html:922
 msgid "Camera service timeout (seconds)"
 msgstr "Таймаут сервиса камер (секунды)"
 
-#: app/templates/admin.html:922
+#: app/templates/admin.html:923
 msgid "Camera availability check interval (seconds)"
 msgstr "Интервал проверки доступности камер (секунды)"
 
-#: app/templates/admin.html:923
+#: app/templates/admin.html:924
 msgid "IANA timezone used for dates and monitoring"
 msgstr "Часовой пояс IANA для дат и мониторинга"
 
-#: app/templates/admin.html:924
+#: app/templates/admin.html:925
 msgid "Token for gated Hugging Face repositories"
 msgstr "Токен для закрытых репозиториев Hugging Face"
 
-#: app/templates/admin.html:925
+#: app/templates/admin.html:926
 msgid "Largest model file the Hub may download (GB)"
 msgstr "Максимальный файл модели для загрузки (ГБ)"
 
-#: app/templates/admin.html:926
+#: app/templates/admin.html:927
 msgid "Free disk margin kept after a download (GB)"
 msgstr "Свободный запас диска после загрузки (ГБ)"
 
-#: app/templates/admin.html:927
+#: app/templates/admin.html:928
 msgid "Results per Hugging Face search"
 msgstr "Результатов на поиск в Hugging Face"
 
-#: app/templates/admin.html:928
+#: app/templates/admin.html:929
 msgid "Download timeout (seconds)"
 msgstr "Таймаут загрузки (секунды)"
 
-#: app/templates/admin.html:929
+#: app/templates/admin.html:930
 msgid "Largest queue wait before a task is rejected (seconds)"
 msgstr "Максимальное ожидание в очереди (секунды)"
 
-#: app/templates/admin.html:930
+#: app/templates/admin.html:931
 msgid "Expose the debug endpoints"
 msgstr "Открыть отладочные эндпоинты"
 
-#: app/templates/admin.html:931
+#: app/templates/admin.html:932
 msgid "Log token-estimation details"
 msgstr "Логировать детали оценки токенов"
 
-#: app/templates/admin.html:932
+#: app/templates/admin.html:933
 msgid "Merge full-text and vector search results (RRF)"
 msgstr "Объединять полнотекстовый и векторный поиск (RRF)"
 
-#: app/templates/admin.html:933
+#: app/templates/admin.html:934
 msgid "Candidates fetched from each retriever before fusion"
 msgstr "Кандидатов из каждого поисковика до слияния"
 
-#: app/templates/admin.html:934
+#: app/templates/admin.html:935
 msgid "RRF constant: lower values favour the top of each list"
 msgstr "Константа RRF: меньше — сильнее влияет верх списка"
 
-#: app/templates/admin.html:935
+#: app/templates/admin.html:936
 msgid "Reorder retrieved candidates with a cross-encoder"
 msgstr "Переупорядочивать найденные фрагменты кросс-энкодером"
 
-#: app/templates/admin.html:936
+#: app/templates/admin.html:937
 msgid "Candidates scored by the reranker"
 msgstr "Кандидатов на вход реранкера"
 
-#: app/templates/admin.html:938
+#: app/templates/admin.html:939
 msgid "Searches and page fetches since the 1st of the month"
 msgstr "Поиски и загрузки страниц с 1-го числа месяца"
 
-#: app/templates/admin.html:939
+#: app/templates/admin.html:940
 msgid "Tavily API - unavailable"
 msgstr "Tavily API - недоступен"
 
-#: app/templates/admin.html:940
+#: app/templates/admin.html:941
 msgid "Tavily API - invalid key"
 msgstr "Tavily API - неверный ключ"
 
-#: app/templates/admin.html:946
+#: app/templates/admin.html:947
 #, python-brace-format
 msgid ""
 "Per-user limit in MB. Leave the field empty to use the default ({default}"
@@ -4135,111 +4162,111 @@ msgstr ""
 "Индивидуальный лимит в МБ. Оставьте поле пустым, чтобы использовать общий"
 " ({default} МБ)."
 
-#: app/templates/admin.html:947
+#: app/templates/admin.html:948
 msgid ""
 "Enter a whole number of megabytes, or leave the field empty for the "
 "default limit"
 msgstr "Введите целое число мегабайт или оставьте поле пустым для общего лимита"
 
-#: app/templates/admin.html:954
+#: app/templates/admin.html:955
 msgid "Reasoning"
 msgstr "Рассуждения"
 
-#: app/templates/admin.html:955
+#: app/templates/admin.html:956
 msgid "Multimodal"
 msgstr "Мультимодальная"
 
-#: app/templates/admin.html:956
+#: app/templates/admin.html:957
 msgid "Embedding"
 msgstr "Эмбеддинги"
 
-#: app/templates/admin.html:957
+#: app/templates/admin.html:958
 msgid "-- Select model --"
 msgstr "-- Выберите модель --"
 
-#: app/templates/admin.html:958 app/templates/chat.html:193
+#: app/templates/admin.html:959 app/templates/chat.html:196
 msgid "Loading..."
 msgstr "Загрузка..."
 
-#: app/templates/admin.html:959
+#: app/templates/admin.html:960
 msgid "No llama-server URL provided"
 msgstr "Не указан URL llama-server"
 
-#: app/templates/admin.html:960
+#: app/templates/admin.html:961
 msgid "Context Length"
 msgstr "Длина контекста"
 
-#: app/templates/admin.html:961
+#: app/templates/admin.html:962
 msgid "Temperature"
 msgstr "Температура"
 
-#: app/templates/admin.html:962
+#: app/templates/admin.html:963
 msgid "Top P"
 msgstr "Top P"
 
-#: app/templates/admin.html:963
+#: app/templates/admin.html:964
 msgid "Timeout (s)"
 msgstr "Таймаут (с)"
 
-#: app/templates/admin.html:964
+#: app/templates/admin.html:965
 msgid "Architecture:"
 msgstr "Архитектура:"
 
-#: app/templates/admin.html:965
+#: app/templates/admin.html:966
 msgid "Parameters:"
 msgstr "Параметры:"
 
-#: app/templates/admin.html:966
+#: app/templates/admin.html:967
 msgid "Quantization:"
 msgstr "Квантование:"
 
-#: app/templates/admin.html:967
+#: app/templates/admin.html:968
 msgid "Max context length:"
 msgstr "Макс. длина контекста:"
 
-#: app/templates/admin.html:968
+#: app/templates/admin.html:969
 msgid "from GGUF file"
 msgstr "из GGUF файла"
 
-#: app/templates/admin.html:969
+#: app/templates/admin.html:970
 msgid "from known models"
 msgstr "из известных моделей"
 
-#: app/templates/admin.html:970
+#: app/templates/admin.html:971
 msgid "Embedding length:"
 msgstr "Длина эмбеддинга:"
 
-#: app/templates/admin.html:971
+#: app/templates/admin.html:972
 msgid "File size:"
 msgstr "Размер файла:"
 
-#: app/templates/admin.html:972
+#: app/templates/admin.html:973
 msgid "Type:"
 msgstr "Тип:"
 
-#: app/templates/admin.html:973
+#: app/templates/admin.html:974
 msgid "MTP support:"
 msgstr "Поддержка MTP:"
 
-#: app/templates/admin.html:974
+#: app/templates/admin.html:975
 msgid "yes"
 msgstr "есть"
 
-#: app/templates/admin.html:975
+#: app/templates/admin.html:976
 msgid "no"
 msgstr "нет"
 
-#: app/templates/admin.html:977
+#: app/templates/admin.html:978
 msgid "timeout_fetching_model_info"
 msgstr "Превышен таймаут при получении информации о модели"
 
-#: app/templates/admin.html:978
+#: app/templates/admin.html:979
 msgid "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
 msgstr ""
 "Эту модель нельзя сохранить (недостаточно VRAM/RAM). Выберите модель "
 "меньше."
 
-#: app/templates/admin.html:979
+#: app/templates/admin.html:980
 msgid ""
 "The multimodal module requires a Vision model (with mmproj), not a plain "
 "chat model."
@@ -4247,113 +4274,113 @@ msgstr ""
 "Для мультимодального модуля нужна Vision-модель (с mmproj), а не простая "
 "чат-модель."
 
-#: app/templates/admin.html:981
+#: app/templates/admin.html:982
 msgid "Please select a model first."
 msgstr "Сначала выберите модель."
 
-#: app/templates/admin.html:982
+#: app/templates/admin.html:983
 msgid "Context length must be at least 512."
 msgstr "Длина контекста должна быть не менее 512."
 
-#: app/templates/admin.html:983
+#: app/templates/admin.html:984
 #, python-brace-format
 msgid "Context length cannot exceed {max} (max for this model)."
 msgstr "Длина контекста не может превышать {max} (максимум для этой модели)."
 
-#: app/templates/admin.html:984
+#: app/templates/admin.html:985
 msgid "Temperature must be between 0.0 and 2.0."
 msgstr "Температура должна быть в диапазоне от 0.0 до 2.0."
 
-#: app/templates/admin.html:985
+#: app/templates/admin.html:986
 msgid "Top P must be between 0.0 and 1.0."
 msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
 
-#: app/templates/admin.html:986
+#: app/templates/admin.html:987
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
 
-#: app/templates/admin.html:987
+#: app/templates/admin.html:988
 msgid "Repeat Penalty"
 msgstr "Штраф за повтор"
 
-#: app/templates/admin.html:988
+#: app/templates/admin.html:989
 msgid "Repeat penalty must be between 1.0 and 2.0."
 msgstr "Штраф за повтор должен быть в диапазоне от 1.0 до 2.0."
 
-#: app/templates/admin.html:996
+#: app/templates/admin.html:997
 msgid "Chunk configuration saved. Reindexing started."
 msgstr "Конфигурация чанков сохранена. Переиндексация запущена."
 
-#: app/templates/admin.html:997
+#: app/templates/admin.html:998
 msgid "Chunk configuration saved."
 msgstr "Конфигурация чанков сохранена."
 
-#: app/templates/admin.html:998
+#: app/templates/admin.html:999
 msgid "vram_optimal"
 msgstr "Использовано VRAM: 100%, RAM: 0% - оптимально"
 
-#: app/templates/admin.html:999
+#: app/templates/admin.html:1000
 msgid "vram_optimal_dynamic"
 msgstr "Использовано VRAM: %1%%, RAM: 0% - оптимально"
 
-#: app/templates/admin.html:1000
+#: app/templates/admin.html:1001
 msgid "vram_estimated"
 msgstr "VRAM: ~%1% МБ / %2% МБ (%3%%) — оценка"
 
 # VRAM management messages (управление VRAM)
-#: app/templates/admin.html:1001
+#: app/templates/admin.html:1002
 msgid "vram_measured"
 msgstr "VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм.)"
 
-#: app/templates/admin.html:1002
+#: app/templates/admin.html:1003
 msgid "vram_detail"
 msgstr " (модель=%1% + KV=%2% + compute=%3% МБ)"
 
-#: app/templates/admin.html:1003
+#: app/templates/admin.html:1004
 msgid "calculating_vram"
 msgstr "Идёт расчёт..."
 
-#: app/templates/admin.html:1004
+#: app/templates/admin.html:1005
 msgid "vram_partial_high"
 msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"
 
-#: app/templates/admin.html:1005
+#: app/templates/admin.html:1006
 msgid "vram_partial_med"
 msgstr "Использовано VRAM: 100%, RAM: %2%% - умеренно"
 
-#: app/templates/admin.html:1006
+#: app/templates/admin.html:1007
 msgid "vram_partial_low"
 msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
 
-#: app/templates/admin.html:1007
+#: app/templates/admin.html:1008
 msgid "no_gpu_full"
 msgstr "Нет GPU. Использовано %1%% RAM - медленно"
 
-#: app/templates/admin.html:1008
+#: app/templates/admin.html:1009
 msgid "ram_estimate"
 msgstr "Использовано %1%% RAM"
 
-#: app/templates/admin.html:1009
+#: app/templates/admin.html:1010
 msgid "no_gpu_low"
 msgstr "Нет GPU. Использовано %1%% RAM - очень медленно"
 
-#: app/templates/admin.html:1010
+#: app/templates/admin.html:1011
 msgid "vram_nodata_gpu"
 msgstr "GPU: %1% МБ (нет данных о модели)"
 
-#: app/templates/admin.html:1011
+#: app/templates/admin.html:1012
 msgid "vram_nodata"
 msgstr "Нет данных для оценки"
 
-#: app/templates/admin.html:1012
+#: app/templates/admin.html:1013
 msgid "ngl_info"
 msgstr "ngl=%1%, слоёв=%2%"
 
-#: app/templates/admin.html:1013
+#: app/templates/admin.html:1014
 msgid "ngl_offload_hint"
 msgstr "(%1%/%2% слоёв на GPU, ~5-10× медленнее)"
 
-#: app/templates/admin.html:1014
+#: app/templates/admin.html:1015
 msgid ""
 "Reindexing all documents with new embedding model started. This may take "
 "a while."
@@ -4361,50 +4388,50 @@ msgstr ""
 "Началась переиндексация всех документов с новой моделью эмбеддингов. Это "
 "может занять некоторое время."
 
-#: app/templates/admin.html:1015
+#: app/templates/admin.html:1016
 msgid "Reindex all documents? This will rebuild all document embeddings."
 msgstr "Переиндексировать все документы? Это перестроит все эмбеддинги документов."
 
-#: app/templates/admin.html:1017
+#: app/templates/admin.html:1018
 msgid "Local"
 msgstr "Локально"
 
-#: app/templates/admin.html:1018
+#: app/templates/admin.html:1019
 msgid "Please provide llama-server URL first"
 msgstr "Сначала укажите URL llama-server"
 
-#: app/templates/admin.html:1019
+#: app/templates/admin.html:1020
 msgid "Please provide llama-server URL first."
 msgstr "Сначала укажите URL llama-server."
 
-#: app/templates/admin.html:1020
+#: app/templates/admin.html:1021
 msgid "Please provide llama-server URL."
 msgstr "Укажите URL llama-server."
 
-#: app/templates/admin.html:1022
+#: app/templates/admin.html:1023
 msgid "llama-server available"
 msgstr "llama-server доступен"
 
-#: app/templates/admin.html:1023
+#: app/templates/admin.html:1024
 msgid "llama-server unavailable"
 msgstr "llama-server недоступен"
 
-#: app/templates/admin.html:1030
+#: app/templates/admin.html:1031
 msgid "Restore"
 msgstr "Восстановить"
 
-#: app/templates/admin.html:1032 app/templates/admin.html:1130
+#: app/templates/admin.html:1033 app/templates/admin.html:1131
 msgid "Download"
 msgstr "Скачать"
 
-#: app/templates/admin.html:1034
+#: app/templates/admin.html:1035
 #, python-brace-format
 msgid "Restore users database from {filename}? Current data will be replaced."
 msgstr ""
 "Восстановить базу пользователей из {filename}? Текущие данные будут "
 "заменены."
 
-#: app/templates/admin.html:1035
+#: app/templates/admin.html:1036
 #, python-brace-format
 msgid ""
 "Restore full backup from {filename}? All data (users, chats, documents, "
@@ -4413,153 +4440,153 @@ msgstr ""
 "Восстановить полную резервную копию из {filename}? Все данные "
 "(пользователи, чаты, документы, файлы) будут заменены."
 
-#: app/templates/admin.html:1036
+#: app/templates/admin.html:1037
 #, python-brace-format
 msgid "Delete file {filename}? This action cannot be undone."
 msgstr "Удалить файл {filename}? Это действие необратимо."
 
-#: app/templates/admin.html:1037
+#: app/templates/admin.html:1038
 #, python-brace-format
 msgid "Backup created: {filename}"
 msgstr "Резервная копия создана: {filename}"
 
-#: app/templates/admin.html:1038
+#: app/templates/admin.html:1039
 #, python-brace-format
 msgid "Data restored from: {filename}"
 msgstr "Данные восстановлены из: {filename}"
 
-#: app/templates/admin.html:1039
+#: app/templates/admin.html:1040
 #, python-brace-format
 msgid "File deleted: {filename}"
 msgstr "Файл удалён: {filename}"
 
-#: app/templates/admin.html:1042
+#: app/templates/admin.html:1043
 msgid "Error deleting backup"
 msgstr "Ошибка при удалении"
 
-#: app/templates/admin.html:1043
+#: app/templates/admin.html:1044
 msgid "Refresh list"
 msgstr "Обновить список"
 
-#: app/templates/admin.html:1044
+#: app/templates/admin.html:1045
 msgid "Success"
 msgstr "Успешно"
 
-#: app/templates/admin.html:1045
+#: app/templates/admin.html:1046
 msgid "Creating..."
 msgstr "Создание..."
 
-#: app/templates/admin.html:1046
+#: app/templates/admin.html:1047
 msgid "Restoring..."
 msgstr "Восстановление..."
 
-#: app/templates/admin.html:1061
+#: app/templates/admin.html:1062
 msgid "Camera list updated"
 msgstr "Список камер обновлён"
 
-#: app/templates/admin.html:1062
+#: app/templates/admin.html:1063
 #, python-brace-format
 msgid "Cameras synced: {count}"
 msgstr "Камер синхронизировано: {count}"
 
-#: app/templates/admin.html:1064
+#: app/templates/admin.html:1065
 msgid "Error syncing cameras"
 msgstr "Ошибка синхронизации камер"
 
-#: app/templates/admin.html:1068
+#: app/templates/admin.html:1069
 msgid "Platform"
 msgstr "Платформа"
 
-#: app/templates/admin.html:1069 app/templates/admin.html:1124
+#: app/templates/admin.html:1070 app/templates/admin.html:1125
 msgid "GPU"
 msgstr "GPU"
 
-#: app/templates/admin.html:1070 app/templates/admin.html:1126
+#: app/templates/admin.html:1071 app/templates/admin.html:1127
 msgid "CPU"
 msgstr "CPU"
 
-#: app/templates/admin.html:1071
+#: app/templates/admin.html:1072
 msgid "CPU cores"
 msgstr "Ядер CPU"
 
-#: app/templates/admin.html:1072
+#: app/templates/admin.html:1073
 msgid "VRAM"
 msgstr "VRAM"
 
-#: app/templates/admin.html:1073
+#: app/templates/admin.html:1074
 msgid "CUDA"
 msgstr "CUDA"
 
-#: app/templates/admin.html:1074
+#: app/templates/admin.html:1075
 msgid "RAM"
 msgstr "RAM"
 
-#: app/templates/admin.html:1075
+#: app/templates/admin.html:1076
 msgid "GB"
 msgstr "ГБ"
 
-#: app/templates/admin.html:1076
+#: app/templates/admin.html:1077
 msgid "of"
 msgstr "из"
 
-#: app/templates/admin.html:1079
+#: app/templates/admin.html:1080
 msgid "Searching…"
 msgstr "Поиск…"
 
-#: app/templates/admin.html:1080
+#: app/templates/admin.html:1081
 msgid "Enter a search query…"
 msgstr "Введите поисковый запрос…"
 
-#: app/templates/admin.html:1081
+#: app/templates/admin.html:1082
 msgid "No models found"
 msgstr "Моделей не найдено"
 
-#: app/templates/admin.html:1082
+#: app/templates/admin.html:1083
 msgid "Reranker"
 msgstr "Реранкер"
 
-#: app/templates/admin.html:1083
+#: app/templates/admin.html:1084
 msgid "Cross-encoder reranking"
 msgstr "Реранкинг кросс-энкодером"
 
-#: app/templates/admin.html:1084
+#: app/templates/admin.html:1085
 msgid "Candidates to rerank"
 msgstr "Кандидатов на реранк"
 
-#: app/templates/admin.html:1105
+#: app/templates/admin.html:1106
 msgid "Model Hub request failed"
 msgstr "Не удалось выполнить запрос к Model Hub"
 
-#: app/templates/admin.html:1106
+#: app/templates/admin.html:1107
 msgid "Access required"
 msgstr "Требуется доступ"
 
-#: app/templates/admin.html:1107
+#: app/templates/admin.html:1108
 msgid "Non-commercial"
 msgstr "Некоммерческая"
 
-#: app/templates/admin.html:1108
+#: app/templates/admin.html:1109
 #, python-brace-format
 msgid "Downloading {pct}% — {total} MB"
 msgstr "Скачивание {pct}% — {total} МБ"
 
-#: app/templates/admin.html:1109
+#: app/templates/admin.html:1110
 msgid "Verifying checksum…"
 msgstr "Проверка контрольной суммы…"
 
-#: app/templates/admin.html:1110
+#: app/templates/admin.html:1111
 msgid "Downloaded — refresh the Models tab"
 msgstr "Скачано — обновите вкладку «Модели»"
 
-#: app/templates/admin.html:1111
+#: app/templates/admin.html:1112
 msgid "Universal"
 msgstr "Универсальная"
 
-#: app/templates/admin.html:1113
+#: app/templates/admin.html:1114
 msgid "Choose a universal model in the card below first."
 msgstr "Сначала выберите универсальную модель в карточке ниже."
 
-#: app/templates/admin.html:1114
+#: app/templates/admin.html:1115
 msgid ""
 "No model with both reasoning and a vision projector was found. Download "
 "one in Model Hub."
@@ -4567,7 +4594,7 @@ msgstr ""
 "Не найдено модели, которая и рассуждает, и имеет проектор зрения. "
 "Скачайте её в Model Hub."
 
-#: app/templates/admin.html:1115
+#: app/templates/admin.html:1116
 msgid ""
 "Single-model mode is on: the multimodal and reasoning cards below are not"
 " used."
@@ -4575,70 +4602,70 @@ msgstr ""
 "Включён одномодельный режим: карточки мультимодальной и рассуждающей "
 "модели ниже не используются."
 
-#: app/templates/admin.html:1116
+#: app/templates/admin.html:1117
 msgid "Two-model mode: a small multimodal model plus a large reasoning model."
 msgstr ""
 "Двухмодельный режим: малая мультимодальная модель плюс большая "
 "рассуждающая."
 
-#: app/templates/admin.html:1117
+#: app/templates/admin.html:1118
 msgid "Mode saved. The model list reloads within a few seconds."
 msgstr "Режим сохранён. Список моделей перезагрузится через несколько секунд."
 
-#: app/templates/admin.html:1118
+#: app/templates/admin.html:1119
 msgid "Download failed"
 msgstr "Ошибка скачивания"
 
-#: app/templates/admin.html:1119
+#: app/templates/admin.html:1120
 msgid "Download cancelled"
 msgstr "Скачивание отменено"
 
-#: app/templates/admin.html:1121
+#: app/templates/admin.html:1122
 msgid "Searching for suitable models…"
 msgstr "Ищу подходящие модели..."
 
-#: app/templates/admin.html:1122
+#: app/templates/admin.html:1123
 msgid "Recalculating fit…"
 msgstr "Делаю перерасчёт оценки..."
 
-#: app/templates/admin.html:1123
+#: app/templates/admin.html:1124
 msgid "Computing fit…"
 msgstr "Делаю расчёт оценки..."
 
-#: app/templates/admin.html:1125
+#: app/templates/admin.html:1126
 msgid "GPU+CPU"
 msgstr "GPU+CPU"
 
-#: app/templates/admin.html:1127
+#: app/templates/admin.html:1128
 msgid "Impossible"
 msgstr "Невозможно"
 
-#: app/templates/admin.html:1128
+#: app/templates/admin.html:1129
 msgid "sec"
 msgstr " с"
 
-#: app/templates/admin.html:1129
+#: app/templates/admin.html:1130
 msgid "Max context"
 msgstr "Макс. контекст"
 
-#: app/templates/admin.html:1131
+#: app/templates/admin.html:1132
 msgid "Downloaded"
 msgstr "Загружена"
 
-#: app/templates/admin.html:1132
+#: app/templates/admin.html:1133
 msgid "Installed via Model Hub"
 msgstr "Загружена через Хаб Моделей"
 
-#: app/templates/admin.html:1134
+#: app/templates/admin.html:1135
 #, python-brace-format
 msgid "Delete model {filename} and its service files from disk?"
 msgstr "Удалить модель {filename} и её служебные файлы с диска?"
 
-#: app/templates/admin.html:1135
+#: app/templates/admin.html:1136
 msgid "No access to Hugging Face — downloads from the Model Hub are unavailable"
 msgstr "Нет доступа к Hugging Face — загрузка моделей из Хаба недоступна"
 
-#: app/templates/admin.html:1136
+#: app/templates/admin.html:1137
 msgid ""
 "Manually put .gguf files into the models directory (/models), then press "
 "Update model list in the Models tab"
@@ -4646,80 +4673,80 @@ msgstr ""
 "Добавьте файлы .gguf в каталог моделей (/models) вручную и нажмите "
 "«Обновить список моделей» во вкладке «Модели»"
 
-#: app/templates/admin.html:1137
+#: app/templates/admin.html:1138
 #, python-brace-format
 msgid "Service files totalling {n} MB will be downloaded with the model"
 msgstr "С моделью будут скачаны служебные файлы объёмом {n} МБ"
 
-#: app/templates/admin.html:1138
+#: app/templates/admin.html:1139
 msgid "Failed to load branding settings"
 msgstr "Не удалось загрузить настройки персонализации"
 
-#: app/templates/admin.html:1139
+#: app/templates/admin.html:1140
 msgid "Logo uploaded"
 msgstr "Логотип загружен"
 
-#: app/templates/admin.html:1140
+#: app/templates/admin.html:1141
 msgid "Custom logo deleted — the built-in logo is shown"
 msgstr "Свой логотип удалён — отображается встроенный логотип"
 
-#: app/templates/admin.html:1142
+#: app/templates/admin.html:1143
 msgid "Site names saved"
 msgstr "Названия сохранены"
 
-#: app/templates/admin.html:1144
+#: app/templates/admin.html:1145
 msgid "Logo upload failed"
 msgstr "Не удалось загрузить логотип"
 
-#: app/templates/admin.html:1145
+#: app/templates/admin.html:1146
 msgid "Bundled"
 msgstr "Встроенный"
 
-#: app/templates/admin.html:1146
+#: app/templates/admin.html:1147
 msgid "Installed"
 msgstr "Установленный"
 
-#: app/templates/admin.html:1147
+#: app/templates/admin.html:1148
 msgid "Shadowed by a bundled skill"
 msgstr "Перекрыт встроенным навыком"
 
-#: app/templates/admin.html:1148
+#: app/templates/admin.html:1149
 msgid "Rename"
 msgstr "Переименовать"
 
-#: app/templates/admin.html:1149
+#: app/templates/admin.html:1150
 msgid "Read-only"
 msgstr "Только чтение"
 
-#: app/templates/admin.html:1150
+#: app/templates/admin.html:1151
 msgid "Edit"
 msgstr "Изменить"
 
-#: app/templates/admin.html:1151
+#: app/templates/admin.html:1152
 msgid "Not available here"
 msgstr "Здесь недоступен"
 
-#: app/templates/admin.html:1152
+#: app/templates/admin.html:1153
 msgid "Unknown tool"
 msgstr "Неизвестный инструмент"
 
-#: app/templates/admin.html:1153
+#: app/templates/admin.html:1154
 msgid "Skill saved"
 msgstr "Навык сохранён"
 
-#: app/templates/admin.html:1154
+#: app/templates/admin.html:1155
 msgid "Skill deleted"
 msgstr "Навык удалён"
 
-#: app/templates/admin.html:1155
+#: app/templates/admin.html:1156
 msgid "Skill enabled"
 msgstr "Навык включён"
 
-#: app/templates/admin.html:1156
+#: app/templates/admin.html:1157
 msgid "Skill disabled"
 msgstr "Навык выключен"
 
-#: app/templates/admin.html:1157
+#: app/templates/admin.html:1158
 msgid "The same name is already taken"
 msgstr "Это имя уже занято"
 
@@ -4751,78 +4778,78 @@ msgstr "Отозвать"
 msgid "api_keys_revoke_confirm"
 msgstr "Отозвать этот API-ключ? Интеграции с ним перестанут работать."
 
-#: app/templates/base.html:80 app/templates/base.html:96
+#: app/templates/base.html:80
+msgid "Nothing scheduled"
+msgstr "Ничего не запланировано"
+
+#: app/templates/base.html:82
+msgid "finished"
+msgstr "завершено"
+
+#: app/templates/base.html:83
+#, python-brace-format
+msgid "Delete the schedule \"{title}\"?"
+msgstr "Удалить расписание «{title}»?"
+
+#: app/templates/base.html:84
+msgid "Scheduled"
+msgstr "Запланировано"
+
+#: app/templates/base.html:85
+msgid "Created from chat. Deleting one stops it."
+msgstr "Создано из чата. Удаление останавливает."
+
+#: app/templates/base.html:89 app/templates/base.html:105
 msgid "tavily_add_key"
 msgstr "Добавить ключ"
 
-#: app/templates/base.html:81 app/templates/base.html:101
+#: app/templates/base.html:90 app/templates/base.html:110
 msgid "tavily_delete_key"
 msgstr "Удалить ключ"
 
-#: app/templates/base.html:82
+#: app/templates/base.html:91
 msgid "tavily_status_invalid"
 msgstr "Tavily API - неверный ключ"
 
-#: app/templates/base.html:83
+#: app/templates/base.html:92
 msgid "tavily_status_exhausted"
 msgstr "Tavily API - лимит исчерпан"
 
-#: app/templates/base.html:84
+#: app/templates/base.html:93
 msgid "tavily_status_unavailable"
 msgstr "Tavily API - недоступен"
 
-#: app/templates/base.html:85
+#: app/templates/base.html:94
 msgid "tavily_quota"
 msgstr ""
 "Лимит тарифа: {limit} кредитов/мес · Использовано: {used} · Осталось: "
 "{remaining}"
 
-#: app/templates/base.html:86
+#: app/templates/base.html:95
 msgid "tavily_refreshing"
 msgstr "Обновляется информация"
 
-#: app/templates/base.html:87
+#: app/templates/base.html:96
 msgid "tavily_elapsed_s"
 msgstr "с"
 
-#: app/templates/base.html:88
+#: app/templates/base.html:97
 msgid "tavily_section_title"
 msgstr "Поиск в Интернет через Tavily"
 
-#: app/templates/base.html:90
+#: app/templates/base.html:99
 msgid "tavily_hint"
 msgstr ""
 "Бесплатный тариф — 1000 кредитов в месяц. Поисковые запросы отправляются "
 "на внешний сервис Tavily."
 
-#: app/templates/base.html:91
+#: app/templates/base.html:100
 msgid "tavily_get_key"
 msgstr "Получить ключ"
 
-#: app/templates/base.html:95
+#: app/templates/base.html:104
 msgid "tavily_key_placeholder"
 msgstr "tvly-…"
-
-#: app/templates/base.html:108
-msgid "Nothing scheduled"
-msgstr "Ничего не запланировано"
-
-#: app/templates/base.html:110
-msgid "finished"
-msgstr "завершено"
-
-#: app/templates/base.html:111
-#, python-brace-format
-msgid "Delete the schedule \"{title}\"?"
-msgstr "Удалить расписание «{title}»?"
-
-#: app/templates/base.html:112
-msgid "Scheduled"
-msgstr "Запланировано"
-
-#: app/templates/base.html:113
-msgid "Created from chat. Deleting one stops it."
-msgstr "Создано из чата. Удаление останавливает."
 
 #: app/templates/base.html:118
 msgid "api_keys_close"
@@ -4866,1170 +4893,1170 @@ msgstr "Создан"
 msgid "api_keys_col_last_used"
 msgstr "Использован"
 
-#: app/templates/base.html:173 app/templates/chat.html:307
+#: app/templates/base.html:173 app/templates/chat.html:310
 msgid "footer_about_hint"
 msgstr "О системе"
 
-#: app/templates/base.html:174 app/templates/chat.html:306
+#: app/templates/base.html:174 app/templates/chat.html:309
 msgid "footer_short_name"
 msgstr "ПЛИИ"
 
-#: app/templates/base.html:182 app/templates/chat.html:97
-#: app/templates/chat.html:308
+#: app/templates/base.html:182 app/templates/chat.html:98
+#: app/templates/chat.html:311
 msgid "close_about"
 msgstr "Закрыть"
 
-#: app/templates/base.html:184 app/templates/chat.html:304
+#: app/templates/base.html:184 app/templates/chat.html:307
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ)"
 
-#: app/templates/base.html:187 app/templates/chat.html:305
+#: app/templates/base.html:187 app/templates/chat.html:308
 msgid "footer_copyright"
 msgstr "(c) 2026 Барсуков Валерий"
 
-#: app/templates/chat.html:10 app/templates/chat.html:320
+#: app/templates/chat.html:10 app/templates/chat.html:323
 msgid "New document"
 msgstr "Новый документ"
 
-#: app/templates/chat.html:11 app/templates/chat.html:326
+#: app/templates/chat.html:11 app/templates/chat.html:329
 msgid "New folder"
 msgstr "Новая папка"
 
-#: app/templates/chat.html:16 app/templates/chat.html:219
+#: app/templates/chat.html:16 app/templates/chat.html:222
 msgid "New task"
 msgstr "Новая задача"
 
-#: app/templates/chat.html:35 app/templates/chat.html:209
+#: app/templates/chat.html:36 app/templates/chat.html:212
 msgid "Delete session"
 msgstr "Удалить сеанс"
 
-#: app/templates/chat.html:54 app/templates/chat.html:220
+#: app/templates/chat.html:55 app/templates/chat.html:223
 msgid "Task"
 msgstr "Задача"
 
-#: app/templates/chat.html:54
+#: app/templates/chat.html:55
 msgid "Your requests / Total requests"
 msgstr "Ваши запросы / Всего запросов"
 
-#: app/templates/chat.html:54 app/templates/chat.html:425
+#: app/templates/chat.html:55 app/templates/chat.html:428
 msgid "response_style_label"
 msgstr "Стиль"
 
-#: app/templates/chat.html:56 app/templates/chat.html:424
+#: app/templates/chat.html:57 app/templates/chat.html:427
 msgid "response_style_title"
 msgstr "Стиль ответа"
 
-#: app/templates/chat.html:61 app/templates/chat.html:426
+#: app/templates/chat.html:62 app/templates/chat.html:429
 msgid "response_style_neutral"
 msgstr "Нейтральный"
 
-#: app/templates/chat.html:62 app/templates/chat.html:427
+#: app/templates/chat.html:63 app/templates/chat.html:430
 msgid "response_style_academic"
 msgstr "Академический"
 
-#: app/templates/chat.html:63 app/templates/chat.html:428
+#: app/templates/chat.html:64 app/templates/chat.html:431
 msgid "response_style_professional"
 msgstr "Деловой"
 
-#: app/templates/chat.html:64 app/templates/chat.html:429
+#: app/templates/chat.html:65 app/templates/chat.html:432
 msgid "response_style_friendly"
 msgstr "Дружеский"
 
-#: app/templates/chat.html:65 app/templates/chat.html:430
+#: app/templates/chat.html:66 app/templates/chat.html:433
 msgid "response_style_funny"
 msgstr "Весёлый"
 
-#: app/templates/chat.html:70 app/templates/chat.html:223
+#: app/templates/chat.html:71 app/templates/chat.html:226
 msgid "Stop task"
 msgstr "Остановить задачу"
 
-#: app/templates/chat.html:71 app/templates/chat.html:432
+#: app/templates/chat.html:72 app/templates/chat.html:435
 msgid "stop_generating"
 msgstr "Остановить"
 
-#: app/templates/chat.html:72 app/templates/chat.html:214
+#: app/templates/chat.html:73 app/templates/chat.html:217
 msgid "Save as HTML"
 msgstr "Сохранить как HTML"
 
-#: app/templates/chat.html:99 app/templates/chat.html:327
+#: app/templates/chat.html:100 app/templates/chat.html:330
 msgid "Enter folder name"
 msgstr "Введите название папки"
 
-#: app/templates/chat.html:119 app/templates/chat.html:123
-#: app/templates/chat.html:363 app/templates/chat.html:413
+#: app/templates/chat.html:120 app/templates/chat.html:124
+#: app/templates/chat.html:366 app/templates/chat.html:416
 msgid "Close"
 msgstr "Закрыть"
 
-#: app/templates/chat.html:135 app/templates/chat.html:179
+#: app/templates/chat.html:136 app/templates/chat.html:182
 msgid "Search scope"
 msgstr "Область поиска"
 
-#: app/templates/chat.html:135 app/templates/chat.html:180
+#: app/templates/chat.html:136 app/templates/chat.html:183
 msgid "All documents"
 msgstr "Все документы"
 
-#: app/templates/chat.html:138 app/templates/chat.html:182
+#: app/templates/chat.html:139 app/templates/chat.html:185
 msgid "Folders"
 msgstr "Папки"
 
-#: app/templates/chat.html:141 app/templates/chat.html:187
+#: app/templates/chat.html:142 app/templates/chat.html:190
 msgid "Uploaded from"
 msgstr "Загружено с"
 
-#: app/templates/chat.html:144 app/templates/chat.html:188
+#: app/templates/chat.html:145 app/templates/chat.html:191
 msgid "Uploaded to"
 msgstr "Загружено по"
 
-#: app/templates/chat.html:148 app/templates/chat.html:190
+#: app/templates/chat.html:149 app/templates/chat.html:193
 msgid "Clear"
 msgstr "Сбросить"
 
-#: app/templates/chat.html:152
+#: app/templates/chat.html:153
 msgid "Select documents"
 msgstr "Выберите документы"
 
-#: app/templates/chat.html:155
+#: app/templates/chat.html:156
 msgid "Enter message..."
 msgstr "Введите сообщение..."
 
-#: app/templates/chat.html:156 app/templates/chat.html:312
+#: app/templates/chat.html:157 app/templates/chat.html:315
 msgid "Record voice message"
 msgstr "Записать голосовое сообщение"
 
-#: app/templates/chat.html:159 app/templates/chat.html:194
+#: app/templates/chat.html:160 app/templates/chat.html:197
 msgid "Send"
 msgstr "Отправить"
 
-#: app/templates/chat.html:160
+#: app/templates/chat.html:161
 msgid "Restart task"
 msgstr "Перезапустить"
 
-#: app/templates/chat.html:181
+#: app/templates/chat.html:184
 msgid "Folder"
 msgstr "Папка"
 
-#: app/templates/chat.html:183
+#: app/templates/chat.html:186
 #, python-brace-format
 msgid "folders ({count})"
 msgstr "папок ({count})"
 
-#: app/templates/chat.html:184
+#: app/templates/chat.html:187
 #, python-brace-format
 msgid "documents ({count})"
 msgstr "документов ({count})"
 
-#: app/templates/chat.html:185
+#: app/templates/chat.html:188
 msgid "No documents match the selected folders and dates."
 msgstr "По выбранным папкам и датам документы не найдены."
 
-#: app/templates/chat.html:186
+#: app/templates/chat.html:189
 msgid "Select at least one folder."
 msgstr "Выберите хотя бы одну папку."
 
-#: app/templates/chat.html:189
+#: app/templates/chat.html:192
 msgid "Apply"
 msgstr "Применить"
 
-#: app/templates/chat.html:191
+#: app/templates/chat.html:194
 msgid "Unfiled"
 msgstr "Без папки"
 
-#: app/templates/chat.html:195
+#: app/templates/chat.html:198
 msgid "Sending..."
 msgstr "Отправка..."
 
-#: app/templates/chat.html:196
+#: app/templates/chat.html:199
 msgid "Recording..."
 msgstr "Запись..."
 
-#: app/templates/chat.html:201
+#: app/templates/chat.html:204
 msgid "Audio transcribed"
 msgstr "Аудио распознано"
 
-#: app/templates/chat.html:203
+#: app/templates/chat.html:206
 #, python-brace-format
 msgid "Speech recognized, request queued (position {pos})"
 msgstr "Голос распознан, запрос поставлен в очередь (позиция {pos})"
 
-#: app/templates/chat.html:210
+#: app/templates/chat.html:213
 #, python-brace-format
 msgid "Delete session {title} from {date}?"
 msgstr "Удалить сеанс \"{title}\" от {date}?"
 
-#: app/templates/chat.html:221
+#: app/templates/chat.html:224
 msgid "Task request"
 msgstr "Запрос задачи"
 
-#: app/templates/chat.html:222
+#: app/templates/chat.html:225
 msgid "Create task"
 msgstr "Создать задачу"
 
-#: app/templates/chat.html:224
+#: app/templates/chat.html:227
 msgid "Delete task"
 msgstr "Удалить задачу"
 
-#: app/templates/chat.html:225
+#: app/templates/chat.html:228
 #, python-brace-format
 msgid "Delete task {title} from {date}?"
 msgstr "Удалить задачу «{title}» от {date}?"
 
-#: app/templates/chat.html:226
+#: app/templates/chat.html:229
 #, python-brace-format
 msgid "Running (step {n} of {m})"
 msgstr "Выполняется (шаг {n} из {m})"
 
-#: app/templates/chat.html:227
+#: app/templates/chat.html:230
 msgid "Running"
 msgstr "Выполняется"
 
-#: app/templates/chat.html:228
+#: app/templates/chat.html:231
 msgid "Frozen"
 msgstr "Приостановлено"
 
-#: app/templates/chat.html:229
+#: app/templates/chat.html:232
 msgid "Transcribing audio…"
 msgstr "Распознаю аудио…"
 
-#: app/templates/chat.html:230
+#: app/templates/chat.html:233
 msgid "Completed"
 msgstr "Завершено"
 
-#: app/templates/chat.html:231
+#: app/templates/chat.html:234
 msgid "Cancelled"
 msgstr "Отменено"
 
-#: app/templates/chat.html:232
+#: app/templates/chat.html:235
 msgid "Failed"
 msgstr "Ошибка"
 
-#: app/templates/chat.html:233
+#: app/templates/chat.html:236
 msgid "Expired"
 msgstr "Время истекло"
 
-#: app/templates/chat.html:234
+#: app/templates/chat.html:237
 msgid "Awaiting answer"
 msgstr "Ожидаю ответа"
 
-#: app/templates/chat.html:235
+#: app/templates/chat.html:238
 msgid "Checked automatically"
 msgstr "Проверено автоматически"
 
-#: app/templates/chat.html:236
+#: app/templates/chat.html:239
 #, python-brace-format
 msgid "Redone ×{n}"
 msgstr "Переделано ×{n}"
 
-#: app/templates/chat.html:237
+#: app/templates/chat.html:240
 #, python-brace-format
 msgid "Retrying (attempt {n} of {max})"
 msgstr "Переделываю (попытка {n} из {max})"
 
-#: app/templates/chat.html:238
+#: app/templates/chat.html:241
 #, python-brace-format
 msgid "Auto-check failed: {reason}. Redoing (attempt {n} of {max})"
 msgstr "Автопроверка не пройдена: {reason}. Переделываю (попытка {n} из {max})"
 
-#: app/templates/chat.html:239
+#: app/templates/chat.html:242
 #, python-brace-format
 msgid "Redoing after the check (attempt {n} of {max})"
 msgstr "Переделываю после замечания проверки (попытка {n} из {max})"
 
-#: app/templates/chat.html:240
+#: app/templates/chat.html:243
 #, python-brace-format
 msgid "Redone after the check: {reason}"
 msgstr "Переделано после проверки: {reason}"
 
-#: app/templates/chat.html:241
+#: app/templates/chat.html:244
 msgid "Not delivered"
 msgstr "Не выполнено"
 
-#: app/templates/chat.html:242
+#: app/templates/chat.html:245
 msgid "Skipped"
 msgstr "Пропущено"
 
-#: app/templates/chat.html:243
+#: app/templates/chat.html:246
 msgid "Interrupted"
 msgstr "Прервано"
 
-#: app/templates/chat.html:244
+#: app/templates/chat.html:247
 msgid "Not verified"
 msgstr "Без проверки"
 
-#: app/templates/chat.html:245
+#: app/templates/chat.html:248
 msgid "Check skipped: could not describe the image"
 msgstr "Проверка пропущена: не удалось описать изображение"
 
-#: app/templates/chat.html:246
+#: app/templates/chat.html:249
 #, python-brace-format
 msgid "Verification attempts ({n})"
 msgstr "Попытки проверки ({n})"
 
-#: app/templates/chat.html:247
+#: app/templates/chat.html:250
 #, python-brace-format
 msgid "Best of {n} attempts"
 msgstr "Лучшее из {n} попыток"
 
-#: app/templates/chat.html:248
+#: app/templates/chat.html:251
 msgid "Kept the accepted image"
 msgstr "Оставлено принятое изображение"
 
-#: app/templates/chat.html:249
+#: app/templates/chat.html:252
 #, python-brace-format
 msgid "Preview: {name}"
 msgstr "Предпросмотр: {name}"
 
-#: app/templates/chat.html:250
+#: app/templates/chat.html:253
 msgid "Extracted text"
 msgstr "Извлечённый текст"
 
-#: app/templates/chat.html:252
+#: app/templates/chat.html:255
 msgid "Preview is truncated"
 msgstr "Предпросмотр обрезан"
 
-#: app/templates/chat.html:253
+#: app/templates/chat.html:256
 msgid "Could not load the document preview"
 msgstr "Не удалось загрузить предпросмотр документа"
 
-#: app/templates/chat.html:254
+#: app/templates/chat.html:257
 msgid "Open PDF"
 msgstr "Открыть PDF"
 
-#: app/templates/chat.html:255
+#: app/templates/chat.html:258
 #, python-brace-format
 msgid "Showing the first {n} pages"
 msgstr "Показаны первые {n} страниц"
 
-#: app/templates/chat.html:256
+#: app/templates/chat.html:259
 #, python-brace-format
 msgid "attempt {n}"
 msgstr "попытка {n}"
 
-#: app/templates/chat.html:257
+#: app/templates/chat.html:260
 #, python-brace-format
 msgid "Accepted results: {n} (images: {images}, texts: {texts})"
 msgstr "Итог: {n} (изображений: {images}, текстов: {texts})"
 
-#: app/templates/chat.html:258
+#: app/templates/chat.html:261
 msgid "Not delivered:"
 msgstr "Не удалось:"
 
-#: app/templates/chat.html:259
+#: app/templates/chat.html:262
 msgid "Answer the clarifying question…"
 msgstr "Ответьте на уточнение…"
 
-#: app/templates/chat.html:260
+#: app/templates/chat.html:263
 msgid "Task is not awaiting an answer right now — status:"
 msgstr "Задача сейчас не ждёт ответа — статус:"
 
-#: app/templates/chat.html:261
+#: app/templates/chat.html:264
 msgid "No tasks yet"
 msgstr "Пока нет задач"
 
-#: app/templates/chat.html:262
+#: app/templates/chat.html:265
 msgid "Draft"
 msgstr "Черновик"
 
-#: app/templates/chat.html:263
+#: app/templates/chat.html:266
 msgid "Draft — describe the task…"
 msgstr "Черновик — опишите задачу…"
 
-#: app/templates/chat.html:264
+#: app/templates/chat.html:267
 msgid "No task selected — use «+» to create one"
 msgstr "Задача не выбрана — нажмите «+», чтобы создать"
 
-#: app/templates/chat.html:266
+#: app/templates/chat.html:269
 msgid "Your requests in queue / Total in queue"
 msgstr "Ваши запросы в очереди / Всего в очереди"
 
-#: app/templates/chat.html:268
+#: app/templates/chat.html:271
 msgid "Server error: received invalid response"
 msgstr "Ошибка сервера: получен некорректный ответ"
 
-#: app/templates/chat.html:269
+#: app/templates/chat.html:272
 msgid "Warning"
 msgstr "Предупреждение"
 
-#: app/templates/chat.html:270
+#: app/templates/chat.html:273
 msgid "Info"
 msgstr "Информация"
 
-#: app/templates/chat.html:271
+#: app/templates/chat.html:274
 msgid "user"
 msgstr "Пользователь"
 
-#: app/templates/chat.html:272
+#: app/templates/chat.html:275
 msgid "session"
 msgstr "Сеанс"
 
-#: app/templates/chat.html:273
+#: app/templates/chat.html:276
 msgid "saved_on"
 msgstr "Сохранено"
 
-#: app/templates/chat.html:274
+#: app/templates/chat.html:277
 msgid "total_messages"
 msgstr "Всего сообщений"
 
-#: app/templates/chat.html:275
+#: app/templates/chat.html:278
 msgid "speak"
 msgstr "Озвучить"
 
-#: app/templates/chat.html:276
+#: app/templates/chat.html:279
 msgid "stop"
 msgstr "Остановить"
 
-#: app/templates/chat.html:277
+#: app/templates/chat.html:280
 msgid "download_image"
 msgstr "Скачать изображение"
 
-#: app/templates/chat.html:278
+#: app/templates/chat.html:281
 msgid "download_audio"
 msgstr "Скачать аудио"
 
-#: app/templates/chat.html:279
+#: app/templates/chat.html:282
 msgid "download_video"
 msgstr "Скачать видео"
 
-#: app/templates/chat.html:280
+#: app/templates/chat.html:283
 msgid "click_to_enlarge"
 msgstr "Нажмите для увеличения"
 
-#: app/templates/chat.html:281
+#: app/templates/chat.html:284
 msgid "image"
 msgstr "изображение"
 
-#: app/templates/chat.html:282
+#: app/templates/chat.html:285
 msgid "enter_message_or_file"
 msgstr "Введите сообщение или прикрепите файл"
 
-#: app/templates/chat.html:283
+#: app/templates/chat.html:286
 msgid "rlm_needs_documents"
 msgstr ""
 "Для глубокого анализа выберите хотя бы один документ или приложите "
 "изображение"
 
-#: app/templates/chat.html:286
+#: app/templates/chat.html:289
 msgid "remove_file"
 msgstr "Убрать вложение"
 
-#: app/templates/chat.html:287
+#: app/templates/chat.html:290
 msgid "request_timeout"
 msgstr "Превышено время ожидания ответа. Проверьте статус запроса."
 
-#: app/templates/chat.html:289
+#: app/templates/chat.html:292
 msgid "copied"
 msgstr "Скопировано!"
 
-#: app/templates/chat.html:290
+#: app/templates/chat.html:293
 msgid "copy_code"
 msgstr "Копировать код"
 
-#: app/templates/chat.html:291
+#: app/templates/chat.html:294
 msgid "copy_failed"
 msgstr "Ошибка копирования"
 
-#: app/templates/chat.html:292
+#: app/templates/chat.html:295
 msgid "copy_text"
 msgstr "Копировать текст"
 
-#: app/templates/chat.html:293
+#: app/templates/chat.html:296
 msgid "open_html"
 msgstr "Открыть HTML-страницу"
 
-#: app/templates/chat.html:294
+#: app/templates/chat.html:297
 msgid "open_html_unavailable"
 msgstr ""
 "Предпросмотр для этого сообщения недоступен. Сохраните код в файл и "
 "откройте его в браузере."
 
-#: app/templates/chat.html:295
+#: app/templates/chat.html:298
 msgid "processing"
 msgstr "обрабатывается"
 
-#: app/templates/chat.html:296
+#: app/templates/chat.html:299
 msgid "queued"
 msgstr "в очереди"
 
-#: app/templates/chat.html:297
+#: app/templates/chat.html:300
 msgid "new_response"
 msgstr "новый ответ"
 
-#: app/templates/chat.html:298
+#: app/templates/chat.html:301
 msgid "browser_no_audio_support"
 msgstr "Ваш браузер не поддерживает запись аудио"
 
-#: app/templates/chat.html:299
+#: app/templates/chat.html:302
 msgid "secure_context_required"
 msgstr ""
 "Для записи голоса требуется безопасное соединение (HTTPS). Попробуйте "
 "открыть сайт по HTTPS или localhost."
 
-#: app/templates/chat.html:300
+#: app/templates/chat.html:303
 msgid "microphone_access_denied"
 msgstr "Не удалось получить доступ к микрофону."
 
-#: app/templates/chat.html:301
+#: app/templates/chat.html:304
 msgid "no_active_session_save"
 msgstr "Нет активного сеанса для сохранения"
 
-#: app/templates/chat.html:302
+#: app/templates/chat.html:305
 msgid "saved_chat"
 msgstr "Сохраненный чат"
 
-#: app/templates/chat.html:303
+#: app/templates/chat.html:306
 msgid "no_messages_to_save"
 msgstr "Нет сообщений для сохранения"
 
-#: app/templates/chat.html:309
+#: app/templates/chat.html:312
 msgid "footer_not_configured"
 msgstr "Подпись не настроена"
 
-#: app/templates/chat.html:310
+#: app/templates/chat.html:313
 msgid "footer_load_error"
 msgstr "Ошибка загрузки подписи"
 
-#: app/templates/chat.html:313
+#: app/templates/chat.html:316
 msgid "seconds_suffix"
 msgstr " с"
 
-#: app/templates/chat.html:314
+#: app/templates/chat.html:317
 msgid "tps_suffix"
 msgstr " ток/с"
 
-#: app/templates/chat.html:315
+#: app/templates/chat.html:318
 msgid "tokens_unit"
 msgstr "ток"
 
-#: app/templates/chat.html:316
+#: app/templates/chat.html:319
 msgid "byte_abbr"
 msgstr "Б"
 
-#: app/templates/chat.html:317
+#: app/templates/chat.html:320
 msgid "kb_abbr"
 msgstr "КБ"
 
-#: app/templates/chat.html:318
+#: app/templates/chat.html:321
 msgid "mb_abbr"
 msgstr "МБ"
 
-#: app/templates/chat.html:319
+#: app/templates/chat.html:322
 msgid "gb_abbr"
 msgstr "ГБ"
 
-#: app/templates/chat.html:321
+#: app/templates/chat.html:324
 msgid "Delete document"
 msgstr "Удалить документ"
 
-#: app/templates/chat.html:322
+#: app/templates/chat.html:325
 #, python-brace-format
 msgid "Delete document \"{filename}\"?"
 msgstr "Удалить документ \"{filename}\"?"
 
-#: app/templates/chat.html:323
+#: app/templates/chat.html:326
 msgid "Upload document"
 msgstr "Загрузить документ"
 
-#: app/templates/chat.html:324
+#: app/templates/chat.html:327
 msgid "Document uploaded"
 msgstr "Документ загружен"
 
-#: app/templates/chat.html:325
+#: app/templates/chat.html:328
 msgid "Document upload failed"
 msgstr "Ошибка загрузки документа"
 
-#: app/templates/chat.html:328
+#: app/templates/chat.html:331
 msgid "Create folder"
 msgstr "Создание папки"
 
-#: app/templates/chat.html:329 app/templates/chat.html:333
+#: app/templates/chat.html:332 app/templates/chat.html:336
 msgid "Rename folder"
 msgstr "Переименовать папку"
 
-#: app/templates/chat.html:334
+#: app/templates/chat.html:337
 msgid "Delete folder"
 msgstr "Удалить папку"
 
-#: app/templates/chat.html:335
+#: app/templates/chat.html:338
 msgid "Move to folder"
 msgstr "Переместить в папку"
 
-#: app/templates/chat.html:336
+#: app/templates/chat.html:339
 msgid "Clear selection"
 msgstr "Снять выделение"
 
-#: app/templates/chat.html:337
+#: app/templates/chat.html:340
 msgid "Move to root"
 msgstr "Переместить в корень"
 
-#: app/templates/chat.html:338
+#: app/templates/chat.html:341
 msgid "Delete selected documents"
 msgstr "Удалить выбранные документы"
 
-#: app/templates/chat.html:339
+#: app/templates/chat.html:342
 #, python-brace-format
 msgid "Delete {count} selected documents ({size})?"
 msgstr "Вы хотите удалить {count} выбранных документов на {size}?"
 
-#: app/templates/chat.html:340
+#: app/templates/chat.html:343
 msgid "Failed to delete some documents"
 msgstr "Не удалось удалить часть документов"
 
-#: app/templates/chat.html:341
+#: app/templates/chat.html:344
 #, python-brace-format
 msgid "Selected: {count} ({size})"
 msgstr "Выделено: {count} ({size})"
 
-#: app/templates/chat.html:342
+#: app/templates/chat.html:345
 msgid "Select all documents in folder"
 msgstr "Выбрать все документы в папке"
 
-#: app/templates/chat.html:343
+#: app/templates/chat.html:346
 msgid "Select for moving"
 msgstr "Отметить для перемещения"
 
-#: app/templates/chat.html:344
+#: app/templates/chat.html:347
 msgid "Generated"
 msgstr "Сгенерировано"
 
-#: app/templates/chat.html:345
+#: app/templates/chat.html:348
 msgid "Index"
 msgstr "Индекс"
 
-#: app/templates/chat.html:346
+#: app/templates/chat.html:349
 msgid "Index for search and graph"
 msgstr "Индексировать в поиск и граф"
 
-#: app/templates/chat.html:347
+#: app/templates/chat.html:350
 msgid "index is outdated"
 msgstr "индекс устарел"
 
-#: app/templates/chat.html:348
+#: app/templates/chat.html:351
 msgid "Crawled"
 msgstr "Из обхода сайта"
 
-#: app/templates/chat.html:349
+#: app/templates/chat.html:352
 msgid "From chat"
 msgstr "Из чата"
 
-#: app/templates/chat.html:350
+#: app/templates/chat.html:353
 msgid "Select for deep analysis"
 msgstr "Отметить для глубокого анализа"
 
-#: app/templates/chat.html:351
+#: app/templates/chat.html:354
 msgid "View in knowledge graph"
 msgstr "Посмотреть в графе знаний"
 
-#: app/templates/chat.html:353
+#: app/templates/chat.html:356
 msgid "Click a node to inspect it"
 msgstr "Нажмите на узел, чтобы рассмотреть его"
 
-#: app/templates/chat.html:354
+#: app/templates/chat.html:357
 msgid "Mentions"
 msgstr "Упоминаний"
 
-#: app/templates/chat.html:355 app/templates/chat.html:408
+#: app/templates/chat.html:358 app/templates/chat.html:411
 msgid "Shared by"
 msgstr "Владелец"
 
-#: app/templates/chat.html:356
+#: app/templates/chat.html:359
 msgid "Loading the graph"
 msgstr "Загружаю граф"
 
-#: app/templates/chat.html:357
+#: app/templates/chat.html:360
 msgid "The graph could not be loaded"
 msgstr "Не удалось загрузить граф"
 
-#: app/templates/chat.html:358
+#: app/templates/chat.html:361
 msgid "The graph is still being built for these documents"
 msgstr "Граф по этим документам ещё строится"
 
-#: app/templates/chat.html:359
+#: app/templates/chat.html:362
 msgid "This browser cannot render the graph"
 msgstr "Этот браузер не может отобразить граф"
 
-#: app/templates/chat.html:360
+#: app/templates/chat.html:363
 msgid "Pick the second node of the path"
 msgstr "Выберите второй узел пути"
 
-#: app/templates/chat.html:361 app/templates/chat.html:525
+#: app/templates/chat.html:364 app/templates/chat.html:530
 msgid "Clear path"
 msgstr "Сбросить путь"
 
-#: app/templates/chat.html:362
+#: app/templates/chat.html:365
 msgid "No relations"
 msgstr "Нет связей"
 
-#: app/templates/chat.html:364
+#: app/templates/chat.html:367
 msgid "Path highlight cleared"
 msgstr "Подсветка пути сброшена"
 
-#: app/templates/chat.html:365 app/templates/chat.html:519
+#: app/templates/chat.html:368 app/templates/chat.html:524
 msgid "Path"
 msgstr "Путь"
 
-#: app/templates/chat.html:366
+#: app/templates/chat.html:369
 msgid "Cancel path"
 msgstr "Отменить путь"
 
-#: app/templates/chat.html:367
+#: app/templates/chat.html:370
 msgid "Pick the first node of the path"
 msgstr "Выберите первый узел пути"
 
-#: app/templates/chat.html:368
+#: app/templates/chat.html:371
 msgid "Stated relations"
 msgstr "Утверждённые связи"
 
-#: app/templates/chat.html:369
+#: app/templates/chat.html:372
 msgid "Structural, no quote"
 msgstr "Структурные, без цитаты"
 
-#: app/templates/chat.html:370
+#: app/templates/chat.html:373
 msgid "Merge into another node…"
 msgstr "Слить с другим узлом…"
 
-#: app/templates/chat.html:371
+#: app/templates/chat.html:374
 msgid "Cancel merge"
 msgstr "Отменить слияние"
 
-#: app/templates/chat.html:372
+#: app/templates/chat.html:375
 msgid "Pick the node it should be merged into"
 msgstr "Выберите узел, в который нужно слить"
 
-#: app/templates/chat.html:373
+#: app/templates/chat.html:376
 #, python-brace-format
 msgid "Merge “{source}” into “{target}”? The first node disappears."
 msgstr "Слить «{source}» в «{target}»? Первый узел исчезнет."
 
-#: app/templates/chat.html:374
+#: app/templates/chat.html:377
 msgid "The nodes could not be merged"
 msgstr "Не удалось слить узлы"
 
-#: app/templates/chat.html:375
+#: app/templates/chat.html:378
 msgid "Merge cancelled"
 msgstr "Слияние отменено"
 
-#: app/templates/chat.html:376
+#: app/templates/chat.html:379
 msgid "In one chunk"
 msgstr "В одном фрагменте"
 
-#: app/templates/chat.html:377
+#: app/templates/chat.html:380
 msgid "Similar document"
 msgstr "Похожий документ"
 
-#: app/templates/chat.html:378
+#: app/templates/chat.html:381
 msgid "Supplies"
 msgstr "Поставляет"
 
-#: app/templates/chat.html:379
+#: app/templates/chat.html:382
 msgid "Part of"
 msgstr "Входит в"
 
-#: app/templates/chat.html:380
+#: app/templates/chat.html:383
 msgid "Works for"
 msgstr "Работает в"
 
-#: app/templates/chat.html:381
+#: app/templates/chat.html:384
 msgid "Leads"
 msgstr "Руководит"
 
-#: app/templates/chat.html:382
+#: app/templates/chat.html:385
 msgid "Signed"
 msgstr "Подписал"
 
-#: app/templates/chat.html:383
+#: app/templates/chat.html:386
 msgid "Rents"
 msgstr "Арендует"
 
-#: app/templates/chat.html:384
+#: app/templates/chat.html:387
 msgid "Maintains"
 msgstr "Обслуживает"
 
-#: app/templates/chat.html:385
+#: app/templates/chat.html:388
 msgid "Performs"
 msgstr "Выполняет"
 
-#: app/templates/chat.html:386
+#: app/templates/chat.html:389
 msgid "Forbids"
 msgstr "Запрещает"
 
-#: app/templates/chat.html:387
+#: app/templates/chat.html:390
 msgid "Allows"
 msgstr "Разрешает"
 
-#: app/templates/chat.html:388
+#: app/templates/chat.html:391
 msgid "Located in"
 msgstr "Расположен в"
 
-#: app/templates/chat.html:389
+#: app/templates/chat.html:392
 msgid "Related to"
 msgstr "Связан с"
 
-#: app/templates/chat.html:390
+#: app/templates/chat.html:393
 msgid "No relation path was found"
 msgstr "Путь связей не найден"
 
-#: app/templates/chat.html:391
+#: app/templates/chat.html:394
 msgid "Build the graph"
 msgstr "Построить граф"
 
-#: app/templates/chat.html:392
+#: app/templates/chat.html:395
 msgid "Building"
 msgstr "Строится"
 
-#: app/templates/chat.html:393
+#: app/templates/chat.html:396
 msgid "Queued; the graph fills while the instance is idle"
 msgstr "В очереди: граф заполняется, пока инсталляция простаивает"
 
-#: app/templates/chat.html:394
+#: app/templates/chat.html:397
 msgid "Knowledge graph of the document"
 msgstr "Граф знаний документа"
 
-#: app/templates/chat.html:395
+#: app/templates/chat.html:398
 #, python-brace-format
 msgid "shown {n} of {total} nodes · {m} links"
 msgstr "показано {n} из {total} узлов · {m} связей"
 
-#: app/templates/chat.html:396
+#: app/templates/chat.html:399
 msgid "This browser does not provide WebGL — 2D mode"
 msgstr "Этот браузер не предоставляет WebGL — режим 2D"
 
-#: app/templates/chat.html:397
+#: app/templates/chat.html:400
 #, python-brace-format
 msgid "3D is unavailable: {reason}"
 msgstr "3D недоступен: {reason}"
 
-#: app/templates/chat.html:398
+#: app/templates/chat.html:401
 msgid "Switch between 2D and 3D"
 msgstr "Переключить 2D и 3D"
 
-#: app/templates/chat.html:399 app/templates/chat.html:517
+#: app/templates/chat.html:402 app/templates/chat.html:522
 msgid "Switch to 2D"
 msgstr "Переключить в 2D"
 
-#: app/templates/chat.html:400
+#: app/templates/chat.html:403
 msgid "Switch to 3D"
 msgstr "Переключить в 3D"
 
-#: app/templates/chat.html:401
+#: app/templates/chat.html:404
 msgid "Entities"
 msgstr "Сущности"
 
-#: app/templates/chat.html:403 app/templates/chat.html:516
+#: app/templates/chat.html:406 app/templates/chat.html:521
 msgid "Switch to documents"
 msgstr "Переключить на документы"
 
-#: app/templates/chat.html:404
+#: app/templates/chat.html:407
 msgid "Switch to entities"
 msgstr "Переключить на сущности"
 
-#: app/templates/chat.html:405
+#: app/templates/chat.html:408
 msgid "Open the browser console for details, or copy the line above."
 msgstr ""
 "Подробности — в консоли браузера; строку выше можно выделить и "
 "скопировать."
 
-#: app/templates/chat.html:406
+#: app/templates/chat.html:409
 #, python-brace-format
 msgid "similarity {v}"
 msgstr "похожесть {v}"
 
-#: app/templates/chat.html:407
+#: app/templates/chat.html:410
 msgid "Share"
 msgstr "Поделиться"
 
-#: app/templates/chat.html:409
+#: app/templates/chat.html:412
 msgid "Shared with"
 msgstr "Открыт для"
 
-#: app/templates/chat.html:410
+#: app/templates/chat.html:413
 msgid "Share document"
 msgstr "Поделиться документом"
 
-#: app/templates/chat.html:411
+#: app/templates/chat.html:414
 msgid "Not shared with anyone yet"
 msgstr "Пока никому не открыт"
 
-#: app/templates/chat.html:412
+#: app/templates/chat.html:415
 msgid "No other users"
 msgstr "Других пользователей нет"
 
-#: app/templates/chat.html:414
+#: app/templates/chat.html:417
 #, python-brace-format
 msgid "Delete folder \"{name}\"?"
 msgstr "Удалить папку «{name}»?"
 
-#: app/templates/chat.html:415
+#: app/templates/chat.html:418
 #, python-brace-format
 msgid ""
 "This will also delete {count} documents ({size}) inside the folder. "
 "Continue?"
 msgstr "Вместе с папкой будет удалено {count} документов ({size}). Продолжить?"
 
-#: app/templates/chat.html:416
+#: app/templates/chat.html:419
 msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 
-#: app/templates/chat.html:417
+#: app/templates/chat.html:420
 msgid "minutes_abbr"
 msgstr "мин"
 
-#: app/templates/chat.html:418
+#: app/templates/chat.html:421
 msgid "status_pending"
 msgstr "Ожидает индексации"
 
-#: app/templates/chat.html:419
+#: app/templates/chat.html:422
 msgid "status_indexing"
 msgstr "Индексация выполняется"
 
-#: app/templates/chat.html:420
+#: app/templates/chat.html:423
 msgid "status_indexed"
 msgstr "Проиндексирован"
 
-#: app/templates/chat.html:421
+#: app/templates/chat.html:424
 msgid "status_failed"
 msgstr "Ошибка индексации"
 
-#: app/templates/chat.html:422
+#: app/templates/chat.html:425
 msgid "status_unknown"
 msgstr "Не индексирован"
 
-#: app/templates/chat.html:423
+#: app/templates/chat.html:426
 msgid "transcribing"
 msgstr "Распознаётся..."
 
-#: app/templates/chat.html:431
+#: app/templates/chat.html:434
 msgid "generating"
 msgstr "Генерация..."
 
-#: app/templates/chat.html:433
+#: app/templates/chat.html:436
 msgid "cancelling"
 msgstr "Остановка..."
 
-#: app/templates/chat.html:434
+#: app/templates/chat.html:437
 msgid "cancelled"
 msgstr "Отменено"
 
-#: app/templates/chat.html:435
+#: app/templates/chat.html:438
 msgid "tool_get_current_time"
 msgstr "Получаю время..."
 
-#: app/templates/chat.html:436
+#: app/templates/chat.html:439
 msgid "tool_calculator"
 msgstr "Вычисляю..."
 
-#: app/templates/chat.html:437
+#: app/templates/chat.html:440
 msgid "tool_time_calc"
 msgstr "Рассчитываю дату..."
 
-#: app/templates/chat.html:438
+#: app/templates/chat.html:441
 msgid "tool_web_search"
 msgstr "Ищу в интернете..."
 
-#: app/templates/chat.html:439
+#: app/templates/chat.html:442
 msgid "tool_rag_search"
 msgstr "Ищу в документах..."
 
-#: app/templates/chat.html:440
+#: app/templates/chat.html:443
 msgid "tool_camera_snapshot"
 msgstr "Получаю снимок..."
 
-#: app/templates/chat.html:441
+#: app/templates/chat.html:444
 msgid "tool_read_page"
 msgstr "Открываю страницу..."
 
-#: app/templates/chat.html:442
+#: app/templates/chat.html:445
 msgid "tool_net_dns"
 msgstr "Проверяю DNS…"
 
-#: app/templates/chat.html:443
+#: app/templates/chat.html:446
 msgid "tool_net_whois"
 msgstr "Смотрю регистрацию домена…"
 
-#: app/templates/chat.html:444
+#: app/templates/chat.html:447
 msgid "tool_net_ping"
 msgstr "Проверяю узел…"
 
-#: app/templates/chat.html:445
+#: app/templates/chat.html:448
 msgid "tool_net_trace"
 msgstr "Трассирую маршрут…"
 
-#: app/templates/chat.html:446
+#: app/templates/chat.html:449
 msgid "tool_net_ports"
 msgstr "Сканирую порты…"
 
-#: app/templates/chat.html:447
+#: app/templates/chat.html:450
 msgid "tool_net_http"
 msgstr "Смотрю ответ сервера…"
 
-#: app/templates/chat.html:448
+#: app/templates/chat.html:451
 msgid "tool_net_speed"
 msgstr "Меряю скорость…"
 
-#: app/templates/chat.html:449
+#: app/templates/chat.html:452
 msgid "Preparing resources..."
 msgstr "⏳ Подготовка ресурсов..."
 
-#: app/templates/chat.html:450 app/templates/chat.html:451
+#: app/templates/chat.html:453 app/templates/chat.html:454
 msgid "Analyzing request..."
 msgstr "🔍 Анализирую запрос..."
 
-#: app/templates/chat.html:452
+#: app/templates/chat.html:455
 msgid "Analyzing image..."
 msgstr "🔍 Анализирую изображение..."
 
-#: app/templates/chat.html:453
+#: app/templates/chat.html:456
 msgid "Analyzing prompt..."
 msgstr "🔍 Анализирую промпт..."
 
-#: app/templates/chat.html:454
+#: app/templates/chat.html:457
 msgid "Generating video..."
 msgstr "🎬 Генерирую видео..."
 
-#: app/templates/chat.html:455
+#: app/templates/chat.html:458
 msgid "Generating image..."
 msgstr "🎨 Генерирую изображение..."
 
-#: app/templates/chat.html:456
+#: app/templates/chat.html:459
 msgid "Editing image..."
 msgstr "✏️ Редактирую изображение..."
 
-#: app/templates/chat.html:457
+#: app/templates/chat.html:460
 msgid "Loading reasoning model..."
 msgstr "🧠 Загружаю модель рассуждений..."
 
-#: app/templates/chat.html:458
+#: app/templates/chat.html:461
 msgid "Loading the model..."
 msgstr "Загружаю модель..."
 
-#: app/templates/chat.html:459
+#: app/templates/chat.html:462
 msgid "Thinking..."
 msgstr "🤔 Обдумываю ответ..."
 
-#: app/templates/chat.html:460
+#: app/templates/chat.html:463
 msgid "Searching documents..."
 msgstr "📚 Ищу в документах..."
 
-#: app/templates/chat.html:461 app/templates/chat.html:465
+#: app/templates/chat.html:464 app/templates/chat.html:468
 #, python-format
 msgid "Found %s fragments, preparing the answer..."
 msgstr "Найдено %s фрагментов, готовлю ответ..."
 
-#: app/templates/chat.html:462
+#: app/templates/chat.html:465
 msgid "Searching the web..."
 msgstr "🌐 Ищу в интернете..."
 
-#: app/templates/chat.html:463
+#: app/templates/chat.html:466
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Найдено %s результатов, готовлю ответ..."
 
-#: app/templates/chat.html:464
+#: app/templates/chat.html:467
 msgid "Searching your conversation history..."
 msgstr "🗨 Ищу в истории переписки..."
 
-#: app/templates/chat.html:466
+#: app/templates/chat.html:469
 msgid "Getting time..."
 msgstr "🕐 Получаю время..."
 
-#: app/templates/chat.html:467
+#: app/templates/chat.html:470
 msgid "Calculating..."
 msgstr "🔢 Вычисляю..."
 
-#: app/templates/chat.html:468
+#: app/templates/chat.html:471
 msgid "Calculating date..."
 msgstr "📅 Рассчитываю дату..."
 
-#: app/templates/chat.html:469
+#: app/templates/chat.html:472
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Глубокий анализ: читаю документы"
 
-#: app/templates/chat.html:470
+#: app/templates/chat.html:473
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Глубокий анализ: фаза %s"
 
-#: app/templates/chat.html:471
+#: app/templates/chat.html:474
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Глубокий анализ: ищу в интернете"
 
-#: app/templates/chat.html:472
+#: app/templates/chat.html:475
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Глубокий анализ: вызываю суб-модель"
 
-#: app/templates/chat.html:473
+#: app/templates/chat.html:476
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Глубокий анализ: формирую ответ"
 
-#: app/templates/chat.html:474
+#: app/templates/chat.html:477
 msgid "Starting web crawl..."
 msgstr "🕸️ Начинаю обход веб-страниц..."
 
-#: app/templates/chat.html:475
+#: app/templates/chat.html:478
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Обхожу страницу %s..."
 
-#: app/templates/chat.html:476
+#: app/templates/chat.html:479
 msgid "Indexing crawled content..."
 msgstr "🕸️ Индексирую полученный контент..."
 
-#: app/templates/chat.html:477
+#: app/templates/chat.html:480
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Глубокий анализ (%s шагов)"
 
-#: app/templates/chat.html:478
+#: app/templates/chat.html:481
 msgid "s"
 msgstr " с"
 
-#: app/templates/chat.html:479
+#: app/templates/chat.html:482
 msgid "Making the plan..."
 msgstr "🧠 Составляю план..."
 
-#: app/templates/chat.html:480
+#: app/templates/chat.html:483
 msgid "Extracting the visual continuity sheet..."
 msgstr "📐 Составляю визуальную библию..."
 
-#: app/templates/chat.html:481
+#: app/templates/chat.html:484
 msgid "Could not build the visual continuity sheet — images continue without it."
 msgstr "⚠️ Не удалось составить визуальную библию — картинки продолжаются без неё."
 
-#: app/templates/chat.html:482
+#: app/templates/chat.html:485
 msgid "Creating index for document..."
 msgstr "Создание индекса для документа..."
 
-#: app/templates/chat.html:483
+#: app/templates/chat.html:486
 msgid "Capturing snapshot..."
 msgstr "📹 Делаю снимок..."
 
-#: app/templates/chat.html:484
+#: app/templates/chat.html:487
 msgid "Step"
 msgstr "Шаг"
 
-#: app/templates/chat.html:485
+#: app/templates/chat.html:488
 msgid "minute_abbr"
 msgstr "м"
 
-#: app/templates/chat.html:486
+#: app/templates/chat.html:489
 msgid "second_abbr"
 msgstr "с"
 
-#: app/templates/chat.html:487
+#: app/templates/chat.html:490
 msgid "timer_zero"
 msgstr "0с"
 
-#: app/templates/chat.html:519
+#: app/templates/chat.html:524
 msgid "Show the path between two nodes"
 msgstr "Показать путь между двумя узлами"
 
-#: app/templates/chat.html:520
+#: app/templates/chat.html:525
 msgid "Find a node"
 msgstr "Найти узел"
 
-#: app/templates/chat.html:522
+#: app/templates/chat.html:527
 msgid "Show or hide relation types"
 msgstr "Показать или скрыть типы связей"
 
-#: app/templates/chat.html:522
+#: app/templates/chat.html:527
 msgid "Relations"
 msgstr "Связи"
 

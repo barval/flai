@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 09:49+0300\n"
+"POT-Creation-Date: 2026-11-18 10:19+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
@@ -23,15 +23,15 @@ msgstr ""
 msgid "FLAI"
 msgstr "ПЛИИ"
 
-#: app/__init__.py:626 app/__init__.py:642
+#: app/__init__.py:630 app/__init__.py:646
 msgid "Session expired. Please refresh the page."
 msgstr "Сессия истекла. Обновите страницу."
 
-#: app/__init__.py:634
+#: app/__init__.py:638
 msgid "Authentication required."
 msgstr "Требуется авторизация."
 
-#: app/__init__.py:649 app/routes/admin.py:404 app/routes/admin.py:688
+#: app/__init__.py:653 app/routes/admin.py:404 app/routes/admin.py:688
 #: app/routes/admin.py:731 app/routes/admin.py:747 app/routes/admin.py:759
 #: app/routes/admin.py:784 app/routes/admin.py:832 app/routes/admin.py:2262
 #: app/routes/admin.py:2279 app/routes/admin.py:2314
@@ -39,7 +39,7 @@ msgstr "Требуется авторизация."
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
-#: app/__init__.py:655
+#: app/__init__.py:659 app/routes/scheduler.py:75
 msgid "Not found"
 msgstr "Не найдено"
 
@@ -550,7 +550,7 @@ msgstr "⚠️ В вашем сообщении нет ссылки"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Сервис обхода сайтов недоступен"
 
-#: app/queue.py:4907 app/tools.py:723
+#: app/queue.py:4907 app/tools.py:807
 msgid "This address is not available for reading"
 msgstr "⚠️ Этот адрес недоступен для чтения"
 
@@ -573,8 +573,8 @@ msgstr "⚠️ Достигнут лимит документов — собра
 msgid "Failed to save the collected materials"
 msgstr "⚠️ Не удалось сохранить собранные материалы."
 
-#: app/queue.py:5650 modules/base.py:975 modules/base.py:1225
-#: modules/base.py:1275 modules/multimodal.py:258 modules/multimodal.py:290
+#: app/queue.py:5650 modules/base.py:975 modules/base.py:1227
+#: modules/base.py:1277 modules/multimodal.py:258 modules/multimodal.py:290
 #: modules/multimodal.py:296 modules/multimodal.py:337
 #: modules/multimodal.py:375 modules/multimodal.py:399
 #: modules/multimodal.py:448 modules/multimodal.py:543
@@ -993,68 +993,68 @@ msgstr ""
 msgid "Describe the scene and motion the video must show."
 msgstr "Опиши сцену и движение, которые должно показать видео."
 
-#: app/tools.py:654
+#: app/tools.py:738
 msgid "Current time unavailable"
 msgstr "Текущее время недоступно"
 
-#: app/tools.py:669
+#: app/tools.py:753
 msgid "Division by zero"
 msgstr "Деление на ноль"
 
-#: app/tools.py:676
+#: app/tools.py:760
 #, python-brace-format
 msgid "Calculation error: {error}"
 msgstr "Ошибка вычисления: {error}"
 
-#: app/tools.py:681 app/tools.py:750 app/tools.py:792 app/tools.py:1120
-#: app/tools.py:1201 app/tools.py:1333 app/tools.py:1579 app/tools.py:1598
+#: app/tools.py:765 app/tools.py:834 app/tools.py:876 app/tools.py:1204
+#: app/tools.py:1285 app/tools.py:1487 app/tools.py:1733 app/tools.py:1752
 msgid "The tool could not complete the request."
 msgstr "Инструмент не смог выполнить запрос."
 
-#: app/tools.py:694
+#: app/tools.py:778
 msgid "Web search service unavailable"
 msgstr "Сервис веб-поиска недоступен"
 
-#: app/tools.py:702
+#: app/tools.py:786
 #, python-brace-format
 msgid "No results found for query: {query}"
 msgstr "Результаты не найдены для запроса: {query}"
 
-#: app/tools.py:718
+#: app/tools.py:802
 msgid "Page reading service is unavailable"
 msgstr "⚠️ Сервис чтения страниц недоступен"
 
-#: app/tools.py:729
+#: app/tools.py:813
 msgid "Failed to read the page"
 msgstr "⚠️ Не удалось прочитать страницу"
 
-#: app/tools.py:740
+#: app/tools.py:824
 msgid "Document search service unavailable"
 msgstr "Сервис поиска в документах недоступен"
 
-#: app/tools.py:743
+#: app/tools.py:827
 msgid "User not identified for document search"
 msgstr "Пользователь не идентифицирован для поиска в документах"
 
-#: app/tasks/runner.py:591 app/tools.py:754
+#: app/tasks/runner.py:591 app/tools.py:838
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "Релевантные документы не найдены для запроса: {query}"
 
-#: app/tools.py:776
+#: app/tools.py:860
 msgid "User not identified for conversation search"
 msgstr "Пользователь не идентифицирован для поиска по истории диалогов"
 
-#: app/tools.py:796
+#: app/tools.py:880
 #, python-brace-format
 msgid "No past conversations found for query: {query}"
 msgstr "Прошлые диалоги по запросу «{query}» не найдены"
 
-#: app/tools.py:810 app/tools.py:845 modules/cam.py:404 modules/cam.py:527
+#: app/tools.py:894 app/tools.py:929 modules/cam.py:404 modules/cam.py:527
 msgid "CCTV service unavailable"
 msgstr "Сервис видеонаблюдения недоступен"
 
-#: app/tools.py:823
+#: app/tools.py:907
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
@@ -1062,100 +1062,142 @@ msgstr ""
 "Что сейчас видно в этой комнате? Назови людей, животных, предметы и "
 "происходящее действие."
 
-#: app/tools.py:833
+#: app/tools.py:917
 msgid "Snapshot captured; no description is available."
 msgstr "Снимок получен, но описание недоступно."
 
-#: app/tools.py:932 app/tools.py:939 app/tools.py:955 app/tools.py:1002
-#: app/tools.py:1005 app/tools.py:1013 app/tools.py:1059 app/tools.py:1062
-#: app/tools.py:1070 app/tools.py:1077 app/tools.py:1087 app/tools.py:1116
+#: app/tools.py:1016 app/tools.py:1023 app/tools.py:1039 app/tools.py:1086
+#: app/tools.py:1089 app/tools.py:1097 app/tools.py:1143 app/tools.py:1146
+#: app/tools.py:1154 app/tools.py:1161 app/tools.py:1171 app/tools.py:1200
 #, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Ошибка вычисления даты: {error}"
 
-#: app/tools.py:1112
+#: app/tools.py:1196
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Неизвестная операция time_calc: {op}"
 
-#: app/tools.py:1173
+#: app/tools.py:1257
 msgid "User not identified for network tools"
 msgstr "Пользователь не определён для сетевых инструментов"
 
-#: app/tools.py:1175
+#: app/tools.py:1259
 msgid "Network tools are not available to you."
 msgstr "Сетевые инструменты Вам недоступны."
 
-#: app/tools.py:1177
+#: app/tools.py:1261
 msgid "The network diagnostics service is not running"
 msgstr "Служба сетевой диагностики не запущена"
 
-#: app/tools.py:1182
+#: app/tools.py:1266
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "Этот адрес запрещён: {reason}"
 
-#: app/tools.py:1182
+#: app/tools.py:1266
 msgid "loopback or link-local"
 msgstr "петля или link-local"
 
 # GPU memory error messages
-#: app/tools.py:1186
+#: app/tools.py:1270
 msgid "Too many network calls; try again in a minute."
 msgstr "Слишком много сетевых вызовов; попробуйте через минуту."
 
-#: app/tools.py:1195
+#: app/tools.py:1279
 msgid "The diagnostics service returned nothing"
 msgstr "Служба диагностики ничего не вернула"
 
-#: app/tools.py:1292
+#: app/tools.py:1349
+msgid "I could not tell the time. When should it happen?"
+msgstr "Не понял время. Когда это должно произойти?"
+
+#: app/tools.py:1351
+msgid "That repetition is not one I know: once, daily, weekly, monthly or minutes"
+msgstr ""
+"Такое повторение мне неизвестно: разово, ежедневно, еженедельно, "
+"ежемесячно или каждые минуты"
+
+#: app/tools.py:1353
+#, python-brace-format
+msgid "That time has already passed: {when}. When should it happen?"
+msgstr "Это время уже прошло: {when}. Когда это должно произойти?"
+
+#: app/tools.py:1357
+msgid "There is nothing to send or do. What should happen?"
+msgstr "Нечего отправить или сделать. Что должно произойти?"
+
+#: app/tools.py:1359
+#, python-brace-format
+msgid "That is too long to schedule (max {limit} characters)"
+msgstr "Слишком длинно для расписания (не больше {limit} символов)"
+
+#: app/tools.py:1362
+msgid "The schedule could not be created"
+msgstr "Не удалось создать расписание"
+
+#: app/tools.py:1376
+msgid "User not identified for the scheduler"
+msgstr "Пользователь не определён для планировщика"
+
+#: app/tools.py:1398
+#, python-brace-format
+msgid "Action scheduled for {when}"
+msgstr "Действие на {when}"
+
+#: app/tools.py:1398
+#, python-brace-format
+msgid "Reminder set for {when}"
+msgstr "Напоминание на {when}"
+
+#: app/tools.py:1446
 msgid "There is nothing to write: the content is empty"
 msgstr "Нечего записывать: содержимое пустое"
 
-#: app/tools.py:1293
+#: app/tools.py:1447
 #, python-brace-format
 msgid "Unsupported document format: {detail}. Use md, csv, json or txt"
 msgstr ""
 "Неподдерживаемый формат документа: {detail}. Используйте md, csv, json "
 "или txt"
 
-#: app/tools.py:1294
+#: app/tools.py:1448
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "Документ слишком большой (предел {limit} КБ)"
 
-#: app/tools.py:1297
+#: app/tools.py:1451
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "Место для документов закончилось; сначала удалите что-нибудь"
 
-#: app/tools.py:1298
+#: app/tools.py:1452
 msgid "Can only append to a document this assistant wrote, not to an upload"
 msgstr ""
 "Дописывать можно только в документ, написанный ассистентом, но не в "
 "загрузку"
 
-#: app/tools.py:1299
+#: app/tools.py:1453
 msgid "The JSON does not parse, so nothing was written"
 msgstr "JSON не разбирается, поэтому ничего не записано"
 
-#: app/tools.py:1300
+#: app/tools.py:1454
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "Имя документа не подходит: {detail}"
 
-#: app/tools.py:1301
+#: app/tools.py:1455
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "Для csv нужны rows: список строк, каждая — список ячеек"
 
-#: app/tools.py:1303
+#: app/tools.py:1457
 msgid "The document could not be written"
 msgstr "Документ не удалось записать"
 
-#: app/tools.py:1317
+#: app/tools.py:1471
 msgid "User not identified for documents"
 msgstr "Пользователь не определён для работы с документами"
 
-#: app/tools.py:1338
+#: app/tools.py:1492
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1164,16 +1206,16 @@ msgstr ""
 "Сохранено как {name} ({size} КБ) в ваших документах. Отметьте его "
 "галочкой, чтобы включить поиск."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1351
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1505
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Неизвестный навык: {name}"
 
-#: app/tools.py:1510
+#: app/tools.py:1664
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "Вызов инструмента пропущен: достигнут последний раунд цикла."
 
-#: app/tools.py:1525
+#: app/tools.py:1679
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1181,11 +1223,11 @@ msgstr ""
 "Вызов отклонён: он повторяет вызов с теми же аргументами, результат "
 "которого уже приведён выше."
 
-#: app/tools.py:1531
+#: app/tools.py:1685
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "Вызов инструмента отклонён: аргументы не являются корректным JSON."
 
-#: app/tools.py:1585
+#: app/tools.py:1739
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Неизвестный инструмент: {tool}"
@@ -1909,6 +1951,7 @@ msgid "User not found"
 msgstr "Пользователь не найден"
 
 #: app/routes/documents.py:801 app/routes/documents.py:844
+#: app/routes/scheduler.py:64 app/routes/scheduler.py:72
 msgid "Not authenticated"
 msgstr "Не выполнен вход"
 
@@ -4342,6 +4385,7 @@ msgid "Restore"
 msgstr "Восстановить"
 
 #: app/templates/admin.html:1027 app/templates/admin.html:1129
+#: app/templates/base.html:109
 msgid "Delete"
 msgstr "Удалить"
 
@@ -4679,7 +4723,7 @@ msgstr "Это имя уже занято"
 msgid "toggle_voice_gender"
 msgstr "Переключить пол голоса"
 
-#: app/templates/base.html:46 app/templates/base.html:151
+#: app/templates/base.html:46 app/templates/base.html:160
 msgid "Toggle theme"
 msgstr "Переключить тему"
 
@@ -4687,7 +4731,7 @@ msgstr "Переключить тему"
 msgid "Administrator"
 msgstr "Администратор"
 
-#: app/templates/base.html:54 app/templates/base.html:108
+#: app/templates/base.html:54 app/templates/base.html:117
 msgid "api_keys_title"
 msgstr "ПЛИИ API ключи"
 
@@ -4755,66 +4799,87 @@ msgstr "Получить ключ"
 msgid "tavily_key_placeholder"
 msgstr "tvly-…"
 
-#: app/templates/base.html:109
+#: app/templates/base.html:108
+msgid "Nothing scheduled"
+msgstr "Ничего не запланировано"
+
+#: app/templates/base.html:110
+msgid "finished"
+msgstr "завершено"
+
+#: app/templates/base.html:111
+#, python-brace-format
+msgid "Delete the schedule \"{title}\"?"
+msgstr "Удалить расписание «{title}»?"
+
+#: app/templates/base.html:112
+msgid "Scheduled"
+msgstr "Запланировано"
+
+#: app/templates/base.html:113
+msgid "Created from chat. Deleting one stops it."
+msgstr "Создано из чата. Удаление останавливает."
+
+#: app/templates/base.html:118
 msgid "api_keys_close"
 msgstr "Закрыть"
 
-#: app/templates/base.html:111
+#: app/templates/base.html:120
 msgid "api_keys_hint"
 msgstr ""
 "Создавайте ключи для внешних интеграций. Секрет показывается только один "
 "раз."
 
-#: app/templates/base.html:113
+#: app/templates/base.html:122
 msgid "api_keys_name_placeholder"
 msgstr "Название ключа, например Home Assistant"
 
-#: app/templates/base.html:114
+#: app/templates/base.html:123
 msgid "api_keys_create"
 msgstr "Создать ключ"
 
-#: app/templates/base.html:118
+#: app/templates/base.html:127
 msgid "api_keys_copy_once"
 msgstr "Скопируйте ключ сейчас. Повторно он не будет показан."
 
-#: app/templates/base.html:119
+#: app/templates/base.html:128
 msgid "api_keys_copy"
 msgstr "Скопировать ключ"
 
-#: app/templates/base.html:124
+#: app/templates/base.html:133
 msgid "api_keys_col_name"
 msgstr "Название"
 
-#: app/templates/base.html:125
+#: app/templates/base.html:134
 msgid "api_keys_col_key"
 msgstr "Ключ"
 
-#: app/templates/base.html:126
+#: app/templates/base.html:135
 msgid "api_keys_col_created"
 msgstr "Создан"
 
-#: app/templates/base.html:127
+#: app/templates/base.html:136
 msgid "api_keys_col_last_used"
 msgstr "Использован"
 
-#: app/templates/base.html:164 app/templates/chat.html:307
+#: app/templates/base.html:173 app/templates/chat.html:307
 msgid "footer_about_hint"
 msgstr "О системе"
 
-#: app/templates/base.html:165 app/templates/chat.html:306
+#: app/templates/base.html:174 app/templates/chat.html:306
 msgid "footer_short_name"
 msgstr "ПЛИИ"
 
-#: app/templates/base.html:173 app/templates/chat.html:97
+#: app/templates/base.html:182 app/templates/chat.html:97
 #: app/templates/chat.html:308
 msgid "close_about"
 msgstr "Закрыть"
 
-#: app/templates/base.html:175 app/templates/chat.html:304
+#: app/templates/base.html:184 app/templates/chat.html:304
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ)"
 
-#: app/templates/base.html:178 app/templates/chat.html:305
+#: app/templates/base.html:187 app/templates/chat.html:305
 msgid "footer_copyright"
 msgstr "(c) 2026 Барсуков Валерий"
 

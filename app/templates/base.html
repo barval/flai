@@ -104,6 +104,15 @@
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>
                     </div>
+                    <div class="scheduler-section" id="scheduler-section"
+                         data-empty-label="{{ _('Nothing scheduled') }}"
+                         data-delete-label="{{ _('Delete') }}"
+                         data-finished-label="{{ _('finished') }}"
+                         data-confirm-template="{{ _('Delete the schedule "{title}"?') }}">
+                        <div class="api-keys-header"><span>{{ _('Scheduled') }}</span></div>
+                        <p class="api-keys-hint">{{ _('Created from chat. Deleting one stops it.') }}</p>
+                        <div class="scheduler-items" id="scheduler-items"></div>
+                    </div>
                     <div class="api-keys-header">
                         <span>{{ _('api_keys_title') }}</span>
                         <button class="api-keys-close" id="api-keys-close" title="{{ _('api_keys_close') }}">✕</button>
@@ -195,6 +204,7 @@
     {% if 'login' in session %}
     <script src="{{ url_for('static', filename='js/api-keys.js', v=config.STATIC_VERSION) }}"></script>
     <script src="{{ url_for('static', filename='js/tavily-key.js', v=config.STATIC_VERSION) }}"></script>
+    <script src="{{ url_for('static', filename='js/scheduler-panel.js', v=config.STATIC_VERSION) }}"></script>
     {% endif %}
     <!-- Guest theme switcher script -->
     <script src="{{ url_for('static', filename='js/guest-theme.js', v=config.STATIC_VERSION) }}"></script>

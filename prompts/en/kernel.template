@@ -16,6 +16,9 @@ Choose exactly one:
 - reasoning_web — a complex analysis that also needs current internet data.
 - remember — an explicit request to remember something ("remember", "do not forget").
 - crawl — a request to study a whole site or its section in depth, over many pages.
+- schedule — the user asks to be reminded of something, or to have something done, at a
+  stated time ("remind me tomorrow at nine", "every Friday at 16:00 check the logs",
+  "in fifteen minutes remind me about the oven").
 
 # KEY RULES
 - Past tense about the conversation itself is history, not the action it mentions. Past tense about the world —
@@ -38,6 +41,9 @@ Choose exactly one:
 {network_rule}
 - A request to write code that draws or animates something is reasoning, not image or video.
 - A request to see a room NOW is camera; "what did we see earlier" is history.
+- A request that names a time AND asks for a reminder or for something to be DONE then is
+  schedule: never none, and never search — a search engine cannot schedule anything. Put
+  the whole request in "query".
 
 # TOOLS
 The runtime tools currently available are listed below. Put at most 6 names in "tools"; use the exact names.
@@ -51,6 +57,10 @@ List a tool whenever the message needs a fact the model cannot know by itself:
 - which ports are open on one host, or which addresses answer in a /24 -> net_ports
 - the response headers or the TLS certificate of a URL -> net_http
 - throughput to an iperf3 server -> net_speed
+- a reminder at a stated time -> schedule_reminder
+- something to be DONE at a stated time -> schedule_action
+For either scheduling tool, "query" is the user's request as written: the chat model needs
+their words to write the reminder or the goal.
 The six net_* tools exist only when the catalogue above lists them; when it does not, answer without them.
 An empty list means the runtime will not offer ANY tool: use it only when a tool is certainly unnecessary (a greeting, small talk, a question the model can answer from its own knowledge).
 {catalog}

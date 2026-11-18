@@ -445,6 +445,9 @@ def create_app():
         tasks,
         tts,
     )
+    from .routes import (
+        scheduler as scheduler_routes,
+    )
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -461,6 +464,7 @@ def create_app():
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
     app.register_blueprint(tasks.bp)
+    app.register_blueprint(scheduler_routes.bp)
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)

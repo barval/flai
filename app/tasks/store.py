@@ -305,6 +305,17 @@ def active_scheduler_task(item_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def scheduler_tasks_for_item(item_id: str) -> list[dict]:
+    """Every task an item has ever started, newest first."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT * FROM tasks WHERE scheduler_item_id = %s ORDER BY created_at DESC",
+            (item_id,),
+        )
+        return [dict(row) for row in c.fetchall()]
+
+
 def due_scheduler_tasks(moment) -> list[dict]:
     """Terminal tasks whose result is due and has not gone out yet."""
     with get_db() as conn:

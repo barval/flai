@@ -367,6 +367,77 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 
+SCHEDULER_TOOLS = ("schedule_reminder", "schedule_action")
+
+_WHEN_SCHEMA = {
+    "type": "string",
+    "description": (
+        "Local wall-clock moment in the user's time zone as 'YYYY-MM-DD HH:MM'. Work it out "
+        "from the current time given in the system prompt; never reuse a date from history."
+    ),
+}
+
+_REPEAT_SCHEMA = {
+    "type": "string",
+    "enum": ["once", "minutes", "daily", "weekly", "monthly"],
+    "description": "Default once. daily/weekly/monthly repeat at the same local time.",
+}
+
+_SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_reminder",
+            "description": (
+                "Schedule a reminder: a sentence the assistant sends at that moment without "
+                "thinking about it. Use it when the user asks to be reminded of something. "
+                "The text is written now, so it may contain {when} for the time it fires."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "text": {"type": "string", "description": "What to send at that moment"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["when", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_action",
+            "description": (
+                "Schedule real work at a moment: the task plans and runs by itself, with the "
+                "user's tools and skills, and its result arrives in the actions chat. Use it "
+                "when the user asks to have something DONE later ('every morning send me the "
+                "news and save it to a file'), not just to be reminded of it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "goal": {"type": "string", "description": "What has to be done, in full"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["when", "goal"],
+            },
+        },
+    },
+]
+
+
 WRITE_DOCUMENT_TOOL = "write_document"
 
 _WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
@@ -557,10 +628,23 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
     return (
         list(definitions)
         + [_WRITE_DOCUMENT_DEFINITION]
+        + _scheduler_definitions()
         + skill_tool_definitions()
         + mcp_tool_definitions()
         + net_tool_definitions()
     )
+
+
+def _scheduler_definitions() -> list[dict[str, Any]]:
+    """The scheduling tools, offered unless the installation switched the scheduler off."""
+    try:
+        from flask import current_app
+
+        if not current_app.config.get("SCHEDULER_ENABLED", True):
+            return []
+    except Exception:  # noqa: BLE001 - no app context: offer them, the tool checks again
+        pass
+    return list(_SCHEDULER_DEFINITIONS)
 
 
 # A restricted profile's catalogue, named here rather than in the module that
@@ -1256,6 +1340,74 @@ def _exec_net_speed(ctx: dict[str, Any], **kw: Any) -> str:
     return _run_net_tool("net_speed", "speed", ctx, payload, host)
 
 
+def _schedule_refusal(language: str, refusal) -> str:
+    """A refusal is a question back, never a guess at the time."""
+    from flask_babel import force_locale
+
+    with force_locale(language):
+        if refusal.code == "time_unclear":
+            return "⚠️ " + str(_("I could not tell the time. When should it happen?"))
+        if refusal.code == "repeat_unclear":
+            return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
+        if refusal.code == "in_the_past":
+            return "⚠️ " + str(_("That time has already passed: {when}. When should it happen?")).format(
+                when=refusal.params.get("when").strftime("%Y-%m-%d %H:%M")
+            )
+        if refusal.code == "empty_body":
+            return "⚠️ " + str(_("There is nothing to send or do. What should happen?"))
+        if refusal.code == "too_long":
+            return "⚠️ " + str(_("That is too long to schedule (max {limit} characters)")).format(
+                limit=refusal.params.get("limit")
+            )
+        return "⚠️ " + str(_("The schedule could not be created"))
+
+
+def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
+    """Create one scheduled item from the model's structured fields."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    from app import scheduler_tools
+
+    language = str(ctx.get("lang") or "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(language):
+            return "⚠️ " + str(_("User not identified for the scheduler"))
+
+    body = kw.get("goal") if kind == "action" else kw.get("text")
+    zone_name = scheduler_tools.installation_zone_name(current_app)
+    try:
+        _item_id, local = scheduler_tools.create_item(
+            kind,
+            login,
+            kw.get("when"),
+            str(body or ""),
+            title=str(kw.get("title") or ""),
+            repeat=kw.get("repeat"),
+            every_minutes=kw.get("every_minutes"),
+            zone_name=zone_name,
+        )
+    except scheduler_tools.ScheduleRefusalError as refusal:
+        return _schedule_refusal(language, refusal)
+
+    from app.scheduler import render_when
+
+    when = render_when(local, language)
+    with force_locale(language):
+        template = _("Action scheduled for {when}") if kind == "action" else _("Reminder set for {when}")
+        head = str(template).format(when=when)
+    return f"🔔 {head}" if kind == "reminder" else f"⚙️ {head}"
+
+
+def _exec_schedule_reminder(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "reminder", **kw)
+
+
+def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "action", **kw)
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
@@ -1268,6 +1420,8 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
     WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
+    "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
     "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
     "net_whois": lambda ctx, **kw: _exec_net_whois(ctx, **kw),
     "net_ping": lambda ctx, **kw: _exec_net_ping(ctx, **kw),
@@ -1373,7 +1527,7 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL):
+    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS):
         # Both survive narrowing: a turn that picked any other tool would otherwise
         # lose the skill loader, or the only way to hand the user a file.
         if not any(item["function"]["name"] == keep for item in chosen):

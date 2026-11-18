@@ -10,6 +10,11 @@
 
 - **Two knobs in Admin → Settings → Scheduler:** `SCHEDULER_RUN_ROUNDS` (model rounds one run may spend, default 3) and `SCHEDULER_RUN_TIMEOUT_S` (seconds one run may take, checked before each round, default 180).
 
+### Migration
+
+- **Three `tasks` columns are dropped:** `scheduler_item_id`, `scheduler_deliver_at`, `scheduler_delivered_at`. `init_db()` removes them on the first start after the upgrade. Tasks created by the v13.5 action path remain ordinary tasks in the Tasks tab; their answers had already been delivered, so nothing is lost. Checked on an installation that ran the v13.5 path: 42 such tasks existed, all with `scheduler_delivered_at` set. A downgrade to v13.5 re-adds the columns empty — those actions would then be unscheduled, not duplicated.
+
+
 ## [v13.5] — 2026-11-18
 
 ### Changed

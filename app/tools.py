@@ -1431,14 +1431,22 @@ def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
     language = str(ctx.get("lang") or "ru")
     login = str(ctx.get("user_id") or "")
     goal = str(kw.get("goal") or "").strip()
-    title = str(kw.get("title") or "").strip() or goal[:60]
+    title = (str(kw.get("title") or "").strip() or goal[:60])[:300]
 
+    if not ctx.get("scheduler_run"):
+        # The tool belongs to a run. Chat is never offered it, and a hallucinated
+        # name from a chat turn must not create a task behind the person's back.
+        with force_locale(language):
+            return "⚠️ " + str(_("Only a scheduled action can start a task"))
     if not login:
         with force_locale(language):
             return "⚠️ " + str(_("User not identified for the scheduler"))
     if not goal:
         with force_locale(language):
             return "⚠️ " + str(_("There is nothing to do: the task needs a goal"))
+    if not current_app.config.get("TASKS_ENABLED", False):
+        with force_locale(language):
+            return "⚠️ " + str(_("Background tasks are disabled on this installation"))
 
     service_class = 2
     try:
@@ -1456,6 +1464,15 @@ def _exec_start_task(ctx: dict[str, Any], **kw: Any) -> str:
         language,
         str(ctx.get("response_style") or "neutral"),
     )
+    # The title is the list label; the planner reads its goal from step_plan.task_request.
+    # Without this the task would plan by "Scheduler: <name>" and lose the actual work.
+    task = task_store.update_task(task_id, step_plan={"task_request": goal})
+    try:
+        from app.tasks.events import publish_task_update
+
+        publish_task_update(current_app, task)
+    except Exception:  # noqa: BLE001 - a live view is advisory, never fatal
+        current_app.logger.debug("could not publish the new task")
     current_app.logger.info(f"service run started task {task_id} ({prefixed})")
     with force_locale(language):
         return str(_("🛠️ {title} — the task is started and its result will appear in Tasks")).format(

@@ -105,3 +105,56 @@ def test_a_restart_cancels_what_was_running(env):
     assert scheduler_runs.recover_after_restart(NOW) == 1
     assert scheduler_runs.get_run(run_id)["status"] == scheduler_runs.STATUS_CANCELLED
     assert scheduler_runs.has_open_run(item["id"]) is False
+
+
+def test_a_cancelled_run_is_not_revived_by_a_late_writer(env):
+    """The tick cancels an overdue run; a worker finishing it afterwards must not undo that."""
+    item = _item()
+    run_id = scheduler_runs.create_run(item["id"], LOGIN, NOW)
+    scheduler_runs.mark_running(run_id)
+    scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_CANCELLED, error="scheduler_late")
+
+    changed = scheduler_runs.finish_run(
+        run_id, scheduler_runs.STATUS_COMPLETED, result="76.4", from_statuses=(scheduler_runs.STATUS_RUNNING,)
+    )
+
+    run = scheduler_runs.get_run(run_id)
+    assert changed is False
+    assert run["status"] == scheduler_runs.STATUS_CANCELLED
+    assert run["error"] == "scheduler_late"
+    assert run["result"] is None
+    # It is owed a notice ("cancelled"), never the answer the late writer carried.
+    pending = scheduler_runs.due_runs(NOW + timedelta(minutes=5))
+    assert [row["status"] for row in pending] == [scheduler_runs.STATUS_CANCELLED]
+
+
+def test_a_finish_does_not_erase_the_reason_it_was_cancelled(env):
+    item = _item()
+    run_id = scheduler_runs.create_run(item["id"], LOGIN, NOW)
+    scheduler_runs.mark_running(run_id)
+    scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_CANCELLED, error="scheduler_late")
+
+    # The runner's own cancellation path carries no error string.
+    scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_CANCELLED, rounds=2)
+
+    run = scheduler_runs.get_run(run_id)
+    assert run["error"] == "scheduler_late"
+    assert run["rounds"] == 2
+
+
+def test_a_running_row_whose_worker_died_is_swept(env):
+    """A transient failure after `running` would otherwise silence the item until a restart."""
+    item = _item()
+    run_id = scheduler_runs.create_run(item["id"], LOGIN, NOW)
+    scheduler_runs.mark_running(run_id)
+    with scheduler_runs.get_db() as conn:
+        conn.cursor().execute(
+            "UPDATE scheduler_runs SET started_at = %s - make_interval(secs => 4000) WHERE id = %s",
+            (NOW, run_id),
+        )
+
+    assert scheduler_runs.sweep_stale_running(NOW, 1800) == 1
+    run = scheduler_runs.get_run(run_id)
+    assert run["status"] == scheduler_runs.STATUS_CANCELLED
+    assert run["error"] == "run_timed_out"
+    assert scheduler_runs.has_open_run(item["id"]) is False

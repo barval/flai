@@ -676,10 +676,10 @@ DESCRIPTIONS: dict[str, str] = {
         "The most firings one catch-up delivers; past it only the newest arrives, with how many were skipped"
     ),
     "SCHEDULER_ACTION_LEAD_MIN": (
-        "Minutes before its target an action is enqueued, so the queue can wait without making it late"
+        "Minutes before its target an action is queued, so its answer is ready on time"
     ),
     "SCHEDULER_MAX_LATENESS_MIN": (
-        "Minutes after its target a task that never started is cancelled with a short notice"
+        "Minutes after its target a run that never started is cancelled with a short notice"
     ),
     "SCHEDULER_GRACE_MIN": "Minutes late before a firing counts as missed rather than on time",
     "SCHEDULER_RUN_ROUNDS": "How many model rounds one action may spend before it must answer",

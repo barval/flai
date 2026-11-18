@@ -1064,6 +1064,31 @@ class RedisRequestQueue:
         if not warm_up_chat_model(self.app, timeout=timeout):
             self.logger.debug("Multimodal sync preload did not reach the running state")
 
+    def _finalize_dropped_service_run(self, task: dict[str, Any], reason: str) -> bool:
+        """Close the run a task carried when the queue drops that task unexecuted.
+
+        The queue can drop a task before it starts — it waited too long, or the person
+        cancelled the chat. A run left `queued` would hold the item's overlap rule until
+        the lateness sweep, silencing every firing in between, so the row is closed here
+        with the reason it never ran.
+        """
+        if task.get("type") != "service_run" and task.get("data", {}).get("type") != "service_run":
+            return False
+        run_id = str((task.get("data") or {}).get("run_id") or "")
+        if not run_id:
+            return False
+        from app import scheduler_runs
+
+        moved = scheduler_runs.finish_run(
+            run_id,
+            scheduler_runs.STATUS_CANCELLED,
+            error=reason,
+            from_statuses=(scheduler_runs.STATUS_QUEUED,),
+        )
+        if moved:
+            self.app.logger.info(f"service run {run_id} closed before it started ({reason})")
+        return moved
+
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""
         task_id = task.get("id")
@@ -1116,6 +1141,7 @@ class RedisRequestQueue:
                 pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
                 pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
             pipe.execute()
+            self._finalize_dropped_service_run(task, "queue_timeout")
             if publish_result:
                 self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
@@ -7797,6 +7823,11 @@ class RedisRequestQueue:
         {"fact_extraction_task", "fact_merge_task", "memory_extract_task", "session_summary_task", "graph_extract_task"}
     )
 
+    # Types the person did not ask for and must not watch in the queue panel. Separate
+    # from `_BACKGROUND_TASK_TYPES` on purpose: that set also skips the counter decrement,
+    # and a run is counted on enqueue. Hiding it there would drift every counter upward.
+    _HIDDEN_FROM_STATUS_TYPES = _BACKGROUND_TASK_TYPES | {"service_run"}
+
     # Set by every user-facing request; the memory extraction (and the idle
     # merge queue behind it) waits it out.
     MEMORY_EXTRACT_INTERRUPT_KEY = "memory_extract:interrupt"
@@ -7821,7 +7852,7 @@ class RedisRequestQueue:
                 req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
                 task = self._deserialize(task_data)
                 if task and task.get("user_id") == user_id:
-                    if task.get("type") in self._BACKGROUND_TASK_TYPES:
+                    if task.get("type") in self._HIDDEN_FROM_STATUS_TYPES:
                         continue
                     task["status"] = "processing"
                     task["position_info"] = {"position": 1, "estimated_seconds": 0}
@@ -7856,7 +7887,7 @@ class RedisRequestQueue:
             for task_data in queue_tasks:
                 task = self._deserialize(task_data)
                 if task and task.get("user_id") == user_id:
-                    if task.get("type") in self._BACKGROUND_TASK_TYPES:
+                    if task.get("type") in self._HIDDEN_FROM_STATUS_TYPES:
                         continue
                     if task.get("session_id") in processing_session_ids:
                         continue
@@ -7966,6 +7997,11 @@ class RedisRequestQueue:
 
     def _publish_result_event(self, task: dict[str, Any], status: str, result_data: dict[str, Any]) -> None:
         """Publish task result to the user's SSE event stream."""
+        if task.get("type") == "service_run" or task.get("data", {}).get("type") == "service_run":
+            # A run's answer is delivered by the scheduler tick as a message. The
+            # client's result handler also hides the chat stop button, which would
+            # cancel the appearance of the person's own generation.
+            return
         user_id = task.get("user_id")
         if not user_id:
             return
@@ -8122,6 +8158,7 @@ class RedisRequestQueue:
         except Exception as e:  # noqa: BLE001 — the drop itself must not fail on Redis
             self.app.logger.warning(f"cancellation result write failed ({task_id}): {e}")
         self.app.logger.info(f"Task {task_id} dropped before processing (cancelled)")
+        self._finalize_dropped_service_run(task, "cancelled")
         user_id = task.get("user_id")
         if user_id:
             try:

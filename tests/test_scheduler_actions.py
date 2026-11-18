@@ -165,11 +165,18 @@ def test_a_delivered_result_is_not_delivered_again(env):
     assert len(_actions_chat_messages()) == 1
 
 
+def _finished_at(run_id, moment):
+    """Pin the completion time: the sentence names when the work ended, not when the tick ran."""
+    with db.get_db() as conn:
+        conn.cursor().execute("UPDATE scheduler_runs SET finished_at = %s WHERE id = %s", (moment, run_id))
+
+
 def test_a_late_result_says_so(env):
     item = _item()
     run_id = scheduler.enqueue_run(_env_app(), item, TARGET)
     _silence(item["id"])
     scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_COMPLETED, result="76.4 ₽")
+    _finished_at(run_id, TARGET + timedelta(minutes=14))
 
     scheduler.tick(env["app"], now=TARGET + timedelta(minutes=14))
 
@@ -217,3 +224,52 @@ def test_the_actions_chat_is_the_one_for_actions(env):
         c = conn.cursor()
         c.execute("SELECT title FROM chat_sessions WHERE user_id = %s AND scheduler_kind = 'action'", (LOGIN,))
         assert c.fetchone()["title"] == "🛠️ Планировщик: действия"
+
+
+def test_a_run_is_hidden_from_the_queue_status_but_counted(env):
+    """The status panel is the person's own work; a run is not theirs to watch."""
+    from app.queue import RedisRequestQueue
+
+    assert "service_run" in RedisRequestQueue._HIDDEN_FROM_STATUS_TYPES
+    # Hidden, not background: the counter is incremented on enqueue, so exempting the type
+    # from the decrement would drift every user's counter upward, one run at a time.
+    assert "service_run" not in RedisRequestQueue._BACKGROUND_TASK_TYPES
+
+
+def test_a_run_does_not_publish_a_result_event(env):
+    """result_completed hides the chat stop button; a run finishing must not do that."""
+    collected = []
+
+    class _Collector:
+        def publish(self, user_id, event_type, data):
+            collected.append(event_type)
+
+    import app.queue as queue_module
+
+    original = queue_module.get_events_publisher
+    queue_module.get_events_publisher = lambda: _Collector()
+    try:
+        env["app"].request_queue._publish_result_event(
+            {"id": "t1", "user_id": LOGIN, "type": "service_run", "data": {"type": "service_run"}},
+            "completed",
+            {},
+        )
+    finally:
+        queue_module.get_events_publisher = original
+
+    assert collected == []
+
+
+def test_a_dropped_run_is_closed_so_the_next_firing_can_go(env):
+    """A run dropped by the queue must not keep the overlap rule closed for an hour."""
+    item = _item()
+    run_id = scheduler.enqueue_run(_env_app(), item, item["next_run_at"])
+    task = {"id": "queue-id", "type": "service_run", "data": {"run_id": run_id}, "lang": "ru"}
+
+    closed = env["app"].request_queue._finalize_dropped_service_run(task, "queue_timeout")
+
+    assert closed is True
+    run = scheduler_runs.get_run(run_id)
+    assert run["status"] == scheduler_runs.STATUS_CANCELLED
+    assert run["error"] == "queue_timeout"
+    assert scheduler_runs.has_open_run(item["id"]) is False

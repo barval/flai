@@ -1,9 +1,10 @@
 """The scheduler: when an item fires next, and what happens when it does.
 
 A reminder is a sentence prepared when it was created — delivering it costs no model
-time. An action is work: it runs on the Tasks engine, uses the same tools and skills a
-chat turn does, and may therefore run late. Keeping the two apart is why a reminder is
-reliable and an action is honest about being late.
+time. An action is a run: a short tool loop over a prepared goal, executed by
+``app.scheduler_runner`` and stored in ``scheduler_runs``, never a task in the person's
+own list. It may be launched a minute early and finish late, so it is honest about being
+late. Keeping the two apart is why a reminder is reliable and an action is a run.
 
 This module holds the recurrence function and, later, the tick. The database lives in
 ``app.scheduler_store``.
@@ -19,8 +20,8 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger(__name__)
 
 # Anything faster is a busy loop wearing a schedule's clothes. Work is held to a wider
-# floor than a sentence: an action costs a planning loop and the GPU, a reminder costs a
-# database row.
+# floor than a sentence: an action costs a few model rounds and the GPU, a reminder costs
+# a database row. The action floor is resolved per host by ``resolve_action_floor``.
 MIN_MINUTES = 15
 
 
@@ -60,20 +61,19 @@ def _at(item: dict, day: datetime) -> datetime:
 
 
 def action_lead_minutes(item: dict, configured: int | None = None) -> int:
-    """How early an action is enqueued, capped by its own interval.
+    """How early an action is queued, capped by its own interval.
 
-    A ten-minute lead under a five-minute cadence put the next task in the queue before the
-    previous one had started, so every second firing was skipped as an overlap. Half the
-    interval keeps the queue ahead of the target without racing the run it replaced; a daily
-    or weekly item keeps the configured lead, because half of a day is not a lead.
+    Half the interval keeps the queue ahead of the target without racing the run it
+    replaced; with the one-minute default and a five-minute floor the cap never binds, and
+    it is kept only for an installation that sets a lead larger than its own cadence.
     """
     if configured is None:
         from app.config import setting
 
         try:
-            configured = int(setting("SCHEDULER_ACTION_LEAD_MIN", 10) or 0)
+            configured = int(setting("SCHEDULER_ACTION_LEAD_MIN", 1) or 0)
         except (TypeError, ValueError):
-            configured = 10
+            configured = 1
     lead = max(0, int(configured))
     if str(item.get("repeat") or "once") != "minutes":
         return lead
@@ -476,7 +476,11 @@ def _fire(app, item: dict, now: datetime) -> dict:
 
 
 def _cancel_overdue(app, now: datetime) -> int:
-    """Cancel a run that never started in time, so yesterday's answer is not delivered today."""
+    """Cancel a run that never started in time, so yesterday's answer is not delivered today.
+
+    The cancel is conditional on the run still being `queued`: the worker may have
+    claimed it in the same instant, and whoever moved the row first owns its verdict.
+    """
     from app import scheduler_runs
 
     lateness = int(app.config.get("SCHEDULER_MAX_LATENESS_MIN", 60) or 0)
@@ -485,12 +489,30 @@ def _cancel_overdue(app, now: datetime) -> int:
 
     cancelled = 0
     for run in scheduler_runs.overdue_runs(now, lateness):
-        scheduler_runs.finish_run(
-            run["id"], scheduler_runs.STATUS_CANCELLED, error="scheduler_late"
+        moved = scheduler_runs.finish_run(
+            run["id"],
+            scheduler_runs.STATUS_CANCELLED,
+            error="scheduler_late",
+            from_statuses=(scheduler_runs.STATUS_QUEUED,),
         )
+        if not moved:
+            continue
         cancelled += 1
         logger.warning(f"scheduler: run {run['id']} was too late to start and is cancelled")
     return cancelled
+
+
+def _sweep_stale_runs(app, now: datetime) -> int:
+    """Cancel a run that a live worker left in `running` after its deadline."""
+    from app import scheduler_runs
+
+    budget = int(app.config.get("SCHEDULER_RUN_TIMEOUT_S", 180) or 0)
+    if budget <= 0:
+        return 0
+    swept = scheduler_runs.sweep_stale_running(now, budget + 600)
+    if swept:
+        logger.warning(f"scheduler: {swept} run(s) exceeded their deadline and are cancelled")
+    return swept
 
 
 def run_message(app, item: dict, run: dict, now: datetime) -> str:
@@ -506,6 +528,8 @@ def run_message(app, item: dict, run: dict, now: datetime) -> str:
     with force_locale(language):
         if reason == "scheduler_late":
             body = "⚠️ " + gettext("The action could not run in time")
+        elif reason == "run_timed_out":
+            body = "⚠️ " + gettext("The action did not finish in time")
         elif result:
             body = result
         elif status == "completed":
@@ -519,9 +543,10 @@ def run_message(app, item: dict, run: dict, now: datetime) -> str:
         text = f"🛠️ {title}\n\n{body}" if title else body
 
         target = run.get("due_at")
-        if target is not None and now - target > timedelta(minutes=1):
+        finished = run.get("finished_at") or now
+        if target is not None and finished - target > timedelta(minutes=1):
             text += "\n\n" + gettext("Finished at {at} instead of {target}").format(
-                at=render_when(now.astimezone(zone), language),
+                at=render_when(finished.astimezone(zone), language),
                 target=render_when(target.astimezone(zone), language),
             )
     return text
@@ -554,11 +579,12 @@ def tick(app, now: datetime | None = None) -> dict:
         return {"delivered": 0, "skipped": 0, "failed": 0, "skipped_lease": 1}
 
     _cancel_overdue(app, moment)
+    _sweep_stale_runs(app, moment)
     counts = {"delivered": _deliver_ready(app, moment), "skipped": 0, "failed": 0, "missed": 0}
-    lead = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 10) or 0)
+    lead = int(app.config.get("SCHEDULER_ACTION_LEAD_MIN", 1) or 0)
     for item in scheduler_store.due_items(moment, action_lead_minutes=lead):
         # The query uses the widest lead any item could have; each item is then judged by
-        # its own, which is half its interval for a frequent one.
+        # its own, which is capped at half its interval for a frequent one.
         if not is_due_now(item, moment, lead):
             continue
         result = _fire(app, item, moment)

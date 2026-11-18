@@ -69,18 +69,22 @@ def run_service_action(app, run_id: str) -> dict:
     from app.utils import format_prompt, get_current_time_in_timezone
 
     run = scheduler_runs.get_run(run_id)
-    if run is None:
-        # The row is gone because its item was deleted (the foreign key cascades): the
-        # person removed the schedule, so nothing runs and nothing is delivered.
-        logger.info(f"service run {run_id} is gone, its item was deleted")
+    if run is None or run.get("status") != scheduler_runs.STATUS_RUNNING:
+        # The row is gone because its item was deleted (the foreign key cascades), or it
+        # was cancelled before this worker got to it: either way nothing runs.
+        logger.info(f"service run {run_id} is no longer running, nothing to do")
         return {"status": "cancelled"}
     item = scheduler_store.get_item(str(run.get("item_id")))
     if item is None:
-        scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_CANCELLED)
+        scheduler_runs.finish_run(
+            run_id,
+            scheduler_runs.STATUS_CANCELLED,
+            from_statuses=(scheduler_runs.STATUS_RUNNING,),
+        )
         return {"status": "cancelled"}
 
     language = _language(item.get("user_id"))
-    rounds = int(app.config.get("SCHEDULER_RUN_ROUNDS", 3) or 3)
+    rounds = max(2, int(app.config.get("SCHEDULER_RUN_ROUNDS", 3) or 3))
     timeout_s = int(app.config.get("SCHEDULER_RUN_TIMEOUT_S", 180) or 0)
 
     prompt = format_prompt(
@@ -93,7 +97,12 @@ def run_service_action(app, run_id: str) -> dict:
         lang=language,
     )
     if not prompt:
-        scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_FAILED, error="the prompt template is missing")
+        scheduler_runs.finish_run(
+            run_id,
+            scheduler_runs.STATUS_FAILED,
+            error="the prompt template is missing",
+            from_statuses=(scheduler_runs.STATUS_RUNNING,),
+        )
         return {"status": "failed"}
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
@@ -104,6 +113,8 @@ def run_service_action(app, run_id: str) -> dict:
         "lang": language,
         "response_style": "neutral",
         "message_text": str(item.get("body") or ""),
+        # Marks this ctx as a run: start_task refuses to create a task without it.
+        "scheduler_run": True,
     }
     deadline = time.monotonic() + timeout_s if timeout_s > 0 else 0.0
 
@@ -134,34 +145,62 @@ def run_service_action(app, run_id: str) -> dict:
     answer = ""
     error = ""
     used_rounds = 0
+
+    def generate_counted(tool_choice: str | None):
+        nonlocal used_rounds
+        used_rounds += 1
+        return generate(tool_choice)
+
     try:
         outcome = run_tool_loop(
             max_iterations=rounds,
-            generate=generate,
+            generate=generate_counted,
             execute=execute,
             is_cancelled=lambda: _is_cancelled(run_id),
             on_final_round=lambda: None,
         )
-        answer = (outcome.text or outcome.last_tool_result or "").strip()
+        # A round that failed at the transport level ends the run even if an earlier round
+        # left a tool result behind: that result is evidence, not an answer. Only a loop
+        # that ended without an error may fall back to it (the last round forbids tools,
+        # so a model that obeyed has text; one that only returned a tool result still
+        # owes the person something rather than an empty message).
         error = outcome.error or ""
+        answer = (outcome.text or "").strip()
+        if not error and not answer:
+            answer = (outcome.last_tool_result or "").strip()
         used_rounds = outcome.rounds
         if outcome.cancelled:
-            scheduler_runs.finish_run(run_id, scheduler_runs.STATUS_CANCELLED, rounds=used_rounds)
+            scheduler_runs.finish_run(
+                run_id,
+                scheduler_runs.STATUS_CANCELLED,
+                rounds=used_rounds,
+                from_statuses=(scheduler_runs.STATUS_RUNNING,),
+            )
             return {"status": "cancelled"}
     except RunCompleteError as done:
         answer = str(done).strip()
-        used_rounds = 1
     except Exception as exc:  # noqa: BLE001 - every failure belongs to this run's row
         logger.exception(f"scheduler run {run_id} failed")
         error = str(exc) or type(exc).__name__
 
     if error and not answer:
         scheduler_runs.finish_run(
-            run_id, scheduler_runs.STATUS_FAILED, error=error[:500], rounds=used_rounds
+            run_id,
+            scheduler_runs.STATUS_FAILED,
+            error=error[:500],
+            rounds=used_rounds,
+            from_statuses=(scheduler_runs.STATUS_RUNNING,),
         )
         return {"status": "failed"}
 
-    scheduler_runs.finish_run(
-        run_id, scheduler_runs.STATUS_COMPLETED, result=answer, rounds=used_rounds
-    )
+    if not scheduler_runs.finish_run(
+        run_id,
+        scheduler_runs.STATUS_COMPLETED,
+        result=answer,
+        rounds=used_rounds,
+        from_statuses=(scheduler_runs.STATUS_RUNNING,),
+    ):
+        # The tick cancelled it while the last round was running: its verdict stands.
+        logger.info(f"scheduler run {run_id} was stopped before it finished")
+        return {"status": "cancelled"}
     return {"status": "completed", "result": answer}

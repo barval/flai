@@ -92,7 +92,10 @@ a per-kind policy decides what the person hears:
 `all` is bounded by `SCHEDULER_CATCHUP_MAX` (default 20): an every-fifteen-minutes item
 after a week of downtime is 672 firings, and past the cap the item behaves as `last` and
 says how many it stands for. An action always catches up **once**: four copies of the same
-work is a pile behind one GPU, not four results.
+work is a pile behind one GPU, not four results. A catch-up run is queued for a moment that
+has already passed, so if the GPU is busy past `SCHEDULER_MAX_LATENESS_MIN` it is delivered as
+"⚠️ The action could not run in time" rather than as an answer to yesterday's question; the
+item still moves to its next future firing.
 
 ## An action is a run, never a task
 
@@ -120,7 +123,7 @@ A run carries `start_task(goal, title)`. When the goal says to start a task, the
 it — there is no phrase matching in code — and the server creates an ordinary task titled
 `🛠️ Scheduler: <title>` at the user's class. That task appears in the Tasks tab like any
 other, its result stays there, and the run's own message is the tool's confirmation
-("🛠️ Снимки комнат — the task is started and its result will appear in Tasks"), verbatim.
+("🛠️ Room snapshots — the task is started and its result will appear in Tasks"), verbatim.
 One run launches at most one task.
 
 A run does **not** get the skill loader or the scheduling tools: a schedule must not create
@@ -153,7 +156,7 @@ message from a schedule the user removed is what they would report as a bug.
 | `SCHEDULER_ACTION_LEAD_MIN` | minutes before its target a run is queued | `1` |
 | `SCHEDULER_RUN_ROUNDS` | model rounds one run may spend | `3` |
 | `SCHEDULER_RUN_TIMEOUT_S` | seconds one run may take; checked before each round | `180` |
-| `SCHEDULER_MAX_LATENESS_MIN` | minutes after its target a task that never started is cancelled | `60` |
+| `SCHEDULER_MAX_LATENESS_MIN` | minutes after its target a run that never started is cancelled | `60` |
 | `SCHEDULER_GRACE_MIN` | minutes late before a firing counts as missed | `2` |
 
 The two policies are enum-validated: a typo cannot silently become "no reminders at all".

@@ -41,7 +41,8 @@ def env(test_app, monkeypatch):
 
 
 def _ctx(**over):
-    ctx = {"user_id": LOGIN, "lang": "ru", "message_text": ""}
+    # start_task is a run-only tool; the marker is what the runner sets.
+    ctx = {"user_id": LOGIN, "lang": "ru", "message_text": "", "scheduler_run": True}
     ctx.update(over)
     return ctx
 
@@ -459,3 +460,47 @@ def test_a_run_does_not_offer_scheduling_or_the_skill_loader(env):
     assert "activate_skill" not in names
     # The chat catalogue is still there: a run looks things up with the same tools.
     assert "get_current_time" in names
+
+
+def test_a_launched_task_plans_by_the_full_goal(env):
+    """The title is the list label; the goal is what the planner must work from."""
+    from app.tasks import store as task_store
+    from app.tasks.executor import _request_text
+    from app.tools import execute_tool
+
+    goal = "Снимки всех комнат; для комнат с людьми дописать дату, время, комнату и описание в events.txt"
+    answer = execute_tool("start_task", {"goal": goal, "title": "Снимки комнат"}, _ctx())
+
+    assert "⚠️" not in answer
+    task = task_store.get_tasks_by_user(LOGIN)[0]
+    assert task["title"] == "🛠️ Планировщик: Снимки комнат"
+    assert _request_text(task).startswith(goal), _request_text(task)
+
+
+def test_start_task_refuses_when_tasks_are_disabled(env):
+    from app.tools import execute_tool
+
+    env.config["TASKS_ENABLED"] = False
+
+    answer = execute_tool(
+        "start_task", {"goal": "Собери отчёт", "title": "Отчёт"}, _ctx(scheduler_run=False)
+    )
+
+    assert answer.startswith("⚠️ ")
+    from app.tasks import store as task_store
+
+    assert task_store.get_tasks_by_user(LOGIN) == []
+
+
+def test_start_task_refuses_outside_a_scheduler_run(env):
+    """A chat turn that hallucinates the name must not create a task."""
+    from app.tools import execute_tool
+
+    answer = execute_tool(
+        "start_task", {"goal": "Собери отчёт", "title": "Отчёт"}, _ctx(scheduler_run=False)
+    )
+
+    assert answer.startswith("⚠️ ")
+    from app.tasks import store as task_store
+
+    assert task_store.get_tasks_by_user(LOGIN) == []

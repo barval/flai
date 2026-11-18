@@ -51,6 +51,10 @@ def env(test_app, monkeypatch):
         clear()
         userdb.create_user(LOGIN, "pw", "Name", service_class=2, language="ru")
         monkeypatch.setattr(scheduler, "_redis", lambda app: None)
+        # A run queued by the tick must not be executed by the test worker mid-test.
+        monkeypatch.setattr(
+            test_app.request_queue, "add_service_run", lambda run_id, user_id, task_class, lang="ru": "queue-id"
+        )
         test_app.events_publisher = _Collector()
         test_app.config["SCHEDULER_TICK_ENABLED"] = False
         yield {"app": test_app}

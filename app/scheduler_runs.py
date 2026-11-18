@@ -76,14 +76,32 @@ def finish_run(
     rounds: int = 0,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
-) -> None:
+    from_statuses: tuple[str, ...] | None = None,
+) -> bool:
+    """Write a terminal state; return whether this writer was the one that moved it.
+
+    ``from_statuses`` is the guard that keeps a late writer from undoing a verdict
+    already taken: the tick may cancel an overdue run in the same instant the worker
+    finishes it, and the row must end in one state, decided by whoever got there
+    first. ``error`` is coalesced, so a cancellation path that carries no reason
+    cannot erase the reason the tick wrote.
+    """
+    where = "WHERE id = %s"
+    params: list[object] = [
+        status, result or None, error or None, int(rounds), int(prompt_tokens),
+        int(completion_tokens), run_id,
+    ]
+    if from_statuses:
+        where += " AND status = ANY(%s)"
+        params.append(list(from_statuses))
     with get_db() as conn:
-        conn.cursor().execute(
-            "UPDATE scheduler_runs SET status = %s, result = %s, error = %s, rounds = %s,"
-            " prompt_tokens = %s, completion_tokens = %s, finished_at = now() WHERE id = %s",
-            (status, result or None, error or None, int(rounds), int(prompt_tokens),
-             int(completion_tokens), run_id),
+        c = conn.cursor()
+        c.execute(
+            "UPDATE scheduler_runs SET status = %s, result = %s, error = COALESCE(%s, error),"
+            f" rounds = %s, prompt_tokens = %s, completion_tokens = %s, finished_at = now() {where}",
+            tuple(params),
         )
+        return (c.rowcount or 0) > 0
 
 
 def due_runs(moment: datetime) -> list[dict]:
@@ -125,6 +143,27 @@ def cancel_for_item(item_id: str, moment: datetime) -> int:
             "UPDATE scheduler_runs SET status = %s, finished_at = now(), delivered_at = %s"
             " WHERE item_id = %s AND status = ANY(%s)",
             (STATUS_CANCELLED, moment, item_id, list(OPEN_STATUSES)),
+        )
+        return c.rowcount or 0
+
+
+def sweep_stale_running(moment: datetime, older_than_seconds: int) -> int:
+    """Cancel a run whose worker vanished between `running` and its terminal write.
+
+    A crash is covered at startup; this covers the smaller failure — a worker that
+    survived but lost its write to a transient database error. Without it the row
+    stays `running`, the overlap rule reads it forever and the item goes silent
+    until the next restart. No live run outlives its own deadline, so the threshold
+    is that deadline plus a wide margin.
+    """
+    if older_than_seconds <= 0:
+        return 0
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE scheduler_runs SET status = %s, finished_at = %s, error = 'run_timed_out'"
+            " WHERE status = %s AND started_at < %s - make_interval(secs => %s)",
+            (STATUS_CANCELLED, moment, STATUS_RUNNING, moment, int(older_than_seconds)),
         )
         return c.rowcount or 0
 

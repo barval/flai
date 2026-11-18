@@ -102,7 +102,7 @@ def test_start_task_ends_the_run_with_the_confirmation(env, monkeypatch):
 
     run = scheduler_runs.get_run(run_id)
     assert run["status"] == scheduler_runs.STATUS_COMPLETED
-    assert "Снимки комнат" in run["result"]
+    assert run["result"] == "🛠️ Снимки комнат — задача запущена, результат появится в «Задачах»"
     assert calls["rounds"] == 1, "no round runs after the task is started"
     tasks = task_store.get_tasks_by_user(LOGIN)
     assert [task["title"] for task in tasks] == ["🛠️ Планировщик: Снимки комнат"]
@@ -191,3 +191,36 @@ def test_a_deleted_item_cancels_the_run(env, monkeypatch):
     outcome = scheduler_runner.run_service_action(env, run_id)
 
     assert outcome["status"] == "cancelled"
+
+
+def test_a_run_that_outlives_its_budget_stops_before_the_next_round(env, monkeypatch):
+    """The deadline is checked before a round, not enforced inside one."""
+    import time as time_module
+
+    from app import scheduler_runner
+
+    run_id = _run()
+    env.config["SCHEDULER_RUN_TIMEOUT_S"] = 1
+    calls = {"rounds": 0}
+
+    def slow_model(app, messages, tools, tool_choice, language):
+        calls["rounds"] += 1
+        time_module.sleep(1.1)
+        return Turn(
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {"name": "get_current_time", "arguments": "{}"},
+                }
+            ]
+        )
+
+    monkeypatch.setattr(scheduler_runner, "_ask_model", slow_model)
+
+    outcome = scheduler_runner.run_service_action(env, run_id)
+
+    run = scheduler_runs.get_run(run_id)
+    assert outcome["status"] == "failed"
+    assert "time budget" in run["error"]
+    assert calls["rounds"] == 1, "the second round must not be asked for"

@@ -592,6 +592,41 @@
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER PANEL DARK THEME ===== */
+.dark-theme .scheduler-section { border-bottom-color: #444; }
+.dark-theme .scheduler-item:hover { background-color: #3a3a3a; }
+.dark-theme .scheduler-item-title { color: #ecf0f1; }
+.dark-theme .scheduler-item-when { color: #aaa; }
+.dark-theme .scheduler-item-delete {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e74c3c;
+}
+.dark-theme .scheduler-item-delete:hover { background-color: #4a4a4a; }
+
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;

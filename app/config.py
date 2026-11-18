@@ -264,6 +264,17 @@ def load_config(app):
     app.config["TASKS_ENABLED"] = os.getenv("TASKS_ENABLED", "1").lower() in ("1", "true", "yes")
     app.config["TASK_QUIET_PERIOD_S"] = int(os.getenv("TASK_QUIET_PERIOD_S", "15"))
     app.config["TASK_TOTAL_BUDGET_S"] = int(os.getenv("TASK_TOTAL_BUDGET_S", "86400"))
+    # Scheduler (v13.5): a firing missed while the server was down is governed by the
+    # per-kind policy, and these are read on every tick, so a panel change applies
+    # without a restart.
+    app.config["SCHEDULER_ENABLED"] = os.getenv("SCHEDULER_ENABLED", "1").lower() in ("1", "true", "yes")
+    app.config["SCHEDULER_MISSED_REMINDER"] = os.getenv("SCHEDULER_MISSED_REMINDER", "last")
+    app.config["SCHEDULER_MISSED_ACTION"] = os.getenv("SCHEDULER_MISSED_ACTION", "last")
+    app.config["SCHEDULER_CATCHUP_MAX"] = int(os.getenv("SCHEDULER_CATCHUP_MAX", "20"))
+    app.config["SCHEDULER_GRACE_MIN"] = int(os.getenv("SCHEDULER_GRACE_MIN", "2"))
+    app.config["SCHEDULER_ACTION_LEAD_MIN"] = int(os.getenv("SCHEDULER_ACTION_LEAD_MIN", "10"))
+    app.config["SCHEDULER_MAX_LATENESS_MIN"] = int(os.getenv("SCHEDULER_MAX_LATENESS_MIN", "60"))
+
     # The depth axis (app/depth.py) supplies the defaults; an explicit key in the
     # environment still wins, so one number can be tuned without a profile.
     from app.depth import depth_defaults

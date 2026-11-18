@@ -403,6 +403,16 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not start tasks executor: {e}")
 
+    # Scheduled reminders and actions: one daemon thread with a Redis lease, so two
+    # workers cannot deliver the same item twice.
+    if not _is_cli_process() and not _is_test_process():
+        try:
+            from app import scheduler
+
+            scheduler.start(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start the scheduler: {e}")
+
     # Warm the chat model before the first message. It goes through
     # ensure_vram_for() like a user request does: llama-swap's own preload hook
     # started the model outside that gate and could leave its weights in RAM.
@@ -435,6 +445,9 @@ def create_app():
         tasks,
         tts,
     )
+    from .routes import (
+        scheduler as scheduler_routes,
+    )
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -451,6 +464,7 @@ def create_app():
     app.register_blueprint(rlm.bp)
     app.register_blueprint(model_hub.bp)
     app.register_blueprint(tasks.bp)
+    app.register_blueprint(scheduler_routes.bp)
     csrf.exempt(api_v1.bp)
     app.register_blueprint(api_v1.bp)
     app.register_blueprint(api_keys.bp)

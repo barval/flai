@@ -44,7 +44,7 @@ def test_the_policy_sets_are_what_they_were():
     # These two sets decide where a step's header metadata comes from and whether
     # a failure reason is shown; they must not drift silently.
     assert {"llm", "continuity", "research"} == OWN_METADATA_TOOLS
-    assert {"calculate", "continuity"} == ERROR_TEXT_TOOLS
+    assert {"calculate", "continuity", "chat_tool", "document"} == ERROR_TEXT_TOOLS
 
 
 @pytest.mark.unit

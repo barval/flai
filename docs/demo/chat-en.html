@@ -621,6 +621,55 @@ header {
     text-align: left;
 }
 .api-keys-panel[hidden] { display: none; }
+.scheduler-section {
+    border-bottom: 1px solid #dbe6f0;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.scheduler-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.scheduler-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+.scheduler-item:hover { background-color: #f2f7fc; }
+.scheduler-item-icon { font-size: 1rem; line-height: 1.2; }
+.scheduler-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.scheduler-item-title {
+    font-size: 0.88rem;
+    color: #2c3e50;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scheduler-item-when {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+}
+.scheduler-item-delete {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #c0392b;
+    font-size: 0.78rem;
+    border-radius: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.scheduler-item-delete:hover { background-color: #fdf0ee; }
+
 .api-keys-header {
     display: flex;
     align-items: center;
@@ -2046,6 +2095,84 @@ footer {
 .folder-picker-item:hover {
     background-color: #e6f2ff;
 }
+
+/* Scheduler reminder popup — a notification, not a window: the message is
+   already in its own chat, so closing this loses nothing. */
+.scheduler-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scheduler-popup[hidden] { display: none; }
+.scheduler-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+.scheduler-popup-card {
+    position: relative;
+    width: min(420px, calc(100vw - 40px));
+    padding: 20px 22px 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.scheduler-popup-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.scheduler-popup-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+.scheduler-popup-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.scheduler-popup-title[hidden] { display: none; }
+.scheduler-popup-close {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0 2px;
+}
+.scheduler-popup-close:hover { color: #2c3e50; }
+.scheduler-popup-text {
+    margin: 12px 0 0;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #2c3e50;
+}
+.scheduler-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.scheduler-popup-button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1.1rem;
+    background-color: #3498db;
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.scheduler-popup-button:hover { background-color: #2980b9; }
 
 /* Folder name dialog (create/rename) */
 .folder-name-modal {
@@ -3825,6 +3952,30 @@ video {
         gap: 0.15rem;
     }
 }
+
+/* Where a document came from, when it was not an upload (v13.5). */
+.doc-origin-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    border: 1px solid currentColor;
+    opacity: 0.65;
+    vertical-align: middle;
+}
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
+}
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
 .image-modal {
@@ -5041,6 +5192,41 @@ video {
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER PANEL DARK THEME ===== */
+.dark-theme .scheduler-section { border-bottom-color: #444; }
+.dark-theme .scheduler-item:hover { background-color: #3a3a3a; }
+.dark-theme .scheduler-item-title { color: #ecf0f1; }
+.dark-theme .scheduler-item-when { color: #aaa; }
+.dark-theme .scheduler-item-delete {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e74c3c;
+}
+.dark-theme .scheduler-item-delete:hover { background-color: #4a4a4a; }
+
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;
@@ -6162,6 +6348,55 @@ header {
     text-align: left;
 }
 .api-keys-panel[hidden] { display: none; }
+.scheduler-section {
+    border-bottom: 1px solid #dbe6f0;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+.scheduler-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.scheduler-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    border-radius: 5px;
+}
+.scheduler-item:hover { background-color: #f2f7fc; }
+.scheduler-item-icon { font-size: 1rem; line-height: 1.2; }
+.scheduler-item-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.scheduler-item-title {
+    font-size: 0.88rem;
+    color: #2c3e50;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scheduler-item-when {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+}
+.scheduler-item-delete {
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #c0392b;
+    font-size: 0.78rem;
+    border-radius: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.scheduler-item-delete:hover { background-color: #fdf0ee; }
+
 .api-keys-header {
     display: flex;
     align-items: center;
@@ -7587,6 +7822,84 @@ footer {
 .folder-picker-item:hover {
     background-color: #e6f2ff;
 }
+
+/* Scheduler reminder popup — a notification, not a window: the message is
+   already in its own chat, so closing this loses nothing. */
+.scheduler-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scheduler-popup[hidden] { display: none; }
+.scheduler-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+.scheduler-popup-card {
+    position: relative;
+    width: min(420px, calc(100vw - 40px));
+    padding: 20px 22px 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.scheduler-popup-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.scheduler-popup-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+.scheduler-popup-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.scheduler-popup-title[hidden] { display: none; }
+.scheduler-popup-close {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0 2px;
+}
+.scheduler-popup-close:hover { color: #2c3e50; }
+.scheduler-popup-text {
+    margin: 12px 0 0;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #2c3e50;
+}
+.scheduler-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.scheduler-popup-button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1.1rem;
+    background-color: #3498db;
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.scheduler-popup-button:hover { background-color: #2980b9; }
 
 /* Folder name dialog (create/rename) */
 .folder-name-modal {
@@ -9366,6 +9679,30 @@ video {
         gap: 0.15rem;
     }
 }
+
+/* Where a document came from, when it was not an upload (v13.5). */
+.doc-origin-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    border: 1px solid currentColor;
+    opacity: 0.65;
+    vertical-align: middle;
+}
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
+}
 </style>
     <style>/* ===== IMAGE MODAL WINDOW ===== */
 .image-modal {
@@ -10582,6 +10919,41 @@ video {
 .dark-theme .folder-picker-item:hover {
     background-color: #3a3a3a;
 }
+/* ===== SCHEDULER PANEL DARK THEME ===== */
+.dark-theme .scheduler-section { border-bottom-color: #444; }
+.dark-theme .scheduler-item:hover { background-color: #3a3a3a; }
+.dark-theme .scheduler-item-title { color: #ecf0f1; }
+.dark-theme .scheduler-item-when { color: #aaa; }
+.dark-theme .scheduler-item-delete {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #e74c3c;
+}
+.dark-theme .scheduler-item-delete:hover { background-color: #4a4a4a; }
+
+/* ===== SCHEDULER POPUP DARK THEME ===== */
+.dark-theme .scheduler-popup-card {
+    background: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+}
+.dark-theme .scheduler-popup-title,
+.dark-theme .scheduler-popup-text {
+    color: #ecf0f1;
+}
+.dark-theme .scheduler-popup-close {
+    color: #aaa;
+}
+.dark-theme .scheduler-popup-close:hover {
+    color: #fff;
+}
+.dark-theme .scheduler-popup-button {
+    background-color: #2980b9;
+}
+.dark-theme .scheduler-popup-button:hover {
+    background-color: #3498db;
+}
+
 /* ===== FOLDER NAME DIALOG DARK THEME ===== */
 .dark-theme .folder-name-content {
     background: #2d2d2d;
@@ -10886,6 +11258,15 @@ video {
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>
                     </div>
+                    <div class="scheduler-section" id="scheduler-section"
+                         data-empty-label="Nothing scheduled"
+                         data-delete-label="Delete"
+                         data-finished-label="finished"
+                         data-confirm-template="Delete the schedule &#34;{title}&#34;?">
+                        <div class="api-keys-header"><span>Scheduled</span></div>
+                        <p class="api-keys-hint">Created from chat. Deleting one stops it.</p>
+                        <div class="scheduler-items" id="scheduler-items"></div>
+                    </div>
                     <div class="api-keys-header">
                         <span>FLAI API keys</span>
                         <button class="api-keys-close" id="api-keys-close" title="Close">✕</button>
@@ -11143,6 +11524,25 @@ video {
                 <div class="folder-name-actions">
                     <button type="button" id="folder-name-cancel" class="folder-name-cancel"></button>
                     <button type="button" id="folder-name-submit" class="folder-name-submit"></button>
+                </div>
+            </div>
+        </div>
+
+        <\!-- Scheduler popup: a reminder is a message in its own chat and this
+             notification on top of whatever is open. Closing it loses nothing —
+             the message is already stored. -->
+        <div id="scheduler-popup" class="scheduler-popup" hidden>
+            <div class="scheduler-popup-backdrop" data-scheduler-close></div>
+            <div class="scheduler-popup-card" role="dialog" aria-modal="true" aria-labelledby="scheduler-popup-title">
+                <div class="scheduler-popup-head">
+                    <span class="scheduler-popup-icon" aria-hidden="true">🔔</span>
+                    <h3 class="scheduler-popup-title" id="scheduler-popup-title"></h3>
+                    <button type="button" class="scheduler-popup-close" data-scheduler-close
+                            aria-label="Close">&times;</button>
+                </div>
+                <p class="scheduler-popup-text" id="scheduler-popup-text"></p>
+                <div class="scheduler-popup-actions">
+                    <button type="button" class="scheduler-popup-button" id="scheduler-popup-ok" data-scheduler-close>Close</button>
                 </div>
             </div>
         </div>
@@ -11445,6 +11845,12 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_selected_count': "Selected: {count} ({size})",
     'documents_select_folder': "Select all documents in folder",
     'documents_select_for_move': "Select for moving",
+    'documents_origin_generated': "Generated",
+    'documents_index_toggle': "Index",
+    'documents_index_hint': "Index for search and graph",
+    'documents_index_stale': "index is outdated",
+    'documents_origin_crawl': "Crawled",
+    'documents_origin_chat': "From chat",
     'documents_select_for_analysis': "Select for deep analysis",
     'documents_view_in_graph': "View in knowledge graph",
     'graph_title': "Knowledge graph",
@@ -12519,6 +12925,17 @@ function renderDocItem(doc) {
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
+    // Where a document came from, when it was not an upload: the crawler saves pages,
+    // a chat attachment becomes a document, and the assistant writes files.
+    const originLabel = {
+        generated: t('documents_origin_generated'),
+        crawl: t('documents_origin_crawl'),
+        chat: t('documents_origin_chat'),
+    }[String(doc.source || '').toLowerCase()];
+    const originBadge = originLabel
+        ? `<span class="doc-origin-badge doc-origin-${escapeHtml(String(doc.source).toLowerCase())}">${escapeHtml(originLabel)}</span>`
+        : '';
+
     return `
     <div class="document-item${showRlm ? ' rlm-selected' : ''}${sharedBy ? ' document-shared' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="${sharedBy ? 'false' : 'true'}">
         <div class="document-content">
@@ -12528,9 +12945,14 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    📄 ${escapeHtml(doc.filename)}${originBadge}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
+                ${doc.source === 'generated' ? `
+                <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
+                    <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
+                    ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}
+                </label>` : ''}
                 ${embeddingLine}
                 ${descriptionLine}
             </div>
@@ -12668,6 +13090,32 @@ function attachDocumentEventHandlers() {
         item.addEventListener('click', function(e) {
             if (e.target.closest('.document-checkbox, .document-actions, button, input, label')) return;
             openDocumentPreview(this.dataset.documentId, this.dataset.documentName || '');
+        });
+    });
+    // The indexing switch exists only on documents the assistant wrote; it is the
+    // one place that puts such a document into RAG and the graph.
+    document.querySelectorAll('.doc-index-check').forEach(box => {
+        box.addEventListener('change', async function(e) {
+            e.stopPropagation();
+            const docId = this.dataset.documentId;
+            box.disabled = true;
+            try {
+                const response = await fetchWithCSRF(`/api/documents/${encodeURIComponent(docId)}/index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: box.checked })
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.error || 'HTTP ' + response.status);
+                }
+                await loadDocuments();
+            } catch (err) {
+                box.checked = !box.checked;
+                alert(err.message || String(err));
+            } finally {
+                box.disabled = false;
+            }
         });
     });
     document.querySelectorAll('.delete-document-button').forEach(btn => {
@@ -13651,10 +14099,17 @@ function uploadDocuments(files, folderId) {
             return;
         }
         if (button) button.textContent = (done + 1) + '/' + total;
-        const formData = new FormData();
-        formData.append('file', file);
-        if (folderId) formData.append('folder_id', folderId);
-        fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData })
+
+        // Names are first come, first served: when the assistant already wrote a document
+        // with this name, the uploader is asked for another one instead of getting a
+        // silently suffixed copy.
+        const send = (uploadFile) => {
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            if (folderId) formData.append('folder_id', folderId);
+            return fetchWithCSRF('/api/documents/upload', { method: 'POST', body: formData });
+        };
+        checkUploadName(file.name, file).then(renamed => send(renamed || file))
             .then(res => res.json())
             .then(data => {
                 if (data.status !== 'ok') failed.push(file.name + ': ' + uploadReason(data.error));
@@ -13666,6 +14121,26 @@ function uploadDocuments(files, folderId) {
             });
     };
     next();
+}
+
+
+// Ask the server whether the assistant already holds this name; offer a rename if so.
+async function checkUploadName(name, file) {
+    try {
+        const response = await fetchWithCSRF('/api/documents/check-name', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: name })
+        });
+        if (response.status !== 409) return null;
+        const payload = await response.json();
+        const chosen = window.prompt(payload.error || t('document_upload_failed'), payload.suggested || name);
+        if (!chosen || chosen.trim() === '') return null;
+        if (chosen.trim() === name) return null;
+        return new File([file], chosen.trim(), { type: file.type });
+    } catch (err) {
+        return null;
+    }
 }
 
 // Open the file picker and upload into the chosen folder (null = root).
@@ -18287,6 +18762,68 @@ ${fileHtml}
 
     dlog('Chat export completed!');
 }<\/script>
+<script>// app/static/js/chat-scheduler.js
+// A reminder arrives twice: as a message in its own chat and as a popup on top of
+// whatever is open. The popup is only a notification — the message is already stored,
+// so closing it loses nothing, and the next reminder waits its turn instead of
+// replacing the one being read.
+
+const schedulerPopupQueue = [];
+let schedulerPopupShown = false;
+
+function onSchedulerPopup(data) {
+    if (!data || !data.text) return;
+    schedulerPopupQueue.push(data);
+    showNextSchedulerPopup();
+}
+
+function showNextSchedulerPopup() {
+    if (schedulerPopupShown) return;
+    const modal = document.getElementById('scheduler-popup');
+    if (!modal) return;
+    const next = schedulerPopupQueue.shift();
+    if (!next) return;
+
+    const title = document.getElementById('scheduler-popup-title');
+    const text = document.getElementById('scheduler-popup-text');
+    if (title) {
+        const label = String(next.title || '').trim();
+        title.textContent = label;
+        title.hidden = label === '';
+    }
+    if (text) {
+        text.textContent = String(next.text || '');
+    }
+
+    modal.hidden = false;
+    schedulerPopupShown = true;
+    const ok = document.getElementById('scheduler-popup-ok');
+    if (ok && typeof ok.focus === 'function') ok.focus();
+}
+
+function closeSchedulerPopup() {
+    const modal = document.getElementById('scheduler-popup');
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    schedulerPopupShown = false;
+    showNextSchedulerPopup();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('scheduler-popup');
+    if (!modal) return;
+    modal.querySelectorAll('[data-scheduler-close]').forEach(function (element) {
+        element.addEventListener('click', closeSchedulerPopup);
+    });
+});
+
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeSchedulerPopup();
+});
+
+window.onSchedulerPopup = onSchedulerPopup;
+window.closeSchedulerPopup = closeSchedulerPopup;
+<\/script>
 <script>// app/static/js/events.js
 // Server-Sent Events (SSE) - replaces HTTP polling for real-time updates
 
@@ -18502,6 +19039,11 @@ function handleEvent(event) {
         case 'task_stage':
             if (typeof onTaskStage === 'function') {
                 onTaskStage(event.data);
+            }
+            break;
+        case 'scheduler_popup':
+            if (typeof onSchedulerPopup === 'function') {
+                onSchedulerPopup(event.data);
             }
             break;
         default:
@@ -22241,6 +22783,119 @@ document.addEventListener('DOMContentLoaded', () => {
         }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
     });
 })();<\/script>
+    <script>// app/static/js/scheduler-panel.js
+// The user's scheduled items, in the profile popup: what will happen and when.
+// There is no editor on purpose — a schedule is changed by deleting it and asking again,
+// so this stays a list with one action. Labels arrive through data attributes, the same
+// way the API-keys section carries its own.
+
+const SCHEDULER_ENDPOINT = '/api/scheduler/items';
+
+function schedulerSection() {
+    return document.getElementById('scheduler-section');
+}
+
+function schedulerLabel(name, fallback) {
+    const section = schedulerSection();
+    return (section && section.dataset[name]) || fallback;
+}
+
+function schedulerRequest(url, options = {}) {
+    if (typeof fetchWithCSRF === 'function') return fetchWithCSRF(url, options);
+    return fetch(url, { ...options, credentials: 'same-origin' });
+}
+
+function schedulerFormatRun(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const locale = window.CURRENT_LANG === 'en' ? 'en-GB' : 'ru-RU';
+    return date.toLocaleString(locale, {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function schedulerRow(item) {
+    const row = document.createElement('div');
+    row.className = 'scheduler-item';
+
+    const icon = document.createElement('span');
+    icon.className = 'scheduler-item-icon';
+    icon.textContent = item.kind === 'action' ? '⚙️' : '🔔';
+
+    const text = document.createElement('span');
+    text.className = 'scheduler-item-text';
+
+    const title = document.createElement('span');
+    title.className = 'scheduler-item-title';
+    title.textContent = item.title || '—';
+
+    const when = document.createElement('span');
+    when.className = 'scheduler-item-when';
+    when.textContent = item.enabled === false
+        ? schedulerLabel('finishedLabel', 'finished')
+        : schedulerFormatRun(item.next_run_at);
+
+    text.appendChild(title);
+    text.appendChild(when);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'scheduler-item-delete';
+    remove.textContent = schedulerLabel('deleteLabel', 'Delete');
+    remove.addEventListener('click', () => schedulerDelete(item, remove));
+
+    row.appendChild(icon);
+    row.appendChild(text);
+    row.appendChild(remove);
+    return row;
+}
+
+async function schedulerLoad() {
+    const container = document.getElementById('scheduler-items');
+    if (!container) return;
+    const response = await schedulerRequest(SCHEDULER_ENDPOINT);
+    if (!response.ok) return;
+    const data = await response.json();
+    container.replaceChildren();
+    const items = data.items || [];
+    if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'api-keys-hint';
+        empty.textContent = schedulerLabel('emptyLabel', 'Nothing scheduled');
+        container.appendChild(empty);
+        return;
+    }
+    items.forEach((item) => container.appendChild(schedulerRow(item)));
+}
+
+async function schedulerDelete(item, button) {
+    const template = schedulerLabel('confirmTemplate', 'Delete the schedule "{title}"?');
+    const question = template.replace('{title}', item.title || '—');
+    if (!window.confirm(question)) return;
+    button.disabled = true;
+    const response = await schedulerRequest(`${SCHEDULER_ENDPOINT}/${encodeURIComponent(item.id)}/delete`, {
+        method: 'POST'
+    });
+    if (!response.ok) {
+        button.disabled = false;
+        return;
+    }
+    schedulerLoad();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const button = document.getElementById('api-keys-btn');
+    const panel = document.getElementById('api-keys-panel');
+    if (!button || !panel || !schedulerSection()) return;
+    // Loaded when the popup opens, not on every page: the list is only ever read there.
+    button.addEventListener('click', () => {
+        if (!panel.hidden) schedulerLoad();
+    });
+});
+
+window.schedulerLoad = schedulerLoad;
+<\/script>
 
     <\!-- Guest theme switcher script -->
     <script>// static/js/guest-theme.js

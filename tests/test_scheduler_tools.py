@@ -1,0 +1,237 @@
+# tests/test_scheduler_tools.py
+"""Scheduling from chat: the model names the time, the server checks it.
+
+A wrong date is the one mistake the user cannot see until the wrong moment, so the tool
+answers with the concrete time it stored. Everything here is deterministic: the phrase is
+turned into a moment, and the moment is refused or accepted on its own merits.
+"""
+
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from app import scheduler_store, userdb
+
+pytestmark = pytest.mark.requires_db
+
+LOGIN = "scheduler_tools_test"
+ZONE = "Europe/Moscow"
+
+
+@pytest.fixture
+def env(test_app, monkeypatch):
+    with test_app.app_context():
+        from app.database import get_db, init_db
+
+        init_db()
+
+        def clear():
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute("DELETE FROM tasks WHERE user_id = %s", (LOGIN,))
+                c.execute("DELETE FROM scheduler_items WHERE user_id = %s", (LOGIN,))
+                c.execute("DELETE FROM users WHERE login = %s", (LOGIN,))
+
+        clear()
+        userdb.create_user(LOGIN, "pw", "Name", language="ru")
+        monkeypatch.setitem(test_app.config, "TIMEZONE_STR", ZONE)
+        yield test_app
+        clear()
+
+
+def _ctx(**over):
+    ctx = {"user_id": LOGIN, "lang": "ru", "message_text": ""}
+    ctx.update(over)
+    return ctx
+
+
+def _local_now() -> datetime:
+    return datetime.now(UTC).astimezone(ZoneInfo(ZONE))
+
+
+def _tomorrow_at(nine=False) -> str:
+    moment = _local_now() + timedelta(days=1)
+    return moment.strftime("%Y-%m-%d 09:00" if nine else "%Y-%m-%d %H:%M")
+
+
+def test_a_wall_clock_time_is_read_as_the_installation_zone(env):
+    from app.scheduler_tools import parse_when
+
+    parsed = parse_when("2026-11-18 09:00")
+
+    assert parsed == datetime(2026, 11, 18, 9, 0)
+
+
+def test_a_german_style_date_is_read_too(env):
+    from app.scheduler_tools import parse_when
+
+    assert parse_when("18.11.2026 09:00") == datetime(2026, 11, 18, 9, 0)
+
+
+def test_nonsense_is_not_a_time(env):
+    from app.scheduler_tools import parse_when
+
+    assert parse_when("завтра утром") is None
+    assert parse_when("") is None
+
+
+def test_a_reminder_is_stored_in_the_installation_zone(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"when": _tomorrow_at(nine=True), "text": "🔔 Отчёт — {when}"}, _ctx())
+
+    assert "⚠️" not in answer
+    items = scheduler_store.list_items(LOGIN)
+    assert len(items) == 1
+    item = items[0]
+    assert item["kind"] == "reminder"
+    assert item["timezone"] == ZONE
+    assert item["time_of_day"].hour == 9
+    assert item["repeat"] == "once"
+    assert item["next_run_at"] is not None
+    # The answer names the moment, which is the only chance the user has to notice a
+    # misunderstanding before it fires.
+    assert "09:00" in answer
+
+
+def test_an_action_carries_the_goal_and_its_title(env):
+    from app.tools import execute_tool
+
+    execute_tool("schedule_action", {"when": _tomorrow_at(), "goal": "Проверь все комнаты", "title": "Комнаты"}, _ctx())
+
+    item = scheduler_store.list_items(LOGIN)[0]
+    assert item["kind"] == "action"
+    assert item["body"] == "Проверь все комнаты"
+    assert item["title"] == "Комнаты"
+
+
+def test_a_past_one_off_is_refused_with_a_question(env):
+    from app.tools import execute_tool
+
+    past = (_local_now() - timedelta(days=2)).strftime("%Y-%m-%d 09:00")
+
+    answer = execute_tool("schedule_reminder", {"when": past, "text": "🔔 Старое"}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+    assert "?" in answer
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_a_past_repeating_phrase_moves_to_its_next_occurrence(env):
+    """«Every day at nine» said at ten means tomorrow at nine, not a refusal."""
+    from app.tools import execute_tool
+
+    earlier = (_local_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+
+    answer = execute_tool(
+        "schedule_reminder", {"when": earlier, "text": "🔔 Дневник — {when}", "repeat": "daily"}, _ctx()
+    )
+
+    assert "⚠️" not in answer
+    item = scheduler_store.list_items(LOGIN)[0]
+    assert item["repeat"] == "daily"
+    assert item["next_run_at"] > datetime.now(UTC) + timedelta(minutes=30)
+
+
+def test_an_unclear_time_asks_rather_than_guessing(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"when": "завтра утром", "text": "🔔"}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_an_empty_reminder_is_refused(env):
+    from app.tools import execute_tool
+
+    answer = execute_tool("schedule_reminder", {"when": _tomorrow_at(), "text": "  "}, _ctx())
+
+    assert answer.startswith("⚠️ ")
+    assert scheduler_store.list_items(LOGIN) == []
+
+
+def test_the_kernel_sends_scheduling_to_the_chat_loop(env):
+    from app.kernel import INTENT_ACTIONS, KernelDecision, SourceFlags, decision_to_route
+
+    assert INTENT_ACTIONS["schedule"] == "none"
+    decision = KernelDecision(
+        intent="schedule", query="напомни завтра в 9", sources=SourceFlags(), tools=None, confidence=1.0
+    )
+    route = decision_to_route(decision, "напомни завтра в 9")
+
+    assert route["action"] == "none"
+    assert route["query"] == "напомни завтра в 9"
+
+
+def test_the_marker_router_has_a_scheduling_category(env):
+    from unittest.mock import MagicMock
+
+    from modules.base import BaseModule
+
+    module = BaseModule.__new__(BaseModule)
+    module.logger = MagicMock()
+    message = "напомни завтра в 9 утра про отчёт"
+
+    result = module._parse_router_response(f"[-SCHEDULE-] {message}", message, "2026-11-18 09:00", "ru")
+
+    assert result["action"] == "none"
+    assert result["query"] == message
+
+
+@pytest.mark.parametrize("lang", ["ru", "en"])
+def test_both_prompts_name_the_intent(env, lang):
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    kernel = (root / "prompts/en/kernel.template").read_text(encoding="utf-8")
+    marker = (root / f"prompts/{lang}/base_text.template").read_text(encoding="utf-8")
+
+    assert "schedule_reminder" in kernel
+    assert "schedule" in kernel.lower()
+    assert "[-SCHEDULE-]" in marker
+
+
+def test_a_queued_task_is_cancelled_when_its_item_is_deleted(env, client):
+    from app.tasks import store
+
+    with client.session_transaction() as browser_session:
+        browser_session["login"] = LOGIN
+        browser_session["user_id"] = LOGIN
+        browser_session["name"] = "Name"
+
+    item_id = scheduler_store.create_item(
+        LOGIN, kind="action", title="Rooms", body="Check", repeat="once", at=datetime.now(UTC) + timedelta(hours=1),
+        timezone_name=ZONE,
+    )
+    task_id = store.create_task(
+        LOGIN, 5, "Rooms", "ru", "neutral", scheduler_item_id=item_id, scheduler_deliver_at=datetime.now(UTC)
+    )
+
+    response = client.post(f"/api/scheduler/items/{item_id}/delete")
+
+    assert response.status_code == 200
+    assert scheduler_store.get_item(item_id) is None
+    task = store.get_task(task_id)
+    assert task["status"] == "cancelled"
+    assert task["scheduler_delivered_at"] is not None
+
+
+def test_the_list_is_owner_scoped(env, client):
+    scheduler_store.create_item(
+        LOGIN, kind="reminder", title="Mine", body="🔔", repeat="once", at=datetime.now(UTC) + timedelta(hours=1),
+        timezone_name=ZONE,
+    )
+
+    unauthenticated = client.get("/api/scheduler/items")
+    assert unauthenticated.status_code == 401
+
+    with client.session_transaction() as browser_session:
+        browser_session["login"] = LOGIN
+        browser_session["user_id"] = LOGIN
+        browser_session["name"] = "Name"
+    listed = client.get("/api/scheduler/items").get_json()
+
+    assert [item["title"] for item in listed["items"]] == ["Mine"]
+    assert listed["items"][0]["kind"] == "reminder"

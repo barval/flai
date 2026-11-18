@@ -31,9 +31,13 @@ KERNEL_INTENTS: tuple[str, ...] = (
     "reasoning_web",
     "remember",
     "crawl",
+    "schedule",
 )
 
 INTENT_ACTIONS: dict[str, str] = {intent: intent for intent in KERNEL_INTENTS}
+# Scheduling is done by the chat loop's own tools, so the intent only has to keep the
+# request away from search, reasoning and the media pipelines.
+INTENT_ACTIONS["schedule"] = "none"
 
 # A small model degrades quickly as the tool list grows; five to eight is the
 # measured cliff, and an empty list is a legitimate answer meaning "no tool".

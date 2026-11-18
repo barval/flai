@@ -215,6 +215,11 @@ function handleEvent(event) {
                 onTaskStage(event.data);
             }
             break;
+        case 'scheduler_popup':
+            if (typeof onSchedulerPopup === 'function') {
+                onSchedulerPopup(event.data);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
     }

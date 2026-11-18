@@ -748,6 +748,57 @@ def _queues_empty() -> bool:
     )
 
 
+def _context_with_skills(digest: str, skills, lang: str) -> str:
+    """Put the task's skills ahead of the running context.
+
+    Ahead, not behind: a step that reads its instructions after the previous results
+    tends to treat them as an answer already given. Media steps pass ``skills=None``:
+    a diffusion prompt is not the place for "Run one web_search", and the block would
+    also push the source fragment out of the media budget.
+    """
+    block = _task_skills_block(skills or (), lang)
+    if not block:
+        return digest
+    return f"{block}\n\n{digest}" if digest else block
+
+
+def _skills_catalog(lang: str = "ru") -> str:
+    """The installed, enabled skills as name + one line, for the planner."""
+    try:
+        from app.skills import catalog
+
+        return catalog(lang)
+    except Exception:  # noqa: BLE001 - no catalog is a normal state
+        return ""
+
+
+def _task_skills_block(names, lang: str = "ru") -> str:
+    """The bodies of the skills the planner chose, as instructions for every step.
+
+    A skill is a set of instructions, not a tool: the chat loads it into the system
+    prompt for the turn, and a task gets the same treatment so a scheduled report can
+    be told *how* to be written. A name that no longer resolves (disabled, or removed
+    between planning and running) is skipped rather than failing the step.
+    """
+    if not names:
+        return ""
+    try:
+        from app.skills import activate
+    except Exception:  # noqa: BLE001 - a broken skills folder costs the task its hints only
+        return ""
+    bodies = []
+    for name in names:
+        try:
+            body = activate(str(name), lang)
+        except Exception:  # noqa: BLE001
+            body = None
+        if body:
+            bodies.append(body)
+    if not bodies:
+        return ""
+    return "# SKILLS\n\n" + "\n\n".join(bodies)
+
+
 def _capabilities_section(
     deep_analysis: bool = False,
     camera_rooms: list[str] | None = None,
@@ -1223,6 +1274,9 @@ def _parse_plan(raw: str) -> dict | None:
             "checkpoint_criteria": str(s.get("checkpoint_criteria", "")),
             "user_input_expected": bool(s.get("user_input_expected", False)),
             "source_step": _valid_source_step(s.get("source_step"), seq),
+            # A step's own parameters (which chat tool, what to write, append or not):
+            # without them a `chat_tool` or `document` step arrives with nothing to do.
+            "extra": s.get("extra") if isinstance(s.get("extra"), dict) else {},
         }
         steps.append(entry)
     if not steps:
@@ -1233,7 +1287,9 @@ def _parse_plan(raw: str) -> dict | None:
         src = entry.get("source_step")
         if src is not None and not (1 <= src < entry["seq"]):
             entry["source_step"] = None
-    return {"title": str(data.get("title", "")), "steps": steps}
+    raw_skills = data.get("skills") if isinstance(data, dict) else None
+    skills = [item for item in (raw_skills or []) if isinstance(item, str) and item.strip()][:2]
+    return {"title": str(data.get("title", "")), "steps": steps, "skills": skills}
 
 
 def _plan_needs_audit(task: dict, plan: dict) -> bool:
@@ -1383,9 +1439,22 @@ def write_plan_tool() -> dict[str, Any]:
                                     "type": "integer",
                                     "description": "Earlier step whose result this step edits (1-based)",
                                 },
+                                "extra": {
+                                    "type": "object",
+                                    "description": (
+                                        "For chat_tool: {tool, arguments}. For document: "
+                                        "{name, content, format, append}. Omit otherwise."
+                                    ),
+                                },
                             },
                             "required": ["goal", "tool", "checkpoint_criteria"],
                         },
+                    },
+                    "skills": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 2,
+                        "description": "Skill names from the # SKILLS list, at most 2",
                     },
                 },
                 "required": ["steps"],
@@ -2569,6 +2638,7 @@ class TaskExecutor:
             "current_time": get_current_time_in_timezone(self.app) or "",
             "attachments_section": attachments,
             "plan_audit_section": "",
+            "skills_catalog": _skills_catalog(lang),
         }
         from app.utils import format_prompt
 
@@ -3042,6 +3112,7 @@ class TaskExecutor:
                 goal=str(s.get("goal", "")),
                 tool=str(s.get("tool", "")),
                 checkpoint_criteria=str(s.get("checkpoint_criteria", "")),
+                extra=s.get("extra") if isinstance(s.get("extra"), dict) else {},
             )
             if kind == "question" and (plan_meta.get("model_name") or plan_meta.get("usage")):
                 update_step(
@@ -3157,7 +3228,13 @@ class TaskExecutor:
             self._publish_running_step(task_id, row["id"])
             self._current_step_id = row["id"]
             update_step(row["id"], status="running", started_at=_now_iso(), attempts=attempts + 1)
-            digest = self._context_digest(task_id, idx, corrective_note=corrective_note)
+            digest = self._context_digest(
+                task_id,
+                idx,
+                corrective_note=corrective_note,
+                skills=(task.get("step_plan") or {}).get("skills") if isinstance(task.get("step_plan"), dict) else None,
+                lang=task.get("lang") or "ru",
+            )
             start = time.monotonic()
             try:
                 outcome = run_direct_step(
@@ -3422,6 +3499,8 @@ class TaskExecutor:
         corrective_note: str = "",
         char_cap: int = 16000,
         skip_seqs: set[int] | None = None,
+        skills: list[str] | None = None,
+        lang: str = "ru",
     ) -> str:
         """Previous step results as the running context for the next step.
 
@@ -3451,7 +3530,7 @@ class TaskExecutor:
                 f"Corrective note: the verifier REJECTED the previous attempt of step {upto_idx + 1}. "
                 f"Reason: {corrective_note[:1000]}. Fix the stated problem and redo this step."
             )
-        return "\n".join(parts)[:char_cap]
+        return _context_with_skills("\n".join(parts)[:char_cap], skills, lang)
 
     def _add_budget(self, task_id: str, seconds: float) -> None:
         """Read-modify-write the task budget (single writer: the executor)."""
@@ -3522,7 +3601,12 @@ class TaskExecutor:
             str(s.get("goal") or "") for s in steps
             if str(s.get("tool") or "") in ("image_gen", "image_edit")
         )
-        digest = self._context_digest(task_id, int(task.get("next_step_index") or 0))
+        digest = self._context_digest(
+            task_id,
+            int(task.get("next_step_index") or 0),
+            skills=(task.get("step_plan") or {}).get("skills") if isinstance(task.get("step_plan"), dict) else None,
+            lang=task.get("lang") or "ru",
+        )
         budget = max(200, int(self._cfg("TASK_CONTINUITY_MAX_CHARS", TASK_CONTINUITY_MAX_CHARS)))
         try:
             corrective = ""
@@ -3698,6 +3782,9 @@ class TaskExecutor:
             idx,
             char_cap=max(0, cap - len(source_text)),
             skip_seqs={source_step} if (source_text and source_step is not None) else None,
+            # No skills here: this text becomes an image or video prompt.
+            skills=None,
+            lang=lang,
         )
         context = "\n\n".join(p for p in (source_text, previous) if p.strip())[:cap]
         if context:

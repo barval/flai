@@ -4804,7 +4804,7 @@ class RedisRequestQueue:
             f.write(content.lstrip("\n"))
 
         relative_path = os.path.join(user_id, f"{doc_id}.txt")
-        db.save_document(user_id, doc_id, domain, file_size, file_ext=".txt", file_path=relative_path)
+        db.save_document(user_id, doc_id, domain, file_size, file_ext=".txt", file_path=relative_path, source="crawl")
         update_document_index_status(doc_id, INDEX_STATUS_PENDING)
 
         indexing_started_at = get_current_time_for_db()
@@ -5566,6 +5566,7 @@ class RedisRequestQueue:
                 # actually typed: a small model merges neighbouring words into a
                 # host name (measured: prits.ru -> pritns.ru next to "ns-сервера").
                 "message_text": (task.get("data") or {}).get("text", ""),
+                "user_class": task.get("class", task.get("user_class", 100)),
                 "current_message_id": (task.get("data") or {}).get("current_message_id"),
                 "current_session_id": task.get("session_id"),
             }
@@ -7335,7 +7336,15 @@ class RedisRequestQueue:
         with open(file_path, "wb") as f:
             f.write(doc_bytes)
 
-        save_document(user_id, doc_id, doc_name, len(doc_bytes), safe_ext, os.path.join(user_id, safe_filename))
+        save_document(
+            user_id,
+            doc_id,
+            doc_name,
+            len(doc_bytes),
+            safe_ext,
+            os.path.join(user_id, safe_filename),
+            source="chat",
+        )
         update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
         self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
 

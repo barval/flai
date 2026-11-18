@@ -92,6 +92,13 @@ After the marker — the target exactly as the user wrote it.
 NOT 6: a search engine returns articles about how to check and no measurement.
 NOT 8: reasoning cannot measure anything.
 
+## 13. REMINDER OR ACTION AT A TIME — [-SCHEDULE-] and the request
+A request to be reminded of something, or to have something DONE, at a stated time: "remind me tomorrow at nine about the report", "every Friday at 16:00 check the logs", "in fifteen minutes remind me about the oven", "on 18 November at 10:00 check the rooms".
+After the marker — the user's request as written: the model works out the moment from words like "tomorrow" or "in fifteen minutes".
+NOT 6: a search engine cannot schedule anything.
+NOT 8: this is not reasoning, it is an action at a time.
+NOT 1: a simple request names no time and asks for nothing later.
+
 # INPUT DATA
 
 {camera_section}

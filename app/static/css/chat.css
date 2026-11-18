@@ -834,6 +834,84 @@
     background-color: #e6f2ff;
 }
 
+/* Scheduler reminder popup — a notification, not a window: the message is
+   already in its own chat, so closing this loses nothing. */
+.scheduler-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scheduler-popup[hidden] { display: none; }
+.scheduler-popup-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+.scheduler-popup-card {
+    position: relative;
+    width: min(420px, calc(100vw - 40px));
+    padding: 20px 22px 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+    color: #2c3e50;
+    text-align: left;
+}
+.scheduler-popup-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.scheduler-popup-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+.scheduler-popup-title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: #2c3e50;
+    overflow-wrap: anywhere;
+}
+.scheduler-popup-title[hidden] { display: none; }
+.scheduler-popup-close {
+    border: none;
+    background: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: #7f8c8d;
+    cursor: pointer;
+    padding: 0 2px;
+}
+.scheduler-popup-close:hover { color: #2c3e50; }
+.scheduler-popup-text {
+    margin: 12px 0 0;
+    font-size: 0.98rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #2c3e50;
+}
+.scheduler-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+.scheduler-popup-button {
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1.1rem;
+    background-color: #3498db;
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.scheduler-popup-button:hover { background-color: #2980b9; }
+
 /* Folder name dialog (create/rename) */
 .folder-name-modal {
     position: fixed;
@@ -2611,4 +2689,28 @@ video {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
+}
+
+/* Where a document came from, when it was not an upload (v13.5). */
+.doc-origin-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0 0.35rem;
+    border-radius: 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    border: 1px solid currentColor;
+    opacity: 0.65;
+    vertical-align: middle;
+}
+
+/* The indexing switch on a document the assistant wrote (v13.5). */
+.doc-index-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    opacity: 0.75;
+    cursor: pointer;
 }

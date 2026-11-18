@@ -301,6 +301,20 @@ the feature: the kernel rule and the marker category `[-NET-]` send a network qu
 speed to `<host>`» went to web search with the kernel on and to `[-REASONING-]` with it
 off, and the model answered from what it was given. Details → [NET_TOOLS.md](NET_TOOLS.md).
 
+### Scheduler
+
+`app/scheduler.py` runs one daemon thread every thirty seconds behind a Redis lease
+(`scheduler:tick`, `SET NX EX 25`), so two workers cannot deliver the same item twice.
+An item is a row in `scheduler_items` with an absolute `next_run_at` (one indexed query
+per tick) and the zone it was created in; `next_after()` computes the following firing on
+that wall clock, so nine in the morning stays nine across a daylight-saving change, and the
+tick advances from the scheduled moment rather than from the clock. Two kinds share the
+loop: a reminder is a prepared sentence delivered into its own chat (plus a popup event),
+an action is a task on the Tasks engine whose result is polled back through
+`tasks.scheduler_item_id`/`scheduler_deliver_at`. Creation from chat is the kernel's
+`schedule` intent or the marker router's category 13 `[-SCHEDULE-]` — both send the request
+to the chat loop, which owns the tools. Details → [SCHEDULER.md](SCHEDULER.md).
+
 ### Skills
 
 `skills/<name>/SKILL.md` — `name` / `description` / `allowed-tools` frontmatter,

@@ -62,6 +62,29 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         checkpoint_hint=N_("Name the fact or data the search must confirm."),
     ),
     ToolSpec(
+        id="document",
+        exec="direct",
+        badge=("📝", N_("Write a document")),
+        label=N_("Write a document"),
+        description=N_(
+            "Save text as a document of the user, or append a line to one this assistant wrote. "
+            "Use append for a log that grows: sightings, measurements, a running list."
+        ),
+        checkpoint_hint=N_("Name what the document must contain after this step."),
+    ),
+    ToolSpec(
+        id="chat_tool",
+        exec="direct",
+        badge=("🧰", N_("Chat tool")),
+        label=N_("Chat tool"),
+        description=N_(
+            "Run one of the assistant's own tools: a web search, a document search, a network "
+            "check, a camera snapshot, writing a file. Put the tool name and its arguments in "
+            "the step's extra fields, exactly as the chat catalogue names them."
+        ),
+        checkpoint_hint=N_("Name the result the tool must return."),
+    ),
+    ToolSpec(
         id="research",
         exec="direct",
         badge=("🔬", N_("Research")),

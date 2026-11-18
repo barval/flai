@@ -2396,6 +2396,7 @@ def test_parse_plan_keeps_valid_source_step():
 def test_parse_plan_plain_requests_still_parse():
     assert ex._parse_plan('{"title": "t", "steps": [{"seq": 1, "goal": "g", "tool": "llm"}]}') == {
         "title": "t",
+        "skills": [],
         "steps": [
             {
                 "seq": 1,

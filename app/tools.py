@@ -367,6 +367,118 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 
+SCHEDULER_TOOLS = ("schedule_reminder", "schedule_action")
+
+_WHEN_SCHEMA = {
+    "type": "string",
+    "description": (
+        "Local wall-clock moment in the user's time zone as 'YYYY-MM-DD HH:MM'. Work it out "
+        "from the current time given in the system prompt; never reuse a date from history."
+    ),
+}
+
+_REPEAT_SCHEMA = {
+    "type": "string",
+    "enum": ["once", "minutes", "daily", "weekly", "monthly"],
+    "description": "Default once. daily/weekly/monthly repeat at the same local time.",
+}
+
+_SCHEDULER_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_reminder",
+            "description": (
+                "Schedule a reminder: a sentence the assistant sends at that moment without "
+                "thinking about it. Use it when the user asks to be reminded of something. "
+                "The text is written now, so it may contain {when} for the time it fires."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "text": {"type": "string", "description": "What to send at that moment"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["when", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_action",
+            "description": (
+                "Schedule real work at a moment: the task plans and runs by itself, with the "
+                "user's tools and skills, and its result arrives in the actions chat. Use it "
+                "when the user asks to have something DONE later ('every morning send me the "
+                "news and save it to a file'), not just to be reminded of it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "when": _WHEN_SCHEMA,
+                    "goal": {"type": "string", "description": "What has to be done, in full"},
+                    "title": {"type": "string", "description": "Short label for the list"},
+                    "repeat": _REPEAT_SCHEMA,
+                    "every_minutes": {
+                        "type": "integer",
+                        "description": "For repeat=minutes: the interval, at least 15",
+                    },
+                },
+                "required": ["when", "goal"],
+            },
+        },
+    },
+]
+
+
+WRITE_DOCUMENT_TOOL = "write_document"
+
+_WRITE_DOCUMENT_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": WRITE_DOCUMENT_TOOL,
+        "description": (
+            "Save a document for the user: a report, a summary, a letter, a table. The file "
+            "appears in the user's own document library and is indexed like any other document. "
+            "Use it whenever the answer is meant to be a FILE the user keeps. Give a display "
+            "name without a path; the extension follows the format. For a table use format csv "
+            "with rows (a list of rows, each a list of cells), never a hand-built string."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Display name, e.g. 'October report'"},
+                "content": {"type": "string", "description": "The whole text of the document"},
+                "format": {
+                    "type": "string",
+                    "enum": ["md", "csv", "json", "txt"],
+                    "description": "md for prose, csv with rows, json (must parse), txt plain",
+                },
+                "rows": {
+                    "type": "array",
+                    "description": "For csv only: the rows, each a list of cell values",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                },
+                "append": {
+                    "type": "boolean",
+                    "description": (
+                        "Add to a document this assistant already wrote instead of making "
+                        "another one. Use it for a log that grows."
+                    ),
+                },
+            },
+            "required": ["name"],
+        },
+    },
+}
+
 # ── Network diagnostics (v13.5) ───────────────────────────────────────────────
 # Advertised only when the netdiag sidecar answers, and gated per user at execution
 # time: a hidden tool cannot tell the person why it refused.
@@ -513,7 +625,26 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
         # A tool that can only answer "the service is unavailable" is noise in
         # the catalogue; the camera module is optional.
         definitions = [d for d in definitions if d["function"]["name"] != "list_rooms"]
-    return definitions + skill_tool_definitions() + mcp_tool_definitions() + net_tool_definitions()
+    return (
+        list(definitions)
+        + [_WRITE_DOCUMENT_DEFINITION]
+        + _scheduler_definitions()
+        + skill_tool_definitions()
+        + mcp_tool_definitions()
+        + net_tool_definitions()
+    )
+
+
+def _scheduler_definitions() -> list[dict[str, Any]]:
+    """The scheduling tools, offered unless the installation switched the scheduler off."""
+    try:
+        from flask import current_app
+
+        if not current_app.config.get("SCHEDULER_ENABLED", True):
+            return []
+    except Exception:  # noqa: BLE001 - no app context: offer them, the tool checks again
+        pass
+    return list(_SCHEDULER_DEFINITIONS)
 
 
 # A restricted profile's catalogue, named here rather than in the module that
@@ -1209,6 +1340,74 @@ def _exec_net_speed(ctx: dict[str, Any], **kw: Any) -> str:
     return _run_net_tool("net_speed", "speed", ctx, payload, host)
 
 
+def _schedule_refusal(language: str, refusal) -> str:
+    """A refusal is a question back, never a guess at the time."""
+    from flask_babel import force_locale
+
+    with force_locale(language):
+        if refusal.code == "time_unclear":
+            return "⚠️ " + str(_("I could not tell the time. When should it happen?"))
+        if refusal.code == "repeat_unclear":
+            return "⚠️ " + str(_("That repetition is not one I know: once, daily, weekly, monthly or minutes"))
+        if refusal.code == "in_the_past":
+            return "⚠️ " + str(_("That time has already passed: {when}. When should it happen?")).format(
+                when=refusal.params.get("when").strftime("%Y-%m-%d %H:%M")
+            )
+        if refusal.code == "empty_body":
+            return "⚠️ " + str(_("There is nothing to send or do. What should happen?"))
+        if refusal.code == "too_long":
+            return "⚠️ " + str(_("That is too long to schedule (max {limit} characters)")).format(
+                limit=refusal.params.get("limit")
+            )
+        return "⚠️ " + str(_("The schedule could not be created"))
+
+
+def _exec_schedule(ctx: dict[str, Any], kind: str, **kw: Any) -> str:
+    """Create one scheduled item from the model's structured fields."""
+    from flask import current_app
+    from flask_babel import force_locale
+
+    from app import scheduler_tools
+
+    language = str(ctx.get("lang") or "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(language):
+            return "⚠️ " + str(_("User not identified for the scheduler"))
+
+    body = kw.get("goal") if kind == "action" else kw.get("text")
+    zone_name = scheduler_tools.installation_zone_name(current_app)
+    try:
+        _item_id, local = scheduler_tools.create_item(
+            kind,
+            login,
+            kw.get("when"),
+            str(body or ""),
+            title=str(kw.get("title") or ""),
+            repeat=kw.get("repeat"),
+            every_minutes=kw.get("every_minutes"),
+            zone_name=zone_name,
+        )
+    except scheduler_tools.ScheduleRefusalError as refusal:
+        return _schedule_refusal(language, refusal)
+
+    from app.scheduler import render_when
+
+    when = render_when(local, language)
+    with force_locale(language):
+        template = _("Action scheduled for {when}") if kind == "action" else _("Reminder set for {when}")
+        head = str(template).format(when=when)
+    return f"🔔 {head}" if kind == "reminder" else f"⚙️ {head}"
+
+
+def _exec_schedule_reminder(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "reminder", **kw)
+
+
+def _exec_schedule_action(ctx: dict[str, Any], **kw: Any) -> str:
+    return _exec_schedule(ctx, "action", **kw)
+
+
 _EXECUTOR_MAP: dict[str, Any] = {
     "get_current_time": lambda ctx, **kw: _exec_get_current_time(ctx),
     "calculator": lambda ctx, **kw: _exec_calculator(ctx, kw.get("expression", "")),
@@ -1220,6 +1419,9 @@ _EXECUTOR_MAP: dict[str, Any] = {
     "list_rooms": lambda ctx, **kw: _exec_list_rooms(ctx),
     "time_calc": lambda ctx, **kw: _exec_time_calc(ctx, **kw),
     "activate_skill": lambda ctx, **kw: _exec_activate_skill(kw.get("name", ""), kw.get("lang", "ru")),
+    WRITE_DOCUMENT_TOOL: lambda ctx, **kw: _exec_write_document(ctx, **kw),
+    "schedule_reminder": lambda ctx, **kw: _exec_schedule_reminder(ctx, **kw),
+    "schedule_action": lambda ctx, **kw: _exec_schedule_action(ctx, **kw),
     "net_dns": lambda ctx, **kw: _exec_net_dns(ctx, **kw),
     "net_whois": lambda ctx, **kw: _exec_net_whois(ctx, **kw),
     "net_ping": lambda ctx, **kw: _exec_net_ping(ctx, **kw),
@@ -1231,6 +1433,66 @@ _EXECUTOR_MAP: dict[str, Any] = {
 
 
 SKILL_LOADER_TOOL = "activate_skill"
+
+
+def _write_document_message(code: str, detail: str, lang: str) -> str:
+    """The sentence a refusal becomes, in the caller's language."""
+    from app import documents_write
+
+    # Built inside force_locale: gettext() runs the app's locale selector, which reads
+    # the request, so calling it outside a request context raises.
+    with force_locale(lang):
+        messages = {
+            "empty": _("There is nothing to write: the content is empty"),
+            "format": _("Unsupported document format: {detail}. Use md, csv, json or txt"),
+            "too_large": _("The document is too large (limit {limit} KB)").format(
+                limit=documents_write.MAX_CONTENT_BYTES // 1024
+            ),
+            "quota": _("The document storage quota is exhausted; delete something first"),
+            "append_target": _("Can only append to a document this assistant wrote, not to an upload"),
+            "json": _("The JSON does not parse, so nothing was written"),
+            "name": _("The document name is not usable: {detail}"),
+            "csv_rows": _("A csv needs rows: a list of rows, each a list of cells"),
+        }
+        text = messages.get(code, _("The document could not be written"))
+        if "{detail}" in text:
+            text = text.format(detail=detail)
+    return "⚠️ " + str(text)
+
+
+def _exec_write_document(ctx: dict[str, Any], **kw: Any) -> str:
+    """Write a document and queue its indexing; the answer names the file."""
+    from app import documents_write
+
+    lang = ctx.get("lang", "ru")
+    login = str(ctx.get("user_id") or "")
+    if not login:
+        with force_locale(lang):
+            return "⚠️ " + str(_("User not identified for documents"))
+
+    try:
+        written = documents_write.write_document_file(
+            login,
+            str(kw.get("name", "")),
+            content=str(kw.get("content") or ""),
+            fmt=str(kw.get("format") or "md"),
+            rows=kw.get("rows") if isinstance(kw.get("rows"), list) else None,
+            append=bool(kw.get("append")),
+        )
+    except documents_write.DocumentWriteError as exc:
+        return _write_document_message(exc.code, exc.detail, lang)
+    except Exception:  # noqa: BLE001 - a failed write is a sentence, not a crash
+        logger.exception("write_document failed")
+        with force_locale(lang):
+            return "⚠️ " + str(_("The tool could not complete the request."))
+
+    with force_locale(lang):
+        size_kb = max(1, round(written.size / 1024))
+        return str(
+            _("Saved as {name} ({size} KB) in your documents. Tick its box to index it for search.").format(
+                name=written.filename, size=size_kb
+            )
+        )
 
 
 def _exec_activate_skill(name: str, lang: str) -> str:
@@ -1265,10 +1527,11 @@ def select_tool_definitions(selected: tuple[str, ...] | None, lang: str = "ru") 
     chosen = [item for item in definitions if item.get("function", {}).get("name") in wanted]
     if not chosen:
         return definitions
-    if not any(item["function"]["name"] == SKILL_LOADER_TOOL for item in chosen):
-        # The loader survives narrowing: a turn that picked any other tool would
-        # otherwise lose the only way to load a skill for the rest of the turn.
-        chosen += [item for item in definitions if item["function"]["name"] == SKILL_LOADER_TOOL]
+    for keep in (SKILL_LOADER_TOOL, WRITE_DOCUMENT_TOOL, *SCHEDULER_TOOLS):
+        # Both survive narrowing: a turn that picked any other tool would otherwise
+        # lose the skill loader, or the only way to hand the user a file.
+        if not any(item["function"]["name"] == keep for item in chosen):
+            chosen += [item for item in definitions if item["function"]["name"] == keep]
     return chosen
 
 
@@ -1467,13 +1730,13 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
             logger.exception(f"MCP tool '{tool_name}' failed")
             lang = context.get("lang", "ru")
             with force_locale(lang):
-                return str(_("The tool could not complete the request."))
+                return "⚠️ " + str(_("The tool could not complete the request."))
 
     executor = _EXECUTOR_MAP.get(tool_name)
     if not executor:
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("Unknown tool: {tool}").format(tool=tool_name))
+            return "⚠️ " + str(_("Unknown tool: {tool}").format(tool=tool_name))
 
     try:
         result = executor(context, **arguments)
@@ -1486,4 +1749,4 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
         logger.exception(f"Tool '{tool_name}' execution failed")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return str(_("The tool could not complete the request."))
+            return "⚠️ " + str(_("The tool could not complete the request."))

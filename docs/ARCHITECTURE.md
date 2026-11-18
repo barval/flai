@@ -295,8 +295,11 @@ question: seven chat tools (`net_dns`, `net_whois`, `net_ping`, `net_trace`,
 `shell=False`, and the container is on a network of its own, shared only with `web`.
 `app/netdiag.py` holds the client and the policy that belongs to this application — the
 per-user permission, the Redis rate limit and the 24-hour audit — while the catalogue
-adds the tools only when the sidecar answers its cached `/health`. Details →
-[NET_TOOLS.md](NET_TOOLS.md).
+adds the tools only when the sidecar answers its cached `/health`. Routing is part of
+the feature: the kernel rule and the marker category `[-NET-]` send a network question
+*and a request to measure one* to ordinary chat — measured before the fix, «measure the
+speed to `<host>`» went to web search with the kernel on and to `[-REASONING-]` with it
+off, and the model answered from what it was given. Details → [NET_TOOLS.md](NET_TOOLS.md).
 
 ### Skills
 

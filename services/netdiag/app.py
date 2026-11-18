@@ -255,8 +255,18 @@ def _speed(payload: dict) -> list[str]:
         str(_int(payload, "port", 1, 65535, 5201)),
         "-t",
         str(_int(payload, "seconds", 1, 10, 5)),
+        # Without this a host that drops the connection attempt holds the whole
+        # request open until the application's timeout. Measured on the live
+        # instance: twenty seconds spent waiting to learn nothing.
+        "--connect-timeout",
+        "5000",
     ]
 
+
+# Tools whose whole output is a measurement: a non-zero exit means it never happened.
+# For every other tool the exit code is part of the answer (ping exits 1 on 100% loss,
+# dig exits 9 on NXDOMAIN, and reporting those as failures would hide the result).
+FAIL_ON_EXIT = frozenset({"speed"})
 
 _HANDLERS = {
     "dns": _dns,
@@ -294,6 +304,8 @@ def execute(tool: str, payload: dict) -> tuple[bool, str]:
         return False, "⚠️ the program is not installed in this container"
     output = (completed.stdout or "") + (completed.stderr or "")
     output = output.strip()[:MAX_OUTPUT_CHARS]
+    if completed.returncode != 0 and tool in FAIL_ON_EXIT:
+        return False, output or f"exit code {completed.returncode}"
     if not output:
         return True, f"(no output, exit code {completed.returncode})"
     return True, output

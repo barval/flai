@@ -10,6 +10,25 @@ This list is not a commitment. Items move when their priority changes, and an it
 
 ## 📅 Planned
 
+- **Make mypy actually check the project** — the type check is advisory in CI (`mypy … || true`)
+  and, as configured, it does not run at all: `python_version = "3.11"` meets numpy 2.5's stub,
+  which uses the PEP 695 `type X = …` syntax added in 3.12, and mypy aborts on that file
+  (`errors prevented further checking`) before it reaches `app/`. Measured with
+  `--python-version 3.12`: **204 errors in 40 files**, plus 71 notes — 60 of them
+  `annotation-unchecked` (bodies with no annotations, i.e. blind spots). Of the 204 errors:
+  51 `union-attr`, 44 `no-any-return`, 39 `arg-type`, 21 `attr-defined`, 13 `operator`, and
+  36 the rest. A reading pass over the
+  candidates found **three places where the type is a real risk, not noise**: `app/tasks/store.py:update_task`
+  is annotated `-> dict` and returns `None` when the row is gone; a bytes `stderr` slice is
+  formatted into a log line in `app/routes/backups.py`; `modules/cam.py` calls `.rstrip()` on
+  `camera_api_url`, which is `None` until `initialize()`. Everything else is `Any` from untyped
+  dependencies, Flask extension attributes mypy cannot know (`app.modules`, `app.request_queue`),
+  or annotations that disagree with the code without changing behaviour. Next: choose the target
+  (3.12 for a check that runs, with `python3.11 -m compileall` keeping the image-version guard;
+  or 3.11 with `follow_imports=skip`, 181 findings and no dependency types), declare the Flask
+  extensions with a `Protocol`, fix the three real candidates, then remove `|| true` from CI and
+  ratchet the count down file by file.
+
 - **Editing documents the assistant wrote** — the tool writes and appends text today, and can
   emit `.docx`/`.xlsx`/`.pdf`, but it cannot change what it wrote. Editing is scoped to
   **generated documents only**: an upload is never modified in place, because its bytes may be

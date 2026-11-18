@@ -163,11 +163,11 @@ def test_an_action_catches_up_once_and_not_with_a_pile(env):
 
     with db.get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT * FROM tasks WHERE scheduler_item_id = %s", (item_id,))
-        tasks = [dict(row) for row in c.fetchall()]
-    assert len(tasks) == 1
+        c.execute("SELECT * FROM scheduler_runs WHERE item_id = %s", (item_id,))
+        runs = [dict(row) for row in c.fetchall()]
+    assert len(runs) == 1
     # The newest missed firing, not the oldest: work cannot be run four times over.
-    assert tasks[0]["scheduler_deliver_at"] == NOW
+    assert runs[0]["due_at"] == NOW
 
 
 def test_a_missed_action_can_be_skipped_entirely(env):

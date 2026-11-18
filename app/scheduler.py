@@ -318,37 +318,34 @@ def deliver_message(app, item: dict, text: str) -> int:
 _SERVICE_TO_TASK_CLASS = {0: 3, 1: 4, 2: 5}
 
 
-def enqueue_action(app, item: dict, target: datetime) -> str | None:
-    """Put one action on the Tasks engine, or return None when the previous run is not done.
+def enqueue_run(app, item: dict, target: datetime) -> str | None:
+    """Queue one service run for this firing, or None when the previous one is still open.
 
-    Overlap is refused rather than queued: an every-fifteen-minutes action whose previous
-    run is still going must not build a pile behind a single GPU.
+    A run is not a task: it is a short tool loop, it lives in its own table, and the Tasks
+    tab never sees it. Overlap is refused rather than queued — a five-minute action whose
+    previous run is still going must not build a pile behind a single GPU.
     """
-    from app import userdb
-    from app.tasks import store as task_store
+    from app import scheduler_runs, userdb
 
     item_id = str(item.get("id") or "")
-    if item_id and task_store.active_scheduler_task(item_id):
-        logger.info(f"scheduler: action {item_id} skipped, its previous task is still open")
+    if item_id and scheduler_runs.has_open_run(item_id):
+        logger.info(f"scheduler: run for {item_id} skipped, the previous one is still open")
         return None
 
     user_id = item.get("user_id")
+    run_id = scheduler_runs.create_run(item_id, user_id, target)
+
     service_class = 2
     try:
         row = userdb.get_user_by_login(user_id) or {}
         service_class = int(row.get("service_class", 2))
     except Exception:  # noqa: BLE001 - an unknown account still gets the lowest class
         service_class = 2
-    title = str(item.get("title") or "").strip() or str(item.get("body") or "").strip()[:60]
-    return task_store.create_task(
-        user_id,
-        _SERVICE_TO_TASK_CLASS.get(service_class, 5),
-        title,
-        _user_language(user_id),
-        "neutral",
-        scheduler_item_id=item_id or None,
-        scheduler_deliver_at=target,
-    )
+    try:
+        app.request_queue.add_service_run(run_id, user_id, _SERVICE_TO_TASK_CLASS.get(service_class, 5), _user_language(user_id))
+    except Exception:  # noqa: BLE001 - the run stays queued and the lateness rule cancels it
+        logger.exception(f"scheduler: run {run_id} could not be queued")
+    return run_id
 
 
 def deliver(app, item: dict, fired_at: datetime) -> int | str | None:
@@ -360,7 +357,7 @@ def deliver(app, item: dict, fired_at: datetime) -> int | str | None:
     """
     kind = str(item.get("kind") or "reminder")
     if kind == "action":
-        return enqueue_action(app, item, item.get("next_run_at") or fired_at)
+        return enqueue_run(app, item, item.get("next_run_at") or fired_at)
 
     user_id = item.get("user_id")
     language = _user_language(user_id)
@@ -479,43 +476,32 @@ def _fire(app, item: dict, now: datetime) -> dict:
 
 
 def _cancel_overdue(app, now: datetime) -> int:
-    """Cancel an action that never started in time, so it cannot hold the slot all day."""
-    from app.tasks import store as task_store
+    """Cancel a run that never started in time, so yesterday's answer is not delivered today."""
+    from app import scheduler_runs
 
     lateness = int(app.config.get("SCHEDULER_MAX_LATENESS_MIN", 60) or 0)
     if lateness <= 0:
         return 0
 
     cancelled = 0
-    for task in task_store.overdue_scheduler_tasks(now, lateness):
-        client = _redis(app)
-        if client is not None:
-            try:
-                client.set(f"task:cancelled:{task['id']}", "1", ex=3600)
-            except Exception:  # noqa: BLE001 - the flag is best effort, as in the API
-                logger.warning(f"scheduler: could not raise the cancel flag for {task['id']}")
-        if task.get("status") in ("queued", "frozen", "awaiting_user"):
-            task_store.update_task(task["id"], status="cancelled", abort_reason="scheduler_late")
-        else:
-            # A running task is cancelled by its worker, which watches the flag; the
-            # reason has to be written now, because that worker only writes the status.
-            task_store.update_task(task["id"], abort_reason="scheduler_late")
+    for run in scheduler_runs.overdue_runs(now, lateness):
+        scheduler_runs.finish_run(
+            run["id"], scheduler_runs.STATUS_CANCELLED, error="scheduler_late"
+        )
         cancelled += 1
-        logger.warning(f"scheduler: task {task['id']} was too late to run and is cancelled")
+        logger.warning(f"scheduler: run {run['id']} was too late to start and is cancelled")
     return cancelled
 
 
-def action_message(app, item: dict, task: dict, now: datetime) -> str:
-    """The sentence an action delivers: its result, or the reason there is none."""
+def run_message(app, item: dict, run: dict, now: datetime) -> str:
+    """The sentence a run delivers: its answer, or the reason there is none."""
     from flask_babel import force_locale, gettext
-
-    from app.tasks import store as task_store
 
     language = _user_language(item.get("user_id"))
     zone = _zone(item.get("timezone"))
-    status = str(task.get("status") or "")
-    reason = str(task.get("abort_reason") or "")
-    result = task_store.task_result_text(str(task.get("id"))) if status != "cancelled" else ""
+    status = str(run.get("status") or "")
+    reason = str(run.get("error") or "")
+    result = str(run.get("result") or "").strip() if status != "cancelled" else ""
 
     with force_locale(language):
         if reason == "scheduler_late":
@@ -526,15 +512,13 @@ def action_message(app, item: dict, task: dict, now: datetime) -> str:
             body = gettext("The action finished without an answer")
         elif status == "cancelled":
             body = "⚠️ " + gettext("The action was cancelled")
-        elif status == "expired":
-            body = "⚠️ " + gettext("The action ran out of time")
         else:
             body = "⚠️ " + gettext("The action failed")
 
         title = str(item.get("title") or "").strip()
-        text = f"⚙️ {title}\n\n{body}" if title else body
+        text = f"🛠️ {title}\n\n{body}" if title else body
 
-        target = task.get("scheduler_deliver_at")
+        target = run.get("due_at")
         if target is not None and now - target > timedelta(minutes=1):
             text += "\n\n" + gettext("Finished at {at} instead of {target}").format(
                 at=render_when(now.astimezone(zone), language),
@@ -544,20 +528,19 @@ def action_message(app, item: dict, task: dict, now: datetime) -> str:
 
 
 def _deliver_ready(app, now: datetime) -> int:
-    """Deliver every finished action whose time has come."""
-    from app import scheduler_store
-    from app.tasks import store as task_store
+    """Deliver every finished run whose time has come."""
+    from app import scheduler_runs, scheduler_store
 
     delivered = 0
-    for task in task_store.due_scheduler_tasks(now):
-        item = scheduler_store.get_item(str(task.get("scheduler_item_id"))) if task.get("scheduler_item_id") else None
+    for run in scheduler_runs.due_runs(now):
+        item = scheduler_store.get_item(str(run.get("item_id"))) if run.get("item_id") else None
         if item is None:
-            # The schedule was deleted while the task ran: a message from an item the
+            # The schedule was deleted while its run executed: a message from an item the
             # person removed is exactly what they would report as a bug.
-            task_store.mark_scheduler_delivered(task["id"], now)
+            scheduler_runs.mark_delivered(run["id"], now)
             continue
-        deliver_message(app, item, action_message(app, item, task, now))
-        task_store.mark_scheduler_delivered(task["id"], now)
+        deliver_message(app, item, run_message(app, item, run, now))
+        scheduler_runs.mark_delivered(run["id"], now)
         delivered += 1
     return delivered
 

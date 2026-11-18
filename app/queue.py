@@ -417,6 +417,7 @@ class RedisRequestQueue:
             "memory_extract_task",
             "session_summary_task",
             "graph_extract_task",
+            "service_run",
         }
     )
 
@@ -623,6 +624,42 @@ class RedisRequestQueue:
         except Exception as e:
             self.logger.warning(f"step cancel flag raise failed: {e}")
 
+    def add_service_run(self, run_id: str, user_id: str, task_class: int, lang: str = "ru") -> str:
+        """Queue one scheduler run; the run id travels with the task."""
+        task_id, _task = self.add_request(
+            user_id,
+            "system",
+            {"type": "service_run", "run_id": run_id},
+            task_class,
+            lang,
+            "service_run",
+        )
+        return task_id
+
+    def _process_service_run(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Execute one action: a short tool loop, then a row the tick delivers."""
+        from app import scheduler_runs
+
+        run_id = str((task.get("data") or {}).get("run_id") or "")
+        if not run_id:
+            self.logger.warning("service_run: no run id in the task")
+            return {"status": "error"}
+
+        try:
+            from app.scheduler_runner import run_service_action
+        except Exception:  # noqa: BLE001 - a run without its runner fails in its own row
+            self.logger.exception("service_run: the runner is not available")
+            scheduler_runs.finish_run(
+                run_id, scheduler_runs.STATUS_FAILED, error="the runner is not available"
+            )
+            return {"status": "error"}
+
+        if scheduler_runs.mark_running(run_id) is None:
+            # Cancelled or already claimed while it waited: nothing to do, nothing to say.
+            self.logger.info(f"service_run {run_id} is no longer queued, skipping")
+            return {"status": "skipped"}
+        return run_service_action(self.app, run_id)
+
     def _classify_task(self, task: dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
         # Check top-level type first (for reindex_all from add_reindex_all_task)
@@ -633,6 +670,8 @@ class RedisRequestQueue:
             return "slow"
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
+        if task_type == "service_run":
+            return "slow"  # the scheduler's action: a short tool loop on the GPU
         if task_type == "fact_merge_task":
             return "background"  # Background task — runs only in idle, no GPU lock
         if task_type == "memory_extract_task":
@@ -853,6 +892,8 @@ class RedisRequestQueue:
             return "none"  # Crawler is CPU-only; the reasoning answer is re-queued separately
         if task_type in ("memory_extract_task", "session_summary_task", "graph_extract_task"):
             return "multimodal"  # all three run on the resident model
+        if task_type == "service_run":
+            return "multimodal"  # the run's tools are the chat catalogue
         if task_type == "camera_task":
             return "multimodal"  # snapshot analysis via the resident multimodal model
         if task_type == "vision_task":
@@ -6461,6 +6502,7 @@ class RedisRequestQueue:
             "graph_extract_task",
             "api_embedding",
             "api_transcribe",
+            "service_run",
         ):
             _requeue_meta = task.get("data", {})
             begin_usage_account(
@@ -6504,6 +6546,8 @@ class RedisRequestQueue:
             return self._process_graph_extract(task)
         if task_type == "session_summary_task":
             return self._process_session_summary(task)
+        if task_type == "service_run":
+            return self._process_service_run(task)
         if task_type == "api_embedding":
             return self._process_api_embedding_task(task)
         if task_type == "api_transcribe":

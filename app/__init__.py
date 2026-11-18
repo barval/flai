@@ -407,9 +407,12 @@ def create_app():
     # workers cannot deliver the same item twice.
     if not _is_cli_process() and not _is_test_process():
         try:
-            from app import scheduler
+            from datetime import UTC, datetime
+
+            from app import scheduler, scheduler_runs
 
             scheduler.rename_action_chats(app)
+            scheduler_runs.recover_after_restart(datetime.now(UTC))
             scheduler.start(app)
         except Exception as e:
             app.logger.warning(f"Could not start the scheduler: {e}")

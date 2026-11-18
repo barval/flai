@@ -1210,11 +1210,11 @@ def _ground_target(value: str, message: str) -> str:
     """The host the user actually typed, when the model's copy is off by a character.
 
     A small model merges the word next to a name into the name — measured on the
-    live installation: "какие ns-сервера у prits.ru?" reached ``net_dns`` as
-    ``pritns.ru``, and the kernel's own query was correct, so the mistake is the
-    tool argument and not the routing. The message is the source of truth: a
-    candidate replaces the argument only when the argument does not appear in the
-    message verbatim and a host-like token there is a near match. Nothing is
+    live installation, a question about the name servers of ``prits.ru`` reached
+    ``net_dns`` as ``pritns.ru`` while the kernel's own query was correct, so the
+    mistake is the tool argument and not the routing. The message is the source of
+    truth: a candidate replaces the argument only when the argument does not appear
+    in the message verbatim and a host-like token there is a near match. Nothing is
     rewritten when the user typed what the model sent.
     """
     text = str(value or "").strip()

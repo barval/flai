@@ -77,6 +77,46 @@ Every document exists in English and Russian (`X.md` / `X-ru.md`).
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+- **The assistant can be asked to do something later.** Two kinds, because they are not the same
+  thing: a **reminder** is a sentence prepared when it was created (no model, no queue — a hundred
+  can fire in one second), an **action** is a task on the Tasks engine that uses your tools and
+  skills and may therefore run late, saying so when it does. Ask in chat — "remind me tomorrow at
+  nine", "every Friday at 16:00 check the logs" — and the assistant answers with the concrete
+  stored time, the one chance to notice a misunderstanding before it fires. Deliveries land in two
+  system chats, a reminder also pops up on screen, missed firings follow a policy you set, and the
+  list in your profile deletes a schedule together with whatever it started.
+  → [SCHEDULER.md](docs/SCHEDULER.md)
+
+- **Network diagnostics from chat, behind a permission you grant per user.** Seven tools —
+  `net_dns`, `net_whois`, `net_ping`, `net_trace`, `net_ports`, `net_http`, `net_speed` — answer what
+  a terminal used to: who owns a domain, what a name resolves to, whether a host answers, which
+  ports are open, what certificate a site serves, how fast the link is. They run in a container with
+  one capability and no route to the database, a `/24` is discovery only, and every call leaves a
+  24-hour audit line. Natural phrasing works: "measure the speed to `<host>`" used to be routed to a
+  web search, which measured nothing and answered from articles.
+  → [NET_TOOLS.md](docs/NET_TOOLS.md)
+
+- **Skills are installed from the admin panel, and their tool list is checked when you save one.**
+  A skill used to mean editing a tracked folder, so anything an administrator added landed in the
+  next `git status`. Two zones now: `skills/` ships with the project and is read-only in the panel,
+  `data/skills/` is written by **Admin → Skills** and stays out of git. `allowed-tools` is sorted
+  into four classes on save — offered, service down (warning), one keystroke away from a real name
+  (**blocks the save**), or a name from another harness (saved as-is, which is what makes Claude
+  Code skills installable). → [SKILLS.md](docs/SKILLS.md)
+
+- **The assistant writes documents, and a task can use everything chat can.** `write_document`
+  stores text as an ordinary document of yours — with **append**, so a log can grow — and a newly
+  written file is **not** indexed until you tick *index* on its card, because a log written every
+  fifteen minutes would otherwise be re-indexed 96 times a day. Meanwhile a background task gained
+  `chat_tool` (any chat tool, through the same permission, rate limit and audit) and the skills the
+  plan names, so an action or a task is no longer weaker than a chat turn.
+  → [DOCUMENTS.md](docs/DOCUMENTS.md) · [TASKS.md](docs/TASKS.md)
+
+- **A language you do not use is no longer a blocker.** Personalization used to demand both site
+  names at once and reset the pair when either was emptied; now each language stands alone — save
+  the Russian name and leave English blank, and only an empty pair falls back to the built-in brand.
+  → [ADMINISTRATION.md](docs/ADMINISTRATION.md)
+
 ## 🖼 Demo
 
 Four self-contained pages show the interface without installing anything — download a file

@@ -100,7 +100,7 @@ that surface.
 | Package | `pyproject.toml` | `version = "12.7.0"` |
 | Public API spec | `docs/openapi-v1.yaml` | `version: 12.7.0` |
 | Agent constitution | `AGENTS.md` | `# AGENTS.md — FLAI v12.7` |
-| Doc titles (4 pairs) | `docs/ARCHITECTURE`, `LOCALIZATION`, `RELEASE_GUIDE`, `VRAM_MANAGEMENT` (+ `-ru`) | `… — FLAI v12.7` / `… — ПЛИИ v12.7` |
+| Doc titles | every `docs/*.md` whose first heading carries a version (currently seven pairs: `ARCHITECTURE`, `LOCALIZATION`, `NET_TOOLS`, `RELEASE_GUIDE`, `SCHEDULER`, `SKILLS`, `VRAM_MANAGEMENT`) | `… — FLAI v12.7` / `… — ПЛИИ v12.7` |
 | Deploy scripts | `deploy.sh`, `deploy-ru.sh` | 4 lines each: header, success message, two usage strings |
 | README heading | `README.md`, `README-ru.md` | `## 🆕 What's New in v12.7` / `## 🆕 Что нового в v12.7` |
 | README TOC | same files | label **and** anchor: `- […](#-whats-new-in-v127)` / `(#-что-нового-в-v127)` |
@@ -114,6 +114,10 @@ Notes:
 
 - Doc titles: only documents whose first heading already carries a version.
   A document without one stays without one — do not add versions to titles.
+  **The set grows**: `NET_TOOLS`, `SCHEDULER` and `SKILLS` were added after this table
+  named four. The checker scans every `docs/*.md`, so a new versioned document is caught
+  even if this row is not updated — but the row is still the plan a person follows, which
+  is why it names the current set instead of a count.
 - README TOC anchors are generated: `python3 scripts/update_toc.py` is
   idempotent and rewrites both files after the heading changes.
 - Translations: `.po` and compiled `.mo` are both tracked. After editing the
@@ -168,8 +172,10 @@ are new ones", do not switch to a table (the bullet list is the format).
 
 ```bash
 python3 .opencode/skills/opening-flai-release/scripts/check_version_markers.py \
-  --version 12.7 --previous 12.6
+  --version 12.7 --previous 12.6 \
+  --source-date "$(git log -1 --format=%ad --date=short v12.6)"
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_headings.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_translations.py
 git diff --check
 git status --short
@@ -180,6 +186,14 @@ the remaining occurrences of the previous version as `REVIEW` rows. Read every
 row: historical annotations, CHANGELOG history, and unrelated numbers (CUDA)
 are expected; a `REVIEW` row in a file that prints the current version is a
 missed marker.
+
+It also fails on the states a bump leaves behind rather than creates: the new section sits
+below an older one, a subsection was opened with no entries, the previous section is dated
+by something other than the `SOURCE` head, or the What's New list still holds the previous
+release's bullets. `--source-date` is what makes the two dates checkable, so pass it from
+the Phase 0 record. A `WARN` about `SOURCE` not being merged into `master` is not a failure —
+publication may lag — but it is the question to ask before cutting a line from a branch that
+never shipped.
 
 `pytest tests/test_app_version.py` proves the single-source rule and the
 `pyproject` pairing — 6 tests, one file. Run it only with explicit permission
@@ -210,6 +224,7 @@ Not verified:  <what was not run and why>
 | `## [v12.6]` and older in `CHANGELOG.md` | released history |
 | `12.6 – 12.7` driver ranges in `README*`, `CHANGELOG.md` | CUDA requirement |
 | `fix/v12.1-…` examples in `CONTRIBUTING*` | an older, still valid example |
+| `version: 1.0.0` in `docs/openapi.yaml` | a v8.2 snapshot of the internal API; its header says it is not maintained and the file is not served |
 | `graphify-out/**`, `build/**`, `venv/**` | generated or environment-local |
 
 ## Out of scope — report, do not fix
@@ -236,3 +251,5 @@ Collect them in one list at the end of the report; each is a separate request.
 | "The guide says a table / a Completed section." | The guide is stale; the READMEs use bullets and have no such section. |
 | "While I am here, I will fix that v11.3 literal." | Out of scope. Report it as its own request. |
 | "Cutting the branch is trivial, I will skip approval." | Branch creation needs explicit approval, always. |
+| "The CHANGELOG section exists, so the opening is done." | It must also be the newest entry, hold no empty subsection, and sit above the previous release — the checker fails on all three. |
+| "The previous section's date is close enough." | It is the `SOURCE` head date, and `--source-date` compares it; a wrong date is a wrong release record. |

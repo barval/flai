@@ -33,7 +33,8 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
-python3 .opencode/skills/preparing-flai-release/scripts/check_release_strings.py
+python3 .opencode/skills/opening-flai-release/scripts/check_version_markers.py \
+  --version "${REL#v}" --previous "${PREV#v}" --released
 python3 .opencode/skills/preparing-flai-release/scripts/check_schema_changes.py --base "$PREV"
 python3 .opencode/skills/preparing-flai-release/scripts/list_release_tests.py --base "$PREV"
 ```
@@ -62,10 +63,16 @@ excluding panel settings (they live in the database, so the template correctly o
 them). The `.env`/`.env.example` diff below catches a key added to a deployment but not
 to the template; this catches the opposite — a key added to the code and forgotten.
 
-`check_release_strings.py` reads the seven places the version is stamped — `APP_VERSION`,
-`pyproject.toml`, the `AGENTS.md` title, both README What's New headers, both
-`Project-Id-Version` lines, the `CHANGELOG.md` heading — and reports every disagreement,
-plus `Unreleased` left in a release README.
+`check_version_markers.py` is the opening skill's script, run here with `--released`. It
+reads every place the version is stamped — `APP_VERSION`, `pyproject.toml`, the OpenAPI
+spec, the `AGENTS.md` title, the versioned document titles, the deploy scripts, both README
+What's New headings and their anchors, both `Project-Id-Version` lines, the demo pages, the
+`CONTRIBUTING` branch examples and the `CHANGELOG.md` sections — and reports every
+disagreement. In this mode the release section carries a date instead of `Unreleased`,
+What's New holds at least one bullet, the section sits above the previous release, and its
+date cannot precede the previous line's head. **One script serves both skills on purpose**:
+a second copy of the marker list drifts from the first, and the drift stays invisible until
+a release misses a marker only one copy knew about.
 
 `check_schema_changes.py` reads the release diff of `app/database.py`. `init_db()` runs on
 every start, so a `DROP COLUMN` there is not a one-time migration: it deletes data the
@@ -452,13 +459,15 @@ Verify:
 
 ```bash
 pytest tests/test_app_version.py
-python3 .opencode/skills/preparing-flai-release/scripts/check_release_strings.py --released
+python3 .opencode/skills/opening-flai-release/scripts/check_version_markers.py \
+  --version "${REL#v}" --previous "${PREV#v}" --released \
+  --source-date "$(git log -1 --format=%ad --date=short "$PREV")"
 ```
 
-`check_release_strings.py` reads all seven stamping points and reports each disagreement,
-so the grep chain it replaces cannot be half-remembered. Without `--released` it accepts an
-`Unreleased` CHANGELOG heading (the state while the release is being prepared); with it, a
-real date is required and `Unreleased` anywhere in a README is a finding.
+The marker script reads every stamping point, so the grep chain it replaces cannot be
+half-remembered. `--released` switches it from the opening state to the shipping state: the
+section must carry a date, What's New must have bullets, and `--source-date` checks that the
+previous release is dated by its own head commit while the new one is not earlier than it.
 
 Documentation heading parity and README links:
 
@@ -649,7 +658,7 @@ Check and record evidence:
 | Skills resolve against the repository | `check_skill_claims.py` | PASS / FAIL |
 | Compose profiles documented both ways | `check_compose_profiles.py` | PASS / FAIL |
 | Code/environment parity | `check_env_parity.py` | PASS / FAIL |
-| Release strings agree | `check_release_strings.py --released` | PASS / FAIL |
+| Release strings agree | `check_version_markers.py --released --previous` | PASS / FAIL |
 | Tools compile on the image's Python | `python3.11 -m compileall -q app modules` | PASS / FAIL |
 | Tree clean | `git status --short`, `git diff --check` | PASS / FAIL |
 
@@ -696,4 +705,4 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "It compiles locally, so the image will start." | The image is `python:3.11-slim` and the venv is newer. Compile with `python3.11`. |
 | "The profile is in the compose file, so it is documented." | The reverse check had no guard: `with-tts-kokoro` started a container and appeared in no document. Run `check_compose_profiles.py`. |
 | "A skill is prose; it cannot rot." | A skill is instructions an agent obeys. A renamed flag in `SKILL.md` makes the agent run a command that does not exist. Run `check_skill_claims.py`. |
-| "The version strings were grepped, so they agree." | Seven places, one grep chain, no assertions. `check_release_strings.py` reads all seven. |
+| "The version strings were grepped, so they agree." | A dozen places, one grep chain, no assertions. `check_version_markers.py --released` reads all of them — the same script the opening skill used. |

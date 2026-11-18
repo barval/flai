@@ -31,7 +31,6 @@ CLEAN_GATES = (
     "check_skill_claims.py",
     "check_compose_profiles.py",
     "check_env_parity.py",
-    "check_release_strings.py",
 )
 
 

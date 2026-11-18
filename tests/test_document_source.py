@@ -49,13 +49,17 @@ def test_the_two_programmatic_writers_name_their_origin():
     assert 'source="chat"' in source
 
 
-def test_the_panel_knows_the_badge_for_every_origin():
+def test_the_card_carries_one_mark_and_no_origin_badge():
+    """A card showed the status icon and a second decorative page mark, plus a badge
+    saying the document was generated: one mark is the whole vocabulary."""
     from pathlib import Path
 
     js = (Path(__file__).resolve().parent.parent / "app/static/js/chat-documents.js").read_text(encoding="utf-8")
 
-    for value in ("generated", "crawl", "chat"):
-        assert value in js, value
+    assert "doc-origin-badge" not in js
+    assert "📄 ${escapeHtml(doc.filename)}" not in js
+    # The status icon remains the one mark, and the index switch lives on the right.
+    assert "document-side" in js
 
 
 def test_the_badge_labels_are_translated():

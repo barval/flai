@@ -10,7 +10,7 @@ FLAI answers when asked. This makes it act **at a time**: "remind me tomorrow at
 | What it is | a sentence prepared when it was created | work that plans and runs by itself |
 | Costs | nothing at delivery — one database row and an event | a task on the Tasks engine, GPU time, a place in the queue |
 | Can use tools | no need | everything the user's chat can: search, documents, files, cameras, network tools, skills |
-| Arrives in | 🔔 Scheduler: reminders | ⚙️ Scheduler: actions |
+| Arrives in | 🔔 Scheduler: reminders | 🛠️ Scheduler: actions |
 | Also | a popup on screen | only the message |
 
 Collapsing the two would either deny an action its tools or make every reminder a GPU
@@ -66,7 +66,7 @@ installation, and a per-user zone later becomes a new value in this column, not 
 Each user has one chat per kind, created on first delivery, titled in their language:
 
 - **🔔 Scheduler: reminders** — the delivered sentences;
-- **⚙️ Scheduler: actions** — the results of the work.
+- **🛠️ Scheduler: actions** — the results of the work.
 
 They are ordinary sessions: they can be renamed, exported and deleted. A deleted chat is
 recreated on the next delivery, so a reminder is never lost because the chat was removed.

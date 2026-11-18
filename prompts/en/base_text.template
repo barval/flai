@@ -99,6 +99,12 @@ NOT 6: a search engine cannot schedule anything.
 NOT 8: this is not reasoning, it is an action at a time.
 NOT 1: a simple request names no time and asks for nothing later.
 
+## 14. CREATING A DOCUMENT — [-WRITE-] and the request
+A request to create or save a file or document with content: "create тест.txt with the current date", "save this to a file", "make the report a file", "write the list as CSV".
+After the marker — the user's request as written.
+NOT 8: this is not code writing, it is a file — a tool creates it.
+NOT 6: a search engine creates no files.
+
 # INPUT DATA
 
 {camera_section}

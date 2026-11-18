@@ -111,7 +111,7 @@ Ask in plain language — there is no form:
 Answer with the concrete time — "🔔 Reminder set for 18 November, 09:00" — and check it: that
 reply is your only chance to notice a misunderstanding before it fires. Reminders arrive in the
 chat **🔔 Scheduler: reminders** and also pop up on screen; actions arrive in
-**⚙️ Scheduler: actions** as messages, and a result that finished early waits for its time.
+**🛠️ Scheduler: actions** as messages, and a result that finished early waits for its time.
 Delete or inspect everything in **your profile popup → Scheduled**; deleting an item also stops
 what it already started.
 

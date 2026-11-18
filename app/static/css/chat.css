@@ -834,6 +834,19 @@
     background-color: #e6f2ff;
 }
 
+/* The card's right-hand column: the action icons, and under them the index switch
+   of a document the assistant wrote. */
+.document-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-index-toggle {
+    white-space: nowrap;
+}
+
 /* Scheduler reminder popup — a notification, not a window: the message is
    already in its own chat, so closing this loses nothing. */
 .scheduler-popup {
@@ -2715,19 +2728,6 @@ body.service-chat .message-input {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
-}
-
-/* Where a document came from, when it was not an upload (v13.5). */
-.doc-origin-badge {
-    display: inline-block;
-    margin-left: 0.35rem;
-    padding: 0 0.35rem;
-    border-radius: 0.5rem;
-    font-size: 0.68rem;
-    line-height: 1.4;
-    border: 1px solid currentColor;
-    opacity: 0.65;
-    vertical-align: middle;
 }
 
 /* The indexing switch on a document the assistant wrote (v13.5). */

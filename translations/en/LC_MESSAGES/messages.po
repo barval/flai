@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FLAI 13.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 15:42+0300\n"
+"POT-Creation-Date: 2026-11-18 17:59+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: en\n"
@@ -22,15 +22,15 @@ msgstr ""
 msgid "FLAI"
 msgstr "FLAI"
 
-#: app/__init__.py:630 app/__init__.py:646
+#: app/__init__.py:631 app/__init__.py:647
 msgid "Session expired. Please refresh the page."
 msgstr "Session expired. Please refresh the page."
 
-#: app/__init__.py:638
+#: app/__init__.py:639
 msgid "Authentication required."
 msgstr "Authentication required."
 
-#: app/__init__.py:653 app/routes/admin.py:404 app/routes/admin.py:688
+#: app/__init__.py:654 app/routes/admin.py:404 app/routes/admin.py:688
 #: app/routes/admin.py:731 app/routes/admin.py:747 app/routes/admin.py:759
 #: app/routes/admin.py:784 app/routes/admin.py:832 app/routes/admin.py:2262
 #: app/routes/admin.py:2279 app/routes/admin.py:2314
@@ -38,7 +38,7 @@ msgstr "Authentication required."
 msgid "Internal server error"
 msgstr "Internal server error"
 
-#: app/__init__.py:659 app/routes/scheduler.py:75
+#: app/__init__.py:660 app/routes/scheduler.py:75
 msgid "Not found"
 msgstr "Not found"
 
@@ -549,7 +549,7 @@ msgstr "⚠️ No link found in your message"
 msgid "Crawler service is unavailable"
 msgstr "⚠️ Crawler service is unavailable"
 
-#: app/queue.py:4907 app/tools.py:820
+#: app/queue.py:4907 app/tools.py:822
 msgid "This address is not available for reading"
 msgstr "⚠️ This address is not available for reading"
 
@@ -572,8 +572,8 @@ msgstr "⚠️ Document quota reached — the collected materials were not saved
 msgid "Failed to save the collected materials"
 msgstr "⚠️ Failed to save the collected materials."
 
-#: app/queue.py:5651 modules/base.py:975 modules/base.py:1227
-#: modules/base.py:1277 modules/multimodal.py:258 modules/multimodal.py:290
+#: app/queue.py:5651 modules/base.py:975 modules/base.py:1228
+#: modules/base.py:1278 modules/multimodal.py:258 modules/multimodal.py:290
 #: modules/multimodal.py:296 modules/multimodal.py:337
 #: modules/multimodal.py:375 modules/multimodal.py:399
 #: modules/multimodal.py:448 modules/multimodal.py:543
@@ -674,40 +674,40 @@ msgstr ""
 msgid "Unknown session"
 msgstr "Unknown session"
 
-#: app/scheduler.py:153 app/templates/chat.html:492
-msgid "⚙️ Scheduler: actions"
-msgstr "⚙️ Scheduler: actions"
+#: app/scheduler.py:190 app/templates/chat.html:489
+msgid "🛠️ Scheduler: actions"
+msgstr "🛠️ Scheduler: actions"
 
-#: app/scheduler.py:154 app/templates/chat.html:491
+#: app/scheduler.py:191 app/templates/chat.html:488
 msgid "🔔 Scheduler: reminders"
 msgstr "🔔 Scheduler: reminders"
 
-#: app/scheduler.py:320
+#: app/scheduler.py:377
 #, python-brace-format
 msgid "Skipped firings: {count}"
 msgstr "Skipped firings: {count}"
 
-#: app/scheduler.py:465
+#: app/scheduler.py:522
 msgid "The action could not run in time"
 msgstr "The action could not run in time"
 
-#: app/scheduler.py:469
+#: app/scheduler.py:526
 msgid "The action finished without an answer"
 msgstr "The action finished without an answer"
 
-#: app/scheduler.py:471
+#: app/scheduler.py:528
 msgid "The action was cancelled"
 msgstr "The action was cancelled"
 
-#: app/scheduler.py:473
+#: app/scheduler.py:530
 msgid "The action ran out of time"
 msgstr "The action ran out of time"
 
-#: app/scheduler.py:475
+#: app/scheduler.py:532
 msgid "The action failed"
 msgstr "The action failed"
 
-#: app/scheduler.py:482
+#: app/scheduler.py:539
 #, python-brace-format
 msgid "Finished at {at} instead of {target}"
 msgstr "Finished at {at} instead of {target}"
@@ -984,68 +984,68 @@ msgstr ""
 msgid "Describe the scene and motion the video must show."
 msgstr "Describe the scene and motion the video must show."
 
-#: app/tools.py:751
+#: app/tools.py:753
 msgid "Current time unavailable"
 msgstr "Current time unavailable"
 
-#: app/tools.py:766
+#: app/tools.py:768
 msgid "Division by zero"
 msgstr "Division by zero"
 
-#: app/tools.py:773
+#: app/tools.py:775
 #, python-brace-format
 msgid "Calculation error: {error}"
 msgstr "Calculation error: {error}"
 
-#: app/tools.py:778 app/tools.py:847 app/tools.py:889 app/tools.py:1217
-#: app/tools.py:1298 app/tools.py:1515 app/tools.py:1761 app/tools.py:1780
+#: app/tools.py:780 app/tools.py:849 app/tools.py:891 app/tools.py:1219
+#: app/tools.py:1300 app/tools.py:1517 app/tools.py:1763 app/tools.py:1782
 msgid "The tool could not complete the request."
 msgstr "The tool could not complete the request."
 
-#: app/tools.py:791
+#: app/tools.py:793
 msgid "Web search service unavailable"
 msgstr "Web search service unavailable"
 
-#: app/tools.py:799
+#: app/tools.py:801
 #, python-brace-format
 msgid "No results found for query: {query}"
 msgstr "No results found for query: {query}"
 
-#: app/tools.py:815
+#: app/tools.py:817
 msgid "Page reading service is unavailable"
 msgstr "⚠️ Page reading service is unavailable"
 
-#: app/tools.py:826
+#: app/tools.py:828
 msgid "Failed to read the page"
 msgstr "⚠️ Failed to read the page"
 
-#: app/tools.py:837
+#: app/tools.py:839
 msgid "Document search service unavailable"
 msgstr "Document search service unavailable"
 
-#: app/tools.py:840
+#: app/tools.py:842
 msgid "User not identified for document search"
 msgstr "User not identified for document search"
 
-#: app/tasks/runner.py:591 app/tools.py:851
+#: app/tasks/runner.py:591 app/tools.py:853
 #, python-brace-format
 msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
 
-#: app/tools.py:873
+#: app/tools.py:875
 msgid "User not identified for conversation search"
 msgstr "User not identified for conversation search"
 
-#: app/tools.py:893
+#: app/tools.py:895
 #, python-brace-format
 msgid "No past conversations found for query: {query}"
 msgstr "No past conversations found for query: {query}"
 
-#: app/tools.py:907 app/tools.py:942 modules/cam.py:404 modules/cam.py:527
+#: app/tools.py:909 app/tools.py:944 modules/cam.py:404 modules/cam.py:527
 msgid "CCTV service unavailable"
 msgstr "CCTV service unavailable"
 
-#: app/tools.py:920
+#: app/tools.py:922
 msgid ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
@@ -1053,57 +1053,57 @@ msgstr ""
 "What is visible in this room right now? Name people, animals, objects and"
 " activity."
 
-#: app/tools.py:930
+#: app/tools.py:932
 msgid "Snapshot captured; no description is available."
 msgstr "Snapshot captured; no description is available."
 
-#: app/tools.py:1029 app/tools.py:1036 app/tools.py:1052 app/tools.py:1099
-#: app/tools.py:1102 app/tools.py:1110 app/tools.py:1156 app/tools.py:1159
-#: app/tools.py:1167 app/tools.py:1174 app/tools.py:1184 app/tools.py:1213
+#: app/tools.py:1031 app/tools.py:1038 app/tools.py:1054 app/tools.py:1101
+#: app/tools.py:1104 app/tools.py:1112 app/tools.py:1158 app/tools.py:1161
+#: app/tools.py:1169 app/tools.py:1176 app/tools.py:1186 app/tools.py:1215
 #, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Date calculation error: {error}"
 
-#: app/tools.py:1209
+#: app/tools.py:1211
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Unknown time_calc operation: {op}"
 
-#: app/tools.py:1270
+#: app/tools.py:1272
 msgid "User not identified for network tools"
 msgstr "User not identified for network tools"
 
-#: app/tools.py:1272
+#: app/tools.py:1274
 msgid "Network tools are not available to you."
 msgstr "Network tools are not available to you."
 
-#: app/tools.py:1274
+#: app/tools.py:1276
 msgid "The network diagnostics service is not running"
 msgstr "The network diagnostics service is not running"
 
-#: app/tools.py:1279
+#: app/tools.py:1281
 #, python-brace-format
 msgid "This address is refused: {reason}"
 msgstr "This address is refused: {reason}"
 
-#: app/tools.py:1279
+#: app/tools.py:1281
 msgid "loopback or link-local"
 msgstr "loopback or link-local"
 
 # GPU memory error messages
-#: app/tools.py:1283
+#: app/tools.py:1285
 msgid "Too many network calls; try again in a minute."
 msgstr "Too many network calls; try again in a minute."
 
-#: app/tools.py:1292
+#: app/tools.py:1294
 msgid "The diagnostics service returned nothing"
 msgstr "The diagnostics service returned nothing"
 
-#: app/tools.py:1362
+#: app/tools.py:1364
 msgid "I could not tell the time. When should it happen?"
 msgstr "I could not tell the time. When should it happen?"
 
-#: app/tools.py:1368
+#: app/tools.py:1370
 #, python-brace-format
 msgid ""
 "An action cannot run more often than every {minutes} minutes on this "
@@ -1112,96 +1112,96 @@ msgstr ""
 "An action cannot run more often than every {minutes} minutes on this "
 "installation"
 
-#: app/tools.py:1370
+#: app/tools.py:1372
 #, python-brace-format
 msgid "A reminder cannot repeat more often than every {minutes} minutes"
 msgstr "A reminder cannot repeat more often than every {minutes} minutes"
 
-#: app/tools.py:1374
+#: app/tools.py:1376
 msgid "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 msgstr "That repetition is not one I know: once, daily, weekly, monthly or minutes"
 
-#: app/tools.py:1376
+#: app/tools.py:1378
 #, python-brace-format
 msgid "That time has already passed: {when}. When should it happen?"
 msgstr "That time has already passed: {when}. When should it happen?"
 
-#: app/tools.py:1380
+#: app/tools.py:1382
 msgid "There is nothing to send or do. What should happen?"
 msgstr "There is nothing to send or do. What should happen?"
 
-#: app/tools.py:1382
+#: app/tools.py:1384
 #, python-brace-format
 msgid "That is too long to schedule (max {limit} characters)"
 msgstr "That is too long to schedule (max {limit} characters)"
 
-#: app/tools.py:1385
+#: app/tools.py:1387
 msgid "The schedule could not be created"
 msgstr "The schedule could not be created"
 
-#: app/tools.py:1399
+#: app/tools.py:1401
 msgid "User not identified for the scheduler"
 msgstr "User not identified for the scheduler"
 
-#: app/tools.py:1422
+#: app/tools.py:1424
 #, python-brace-format
 msgid "Action scheduled for {when}"
 msgstr "Action scheduled for {when}"
 
-#: app/tools.py:1422
+#: app/tools.py:1424
 #, python-brace-format
 msgid "Reminder set for {when}"
 msgstr "Reminder set for {when}"
 
-#: app/tools.py:1427
+#: app/tools.py:1429
 #, python-brace-format
 msgid "then every {minutes} minutes"
 msgstr "then every {minutes} minutes"
 
-#: app/tools.py:1474
+#: app/tools.py:1476
 msgid "There is nothing to write: the content is empty"
 msgstr "There is nothing to write: the content is empty"
 
-#: app/tools.py:1475
+#: app/tools.py:1477
 #, python-brace-format
 msgid "Unsupported document format: {detail}. Use md, csv, json or txt"
 msgstr "Unsupported document format: {detail}. Use md, csv, json or txt"
 
-#: app/tools.py:1476
+#: app/tools.py:1478
 #, python-brace-format
 msgid "The document is too large (limit {limit} KB)"
 msgstr "The document is too large (limit {limit} KB)"
 
-#: app/tools.py:1479
+#: app/tools.py:1481
 msgid "The document storage quota is exhausted; delete something first"
 msgstr "The document storage quota is exhausted; delete something first"
 
-#: app/tools.py:1480
+#: app/tools.py:1482
 msgid "Can only append to a document this assistant wrote, not to an upload"
 msgstr "Can only append to a document this assistant wrote, not to an upload"
 
-#: app/tools.py:1481
+#: app/tools.py:1483
 msgid "The JSON does not parse, so nothing was written"
 msgstr "The JSON does not parse, so nothing was written"
 
-#: app/tools.py:1482
+#: app/tools.py:1484
 #, python-brace-format
 msgid "The document name is not usable: {detail}"
 msgstr "The document name is not usable: {detail}"
 
-#: app/tools.py:1483
+#: app/tools.py:1485
 msgid "A csv needs rows: a list of rows, each a list of cells"
 msgstr "A csv needs rows: a list of rows, each a list of cells"
 
-#: app/tools.py:1485
+#: app/tools.py:1487
 msgid "The document could not be written"
 msgstr "The document could not be written"
 
-#: app/tools.py:1499
+#: app/tools.py:1501
 msgid "User not identified for documents"
 msgstr "User not identified for documents"
 
-#: app/tools.py:1520
+#: app/tools.py:1522
 #, python-brace-format
 msgid ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
@@ -1210,16 +1210,16 @@ msgstr ""
 "Saved as {name} ({size} KB) in your documents. Tick its box to index it "
 "for search."
 
-#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1533
+#: app/routes/admin.py:2789 app/routes/admin.py:2808 app/tools.py:1535
 #, python-brace-format
 msgid "Unknown skill: {name}"
 msgstr "Unknown skill: {name}"
 
-#: app/tools.py:1692
+#: app/tools.py:1694
 msgid "The tool call was ignored: the last round of the loop has been reached."
 msgstr "The tool call was ignored: the last round of the loop has been reached."
 
-#: app/tools.py:1707
+#: app/tools.py:1709
 msgid ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
@@ -1227,11 +1227,11 @@ msgstr ""
 "The tool call was refused: it repeats a call made with the same "
 "arguments, whose result is above."
 
-#: app/tools.py:1713
+#: app/tools.py:1715
 msgid "The tool call was rejected: its arguments were not valid JSON."
 msgstr "The tool call was rejected: its arguments were not valid JSON."
 
-#: app/tools.py:1767
+#: app/tools.py:1769
 #, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Unknown tool: {tool}"
@@ -2629,8 +2629,8 @@ msgstr ""
 
 #: app/templates/admin.html:236 app/templates/admin.html:663
 #: app/templates/admin.html:1098 app/templates/chat.html:9
-#: app/templates/chat.html:220 app/templates/chat.html:405
-#: app/templates/chat.html:521
+#: app/templates/chat.html:220 app/templates/chat.html:402
+#: app/templates/chat.html:518
 msgid "Documents"
 msgstr "Documents"
 
@@ -3769,8 +3769,8 @@ msgstr "Side limit when several images are attached"
 msgid "Maximum accepted image width"
 msgstr "Maximum accepted image width"
 
-#: app/templates/admin.html:854 app/templates/chat.html:355
-#: app/templates/chat.html:519
+#: app/templates/admin.html:854 app/templates/chat.html:352
+#: app/templates/chat.html:516
 msgid "Knowledge graph"
 msgstr "Knowledge graph"
 
@@ -4891,31 +4891,31 @@ msgstr "Task"
 msgid "Your requests / Total requests"
 msgstr "Your requests / Total requests"
 
-#: app/templates/chat.html:55 app/templates/chat.html:428
+#: app/templates/chat.html:55 app/templates/chat.html:425
 msgid "response_style_label"
 msgstr "Style"
 
-#: app/templates/chat.html:57 app/templates/chat.html:427
+#: app/templates/chat.html:57 app/templates/chat.html:424
 msgid "response_style_title"
 msgstr "Response style"
 
-#: app/templates/chat.html:62 app/templates/chat.html:429
+#: app/templates/chat.html:62 app/templates/chat.html:426
 msgid "response_style_neutral"
 msgstr "Neutral"
 
-#: app/templates/chat.html:63 app/templates/chat.html:430
+#: app/templates/chat.html:63 app/templates/chat.html:427
 msgid "response_style_academic"
 msgstr "Academic"
 
-#: app/templates/chat.html:64 app/templates/chat.html:431
+#: app/templates/chat.html:64 app/templates/chat.html:428
 msgid "response_style_professional"
 msgstr "Professional"
 
-#: app/templates/chat.html:65 app/templates/chat.html:432
+#: app/templates/chat.html:65 app/templates/chat.html:429
 msgid "response_style_friendly"
 msgstr "Friendly"
 
-#: app/templates/chat.html:66 app/templates/chat.html:433
+#: app/templates/chat.html:66 app/templates/chat.html:430
 msgid "response_style_funny"
 msgstr "Funny"
 
@@ -4923,7 +4923,7 @@ msgstr "Funny"
 msgid "Stop task"
 msgstr "Stop task"
 
-#: app/templates/chat.html:72 app/templates/chat.html:435
+#: app/templates/chat.html:72 app/templates/chat.html:432
 msgid "stop_generating"
 msgstr "Stop generating"
 
@@ -4936,7 +4936,7 @@ msgid "Enter folder name"
 msgstr "Enter folder name"
 
 #: app/templates/chat.html:120 app/templates/chat.html:124
-#: app/templates/chat.html:366 app/templates/chat.html:416
+#: app/templates/chat.html:363 app/templates/chat.html:413
 msgid "Close"
 msgstr "Close"
 
@@ -5465,275 +5465,263 @@ msgid "Select for moving"
 msgstr "Select for moving"
 
 #: app/templates/chat.html:347
-msgid "Generated"
-msgstr "Generated"
-
-#: app/templates/chat.html:348
 msgid "Index"
 msgstr "Index"
 
-#: app/templates/chat.html:349
+#: app/templates/chat.html:348
 msgid "Index for search and graph"
 msgstr "Index for search and graph"
 
-#: app/templates/chat.html:350
+#: app/templates/chat.html:349
 msgid "index is outdated"
 msgstr "index is outdated"
 
-#: app/templates/chat.html:351
-msgid "Crawled"
-msgstr "Crawled"
-
-#: app/templates/chat.html:352
-msgid "From chat"
-msgstr "From chat"
-
-#: app/templates/chat.html:353
+#: app/templates/chat.html:350
 msgid "Select for deep analysis"
 msgstr "Select for deep analysis"
 
-#: app/templates/chat.html:354
+#: app/templates/chat.html:351
 msgid "View in knowledge graph"
 msgstr "View in knowledge graph"
 
-#: app/templates/chat.html:356
+#: app/templates/chat.html:353
 msgid "Click a node to inspect it"
 msgstr "Click a node to inspect it"
 
-#: app/templates/chat.html:357
+#: app/templates/chat.html:354
 msgid "Mentions"
 msgstr "Mentions"
 
-#: app/templates/chat.html:358 app/templates/chat.html:411
+#: app/templates/chat.html:355 app/templates/chat.html:408
 msgid "Shared by"
 msgstr "Shared by"
 
-#: app/templates/chat.html:359
+#: app/templates/chat.html:356
 msgid "Loading the graph"
 msgstr "Loading the graph"
 
-#: app/templates/chat.html:360
+#: app/templates/chat.html:357
 msgid "The graph could not be loaded"
 msgstr "The graph could not be loaded"
 
-#: app/templates/chat.html:361
+#: app/templates/chat.html:358
 msgid "The graph is still being built for these documents"
 msgstr "The graph is still being built for these documents"
 
-#: app/templates/chat.html:362
+#: app/templates/chat.html:359
 msgid "This browser cannot render the graph"
 msgstr "This browser cannot render the graph"
 
-#: app/templates/chat.html:363
+#: app/templates/chat.html:360
 msgid "Pick the second node of the path"
 msgstr "Pick the second node of the path"
 
-#: app/templates/chat.html:364 app/templates/chat.html:530
+#: app/templates/chat.html:361 app/templates/chat.html:527
 msgid "Clear path"
 msgstr "Clear path"
 
-#: app/templates/chat.html:365
+#: app/templates/chat.html:362
 msgid "No relations"
 msgstr "No relations"
 
-#: app/templates/chat.html:367
+#: app/templates/chat.html:364
 msgid "Path highlight cleared"
 msgstr "Path highlight cleared"
 
-#: app/templates/chat.html:368 app/templates/chat.html:524
+#: app/templates/chat.html:365 app/templates/chat.html:521
 msgid "Path"
 msgstr "Path"
 
-#: app/templates/chat.html:369
+#: app/templates/chat.html:366
 msgid "Cancel path"
 msgstr "Cancel path"
 
-#: app/templates/chat.html:370
+#: app/templates/chat.html:367
 msgid "Pick the first node of the path"
 msgstr "Choose the first node of the path"
 
-#: app/templates/chat.html:371
+#: app/templates/chat.html:368
 msgid "Stated relations"
 msgstr "Stated relations"
 
-#: app/templates/chat.html:372
+#: app/templates/chat.html:369
 msgid "Structural, no quote"
 msgstr "Structural, no quote"
 
-#: app/templates/chat.html:373
+#: app/templates/chat.html:370
 msgid "Merge into another node…"
 msgstr "Merge into another node…"
 
-#: app/templates/chat.html:374
+#: app/templates/chat.html:371
 msgid "Cancel merge"
 msgstr "Cancel merge"
 
-#: app/templates/chat.html:375
+#: app/templates/chat.html:372
 msgid "Pick the node it should be merged into"
 msgstr "Pick the node it should be merged into"
 
-#: app/templates/chat.html:376
+#: app/templates/chat.html:373
 #, python-brace-format
 msgid "Merge “{source}” into “{target}”? The first node disappears."
 msgstr "Merge “{source}” into “{target}”? The first node disappears."
 
-#: app/templates/chat.html:377
+#: app/templates/chat.html:374
 msgid "The nodes could not be merged"
 msgstr "The nodes could not be merged"
 
-#: app/templates/chat.html:378
+#: app/templates/chat.html:375
 msgid "Merge cancelled"
 msgstr "Merge cancelled"
 
-#: app/templates/chat.html:379
+#: app/templates/chat.html:376
 msgid "In one chunk"
 msgstr "In one chunk"
 
-#: app/templates/chat.html:380
+#: app/templates/chat.html:377
 msgid "Similar document"
 msgstr "Similar document"
 
-#: app/templates/chat.html:381
+#: app/templates/chat.html:378
 msgid "Supplies"
 msgstr "Supplies"
 
-#: app/templates/chat.html:382
+#: app/templates/chat.html:379
 msgid "Part of"
 msgstr "Part of"
 
-#: app/templates/chat.html:383
+#: app/templates/chat.html:380
 msgid "Works for"
 msgstr "Works for"
 
-#: app/templates/chat.html:384
+#: app/templates/chat.html:381
 msgid "Leads"
 msgstr "Leads"
 
-#: app/templates/chat.html:385
+#: app/templates/chat.html:382
 msgid "Signed"
 msgstr "Signed"
 
-#: app/templates/chat.html:386
+#: app/templates/chat.html:383
 msgid "Rents"
 msgstr "Rents"
 
-#: app/templates/chat.html:387
+#: app/templates/chat.html:384
 msgid "Maintains"
 msgstr "Maintains"
 
-#: app/templates/chat.html:388
+#: app/templates/chat.html:385
 msgid "Performs"
 msgstr "Performs"
 
-#: app/templates/chat.html:389
+#: app/templates/chat.html:386
 msgid "Forbids"
 msgstr "Forbids"
 
-#: app/templates/chat.html:390
+#: app/templates/chat.html:387
 msgid "Allows"
 msgstr "Allows"
 
-#: app/templates/chat.html:391
+#: app/templates/chat.html:388
 msgid "Located in"
 msgstr "Located in"
 
-#: app/templates/chat.html:392
+#: app/templates/chat.html:389
 msgid "Related to"
 msgstr "Related to"
 
-#: app/templates/chat.html:393
+#: app/templates/chat.html:390
 msgid "No relation path was found"
 msgstr "No relation path was found"
 
-#: app/templates/chat.html:394
+#: app/templates/chat.html:391
 msgid "Build the graph"
 msgstr "Build the graph"
 
-#: app/templates/chat.html:395
+#: app/templates/chat.html:392
 msgid "Building"
 msgstr "Building"
 
-#: app/templates/chat.html:396
+#: app/templates/chat.html:393
 msgid "Queued; the graph fills while the instance is idle"
 msgstr "Queued; the graph fills while the instance is idle"
 
-#: app/templates/chat.html:397
+#: app/templates/chat.html:394
 msgid "Knowledge graph of the document"
 msgstr "Knowledge graph of the document"
 
-#: app/templates/chat.html:398
+#: app/templates/chat.html:395
 #, python-brace-format
 msgid "shown {n} of {total} nodes · {m} links"
 msgstr "shown {n} of {total} nodes · {m} links"
 
-#: app/templates/chat.html:399
+#: app/templates/chat.html:396
 msgid "This browser does not provide WebGL — 2D mode"
 msgstr "This browser does not provide WebGL — 2D mode"
 
-#: app/templates/chat.html:400
+#: app/templates/chat.html:397
 #, python-brace-format
 msgid "3D is unavailable: {reason}"
 msgstr "3D is unavailable: {reason}"
 
-#: app/templates/chat.html:401
+#: app/templates/chat.html:398
 msgid "Switch between 2D and 3D"
 msgstr "Switch between 2D and 3D"
 
-#: app/templates/chat.html:402 app/templates/chat.html:522
+#: app/templates/chat.html:399 app/templates/chat.html:519
 msgid "Switch to 2D"
 msgstr "Switch to 2D"
 
-#: app/templates/chat.html:403
+#: app/templates/chat.html:400
 msgid "Switch to 3D"
 msgstr "Switch to 3D"
 
-#: app/templates/chat.html:404
+#: app/templates/chat.html:401
 msgid "Entities"
 msgstr "Entities"
 
-#: app/templates/chat.html:406 app/templates/chat.html:521
+#: app/templates/chat.html:403 app/templates/chat.html:518
 msgid "Switch to documents"
 msgstr "Switch to documents"
 
-#: app/templates/chat.html:407
+#: app/templates/chat.html:404
 msgid "Switch to entities"
 msgstr "Switch to entities"
 
-#: app/templates/chat.html:408
+#: app/templates/chat.html:405
 msgid "Open the browser console for details, or copy the line above."
 msgstr "Open the browser console for details, or copy the line above."
 
-#: app/templates/chat.html:409
+#: app/templates/chat.html:406
 #, python-brace-format
 msgid "similarity {v}"
 msgstr "similarity {v}"
 
-#: app/templates/chat.html:410
+#: app/templates/chat.html:407
 msgid "Share"
 msgstr "Share"
 
-#: app/templates/chat.html:412
+#: app/templates/chat.html:409
 msgid "Shared with"
 msgstr "Shared with"
 
-#: app/templates/chat.html:413
+#: app/templates/chat.html:410
 msgid "Share document"
 msgstr "Share document"
 
-#: app/templates/chat.html:414
+#: app/templates/chat.html:411
 msgid "Not shared with anyone yet"
 msgstr "Not shared with anyone yet"
 
-#: app/templates/chat.html:415
+#: app/templates/chat.html:412
 msgid "No other users"
 msgstr "No other users"
 
-#: app/templates/chat.html:417
+#: app/templates/chat.html:414
 #, python-brace-format
 msgid "Delete folder \"{name}\"?"
 msgstr "Delete folder \"{name}\"?"
 
-#: app/templates/chat.html:418
+#: app/templates/chat.html:415
 #, python-brace-format
 msgid ""
 "This will also delete {count} documents ({size}) inside the folder. "
@@ -5742,274 +5730,274 @@ msgstr ""
 "This will also delete {count} documents ({size}) inside the folder. "
 "Continue?"
 
-#: app/templates/chat.html:419
+#: app/templates/chat.html:416
 msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 msgstr "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 
-#: app/templates/chat.html:420
+#: app/templates/chat.html:417
 msgid "minutes_abbr"
 msgstr "min"
 
-#: app/templates/chat.html:421
+#: app/templates/chat.html:418
 msgid "status_pending"
 msgstr "Pending indexing"
 
-#: app/templates/chat.html:422
+#: app/templates/chat.html:419
 msgid "status_indexing"
 msgstr "Indexing in progress"
 
-#: app/templates/chat.html:423
+#: app/templates/chat.html:420
 msgid "status_indexed"
 msgstr "Indexed"
 
-#: app/templates/chat.html:424
+#: app/templates/chat.html:421
 msgid "status_failed"
 msgstr "Indexing failed"
 
-#: app/templates/chat.html:425
+#: app/templates/chat.html:422
 msgid "status_unknown"
 msgstr "Not indexed"
 
-#: app/templates/chat.html:426
+#: app/templates/chat.html:423
 msgid "transcribing"
 msgstr "Transcribing..."
 
-#: app/templates/chat.html:434
+#: app/templates/chat.html:431
 msgid "generating"
 msgstr "Generating..."
 
-#: app/templates/chat.html:436
+#: app/templates/chat.html:433
 msgid "cancelling"
 msgstr "Cancelling..."
 
-#: app/templates/chat.html:437
+#: app/templates/chat.html:434
 msgid "cancelled"
 msgstr "Cancelled"
 
-#: app/templates/chat.html:438
+#: app/templates/chat.html:435
 msgid "tool_get_current_time"
 msgstr "Getting time..."
 
-#: app/templates/chat.html:439
+#: app/templates/chat.html:436
 msgid "tool_calculator"
 msgstr "Calculating..."
 
-#: app/templates/chat.html:440
+#: app/templates/chat.html:437
 msgid "tool_time_calc"
 msgstr "Calculating date..."
 
-#: app/templates/chat.html:441
+#: app/templates/chat.html:438
 msgid "tool_web_search"
 msgstr "Searching the web..."
 
-#: app/templates/chat.html:442
+#: app/templates/chat.html:439
 msgid "tool_rag_search"
 msgstr "Searching documents..."
 
-#: app/templates/chat.html:443
+#: app/templates/chat.html:440
 msgid "tool_camera_snapshot"
 msgstr "Getting snapshot..."
 
-#: app/templates/chat.html:444
+#: app/templates/chat.html:441
 msgid "tool_read_page"
 msgstr "Reading the page..."
 
-#: app/templates/chat.html:445
+#: app/templates/chat.html:442
 msgid "tool_net_dns"
 msgstr "tool_net_dns"
 
-#: app/templates/chat.html:446
+#: app/templates/chat.html:443
 msgid "tool_net_whois"
 msgstr "tool_net_whois"
 
-#: app/templates/chat.html:447
+#: app/templates/chat.html:444
 msgid "tool_net_ping"
 msgstr "tool_net_ping"
 
-#: app/templates/chat.html:448
+#: app/templates/chat.html:445
 msgid "tool_net_trace"
 msgstr "tool_net_trace"
 
-#: app/templates/chat.html:449
+#: app/templates/chat.html:446
 msgid "tool_net_ports"
 msgstr "tool_net_ports"
 
-#: app/templates/chat.html:450
+#: app/templates/chat.html:447
 msgid "tool_net_http"
 msgstr "tool_net_http"
 
-#: app/templates/chat.html:451
+#: app/templates/chat.html:448
 msgid "tool_net_speed"
 msgstr "tool_net_speed"
 
-#: app/templates/chat.html:452
+#: app/templates/chat.html:449
 msgid "Preparing resources..."
 msgstr "⏳ Preparing resources..."
 
-#: app/templates/chat.html:453 app/templates/chat.html:454
+#: app/templates/chat.html:450 app/templates/chat.html:451
 msgid "Analyzing request..."
 msgstr "🔍 Analyzing request..."
 
-#: app/templates/chat.html:455
+#: app/templates/chat.html:452
 msgid "Analyzing image..."
 msgstr "🔍 Analyzing image..."
 
-#: app/templates/chat.html:456
+#: app/templates/chat.html:453
 msgid "Analyzing prompt..."
 msgstr "🔍 Analyzing prompt..."
 
-#: app/templates/chat.html:457
+#: app/templates/chat.html:454
 msgid "Generating video..."
 msgstr "🎬 Generating video..."
 
-#: app/templates/chat.html:458
+#: app/templates/chat.html:455
 msgid "Generating image..."
 msgstr "🎨 Generating image..."
 
-#: app/templates/chat.html:459
+#: app/templates/chat.html:456
 msgid "Editing image..."
 msgstr "✏️ Editing image..."
 
-#: app/templates/chat.html:460
+#: app/templates/chat.html:457
 msgid "Loading reasoning model..."
 msgstr "🧠 Loading reasoning model..."
 
-#: app/templates/chat.html:461
+#: app/templates/chat.html:458
 msgid "Loading the model..."
 msgstr "Loading the model..."
 
-#: app/templates/chat.html:462
+#: app/templates/chat.html:459
 msgid "Thinking..."
 msgstr "🤔 Thinking..."
 
-#: app/templates/chat.html:463
+#: app/templates/chat.html:460
 msgid "Searching documents..."
 msgstr "📚 Searching documents..."
 
-#: app/templates/chat.html:464 app/templates/chat.html:468
+#: app/templates/chat.html:461 app/templates/chat.html:465
 #, python-format
 msgid "Found %s fragments, preparing the answer..."
 msgstr "Found %s fragments, preparing the answer..."
 
-#: app/templates/chat.html:465
+#: app/templates/chat.html:462
 msgid "Searching the web..."
 msgstr "🌐 Searching the web..."
 
-#: app/templates/chat.html:466
+#: app/templates/chat.html:463
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Found %s results, preparing the answer..."
 
-#: app/templates/chat.html:467
+#: app/templates/chat.html:464
 msgid "Searching your conversation history..."
 msgstr "🗨 Searching your conversation history..."
 
-#: app/templates/chat.html:469
+#: app/templates/chat.html:466
 msgid "Getting time..."
 msgstr "🕐 Getting time..."
 
-#: app/templates/chat.html:470
+#: app/templates/chat.html:467
 msgid "Calculating..."
 msgstr "🔢 Calculating..."
 
-#: app/templates/chat.html:471
+#: app/templates/chat.html:468
 msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
-#: app/templates/chat.html:472
+#: app/templates/chat.html:469
 msgid "Deep analysis: reading documents"
 msgstr "🔬 Deep analysis: reading documents"
 
-#: app/templates/chat.html:473
+#: app/templates/chat.html:470
 #, python-format
 msgid "Deep analysis: phase %s"
 msgstr "🔬 Deep analysis: phase %s"
 
-#: app/templates/chat.html:474
+#: app/templates/chat.html:471
 msgid "Deep analysis: searching the web"
 msgstr "🔬 Deep analysis: searching the web"
 
-#: app/templates/chat.html:475
+#: app/templates/chat.html:472
 msgid "Deep analysis: calling sub-model"
 msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:476
+#: app/templates/chat.html:473
 msgid "Deep analysis: composing the answer"
 msgstr "🔬 Deep analysis: composing the answer"
 
-#: app/templates/chat.html:477
+#: app/templates/chat.html:474
 msgid "Starting web crawl..."
 msgstr "🕸️ Starting web crawl..."
 
-#: app/templates/chat.html:478
+#: app/templates/chat.html:475
 #, python-format
 msgid "Crawling page %s..."
 msgstr "🕸️ Crawling page %s..."
 
-#: app/templates/chat.html:479
+#: app/templates/chat.html:476
 msgid "Indexing crawled content..."
 msgstr "🕸️ Indexing crawled content..."
 
-#: app/templates/chat.html:480
+#: app/templates/chat.html:477
 #, python-format
 msgid "Deep analysis (%s steps)"
 msgstr "🔬 Deep analysis (%s steps)"
 
-#: app/templates/chat.html:481
+#: app/templates/chat.html:478
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:482
+#: app/templates/chat.html:479
 msgid "Making the plan..."
 msgstr "Making the plan..."
 
-#: app/templates/chat.html:483
+#: app/templates/chat.html:480
 msgid "Extracting the visual continuity sheet..."
 msgstr "📐 Extracting the visual continuity sheet..."
 
-#: app/templates/chat.html:484
+#: app/templates/chat.html:481
 msgid "Could not build the visual continuity sheet — images continue without it."
 msgstr ""
 "⚠️ Could not build the visual continuity sheet — images continue without "
 "it."
 
-#: app/templates/chat.html:485
+#: app/templates/chat.html:482
 msgid "Creating index for document..."
 msgstr "Creating index for document..."
 
-#: app/templates/chat.html:486
+#: app/templates/chat.html:483
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:487
+#: app/templates/chat.html:484
 msgid "Step"
 msgstr "Step"
 
-#: app/templates/chat.html:488
+#: app/templates/chat.html:485
 msgid "minute_abbr"
 msgstr "m"
 
-#: app/templates/chat.html:489
+#: app/templates/chat.html:486
 msgid "second_abbr"
 msgstr "s"
 
-#: app/templates/chat.html:490
+#: app/templates/chat.html:487
 msgid "timer_zero"
 msgstr "0s"
 
-#: app/templates/chat.html:524
+#: app/templates/chat.html:521
 msgid "Show the path between two nodes"
 msgstr "Show the path between two nodes"
 
-#: app/templates/chat.html:525
+#: app/templates/chat.html:522
 msgid "Find a node"
 msgstr "Find a node"
 
-#: app/templates/chat.html:527
+#: app/templates/chat.html:524
 msgid "Show or hide relation types"
 msgstr "Show or hide relation types"
 
-#: app/templates/chat.html:527
+#: app/templates/chat.html:524
 msgid "Relations"
 msgstr "Relations"
 
@@ -6249,4 +6237,13 @@ msgstr "Could not connect to video generation service"
 
 #~ msgid "reminder"
 #~ msgstr "Reranker"
+
+#~ msgid "Generated"
+#~ msgstr "Generated"
+
+#~ msgid "Crawled"
+#~ msgstr "Crawled"
+
+#~ msgid "From chat"
+#~ msgstr "From chat"
 

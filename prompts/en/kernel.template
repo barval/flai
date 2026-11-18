@@ -44,6 +44,9 @@ Choose exactly one:
 - A request that names a time AND asks for a reminder or for something to be DONE then is
   schedule: never none, and never search — a search engine cannot schedule anything. Put
   the whole request in "query".
+- A request to CREATE, SAVE or WRITE a file or document ("create тест.txt with the date",
+  "save this to a file", "make a report file") is none, never reasoning: the write_document
+  tool makes the file. Reasoning is code or prose that stays in the answer.
 
 # TOOLS
 The runtime tools currently available are listed below. Put at most 6 names in "tools"; use the exact names.

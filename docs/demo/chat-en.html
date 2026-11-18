@@ -2106,6 +2106,19 @@ footer {
     background-color: #e6f2ff;
 }
 
+/* The card's right-hand column: the action icons, and under them the index switch
+   of a document the assistant wrote. */
+.document-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-index-toggle {
+    white-space: nowrap;
+}
+
 /* Scheduler reminder popup — a notification, not a window: the message is
    already in its own chat, so closing this loses nothing. */
 .scheduler-popup {
@@ -3987,19 +4000,6 @@ body.service-chat .message-input {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
-}
-
-/* Where a document came from, when it was not an upload (v13.5). */
-.doc-origin-badge {
-    display: inline-block;
-    margin-left: 0.35rem;
-    padding: 0 0.35rem;
-    border-radius: 0.5rem;
-    font-size: 0.68rem;
-    line-height: 1.4;
-    border: 1px solid currentColor;
-    opacity: 0.65;
-    vertical-align: middle;
 }
 
 /* The indexing switch on a document the assistant wrote (v13.5). */
@@ -7869,6 +7869,19 @@ footer {
     background-color: #e6f2ff;
 }
 
+/* The card's right-hand column: the action icons, and under them the index switch
+   of a document the assistant wrote. */
+.document-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-index-toggle {
+    white-space: nowrap;
+}
+
 /* Scheduler reminder popup — a notification, not a window: the message is
    already in its own chat, so closing this loses nothing. */
 .scheduler-popup {
@@ -9750,19 +9763,6 @@ body.service-chat .message-input {
         padding: 0.35rem 0.4rem;
         gap: 0.15rem;
     }
-}
-
-/* Where a document came from, when it was not an upload (v13.5). */
-.doc-origin-badge {
-    display: inline-block;
-    margin-left: 0.35rem;
-    padding: 0 0.35rem;
-    border-radius: 0.5rem;
-    font-size: 0.68rem;
-    line-height: 1.4;
-    border: 1px solid currentColor;
-    opacity: 0.65;
-    vertical-align: middle;
 }
 
 /* The indexing switch on a document the assistant wrote (v13.5). */
@@ -11932,12 +11932,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_selected_count': "Selected: {count} ({size})",
     'documents_select_folder': "Select all documents in folder",
     'documents_select_for_move': "Select for moving",
-    'documents_origin_generated': "Generated",
     'documents_index_toggle': "Index",
     'documents_index_hint': "Index for search and graph",
     'documents_index_stale': "index is outdated",
-    'documents_origin_crawl': "Crawled",
-    'documents_origin_chat': "From chat",
     'documents_select_for_analysis': "Select for deep analysis",
     'documents_view_in_graph': "View in knowledge graph",
     'graph_title': "Knowledge graph",
@@ -12077,7 +12074,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'second_abbr': "s",
     'timer_zero': "0s",
     'scheduler_chat_reminder': "\ud83d\udd14 Scheduler: reminders",
-    'scheduler_chat_action': "\u2699\ufe0f Scheduler: actions"
+    'scheduler_chat_action': "\ud83d\udee0\ufe0f Scheduler: actions"
 });
 window.CURRENT_LANG = 'en';
 
@@ -12300,7 +12297,9 @@ function splitTitleMark(title) {
     const text = String(title || '');
     const match = text.match(/^(\p{Extended_Pictographic}\uFE0F?)\s*/u);
     if (match) {
-        return { mark: match[1], rest: text.slice(match[0].length) };
+        // One space after the mark, always: a title saved with two (a migration that kept the
+        // original separator) would render as a gap wider than the ones beside it.
+        return { mark: match[1], rest: text.slice(match[0].length).trimStart() };
     }
     return { mark: '📝', rest: text };
 }
@@ -12395,18 +12394,7 @@ function loadSessionsFromServer() {
             // Only rebuild sessions list HTML if something VISIBLE changed
             // (title or count — not just updated_at which changes constantly during processing)
             if (titleChanged || countChanged) {
-                const sessionsList = Object.keys(sessionsData).map(id => ({
-                    id: id,
-                    title: sessionsData[id].title,
-                    scheduler_kind: sessionsData[id].scheduler_kind,
-                    updated_at: sessionsData[id].updated_at,
-                    message_count: sessionsData[id].message_count,
-                    total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-                    total_completion_tokens: sessionsData[id].total_completion_tokens,
-                    has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    queue_info: sessionQueueInfo[id] || null,
-                    ttsPlaying: currentPlayingSessionId === id
-                }));
+                const sessionsList = sessionsForRender();
                 updateSessionsList(sessionsList);
                 // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
                 window._lastSessionsJson = JSON.stringify(sessionsList);
@@ -12427,6 +12415,25 @@ function loadSessionsFromServer() {
         });
 }
 
+// One shape for every renderer. Three places rebuild this list — the polling refresh, the
+// full reload and the queue-status refresh — and the actions chat showed an envelope instead
+// of its own gear because the queue-status copy had been built before scheduler_kind existed
+// and nobody added it there. A field is added here once, or it is lost somewhere.
+function sessionsForRender() {
+    return Object.keys(sessionsData).map(id => ({
+        id: id,
+        title: sessionsData[id].title,
+        scheduler_kind: sessionsData[id].scheduler_kind,
+        updated_at: sessionsData[id].updated_at,
+        message_count: sessionsData[id].message_count,
+        total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+        total_completion_tokens: sessionsData[id].total_completion_tokens,
+        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+        queue_info: sessionQueueInfo[id] || null,
+        ttsPlaying: currentPlayingSessionId === id
+    }));
+}
+
 function updateSessionsListFromData() {
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
@@ -12435,20 +12442,7 @@ function updateSessionsListFromData() {
     restorePendingRequests();
     // FIX: Increased timeout to prevent excessive updates
     sessionsUpdateTimeout = setTimeout(() => {
-        const sessions = Object.keys(sessionsData).map(id => ({
-            id: id,
-            title: sessionsData[id].title,
-            scheduler_kind: sessionsData[id].scheduler_kind,
-            updated_at: sessionsData[id].updated_at,
-            message_count: sessionsData[id].message_count,
-            total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-            total_completion_tokens: sessionsData[id].total_completion_tokens,
-            has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-            // Include queue info for this session
-            queue_info: sessionQueueInfo[id] || null,
-            // TTS playing state so the sidebar re-renders when it changes
-            ttsPlaying: currentPlayingSessionId === id
-        }));
+        const sessions = sessionsForRender();
 
         // Only update if queue info or session data changed
         const sessionsJson = JSON.stringify(sessions);
@@ -13081,17 +13075,6 @@ function renderDocItem(doc) {
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>`}
             </div>`;
 
-    // Where a document came from, when it was not an upload: the crawler saves pages,
-    // a chat attachment becomes a document, and the assistant writes files.
-    const originLabel = {
-        generated: t('documents_origin_generated'),
-        crawl: t('documents_origin_crawl'),
-        chat: t('documents_origin_chat'),
-    }[String(doc.source || '').toLowerCase()];
-    const originBadge = originLabel
-        ? `<span class="doc-origin-badge doc-origin-${escapeHtml(String(doc.source).toLowerCase())}">${escapeHtml(originLabel)}</span>`
-        : '';
-
     return `
     <div class="document-item${showRlm ? ' rlm-selected' : ''}${sharedBy ? ' document-shared' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-index-status="${escapeHtml(doc.index_status || '')}" data-folder-id="${escapeHtml(doc.folder_id || '')}" draggable="${sharedBy ? 'false' : 'true'}">
         <div class="document-content">
@@ -13101,18 +13084,20 @@ function renderDocItem(doc) {
             <div class="document-info">
                 <div class="document-title">
                     <span class="${iconClass}" title="${statusTitle}${queuePosition > 0 ? ` (#${queuePosition})` : ''}">${isPending && queuePosition > 0 ? `⏳ ${queuePosition}` : statusIcon}</span>
-                    📄 ${escapeHtml(doc.filename)}${originBadge}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
+                    ${escapeHtml(doc.filename)}${sharedBadge}<span class="rlm-marker">${showRlm ? ' ✓' : ''}</span>
                 </div>
                 <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer"${indexingStartTimestamp}>${statusIndicator || processingTimeStr}</span></div>
+                ${embeddingLine}
+                ${descriptionLine}
+            </div>
+            <div class="document-side">
+                ${documentActions}
                 ${doc.source === 'generated' ? `
                 <label class="doc-index-toggle" title="${escapeHtml(t('documents_index_hint'))}">
                     <input type="checkbox" class="doc-index-check" data-document-id="${escapeHtml(doc.id)}"${doc.index_status && doc.index_status !== 'not_indexed' ? ' checked' : ''}>
                     ${escapeHtml(t('documents_index_toggle'))}${doc.index_status === 'stale' ? ` · ${escapeHtml(t('documents_index_stale'))}` : ''}
                 </label>` : ''}
-                ${embeddingLine}
-                ${descriptionLine}
             </div>
-            ${documentActions}
         </div>
     </div>
     `;
@@ -20837,17 +20822,7 @@ function fetchQueueStatus() {
  * nothing meaningful changed (prevents flickering on slow/mobile connections).
  */
 function updateUIFromQueueStatus() {
-    const sessions = Object.keys(sessionsData).map(id => ({
-        id: id,
-        title: sessionsData[id].title,
-        updated_at: sessionsData[id].updated_at,
-        message_count: sessionsData[id].message_count,
-        total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-        total_completion_tokens: sessionsData[id].total_completion_tokens,
-        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-        queue_info: sessionQueueInfo[id] || null,
-        ttsPlaying: currentPlayingSessionId === id
-    }));
+    const sessions = sessionsForRender();
 
     // Skip full DOM rebuild if sessions data hasn't changed
     const sessionsJson = JSON.stringify(sessions);

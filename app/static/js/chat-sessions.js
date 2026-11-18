@@ -47,7 +47,9 @@ function splitTitleMark(title) {
     const text = String(title || '');
     const match = text.match(/^(\p{Extended_Pictographic}\uFE0F?)\s*/u);
     if (match) {
-        return { mark: match[1], rest: text.slice(match[0].length) };
+        // One space after the mark, always: a title saved with two (a migration that kept the
+        // original separator) would render as a gap wider than the ones beside it.
+        return { mark: match[1], rest: text.slice(match[0].length).trimStart() };
     }
     return { mark: '📝', rest: text };
 }
@@ -142,18 +144,7 @@ function loadSessionsFromServer() {
             // Only rebuild sessions list HTML if something VISIBLE changed
             // (title or count — not just updated_at which changes constantly during processing)
             if (titleChanged || countChanged) {
-                const sessionsList = Object.keys(sessionsData).map(id => ({
-                    id: id,
-                    title: sessionsData[id].title,
-                    scheduler_kind: sessionsData[id].scheduler_kind,
-                    updated_at: sessionsData[id].updated_at,
-                    message_count: sessionsData[id].message_count,
-                    total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-                    total_completion_tokens: sessionsData[id].total_completion_tokens,
-                    has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    queue_info: sessionQueueInfo[id] || null,
-                    ttsPlaying: currentPlayingSessionId === id
-                }));
+                const sessionsList = sessionsForRender();
                 updateSessionsList(sessionsList);
                 // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
                 window._lastSessionsJson = JSON.stringify(sessionsList);
@@ -174,6 +165,25 @@ function loadSessionsFromServer() {
         });
 }
 
+// One shape for every renderer. Three places rebuild this list — the polling refresh, the
+// full reload and the queue-status refresh — and the actions chat showed an envelope instead
+// of its own gear because the queue-status copy had been built before scheduler_kind existed
+// and nobody added it there. A field is added here once, or it is lost somewhere.
+function sessionsForRender() {
+    return Object.keys(sessionsData).map(id => ({
+        id: id,
+        title: sessionsData[id].title,
+        scheduler_kind: sessionsData[id].scheduler_kind,
+        updated_at: sessionsData[id].updated_at,
+        message_count: sessionsData[id].message_count,
+        total_prompt_tokens: sessionsData[id].total_prompt_tokens,
+        total_completion_tokens: sessionsData[id].total_completion_tokens,
+        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+        queue_info: sessionQueueInfo[id] || null,
+        ttsPlaying: currentPlayingSessionId === id
+    }));
+}
+
 function updateSessionsListFromData() {
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
@@ -182,20 +192,7 @@ function updateSessionsListFromData() {
     restorePendingRequests();
     // FIX: Increased timeout to prevent excessive updates
     sessionsUpdateTimeout = setTimeout(() => {
-        const sessions = Object.keys(sessionsData).map(id => ({
-            id: id,
-            title: sessionsData[id].title,
-            scheduler_kind: sessionsData[id].scheduler_kind,
-            updated_at: sessionsData[id].updated_at,
-            message_count: sessionsData[id].message_count,
-            total_prompt_tokens: sessionsData[id].total_prompt_tokens,
-            total_completion_tokens: sessionsData[id].total_completion_tokens,
-            has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-            // Include queue info for this session
-            queue_info: sessionQueueInfo[id] || null,
-            // TTS playing state so the sidebar re-renders when it changes
-            ttsPlaying: currentPlayingSessionId === id
-        }));
+        const sessions = sessionsForRender();
         
         // Only update if queue info or session data changed
         const sessionsJson = JSON.stringify(sessions);

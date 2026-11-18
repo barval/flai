@@ -162,7 +162,7 @@ def test_an_action_does_not_pop_up(env):
     scheduler.deliver_message(env["app"], item, "Checked the rooms at 10:00")
 
     assert env["publisher"].of_type("scheduler_popup") == []
-    assert _session("action")[0]["title"] == "⚙️ Планировщик: действия"
+    assert _session("action")[0]["title"] == "🛠️ Планировщик: действия"
 
 
 def test_the_item_zone_survives_a_server_in_another_one(env):

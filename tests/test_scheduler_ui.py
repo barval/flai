@@ -140,3 +140,17 @@ def test_a_service_chat_has_no_composer():
     assert "body.service-chat .message-input" in css
     assert "function applyServiceChatMode" in sessions
     assert "updateChatModeForSession(sessionId)" in sessions
+
+
+def test_every_sidebar_renderer_builds_the_row_the_same_way():
+    """The queue-status refresh rebuilt the list without the kind, so the actions chat got
+    an envelope. One shape, three callers."""
+    sessions = _read("app/static/js/chat-sessions.js")
+    queue = _read("app/static/js/chat-queue.js")
+
+    assert "function sessionsForRender()" in sessions
+    assert "scheduler_kind: sessionsData[id].scheduler_kind" in sessions
+    assert sessions.count("sessionsForRender()") == 3
+    assert "sessionsForRender()" in queue
+    # No other place may rebuild the row by hand.
+    assert "Object.keys(sessionsData).map" not in queue

@@ -409,6 +409,7 @@ def create_app():
         try:
             from app import scheduler
 
+            scheduler.rename_action_chats(app)
             scheduler.start(app)
         except Exception as e:
             app.logger.warning(f"Could not start the scheduler: {e}")

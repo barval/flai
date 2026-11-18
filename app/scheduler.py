@@ -187,7 +187,7 @@ def session_title(kind: str, language: str) -> str:
 
     with force_locale(language):
         if kind == "action":
-            return gettext("⚙️ Scheduler: actions")
+            return gettext("🛠️ Scheduler: actions")
         return gettext("🔔 Scheduler: reminders")
 
 
@@ -216,6 +216,26 @@ def _user_language(user_id: str | None) -> str:
         return "ru"
     language = row.get("language")
     return language if language in ("ru", "en") else "ru"
+
+
+def rename_action_chats(app) -> int:
+    """Point existing action chats at the current mark.
+
+    The title is written once, when the chat is created, so changing the mark would leave
+    every installation with the old one forever. One UPDATE, keyed by the kind, at startup.
+    """
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        # Only the mark is replaced, so a chat the person renamed in their own language keeps
+        # its words; one they renamed away from the mark at all is left alone.
+        c.execute(
+            "UPDATE chat_sessions SET title = '🛠️' || substr(title, 3)"
+            " WHERE scheduler_kind = 'action' AND title LIKE '⚙️ %'"
+        )
+        changed = c.rowcount
+    return changed or 0
 
 
 def scheduler_session(app, user_id: str, kind: str) -> str:

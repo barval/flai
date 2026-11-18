@@ -236,7 +236,7 @@ def test_the_actions_chat_is_the_one_for_actions(env):
     with db.get_db() as conn:
         c = conn.cursor()
         c.execute("SELECT title FROM chat_sessions WHERE user_id = %s AND scheduler_kind = 'action'", (LOGIN,))
-        assert c.fetchone()["title"] == "⚙️ Планировщик: действия"
+        assert c.fetchone()["title"] == "🛠️ Планировщик: действия"
 
 
 def test_the_lead_is_capped_by_the_interval(env):

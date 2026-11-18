@@ -1187,6 +1187,36 @@ def _init_postgresql():
         "CREATE INDEX IF NOT EXISTS idx_scheduler_due ON scheduler_items (next_run_at)"
         " WHERE enabled AND next_run_at IS NOT NULL"
     )
+
+    # v13.6: one row per firing of an action. A run is not a task — it is a short service
+    # loop — so it lives in its own table and the Tasks tab cannot show it by construction.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduler_runs (
+            id            UUID PRIMARY KEY,
+            item_id       UUID NOT NULL REFERENCES scheduler_items(id) ON DELETE CASCADE,
+            user_id       TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'queued'
+                          CHECK (status IN ('queued','running','completed','failed','cancelled')),
+            due_at        TIMESTAMPTZ NOT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            started_at    TIMESTAMPTZ,
+            finished_at   TIMESTAMPTZ,
+            result        TEXT,
+            error         TEXT,
+            rounds        INTEGER NOT NULL DEFAULT 0,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            delivered_at  TIMESTAMPTZ
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_open ON scheduler_runs (item_id)"
+        " WHERE status IN ('queued','running')"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scheduler_runs_due ON scheduler_runs (due_at)"
+        " WHERE delivered_at IS NULL"
+    )
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deep_analysis BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audio JSONB NOT NULL DEFAULT '[]'::jsonb")

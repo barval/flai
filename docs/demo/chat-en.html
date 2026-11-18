@@ -17272,8 +17272,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             headerDiv.appendChild(extraSpan);
         }
 
-        // Response style emoji (skip for transcription or system errors)
-        if (responseStyle && modelName !== 'whisper' && !isSystemError) {
+        // Response style emoji (skip for transcription, system errors and delivered
+        // schedule items: a prepared sentence has no style to describe)
+        if (responseStyle && modelName !== 'whisper' && !isSystemError && !schedulerKind) {
             const styleEmoji = getResponseStyleEmoji(responseStyle);
             if (styleEmoji) {
                 const styleLabel = t('response_style_' + responseStyle) || responseStyle;

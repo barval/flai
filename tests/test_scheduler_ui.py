@@ -57,6 +57,9 @@ def test_a_delivered_message_names_its_chat_instead_of_a_model():
     assert "schedulerKind" in messages
     assert "scheduler_chat_reminder" in messages
     assert "message-scheduler-label" in messages
+    # The response-style emoji describes how an answer was phrased; a delivered
+    # sentence has no style, so the header must not carry the neutral robot.
+    assert "!isSystemError && !schedulerKind" in messages
 
 
 def test_the_wrapper_forwards_the_scheduler_kind():

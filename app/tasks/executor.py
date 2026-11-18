@@ -2760,7 +2760,15 @@ class TaskExecutor:
             "model_type": "reasoning",
             **planner_meta,
         }
-        fields: dict[str, Any] = {"step_plan": {**plan, "plan_meta": plan_meta}, "next_step_index": 0}
+        # `task_request` is the person's own words, carried in the plan so every later
+        # stage (steps, reviews, the final answer) reads the same goal. A scheduler-run
+        # task has a short title for the list and its full goal here; dropping the field
+        # on save would make the next review plan by the label.
+        request_text = _request_text(task)
+        fields: dict[str, Any] = {
+            "step_plan": {**plan, "task_request": request_text, "plan_meta": plan_meta},
+            "next_step_index": 0,
+        }
         update_task(task_id, **fields)
         self._create_plan_step_rows(task_id, plan["steps"])
         return "ok"

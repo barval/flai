@@ -79,7 +79,7 @@ def test_the_sidebar_reloads_for_a_chat_it_has_never_seen():
 
 
 def test_a_scheduler_chat_keeps_its_own_mark():
-    """«📝 🔔 Планировщик» is two icons for one thing: one mark per title."""
+    """A delivered reminder must carry one mark, not two icons for one thing."""
     sessions = _read("app/static/js/chat-sessions.js")
     template = _read("app/templates/chat.html")
 

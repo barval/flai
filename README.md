@@ -79,8 +79,9 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 - **The assistant can be asked to do something later.** Two kinds, because they are not the same
   thing: a **reminder** is a sentence prepared when it was created (no model, no queue — a hundred
-  can fire in one second), an **action** is a task on the Tasks engine that uses your tools and
-  skills and may therefore run late, saying so when it does. Ask in chat — "remind me tomorrow at
+  can fire in one second), an **action** is a short service run with your tools that never appears
+  in the Tasks tab, may run late and says so, and launches an ordinary task when the work is larger
+  than a few rounds. Ask in chat — "remind me tomorrow at
   nine", "every Friday at 16:00 check the logs" — and the assistant answers with the concrete
   stored time, the one chance to notice a misunderstanding before it fires. Deliveries land in two
   system chats, a reminder also pops up on screen, missed firings follow a policy you set, and the

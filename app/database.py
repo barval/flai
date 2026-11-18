@@ -1188,7 +1188,7 @@ def _init_postgresql():
         " WHERE enabled AND next_run_at IS NOT NULL"
     )
 
-    # v13.6: one row per firing of an action. A run is not a task — it is a short service
+    # v13.5: one row per firing of an action. A run is not a task — it is a short service
     # loop — so it lives in its own table and the Tasks tab cannot show it by construction.
     c.execute("""
         CREATE TABLE IF NOT EXISTS scheduler_runs (
@@ -1224,7 +1224,7 @@ def _init_postgresql():
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_attempted BOOLEAN NOT NULL DEFAULT FALSE")
     c.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS visual_bible_stale BOOLEAN NOT NULL DEFAULT FALSE")
 
-    # v13.5 shipped an action as a task; v13.6 makes it a run in its own table, so the
+    # An earlier cut of v13.5 shipped an action as a task; it is a run in its own table now, so the
     # columns that tied a task to a schedule are dropped. The release never left the
     # branch, so no installation carries rows that depend on them.
     c.execute("ALTER TABLE tasks DROP COLUMN IF EXISTS scheduler_item_id")

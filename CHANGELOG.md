@@ -1,20 +1,3 @@
-## [v13.6] — unreleased
-
-### Changed
-
-- **A scheduled action is a run, not a task.** An action used to become a task on the Tasks engine, so every firing occupied the single task slot, sat in the Tasks tab beside the work a person started by hand, and competed with that work for the same queue position. A firing now creates a **run** in its own table (`scheduler_runs`) and executes as a short service loop — three model rounds at most, the chat tool catalogue minus the skill loader and scheduling itself, a deadline checked before each round. A run cannot appear in the Tasks tab by construction rather than by a filter, it is queued one minute ahead instead of ten, and chat outranks it without cancelling it. Overlap, the lateness window, deletion and restart recovery all read runs, so a crash can no longer leave an item silenced by a row nobody advances.
-
-### Added
-
-- **An action can start a real task.** A run carries `start_task(goal, title)`: when the goal asks for work larger than a few rounds — "check every room and write the events to a file" — the model calls it, and an ordinary task appears in the Tasks tab titled **🛠️ Scheduler: <name>**, with its result and its history like any task. The run's message is the tool's confirmation, verbatim, and one run launches at most one task. The model decides this from the goal; no phrase is matched in code.
-
-- **Two knobs in Admin → Settings → Scheduler:** `SCHEDULER_RUN_ROUNDS` (model rounds one run may spend, default 3) and `SCHEDULER_RUN_TIMEOUT_S` (seconds one run may take, checked before each round, default 180).
-
-### Migration
-
-- **Three `tasks` columns are dropped:** `scheduler_item_id`, `scheduler_deliver_at`, `scheduler_delivered_at`. `init_db()` removes them on the first start after the upgrade. Tasks created by the v13.5 action path remain ordinary tasks in the Tasks tab; their answers had already been delivered, so nothing is lost. Checked on an installation that ran the v13.5 path: 42 such tasks existed, all with `scheduler_delivered_at` set. A downgrade to v13.5 re-adds the columns empty — those actions would then be unscheduled, not duplicated.
-
-
 ## [v13.5] — 2026-11-18
 
 ### Changed
@@ -22,6 +5,12 @@
 - **A language you do not use is no longer a blocker.** Personalization used to demand both site names at once and reset the pair when either was emptied; now each language stands alone — save the Russian name and leave English blank (or the reverse), and only an empty pair falls back to the built-in brand. Forcing a translation in either direction was wrong: a Russian admin should not be required to write English, and an English one should not be required to write Russian.
 
 ### Added
+
+- **A scheduled action is a run, not a task.** An action used to become a task on the Tasks engine, so every firing occupied the single task slot, sat in the Tasks tab beside the work a person started by hand, and competed with that work for the same queue position. A firing now creates a **run** in its own table (`scheduler_runs`) and executes as a short service loop — three model rounds at most, the chat tool catalogue minus the skill loader and scheduling itself, a deadline checked before each round. A run cannot appear in the Tasks tab by construction rather than by a filter, it is queued one minute ahead instead of ten, and chat outranks it without cancelling it. Overlap, the lateness window, deletion and restart recovery all read runs, so a crash can no longer leave an item silenced by a row nobody advances.
+
+- **An action can start a real task.** A run carries `start_task(goal, title)`: when the goal asks for work larger than a few rounds — "check every room and write the events to a file" — the model calls it, and an ordinary task appears in the Tasks tab titled **🛠️ Scheduler: <name>**, with its result and its history like any task. The run's message is the tool's confirmation, verbatim, and one run launches at most one task. The model decides this from the goal; no phrase is matched in code.
+
+- **Two knobs in Admin → Settings → Scheduler:** `SCHEDULER_RUN_ROUNDS` (model rounds one run may spend, default 3) and `SCHEDULER_RUN_TIMEOUT_S` (seconds one run may take, checked before each round, default 180).
 
 - **A background task can do what a chat turn can.** Two capabilities close the gap: `chat_tool` runs any tool the chat catalogue offers, through the same gate the chat uses — so the per-user permission, the rate limit and the audit still apply — and `document` writes a file, including **appending** a line to one the assistant wrote, which is what a growing log needs. The planner can also name a skill, and its instructions reach every step. Tests: `tests/test_tasks_chat_tool.py`, `tests/test_write_document_append.py`, `tests/test_tasks_skills.py`.
 
@@ -35,9 +24,11 @@
 
 - **Network diagnostics from chat, behind a permission you grant per user.** Seven tools answer what a terminal used to answer: `net_dns`, `net_whois`, `net_ping`, `net_trace`, `net_ports`, `net_http`, `net_speed`. They live in their own container (`services/netdiag`, profile `with-net-tools`) that validates every field and runs one program per request — no command line, no shell — with `cap_drop: ALL` plus the single capability ping and mtr need. It joins its own Docker network shared with the web service only, so a permitted user cannot reach PostgreSQL or Redis through Docker's networking. Without the permission the answer is a localized «network tools are not available to you» — a sentence, not silence. A `/24` is host discovery only, port scans are the 100 most common ports on one host, and loopback and link-local are refused whatever the permission says. Ten calls a minute, sixty an hour, and a 24-hour audit line per call read by `flask net-audit` and the Monitoring tab. → [NET_TOOLS.md](docs/NET_TOOLS.md)
 
+- **The assistant can be asked to do something later.** Two kinds, because they are not the same thing: a **reminder** is a sentence prepared when it was created (no model, no queue — a hundred can fire in one second), an **action** is a short service run with your tools that never appears in the Tasks tab, may run late and says so, and launches an ordinary task when the work is larger than a few rounds. Ask in chat — "remind me tomorrow at nine about the report", "every Friday at 16:00 check the logs" — and the assistant answers with the concrete stored moment, the one chance to notice a misunderstanding before it fires. Recurrence is a closed set computed on the installation's wall clock, so nine stays nine across a daylight-saving change, and the tick advances from the scheduled moment rather than from the clock. Deliveries land in two system chats (recreated if deleted); a reminder also pops up on screen, and a queued popup waits instead of replacing the one being read. Missed firings follow a per-kind policy (all / last / none) with a cap, an action refuses to overlap itself while its previous run is queued or running, and a result that finished early waits for its time. The list lives in the profile popup, where deleting an item also cancels what it started. → [SCHEDULER.md](docs/SCHEDULER.md)
 
+### Migration
 
-- **The assistant can be asked to do something later.** Two kinds, because they are not the same thing: a **reminder** is a sentence prepared when it was created (no model, no queue — a hundred can fire in one second), an **action** is a task on the Tasks engine with the user's full tool and skill surface, which is why it may run late and says so. Ask in chat — "remind me tomorrow at nine about the report", "every Friday at 16:00 check the logs" — and the assistant answers with the concrete stored moment, the one chance to notice a misunderstanding before it fires. Recurrence is a closed set computed on the installation's wall clock, so nine stays nine across a daylight-saving change, and the tick advances from the scheduled moment rather than from the clock. Deliveries land in two system chats (recreated if deleted); a reminder also pops up on screen, and a queued popup waits instead of replacing the one being read. Missed firings follow a per-kind policy (all / last / none) with a cap, an action refuses to overlap itself while its previous run is queued or frozen, and a result that finished early waits for its time. The list lives in the profile popup, where deleting an item also cancels what it started. → [SCHEDULER.md](docs/SCHEDULER.md)
+- **Three `tasks` columns are dropped:** `scheduler_item_id`, `scheduler_deliver_at`, `scheduler_delivered_at`. `init_db()` removes them on the first start after the upgrade. Tasks created by the v13.5 action path remain ordinary tasks in the Tasks tab; their answers had already been delivered, so nothing is lost. Checked on an installation that ran the v13.5 path: 42 such tasks existed, all with `scheduler_delivered_at` set. A downgrade to v13.5 re-adds the columns empty — those actions would then be unscheduled, not duplicated.
 
 ### Fixed
 

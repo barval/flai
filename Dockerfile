@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client-18 \
     docker-cli \
     poppler-utils \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Installing Python dependencies from the lock file.

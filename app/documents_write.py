@@ -32,7 +32,12 @@ MAX_CONTENT_BYTES = 256 * 1024
 # A log may grow past one call's payload, but not without end: an unbounded file inside
 # the document store is a disk leak with a friendly name.
 MAX_APPEND_BYTES = 2 * 1024 * 1024
-FORMAT_EXTENSIONS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
+TEXT_FORMATS = {"md": ".md", "csv": ".csv", "json": ".json", "txt": ".txt"}
+# Binary containers are rendered, not encoded: the model's input is still text/rows.
+BINARY_FORMATS = {"docx": ".docx", "xlsx": ".xlsx", "pdf": ".pdf"}
+FORMAT_EXTENSIONS = {**TEXT_FORMATS, **BINARY_FORMATS}
+# A rendered document (fonts, zip container, PDF objects) is larger than its text.
+MAX_BINARY_BYTES = 5 * 1024 * 1024
 MAX_NAME_STEM = 120
 
 # Name allocation is a read-then-write: two chats can both see "note.md" free. One
@@ -152,6 +157,19 @@ def count_quota_exceeded(user_id: str) -> bool:
         return False
 
 
+def _binary_payload(fmt: str, content: str, rows: list | None, sheets: list | None) -> bytes:
+    from app import documents_render
+
+    try:
+        if fmt == "docx":
+            return documents_render.render_docx(content)
+        if fmt == "pdf":
+            return documents_render.render_pdf(content)
+        return documents_render.render_xlsx(rows=rows, sheets=sheets)
+    except documents_render.RenderError as exc:
+        raise DocumentWriteError(exc.code, exc.detail) from exc
+
+
 def _payload(content: str, fmt: str, rows: list[list[str]] | None) -> str:
     if fmt == "csv":
         if not rows:
@@ -175,25 +193,37 @@ def write_document_file(
     fmt: str = "md",
     rows: list[list[str]] | None = None,
     append: bool = False,
+    sheets: list | None = None,
 ) -> WrittenDocument:
     """Store one document, or extend one this tool wrote. Refuses before writing."""
     format_key = str(fmt or "md").strip().lower().lstrip(".")
     if format_key not in FORMAT_EXTENSIONS:
         raise DocumentWriteError("format", format_key)
     extension = FORMAT_EXTENSIONS[format_key]
+    binary = format_key in BINARY_FORMATS
 
-    try:
-        payload = _payload(content, format_key, rows)
-    except json.JSONDecodeError as exc:
-        raise DocumentWriteError("json", str(exc)) from exc
-    if not str(payload or "").strip():
-        raise DocumentWriteError("empty")
-    if not payload.endswith("\n"):
-        payload = f"{payload}\n"
+    if append and binary:
+        # Appending a PDF or a zip container means rewriting the structure, not
+        # writing bytes at the end: that is an edit, not a growing log.
+        raise DocumentWriteError("append_binary", format_key)
 
-    data = payload.encode("utf-8")
-    if len(data) > MAX_CONTENT_BYTES:
-        raise DocumentWriteError("too_large", str(len(data)))
+    payload = ""
+    if binary:
+        data = _binary_payload(format_key, content, rows, sheets)
+        if len(data) > MAX_BINARY_BYTES:
+            raise DocumentWriteError("too_large_binary", str(len(data)))
+    else:
+        try:
+            payload = _payload(content, format_key, rows)
+        except json.JSONDecodeError as exc:
+            raise DocumentWriteError("json", str(exc)) from exc
+        if not str(payload or "").strip():
+            raise DocumentWriteError("empty")
+        if not payload.endswith("\n"):
+            payload = f"{payload}\n"
+        data = payload.encode("utf-8")
+        if len(data) > MAX_CONTENT_BYTES:
+            raise DocumentWriteError("too_large", str(len(data)))
 
     root = os.path.realpath(_documents_root())
     folder = os.path.join(root, user_id)
@@ -252,8 +282,12 @@ def write_document_file(
 
         os.makedirs(folder, exist_ok=True)
         try:
-            with open(absolute, "w", encoding="utf-8", newline="") as handle:
-                handle.write(payload)
+            if binary:
+                with open(absolute, "wb") as handle:
+                    handle.write(data)
+            else:
+                with open(absolute, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(payload)
             size = os.path.getsize(absolute)
             db.save_document(user_id, doc_id, filename, size, extension, relative, source="generated")
             db.update_document_index_status(doc_id, db.INDEX_STATUS_NOT_INDEXED)

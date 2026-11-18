@@ -30,6 +30,7 @@ python3 .opencode/skills/preparing-flai-release/scripts/check_readme_toc.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_secrets.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_dead_paths.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_doc_claims.py
+python3 .opencode/skills/preparing-flai-release/scripts/check_behaviour_claims.py --list
 python3 .opencode/skills/preparing-flai-release/scripts/check_skill_claims.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_compose_profiles.py
 python3 .opencode/skills/preparing-flai-release/scripts/check_env_parity.py
@@ -47,6 +48,15 @@ reads prose. Measured: the architecture summary still described
 `check_doc_claims.py` resolves three kinds of claim mechanically: a `flask <command>`
 that no longer exists, an environment key named in backticks that nothing outside
 the documentation mentions, and a `with-…` compose profile no compose file defines.
+
+`check_behaviour_claims.py` checks the sentence a document makes about **what the code
+does** — "the tool queues indexing", "an upload is indexed on arrival", "a restart cancels
+a run" — against the call that implements it. It keeps a small registry: a phrase that must
+exist in a document and, in a named file, a call that must (or must not) exist. Measured:
+`AGENTS.md` promised that `write_document` queues indexing "like an upload"; the tool never
+did, the panel's index switch is the only path, and the false sentence survived a release.
+With `--list` it also prints every behaviour-shaped sentence it finds in the English
+documents, for a reviewer to read against the code.
 
 `check_skill_claims.py` applies the same idea to `.opencode/skills/*/SKILL.md` — the
 instructions an agent follows. It reports a path, a `flask` command, a compose profile or
@@ -399,6 +409,27 @@ touched against the code, and check each claim type at its source:
 | A model name, size or hardware tier | `docs/MODELS.md`, `docs/BENCHMARKS.md`, the GGUF files on disk |
 | "One command", "no cloud", "everything local" | the code path that would contradict it |
 
+### Behaviour claims
+
+A path can be correct while the sentence around it is wrong. The class that survives every
+mechanical check is the claim about **what happens**: a document says a call queues a task,
+publishes an event, indexes a file or cancels a run, and the call was renamed, moved or
+never existed. `check_behaviour_claims.py` covers the claims already registered; the rest is
+a reading task:
+
+1. Collect the sentences with `--list` (and read the release diff for the ones it misses).
+2. For each, find the call: `queues` → a `add_…task`/`enqueue` in the named module; `indexed`
+   → the branch that sets the status; `publishes` → the publisher call; `on arrival` → the
+   route that runs at that moment.
+3. If the call is not there, the document is wrong, not "close enough". Fix the sentence in
+   English and its `-ru` twin, and add the pair to the registry so the next release checks it.
+4. If the call is there but the document denies it, that is a finding too — a registry entry
+   with `code_must_not` exists for exactly this.
+
+Measured, v13.5: `docs/DOCUMENTS.md`, its Russian twin, `AGENTS.md`, the `write_document`
+tool description and the CHANGELOG all said a generated file is indexed like an upload. It
+is not; the index switch on the card is the only path, and the tool's own reply says so.
+
 Then look for the failures a script cannot see:
 
 - **Two documents disagree.** The code decides; both documents get the same
@@ -642,6 +673,7 @@ Check and record evidence:
 | Docs parity | `check_doc_headings.py`, `.env` diff | PASS / FAIL |
 | Documented paths exist | `check_dead_paths.py` | PASS / FAIL |
 | Documented commands, keys, profiles resolve | `check_doc_claims.py` | PASS / FAIL |
+| Documented behaviour matches the call | `check_behaviour_claims.py` (+ `--list` read by hand) | PASS / FAIL |
 | Docs describe the current behaviour | reading audit, verdict per document | PASS / FAIL |
 | Deploy scripts and compose entries | `docker compose -f … config`, key review | PASS / FAIL |
 | Baked-in services rebuilt and verified | `docker compose build <svc>`, then the change observed live | PASS / NOT VERIFIED |
@@ -698,6 +730,7 @@ Commit and push only with approval. Commit messages are English. Push to `origin
 | "I'll delete old dead code while I'm here." | Report it; delete only with approval, including old code. |
 | "A restart picked up the fix." | `services/*` code lives in the image; rebuild the service, then observe the fix — a healthy container proves nothing about the code inside. |
 | "The default changed, so installations get it." | Their `.env` keeps the old value and beats the code fallback; write the migration note and the What's New bullet. |
+| "The sentence names the right file, so it is true." | A path can be right while the verb is wrong: `write_document` was documented as queueing indexing and never did. Run `check_behaviour_claims.py`, then read `--list`. |
 | "The docs read correctly, so they are current." | Paths and names drift silently — `memory_extract.template` and `TOOL_LABELS` both stayed documented after the code moved on. Run both scripts, then read. |
 | "The README says it, so it is the product truth." | The README is a document like any other. When it contradicts `docs/` or the code, the code wins and both documents are fixed together. |
 | "`init_db()` is just an `ALTER`; the tests will catch it." | The tests build their own schema from scratch. A `DROP COLUMN` in `init_db()` deletes real data on the first boot, and only a restored backup shows how much. Run `check_schema_changes.py`. |

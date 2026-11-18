@@ -31,6 +31,7 @@ CLEAN_GATES = (
     "check_skill_claims.py",
     "check_compose_profiles.py",
     "check_env_parity.py",
+    "check_behaviour_claims.py",
 )
 
 
@@ -84,3 +85,35 @@ def test_skill_claims_reports_a_dead_command(tmp_path: Path) -> None:
     probe = _run(str(layout / "check_skill_claims.py"))
     assert probe.returncode == 1
     assert "definitely-not-a-command" in probe.stdout
+
+
+@pytest.mark.unit
+def test_behaviour_claims_reports_a_contradiction(tmp_path: Path) -> None:
+    """The checker has teeth: a documented call the code does not make is a finding."""
+    script = SCRIPTS / "check_behaviour_claims.py"
+    layout = tmp_path / ".opencode" / "skills" / "preparing-flai-release" / "scripts"
+    layout.mkdir(parents=True)
+    (layout / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+
+    (tmp_path / "docs").mkdir()
+    # The document keeps the registered sentence; the code lost the call it promises.
+    (tmp_path / "AGENTS.md").write_text(
+        "The tool does **not** index it, and chat is never offered scheduler_run.\n", encoding="utf-8"
+    )
+    (tmp_path / "docs" / "DOCUMENTS.md").write_text("An upload is indexed on arrival.\n", encoding="utf-8")
+    (tmp_path / "docs" / "SCHEDULER.md").write_text("A restart cannot wedge an item.\n", encoding="utf-8")
+    (tmp_path / "app").mkdir()
+    # The tool now calls what the document denies: exactly the drift this checks.
+    (tmp_path / "app" / "tools.py").write_text(
+        "def _exec_write_document():\n    queue('index_document')\n", encoding="utf-8"
+    )
+    (tmp_path / "app" / "routes.py").parent.mkdir(exist_ok=True)
+    (tmp_path / "app" / "routes").mkdir(exist_ok=True)
+    (tmp_path / "app" / "routes" / "documents.py").write_text('task_type = "index_document"\n', encoding="utf-8")
+    (tmp_path / "app" / "scheduler_runs.py").write_text("def recover_after_restart():\n    pass\n", encoding="utf-8")
+    (tmp_path / "app" / "scheduler_runner.py").write_text("ROUNDS = SCHEDULER_RUN_ROUNDS\n", encoding="utf-8")
+
+    result = _run(str(layout / script.name))
+    assert result.returncode == 1
+    assert "write-document-no-auto-index" in result.stdout
+    assert "CONTRADICTED" in result.stdout

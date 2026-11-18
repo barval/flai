@@ -77,20 +77,27 @@ When the OCR budget expires, the pages recognized so far are indexed and the use
 
 The model can produce a file, not only a paragraph. `write_document` stores text as an
 ordinary document of the person who asked, so it appears in the Documents panel, can be
-searched, shared, moved and deleted, and is **indexed and added to the knowledge graph
-on the same path as an upload** — under the same `GRAPH_AUTO_EXTRACT` switch, with no
-rule of its own.
+opened, shared, moved and deleted. Unlike an upload it is **not indexed on arrival**: a
+file written on nearly every answer would otherwise fill RAG and the graph with its own
+output. The index switch on the card is the one place that puts such a document into
+search and the knowledge graph, through the same path as an upload and under the same
+`GRAPH_AUTO_EXTRACT` switch; switching it off takes the document out again without
+deleting it.
 
 | | |
 |---|---|
-| Formats | `.md` (default), `.csv`, `.json`, `.txt` |
-| CSV | the model passes `rows` — a list of rows, each a list of cells — so a comma or a quote inside a value cannot corrupt the file |
+| Text formats | `.md` (default), `.csv`, `.json`, `.txt` |
+| Containers | `.docx` (Word), `.xlsx` (spreadsheet), `.pdf` (fixed layout) |
+| Tables | the model passes `rows` — a list of rows, each a list of cells — so a comma or a quote inside a value cannot corrupt the file; `xlsx` also takes `sheets`, each `{name, rows}` |
 | JSON | validated before writing: a file that does not parse is refused instead of stored |
-| Size | at most 256 KB of text per call |
+| Size | text at most 256 KB per call; a rendered container at most 5 MB |
+| Formulas | a cell that starts with `=`, `+`, `-` or `@` is stored as text (prefixed with `'`), so a generated spreadsheet cannot execute what the model wrote |
+| Append | text only: a `.docx`/`.xlsx`/`.pdf` is rewritten by its structure, not by bytes at the end, so the tool writes a new file instead |
 | Name | a display name only; the server strips any path, caps it at 120 characters and appends the extension |
 | Collision | a name the user already has gets ` (2)`, ` (3)` — a generated file never overwrites another |
 | Quota | checked **before** anything is written, against the same document quota as an upload |
-| Preview | shown as plain text; Markdown is not rendered in the panel |
+| Preview | text is shown as plain text (Markdown is not rendered); a container opens in its own reader |
+| PDF font | DejaVu is embedded, so Russian text is real text, not empty boxes; an image without the font refuses the render instead |
 
 A document written this way carries `source = 'generated'`, and the panel marks it with a
 badge. The `source` column distinguishes all four origins — `upload`, `crawl` (a site the
@@ -99,7 +106,7 @@ the column read `upload`; nothing can tell them apart retroactively.
 
 Ask for it in plain language — "put a report together from these contracts and give it to
 me as a file", "save that as a table". The tool answers with the stored name and the size,
-and indexing happens in the background.
+and reminds you about the index switch; until it is ticked the file is not searched.
 
 ## 1. Configure RAG in Admin Panel
 

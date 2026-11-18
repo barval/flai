@@ -11250,6 +11250,15 @@ video {
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="Revoke"
                      data-revoke-confirm="Revoke this API key? Integrations using it will stop working.">
+                    <div class="scheduler-section" id="scheduler-section"
+                         data-empty-label="Nothing scheduled"
+                         data-delete-label="Delete"
+                         data-finished-label="finished"
+                         data-confirm-template="Delete the schedule &#34;{title}&#34;?">
+                        <div class="api-keys-header"><span>Scheduled</span></div>
+                        <p class="api-keys-hint">Created from chat. Deleting one stops it.</p>
+                        <div class="scheduler-items" id="scheduler-items"></div>
+                    </div>
                     <div class="tavily-section" id="tavily-section"
                          data-add-label="Add key"
                          data-delete-label="Delete key"
@@ -11277,15 +11286,6 @@ video {
                             <span class="tavily-status" id="tavily-status" hidden></span>
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>
-                    </div>
-                    <div class="scheduler-section" id="scheduler-section"
-                         data-empty-label="Nothing scheduled"
-                         data-delete-label="Delete"
-                         data-finished-label="finished"
-                         data-confirm-template="Delete the schedule &#34;{title}&#34;?">
-                        <div class="api-keys-header"><span>Scheduled</span></div>
-                        <p class="api-keys-hint">Created from chat. Deleting one stops it.</p>
-                        <div class="scheduler-items" id="scheduler-items"></div>
                     </div>
                     <div class="api-keys-header">
                         <span>FLAI API keys</span>

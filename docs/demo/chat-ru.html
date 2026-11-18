@@ -11250,6 +11250,15 @@ video {
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="Отозвать"
                      data-revoke-confirm="Отозвать этот API-ключ? Интеграции с ним перестанут работать.">
+                    <div class="scheduler-section" id="scheduler-section"
+                         data-empty-label="Ничего не запланировано"
+                         data-delete-label="Удалить"
+                         data-finished-label="завершено"
+                         data-confirm-template="Удалить расписание «{title}»?">
+                        <div class="api-keys-header"><span>Запланировано</span></div>
+                        <p class="api-keys-hint">Создано из чата. Удаление останавливает.</p>
+                        <div class="scheduler-items" id="scheduler-items"></div>
+                    </div>
                     <div class="tavily-section" id="tavily-section"
                          data-add-label="Добавить ключ"
                          data-delete-label="Удалить ключ"
@@ -11277,15 +11286,6 @@ video {
                             <span class="tavily-status" id="tavily-status" hidden></span>
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>
-                    </div>
-                    <div class="scheduler-section" id="scheduler-section"
-                         data-empty-label="Ничего не запланировано"
-                         data-delete-label="Удалить"
-                         data-finished-label="завершено"
-                         data-confirm-template="Удалить расписание «{title}»?">
-                        <div class="api-keys-header"><span>Запланировано</span></div>
-                        <p class="api-keys-hint">Создано из чата. Удаление останавливает.</p>
-                        <div class="scheduler-items" id="scheduler-items"></div>
                     </div>
                     <div class="api-keys-header">
                         <span>ПЛИИ API ключи</span>

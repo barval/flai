@@ -76,6 +76,15 @@
                 <div class="api-keys-panel" id="api-keys-panel" hidden
                      data-revoke-label="{{ _('api_keys_revoke') }}"
                      data-revoke-confirm="{{ _('api_keys_revoke_confirm') }}">
+                    <div class="scheduler-section" id="scheduler-section"
+                         data-empty-label="{{ _('Nothing scheduled') }}"
+                         data-delete-label="{{ _('Delete') }}"
+                         data-finished-label="{{ _('finished') }}"
+                         data-confirm-template="{{ _('Delete the schedule "{title}"?') }}">
+                        <div class="api-keys-header"><span>{{ _('Scheduled') }}</span></div>
+                        <p class="api-keys-hint">{{ _('Created from chat. Deleting one stops it.') }}</p>
+                        <div class="scheduler-items" id="scheduler-items"></div>
+                    </div>
                     <div class="tavily-section" id="tavily-section"
                          data-add-label="{{ _('tavily_add_key') }}"
                          data-delete-label="{{ _('tavily_delete_key') }}"
@@ -103,15 +112,6 @@
                             <span class="tavily-status" id="tavily-status" hidden></span>
                             <p class="tavily-quota" id="tavily-quota" hidden></p>
                         </div>
-                    </div>
-                    <div class="scheduler-section" id="scheduler-section"
-                         data-empty-label="{{ _('Nothing scheduled') }}"
-                         data-delete-label="{{ _('Delete') }}"
-                         data-finished-label="{{ _('finished') }}"
-                         data-confirm-template="{{ _('Delete the schedule "{title}"?') }}">
-                        <div class="api-keys-header"><span>{{ _('Scheduled') }}</span></div>
-                        <p class="api-keys-hint">{{ _('Created from chat. Deleting one stops it.') }}</p>
-                        <div class="scheduler-items" id="scheduler-items"></div>
                     </div>
                     <div class="api-keys-header">
                         <span>{{ _('api_keys_title') }}</span>

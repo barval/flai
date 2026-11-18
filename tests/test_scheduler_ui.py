@@ -98,3 +98,15 @@ def test_the_popup_scrolls_instead_of_leaving_the_screen():
     assert "overscroll-behavior: contain" in css
     # The list itself scrolls first; the panel is the second line of defence.
     assert "max-height: 220px" in css
+
+
+def test_the_scheduler_section_comes_first_in_the_profile_popup():
+    """The list is what people open the popup for; the keys are configured once."""
+    base = _read("app/templates/base.html")
+
+    scheduler = base.index('id="scheduler-section"')
+    tavily = base.index('id="tavily-section"')
+    # The panel's own header, not the button label in the page header above it.
+    api_keys = base.index("<span>{{ _('api_keys_title') }}</span>")
+
+    assert scheduler < tavily < api_keys

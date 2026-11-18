@@ -115,7 +115,13 @@ chat **🔔 Scheduler: reminders** and also pop up on screen; actions arrive in
 Delete or inspect everything in **your profile popup → Scheduled**; deleting an item also stops
 what it already started.
 
-Recurrence is a closed set: once, every N minutes (at least 15), daily, weekly and monthly — on
+An action is a short run, not a task, so it never appears in the **Tasks** tab. If the goal asks
+for real multi-step work — "check every room and write the events to a file" — the run launches
+one task for it, titled **🛠️ Scheduler: <name>**, and that task does appear in Tasks with its
+result, like any task you started yourself.
+
+Recurrence is a closed set: once, every N minutes (at least 5 for an action on a GPU host and 15
+otherwise; reminders stay at 15), daily, weekly and monthly — on
 the installation's own clock, so nine stays nine across a daylight-saving change. A firing you
 missed while the server was down follows **Admin → Settings → Scheduler** (`all`, `last` or
 `none`, separately for reminders and actions). An action refuses to start while its previous run

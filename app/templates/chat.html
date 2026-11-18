@@ -171,6 +171,8 @@
 <!-- JavaScript translations and configuration -->
 <script>
 window.initialSessionId = {{ current_session|tojson }};
+window.CURRENT_SESSION_KIND = {{ (current_session_kind or '')|tojson }};
+if (window.CURRENT_SESSION_KIND) document.body.classList.add('service-chat');
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.FLAI_MAX_CHAT_IMAGES = {{ config.MAX_CHAT_IMAGES|tojson }};
 window.FLAI_MAX_CHAT_AUDIO = {{ config.MAX_CHAT_AUDIO|tojson }};

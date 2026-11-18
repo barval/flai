@@ -1059,6 +1059,13 @@ function splitServiceLine(kind, body) {
 // message input into the clarifying-question answer box. task=null is the
 // empty tasks view: title shown, input hidden.
 function setTaskMode(active, task) {
+    // The task view asks questions of its own, so a scheduler chat's hidden composer
+    // must come back while it is open and go away again when it closes.
+    if (active) {
+        if (typeof applyServiceChatMode === 'function') applyServiceChatMode(null);
+    } else if (typeof updateChatModeForSession === 'function') {
+        updateChatModeForSession(currentSessionId);
+    }
     const taskTitle = document.getElementById('task-title-text');
     const chatTitle = document.getElementById('chat-title-text');
     const stopBtn = document.getElementById('stop-task-button');

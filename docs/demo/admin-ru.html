@@ -2936,6 +2936,13 @@ video {
     margin: 0;
 }
 
+/* A scheduler chat receives messages and asks nothing: no scope picker, no deep-analysis
+   toggle, no input, microphone, attachment or Send button. */
+body.service-chat .rlm-controls,
+body.service-chat .message-input {
+    display: none;
+}
+
 .message-input {
     display: flex;
     gap: 0.5rem;
@@ -8672,6 +8679,13 @@ video {
 
 .extra-attachments .image-container {
     margin: 0;
+}
+
+/* A scheduler chat receives messages and asks nothing: no scope picker, no deep-analysis
+   toggle, no input, microphone, attachment or Send button. */
+body.service-chat .rlm-controls,
+body.service-chat .message-input {
+    display: none;
 }
 
 .message-input {

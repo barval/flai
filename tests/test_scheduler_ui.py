@@ -110,3 +110,20 @@ def test_the_scheduler_section_comes_first_in_the_profile_popup():
     api_keys = base.index("<span>{{ _('api_keys_title') }}</span>")
 
     assert scheduler < tavily < api_keys
+
+
+def test_a_service_chat_has_no_composer():
+    """A scheduler chat is a delivery channel: nothing there is a question."""
+    template = _read("app/templates/chat.html")
+    css = _read("app/static/css/chat.css")
+    sessions = _read("app/static/js/chat-sessions.js")
+    routes = _read("app/routes/chat.py")
+    db = _read("app/db.py")
+
+    assert "current_session_kind" in routes
+    assert "scheduler_kind" in db.split("def get_user_sessions")[1][:2500]
+    assert "CURRENT_SESSION_KIND" in template
+    assert "body.service-chat .rlm-controls" in css
+    assert "body.service-chat .message-input" in css
+    assert "function applyServiceChatMode" in sessions
+    assert "updateChatModeForSession(sessionId)" in sessions

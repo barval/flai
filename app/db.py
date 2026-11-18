@@ -97,6 +97,7 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
             cs.id,
             cs.title,
             cs.model_name,
+            cs.scheduler_kind,
             cs.created_at,
             cs.updated_at,
             COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00') as last_visit,
@@ -109,7 +110,7 @@ def get_user_sessions(user_id: str) -> list[dict[str, Any]]:
         FROM chat_sessions cs
         LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = %s
         WHERE cs.user_id = %s
-        GROUP BY cs.id, cs.title, cs.model_name, cs.created_at, cs.updated_at
+        GROUP BY cs.id, cs.title, cs.model_name, cs.scheduler_kind, cs.created_at, cs.updated_at
         ORDER BY cs.updated_at DESC
         """,
             (user_id, user_id),

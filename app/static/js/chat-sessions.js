@@ -14,6 +14,26 @@ function reloadSessionsForIncomingMessage() {
     });
 }
 
+// A scheduler chat is a delivery channel, not a conversation: the model is not asked
+// anything there, so the scope picker, the deep-analysis toggle and the whole composer
+// (input, microphone, attachment, Send) have nothing to act on.
+function applyServiceChatMode(kind) {
+    document.body.classList.toggle('service-chat', Boolean(kind));
+}
+
+function updateChatModeForSession(sessionId) {
+    const info = (typeof sessionsData !== 'undefined' && sessionId) ? sessionsData[sessionId] : null;
+    if (info) {
+        applyServiceChatMode(info.scheduler_kind);
+        return;
+    }
+    // Before the list arrives the server's own value is the only truth: without this
+    // the class would be dropped for a moment and the composer would flash.
+    const initial = (window.initialSessionId && sessionId === window.initialSessionId)
+        ? window.CURRENT_SESSION_KIND : null;
+    applyServiceChatMode(initial);
+}
+
 // A title that already carries its own mark — the scheduler's 🔔/⚙️ — keeps it.
 // Prefixing 📝 there reads as two icons for one thing ("📝 🔔 Планировщик").
 function sessionTitleMark(title) {
@@ -57,6 +77,7 @@ function loadSessionsFromServer() {
                 if (!sessionsData[s.id]) {
                     sessionsData[s.id] = {
                         title: s.title,
+                        scheduler_kind: s.scheduler_kind,
                         updated_at: s.updated_at,
                         message_count: s.message_count,
                         total_prompt_tokens: s.total_prompt_tokens,
@@ -66,6 +87,7 @@ function loadSessionsFromServer() {
                 } else {
                     if (sessionsData[s.id].title !== s.title) {
                         sessionsData[s.id].title = s.title;
+                        sessionsData[s.id].scheduler_kind = s.scheduler_kind;
                         sessionsData[s.id].updated_at = s.updated_at;
                         sessionsData[s.id].message_count = s.message_count;
                         sessionsData[s.id].total_prompt_tokens = s.total_prompt_tokens;
@@ -128,6 +150,9 @@ function loadSessionsFromServer() {
             // Don't call loadMessages here — syncMessagesForCurrentSession already
             // appends new messages incrementally. loadMessages does innerHTML=''
             // which causes full chat redraw and flickering on mobile/slow connections.
+
+            // The active chat's kind is authoritative now, whatever the first paint said.
+            if (typeof updateChatModeForSession === 'function') updateChatModeForSession(currentSessionId);
 
             return sessions;
         })
@@ -307,6 +332,7 @@ function createNewSession() {
             };
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
             currentSessionId = data.id;
+            if (typeof applyServiceChatMode === 'function') applyServiceChatMode(null);
             
             // Clear unread indicator for OLD session (we're leaving it)
             if (oldSessionId) {
@@ -422,6 +448,7 @@ function switchSession(sessionId) {
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
+            if (typeof updateChatModeForSession === 'function') updateChatModeForSession(sessionId);
             // Clear unread indicator for NEW current session
             delete newMessageIndicators[sessionId];
             // Also clear unread indicator for PREVIOUS session
